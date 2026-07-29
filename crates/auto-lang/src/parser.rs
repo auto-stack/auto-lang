@@ -10383,6 +10383,7 @@ impl<'a> Parser<'a> {
         let mut bind = None;
         let mut routes = None;
         let mut style = None;
+        let mut ext_imports = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10416,9 +10417,12 @@ impl<'a> Parser<'a> {
                 "style" => {
                     style = Some(self.parse_style_block_inner()?);
                 }
+                "use" => {
+                    ext_imports.extend(self.parse_widget_use_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', or 'routes' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -10439,7 +10443,97 @@ impl<'a> Parser<'a> {
             routes,
             lifecycle: vec![],
             style,
+            ext_imports,
         }))
+    }
+
+    /// Parse a widget-level external import block (Vue backend escape hatch):
+    ///
+    /// ```auto
+    /// widget Icon(language: str) {
+    ///     use {
+    ///         fn: getLanguageIconUrl from "src/front/utils/codeBlockLanguage.ts"
+    ///         fn: a, b from "marked"
+    ///         component: FancyBadge from "src/front/components/FancyBadge.vue"
+    ///         composable: useClock from "src/front/composables/useClock.ts"
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Each entry declares hand-written TS/Vue symbols the generated SFC may
+    /// reference. Paths are npm package specifiers (paired with pac.at
+    /// `npm_deps:`) or project-root-relative files (copied into the generated
+    /// project under `src/ext/` by auto-man). See [`ExtImport`].
+    fn parse_widget_use_block_inner(&mut self) -> AutoResult<Vec<ExtImport>> {
+        self.expect_ident("use")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut imports = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            let kind = match self.cur.text.as_str() {
+                "fn" => ExtImportKind::Fn,
+                "component" => ExtImportKind::Component,
+                "composable" => ExtImportKind::Composable,
+                other => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected 'fn', 'component', or 'composable' in widget use block, got '{}'",
+                            other
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            };
+            self.next();
+            self.expect(TokenKind::Colon)?;
+
+            let mut symbols = Vec::new();
+            loop {
+                if !self.is_kind(TokenKind::Ident) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected symbol name in widget use block, got '{}'",
+                            self.cur.text
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                symbols.push(self.cur.text.clone());
+                self.next();
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    continue;
+                }
+                break;
+            }
+
+            self.expect_ident("from")?;
+            if !self.is_kind(TokenKind::Str) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected string import path after 'from' in widget use block, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            let path = self.cur.text.clone();
+            self.next();
+
+            imports.push(ExtImport { kind, symbols, path });
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(imports)
     }
 
     /// Parse a widget-level native CSS block: `style { ...raw CSS... }`.

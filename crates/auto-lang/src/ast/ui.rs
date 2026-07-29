@@ -58,6 +58,52 @@ pub struct WidgetDecl {
     /// verbatim by the lexer (never tokenized/parsed). Emitted into the
     /// component's `<style scoped>` by the Vue backend.
     pub style: Option<String>,
+
+    /// External TS/Vue imports declared in a widget-level `use { ... }` block.
+    /// Emitted as ES import statements into the component's `<script setup>`
+    /// by the Vue backend; other backends ignore them.
+    pub ext_imports: Vec<ExtImport>,
+}
+
+/// Kind of an external import declared in a widget `use { ... }` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtImportKind {
+    /// `fn: name from "path"` — a plain TS function/constant, callable from
+    /// `on` handlers and `computed` expressions.
+    Fn,
+    /// `component: Name from "path"` — an external Vue component,
+    /// instantiable in the `view` tree with props and events.
+    Component,
+    /// `composable: useXxx from "path"` — a Vue composable, called once at
+    /// `<script setup>` top level; its return value is bound to a local
+    /// const (`useXxx` → `xxx`) reachable from `on` handlers.
+    Composable,
+}
+
+/// One external import entry inside a widget-level `use { ... }` block.
+///
+/// ```auto
+/// widget Icon(language: str) {
+///     use {
+///         fn: getLanguageIconUrl from "src/front/utils/codeBlockLanguage.ts"
+///         component: FancyBadge from "src/front/components/FancyBadge.vue"
+///         component: Smile from "lucide-vue-next"
+///         composable: useClock from "src/front/composables/useClock.ts"
+///     }
+/// }
+/// ```
+///
+/// `path` is either an npm package specifier (paired with pac.at
+/// `npm_deps:`) or a project-root-relative file path; the build copies
+/// local files into the generated Vue project under `src/ext/` and
+/// rewrites the import specifier to `@/ext/...`.
+#[derive(Debug, Clone)]
+pub struct ExtImport {
+    pub kind: ExtImportKind,
+    /// Imported symbol names (comma-separated in the DSL).
+    pub symbols: Vec<Name>,
+    /// Import source: npm package specifier or project-relative file path.
+    pub path: AutoStr,
 }
 
 // ============================================================================
@@ -714,6 +760,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             style: None,
+            ext_imports: Vec::new(),
         };
 
         assert_eq!(widget.name.as_str(), "Counter");
