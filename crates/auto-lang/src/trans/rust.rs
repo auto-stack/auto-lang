@@ -10201,6 +10201,30 @@ impl RustTrans {
     /// Plan 373: Detect whether a method body mutates `self` (either by direct
     /// field assignment `self.x = ...` or by calling a mutating method on a
     /// self-field like `self.vec.push(...)`). If so, the method needs `&mut self`.
+    /// Plan 373: Seed known external (handwritten-Rust) struct-variant enums.
+    /// These are enums whose .at port uses tuple syntax (because AutoVM can't
+    /// destructure struct variants) but whose real Rust definition uses struct
+    /// variants. We register the field names so construction sites emit
+    /// `Type::Variant { field: val }` instead of `Type::Variant(val)`.
+    fn seed_known_struct_enum_variants(&mut self) {
+        let known: &[(&str, &str, &[&str])] = &[
+            ("ContentBlock", "Text", &["text"]),
+            ("ContentBlock", "ToolUse", &["id", "name", "input"]),
+            ("ContentBlock", "ToolResult", &["tool_use_id", "content", "is_error"]),
+        ];
+        for (type_name, variant_name, fields) in known {
+            self.enum_struct_variants.insert(
+                ((*type_name).into(), (*variant_name).into()),
+                fields.iter().map(|f| f.to_string().into()).collect(),
+            );
+            // Also register the enum name so construction sites recognize it as
+            // a tag/enum type (needed in single-file mode where the enum is
+            // imported from another module and not in tag_types yet).
+            self.tag_types.insert((*type_name).into());
+            self.known_enum_names.insert((*type_name).into());
+        }
+    }
+
     fn method_mutates_self(stmts: &[Stmt]) -> bool {
         for stmt in stmts {
             match stmt {
@@ -12513,6 +12537,13 @@ impl Trans for RustTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Phase 1: Emit file header with a2r standard library (includes #![allow] pragma)
         self.emit_a2r_stdlib(&mut sink.body)?;
+
+        // Plan 373: Seed known external (handwritten-Rust) struct-variant enums.
+        // These enums are declared with tuple syntax in .at (because AutoVM can't
+        // destructure struct variants), but the real Rust enum they link against
+        // uses struct variants. We register them here so construction sites emit
+        // struct syntax `Type::Variant { field: val, ... }` instead of tuple.
+        self.seed_known_struct_enum_variants();
 
         // Plan 204 Phase 3: Pre-scan for !T / Result<T,E> return types to determine Err trait need
         for stmt in &ast.stmts {
