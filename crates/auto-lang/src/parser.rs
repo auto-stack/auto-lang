@@ -11459,6 +11459,18 @@ impl<'a> Parser<'a> {
                 let key = self.cur.text.to_string();
                 self.next();
 
+                // Custom event with a quoted name (allows ':'/'-' in the event
+                // name, which an identifier key cannot hold):
+                //   on "autodown:slash-open".document: .OnOpen($event)
+                // Internally the name is kept quoted: on"autodown:slash-open".
+                let key = if key == "on" && self.is_kind(TokenKind::Str) {
+                    let custom = self.cur.text.to_string();
+                    self.next();
+                    format!("on\"{}\"", custom)
+                } else {
+                    key
+                };
+
                 // Check if it's an event (onclick, etc.)
                 if key.starts_with("on") {
                     let key = self.parse_event_modifiers(key)?;
@@ -11470,7 +11482,8 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::Colon)?;
 
                     // Check for style binding: style: { completed: todo.done }
-                    if key == "style" && self.is_kind(TokenKind::LBrace) {
+                    // style_obj: { top: expr } is the inline-style (:style) form.
+                    if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
@@ -11535,7 +11548,9 @@ impl<'a> Parser<'a> {
 
                 // Check if this looks like a prop: identifier followed by colon
                 // e.g., "class:" or "onclick:"
-                let is_prop_like = if self.is_kind(TokenKind::Ident) {
+                let is_prop_like = if self.is_kind(TokenKind::Ident)
+                    || (self.is_kind(TokenKind::On) && self.cur.text == "on")
+                {
                     // Peek at next token to see if it's a colon
                     if let Ok(next_token) = self.lexer.next() {
                         let is_colon = next_token.kind == TokenKind::Colon;
@@ -11544,8 +11559,12 @@ impl<'a> Parser<'a> {
                         let is_event_modifier = !is_colon
                             && next_token.kind == TokenKind::Dot
                             && self.cur.text.starts_with("on");
+                        // Quoted custom event: `on "autodown:slash-open":` —
+                        // `on` followed by a string literal.
+                        let is_quoted_event = self.cur.text == "on"
+                            && next_token.kind == TokenKind::Str;
                         self.lexer.push_token(next_token);
-                        is_colon || is_event_modifier
+                        is_colon || is_event_modifier || is_quoted_event
                     } else {
                         false
                     }
@@ -11557,6 +11576,16 @@ impl<'a> Parser<'a> {
                     // Parse as prop/event
                     let key = self.cur.text.to_string();
                     self.next();
+                    // Quoted custom event name: on "autodown:slash-open" —
+                    // keep the quotes in the internal key (on"name") so the
+                    // generators can tell it apart from identifier events.
+                    let key = if key == "on" && self.is_kind(TokenKind::Str) {
+                        let custom = self.cur.text.to_string();
+                        self.next();
+                        format!("on\"{}\"", custom)
+                    } else {
+                        key
+                    };
                     // Event modifiers (onwheel.prevent, onmousemove.window) are
                     // dot-suffixed and must be consumed before the colon.
                     let key = if key.starts_with("on") {
@@ -11570,7 +11599,7 @@ impl<'a> Parser<'a> {
                     if key.starts_with("on") {
                         let (handler, params) = self.parse_event_handler()?;
                         events.push(ViewEvent { name: key, handler, params });
-                    } else if key == "style" && self.is_kind(TokenKind::LBrace) {
+                    } else if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
@@ -12639,6 +12668,96 @@ mod tests {
         assert_eq!(col_events[0].name, "onwheel.document.capture");
         assert_eq!(col_events[0].handler, ".Lock");
         assert_eq!(col_events[0].params, vec!["$event.key".to_string()]);
+    }
+
+    #[test]
+    fn test_view_quoted_custom_event_names() {
+        // Custom event names containing ':'/'-' (CustomEvent dispatched by
+        // hand-written TS): on "autodown:slash-open".document — in both paren
+        // and brace prop styles. Internally the name keeps its quotes:
+        // on"autodown:slash-open".document.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var x int = 0 }\n",
+            "  view {\n",
+            "    col {\n",
+            "      input (on \"autodown:slash-open\".document: .Open($event))\n",
+            "      col { on \"autodown:slash-close\".document.capture: .Close($event.detail) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let children = match root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let input_events = match &children[0] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected input element, got {:?}", other),
+        };
+        assert_eq!(input_events[0].name, "on\"autodown:slash-open\".document");
+        assert_eq!(input_events[0].handler, ".Open");
+        assert_eq!(input_events[0].params, vec!["$event".to_string()]);
+        let col_events = match &children[1] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected col element, got {:?}", other),
+        };
+        assert_eq!(col_events[0].name, "on\"autodown:slash-close\".document.capture");
+        assert_eq!(col_events[0].handler, ".Close");
+        assert_eq!(col_events[0].params, vec!["$event.detail".to_string()]);
+    }
+
+    #[test]
+    fn test_view_style_obj_binding() {
+        // style_obj: { css_prop: expr } parses to a StyleBinding prop named
+        // "style_obj" (inline-style form), distinct from style: (class map).
+        let code = concat!(
+            "widget App {\n",
+            "  model { var y int = 0 }\n",
+            "  view {\n",
+            "    col {\n",
+            "      style_obj: { top: f\"${.y}px\", \"z-index\": 50 }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let props = match root {
+            ViewNode::Element { props, .. } => props,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let style_obj = props.iter().find(|p| p.name == "style_obj").expect("style_obj prop");
+        match &style_obj.value {
+            ViewPropValue::StyleBinding(entries) => {
+                assert_eq!(entries.len(), 2);
+                assert_eq!(entries[0].style_name, "top");
+                assert_eq!(entries[1].style_name, "z-index");
+            }
+            other => panic!("expected StyleBinding, got {:?}", other),
+        }
     }
 
     #[test]
