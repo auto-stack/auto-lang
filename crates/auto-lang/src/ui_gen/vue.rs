@@ -1879,7 +1879,7 @@ impl VueGenerator {
                         // matching params (otherwise the emit() call won't pass
                         // args, causing a TS mismatch).
                         let pattern_key = format!(".{}", variant.name);
-                        if widget.handler_params.contains_key(&pattern_key) {
+                        if Self::get_handler_params(&widget.handler_params, &pattern_key).is_some() {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
                         }
                     }
@@ -1893,7 +1893,7 @@ impl VueGenerator {
                 if params.is_empty() {
                     continue;
                 }
-                let name = pattern.trim_start_matches('.');
+                let name = Self::base_pattern(pattern).trim_start_matches('.');
                 if self.emit_events.contains(&name.to_string())
                     && !event_payload_types.contains_key(name)
                 {
@@ -1950,7 +1950,7 @@ impl VueGenerator {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
                     let pattern_key = format!(".{}", handler_name);
-                    let emit_args: String = widget.handler_params.get(&pattern_key)
+                    let emit_args: String = Self::get_handler_params(&widget.handler_params, &pattern_key)
                         .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
                         .unwrap_or_default();
                     if emit_args.is_empty() {
@@ -1982,7 +1982,7 @@ impl VueGenerator {
             let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
                 format!("{}: any", loop_var)
             } else {
-                widget.handler_params.get(&pattern_key)
+                Self::get_handler_params(&widget.handler_params, &pattern_key)
                     .map(|params| {
                         let param_names: Vec<String> = params.iter()
                             .map(|p| format!("{}: any", p))
@@ -8329,8 +8329,32 @@ impl VueGenerator {
         }
     }
 
+    /// Strip a trailing param list from an on-block handler pattern key.
+    /// Plan 374 embeds param names in handler keys (".Scrolled(e)") so the
+    /// Rust backend can recover them; the Vue backend matches handlers by
+    /// base name (".Scrolled"), so normalize before lookup.
+    fn base_pattern(pattern: &str) -> &str {
+        match pattern.find('(') {
+            Some(i) if pattern.ends_with(')') => &pattern[..i],
+            _ => pattern,
+        }
+    }
+
+    /// Look up on-block handler params by base pattern (".Name"), tolerant of
+    /// Plan 374 parameterized keys (".Name(e)").
+    fn get_handler_params<'a>(
+        handler_params: &'a std::collections::HashMap<String, Vec<String>>,
+        base_key: &str,
+    ) -> Option<&'a Vec<String>> {
+        handler_params
+            .iter()
+            .find(|(k, _)| Self::base_pattern(k) == base_key)
+            .map(|(_, v)| v)
+    }
+
     /// Convert handler pattern to function name
     fn pattern_to_handler_name(&self, pattern: &str) -> String {
+        let pattern = Self::base_pattern(pattern);
         // Check for dot prefix first (e.g., ".Inc")
         if pattern.starts_with('.') {
             // Dot-prefixed handlers map directly to function name (Vue convention)
@@ -8345,6 +8369,7 @@ impl VueGenerator {
 
     /// Convert handler reference to function call
     fn handler_to_function_call(&self, handler: &str) -> String {
+        let handler = Self::base_pattern(handler);
         // Check for dot prefix first
         if handler.starts_with('.') {
             // Dot-prefixed handlers map directly to function name (Vue convention)
