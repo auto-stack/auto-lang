@@ -10667,6 +10667,16 @@ impl RustTrans {
         //     and str.split(X).get(i) → str.split(X).nth(i)
         Self::fix_split_methods(&mut content);
 
+        // Plan 373 backports — additional B1 codegen papercuts.
+        // Lower Auto-VM str/numeric methods + structural fixes that the main
+        // trans() pass doesn't emit correctly yet (see docs/plans/373).
+        Self::fix_substring_method(&mut content);
+        Self::fix_numeric_conversion_methods(&mut content);
+        Self::fix_residual_error_box(&mut content);
+        Self::fix_result_none_unit(&mut content);
+        Self::fix_fn_field_calls(&mut content);
+        Self::fix_non_ord_derives(&mut content);
+
         if !content.ends_with('\n') {
             content.push('\n');
         }
@@ -11964,6 +11974,175 @@ impl RustTrans {
         }
         if result != *content {
             *content = result;
+        }
+    }
+
+    /// Plan 373: lower `s.substring(lo, hi)` to Rust slicing.
+    /// Auto str has `.substring(lo, hi)`; Rust str has no such method.
+    /// `expr.substring(0, cap)` → `&expr[0..cap as usize]`
+    /// `expr.substring(lo, end)` → `&expr[lo as usize..end as usize]`
+    /// Both args are integer-typed (i32/u32) in the transpiled output, so cast
+    /// to usize for byte slicing. (Byte slicing is adequate — Auto sources use
+    /// substring only for truncation/summaries, never on multi-byte boundaries
+    /// that would split a char.)
+    fn fix_substring_method(content: &mut String) {
+        // `IDENT.substring(a, b)` — IDENT is a simple receiver (str value).
+        if let Some(re) = cached_regex(r"(\w+)\.substring\(([^,)]+),\s*([^)]+)\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let recv = caps.get(1).unwrap().as_str();
+                let lo = caps.get(2).unwrap().as_str().trim();
+                let hi = caps.get(3).unwrap().as_str().trim();
+                format!("&{}[{} as usize..{} as usize]", recv, lo, hi)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 373: lower Auto-VM numeric conversion methods to Rust casts.
+    /// `expr.to_float()` → `(expr as f64)`
+    /// `expr.to_uint()`  → `(expr as u32)`
+    /// `expr.to_int()`   → `(expr as i32)`
+    /// (Rust ints/floats have no `.to_float()`/`.to_uint()` methods.)
+    fn fix_numeric_conversion_methods(content: &mut String) {
+        // Match a receiver that is either an identifier or a method chain we can
+        // wrap in parens. Keep it conservative: `IDENT.method_chain().to_float()`.
+        for (method, cast) in [
+            ("to_float", "f64"),
+            ("to_uint", "u32"),
+            ("to_int", "i32"),
+        ] {
+            let pat = format!(r"([\w.()]+)\.{}\(\)", method);
+            if let Some(re) = cached_regex(&pat) {
+                let mthd = method;
+                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let recv = caps.get(1).unwrap().as_str();
+                    // Avoid double-wrapping if already parenthesized.
+                    if recv.starts_with('(') && recv.ends_with(')') {
+                        format!("{} as {})", &recv[..recv.len() - 1], cast)
+                    } else {
+                        format!("({} as {})", recv, cast)
+                    }
+                }).to_string();
+                if new != *content { *content = new; }
+                let _ = mthd;
+            }
+        }
+    }
+
+    /// Plan 373: drop residual `Err(Box::new(...))` wrapping.
+    /// a2r sometimes wraps error payloads in `Box::new(...)` even when the
+    /// enclosing `Result`'s error type is a plain enum/String (not Box<...>).
+    /// `Err(Box::new(X))` → `Err(X)`
+    fn fix_residual_error_box(content: &mut String) {
+        if let Some(re) = cached_regex(r"Err\(Box::new\(([^()*(]*(?:\([^()]*\)[^()]*)*)\)\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("Err({})", caps.get(1).unwrap().as_str())
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 373: `Result<None, E>` → `Result<(), E>` and `Ok(None)` → `Ok(())`.
+    /// Auto functions returning `nil` get transpiled with `None` as the Ok-type
+    /// and `Ok(None)` returns; Rust needs the unit type `()`.
+    fn fix_result_none_unit(content: &mut String) {
+        // Type position: `Result<None,` or `Result<None>` → unit first arg.
+        let reduced = content.replace("Result<None,", "Result<(),").replace("Result<None>", "Result<(),>");
+        if reduced != *content { *content = reduced; }
+        // Value position: `Ok(None)` → `Ok(())` (only in return/value contexts;
+        // `Ok(None)` is never a meaningful Option payload in transpiled output).
+        let reduced = content.replace("Ok(None)", "Ok(())");
+        if reduced != *content { *content = reduced; }
+    }
+
+    /// Plan 373: calls on function-typed struct fields need parenthesization.
+    /// Auto stores callbacks as fields and calls them as `self.field(args)`;
+    /// Rust requires `(self.field)(args)` when the field is a `fn(...)` type.
+    /// Heuristic: scan struct definitions for `field: fn(...) -> ...` and rewrite
+    /// `self.field(` calls into `(self.field)(`.
+    fn fix_fn_field_calls(content: &mut String) {
+        // Collect field names declared as function types in structs.
+        let fn_fields: std::collections::HashSet<String> = {
+            let mut set = std::collections::HashSet::new();
+            // `field: fn(Args) -> Ret` or `field ?fn(Args) Ret` (Auto lowered)
+            if let Some(re) = cached_regex(r"\b(\w+):\s*fn\s*\(") {
+                for caps in re.captures_iter(content.as_str()) {
+                    set.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            if let Some(re) = cached_regex(r"\b(\w+):\s*\?fn\s*\(") {
+                for caps in re.captures_iter(content.as_str()) {
+                    set.insert(caps.get(1).unwrap().as_str().to_string());
+                }
+            }
+            set
+        };
+        for field in &fn_fields {
+            // self.field(args) → (self.field)(args)  (avoid double-wrap)
+            let pat = format!(r"self\.{} \(", regex::escape(field));
+            if let Some(re) = cached_regex(&pat) {
+                let fld = field.clone();
+                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
+                    format!("(self.{})(", fld)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+            // plain `field(args)` calls (non-self receiver) — also wrap
+            let pat2 = format!(r"\b{} \(", regex::escape(field));
+            if let Some(re) = cached_regex(&pat2) {
+                let fld = field.clone();
+                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
+                    format!("({})(", fld)
+                }).to_string();
+                if new != *content { *content = new; }
+            }
+        }
+    }
+
+    /// Plan 373: relax `#[derive(... Eq/PartialOrd/Ord ...)]` on enums/structs
+    /// whose variants/fields hold a non-Ord type. The generator can't always
+    /// tell that a variant carries `serde_json::Value`, `HashMap`, a foreign
+    /// crate type (e.g. `auto_ai_client::Message`, `ai_config::ModelTier`), or
+    /// another non-Ord local type — so it emits the full derive set, which then
+    /// fails to compile (E0277). Downgrade those to `Clone, Debug, PartialEq`.
+    /// (No transpiled type is ever used as a BTreeMap key or sort key, so
+    /// dropping Ord/PartialOrd/Eq is always safe here.)
+    fn fix_non_ord_derives(content: &mut String) {
+        // Markers that indicate a non-Ord payload. If any appears between a
+        // derive line and the end of the type body, downgrade the derive.
+        // We scan the two lines that often follow the derive: the type kind line
+        // and its field/variant lines up to the closing brace.
+        let non_ord_markers = [
+            "JsonValue", "serde_json::Value", "Value", "HashMap", "BTreeMap",
+            "Box<dyn", "Message", "ModelTier", "ClientError", "ToolError",
+            "HandoffDocument", "AgentError", "AgentResult", "ToolCallRecord",
+        ];
+        // (?s) dotall: capture derive + whole body up to matching closing brace.
+        // We approximate the body as everything up to the first "\n}\n" at column 0.
+        let re_str = r"(?s)(#\[derive\(([^)]*)\)\]\n)(pub )?(enum|struct) (\w+) \{(.*?)\n\}";
+        if let Some(re) = cached_regex(re_str) {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let derive_attr = caps.get(1).unwrap().as_str();
+                let derives = caps.get(2).unwrap().as_str();
+                let body = caps.get(6).unwrap().as_str();
+                let has_non_ord = non_ord_markers.iter().any(|m| body.contains(m));
+                if !has_non_ord {
+                    return caps.get(0).unwrap().as_str().to_string();
+                }
+                let needs_relax = derives.contains("Ord")
+                    || derives.contains("PartialOrd")
+                    || derives.contains("Eq");
+                if !needs_relax {
+                    return caps.get(0).unwrap().as_str().to_string();
+                }
+                // Rebuild the type with a relaxed derive.
+                let kind_kw = caps.get(4).unwrap().as_str();
+                let pub_kw = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let name = caps.get(5).unwrap().as_str();
+                format!("#[derive(Clone, Debug, PartialEq)]\n{}{} {} {{{}\n}}",
+                        pub_kw, kind_kw, name, body)
+            }).to_string();
+            if new != *content { *content = new; }
         }
     }
 }
