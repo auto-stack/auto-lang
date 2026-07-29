@@ -892,6 +892,36 @@ pub struct VueGenerator {
     /// Whether API functions were explicitly imported via `use back.api: ...`
     /// When true, skip AST scanning and use the explicit import list
     explicit_api_imports: bool,
+
+    /// document/window-level event listeners declared in the view via
+    /// `.window` / `.document` event modifiers (e.g. `onmousemove.window`).
+    /// Populated during template generation, consumed during script generation
+    /// to emit addEventListener/removeEventListener pairs.
+    global_listeners: Vec<GlobalListener>,
+}
+
+/// A document/window-level event listener (Plan: generic DOM events).
+///
+/// Declared in the view with a `.window` or `.document` event modifier:
+/// `onmousemove.window: .DragMove($event)`. Instead of a template attribute,
+/// the generator emits `target.addEventListener(...)` in onMounted and the
+/// matching `removeEventListener(...)` in onUnmounted.
+#[derive(Debug, Clone)]
+struct GlobalListener {
+    /// "window" or "document"
+    target: String,
+    /// DOM event name (e.g. "mousemove", "wheel")
+    event: String,
+    /// Listener expression: either the handler function reference or the
+    /// name of a generated wrapper function (when prevent/stop/args apply)
+    listener: String,
+    /// capture phase flag (mirrored on removeEventListener)
+    capture: bool,
+    /// Explicit passive option (`passive: false` is required for
+    /// preventDefault on document-level wheel/touch listeners in Chrome)
+    passive: Option<bool>,
+    /// Wrapper function source, emitted once before the onMounted block
+    wrapper: Option<String>,
 }
 
 /// Data for generating interactive preview cards
@@ -968,6 +998,7 @@ impl VueGenerator {
             loop_param_handlers: HashMap::new(),
             needs_child_delete_handler: false,
             explicit_api_imports: false,
+            global_listeners: Vec::new(),
         }
     }
 
@@ -1146,6 +1177,7 @@ impl VueGenerator {
         self.has_dark_mode = false;
         self.dark_mode_var = None;
         self.use_theme_toggle = false;
+        self.global_listeners.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1435,6 +1467,16 @@ impl VueGenerator {
             }
         }
         if has_destroy {
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
+            }
+        }
+        // Global (window/document-level) listeners are registered in onMounted
+        // and removed in onUnmounted.
+        if !self.global_listeners.is_empty() {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
             if !imports.contains(&"onUnmounted") {
                 imports.push("onUnmounted");
             }
@@ -1851,6 +1893,40 @@ impl VueGenerator {
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
             let body = self.generate_handler_body(&destroy.payload).unwrap_or_default();
             script.push_str(&format!("onUnmounted(() => {{\n  {}\n}})\n\n", body));
+        }
+
+        // Global (window/document-level) event listeners declared in the view
+        // via `.window`/`.document` event modifiers, e.g.
+        // `onmousemove.window: .DragMove($event)` or
+        // `onwheel.document.capture.prevent: .LockWheel($event)`.
+        // Registered on mount and removed on unmount (no leaks across
+        // component instances).
+        if !self.global_listeners.is_empty() {
+            // Wrapper functions first (prevent/stop/arg adapters).
+            for gl in &self.global_listeners {
+                if let Some(wrapper) = &gl.wrapper {
+                    script.push_str(wrapper);
+                }
+            }
+            script.push_str("onMounted(() => {\n");
+            for gl in &self.global_listeners {
+                let options = Self::listener_options(gl, false);
+                script.push_str(&format!(
+                    "  {}.addEventListener('{}', {}{})\n",
+                    gl.target, gl.event, gl.listener, options
+                ));
+            }
+            script.push_str("})\n\n");
+            script.push_str("onUnmounted(() => {\n");
+            for gl in &self.global_listeners {
+                // removeEventListener only matches on the capture flag.
+                let options = Self::listener_options(gl, true);
+                script.push_str(&format!(
+                    "  {}.removeEventListener('{}', {}{})\n",
+                    gl.target, gl.event, gl.listener, options
+                ));
+            }
+            script.push_str("})\n\n");
         }
 
         // Note: auto-edit-mode onMounted was previously hardcoded here (Plan 367 P0-3
@@ -2274,6 +2350,10 @@ impl VueGenerator {
                     }
                     // Event handlers
                     for (event, aura_event) in events {
+                        // .window/.document modifiers → global listener, no template attr
+                        if self.try_register_global_listener(event, aura_event) {
+                            continue;
+                        }
                         let vue_event = self.auto_event_to_vue(event);
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -2470,6 +2550,10 @@ impl VueGenerator {
 
                     // Event handlers
                     for (event, aura_event) in events {
+                        // .window/.document modifiers → global listener, no template attr
+                        if self.try_register_global_listener(event, aura_event) {
+                            continue;
+                        }
                         // v-model optimization: when input/textarea has both :value="stateRef"
                         // and @input handler, replace with v-model (native HTML two-way binding)
                         if (event == "oninput" || event == "onInput") && value_state_ref.is_some() {
@@ -7595,6 +7679,10 @@ impl VueGenerator {
 
         // Add event handlers
         for (event, aura_event) in events {
+            // .window/.document modifiers → global listener, no template attr
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
             let vue_event = self.shadcn_event_to_vue(tag, event);
             let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             // Track used handler (without params for matching)
@@ -7616,13 +7704,22 @@ impl VueGenerator {
 
     /// Convert AutoUI event to Vue event for shadcn-vue components
     fn shadcn_event_to_vue(&self, _tag: &str, event: &str) -> String {
-        match event {
+        let (base, modifiers) = Self::split_event_key(event);
+        let mut vue = match base {
             "onclick" | "onClick" | "on_click" => "@click".to_string(),
             "oninput" | "onInput" => "@update:modelValue".to_string(),
             "onchange" | "onChange" => "@update:modelValue".to_string(),
             "onenter" | "onEnter" => "@keyup.enter".to_string(),
-            _ => format!("@{}", event.trim_start_matches("on")),
+            _ => format!("@{}", Self::base_event_to_dom(base)),
+        };
+        for m in modifiers {
+            if m == "window" || m == "document" {
+                continue; // global target — handled elsewhere
+            }
+            vue.push('.');
+            vue.push_str(Self::vue_modifier(m));
         }
+        vue
     }
 
     /// Extract string value from AuraPropValue
@@ -7722,18 +7819,212 @@ impl VueGenerator {
         }
     }
 
-    /// Convert AutoUI event name to Vue event
-    fn auto_event_to_vue(&self, event: &str) -> String {
-        match event {
-            "onclick" | "onClick" | "on_click" => "@click".to_string(),
-            "oninput" | "onInput" => "@input".to_string(),
-            "onchange" | "onChange" => "@change".to_string(),
-            "onenter" | "onEnter" => "@keyup.enter".to_string(),
-            "onblur" | "onBlur" => "@blur".to_string(),
-            "ondblclick" | "onDblClick" | "on_double_click" => "@dblclick".to_string(),
-            "onsubmit" | "onSubmit" => "@submit.prevent".to_string(),
-            _ => format!("@{}", event.trim_start_matches("on")),
+    /// Split an event key into (base, modifiers).
+    /// "onwheel.document.capture" → ("onwheel", ["document", "capture"])
+    fn split_event_key(event: &str) -> (&str, Vec<&str>) {
+        let mut parts = event.split('.');
+        let base = parts.next().unwrap_or(event);
+        (base, parts.collect())
+    }
+
+    /// Map the base event key (without modifiers) to the DOM/Vue event name.
+    /// Covers the full common set: keyboard, mouse, wheel, focus, pointer,
+    /// touch, drag, scroll. Unknown `onxxx` keys fall back to stripping `on`.
+    fn base_event_to_dom(base: &str) -> String {
+        match base.to_ascii_lowercase().as_str() {
+            "onclick" | "on_click" => "click",
+            "ondblclick" | "on_double_click" => "dblclick",
+            "oninput" => "input",
+            "onchange" => "change",
+            "onblur" => "blur",
+            "onfocus" => "focus",
+            "onfocusin" => "focusin",
+            "onfocusout" => "focusout",
+            // Keyboard
+            "onkeydown" => "keydown",
+            "onkeyup" => "keyup",
+            "onkeypress" => "keypress",
+            // Mouse
+            "onmousedown" => "mousedown",
+            "onmouseup" => "mouseup",
+            "onmousemove" => "mousemove",
+            "onmouseenter" => "mouseenter",
+            "onmouseleave" => "mouseleave",
+            "onmouseover" => "mouseover",
+            "onmouseout" => "mouseout",
+            // Wheel / context menu / scroll
+            "onwheel" => "wheel",
+            "oncontextmenu" => "contextmenu",
+            "onscroll" => "scroll",
+            // Pointer Events
+            "onpointerdown" => "pointerdown",
+            "onpointerup" => "pointerup",
+            "onpointermove" => "pointermove",
+            "onpointerenter" => "pointerenter",
+            "onpointerleave" => "pointerleave",
+            "onpointerover" => "pointerover",
+            "onpointerout" => "pointerout",
+            "onpointercancel" => "pointercancel",
+            // Touch
+            "ontouchstart" => "touchstart",
+            "ontouchmove" => "touchmove",
+            "ontouchend" => "touchend",
+            "ontouchcancel" => "touchcancel",
+            // Drag & drop
+            "ondragstart" => "dragstart",
+            "ondrag" => "drag",
+            "ondragend" => "dragend",
+            "ondragover" => "dragover",
+            "ondragenter" => "dragenter",
+            "ondragleave" => "dragleave",
+            "ondrop" => "drop",
+            // Fallback: strip a single leading "on" (onupdate → update, etc.)
+            other => other.strip_prefix("on").unwrap_or(other),
         }
+        .to_string()
+    }
+
+    /// Normalize an event modifier for Vue templates.
+    /// Auto names are mapped to Vue's modifier vocabulary where they differ.
+    fn vue_modifier(m: &str) -> &str {
+        match m {
+            "escape" => "esc",
+            "del" => "delete",
+            other => other,
+        }
+    }
+
+    /// Convert AutoUI event name (with optional `.modifier` chain) to a Vue
+    /// template event binding, e.g. `onkeydown.up.prevent` → `@keydown.up.prevent`.
+    ///
+    /// `.window` / `.document` modifiers are NOT handled here — they mark
+    /// global listeners and are intercepted by `try_register_global_listener`
+    /// before this function is called.
+    fn auto_event_to_vue(&self, event: &str) -> String {
+        let (base, modifiers) = Self::split_event_key(event);
+        // Existing shorthands keep their historical expansion.
+        let mut vue = match base {
+            "onenter" | "onEnter" => "@keyup.enter".to_string(),
+            "onsubmit" | "onSubmit" => "@submit.prevent".to_string(),
+            _ => format!("@{}", Self::base_event_to_dom(base)),
+        };
+        for m in modifiers {
+            if m == "window" || m == "document" {
+                continue; // global target — handled elsewhere
+            }
+            vue.push('.');
+            vue.push_str(Self::vue_modifier(m));
+        }
+        vue
+    }
+
+    /// Render the addEventListener/removeEventListener options argument
+    /// (", { capture: true, passive: false }" or ""). For removal only the
+    /// capture flag matters (per DOM spec), so passive is omitted there.
+    fn listener_options(gl: &GlobalListener, for_removal: bool) -> String {
+        let mut opts: Vec<String> = Vec::new();
+        if gl.capture {
+            opts.push("capture: true".to_string());
+        }
+        if !for_removal {
+            if let Some(passive) = gl.passive {
+                opts.push(format!("passive: {}", passive));
+            }
+        }
+        if opts.is_empty() {
+            String::new()
+        } else {
+            format!(", {{ {} }}", opts.join(", "))
+        }
+    }
+
+    /// Intercept `.window` / `.document` event modifiers and register a global
+    /// listener instead of emitting a template attribute. Returns true when
+    /// the event was claimed (caller must skip normal attribute emission).
+    ///
+    /// Declaration: `onmousemove.window: .DragMove($event)` or
+    /// `onwheel.document.capture.prevent: .LockWheel($event)`.
+    fn try_register_global_listener(&mut self, event: &str, aura_event: &AuraEvent) -> bool {
+        let (base, modifiers) = Self::split_event_key(event);
+        let target = modifiers
+            .iter()
+            .find(|m| **m == "window" || **m == "document");
+        let target = match target {
+            Some(t) => t.to_string(),
+            None => return false,
+        };
+
+        let dom_event = Self::base_event_to_dom(base);
+        let prevent = modifiers.iter().any(|m| *m == "prevent");
+        let stop = modifiers.iter().any(|m| *m == "stop");
+        let capture = modifiers.iter().any(|m| *m == "capture");
+        let passive = if modifiers.iter().any(|m| *m == "passive") {
+            Some(true)
+        } else if prevent {
+            // Chrome treats document/window wheel & touch listeners as passive
+            // by default — preventDefault requires an explicit passive: false.
+            Some(false)
+        } else {
+            None
+        };
+
+        let handler_fn = self.handler_to_function_call(&aura_event.handler);
+        self.used_handlers.insert(handler_fn.clone());
+
+        // Build the handler call. In addEventListener context the DOM event is
+        // the listener's argument `e` (Vue's `$event` does not exist here).
+        let call_args: Vec<String> = if aura_event.params.is_empty() {
+            vec!["e".to_string()]
+        } else {
+            aura_event.params
+                .iter()
+                .map(|p| {
+                    let stripped = p.strip_prefix("this.").unwrap_or(p);
+                    stripped.replace("$event", "e").replace('"', "'")
+                })
+                .collect()
+        };
+        let call = format!("{}({})", handler_fn, call_args.join(", "));
+
+        // A wrapper is needed when prevent/stop must run or when the handler
+        // takes adapted arguments. Otherwise the bare function ref suffices
+        // (the DOM passes the event object as first argument).
+        let needs_wrapper = prevent || stop || !aura_event.params.is_empty();
+        let (listener, wrapper) = if needs_wrapper {
+            let wrapper_fn = format!("__auto_gl_{}_{}", dom_event, handler_fn);
+            let mut body = String::new();
+            if stop {
+                body.push_str("  e.stopPropagation()\n");
+            }
+            if prevent {
+                body.push_str("  e.preventDefault()\n");
+            }
+            body.push_str(&format!("  {}\n", call));
+            // `e: any` — the concrete type (KeyboardEvent/MouseEvent/WheelEvent)
+            // depends on the DOM event; `any` keeps field access (e.clientY,
+            // e.deltaY) type-checkable without narrowing machinery.
+            let src = format!("function {}(e: any) {{\n{}}}\n\n", wrapper_fn, body);
+            (wrapper_fn, Some(src))
+        } else {
+            (handler_fn, None)
+        };
+
+        let entry = GlobalListener {
+            target,
+            event: dom_event,
+            listener,
+            capture,
+            passive,
+            wrapper,
+        };
+        // Dedup identical registrations (same listener may be declared on
+        // multiple elements).
+        if !self.global_listeners.iter().any(|g| {
+            g.target == entry.target && g.event == entry.event && g.listener == entry.listener
+        }) {
+            self.global_listeners.push(entry);
+        }
+        true
     }
 
     /// Plan 367 P0-1: Convert PascalCase to snake_case for callback prop matching.
@@ -10048,6 +10339,230 @@ widget Icon(language: str) {
         assert!(
             sfc.contains("btoa(props.language)"),
             "plain call passes through with resolved arg:\n{}",
+            sfc
+        );
+    }
+
+    // ====================================================================
+    // Generic DOM events: keyboard/mouse/wheel events, event modifiers,
+    // the $event object, and window/document-level listeners.
+    // ====================================================================
+
+    /// Parse a widget source and generate its Vue SFC (full pipeline).
+    fn gen_sfc_from_widget_src(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new();
+        gen.generate(&widget).expect("generate SFC")
+    }
+
+    /// Element-level generic events: keyboard, mouse, wheel, contextmenu.
+    #[test]
+    fn test_generic_dom_events() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Menu {
+    msg Msg { Key, Down, Move, Up, Wheel, Ctx }
+    model { var x int = 0 }
+    view {
+        col {
+            onkeydown: .Key,
+            onmousedown: .Down,
+            onmousemove: .Move,
+            onmouseup: .Up,
+            onwheel: .Wheel,
+            oncontextmenu: .Ctx
+        }
+    }
+    on {
+        .Key -> { .x = 1 }
+        .Down -> { .x = 2 }
+        .Move -> { .x = 3 }
+        .Up -> { .x = 4 }
+        .Wheel -> { .x = 5 }
+        .Ctx -> { .x = 6 }
+    }
+}
+"#);
+        assert!(sfc.contains("@keydown=\"Key\""), "@keydown emitted:\n{}", sfc);
+        assert!(sfc.contains("@mousedown=\"Down\""), "@mousedown emitted:\n{}", sfc);
+        assert!(sfc.contains("@mousemove=\"Move\""), "@mousemove emitted:\n{}", sfc);
+        assert!(sfc.contains("@mouseup=\"Up\""), "@mouseup emitted:\n{}", sfc);
+        assert!(sfc.contains("@wheel=\"Wheel\""), "@wheel emitted:\n{}", sfc);
+        assert!(sfc.contains("@contextmenu=\"Ctx\""), "@contextmenu emitted:\n{}", sfc);
+    }
+
+    /// Event modifiers: key modifiers (up/escape), prevent, stop.
+    #[test]
+    fn test_event_modifiers() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Menu {
+    msg Msg { MoveUp, Close, Ctx, Tap }
+    model { var x int = 0 }
+    view {
+        col {
+            onkeydown.up: .MoveUp,
+            onkeydown.escape.prevent: .Close,
+            oncontextmenu.prevent: .Ctx,
+            onclick.stop: .Tap
+        }
+    }
+    on {
+        .MoveUp -> { .x = 1 }
+        .Close -> { .x = 2 }
+        .Ctx -> { .x = 3 }
+        .Tap -> { .x = 4 }
+    }
+}
+"#);
+        assert!(sfc.contains("@keydown.up=\"MoveUp\""), "key modifier up:\n{}", sfc);
+        assert!(
+            sfc.contains("@keydown.esc.prevent=\"Close\""),
+            "escape normalizes to esc, prevent appended:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("@contextmenu.prevent=\"Ctx\""), "prevent modifier:\n{}", sfc);
+        assert!(sfc.contains("@click.stop=\"Tap\""), "stop modifier:\n{}", sfc);
+    }
+
+    /// The $event object flows into the template handler call, with field
+    /// access ($event.key, $event.clientY) preserved.
+    #[test]
+    fn test_event_object_param() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Menu {
+    msg Msg { Key, Drag }
+    model { var x int = 0 }
+    view {
+        col {
+            onkeydown: .Key($event),
+            onmousedown: .Drag($event.clientY)
+        }
+    }
+    on {
+        .Key(e) -> { .x = 1 }
+        .Drag(y) -> { .x = 2 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@keydown=\"Key($event)\""),
+            "$event passed to handler:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mousedown=\"Drag($event.clientY)\""),
+            "$event.clientY field access:\n{}",
+            sfc
+        );
+        // Handler functions keep their declared params.
+        assert!(sfc.contains("function Key(e: any)"), "Key param:\n{}", sfc);
+        assert!(sfc.contains("function Drag(y: any)"), "Drag param:\n{}", sfc);
+    }
+
+    /// window-level mouse listeners: drag tracking outside the element.
+    /// - with $event → wrapper function adapting args
+    /// - without params → bare function reference
+    #[test]
+    fn test_global_window_mouse_listeners() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Scrollbar {
+    msg Msg { DragMove, DragEnd }
+    model { var y int = 0 }
+    view {
+        col {
+            onmousemove.window: .DragMove($event),
+            onmouseup.window: .DragEnd
+        }
+    }
+    on {
+        .DragMove(e) -> { .y = 0 }
+        .DragEnd -> { .y = 1 }
+    }
+}
+"#);
+        // No template attribute for global listeners.
+        assert!(!sfc.contains("@mousemove"), "no @mousemove attr:\n{}", sfc);
+        assert!(!sfc.contains("@mouseup"), "no @mouseup attr:\n{}", sfc);
+        // add/remove pairs in onMounted/onUnmounted.
+        assert!(
+            sfc.contains("window.addEventListener('mousemove', __auto_gl_mousemove_DragMove)"),
+            "window mousemove add:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.removeEventListener('mousemove', __auto_gl_mousemove_DragMove)"),
+            "window mousemove remove:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.addEventListener('mouseup', DragEnd)"),
+            "bare fn ref when no params:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.removeEventListener('mouseup', DragEnd)"),
+            "bare fn ref removal:\n{}",
+            sfc
+        );
+        // Wrapper adapts $event → e.
+        assert!(
+            sfc.contains("function __auto_gl_mousemove_DragMove(e: any) {\n  DragMove(e)\n}"),
+            "wrapper adapts event arg:\n{}",
+            sfc
+        );
+        // Lifecycle imports present even without an explicit .Init/.Destroy.
+        assert!(
+            sfc.contains("onMounted") && sfc.contains("onUnmounted"),
+            "lifecycle hooks imported/emitted:\n{}",
+            sfc
+        );
+    }
+
+    /// document-level wheel lock: capture phase + preventDefault, with
+    /// passive: false (required by Chrome for document-level wheel listeners).
+    #[test]
+    fn test_global_document_wheel_capture_prevent() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget CodeMenu {
+    msg Msg { LockWheel }
+    model { var locked int = 0 }
+    view {
+        col {
+            onwheel.document.capture.prevent: .LockWheel($event)
+        }
+    }
+    on {
+        .LockWheel(e) -> { .locked = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(
+                "document.addEventListener('wheel', __auto_gl_wheel_LockWheel, { capture: true, passive: false })"
+            ),
+            "capture+passive options on add:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(
+                "document.removeEventListener('wheel', __auto_gl_wheel_LockWheel, { capture: true })"
+            ),
+            "capture option on remove (no passive):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function __auto_gl_wheel_LockWheel(e: any) {\n  e.preventDefault()\n  LockWheel(e)\n}"),
+            "wrapper calls preventDefault then handler:\n{}",
             sfc
         );
     }
