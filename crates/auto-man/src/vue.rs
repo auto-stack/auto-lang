@@ -408,16 +408,22 @@ fn generate_index_html(name: &str) -> String {
 "#, name)
 }
 
-fn generate_main_ts(has_routes: bool, uses_autodown: bool) -> String {
+fn generate_main_ts(has_routes: bool, uses_autodown: bool, style_files: &[String]) -> String {
     let autodown_css = if uses_autodown {
         "\nimport '@autodown/editor/style.css'"
     } else {
         ""
     };
+    // pac.at `styles:` files — copied verbatim into src/styles/ and imported
+    // here so Vite bundles them. Content is never modified.
+    let style_imports: String = style_files
+        .iter()
+        .map(|f| format!("\nimport './styles/{}'", f))
+        .collect();
     let base = format!(
         r#"import {{ createApp }} from 'vue'
 import App from './App.vue'
-import './assets/index.css'{autodown_css}
+import './assets/index.css'{autodown_css}{style_imports}
 import 'prismjs/themes/prism-tomorrow.css'
 import Prism from 'prismjs'
 
@@ -438,7 +444,8 @@ Prism.languages.auto = {{
   'attr': /\([^)]*\)/,
 }};
 "#,
-        autodown_css = autodown_css
+        autodown_css = autodown_css,
+        style_imports = style_imports
     );
     if has_routes {
         format!("{}\nimport router from './router'\n\nconst app = createApp(App)\napp.use(router)\napp.mount('#app')\n", base)
@@ -642,6 +649,7 @@ fn write_project_files(
     _components: &[String],
     has_routes: bool,
     extra_deps: &[(String, String)],
+    style_files: &[String],
 ) -> Result<(), String> {
     // package.json
     let package_json = generate_package_json(name, has_routes, extra_deps);
@@ -700,7 +708,7 @@ fn write_project_files(
 
     // src/main.ts
     let uses_autodown = extra_deps.iter().any(|(name, _)| name == "@autodown/editor");
-    let main_ts = generate_main_ts(has_routes, uses_autodown);
+    let main_ts = generate_main_ts(has_routes, uses_autodown, style_files);
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -895,6 +903,42 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
     deps
 }
 
+/// Parse `styles` from pac.at content — project-level native CSS files to
+/// copy verbatim into the generated Vue project.
+///
+/// Returns the declared paths (relative to the pac.at directory).
+///
+/// Supported syntaxes:
+/// 1. **Inline array**: `styles: ["src/front/autodown-editor.css", "src/front/theme.css"]`
+/// 2. **Single string**: `styles: "src/front/autodown-editor.css"`
+fn parse_style_files(content: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("styles:") {
+            let rest = rest.trim();
+            if rest.starts_with('[') {
+                // Inline array: ["a.css", "b.css"]
+                let value = rest.trim_start_matches('[').trim_end_matches(']');
+                for part in value.split(',') {
+                    let f = part.trim().trim_matches('"').trim_matches('\'').trim();
+                    if !f.is_empty() {
+                        files.push(f.to_string());
+                    }
+                }
+            } else if rest.starts_with('"') || rest.starts_with('\'') {
+                // Single string: "a.css"
+                let f = rest.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                if !f.is_empty() {
+                    files.push(f.to_string());
+                }
+            }
+            break;
+        }
+    }
+    files
+}
+
 /// Split a dep spec into (package_name, version_spec).
 ///
 /// Supports three formats:
@@ -1017,6 +1061,10 @@ pub struct VueProject {
     pub routes: Vec<AuraRoute>,
     /// Extra npm dependencies from pac.at (package_name, version_spec)
     pub npm_deps: Vec<(String, String)>,
+    /// Native CSS files from pac.at `styles:` — copied verbatim into
+    /// `src/styles/` and imported from `main.ts`. Paths are relative to
+    /// the pac.at directory (root_dir).
+    pub style_files: Vec<String>,
 }
 
 impl VueProject {
@@ -1337,12 +1385,41 @@ export default router
             components: all_components,
             routes: all_routes,
             npm_deps: parse_npm_deps(&pac_content),
+            style_files: parse_style_files(&pac_content),
         })
     }
 
     /// Check if the project structure already exists
     pub fn exists(&self) -> bool {
         self.output_dir.exists() && self.output_dir.join("package.json").exists()
+    }
+
+    /// Copy pac.at `styles:` CSS files into `src/styles/` (byte-for-byte)
+    /// and return the copied file names for `main.ts` imports.
+    ///
+    /// Files are flattened to their file name — if two declared files share
+    /// a file name, the later one wins.
+    fn copy_style_files(&self) -> AutoResult<Vec<String>> {
+        let mut copied = Vec::new();
+        if self.style_files.is_empty() {
+            return Ok(copied);
+        }
+        let styles_dir = self.output_dir.join("src").join("styles");
+        fs::create_dir_all(&styles_dir)
+            .map_err(|e| format!("Failed to create src/styles: {}", e))?;
+        for rel in &self.style_files {
+            let src = self.root_dir.join(rel);
+            let file_name = Path::new(rel)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| format!("Invalid styles path in pac.at: {}", rel))?
+                .to_string();
+            fs::copy(&src, styles_dir.join(&file_name)).map_err(|e| {
+                format!("Failed to copy style file {}: {}", src.display(), e)
+            })?;
+            copied.push(file_name);
+        }
+        Ok(copied)
     }
 
     /// Generate the Vue project structure
@@ -1383,6 +1460,13 @@ export default router
 
         println!("{}", "✓ Created directory structure".bright_green());
 
+        // Copy pac.at `styles:` CSS files (byte-for-byte) before writing
+        // project files so main.ts can import them.
+        let style_copies = self.copy_style_files()?;
+        if !style_copies.is_empty() {
+            println!("{} {}", "Styles:".bright_cyan(), style_copies.join(", "));
+        }
+
         // Write project files
         write_project_files(
             &self.output_dir,
@@ -1391,6 +1475,7 @@ export default router
             &self.shadcn_components,
             self.has_routes,
             &self.npm_deps,
+            &style_copies,
         )?;
 
         // Generate router files if routes detected
@@ -1466,6 +1551,10 @@ export default router
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
+        // Copy pac.at `styles:` CSS files (byte-for-byte) so main.ts can
+        // import them.
+        let style_copies = self.copy_style_files()?;
+
         // Scaffolding files (not component .vue files)
         write_project_files(
             output_path,
@@ -1474,6 +1563,7 @@ export default router
             &self.shadcn_components,
             self.has_routes,
             &self.npm_deps,
+            &style_copies,
         )?;
 
         // Write App.vue (the root component)
@@ -1485,7 +1575,7 @@ export default router
 
         // Write main.ts
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown);
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies);
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -1518,9 +1608,11 @@ export default router
             .map_err(|e| format!("Failed to write App.vue: {}", e))?;
         println!("{}", "  ✓ Regenerated App.vue".bright_green());
 
-        // Regenerate main.ts
+        // Regenerate main.ts (re-copy pac.at `styles:` CSS files first so
+        // the imports below resolve)
+        let style_copies = self.copy_style_files()?;
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown);
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies);
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -2614,4 +2706,109 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
 
     let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
     Ok((vue_code, names))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_style_files_inline_array() {
+        let content = r#"name: "demo"
+version: "1.0.0"
+styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
+"#;
+        let files = parse_style_files(content);
+        assert_eq!(
+            files,
+            vec![
+                "src/front/autodown-editor.css".to_string(),
+                "src/front/theme.css".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_style_files_single_string() {
+        let content = "name: \"demo\"\nstyles: \"src/front/autodown-editor.css\"\n";
+        let files = parse_style_files(content);
+        assert_eq!(files, vec!["src/front/autodown-editor.css".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_style_files_absent() {
+        let content = "name: \"demo\"\nrender: \"vue\"\n";
+        assert!(parse_style_files(content).is_empty());
+    }
+
+    #[test]
+    fn test_generate_main_ts_imports_style_files() {
+        let styles = vec!["autodown-editor.css".to_string(), "theme.css".to_string()];
+        let main_ts = generate_main_ts(false, false, &styles);
+        assert!(main_ts.contains("import './styles/autodown-editor.css'"), "main.ts:\n{}", main_ts);
+        assert!(main_ts.contains("import './styles/theme.css'"), "main.ts:\n{}", main_ts);
+
+        // Without styles: no imports, same as before.
+        let plain = generate_main_ts(false, false, &[]);
+        assert!(!plain.contains("./styles/"), "main.ts:\n{}", plain);
+    }
+
+    #[test]
+    fn test_copy_style_files_byte_for_byte() {
+        // CSS content with bytes that must survive verbatim: CSS variables,
+        // pseudo-classes, comments, CRLF-free newlines, non-ASCII.
+        let css: &[u8] = b"/* autodown editor theme */\n:root {\n  --ad-bg: #1e1e1e;\n}\n.autodown-editor:hover {\n  border-color: var(--ad-bg);\n}\n.autodown-editor .c\xC3\xA9 {\n  color: red;\n}\n";
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let front = root.join("src/front");
+        fs::create_dir_all(&front).unwrap();
+        fs::write(front.join("autodown-editor.css"), css).unwrap();
+
+        let project = VueProject {
+            root_dir: root.clone(),
+            output_dir: root.join("gen/front/vue"),
+            name: "demo".to_string(),
+            front_dir: front.clone(),
+            public_dir: front.join("public"),
+            shadcn_components: vec![],
+            has_routes: false,
+            app_vue_code: String::new(),
+            components: vec![],
+            routes: vec![],
+            npm_deps: vec![],
+            style_files: vec!["src/front/autodown-editor.css".to_string()],
+        };
+
+        let copied = project.copy_style_files().unwrap();
+        assert_eq!(copied, vec!["autodown-editor.css".to_string()]);
+
+        let out = project.output_dir.join("src/styles/autodown-editor.css");
+        let bytes = fs::read(&out).unwrap();
+        assert_eq!(bytes, css, "copied CSS must be byte-for-byte identical");
+    }
+
+    #[test]
+    fn test_copy_style_files_missing_file_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        fs::create_dir_all(&root).unwrap();
+
+        let project = VueProject {
+            root_dir: root.clone(),
+            output_dir: root.join("gen/front/vue"),
+            name: "demo".to_string(),
+            front_dir: root.clone(),
+            public_dir: root.join("public"),
+            shadcn_components: vec![],
+            has_routes: false,
+            app_vue_code: String::new(),
+            components: vec![],
+            routes: vec![],
+            npm_deps: vec![],
+            style_files: vec!["src/front/nope.css".to_string()],
+        };
+
+        assert!(project.copy_style_files().is_err());
+    }
 }
