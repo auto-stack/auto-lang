@@ -972,20 +972,83 @@ fn substitute_condition(condition: &str, subs: &HashMap<String, Expr>) -> String
     let mut result = condition.to_string();
     for (param_name, expr) in subs {
         // Replace bare references to param_name in the condition string.
-        // This is simplified — conditions are strings, not AST.
-        // Replace ".param_name" with the expression's string representation.
+        // Conditions are strings, not AST, so we do string replacement.
+        // Plan 374: Support complex expressions by converting them to .at-style
+        // dotted references (e.g., "i == .store.active_id" for the `active` param).
         let replacement = match expr {
             Expr::Ident(name) => format!(".{}", name.as_str()),
-            _ => condition.to_string(), // Fallback: don't replace complex exprs in conditions
+            _ => {
+                // For complex expressions, convert to a string representation.
+                // Use the expr's Display or a manual conversion.
+                expr_to_condition_str(expr)
+            }
         };
-        if replacement != result {
-            result = result.replace(
-                &format!(".{}", param_name),
-                &replacement,
-            );
+        // Replace ".param_name" with the replacement
+        result = result.replace(
+            &format!(".{}", param_name),
+            &replacement,
+        );
+        // Also replace bare "param_name" (not preceded by a dot) for conditions
+        // like "if active { ... }" where active is used without a dot prefix.
+        let bare_pattern = format!("{}", param_name);
+        // Only replace if it's a word boundary (not part of a larger identifier)
+        let mut new_result = String::new();
+        let bytes = result.as_bytes();
+        let bare_bytes = bare_pattern.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if i + bare_bytes.len() <= bytes.len() && &bytes[i..i + bare_bytes.len()] == bare_bytes {
+                // Check word boundary: preceded by non-ident char
+                let prev_is_ident = i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b'.');
+                let next_is_ident = i + bare_bytes.len() < bytes.len() && (bytes[i + bare_bytes.len()].is_ascii_alphanumeric() || bytes[i + bare_bytes.len()] == b'_');
+                if !prev_is_ident && !next_is_ident {
+                    new_result.push_str(&replacement);
+                    i += bare_bytes.len();
+                    continue;
+                }
+            }
+            new_result.push(bytes[i] as char);
+            i += 1;
         }
+        result = new_result;
     }
     result
+}
+
+/// Convert an Expr to a condition string suitable for .at condition syntax.
+fn expr_to_condition_str(expr: &Expr) -> String {
+    match expr {
+        Expr::Ident(name) => format!(".{}", name.as_str()),
+        Expr::Int(n) => n.to_string(),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Str(s) => format!("\"{}\"", s),
+        Expr::Dot(obj, field) => {
+            let obj_str = expr_to_condition_str(obj);
+            // If obj is ".self" or ".store", keep the dotted path
+            if obj_str.starts_with('.') {
+                format!("{}.{}", &obj_str[1..], field.as_str())
+            } else {
+                format!("{}.{}", obj_str, field.as_str())
+            }
+        }
+        Expr::Bina(left, op, right) => {
+            let left_str = expr_to_condition_str(left);
+            let right_str = expr_to_condition_str(right);
+            let op_str = match op {
+                auto_val::Op::Eq => "==",
+                auto_val::Op::Neq => "!=",
+                auto_val::Op::Lt => "<",
+                auto_val::Op::Le => "<=",
+                auto_val::Op::Gt => ">",
+                auto_val::Op::Ge => ">=",
+                auto_val::Op::And => "&&",
+                auto_val::Op::Or => "||",
+                _ => "?",
+            };
+            format!("{} {} {}", left_str, op_str, right_str)
+        }
+        _ => "true".to_string(), // Fallback
+    }
 }
 /// Returns a SpanMap mapping each AuraNodeId to its source info.
 /// Called once after extraction, before constructing AuraWidget.

@@ -245,8 +245,7 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                                     "w-full text-left px-3 py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
                                 }
                             }
-                        }
-                        if .store.active_tag != "" {
+                        } else {
                             if note.tags.contains(.store.active_tag) {
                                 button {
                                     text note.title { style: "block truncate" }
