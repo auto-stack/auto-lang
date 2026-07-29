@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use colored::Colorize;
-use auto_lang::aura::AuraRoute;
+use auto_lang::aura::{AuraRoute, AuraWidget};
 use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
 
@@ -939,6 +939,34 @@ fn parse_style_files(content: &str) -> Vec<String> {
     files
 }
 
+/// True when a widget `use { ... }` import path refers to a project-local
+/// file (copied into `src/ext/`) rather than an npm package specifier.
+/// Mirrors `VueGenerator::ext_is_local_path` in auto-lang — the two must
+/// agree so the emitted `@/ext/...` specifier matches the copied location.
+fn is_local_ext_path(path: &str) -> bool {
+    path.starts_with('.')
+        || path.starts_with('/')
+        || path.ends_with(".vue")
+        || path.ends_with(".ts")
+        || path.ends_with(".tsx")
+        || path.ends_with(".js")
+        || path.ends_with(".mjs")
+}
+
+/// Collect project-local file paths declared in widget `use { ... }`
+/// import blocks into `out` (normalized, deduped, project-root-relative).
+fn collect_ext_import_files(widgets: &[AuraWidget], out: &mut std::collections::BTreeSet<String>) {
+    for widget in widgets {
+        for imp in &widget.ext_imports {
+            let path = imp.path.as_str();
+            if is_local_ext_path(path) {
+                let normalized = path.trim_start_matches("./").trim_start_matches('/');
+                out.insert(normalized.to_string());
+            }
+        }
+    }
+}
+
 /// Split a dep spec into (package_name, version_spec).
 ///
 /// Supports three formats:
@@ -1065,6 +1093,11 @@ pub struct VueProject {
     /// `src/styles/` and imported from `main.ts`. Paths are relative to
     /// the pac.at directory (root_dir).
     pub style_files: Vec<String>,
+    /// Project-local TS/Vue files referenced by widget-level
+    /// `use { fn/component/composable: ... from "<path>" }` blocks —
+    /// copied into `src/ext/` (layout preserved) so the generated SFCs can
+    /// import them as `@/ext/<path>`. Paths are relative to root_dir.
+    pub ext_files: Vec<String>,
 }
 
 impl VueProject {
@@ -1173,6 +1206,8 @@ export default router
         let mut all_components: Vec<(String, String, String, String)> = Vec::new();
         let mut all_shadcn_components = HashSet::new();
         let mut all_routes: Vec<AuraRoute> = Vec::new();
+        // Project-local files referenced by widget `use { ... }` imports
+        let mut ext_file_set: std::collections::BTreeSet<String> = Default::default();
 
         // Phase 1: Collect sub-widget names from front_dir .at files (to avoid shadcn name collisions)
         let mut sub_widget_names: Vec<String> = Vec::new();
@@ -1203,6 +1238,7 @@ export default router
         if app_at.exists() {
             match auto_lang::ui_build_shadcn_with_sub_widgets(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
                 Ok((vue_code, widgets)) => {
+                    collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
                     for comp in &components {
                         all_shadcn_components.insert(comp.clone());
@@ -1255,6 +1291,7 @@ export default router
             all_components: &mut Vec<(String, String, String, String)>,
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
+            ext_file_set: &mut std::collections::BTreeSet<String>,
         ) -> Result<(), String> {
             for entry in fs::read_dir(dir)
                 .map_err(|e| format!("Failed to read pages directory: {}", e))?
@@ -1263,7 +1300,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes)?;
+                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes, ext_file_set)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -1275,6 +1312,7 @@ export default router
 
                     match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                         Ok((vue_code, widgets)) => {
+                            collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);
                             for comp in &components {
                                 all_shadcn_components.insert(comp.clone());
@@ -1298,7 +1336,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes)
+            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -1319,6 +1357,7 @@ export default router
 
                 match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                     Ok((vue_code, widgets)) => {
+                        collect_ext_import_files(&widgets, &mut ext_file_set);
                         let components = detect_shadcn_components(&vue_code);
                         for comp in &components {
                             all_shadcn_components.insert(comp.clone());
@@ -1386,6 +1425,7 @@ export default router
             routes: all_routes,
             npm_deps: parse_npm_deps(&pac_content),
             style_files: parse_style_files(&pac_content),
+            ext_files: ext_file_set.into_iter().collect(),
         })
     }
 
@@ -1418,6 +1458,54 @@ export default router
                 format!("Failed to copy style file {}: {}", src.display(), e)
             })?;
             copied.push(file_name);
+        }
+        Ok(copied)
+    }
+
+    /// Copy project-local files referenced by widget `use { ... }` imports
+    /// into `src/ext/`, preserving their root-relative layout (so sibling
+    /// relative imports between copied files keep resolving). Generated
+    /// SFCs import them as `@/ext/<root-relative-path>`.
+    fn copy_ext_files(&self) -> AutoResult<Vec<String>> {
+        let mut copied = Vec::new();
+        if self.ext_files.is_empty() {
+            return Ok(copied);
+        }
+        let ext_dir = self.output_dir.join("src").join("ext");
+        for rel in &self.ext_files {
+            // Reject paths that escape the project root (`..` segments):
+            // the generated `@/ext/...` specifier could not reach them.
+            let mut normalized = std::path::PathBuf::new();
+            for comp in Path::new(rel).components() {
+                match comp {
+                    std::path::Component::ParentDir => {
+                        return Err(format!(
+                            "Widget use-block import path '{}' escapes the project root; \
+                             move the file into the project or consume it via pac.at npm_deps (link:) instead",
+                            rel
+                        )
+                        .into());
+                    }
+                    std::path::Component::CurDir => {}
+                    std::path::Component::Normal(c) => normalized.push(c),
+                    _ => {}
+                }
+            }
+            let src = self.root_dir.join(&normalized);
+            let dst = ext_dir.join(&normalized);
+            if let Some(parent) = dst.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+            }
+            fs::copy(&src, &dst).map_err(|e| {
+                format!(
+                    "Failed to copy use-block import {} → {}: {}",
+                    src.display(),
+                    dst.display(),
+                    e
+                )
+            })?;
+            copied.push(rel.clone());
         }
         Ok(copied)
     }
@@ -1465,6 +1553,12 @@ export default router
         let style_copies = self.copy_style_files()?;
         if !style_copies.is_empty() {
             println!("{} {}", "Styles:".bright_cyan(), style_copies.join(", "));
+        }
+
+        // Copy widget `use { ... }` local import files into src/ext/.
+        let ext_copies = self.copy_ext_files()?;
+        if !ext_copies.is_empty() {
+            println!("{} {}", "Ext imports:".bright_cyan(), ext_copies.join(", "));
         }
 
         // Write project files
@@ -1555,6 +1649,9 @@ export default router
         // import them.
         let style_copies = self.copy_style_files()?;
 
+        // Copy widget `use { ... }` local import files into src/ext/.
+        self.copy_ext_files()?;
+
         // Scaffolding files (not component .vue files)
         write_project_files(
             output_path,
@@ -1611,6 +1708,8 @@ export default router
         // Regenerate main.ts (re-copy pac.at `styles:` CSS files first so
         // the imports below resolve)
         let style_copies = self.copy_style_files()?;
+        // Re-copy widget `use { ... }` local import files into src/ext/.
+        self.copy_ext_files()?;
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies);
         let main_ts_path = src_dir.join("main.ts");
@@ -2778,6 +2877,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             routes: vec![],
             npm_deps: vec![],
             style_files: vec!["src/front/autodown-editor.css".to_string()],
+            ext_files: vec![],
         };
 
         let copied = project.copy_style_files().unwrap();
@@ -2807,8 +2907,121 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             routes: vec![],
             npm_deps: vec![],
             style_files: vec!["src/front/nope.css".to_string()],
+            ext_files: vec![],
         };
 
         assert!(project.copy_style_files().is_err());
+    }
+
+    #[test]
+    fn test_is_local_ext_path() {
+        // Project-local files (copied into src/ext/)
+        assert!(is_local_ext_path("src/front/utils/greet.ts"));
+        assert!(is_local_ext_path("src/front/components/FancyBadge.vue"));
+        assert!(is_local_ext_path("./utils/x.tsx"));
+        assert!(is_local_ext_path("../shared/y.mjs"));
+        assert!(is_local_ext_path("src/front/lib/z.js"));
+        // npm package specifiers (left as-is)
+        assert!(!is_local_ext_path("lucide-vue-next"));
+        assert!(!is_local_ext_path("@autodown/editor"));
+        assert!(!is_local_ext_path("marked"));
+    }
+
+    #[test]
+    fn test_collect_ext_import_files() {
+        let src = r#"
+widget App {
+    use {
+        fn: greet from "src/front/utils/greet.ts"
+        fn: marked from "marked"
+        component: FancyBadge from "src/front/components/FancyBadge.vue"
+        composable: useClock from "./src/front/composables/useClock.ts"
+    }
+    view { div { "hi" } }
+}
+"#;
+        let session = auto_lang::session::CompilerSession::ui();
+        let mut parser = auto_lang::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let widgets: Vec<AuraWidget> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                auto_lang::ast::Stmt::WidgetDecl(d) => {
+                    auto_lang::aura::extract_widget_from_decl(d).ok()
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(widgets.len(), 1);
+
+        let mut set = std::collections::BTreeSet::new();
+        collect_ext_import_files(&widgets, &mut set);
+        let files: Vec<String> = set.into_iter().collect();
+        // npm specifier excluded; "./" normalized away; deduped + sorted.
+        assert_eq!(
+            files,
+            vec![
+                "src/front/components/FancyBadge.vue".to_string(),
+                "src/front/composables/useClock.ts".to_string(),
+                "src/front/utils/greet.ts".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_copy_ext_files_preserves_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        let utils = root.join("src/front/utils");
+        fs::create_dir_all(&utils).unwrap();
+        fs::write(utils.join("greet.ts"), "export const greet = 1\n").unwrap();
+
+        let project = VueProject {
+            root_dir: root.clone(),
+            output_dir: root.join("gen/front/vue"),
+            name: "demo".to_string(),
+            front_dir: root.join("src/front"),
+            public_dir: root.join("public"),
+            shadcn_components: vec![],
+            has_routes: false,
+            app_vue_code: String::new(),
+            components: vec![],
+            routes: vec![],
+            npm_deps: vec![],
+            style_files: vec![],
+            ext_files: vec!["src/front/utils/greet.ts".to_string()],
+        };
+
+        let copied = project.copy_ext_files().unwrap();
+        assert_eq!(copied, vec!["src/front/utils/greet.ts".to_string()]);
+        let out = project.output_dir.join("src/ext/src/front/utils/greet.ts");
+        assert_eq!(fs::read_to_string(&out).unwrap(), "export const greet = 1\n");
+    }
+
+    #[test]
+    fn test_copy_ext_files_rejects_escaping_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        fs::create_dir_all(&root).unwrap();
+
+        let project = VueProject {
+            root_dir: root.clone(),
+            output_dir: root.join("gen/front/vue"),
+            name: "demo".to_string(),
+            front_dir: root.clone(),
+            public_dir: root.join("public"),
+            shadcn_components: vec![],
+            has_routes: false,
+            app_vue_code: String::new(),
+            components: vec![],
+            routes: vec![],
+            npm_deps: vec![],
+            style_files: vec![],
+            ext_files: vec!["../outside/x.ts".to_string()],
+        };
+
+        let err = project.copy_ext_files().unwrap_err().to_string();
+        assert!(err.contains("escapes the project root"), "err: {}", err);
     }
 }
