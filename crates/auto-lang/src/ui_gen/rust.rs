@@ -543,11 +543,21 @@ impl RustGenerator {
         // fields that it doesn't already have. This mirrors VM path's Plan 320
         // unified state — child handlers can reference parent state fields.
         let is_root = widget.name == "App";
-        // Plan 374 Task 2: for root widget, add `pub store: StoreName` field
+        // Plan 374 Task 2: for root widget AND child widgets that reference store,
+        // add `pub store: StoreName` field.
         if is_root {
             STORE_NAMES.with(|sn| {
                 for (_alias, store_name) in sn.borrow().iter() {
                     code.push_str(&format!("    pub store: {},\n", store_name));
+                }
+            });
+        } else {
+            // Child widgets also need store field (they access self.store.X)
+            STORE_NAMES.with(|sn| {
+                for (_alias, store_name) in sn.borrow().iter() {
+                    if !own_fields.contains("store") {
+                        code.push_str(&format!("    pub store: {},\n", store_name));
+                    }
                 }
             });
         }
@@ -659,14 +669,14 @@ impl RustGenerator {
             code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
             code.push_str("        __self\n");
         } else {
-            // Plan 374 Task 2: initialize store field for root widget
-            if widget.name == "App" {
-                STORE_NAMES.with(|sn| {
-                    for (_alias, store_name) in sn.borrow().iter() {
-                        code.push_str(&format!("            store: {}::new(),\n", store_name));
-                    }
-                });
-            }
+            // Plan 374 Task 2: initialize store field for all widgets
+            STORE_NAMES.with(|sn| {
+                let has_store = !sn.borrow().is_empty();
+                if has_store {
+                    let store_name = sn.borrow().values().next().cloned().unwrap_or_default();
+                    code.push_str(&format!("            store: {}::new(),\n", store_name));
+                }
+            });
             code.push_str("        }\n");
         }
 

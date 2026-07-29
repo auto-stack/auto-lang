@@ -345,9 +345,15 @@ fn compile_at_file(
         }
     }
 
-    // Plan 374 Task 2: Generate store composables as Rust structs.
+    // Plan 374 Task 2: Register store names for store.X rewriting (all files),
+    // but only GENERATE the store struct in the file that declares it.
     for store in stores {
         generator.register_store("store", store.name.as_str());
+    }
+    // Check if THIS file contains any StoreDecl — only generate from here.
+    let file_has_store = ast.stmts.iter().any(|s| matches!(s, auto_lang::ast::Stmt::StoreDecl(_)));
+    if file_has_store {
+    for store in stores {
         let fake_decl = auto_lang::ast::ui::WidgetDecl {
             name: store.name.clone(),
             messages: store.messages.clone(),
@@ -370,6 +376,7 @@ fn compile_at_file(
                 eprintln!("  Warning: store '{}' extraction failed: {}", store.name, e);
             }
         }
+    }
     }
 
     // Extract AURA widgets from AST
