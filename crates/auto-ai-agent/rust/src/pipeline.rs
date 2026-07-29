@@ -107,7 +107,7 @@ pub enum GateDecision {
 
 
 /// Record of a completed step execution.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StepRecord {
     pub step_id: String,
     pub role_id: String,
@@ -203,7 +203,7 @@ impl PipelineEngine {
             PipelineStatus::WaitingForHuman(_sid, _t) => return AdvanceResult::Failed("Cannot advance while waiting for gate. Call resolve_gate() first.".to_string()),
             PipelineStatus::Paused(at) => {
                 let mut step = self.flow.steps[(at) as usize].clone();
-                return AdvanceResult::Paused(step.id, format!("Paused at '{}'. Call resume() to continue.", step.id));
+                return AdvanceResult::Paused(step.id.clone(), format!("Paused at '{}'. Call resume() to continue.", step.id));
             },
             _ => {},
         }
@@ -218,19 +218,19 @@ impl PipelineEngine {
 
 
         if step.gate == GateType::Human {
-            if self.gate_resolved_for_step != Some(step.id) {
-                self.status = PipelineStatus::WaitingForHuman(step.id, now);
-                self.pending_gate = Some(PendingGate { step_id: step.id.to_string(), since: now });
+            if self.gate_resolved_for_step != Some(step.id.clone()) {
+                self.status = PipelineStatus::WaitingForHuman(step.id.clone(), now);
+                self.pending_gate = Some(PendingGate { step_id: step.id.clone(), since: now });
                 return AdvanceResult::WaitForHuman(step.id);
             }        }
 
-        self.status = PipelineStatus::Running(step.id, step.role_id, now);
+        self.status = PipelineStatus::Running(step.id.clone(), step.role_id.clone(), now);
         self.resumed_step_id = None;
         return AdvanceResult::ExecuteStep(step.id, step.role_id);
     }
     pub fn submit_handoff(&mut self, handoff: HandoffDocument) -> AdvanceResult {
         let now = now_secs();
-        let h: HandoffDocument = handoff.clone();
+        let mut h: HandoffDocument = handoff.clone();
         let running = self.running_context();
         match running {
             Some(rc) => {
@@ -249,14 +249,13 @@ impl PipelineEngine {
 
 
                 self.cumulative_tokens = self.cumulative_tokens + h.token_usage.step_tokens;
-                self.budget_tracker.record(role_id, h.token_usage.step_tokens, 0);
+                self.budget_tracker.record(role_id.as_str(), h.token_usage.step_tokens, 0);
                 h.token_usage.cumulative = self.cumulative_tokens;
                 let limit = self.budget_tracker.run_budget.limit;
                 h.token_usage.budget_remaining = saturating_sub(limit, self.cumulative_tokens.clone());
                 
 
-                let iteration = self.loop_count(step_id);
-                let iteration = self.loop_count(step_id);
+                let iteration = self.loop_count(step_id.as_str());
                 
 
 
@@ -266,10 +265,10 @@ impl PipelineEngine {
 
 
 
-                log_budget_advisory(self.budget_tracker.check(role_id));
+                log_budget_advisory(self.budget_tracker.check(role_id.as_str()));
                 
 
-                return self.advance_after_step(step_id, exit);
+                return self.advance_after_step(step_id.as_str(), exit);
             },
             None => {
                 self.status = PipelineStatus::Failed("submit_handoff called but no step is running".to_string());
@@ -289,7 +288,7 @@ impl PipelineEngine {
                         return self.advance();
                     },
                     GateDecision::Reject(feedback) => {
-                        self.push_gate_feedback(pending.step_id, feedback);
+                        self.push_gate_feedback(pending.step_id.as_str(), feedback.as_str());
                         self.gate_resolved_for_step = Some(pending.step_id);
                         self.status = PipelineStatus::Idle;
                         return self.advance();
@@ -309,8 +308,9 @@ impl PipelineEngine {
         if paused == false {
             return None;
         }
-        for step in self.flow.steps {
-            self.set_loop_counter(step.id, 0);
+        let step_ids: Vec<String> = self.flow.steps.iter().map(|s| s.id.clone()).collect();
+        for sid in &step_ids {
+            self.set_loop_counter(sid.as_str(), 0);
         }
         if self.current_step < (self.flow.steps.len() as u32) {
             let step = self.flow.steps[(self.current_step) as usize].clone();
@@ -328,8 +328,8 @@ impl PipelineEngine {
             return None;
         }
         let step_id = self.flow.steps[(self.current_step) as usize].clone().id;
-        self.set_loop_counter(step_id, 0);
-        self.remove_gate_feedback(step_id);
+        self.set_loop_counter(step_id.as_str(), 0);
+        self.remove_gate_feedback(step_id.as_str());
         self.gate_resolved_for_step = None;
         self.status = PipelineStatus::Idle;
         return Some(self.advance());
@@ -347,10 +347,7 @@ impl PipelineEngine {
         return None;
     }
     pub fn feedback_for(&self, step_id: &str) -> Vec<String> {
-        if self.gate_feedback.contains_key(step_id) {
-            return self.gate_feedback.get(step_id);
-        }
-        return vec![];
+        return self.gate_feedback.get(step_id).cloned().unwrap_or_default();
     }
     pub fn running_context(&self) -> Option<RunningContext> {
         match self.status.clone() {
@@ -363,23 +360,24 @@ impl PipelineEngine {
     }
     pub fn loop_count(&self, step_id: &str) -> u32 {
         match self.loop_counters.get(step_id) {
-            Some(n) => return n,
+            Some(n) => return *n,
             None => return 0,
         }
     }
     pub fn set_loop_counter(&mut self, step_id: &str, n: u32) {
         if self.loop_counters.contains_key(step_id) == false {
-            self.loop_counter_names.push(step_id);
+            self.loop_counter_names.push(step_id.to_string());
         }
         self.loop_counters.insert(step_id.to_string(), n);
     }
     pub fn push_gate_feedback(&mut self, step_id: &str, line: &str) {
         if self.gate_feedback.contains_key(step_id) == false {
-            self.gate_feedback_names.push(step_id);
+            self.gate_feedback_names.push(step_id.to_string());
             self.gate_feedback.insert(step_id.to_string(), vec![]);
         }
-        let mut cur = self.gate_feedback.get(step_id);
-        cur.push(line);
+        if let Some(cur) = self.gate_feedback.get_mut(step_id) {
+            cur.push(line.to_string());
+        }
     }
     pub fn remove_gate_feedback(&mut self, step_id: &str) {
         if self.gate_feedback.contains_key(step_id) == false {
@@ -387,9 +385,9 @@ impl PipelineEngine {
         }
         let mut kept: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
         let mut kept_names: Vec<String> = vec![];
-        for name in self.gate_feedback_names {
+        for name in &self.gate_feedback_names {
             if name != step_id {
-                kept.insert(name, self.gate_feedback.get(name));
+                kept.insert(name.clone(), self.gate_feedback.get(name).cloned().unwrap_or_default());
                 kept_names.push(name.clone());
             }
         }
@@ -397,28 +395,28 @@ impl PipelineEngine {
         self.gate_feedback_names = kept_names;
     }
     pub fn bump_loop_counter(&mut self, step_id: &str) -> u32 {
-        let prev = self.loop_count(step_id.as_str());
-        let next: i32 = prev + 1;
-        self.set_loop_counter(step_id.as_str(), next);
+        let prev = self.loop_count(step_id);
+        let next: u32 = prev + 1;
+        self.set_loop_counter(step_id, next);
         return next;
     }
     pub fn advance_after_step(&mut self, step_id: &str, exit: ExitRouting) -> AdvanceResult {
-        match self.resolve_next_step(step_id.as_str(), exit) {
+        match self.resolve_next_step(step_id, exit) {
             NextStep::Index(idx) => {
                 self.current_step = idx;
                 return self.advance();
             },
             NextStep::Complete => {
-                self.current_step = (self.flow.steps.len() as i32);
+                self.current_step = self.flow.steps.len() as u32;
                 self.status = PipelineStatus::Completed;
                 return AdvanceResult::Completed;
             },
             NextStep::Error(msg) => {
-                self.status = PipelineStatus::Failed(msg);
+                self.status = PipelineStatus::Failed(msg.clone());
                 return AdvanceResult::Failed(msg);
             },
             NextStep::Pause(reason, resume_step_id) => {
-                match self.flow.get_step_index(resume_step_id) {
+                match self.flow.get_step_index(resume_step_id.as_str()) {
                     Some(idx) => self.current_step = idx,
                     None => {},
                 }
@@ -431,18 +429,18 @@ impl PipelineEngine {
     pub fn resolve_next_step(&mut self, step_id: &str, exit: ExitRouting) -> NextStep {
         match exit {
             ExitRouting::Next => {
-                let next: i32 = self.current_step + 1;
-                if next >= (self.flow.steps.len() as i32) {
+                let next: u32 = self.current_step + 1;
+                if next >= self.flow.steps.len() as u32 {
                     return NextStep::Complete;
                 }
                 return NextStep::Index(next);
             },
             ExitRouting::Loop(target_step_id, max_iterations) => {
-                let count = self.bump_loop_counter(step_id.as_str());
+                let count = self.bump_loop_counter(step_id);
                 if count >= max_iterations {
                     return NextStep::Pause(format!("Loop max ({}) reached at '{}'", max_iterations, step_id), target_step_id);
                 }
-                match self.flow.get_step_index(target_step_id) {
+                match self.flow.get_step_index(target_step_id.as_str()) {
                     Some(idx) => return NextStep::Index(idx),
                     None => return NextStep::Error(format!("Loop target '{}' not found", target_step_id)),
                 }
@@ -474,18 +472,19 @@ impl PipelineEngine {
 /// Apply handoff target auto-correction in place: silently fill an empty
 /// target, or record a feedback note + correct when the caller named a wrong
 /// target. (Split out of submit_handoff to keep that body shallow.)
-fn correct_handoff_target(eng: PipelineEngine, h: HandoffDocument, step_id: &str, exit: ExitRouting) {
+fn correct_handoff_target(mut eng: PipelineEngine, mut h: HandoffDocument, step_id: &str, exit: ExitRouting) {
     let expected_role = expected_target_role(eng.clone(), exit.clone());
     match expected_role {
         Some(expected) => {
             let cur = h.target.clone();
             if cur.is_empty() {
-                h.target = expected
+                h.target = expected;
             } else {
                 if cur != expected {
-                    eng.push_gate_feedback(step_id.as_str(), format!("[AUTO-CORRECTION] target '{}' corrected to '{}'.", cur, expected));
-                    h.target = expected
-                }            }
+                    eng.push_gate_feedback(step_id, &format!("[AUTO-CORRECTION] target '{}' corrected to '{}'.", cur, expected));
+                    h.target = expected;
+                }
+            }
 
         },
         None => {},
@@ -511,9 +510,9 @@ fn log_budget_advisory(action: BudgetAction) {
 
 /// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
 fn now_secs() -> u32 {
-    let now = time::SystemTime::now();
-    let dur = now.duration_since(time::UNIX_EPOCH);
-    return dur.as_secs();
+    let now = std::time::SystemTime::now();
+    let dur = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    return dur.as_secs() as u32;
 }
 
 /// a - b, clamped at 0 (mirrors u64::saturating_sub).
@@ -545,14 +544,14 @@ fn is_failed(status: PipelineStatus) -> bool {
 fn expected_target_role(eng: PipelineEngine, exit: ExitRouting) -> Option<String> {
     match exit {
         ExitRouting::Next => {
-            let next_idx: i32 = eng.current_step + 1;
-            if next_idx < (eng.flow.steps.len() as i32) {
+            let next_idx: u32 = eng.current_step + 1;
+            if next_idx < eng.flow.steps.len() as u32 {
                 return Some(eng.flow.steps[(next_idx) as usize].clone().role_id);
             }
             return None;
         },
         ExitRouting::Loop(target_step_id, _max) => {
-            match eng.flow.get_step_index(target_step_id) {
+            match eng.flow.get_step_index(target_step_id.as_str()) {
                 Some(idx) => return Some(eng.flow.steps[(idx) as usize].clone().role_id),
                 None => return None,
             }

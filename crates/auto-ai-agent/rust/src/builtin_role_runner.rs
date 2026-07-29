@@ -13,29 +13,23 @@ const SOUL: &str = "# Soul of the Runner\n\nYou carry out concrete directives by
 /// Auto port of builtin_roles/runner.rs (auto-ai v0.4.0).
 /// Soul text (inline in the Rust original — no separate .md file).
 /// The Runner: executes directives via tools and reports the outcome.
-trait RoleTrait {
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Runner {}
 
-impl RoleTrait for Runner {
-}
-
-impl Runner {
-    pub fn name(&self) -> String {
+impl Role for Runner {
+    fn name(&self) -> String {
         return "runner".to_string();
     }
-    pub fn system_prompt(&self) -> String {
-        return SOUL;
+    fn system_prompt(&self) -> String {
+        return SOUL.to_string();
     }
-    pub fn model_tier(&self) -> ModelTier {
+    fn model_tier(&self) -> ModelTier {
         return ModelTier::Mid;
     }
-    pub fn temperature(&self) -> f64 {
+    fn temperature(&self) -> f64 {
         return 0.2;
     }
-    pub fn max_turns(&self) -> u32 {
+    fn max_turns(&self) -> u32 {
         return 15;
     }
 }

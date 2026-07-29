@@ -4,29 +4,23 @@ use crate::role_def::{Role};
 use crate::ai_config::{ModelTier};
 const SOUL: &str = "Soul of the Reviewer";
 
-trait RoleTrait {
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Reviewer {}
 
-impl RoleTrait for Reviewer {
-}
-
-impl Reviewer {
-    pub fn name(&self) -> String {
+impl Role for Reviewer {
+    fn name(&self) -> String {
         return "reviewer".to_string();
     }
-    pub fn system_prompt(&self) -> String {
-        return SOUL;
+    fn system_prompt(&self) -> String {
+        return SOUL.to_string();
     }
-    pub fn model_tier(&self) -> ModelTier {
+    fn model_tier(&self) -> ModelTier {
         return ModelTier::Pro;
     }
-    pub fn temperature(&self) -> f64 {
+    fn temperature(&self) -> f64 {
         return 0.2;
     }
-    pub fn max_turns(&self) -> u32 {
+    fn max_turns(&self) -> u32 {
         return 50;
     }
 }
