@@ -233,3 +233,93 @@ vnode_N 路径：从 styled_vtree 查 VNode，返回其 kind/label/props。对�
 ### Task 10: 截图 + 视觉对比（回归测试）
 
 `autoui_screenshot` 已存在。增强为支持截图 diff（对比基线截图），用于回归测试。
+
+---
+
+## 6. Rust 模式（a2r + iced）MCP 支持
+
+### 6.1 背景
+
+当前 MCP 仅在 VM 模式（`auto run -r vm`）中可用。Rust 模式（`auto run -r rust`，a2r 转译的 iced 原生窗口）没有 MCP 支持，无法用同一套测试套件验证。
+
+**架构差异**：
+
+| | VM 模式 | Rust 模式 |
+|---|---|---|
+| 组件类型 | `DynamicComponent`（运行时 VM） | `C: Component`（编译时 Rust struct） |
+| 视图输出 | `View<DynamicMessage>` | `View<C::Msg>` |
+| 消息类型 | `DynamicMessage { widget_name, event_name, args }` | 强类型 `C::Msg`（如 `AppMsg::AddTodo`） |
+| 状态访问 | `read_state(field)` / `write_state(field, val)` | `Component` trait 无泛型字段访问 |
+| MCP | ✅ `start_mcp_server` + `SharedState` | ❌ 无 |
+
+### 6.2 好消息：80% 基础已具备
+
+Rust 模式的 `DevToolsWrapper`（`renderer.rs:6619`）已经：
+
+- **每帧构建 VTree**：`view_element()` 调用 `view_to_vtree_with_paths(self.inner.view())`，生成 VNodeId 索引的完整渲染树，存入 `DevToolsState.live_vtree`
+- **支持消息注入**：`WrapperMsg<C>` 有 `Inner(C::Msg)` 和 `Debug(String)` 两个变体，`devtools_update` 分别路由到 `inner.on(msg)` 和 `apply_debug_event`
+- **F12 DevTools 面板**：已有 hover/select/inspector 功能
+
+### 6.3 实施步骤
+
+#### Task 11: Rust 模式 MCP 服务器启动
+
+在 `run_app_devtools` / `run_app_with_task_devtools` 中加入 `start_mcp_server` 调用（复用 VM 模式的 MCP 服务器代码）。
+
+**挑战**：MCP 的 `SharedState` 需要 `View<DynamicMessage>` + state 字典，但 Rust 模式是 `View<C::Msg>` + 强类型 struct。需要一个**桥接层**。
+
+**方案**：创建 `RustMcpBridge<C>` 适配器，将 Rust 模式的 `DevToolsWrapper` 包装为 MCP 可用的形式：
+- `snapshot()`：从 `DevToolsState.live_vtree` 构建 Atom 文本（已有 `build_aura_from_styled_vtree`，只需适配数据源）
+- `action(vnode_id, action_type)`：从 VTree 的 VNode path 遍历 `inner.view()` 找到对应 View，提取其 `C::Msg`（onclick/on_change），包装为 `WrapperMsg::Inner(msg)` 注入
+- `state()`：从 VTree 的 props（label/value/content）提取可见状态（不依赖强类型 struct 字段）
+
+#### Task 12: Rust 模式 action 分发
+
+创建 Rust 版的 `find_view_by_path` + `extract_action_from_view`（泛型版本）：
+- `find_view_by_path_generic<M>(view: &View<M>, path: &[u16]) -> Option<&View<M>>`：复用 `extract_children` 逻辑
+- 从 `View<C::Msg>` 的 Button/Input/Textarea 提取 `onclick`/`on_change` 消息（类型为 `C::Msg`）
+- 包装为 `WrapperMsg::Inner(msg)` 并通过 MCP channel 注入 iced 事件循环
+
+**关键约束**：`C::Msg` 必须满足 `Send + 'static`（iced 消息要求）。MCP channel 使用 `mpsc::Sender<WrapperMsg<C>>`。由于 `C` 是泛型的，channel 类型需要泛型化或使用 trait object。
+
+#### Task 13: Rust 模式 MCP subscription
+
+在 `devtools_subscription` 中新增一个 subscription，轮询 MCP channel 并将 action 转为 `WrapperMsg`：
+
+```rust
+fn devtools_subscription<C: Component + 'static>(w: &DevToolsWrapper<C>)
+    -> iced::Subscription<WrapperMsg<C>>
+{
+    let inner = w.inner.subscription().map(WrapperMsg::Inner);
+    let f12 = /* ... */;
+    let win = /* ... */;
+    let mcp = mcp_action_subscription_rust::<C>();  // 新增
+    iced::Subscription::batch(vec![inner, f12, win, mcp])
+}
+```
+
+#### Task 14: 验证 Rust 模式 MCP
+
+用与 VM 模式相同的测试套件验证 Rust 模式：
+1. `auto run -r rust` 启动 015-notes（a2r iced 窗口）
+2. MCP `autoui_snapshot` → 获取完整渲染树
+3. MCP `autoui_find(button, Edit)` → 找到 Edit 按钮
+4. MCP `autoui_action(vnode_N, press)` → 点击 Edit
+5. MCP `autoui_exists(button, Save)` → 验证编辑模式
+
+**预期结果**：VM 模式和 Rust 模式的 MCP 行为一致，同一套测试用例可以通过。
+
+### 6.4 技术风险
+
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| `C::Msg` 不满足 `Send` | MCP channel 无法跨线程 | `Component` trait 已要求 `'static`；可能需要加 `Send` bound |
+| state 字段无法泛型读取 | `autoui_state` 工具不可用 | 通过 VTree props 间接读取可见状态；或给 Component trait 加 `fn serialize_state() -> HashMap<String, Value>` |
+| 泛型 channel 类型 | `start_mcp_server` 需要具体类型 | 使用 `dyn Fn(WrapperMsg)` trait object 或宏泛型化 |
+| Rust 编译时间 | a2r 生成 + cargo build 较慢 | 与 VM 模式并行测试，不阻塞 |
+
+### 6.5 不在本次范围
+
+- 不修改 `Component` trait 核心签名（除非必须加 `Send`）
+- 不支持 Vue+Rust 模式的 MCP（那是浏览器端，用 Playwright）
+- 不实现 Rust 模式的 state 字段读写（首期只支持 action + snapshot + find）
