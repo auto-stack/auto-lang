@@ -1335,3 +1335,100 @@ py_datetime: 5/5 (100%), py_math: 14/14, py_random: 8/8, py_struct: 8/8 — 共 
 完成 P5 后（探索性）：
 - float 返回值修复或有文档化 workaround
 - 异常处理、迭代器、kwargs 的可行性明确记录
+
+### P4-P5 执行结果（已完成）
+
+P4 (Task 13-18): 7 库 69 测试全部 100%
+- py_uuid 激活 3/3, py_struct 扩展 12/12, py_math 扩展 20/20, py_random 扩展 13/13
+- py_list 新增 8/8, py_string 新增 8/8
+- parser 修复: py-imported 常量作为函数参数时可解析
+
+P5 (Task 19-22): 5 个 divergence 记录
+- DIV-PY-FLOAT-1: float 字符串化 (workaround: .to(int))
+- DIV-PY-EXCEPT-1: Python 异常不可捕获
+- DIV-PY-ITER-1: 手动迭代可用, for-in 不可用
+- DIV-PY-KWARGS-1: 位置参数可用, 关键字参数不可用
+- DIV-PY-AUTOLIST-1: Auto list 不 marshal 为 Python list
+
+---
+
+## 阶段 P6: 覆盖差距分析与扩展（Python 7 大脚本领域）
+
+### 覆盖现状
+
+当前 7 库 69 测试对照 Python 7 大脚本领域：
+
+| # | 领域 | 当前覆盖 | 状态 |
+|---|------|---------|------|
+| 1 | 文件与系统操作 (os/shutil/pathlib/glob) | ❌ 零覆盖 | os.rename/listdir、pathlib 现在可行；os.walk 需迭代器 |
+| 2 | 数据处理与分析 (csv/json/re/statistics) | ⚠️ 仅 str 方法 | re.sub/findall、json.dumps 现在可行；csv/statistics 需 list literal |
+| 3 | 网络与Web交互 (requests/urllib) | ❌ 零覆盖 | requests.get 理论可行；需 mock server + bytes 处理 |
+| 4 | 邮件与通知 (smtplib/schedule) | ❌ 零覆盖 | schedule 被 callback 阻塞 |
+| 5 | 系统运维与监控 (subprocess/sys/psutil) | ❌ 零覆盖 | sys.platform/getoutput 可行；大部分 subprocess 被 kwargs 阻塞 |
+| 6 | 安全与实用工具 (hashlib/string/base64) | ⚠️ 仅 random | string 常量 + secrets 可行；hashlib/base64 需 bytes 输入 |
+| 7 | 开发与测试辅助 (configparser/sqlite3) | ❌ 零覆盖 | configparser 低风险可行；sqlite3 需嵌套 handle |
+
+### 阻碍覆盖的 5 个 FFI 缺口
+
+| 缺口 | 阻塞领域 | 严重性 |
+|------|---------|--------|
+| 1. kwargs 支持 | 数据/网络/运维 | 高 |
+| 2. Auto list/dict → Python list/dict | 数据/安全/测试 | 高 |
+| 3. Python 迭代器 for-in 消费 | 文件/数据/网络 | 中 |
+| 4. bytes 往返 | 网络/安全 | 中 |
+| 5. callback 传递 | 邮件/测试框架 | 低 |
+
+### Task 23-28: 用现有 PyFFI 能力新增 6 个库（无需 VM 改动）
+
+这些库用已验证的 use.py + py_call + py_getattr + 多参数能力即可实现。
+
+#### Task 23: py_os — 文件与系统操作
+
+- use.py os: listdir, makedirs, rename, getcwd
+- use.py os.path: join, exists, basename, dirname
+- 测试: listdir(临时目录) 返回 list handle + __len__/__getitem__ 验证
+- 测试: makedirs + rename + getcwd (str 返回)
+- 目标: 5-8 用例
+
+#### Task 24: py_re — 正则表达式
+
+- use.py re: sub, findall, search, match
+- 测试: sub(pattern, repl, string) → str 返回
+- 测试: findall(pattern, string) → list handle + __len__/__getitem__
+- 测试: search → Match 对象 + py_call(m, "group")
+- 目标: 5-8 用例
+
+#### Task 25: py_json — JSON 处理
+
+- use.py json: dumps, loads
+- 测试: dumps(dict_handle) → str 返回（验证序列化）
+- 测试: loads(json_str) → dict handle + py_call(d, "__getitem__", key)
+- 目标: 3-5 用例
+
+#### Task 26: py_configparser — 配置文件解析
+
+- use.py configparser: ConfigParser
+- 测试: ConfigParser() 构造 + py_call(cfg, "read_string", ini_text)
+- 测试: py_call(cfg, "get", section, key) → str 返回
+- 目标: 3-5 用例
+
+#### Task 27: py_hashlib — 哈希计算
+
+- use.py hashlib: sha256, md5
+- 测试: sha256(b"data") 构造 + py_call(h, "hexdigest") → str
+- 探索: bytes 输入是否可行（Auto str → Python bytes?）
+- 目标: 3-5 用例
+
+#### Task 28: py_sys — 系统信息
+
+- use.py sys: platform, version, executable
+- 测试: platform 常量（str 比较）
+- 测试: version 常量（str 包含检查）
+- 目标: 3-5 用例
+
+### 验证目标
+
+完成 Task 23-28 后：
+- 覆盖从 1.5 个领域扩展到 5-6 个领域
+- 新增约 25-35 个测试用例
+- 现有 69 测试不退化
