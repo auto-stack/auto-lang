@@ -781,6 +781,12 @@ pub struct VueGenerator {
     /// Prop names (for defineProps — no .value suffix needed)
     prop_names: Vec<String>,
 
+    /// Prop name → TS type (for computed expression type inference)
+    prop_types: HashMap<String, String>,
+
+    /// State variable name → TS type (for computed expression type inference)
+    state_types: HashMap<String, String>,
+
     /// Store dependencies from `use store:` (Plan 351)
     store_deps: Vec<String>,
 
@@ -919,6 +925,8 @@ impl VueGenerator {
             imports: Vec::new(),
             state_names: Vec::new(),
             prop_names: Vec::new(),
+            prop_types: HashMap::new(),
+            state_types: HashMap::new(),
             store_deps: Vec::new(),
             uses_autodown: false,
             last_validation_warnings: Vec::new(),
@@ -1110,6 +1118,8 @@ impl VueGenerator {
         self.imports.clear();
         self.state_names.clear();
         self.prop_names.clear();
+        self.prop_types.clear();
+        self.state_types.clear();
         self.handlers.clear();
         self.emit_events.clear();
         self.has_emit = false;
@@ -1267,11 +1277,13 @@ impl VueGenerator {
         // Pre-populate state_names so expr_to_js recognizes refs during template generation
         for state in &widget.state_vars {
             self.state_names.push(state.name.clone());
+            self.state_types.insert(state.name.clone(), Self::auto_type_to_ts_type(&state.type_info));
         }
 
         // Register prop names (props are NOT refs — no .value suffix in script)
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
+            self.prop_types.insert(prop.name.clone(), Self::auto_type_to_ts_type(&prop.type_info));
         }
 
         // Plan 351: 'store' is a local const (from `const store = reactive(useXxxStore())`).
@@ -3789,6 +3801,11 @@ impl VueGenerator {
             Expr::Bool(_) => "boolean".to_string(),
             Expr::Str(_) | Expr::CStr(_) => "string".to_string(),
             Expr::Ident(name) => {
+                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                // Prefer declared prop/state types over name heuristics.
+                if let Some(ty) = self.prop_types.get(resolved).or_else(|| self.state_types.get(resolved)) {
+                    return ty.clone();
+                }
                 // Try to infer type from state variable name
                 if name.starts_with("is_") || name.starts_with("has_") {
                     "boolean".to_string()
@@ -3796,8 +3813,42 @@ impl VueGenerator {
                     "number".to_string()  // Default to number for state refs
                 }
             }
-            Expr::Bina(_, _, _) | Expr::Unary(_, _) => {
-                "number".to_string()
+            // `.field` / `self.field` — resolve like the bare field name.
+            Expr::Dot(object, field) => {
+                if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") {
+                    return self.expr_to_ts_type(&Expr::Ident(field.clone()));
+                }
+                "any".to_string()
+            }
+            Expr::Bina(left, op, right) => {
+                use auto_val::Op;
+                match op {
+                    // Comparisons and logical ops always yield booleans.
+                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge
+                    | Op::And | Op::Or => "boolean".to_string(),
+                    // `+` is string concatenation when either side is a string
+                    // (JS semantics) — don't blindly infer number.
+                    Op::Add => {
+                        let lt = self.expr_to_ts_type(left);
+                        let rt = self.expr_to_ts_type(right);
+                        if lt == "string" || rt == "string" {
+                            "string".to_string()
+                        } else if lt == "number" && rt == "number" {
+                            "number".to_string()
+                        } else {
+                            "any".to_string()
+                        }
+                    }
+                    Op::Sub | Op::Mul | Op::Div | Op::Mod => "number".to_string(),
+                    _ => "any".to_string(),
+                }
+            }
+            Expr::Unary(op, _) => {
+                if matches!(op, auto_val::Op::Not) {
+                    "boolean".to_string()
+                } else {
+                    "number".to_string()
+                }
             }
             Expr::Array(_) => "any[]".to_string(),
             _ => "any".to_string(),  // Default fallback
@@ -3898,6 +3949,25 @@ impl VueGenerator {
                 // Method call pattern: object.method(args) is parsed as
                 // Call(Dot(object, method), args).
                 // This branch handles plain field access.
+                // `.field` is parsed as Dot(Ident("self"), field) — a widget
+                // member reference. Resolve it against props/state instead of
+                // emitting a nonexistent `self` object.
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name.as_str() == "self" || name.as_str() == "." {
+                        let field_name = field.as_str();
+                        if self.prop_names.contains(&field_name.to_string()) {
+                            return Ok(format!("props.{}", field_name));
+                        } else if self.state_names.contains(&field_name.to_string()) {
+                            return Ok(format!("{}.value", field_name));
+                        } else {
+                            // Computed props and locals are plain consts in
+                            // <script setup>; computed refs need .value, but
+                            // without widget context here the bare name is the
+                            // least-wrong fallback (matches ts_adapter).
+                            return Ok(field_name.to_string());
+                        }
+                    }
+                }
                 let object_js = self.expr_to_js(object)?;
                 Ok(format!("{}.{}", object_js, field))
             }
@@ -9820,5 +9890,133 @@ mod tests {
         assert!(vue_code.contains("<Button") && vue_code.contains("Click Me"));
         // Should NOT be self-closing (should have >Click Me< pattern)
         assert!(vue_code.contains("Click Me") && vue_code.contains("</Button>"));
+    }
+
+    // ------------------------------------------------------------------
+    // Widget `computed` regressions (AutoDown editor Phase 0 findings)
+    // ------------------------------------------------------------------
+
+    fn widget_with_computed(props: Vec<crate::aura::AuraProp>, computed: Vec<crate::aura::AuraComputed>) -> AuraWidget {
+        AuraWidget {
+            name: "Icon".to_string(),
+            state_vars: vec![],
+            computed,
+            messages: vec![],
+            view_tree: AuraNode::element("div"),
+            handlers: HashMap::new(),
+            props,
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+        }
+    }
+
+    fn str_prop(name: &str) -> crate::aura::AuraProp {
+        crate::aura::AuraProp {
+            name: name.to_string(),
+            type_info: crate::ast::Type::StrSlice,
+            default: None,
+        }
+    }
+
+    /// Bug: `.language` (prop dot-ref) in a computed block was generated as
+    /// `self.language`. It must resolve to `props.language`.
+    #[test]
+    fn test_computed_prop_dot_ref_uses_props_not_self() {
+        use crate::ast::Expr;
+        let widget = widget_with_computed(
+            vec![str_prop("language")],
+            vec![crate::aura::AuraComputed {
+                name: "label".to_string(),
+                expr: Expr::Dot(Box::new(Expr::Ident("self".into())), "language".into()),
+            }],
+        );
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(
+            sfc.contains("const label = computed<string>(() => props.language)"),
+            "computed prop must use props.language:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("self.language"), "no self. in output:\n{}", sfc);
+    }
+
+    /// Bug: string concatenation in a computed block was inferred as
+    /// `computed<number>`. `"data:" + .language` must be `computed<string>`.
+    #[test]
+    fn test_computed_string_concat_infers_string() {
+        use crate::ast::Expr;
+        use auto_val::Op;
+        let widget = widget_with_computed(
+            vec![str_prop("language")],
+            vec![crate::aura::AuraComputed {
+                name: "full".to_string(),
+                expr: Expr::Bina(
+                    Box::new(Expr::Str("data:".into())),
+                    Op::Add,
+                    Box::new(Expr::Dot(Box::new(Expr::Ident("self".into())), "language".into())),
+                ),
+            }],
+        );
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(
+            sfc.contains("const full = computed<string>(() => 'data:' + props.language)"),
+            "string concat must infer string:\n{}",
+            sfc
+        );
+    }
+
+    /// Bug: bare identifiers (`lang => language`) and plain function calls
+    /// (`btoa(language)`) in a computed block failed to parse with
+    /// "Expected term, got RBrace". They must parse and resolve against the
+    /// widget's props.
+    #[test]
+    fn test_computed_parses_bare_ident_and_plain_call() {
+        let src = r#"
+widget Icon(language: str) {
+    computed {
+        label => language
+        encoded => btoa(language)
+    }
+    view {
+        div {
+            class: "icon",
+            "hi"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget computed with bare ident/call must parse");
+
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(
+            sfc.contains("const label = computed<string>(() => props.language)"),
+            "bare ident resolves to prop:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("btoa(props.language)"),
+            "plain call passes through with resolved arg:\n{}",
+            sfc
+        );
     }
 }
