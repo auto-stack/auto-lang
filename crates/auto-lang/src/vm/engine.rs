@@ -700,6 +700,133 @@ impl AutoVM {
         }
     }
 
+    /// Plan 364 Step 5: Pop the top of the data stack as an `auto_val::Value`,
+    /// resolving object/node references into the actual Obj/Node.
+    ///
+    /// Used by the Config accumulation opcodes (ACCUM_PAIR/ACCUM_NODE/
+    /// ACCUM_MERGE). Mirrors the resolution in `extract_value_from_vm`
+    /// (lib.rs): negative bits = tagged string index, positive bits = object
+    /// id / node id (distinguished by registry membership) or plain int.
+    ///
+    /// Note: unlike `extract_value_from_vm` this does NOT recurse into nested
+    /// refs (no `visited` cycle guard) — accumulation only inspects the top
+    /// value; its nested VmRefs stay as-is in the Obj/Node clone and are
+    /// resolved later by the result materializer.
+    fn pop_auto_value(&self, task: &mut AutoTask) -> auto_val::Value {
+        use auto_val::{is_f64, is_string, is_bool, is_null,
+            is_object, is_list, is_f32, decode_f64, decode_i32, decode_string,
+            decode_bool, decode_object, decode_list, decode_f32};
+        let nv = task.ram.pop_nv();
+        // Non-NaN-boxed values are raw f64.
+        if is_f64(nv) {
+            return auto_val::Value::Float(decode_f64(nv));
+        }
+        if is_string(nv) {
+            let str_idx = decode_string(nv) as usize;
+            let strings = self.strings.read().unwrap();
+            return if let Some(bytes) = strings.get(str_idx) {
+                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+            } else {
+                auto_val::Value::Nil
+            };
+        }
+        if is_bool(nv) {
+            return auto_val::Value::Bool(decode_bool(nv));
+        }
+        if is_null(nv) {
+            return auto_val::Value::Nil;
+        }
+        if is_f32(nv) {
+            return auto_val::Value::Float(decode_f32(nv) as f64);
+        }
+        // Object reference: look up in the objects registry.
+        if is_object(nv) {
+            let id = decode_object(nv) as u64;
+            if let Some(obj_ref) = self.objects.get(&id) {
+                let od = obj_ref.value().read().unwrap();
+                let mut out = auto_val::Obj::new();
+                for (k, v) in od.fields.iter() {
+                    out.set(k.clone(), v.clone());
+                }
+                return auto_val::Value::Obj(out);
+            }
+            return auto_val::Value::Nil;
+        }
+        // List reference: VM lists are stored via the arrays registry.
+        if is_list(nv) {
+            let id = decode_list(nv) as u64;
+            if let Some(array_ref) = self.arrays.get(&id) {
+                let elems = array_ref.value().read().unwrap();
+                let mut out = auto_val::Array::new();
+                for v in elems.iter() {
+                    out.push(self.resolve_array_elem(v));
+                }
+                return auto_val::Value::Array(out);
+            }
+            return auto_val::Value::Nil;
+        }
+        // i32-tagged payload. CREATE_NODE / POP_ACCUM push node ids via
+        // push_i32 (also i32-tagged), so a positive payload may be a node /
+        // object / array id — distinguish by registry membership before
+        // treating it as a literal Int.
+        let bits = decode_i32(nv);
+        if bits < 0 {
+            // Legacy negative-tagged string index: -(index+1).
+            let str_idx = (-bits - 1) as usize;
+            let strings = self.strings.read().unwrap();
+            return if let Some(bytes) = strings.get(str_idx) {
+                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+            } else {
+                auto_val::Value::Nil
+            };
+        }
+        let id = bits as u64;
+        if let Some(obj_ref) = self.objects.get(&id) {
+            let od = obj_ref.value().read().unwrap();
+            let mut out = auto_val::Obj::new();
+            for (k, v) in od.fields.iter() {
+                out.set(k.clone(), v.clone());
+            }
+            return auto_val::Value::Obj(out);
+        }
+        if let Some(node_ref) = self.nodes.get(&id) {
+            let nd = node_ref.value().read().unwrap();
+            // Deep-clone the Node (props, args, AND kids). Sub-nodes are
+            // accumulated into `kids` via ACCUM_NODE (Plan 364 Step 5), so
+            // they must survive this pop to be queryable via `nodes(name)`.
+            return auto_val::Value::Node((*nd).clone());
+        }
+        if let Some(array_ref) = self.arrays.get(&id) {
+            let elems = array_ref.value().read().unwrap();
+            let mut out = auto_val::Array::new();
+            for v in elems.iter() {
+                out.push(self.resolve_array_elem(v));
+            }
+            return auto_val::Value::Array(out);
+        }
+        auto_val::Value::Int(bits)
+    }
+
+    /// Plan 364 Step 5: Resolve a stored array element into a proper
+    /// `auto_val::Value`. The Script VM stores string elements inside arrays
+    /// as negative `Value::Int` (the neg_tag string-index convention shared
+    /// with GET_ELEM), so we convert those back to `Value::Str` here. Other
+    /// element types pass through unchanged.
+    fn resolve_array_elem(&self, v: &auto_val::Value) -> auto_val::Value {
+        if let auto_val::Value::Int(i) = v {
+            if *i < 0 {
+                let str_idx = (-(*i) - 1) as usize;
+                let strings = self.strings.read().unwrap();
+                if let Some(bytes) = strings.get(str_idx) {
+                    return auto_val::Value::Str(
+                        String::from_utf8_lossy(bytes).to_string().into(),
+                    );
+                }
+            }
+        }
+        v.clone()
+    }
+
     /// Pop a basic value from the stack as i32
     ///
     /// For Phase 2, assumes the value is a basic type (int, bool, char, nil)
@@ -1757,6 +1884,109 @@ impl AutoVM {
                     self.nodes.insert(node_id, Arc::new(RwLock::new(node)));
 
                     task.ram.push_i32(node_id as i32);
+                }
+                // Plan 364 Step 5: Config accumulation opcodes.
+                // PUSH_ACCUM name_str_idx:u16, id_str_idx:u16 — push a fresh Node container.
+                OpCode::PUSH_ACCUM => {
+                    let name_idx = self.flash.read_u16(task.ip);
+                    let id_idx = self.flash.read_u16(task.ip + 2);
+                    task.ip += 4;
+                    let (name, id) = {
+                        let strings = self.strings.read().unwrap();
+                        let name = strings
+                            .get(name_idx as usize)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default();
+                        // 0xFFFF sentinel = no id.
+                        let id = if id_idx != 0xFFFF {
+                            strings
+                                .get(id_idx as usize)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
+                        (name, id)
+                    };
+                    let container = crate::vm::task::AccumContainer::new_node(
+                        auto_val::AutoStr::from(name.as_str()),
+                        auto_val::AutoStr::from(id.as_str()),
+                    );
+                    task.accum_stack.push(container);
+                }
+                // ACCUM_PAIR key_str_idx:u16 — pop value, set_prop(key, value) on top container.
+                OpCode::ACCUM_PAIR => {
+                    let key_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    let value = self.pop_auto_value(task);
+                    let key = {
+                        let strings = self.strings.read().unwrap();
+                        strings
+                            .get(key_idx as usize)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
+                    };
+                    if let Some(container) = task.accum_stack.last_mut() {
+                        container.set_field(auto_val::ValueKey::Str(key.into()), value);
+                    } else {
+                        eprintln!("WARNING: ACCUM_PAIR with empty accum_stack");
+                    }
+                }
+                // ACCUM_NODE — pop a Node value, append it to top container's kids.
+                OpCode::ACCUM_NODE => {
+                    let value = self.pop_auto_value(task);
+                    if let auto_val::Value::Node(node) = value {
+                        if let Some(container) = task.accum_stack.last_mut() {
+                            container.add_kid(node);
+                        } else {
+                            eprintln!("WARNING: ACCUM_NODE with empty accum_stack");
+                        }
+                    } else {
+                        eprintln!("WARNING: ACCUM_NODE expected Node, got {:?}", value);
+                    }
+                }
+                // ACCUM_MERGE — pop an Obj value, merge all its fields into top container.
+                OpCode::ACCUM_MERGE => {
+                    let value = self.pop_auto_value(task);
+                    if let auto_val::Value::Obj(obj) = value {
+                        if let Some(container) = task.accum_stack.last_mut() {
+                            container.merge_obj(&obj);
+                        } else {
+                            eprintln!("WARNING: ACCUM_MERGE with empty accum_stack");
+                        }
+                    } else {
+                        eprintln!("WARNING: ACCUM_MERGE expected Obj, got {:?}", value);
+                    }
+                }
+                // POP_ACCUM — pop top Node container, store in nodes registry, push id.
+                OpCode::POP_ACCUM => {
+                    if let Some(container) = task.accum_stack.pop() {
+                        let mut node = match container.into_value() {
+                            auto_val::Value::Node(n) => n,
+                            other => {
+                                eprintln!("WARNING: POP_ACCUM got unexpected value {:?}", other);
+                                auto_val::Node::new(auto_val::AutoStr::new())
+                            }
+                        };
+                        // Plan 364 Step 5: if the node has no explicit id yet
+                        // (PUSH_ACCUM's id operand), but an `id:` Pair was
+                        // accumulated into its props (e.g. `dir(id: d)` where d
+                        // is a runtime variable), promote that prop to the
+                        // node's id field so `node.id()` / `main_arg()` resolve
+                        // it. We leave the prop in place for downstream readers.
+                        if node.id.is_empty() {
+                            let id_val = node.get_prop("id");
+                            if matches!(id_val, auto_val::Value::Str(_)) {
+                                node.id = id_val.to_astr();
+                            }
+                        }
+                        let id = self.node_id_gen.fetch_add(1, Ordering::SeqCst);
+                        self.nodes.insert(id, Arc::new(RwLock::new(node)));
+                        task.ram.push_i32(id as i32);
+                    } else {
+                        eprintln!("WARNING: POP_ACCUM with empty accum_stack");
+                        task.ram.push_i32(0);
+                    }
                 }
                 // Plan 073: Object literal support
                 OpCode::CREATE_OBJ => {

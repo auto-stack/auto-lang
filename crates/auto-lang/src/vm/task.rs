@@ -82,6 +82,9 @@ pub struct AutoTask {
     // cannot be baked into the shim because C builtins (datetime.date,
     // struct.pack) defeat inspect.signature and struct.pack is variadic.
     pub pending_native_arg_count: u8,
+    // Plan 364 Step 5: Config-mode accumulation container stack. Empty in
+    // Script/Transpile modes; only PUSH_ACCUM pushes onto it.
+    pub accum_stack: Vec<AccumContainer>,
 }
 
 /// Plan 010 (MS3-A): An entry on the task's try/catch handler stack.
@@ -93,6 +96,59 @@ pub struct HandlerFrame {
     pub bp: usize,
     /// Stack pointer at try-entry, used to truncate any pushed values.
     pub sp: usize,
+}
+
+/// Plan 364 Step 5: A Config-mode accumulation container — always a Node.
+///
+/// Config eval accumulates per-block statement results into a Node rather
+/// than only taking the last value (Script semantics). `PUSH_ACCUM` pushes a
+/// fresh Node container (with its `name`); `ACCUM_PAIR` sets a prop;
+/// `ACCUM_NODE` adds a sub-node directly into the container Node's `kids`
+/// (via `Node::add_kid`, which uses integer-indexed keys to preserve order and
+/// allow duplicates) — so the materialized Node is queryable via
+/// `nodes("name")` / `get_nodes("name")` with zero downstream changes;
+/// `ACCUM_MERGE` folds an object literal's fields in; `POP_ACCUM` pops the
+/// Node and pushes its id onto the VM data stack.
+#[derive(Debug, Clone)]
+pub struct AccumContainer {
+    /// The node being accumulated.
+    pub node: auto_val::Node,
+}
+
+impl AccumContainer {
+    /// Create a fresh Node container with the given name and optional id.
+    /// An empty `id` means no id (main_arg will fall back to args[0] or name).
+    pub fn new_node(name: auto_val::AutoStr, id: auto_val::AutoStr) -> Self {
+        let mut node = auto_val::Node::new(name);
+        if !id.is_empty() {
+            node.id = id;
+        }
+        Self { node }
+    }
+
+    /// Add a `(key, value)` prop to the node.
+    pub fn set_field(&mut self, key: auto_val::ValueKey, value: auto_val::Value) {
+        self.node.set_prop(key, value);
+    }
+
+    /// Append a sub-node to the container Node's kids (integer-indexed key,
+    /// preserving order and allowing duplicates), matching how AutoConfig
+    /// expects child nodes to be discoverable via `nodes(name)`.
+    pub fn add_kid(&mut self, kid: auto_val::Node) {
+        self.node.add_kid(kid);
+    }
+
+    /// Merge all fields of an object into the node's props.
+    pub fn merge_obj(&mut self, other: &auto_val::Obj) {
+        for (k, v) in other.iter() {
+            self.node.set_prop(k.clone(), v.clone());
+        }
+    }
+
+    /// Convert the container into its final Node value.
+    pub fn into_value(self) -> auto_val::Value {
+        auto_val::Value::Node(self.node)
+    }
 }
 
 impl AutoTask {
@@ -124,6 +180,7 @@ impl AutoTask {
             waiting_http_request_id: None,
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
+            accum_stack: Vec::new(),
         }
     }
 }

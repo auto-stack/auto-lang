@@ -378,6 +378,20 @@ impl<'a> Disassembler<'a> {
                 let v = self.flash.read_u32(ip);
                 (format!("{}", v), 4)
             }
+
+            // Plan 364 Step 5: Config accumulation opcodes
+            OpCode::PUSH_ACCUM => {
+                let name = self.flash.read_u16(ip);
+                let id = self.flash.read_u16(ip + 2);
+                (format!("name={}, id={}", name, id), 4)
+            }
+            OpCode::ACCUM_PAIR => {
+                let idx = self.flash.read_u16(ip);
+                (format!("key={}", idx), 2)
+            }
+            OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM => {
+                (String::new(), 0)
+            }
         }
     }
 }

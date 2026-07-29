@@ -135,6 +135,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
         | OpCode::POP_HANDLER
+        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
             => 0,
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -162,7 +163,11 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ
         | OpCode::PUSH_HANDLER
+        | OpCode::ACCUM_PAIR
             => 2,
+
+        // Plan 364: PUSH_ACCUM has 4 operand bytes (name_str_idx + id_str_idx)
+        OpCode::PUSH_ACCUM => 4,
 
         OpCode::IS_VARIANT => {
             match instr.operands.first() {
@@ -255,6 +260,7 @@ fn emit_operands(
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
         | OpCode::POP_HANDLER
+        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
             => Ok(()),
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -320,11 +326,21 @@ fn emit_operands(
 
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED
+        | OpCode::ACCUM_PAIR
             => {
                 let v = operand_u16(&instr.operands, 0)?;
                 bytecode.extend_from_slice(&v.to_le_bytes());
                 Ok(())
             }
+
+        // Plan 364: PUSH_ACCUM emits two u16 (name_str_idx, id_str_idx).
+        OpCode::PUSH_ACCUM => {
+            let name = operand_u16(&instr.operands, 0)?;
+            let id = operand_u16(&instr.operands, 1)?;
+            bytecode.extend_from_slice(&name.to_le_bytes());
+            bytecode.extend_from_slice(&id.to_le_bytes());
+            Ok(())
+        }
 
         OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ
         | OpCode::PUSH_HANDLER => {

@@ -288,6 +288,17 @@ pub struct Codegen {
     /// Used to ensure stack cleanliness for script evaluation
     pub should_pop_expr_result: bool,
 
+    /// Plan 364 Step 5: Config-mode compilation flag.
+    ///
+    /// When true, `Codegen` compiles config (pac.at) code: every block-level
+    /// Pair/Node/Object statement is accumulated into a container (via
+    /// PUSH_ACCUM/ACCUM_PAIR/ACCUM_NODE/ACCUM_MERGE/POP_ACCUM) rather than
+    /// only keeping the last value (Script semantics). This reuses Script's
+    /// existing control-flow / local-var / f-string / Dot bytecode so the full
+    /// Config eval power (runtime template, field access, for-over-array) is
+    /// available. Defaults false — Script/TransC/TransRust paths are unchanged.
+    pub config_mode: bool,
+
     /// Plan 118: Track the type of the last compiled expression for result formatting
     /// Used to format output correctly (e.g., byte as hex, uint with suffix)
     pub last_expr_type: ObjectType,
@@ -434,6 +445,7 @@ impl Codegen {
             jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
             max_locals: 0,
             should_pop_expr_result: false,
+            config_mode: false, // Plan 364 Step 5: Script mode by default
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
@@ -456,6 +468,84 @@ impl Codegen {
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
         codegen
+    }
+
+    /// Plan 364 Step 5: Construct a Codegen configured for Config (pac.at) mode.
+    ///
+    /// Equivalent to `Codegen::new()` but with `config_mode = true`. Used by
+    /// `eval_config_with_vm` / `run_with_mode(CompileMode::Config)` so the full
+    /// Config eval power (runtime f-string templates, object field access,
+    /// for-over-array, if/for control flow) is available — replacing the old
+    /// compile-time-only `ConfigCodegen`.
+    pub fn new_for_config() -> Self {
+        let mut cg = Self::new();
+        cg.config_mode = true;
+        cg
+    }
+
+    /// Plan 364 Step 5: Compile a parsed config (pac.at) program to bytecode.
+    ///
+    /// Layout:
+    /// ```text
+    ///   FN_PROLOG(0, n_locals)
+    ///   RESERVE_STACK(n_locals)
+    ///   <for each (key, val) in args: LOAD_STR(val) / literal; STORE_LOCAL(slot)>
+    ///   PUSH_ACCUM("root", none)        // root accumulation container
+    ///   <compile each top-level stmt>
+    ///   POP_ACCUM                        // leaves root Node id on stack
+    ///   RET(0)
+    /// ```
+    /// Context variables (e.g. `port`) are injected as locals so that
+    /// `if port == "win32"` resolves at runtime via LOAD_LOCAL (replacing the
+    /// old compile-time `substitute_vars`). Top-level `var` declarations stay
+    /// locals too and are visible to later statements / f-strings / Dot access.
+    pub fn compile_config_program(
+        &mut self,
+        code: &crate::ast::Code,
+        args: &auto_val::Obj,
+    ) -> AutoResult<()> {
+        // Set up a function frame so BP/locals work like a script wrapper.
+        let n_locals: u8 = 32; // generous local budget for manifest vars
+        self.emit(OpCode::FN_PROLOG);
+        self.code.push(0); // n_args
+        self.code.push(n_locals);
+
+        self.emit(OpCode::RESERVE_STACK);
+        self.code.push(n_locals);
+
+        // Inject context args (e.g. `port`) as locals. Each becomes a string
+        // local so `if port == "win32"` / f-string `${port}` works at runtime.
+        for (key, val) in args.iter() {
+            let slot = self.add_var(&key.to_string());
+            // Only string args are supported as context (matches legacy env).
+            if let auto_val::Value::Str(s) = val {
+                let idx = self.add_string(s);
+                self.emit(OpCode::LOAD_STR);
+                self.code.extend_from_slice(&idx.to_le_bytes());
+                self.emit_store_loc(slot);
+            }
+        }
+
+        // Root accumulation container.
+        let root_name_idx = self.add_string("root");
+        self.emit(OpCode::PUSH_ACCUM);
+        self.code.extend_from_slice(&root_name_idx.to_le_bytes());
+        self.code.extend_from_slice(&0xFFFFu16.to_le_bytes()); // no id
+
+        // Compile top-level statements. Each Pair/Node/Object accumulates into
+        // the root container; if/for/var use the regular Script codegen (their
+        // bodies dispatch back through config_mode accumulation).
+        for stmt in &code.stmts {
+            self.compile_stmt(stmt)?;
+        }
+
+        // Pop the root container -> leaves root Node id on the stack.
+        self.emit(OpCode::POP_ACCUM);
+
+        // Return: RET pops the frame (the root Node id stays as the result).
+        self.emit(OpCode::RET);
+        self.code.push(0); // n_args
+        Ok(())
     }
 
     /// Plan 197 Task 16: Register built-in Option.Some and Option.None as enum variant templates
@@ -607,6 +697,7 @@ impl Codegen {
             jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
             max_locals: 0,
             should_pop_expr_result: false,
+            config_mode: false, // Plan 364 Step 5: Script mode by default
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
@@ -750,6 +841,13 @@ impl Codegen {
     pub fn compile_stmt(&mut self, stmt: &Stmt) -> AutoResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
+                // Plan 364 Step 5: Config-mode accumulation. In config_mode,
+                // a block-level Pair/Node/Object is accumulated into the
+                // enclosing node container (set prop / add kid / merge fields)
+                // rather than being left on the stack and popped (Script).
+                if self.config_mode {
+                    return self.compile_config_stmt_expr(expr);
+                }
                 self.compile_expr(expr)?;
                 // Plan 089: Evaluate and discard result if this is not the last expression
                 // of a block or script. This keeps the stack clean for subsequent ops.
@@ -3503,6 +3601,12 @@ impl Codegen {
                 self.current_task_state_fields.clear();
             }
             Stmt::Node(node) => {
+                // Plan 364 Step 5: In config_mode, a block-level node statement
+                // (e.g. `dep("x") {}` / `app p1 {}`) accumulates into the
+                // enclosing container as a kid — same path as Stmt::Expr(Node).
+                if self.config_mode {
+                    return self.compile_config_stmt_expr(&Expr::Node(node.clone()));
+                }
                 // Stmt::Node wraps an Expr::Node — compile the expression
                 self.compile_expr(&Expr::Node(node.clone()))?;
                 // Plan 348 C4: see Stmt::Expr — never POP when a native void shim
@@ -3567,7 +3671,133 @@ impl Codegen {
         Ok(())
     }
 
-    /// Plan 348 C5: Compile a `Body`'s statements inline (in the current scope),
+    /// Plan 364 Step 5: Compile a block-level expression statement in Config
+    /// mode, accumulating its result into the enclosing node container rather
+    /// than leaving it on the stack.
+    ///
+    /// Dispatch:
+    /// - `Expr::Pair { key, value }` → compile `value`, emit key string idx,
+    ///   `ACCUM_PAIR` (sets a prop on the container).
+    /// - `Expr::Node(_)` → compile the node (config-mode `Expr::Node` path
+    ///   leaves a Node id on the stack), emit `ACCUM_NODE` (adds as `_exprN`
+    ///   sub-node).
+    /// - `Expr::Object(_)` → compile the object literal (`CREATE_OBJ`), emit
+    ///   `ACCUM_MERGE` (folds fields into the container).
+    /// - other (bare function call, ident ref, etc.) → compile and `POP`
+    ///   (non-accumulating; its value is discarded).
+    fn compile_config_stmt_expr(&mut self, expr: &Expr) -> AutoResult<()> {
+        match expr {
+            Expr::Pair(pair) => {
+                self.compile_expr(&pair.value)?;
+                let key_str = match &pair.key {
+                    crate::ast::Key::NamedKey(name) => name.to_string(),
+                    crate::ast::Key::StrKey(s) => s.to_string(),
+                    crate::ast::Key::IntKey(i) => i.to_string(),
+                    crate::ast::Key::BoolKey(b) => b.to_string(),
+                };
+                // Plan 364 Step 5: also bind the value to a same-named local
+                // variable so later statements can reference it at runtime —
+                // `kernel: {...}` makes `kernel.heap` / `${kernel.heap}` work,
+                // and `modules: [...]` makes `for d in modules` work. DUP keeps
+                // one copy for the accumulator and stores the other as a local.
+                let slot = self.add_var(&key_str);
+                self.emit(OpCode::DUP);
+                self.emit_store_loc(slot);
+                let key_idx = self.add_string(&key_str);
+                self.emit(OpCode::ACCUM_PAIR);
+                self.code.extend_from_slice(&key_idx.to_le_bytes());
+                Ok(())
+            }
+            Expr::Node(_) => {
+                self.compile_expr(expr)?;
+                self.emit(OpCode::ACCUM_NODE);
+                Ok(())
+            }
+            Expr::Object(_) => {
+                self.compile_expr(expr)?;
+                self.emit(OpCode::ACCUM_MERGE);
+                Ok(())
+            }
+            _ => {
+                self.compile_expr(expr)?;
+                self.emit(OpCode::POP);
+                Ok(())
+            }
+        }
+    }
+
+    /// Plan 364 Step 5: Compile a node expression in Config mode.
+    ///
+    /// Emits `PUSH_ACCUM(name, id)` then compiles the body statements (each
+    /// Pair → ACCUM_PAIR into the container, each sub-node → recursive
+    /// compile_config_node + ACCUM_NODE) and finally `POP_ACCUM`, leaving the
+    /// assembled Node's id on the stack.
+    ///
+    /// Positional/named args (e.g. `dep("x")`) are folded into the container
+    /// as `_argN` props so they survive in the materialized node; bare-name
+    /// ids (e.g. `port lanshan`) are passed via PUSH_ACCUM's id operand.
+    fn compile_config_node(&mut self, node: &crate::ast::Node) -> AutoResult<()> {
+        // PUSH_ACCUM(name_str_idx, id_str_idx). The id carries the node's
+        // identity: a bare-name id (`port lanshan`) when present, else the
+        // first positional arg if it is a string literal (`app("main")` → id
+        // "main", which `main_arg()` returns via the `!id.is_empty()` branch),
+        // else none (0xFFFF sentinel — main_arg falls back to args/name prop).
+        let name_idx = self.add_string(&node.name.to_string());
+        let id_str: String = if !node.id.is_empty() {
+            node.id.to_string()
+        } else {
+            // First positional arg as string literal → use as id.
+            node.args.args.first().and_then(|a| match a {
+                crate::ast::Arg::Pos(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                crate::ast::Arg::Name(n) => Some(n.to_string()),
+                _ => None,
+            }).unwrap_or_default()
+        };
+        let id_idx = if !id_str.is_empty() {
+            self.add_string(&id_str)
+        } else {
+            0xFFFF // sentinel: no id
+        };
+        self.emit(OpCode::PUSH_ACCUM);
+        self.code.extend_from_slice(&name_idx.to_le_bytes());
+        self.code.extend_from_slice(&id_idx.to_le_bytes());
+
+        // Fold positional/named args into the container as `_argN` props so
+        // non-id args (e.g. `dep("x", "1.0")` → _arg1="1.0") survive in the
+        // materialized node. (When the first positional string arg became the
+        // id above, it is still emitted here as _arg0 for completeness.)
+        let mut arg_n = 0u32;
+        for arg in &node.args.args {
+            let (key_opt, value_expr) = match arg {
+                crate::ast::Arg::Pos(expr) => (Some(format!("_arg{}", arg_n)), expr.clone()),
+                crate::ast::Arg::Pair(key, expr) => (Some(key.to_string()), expr.clone()),
+                crate::ast::Arg::Name(name) => {
+                    (Some(format!("_arg{}", arg_n)), crate::ast::Expr::Str(name.clone()))
+                }
+            };
+            if let Some(key) = key_opt {
+                self.compile_expr(&value_expr)?;
+                let key_idx = self.add_string(&key);
+                self.emit(OpCode::ACCUM_PAIR);
+                self.code.extend_from_slice(&key_idx.to_le_bytes());
+            }
+            arg_n += 1;
+        }
+
+        // Compile the body. Each statement dispatches via compile_stmt, which
+        // in config_mode accumulates Pairs/sub-nodes into THIS container (the
+        // top of accum_stack). Nested control flow (if/for) also accumulates
+        // directly into this container per legacy Config semantics.
+        for stmt in &node.body.stmts {
+            self.compile_stmt(stmt)?;
+        }
+
+        // POP_ACCUM: pop the assembled Node, store in registry, push its id.
+        self.emit(OpCode::POP_ACCUM);
+        Ok(())
+    }
+
+    /// Plan 359 C5: Compile a `Body`'s statements inline (in the current scope),
     /// WITHOUT introducing a new scope. This mirrors the inner loop of the
     /// `Stmt::Block` handler (SOURCE_LINE emission + should_pop_expr_result for
     /// non-last statements) but skips push_scope/pop_scope, so `var` bindings
@@ -4234,6 +4464,14 @@ impl Codegen {
             }
             // Plan 073: Node support (for type instances like Point(10, 20))
             Expr::Node(node) => {
+                // Plan 364 Step 5: Config-mode node compilation. Build the node
+                // via a PUSH_ACCUM/.../POP_ACCUM container so that body Pairs
+                // become props and sub-nodes become `_exprN` kids (the legacy
+                // Script path can only express props — kids are hard-coded -1).
+                // POP_ACCUM leaves the assembled Node id on the stack.
+                if self.config_mode {
+                    return self.compile_config_node(node);
+                }
                 // Plan 087 Phase 3: Check if this is a user-defined type instance
                 let type_name = node.name.to_string();
 

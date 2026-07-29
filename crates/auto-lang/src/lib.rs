@@ -3184,9 +3184,8 @@ fn extract_node_deep(vm: &crate::vm::engine::AutoVM, node: &Node, visited: &mut 
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
 pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
-    use crate::vm::config_codegen::ConfigCodegen;
+    use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
-    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
     use crate::parser::CompileDest;
 
@@ -3205,33 +3204,25 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     }
     let ast = parser.parse()?;
 
-    // 2. Compile to bytecode using ConfigCodegen
-    let mut configgen = ConfigCodegen::new();
-    // Plan 364 Step 2: inject context variables (e.g. `port`) into the
-    // ConfigCodegen's substitution table so `if port == "..."` guards resolve
-    // at flatten time. (The parser injection in step 1 only keeps parsing happy;
-    // the value must also reach ConfigCodegen for condition evaluation.)
-    if let Some(port) = args.get_str("port") {
-        configgen.define_var("port", crate::ast::Expr::Str(port.into()));
-    }
-    configgen.compile_config(&ast)?;
-
-    // Add explicit RET at the end (ConfigCodegen already adds this, but ensure it)
-    if configgen.base().code.last() != Some(&(OpCode::RET as u8)) {
-        configgen.base().code.push(OpCode::RET as u8);
-    }
+    // 2. Compile to bytecode using the unified Codegen in config_mode.
+    // Plan 364 Step 5: replaces the old compile-time-only ConfigCodegen with a
+    // runtime-evaluating VM Config mode (accumulation opcodes + Script control
+    // flow), so f-string templates, object field access, and for-over-array
+    // work at runtime.
+    let mut codegen = Codegen::new_for_config();
+    codegen.compile_config_program(&ast, args)?;
 
     // 3. Perform linking (resolve function calls)
-    let strings = configgen.base().strings.clone();
-    let exports = configgen.base().exports.clone();
-    let relocs = configgen.base().relocs.clone();
+    let strings = codegen.strings.clone();
+    let exports = codegen.exports.clone();
+    let relocs = codegen.relocs.clone();
 
     for reloc in &relocs {
         if let Some(&addr) = exports.get(&reloc.symbol_name) {
             let bytes = addr.to_le_bytes();
             let offset = reloc.offset as usize;
             for (i, b) in bytes.iter().enumerate() {
-                configgen.base().code[offset + i] = *b;
+                codegen.code[offset + i] = *b;
             }
         } else {
             return Err(AutoError::Msg(format!(
@@ -3242,14 +3233,13 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     }
 
     // 4. Load into VM and execute
-    // Clone the bytecode and metadata before moving into the async block
-    let bytecode = configgen.base().code.clone();
-    let object_keys = configgen.base().object_keys.clone();
-    let object_types = configgen.base().object_types.clone();
+    let bytecode = codegen.code.clone();
+    let object_keys = codegen.object_keys.clone();
+    let object_types = codegen.object_types.clone();
     // Plan 197 Task 9: Extract generic registry for VM
-    let generic_registry = std::mem::take(&mut configgen.base().generic_registry);
+    let generic_registry = std::mem::take(&mut codegen.generic_registry);
     // Plan 327 Phase 1: take task handler registry for VM
-    let task_handler_registry = std::mem::take(&mut configgen.base().task_handler_registry);
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
 
     let rt = get_global_runtime();
     rt.block_on(async {
@@ -3267,8 +3257,9 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
         // Run the VM to completion
         vm.run_task_loop().await;
 
-        // 6. Get the result from the VM stack
-        // ConfigCodegen compiles to a single object that should be on the stack
+        // 6. Get the result from the VM stack.
+        // Plan 364 Step 5: the result is the root Node (POP_ACCUM leaves its
+        // id on the stack). No Obj->root conversion is needed anymore.
         if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
             let mut task = task_arc.lock().await;
 
@@ -3284,24 +3275,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
             let mut visited = std::collections::HashSet::new();
             let materialized_result = extract_value_from_vm(&vm, result_i32, &mut visited);
 
-            // For config mode, we often expect a Node. 
-            // If the result is an Obj, convert it to a "root" Node.
-            match materialized_result {
-                Value::Obj(obj) => {
-                    let mut root = Node::new("root");
-                    for (k, v) in obj.iter() {
-                        if k.to_string().starts_with("_expr") {
-                            if let Value::Node(n) = v {
-                                root.add_kid(n.clone());
-                                continue;
-                            }
-                        }
-                        root.set_prop(k.clone(), v.clone());
-                    }
-                    Ok(Value::Node(root))
-                }
-                _ => Ok(materialized_result),
-            }
+            Ok(materialized_result)
         } else {
             // Task not found - return Nil
             Ok(Value::Nil)
@@ -4408,7 +4382,6 @@ pub enum CompileMode {
 /// ```
 pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
     use crate::vm::codegen::Codegen;
-    use crate::vm::config_codegen::ConfigCodegen;
     use crate::vm::loader::Module;
     use crate::vm::template_codegen::TemplateCodegen;
 
@@ -4425,9 +4398,11 @@ pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
             codegen.finish("script".to_string())
         }
         CompileMode::Config => {
-            let mut configgen = ConfigCodegen::new();
-            configgen.compile_config(&code)?;
-            configgen.finish("config".to_string())
+            // Plan 364 Step 5: use the unified Codegen in config_mode
+            // (replaces the old compile-time-only ConfigCodegen).
+            let mut codegen = Codegen::new_for_config();
+            codegen.compile_config_program(&code, &Obj::new())?;
+            codegen.finish("config".to_string())
         }
         CompileMode::Template => {
             let mut tgen = TemplateCodegen::new();

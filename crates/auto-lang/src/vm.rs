@@ -10,8 +10,10 @@ pub mod debugger;
 pub mod abt;
 pub mod disasm;
 pub mod trace;
-// Plan 075: ConfigCodegen for config file compilation
-pub mod config_codegen;
+// Plan 364 Step 5: runtime VM Config eval tests (ConfigCodegen was removed;
+// config mode is now Codegen::new_for_config() + accumulation opcodes).
+#[cfg(test)]
+mod config_eval_tests;
 // Plan 075: TemplateCodegen for template file compilation
 pub mod collections;
 pub mod engine;

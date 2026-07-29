@@ -293,6 +293,16 @@ pub enum OpCode {
     PUSH_NIL = 0xFB,    // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
     PUSH_BOOL = 0xFC,   // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
     HALT = 0xFF,
+
+    // Plan 364 Step 5: Config-mode accumulation opcodes.
+    // Config eval accumulates per-block statement results into a Node container
+    // (rather than only taking the last value, as Script semantics do).
+    // See crates/auto-lang/src/vm/codegen.rs config_mode branches.
+    PUSH_ACCUM = 0xD0,  // name_str_idx:u16, id_str_idx:u16 -> push Node(name, id) onto accum_stack
+    ACCUM_PAIR = 0xD1,  // key_str_idx:u16, pop value -> set_prop(key, value) on top container
+    ACCUM_NODE = 0xD2,  // pop Node value -> add as _exprN prop of top container
+    ACCUM_MERGE = 0xD3, // pop Obj value -> merge all its fields into top container
+    POP_ACCUM = 0xD4,   // -> pop top Node, store in registry, push its id onto VM data stack
 }
 
 impl From<u8> for OpCode {
@@ -348,6 +358,8 @@ impl OpCode {
         0xC0, 0xC1, 0xC2,
         // Plan 317: Actor state fields + global variables
         0xC3, 0xC4, 0xC5, 0xC6,
+        // Plan 364 Step 5: Config accumulation
+        0xD0, 0xD1, 0xD2, 0xD3, 0xD4,
         // Error/Option
         0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5,
         // Type casts
@@ -549,6 +561,11 @@ impl OpCode {
             Self::POP_HANDLER => "pop.handler",
             Self::PUSH_NIL => "push.nil",
             Self::PUSH_BOOL => "push.bool",
+            Self::PUSH_ACCUM => "push.accum",
+            Self::ACCUM_PAIR => "accum.pair",
+            Self::ACCUM_NODE => "accum.node",
+            Self::ACCUM_MERGE => "accum.merge",
+            Self::POP_ACCUM => "pop.accum",
             Self::HALT => "halt",
         }
     }
@@ -733,6 +750,11 @@ impl OpCode {
             "pop.handler" => Some(Self::POP_HANDLER),
             "push.nil" => Some(Self::PUSH_NIL),
             "push.bool" => Some(Self::PUSH_BOOL),
+            "push.accum" => Some(Self::PUSH_ACCUM),
+            "accum.pair" => Some(Self::ACCUM_PAIR),
+            "accum.node" => Some(Self::ACCUM_NODE),
+            "accum.merge" => Some(Self::ACCUM_MERGE),
+            "pop.accum" => Some(Self::POP_ACCUM),
             "halt" => Some(Self::HALT),
             _ => None,
         }
@@ -794,7 +816,8 @@ impl OpCode {
             | Self::TYPE_TO_I32 | Self::TYPE_TO_F64 | Self::TYPE_F64_TO_STR
             | Self::TYPE_I64_TO_STR | Self::TYPE_U64_TO_STR | Self::TYPE_BOOL_TO_STR
             | Self::TYPE_F32_TO_STR | Self::POP_HANDLER
-            | Self::GET_TUPLE_FIELD => Some(0),
+            | Self::GET_TUPLE_FIELD
+            | Self::ACCUM_NODE | Self::ACCUM_MERGE | Self::POP_ACCUM => Some(0),
 
             // 1-byte operand
             Self::CONST_U8 | Self::PUSH_BOOL | Self::POP_N | Self::RESERVE_STACK
@@ -809,7 +832,11 @@ impl OpCode {
             | Self::LOAD_CAPTURED | Self::STORE_CAPTURED
             | Self::LOAD_GLOBAL | Self::STORE_GLOBAL
             | Self::JMP | Self::JMP_IF_Z | Self::JMP_IF_NZ
-            | Self::GET_FIELD | Self::PUSH_HANDLER => Some(2),
+            | Self::GET_FIELD | Self::PUSH_HANDLER
+            | Self::ACCUM_PAIR => Some(2),
+
+            // 4-byte operand (two u16: name_str_idx + id_str_idx)
+            Self::PUSH_ACCUM => Some(4),
 
             // 3-byte operand (u16 + u8)
             Self::CREATE_OBJ | Self::CALL_PY => Some(3),

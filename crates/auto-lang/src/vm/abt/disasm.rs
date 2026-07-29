@@ -223,6 +223,7 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
         | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
         | OpCode::POP_HANDLER
+        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
             => 0,
 
         OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
@@ -250,7 +251,11 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER | OpCode::IS_VARIANT
+        | OpCode::ACCUM_PAIR
             => 2,
+
+        // Plan 364: PUSH_ACCUM has 4 operand bytes (name_str_idx + id_str_idx)
+        OpCode::PUSH_ACCUM => 4,
 
         OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
 
@@ -327,6 +332,7 @@ fn decode_operands(
         | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
         | OpCode::PUSH_NIL
         | OpCode::POP_HANDLER
+        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
             => (vec![], 0),
 
         OpCode::CONST_U8 => {
@@ -402,10 +408,25 @@ fn decode_operands(
             };
             (vec![operand], 1)
         }
+        OpCode::PUSH_ACCUM => {
+            let name = flash.read_u16(ip);
+            let id = flash.read_u16(ip + 2);
+            (
+                vec![
+                    AbtOperand::StringIdx(name as usize),
+                    AbtOperand::StringIdx(id as usize),
+                ],
+                4,
+            )
+        }
         OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
         | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => (vec![], 0),
 
         OpCode::LOAD_STR => {
+            let v = flash.read_u16(ip);
+            (vec![AbtOperand::StringIdx(v as usize)], 2)
+        }
+        OpCode::ACCUM_PAIR => {
             let v = flash.read_u16(ip);
             (vec![AbtOperand::StringIdx(v as usize)], 2)
         }
