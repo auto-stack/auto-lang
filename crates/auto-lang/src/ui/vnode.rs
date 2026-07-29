@@ -372,7 +372,7 @@ impl VNode {
 #[derive(Debug, Clone)]
 pub struct VTree {
     /// 所有节点（扁平存储）
-    nodes: Vec<VNode>,
+    pub nodes: Vec<VNode>,
 
     /// 根节点 ID
     root: Option<VNodeId>,

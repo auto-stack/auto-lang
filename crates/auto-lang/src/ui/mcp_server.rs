@@ -678,6 +678,37 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // Plan 371 Task 7: search VTree for matching nodes
+        json!({
+            "name": "autoui_find",
+            "title": "Find Widgets in VTree",
+            "description": "Search the live rendered VTree for nodes matching given criteria. Returns matching nodes as Atom text (with their vnode_N IDs) — much faster than dumping the entire tree when you only need to verify specific elements.\n\n## When to use\n- Verify a specific widget is present (e.g. 'is there a Save button?')\n- Find all buttons/inputs matching a label\n- Check if an element exists after an action\n\n## Search criteria (all optional, combined with AND)\n- kind: node type (button, input, text, textarea, col, row, checkbox...)\n- label: substring match on label/content/value/placeholder\n- limit: max results (default 20)\n\n## Output\nAtom text of matching nodes, each prefixed by its path depth.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "Filter by node kind (button, input, text, textarea, col, row, checkbox, slider, image...)"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Substring match on the node's label, content, value, or placeholder text (case-insensitive)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 20,
+                        "description": "Maximum number of matching nodes to return"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -697,6 +728,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_type" => tool_type(shared, args),
         "autoui_keyboard" => tool_keyboard(shared, args),
         "autoui_vtree" => tool_vtree(shared, args),
+        "autoui_find" => tool_find(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -1720,6 +1752,88 @@ fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
             "No live VTree snapshot yet — the UI has not rendered a frame with \
              DevTools/MCP capture active. Retry after the window has painted.",
         ),
+    }
+}
+
+// ── Tool: autoui_find (Plan 371 Task 7) ──
+
+fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let kind_filter = args.get("kind").and_then(|v| v.as_str());
+    let label_filter = args.get("label").and_then(|v| v.as_str());
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as usize;
+
+    let snap = shared.lock().unwrap().clone_styled_vtree();
+    let snap = match snap {
+        Some(s) => s,
+        None => return error_result("No live VTree snapshot yet — retry after the window has painted."),
+    };
+
+    // Build Atom options for output (props only, no box/style/events for speed)
+    let opts = VTreeAtomOptions {
+        scope: None,
+        depth: None,
+        include_box: false,
+        include_style: false,
+        include_events: false,
+        include_source: false,
+        include_props: true,
+    };
+
+    // Walk the VTree, collecting matching nodes
+    let mut matches: Vec<String> = Vec::new();
+    let kind_lower = kind_filter.map(|s| s.to_lowercase());
+    let label_lower = label_filter.map(|s: &str| s.to_lowercase());
+
+    // Iterate all nodes in the VTree
+    for vnode in &snap.vtree.nodes {
+        // Kind filter
+        if let Some(ref kf) = kind_lower {
+            let node_kind = format!("{}", vnode.kind).to_lowercase();
+            if node_kind != *kf {
+                continue;
+            }
+        }
+
+        // Label filter — check label/content/value/placeholder (case-insensitive substring)
+        if let Some(ref lf) = label_lower {
+            let searchable = vnode_searchable_text(&vnode.props).to_lowercase();
+            if !searchable.contains(lf) {
+                continue;
+            }
+        }
+
+        // Build a compact Atom snippet for this node
+        let atom = VTreeAtomBuilder::build_node_only(vnode, &snap.computed, &opts);
+        let depth = vnode.path.len();
+        matches.push(format!("  {}{}", "  ".repeat(depth), atom));
+
+        if matches.len() >= limit {
+            break;
+        }
+    }
+
+    if matches.is_empty() {
+        let mut criteria = Vec::new();
+        if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
+        if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+        text_result(format!("No nodes found matching: {}", criteria.join(", ")))
+    } else {
+        let header = format!("Found {} node(s):\n", matches.len());
+        text_result(header + &matches.join("\n"))
+    }
+}
+
+/// Extract searchable text from VNodeProps (label, content, value, placeholder).
+fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
+    use crate::ui::vnode::VNodeProps;
+    match props {
+        VNodeProps::Text { content } => content.clone(),
+        VNodeProps::Button { label } => label.clone(),
+        VNodeProps::Input { placeholder, value, .. } => format!("{} {}", placeholder, value),
+        VNodeProps::Textarea { placeholder, value } => format!("{} {}", placeholder, value),
+        VNodeProps::Checkbox { label, .. } => label.clone(),
+        VNodeProps::Radio { label, .. } => label.clone(),
+        _ => String::new(),
     }
 }
 

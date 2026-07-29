@@ -77,6 +77,24 @@ impl VTreeAtomBuilder {
         }
     }
 
+    /// Plan 371: build a single node's Atom representation WITHOUT children.
+    /// Used by autoui_find to output compact matching-node snippets.
+    pub fn build_node_only(
+        vnode: &VNode,
+        computed: &HashMap<VNodeId, ComputedNodeLite>,
+        opts: &VTreeAtomOptions,
+    ) -> Node {
+        let mut node = Node::new(kind_keyword(vnode.kind));
+        node.id = format!("vnode_{}", vnode.id.as_u64()).into();
+        if opts.include_props {
+            Self::attach_widget_props(&mut node, &vnode.props);
+        }
+        if let Some(c) = computed.get(&vnode.id) {
+            Self::attach_computed(&mut node, c, opts);
+        }
+        node
+    }
+
     fn build_node(
         vnode: &VNode,
         vtree: &VTree,
