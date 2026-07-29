@@ -256,9 +256,9 @@ cargo run            # → 打印真实 LLM 回答
 | — (Cargo.toml path) | — | 改同仓依赖为 `../../a2r-std`（4 级跨仓），保持 main checkout 可编译 | ✅ 持久（一次性 manifest 修改） |
 | — (builtin_roles) | ~14 | 手修：`impl Role for X` 替换 `trait RoleTrait`+`impl RoleTrait for X` | ⚠️ 已持久化（plan 373 G2）：a2r 的 `has Spec` lowering 现在直接生成 `impl Role for X`。但 rust/src/ 里已有文件不会自动重建（需 re-transpile + 重组装） |
 | — (ClientError Clone) | 1 | 手修：AgentError derive 降级为 Debug + 添加 `From<ClientError>` | ✅ 持久（一次性修改 error.rs） |
-| — (ContentBlock 结构体) | 2 | 手修：`ContentBlock::Text(resp.content)`→`ContentBlock::Text { text: … }`、`ToolUse(tc.id,…)`→`ToolUse { id: …, … }` | ❌ 未持久：a2r 把 struct 变体当 tuple 变体输出（已知 B2/B3 平台限制，需 AutoVM 支持 struct 变体解构后才能从根源修，或 post_process 做 AST 级别的变体构造修正） |
-| — (async .await) | ~5 | 手修：在 agent.rs/driver.rs 的多处 async 调用点加 `.await` | ❌ 未持久：a2r 的 `.await` 插入依赖调用图分析（哪些调用返回 Future），当前 post_process 不做。**这是 re-transpile 后最大的缺口** |
-| — (&mut self) | ~8 | 手修：`run`/`drive`/`dispatch`/`drive_step` 等方法从 `&self` 改为 `&mut self`（因为它们修改了 self 的字段） | ❌ 未持久：a2r 不分析方法的 mutation 语义；**re-transpile 后这些方法会回退为 `&self`，需手修或做 mutation 分析 pass** |
+| — (ContentBlock 结构体) | 2 | 手修：`ContentBlock::Text(resp.content)`→`ContentBlock::Text { text: … }`、`ToolUse(tc.id,…)`→`ToolUse { id: …, … }` | ✅ 持久（plan 373 CB fix）：`seed_known_struct_enum_variants` 注册外部 struct-variant 枚举，a2r 自动输出 `{ field: val }` 构造语法 |
+| — (async .await) | ~5 | 手修：在 agent.rs/driver.rs 的多处 async 调用点加 `.await` | ✅ 持久（plan 373 mut-await）：`fn_ret_types` 缓存 + `call_needs_await` 自动在返回 Future/~Result 的调用后追加 `.await` |
+| — (&mut self) | ~8 | 手修：`run`/`drive`/`dispatch`/`drive_step` 等方法从 `&self` 改为 `&mut self`（因为它们修改了 self 的字段） | ⚠️ 部分（plan 373 mut-await）：`method_mutates_self` 自动检测直接字段修改（`self.x = ...`）和 mutating 方法调用（`self.x.push(...)`）。**未覆盖间接 mutation**（`self.method()` 内部修改 self）——re-transpile 后约 5 处方法仍需手修 |
 
 ### C. 持久性总结
 
@@ -282,17 +282,48 @@ cargo run            # → 打印真实 LLM 回答
 
 以下修改仅存在于当前 hand-assembled `rust/src/*.rs` 中，不属于 a2r 生成器：
 
-- `&mut self` 标注（~8 处：run/drive/dispatch/drive_step/with_context/build_request）
-- async `.await` 插入（~5 处）
-- ContentBlock struct-variant 构造语法（2 处）
+- **间接 `&mut self`**（~5 处：drive_step/dispatch/handle_after_submit 等方法通过调用
+  修改 self 的子方法来间接 mutation，`method_mutates_self` 不做跨方法分析，检测不到）
+- **手写组装层**（lib.rs/config.rs/orchestration.rs/builtin_roles.rs/client_impl.rs/main.rs）：
+  这些是手写的 glue 代码，不在 .at 源码中，不会被 re-transpile 覆盖。它们定义模块
+  声明、extern-crate 垫片、JsonValue 别名、Client impl、REPL 入口等
 - `#[async_trait]` on Client trait（1 处，agent.rs）
 - role_config.rs 桥接 API 适配（~13 处，此文件本就是手修的桥接层）
 - `for x in &self.field` 循环改写（~10 处）
 - AgentError `From<ClientError>` impl（1 处）
 - builtin_roles.rs 的 `Box<dyn Role>` 装箱（1 处）
 
-**如果现在 re-transpile 全部 .at 并重新组装 rust/，预计还有 ~30–50 个 cargo 错误**，
-主要来自 `&mut self` 和 async `.await` 两类。其余 B1 细节已被上述 post_process 链覆盖。
+**2026-07-30 re-transpile 实测**（全部 .at → a2r → 复制到 rust/src/ + 恢复手写 glue）：
+**285 个 cargo 错误**（原基线 343 → 现在 285 = 下降 58 个 = 17%）。
+
+错误码分布（285 个）：
+
+| 错误码 | 数量 | 主要根因 |
+|---|---|---|
+| E0308 | 134 | 类型不匹配：String/&str 混用、Option 未 unwrap、`HashMap.get()` 返回 Option 当值用 |
+| E0599 | 38 | 方法找不到：`.as_str()` on PathBuf/char、`.message()` on ClientError、`.clone()` on non-Clone |
+| E0658 | 16 | 多余 `.as_str()` on &str（auto-borrow 残留，post_process 未完全覆盖） |
+| E0425 | 14 | 名字找不到（级联） |
+| E0614 | 13 | 桥接类型 deref（role_config.rs 的 `*(*node).clone()` 等） |
+| E0507 | 12 | move/borrow（`for m in self.messages` 应为 `&self.messages`） |
+| E0277 | 8 | trait 未实现（derive 降级未完全覆盖） |
+| E0609 | 8 | 字段找不到（Option 上取字段） |
+| E0382 | 8 | use after move（缺 `.clone()`） |
+| E0608 | 7 | 对非值类型取字段 |
+| E0252 | 6 | 重复名字（RoleTrait 等合成 trait 冲突） |
+| E0195 | 3 | lifetime 不匹配（`#[async_trait]` 未加到某些 impl 块） |
+| E0423 | 5 | 保留字冲突 |
+| 其他 | 17 | 杂项 |
+
+**结论**：re-transpile 后仍有 285 个错误，与手修版（0 错误）的差距主要来自：
+1. **手写组装层不参与 re-transpile**（lib.rs/config.rs/orchestration.rs 等——这些文件
+   原本就是手写的 glue，re-transpile 时要么被覆盖为纯 import 文件、要么丢失关键声明）
+2. **B1 细节修复仍需进一步自动化**（String/&str、move/borrow、桥接 deref 等）
+3. **间接 `&mut self`** 约 5 处
+4. **合成 `RoleTrait` 等 trait 冲突**（`has Spec` 修复后仍残留旧路径）
+
+**当前可用的路径**仍然是"hand-assembled rust/src/（0 错误）"，re-transpile 可重现性
+需要进一步的 a2r 生成器改进（特别是组装层自动化和跨方法 mutation 分析）。
 
 ### D. 计划外扩展（G2+G3）
 
