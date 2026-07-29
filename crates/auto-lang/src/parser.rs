@@ -2538,12 +2538,21 @@ impl<'a> Parser<'a> {
                 Expr::Ident(name) => {
                     // name arg without value
                     let name = name.clone();
-                    match self.lookup_meta(&name) {
-                        Some(_) => {
-                            args.args.push(Arg::Pos(expr.clone()));
-                        }
-                        None => {
-                            args.args.push(Arg::Name(name));
+                    // Under skip_check (DSL lenient-parsing contexts such as
+                    // widget/store `computed` blocks) unknown bare identifiers
+                    // are kept as positional expressions — the Name-as-string
+                    // fallback is itself a symbol-resolution decision, and the
+                    // code generator resolves props/state names later.
+                    if self.skip_check {
+                        args.args.push(Arg::Pos(expr.clone()));
+                    } else {
+                        match self.lookup_meta(&name) {
+                            Some(_) => {
+                                args.args.push(Arg::Pos(expr.clone()));
+                            }
+                            None => {
+                                args.args.push(Arg::Name(name));
+                            }
                         }
                     }
                 }
@@ -10990,8 +10999,18 @@ impl<'a> Parser<'a> {
                 }.into());
             }
 
-            // Parse expression
-            let expr = self.parse_expr()?;
+            // Parse expression.
+            // Disable symbol checking: widget/store computed expressions
+            // reference props and model fields (e.g. `url => language`) that
+            // are not bound in the parser's variable scope — name resolution
+            // happens in the code generator. Without this, bare identifiers
+            // (and call args like `btoa(lang)`) fail with "undefined variable"
+            // which surfaces as a confusing "Expected term, got RBrace".
+            let old_skip_check = self.skip_check;
+            self.skip_check = true;
+            let expr = self.parse_expr();
+            self.skip_check = old_skip_check;
+            let expr = expr?;
 
             properties.push(ComputedProperty { name, expr });
             self.skip_empty_lines();
