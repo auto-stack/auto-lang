@@ -1,0 +1,86 @@
+# 015-notes.autotest — 桌面 MCP 测试场景声明（VM + Rust）
+#
+# 从 acceptance.atd 的 T1-T13 派生 MCP 可执行子集。
+# 用法: python run_autotest.py 015-notes.autotest --mode vm
+#       python run_autotest.py 015-notes.autotest --mode rust
+#
+# 设计原则：每个场景自包含 — 开头用 Cancel/Save 重置到展示态。
+
+suite "015-notes 核心流程"
+
+# ── 导航类 ──────────────────────────────────────────────
+
+scenario T2a "Pinned tab 无文件夹标题"
+  when  click_button label="Pinned"
+  then  not_exists text label="📁"
+
+scenario T2b "All tab 有文件夹标题"
+  when  click_button label="All"
+  then  exists text label="📁 Notes"
+
+scenario T2c "Recent tab 无文件夹标题"
+  when  click_button label="Recent"
+  then  not_exists text label="📁"
+
+# ── 编辑类（每个场景自包含，开头重置到展示态）─────────────
+
+scenario T5a "Edit 进入编辑模式"
+  when  click_button label="Cancel"
+  when  click_button label="Edit"
+  then  exists  button label="Save"
+  then  exists  button label="Cancel"
+  then  exists  input  label="Note title"
+
+scenario T5b "Edit 填充当前笔记内容"
+  when  click_button label="Cancel"
+  when  click_button label="Edit"
+  then  inspect input label="Note title" has_value=true
+
+scenario T5c "输入标题文字"
+  when  click_button label="Cancel"
+  when  click_button label="Edit"
+  when  type_text input label="Note title" value="MCP Test Title"
+  then  state field="edit_title" equals="MCP Test Title"
+  skip_if rust
+
+scenario T5d "Cancel 返回只读模式"
+  when  click_button label="Cancel"
+  when  click_button label="Edit"
+  when  click_button label="Cancel"
+  then  exists  button label="Edit"
+
+scenario T5e "Save 退出编辑模式"
+  when  click_button label="Cancel"
+  when  click_button label="Edit"
+  when  type_text input label="Note title" value="Save Test"
+  when  click_button label="Save"
+  then  exists  button label="Edit"
+
+# ── 新建/删除 ────────────────────────────────────────────
+
+scenario T6 "New 创建新笔记"
+  when  click_button label="New"
+  then  snapshot_changed
+
+scenario T7 "Delete 删除当前笔记"
+  when  click_button label="Cancel"
+  when  click_button label="Delete"
+  then  snapshot_changed
+
+# ── 主题类 ──────────────────────────────────────────────
+
+scenario T11 "Dark mode 切换"
+  when  click_button label="Light"
+  when  click_button label="Dark"
+  then  state field="dark_mode" equals=true
+  skip_if rust
+
+scenario T11b "Light mode 切换回来"
+  when  click_button label="Dark"
+  when  click_button label="Light"
+  then  state field="dark_mode" equals=false
+  skip_if rust
+
+scenario T12 "主题色 indigo 初始值"
+  then  state field="accent_color" equals="indigo"
+  skip_if rust
