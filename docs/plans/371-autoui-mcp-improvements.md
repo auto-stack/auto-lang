@@ -196,20 +196,31 @@ vnode_N 路径：从 styled_vtree 查 VNode，返回其 kind/label/props。对�
 
 ## 5. 后续改进
 
-### Task 7: VTree 全量展示 + 变化检测（高优先级）
+### Task 7: VTree 全量展示 + 变化检测（高优先级）✅ 已完成
 
 **动机**：当前验证按钮点击效果需要反复 `autoui_snapshot` + `autoui_state`，效率低。更快的办法是直接通过 `autoui_vtree` 获取**完整渲染节点树**（VTree），根据节点树的变化判断页面是否变化。
 
-**要求**：整个 APP 的 VTree 要**全部展示出来**，包括所有 `use`/`import` 的子组件（EditorPanel、NavTree）的内部元素。当前 `autoui_vtree` 已经做到了这一点（vnode_N 覆盖全部渲染元素），但需要验证：
+**验证结果**：
+- `autoui_vtree` 已完整展示所有 73 个渲染节点（无截断、无折叠）
+- 所有 `use`/`import` 的子组件（EditorPanel、NavTree）内部元素全部展开
+- VTree 节点级 diff 清晰展示变化（如 Edit 点击后：Save/Cancel 新增、📌/标题消失）
 
-- VTree 是否完整展开了所有层级（不截断、不折叠）
-- 子组件的 `view fn` fragment（如 NoteItem）是否内联展开
-- Agent 能否通过 diff 两次 VTree 快速判断哪些元素变化了
+**新增 `autoui_find` 工具（Task 7 实现）**：
 
-**实现方向**：
-- `autoui_vtree` 已返回完整树，确认 `depth` 参数默认无限制
-- 考虑新增一个 `autoui_diff` 工具或增强 `autoui_vtree` 的变化高亮
-- 确保 snapshot（AURA 文本格式）也完整展开子组件（当前 v2 styled_vtree 路径已覆盖）
+比 diff 整棵树更精准——Agent 按条件搜索特定组件，直接验证"某个元素是否存在"。
+
+搜索条件（全部可选，AND 组合）：
+- `kind`：节点类型（button, input, text, textarea, col, row, checkbox...）
+- `label`：对 label/content/value/placeholder 做大小写不敏感子串匹配
+- `limit`：最大返回数（默认 20）
+
+返回匹配节点的 Atom 格式（含 vnode_N ID 和路径深度缩进）。
+
+验证场景：
+- `autoui_find(kind=button, label=Edit)` → 精确找到 Edit 按钮
+- `autoui_find(kind=input)` → 找到搜索输入框
+- `autoui_find(label=Welcome)` → 找到按钮 + 文本节点
+- 编辑模式验证：点击 Edit 前 `autoui_find(label=Save)` → 不存在；点击后 → 存在 ✓
 
 ### Task 8: InspectorCache 合并 events 到 ComputedNodeLite
 
