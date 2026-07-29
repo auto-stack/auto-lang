@@ -326,38 +326,53 @@ fn devtools_subscription<C: Component + 'static>(w: &DevToolsWrapper<C>)
 
 ---
 
-## 7. 统一 AutoUI 测试声明格式（跨模式）
+## 7. 统一 AutoUI 测试声明格式（桌面 MCP 专属）
 
-### 7.1 设计原则
+### 7.1 定位与分层
 
-当前 015-notes 有三套独立测试（Playwright 17 个、VM headless 21 个、MCP ~13 个检查），场景声明分散在 `.spec.ts`、`.rs`、`.py` 中。问题：
-- 同一业务场景（如"点击 Edit → 验证 Save 出现"）在不同模式中重复实现
-- Playwright 断言依赖 DOM/CSS/API，无法直接用于 VM/Rust MCP
-- 新增模式（如 Rust MCP）需要从头编写测试
-
-**方案**：用 Auto 格式（`.at` 风格）声明统一的测试场景，描述**业务意图**而非具体操作。每种模式（Playwright/MCP）编写适配器执行同一套场景声明。
-
-### 7.2 声明格式：`.autotest` 文件
-
-每个 `.autotest` 文件描述一组测试场景。格式借鉴 `acceptance.atd` 的 Given/When/Then，但增加**操作原语**和**断言原语**使其可执行。
+测试体系分三层，各层职责清晰分离：
 
 ```
-# 015-notes.autotest — 跨模式 UI 测试场景声明
-# 每个场景用 Given/When/Then 描述业务意图，附带操作和断言原语。
-# 适配器（Playwright / MCP）将原语映射为具体工具调用。
+acceptance.atd（业务场景定义 — 所有模式共享的 single source of truth）
+       │
+       ├─→ smoke.spec.ts / accent-dark.spec.ts
+       │   （Playwright 实现 — Web 专属，保持不变）
+       │   覆盖 T1-T13，含 DOM/CSS/API/localStorage 断言
+       │
+       └─→ 015-notes.autotest（MCP 场景声明 — 桌面 VM/Rust 专属）
+              ├─→ MCP Adapter（Python）→ VM 模式 iced 窗口
+              └─→ MCP Adapter（Python）→ Rust 模式 iced 窗口
+              覆盖 T1-T13 的子集，用 find/action/exists/state 断言
+```
+
+**设计原则（方案 A）**：
+- `acceptance.atd` 是统一业务场景定义，所有模式共享，不修改
+- Playwright 测试（`.spec.ts`）保持不变，负责 Web 专属断言（CSS/API/DOM）
+- `.autotest` 是桌面 MCP 专属的场景声明，从 acceptance.atd 派生
+- 两套执行器并行存在，各自处理模式差异，不强制统一
+
+### 7.2 为什么 Playwright 不迁移到 `.autotest`
+
+Playwright 测试依赖大量 Web 专属能力，`.autotest` 无法表达：
+- `getComputedStyle` 读取按钮背景色 → T12 主题色 RGB 匹配
+- `page.request.get('/api/notes')` → T5 Save / T7 Delete 持久化验证
+- `localStorage.getItem('notes-accent-color')` → T12 持久化验证
+- `.ProseMirror` 可见性 → T1 Tiptap editor 验证
+- `page.on('pageerror')` → T13 控制台错误检查
+
+如果强行迁移，要么丢失这些断言能力，要么让 `.autotest` 原语集膨胀到重新发明测试框架。因此 `.autotest` 定位为桌面 MCP 专属，与 Playwright 并行。
+
+### 7.3 声明格式：`.autotest` 文件
+
+每个 `.autotest` 文件描述桌面 MCP 可执行的场景。格式借鉴 acceptance.atd 的 Given/When/Then，但增加**操作原语**和**断言原语**使其可被 MCP Adapter 直接执行。
+
+```
+# 015-notes.autotest — 桌面 MCP 测试场景声明（VM + Rust）
+# 从 acceptance.atd 的 T1-T13 派生，只包含 MCP 可执行的场景。
 
 suite "015-notes 核心流程"
 
 # ── 导航类 ──────────────────────────────────────────────
-
-scenario T1 "笔记切换更新编辑区"
-  given app_loaded
-  when  click_button label="Shopping List"
-  then  exists  text label="Milk"
-  # 模式差异标注：
-  #   web:  断言 .ProseMirror 可见
-  #   vm:   断言 textarea value 包含 "Milk"
-  #   rust: 断言 text vnode 包含 "Milk"
 
 scenario T2a "Pinned tab 无文件夹标题"
   when  click_button label="Pinned"
@@ -373,12 +388,11 @@ scenario T2c "Recent tab 无文件夹标题"
 
 # ── 编辑类 ──────────────────────────────────────────────
 
-scenario T5a "Edit 显示当前笔记内容"
-  given app_loaded
+scenario T5a "Edit 进入编辑模式"
   when  click_button label="Edit"
   then  exists  button label="Save"
   then  exists  button label="Cancel"
-  then  exists  input  label="Note title"   # placeholder 子串匹配
+  then  exists  input  label="Note title"
 
 scenario T5b "Cancel 返回只读模式"
   given editing_mode
@@ -386,124 +400,118 @@ scenario T5b "Cancel 返回只读模式"
   then  exists  button label="Edit"
   then  not_exists button label="Save"
 
-scenario T5c "Save 保存标题修改"
-  given editing_mode
-  when  type_text input label="Note title" value="Modified Title"
-  when  click_button label="Save"
-  then  exists  button label="Edit"
-  then  state   field="edit_title" equals=""    # 编辑模式退出后清空
-  #   web: 额外通过 API 验证持久化
-  #   vm:  通过 autoui_state(notes) 验证
-  #   rust: 通过 snapshot diff 验证
+scenario T5c "Edit 填充当前笔记内容"
+  when  click_button label="Edit"
+  then  inspect input label="Note title" has_value=true
 
 scenario T6 "New 创建新笔记"
   when  click_button label="New"
-  then  state field="notes" length_increased_by=1
-  #   web:  验证新笔记出现在列表
-  #   vm:   autoui_state(notes) len+1
-  #   rust: snapshot 节点数变化
+  then  snapshot_changed
+
+scenario T5d "输入标题"
+  given editing_mode
+  when  type_text input label="Note title" value="MCP Test"
+  then  state field="edit_title" equals="MCP Test"
+  skip_if rust  # Rust 模式无 autoui_state
+
+scenario T5e "Save 退出编辑模式"
+  given editing_mode
+  when  click_button label="Save"
+  then  exists  button label="Edit"
 
 # ── 主题类 ──────────────────────────────────────────────
 
 scenario T11 "Dark mode 切换"
   when  click_button label="Dark"
   then  state field="dark_mode" equals=true
+  skip_if rust
   when  click_button label="Light"
   then  state field="dark_mode" equals=false
-  #   web:  额外断言 .dark class
-  #   vm:   autoui_state(dark_mode)
-  #   rust: snapshot diff（无 state 工具）
+  skip_if rust
 
 scenario T12 "主题色切换"
-  when  click_button label="" kind="button"   # 色块无 label，需其他定位方式
-  then  state field="accent_color" changed
-  #   web:  getComputedStyle RGB 验证
-  #   vm:   autoui_state(accent_color)
-  #   rust: 截图像素分析（暂不支持）
+  when  click_button label="Dark"   # 先切到 dark 确认按钮文本
+  when  click_button label="Light"
+  then  state field="accent_color" equals="indigo"
+  skip_if rust
 ```
 
-### 7.3 原语定义
+### 7.4 原语定义
 
 **操作原语（When）**：
 
-| 原语 | 参数 | Playwright 适配 | MCP 适配 |
-|------|------|----------------|---------|
-| `click_button` | `label="X"` | `locator('button:has-text("X")').click()` | `autoui_find(button,X)` → `autoui_action(vnode_N, press)` |
-| `type_text` | `input label="X" value="Y"` | `locator('input[placeholder*="X"]').fill("Y")` | `autoui_find(input,X)` → `autoui_action(vnode_N, type_text, Y)` |
-| `press_key` | `key="Enter"` | `page.keyboard.press("Enter")` | `autoui_keyboard(key=Enter)` |
+| 原语 | 参数 | MCP 工具调用 |
+|------|------|-------------|
+| `click_button` | `label="X"` | `autoui_find(button,X)` → `autoui_action(vnode_N, press)` |
+| `type_text` | `input label="X" value="Y"` | `autoui_find(input,X)` → `autoui_action(vnode_N, type_text, Y)` |
+| `press_key` | `key="Enter"` | `autoui_keyboard(key=Enter)` |
 
 **断言原语（Then）**：
 
-| 原语 | 参数 | Playwright 适配 | MCP 适配 |
-|------|------|----------------|---------|
-| `exists` | `kind label="X"` | `expect(locator).toBeVisible()` | `autoui_exists(kind,label)` → FOUND |
-| `not_exists` | `kind label="X"` | `expect(locator).toHaveCount(0)` | `autoui_exists(kind,label)` → NOT FOUND |
-| `state` | `field="X" equals=Y` | API 调用或 DOM 检查 | `autoui_state(fields=["X"])` |
-| `state` | `field="X" length_increased_by=N` | API 列表长度 | `autoui_state(fields=["X"])` 比较 |
-| `state` | `field="X" changed` | 前后值比较 | 前后 `autoui_state` 比较 |
+| 原语 | 参数 | MCP 工具调用 |
+|------|------|-------------|
+| `exists` | `kind label="X"` | `autoui_exists(kind,label)` → 期望 FOUND |
+| `not_exists` | `kind label="X"` | `autoui_exists(kind,label)` → 期望 NOT FOUND |
+| `state` | `field="X" equals=Y` | `autoui_state(fields=["X"])` → 比较 |
+| `inspect` | `kind label="X" has_value=true` | `autoui_find(kind,X)` → `autoui_inspect(vnode_N)` → 检查 value 非空 |
+| `snapshot_changed` | — | 前后 `autoui_snapshot` 比较节点数/内容 |
 
 **前置条件（Given）**：
 
-| 原语 | 含义 |
+| 原语 | 含义 | MCP 实现 |
+|------|------|---------|
+| `app_loaded` | 应用已启动 | 启动时自动满足（MCP 连接即说明已渲染） |
+| `editing_mode` | 已进入编辑模式 | 前置 `click_button label="Edit"` |
+
+**模式跳过**：
+
+| 语法 | 含义 |
 |------|------|
-| `app_loaded` | 应用已启动并渲染完成 |
-| `editing_mode` | 已进入编辑模式（Edit 按钮已点击） |
+| `skip_if rust` | Rust 模式跳过此断言（autoui_state 不可用） |
+| `skip_if vm` | VM 模式跳过此断言 |
 
-### 7.4 模式差异处理
+### 7.5 已知场景覆盖差异
 
-场景声明中用 `# 模式差异标注` 注释说明各模式的特殊断言。适配器执行时：
-- 共享的操作和断言原语自动执行
-- 模式专属的断言由适配器条件执行（如 Playwright 额外检查 CSS，MCP 额外检查 state）
+acceptance.atd 有 13 个场景（T1-T13），MCP 可执行的子集：
 
-**已知不兼容项**（场景声明中标注 `skip_if`）：
-
-| 场景 | 不兼容模式 | 原因 | 替代方案 |
-|------|-----------|------|---------|
-| T1 `.ProseMirror` 断言 | VM/Rust | 无 Tiptap | 改用 textarea value 断言 |
-| T5c API 持久化验证 | VM(merged) | 无 HTTP | 用 `autoui_state(notes)` 验证 |
-| T12 RGB 验证 | VM/Rust | 无 getComputedStyle | 用 `autoui_state(accent_color)` 或截图 |
-| T13 控制台错误 | VM/Rust | 无浏览器控制台 | 检查 stderr 日志 |
-
-### 7.5 适配器架构
-
-```
-.autotest 声明文件（场景 + 原语）
-         │
-    ┌─────┴─────┐
-    ▼           ▼
- Playwright    MCP
- Adapter       Adapter
- (.ts)         (.py)
-    │           │
-    ▼           ▼
- 浏览器       iced 窗口 (VM/Rust)
-```
-
-- **Playwright Adapter**（`.ts`）：解析 `.autotest`，将原语映射为 Playwright API 调用
-- **MCP Adapter**（`.py`）：解析 `.autotest`，将原语映射为 MCP JSON-RPC 调用
-- 两个适配器共享同一份 `.autotest` 声明，各自处理模式差异
+| 场景 | MCP 可执行？ | 说明 |
+|------|-------------|------|
+| T1 笔记切换 | ⚠️ 部分 | 可点击笔记，但 ProseMirror 断言不可用；改用 inspect textarea value |
+| T2 View tabs | ✅ | find + exists 完全覆盖 |
+| T3 搜索 | ❌ skip | 搜索功能未实现（sidebar.at 无 oninput） |
+| T4 Tag 筛选 | ⚠️ | all_tags 当前为空，tag 筛选按钮不存在 |
+| T5 Edit/Save/Cancel | ✅ | find + action + exists + state 完全覆盖 |
+| T6 New | ✅ | click + snapshot_changed |
+| T7 Delete | ✅ | click + snapshot_changed |
+| T8 Pin 切换 | ⚠️ | pin 按钮在编辑模式显示，可点击但验证依赖 state |
+| T9 Tag 添加 | ⚠️ | "+ tag" 按钮存在，交互链复杂 |
+| T10 文件夹新建 | ✅ | click "+" button |
+| T11 Dark mode | ✅ vm / ⚠️ rust | VM 用 state，Rust 用 snapshot diff |
+| T12 主题色 | ✅ vm / ⚠️ rust | VM 用 state(accent_color)，Rust 无法验证 RGB |
+| T13 控制台错误 | ❌ skip | 无浏览器控制台 |
 
 ### 7.6 实施计划
 
-#### Task 15: 定义 `.autotest` 格式规范 + 解析器
+#### Task 15: 定义 `.autotest` 格式规范 + Python 解析器
 
-- 编写格式规范文档（原语定义、语法、模式差异标注）
-- 实现 Python 解析器（`.autotest` → 场景对象列表）
-- 先支持 MCP Adapter，后续再支持 Playwright Adapter
+- 编写 `.autotest` 语法规范（原语定义、skip_if 语法、注释）
+- 实现 Python 解析器（`.autotest` → 场景对象列表，每场景含 steps 列表）
+- 解析器输出 JSON 结构，供 MCP Adapter 消费
 
-#### Task 16: MCP Adapter 执行器
+#### Task 16: MCP Adapter 执行器（Python）
 
-- 实现场景执行器：解析原语 → 调用 MCP 工具 → 收集结果
-- 处理 `skip_if`（VM 模式跳过 API 验证，Rust 模式跳过 state 验证）
-- 输出测试报告（PASS/FAIL/SKIP + 原因）
+- 实现场景执行器：解析原语 → 调用 MCP JSON-RPC 工具 → 收集结果
+- 处理 `skip_if`（Rust 模式跳过 state 断言）
+- 处理 `given` 前置条件（自动执行前置操作）
+- 输出测试报告（PASS/FAIL/SKIP + 详细原因）
 
 #### Task 17: 编写 015-notes 的 `.autotest` 文件
 
-- 将 acceptance.atd 的 T1-T13 场景转换为 `.autotest` 格式
-- 标注模式差异
-- 在 VM 模式和 Rust 模式中分别执行验证
+- 从 acceptance.atd 的 T1-T13 派生 MCP 可执行子集
+- 标注 skip_if 和模式差异
+- 在 VM 模式执行验证（Rust 模式待 a2r 重新生成后验证）
 
-#### Task 18: Playwright Adapter（可选，后续）
+#### Task 18: 更新 acceptance.atd
 
-- 将现有 `smoke.spec.ts` / `accent-dark.spec.ts` 迁移为 `.autotest` 驱动
-- 或保持现有 Playwright 测试不变，仅 MCP Adapter 使用 `.autotest`
+- 在 acceptance.atd 的 D7 条目更新 Rust 平台状态：Rust ❌→✅（MCP 已支持）
+- 添加引用：指向 `.autotest` 文件作为桌面 MCP 执行声明
