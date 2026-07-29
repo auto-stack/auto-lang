@@ -4578,7 +4578,6 @@ mod plan370_store_vm_tests;
 
 #[cfg(test)]
 mod plan367_viewfn_tests;
-
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan370_015_behavior_tests;
 
