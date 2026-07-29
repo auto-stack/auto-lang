@@ -357,7 +357,7 @@ impl SkillTool {
         return self.parameters_cache.clone();
     }
     pub async fn execute(&self, args: JsonValue) -> Result<String, ToolError> {
-        let v = args.get(&"skill_name").as_string();
+        let v = a2r_std::json::as_string_opt(args.get(&"skill_name"));
         if v.is_empty() {
             return Err(Box::new(ToolError::Args("missing 'skill_name' argument")));
         }

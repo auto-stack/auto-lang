@@ -4232,6 +4232,23 @@ impl RustTrans {
 
         // Also handle Expr::Dot method calls (parser emits Dot for method calls)
         if let Expr::Dot(object, method_name) = call.name.as_ref() {
+            // Plan 371 (defect B): Optional method dispatch. Auto's VM lets you
+            // call `.as_string()` on a `JsonValue?` (None -> "", Some(v) -> v.as_string()).
+            // Rust's Option has no such method. The common pattern is
+            // `<json>.get(key).as_string()` where get returns Option<&Value>.
+            // Detect that and lower to the runtime helper as_string_opt.
+            // The receiver `args.get("path")` is an Expr::Call whose name is
+            // Expr::Dot(_, "get") — match on that.
+            if method_name.as_str() == "as_string"
+                && call.args.args.is_empty()
+                && matches!(object.as_ref(), Expr::Call(c) if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
+            {
+                self.a2r_std_used.set(true);
+                write!(out, "a2r_std::json::as_string_opt(")?;
+                self.expr(object, out)?;
+                write!(out, ")")?;
+                return Ok(());
+            }
             // Plan 162: Pointer intrinsic methods (only unique names that won't conflict)
             // ptr.is_null() -> ptr.is_null()
             // ptr.is_not_null() -> !ptr.is_null()
