@@ -1,0 +1,61 @@
+widget App {
+    use {
+        // (a) hand-written TS utils — callable from computed and on blocks
+        fn: greet, farewell from "src/front/utils/greet.ts"
+        // (b) hand-written Vue component — instantiable in the view with
+        // props and emit listeners; plus an npm component (lucide icon)
+        component: FancyBadge from "src/front/components/FancyBadge.vue"
+        component: Smile from "lucide-vue-next"
+        // (c) hand-written composable — called once at <script setup> top
+        // level, return value bound to `const clock`
+        composable: useClock from "src/front/composables/useClock.ts"
+    }
+
+    msg Msg { Greet, BadgePicked }
+
+    model {
+        var name str = "auto"
+        var message str = "click the button"
+        var ticks int = 0
+    }
+
+    computed {
+        greeting => greet(name)
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "029 — external imports" { class: "text-xl font-bold" }
+
+            row {
+                class: "items-center space-x-2",
+                Smile { class: "w-5 h-5 text-emerald-600" }
+                text f"greeting: ${.greeting}" { class: "text-gray-700" }
+            }
+
+            FancyBadge {
+                label: .message,
+                onselected: .BadgePicked
+            }
+
+            button "greet me" {
+                class: "px-3 py-1 bg-blue-600 text-white rounded",
+                onclick: .Greet
+            }
+
+            text f"${.message}" { class: "text-sm text-gray-500" }
+        }
+    }
+
+    on {
+        .Greet -> {
+            .ticks = .ticks + 1
+            .message = clock.stamp()
+        }
+        .BadgePicked -> {
+            .message = farewell("badge")
+        }
+    }
+}
