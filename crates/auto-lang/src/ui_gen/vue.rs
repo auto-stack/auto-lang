@@ -1646,6 +1646,22 @@ impl VueGenerator {
                     }
                 }
             }
+            // Fallback: the emit() call passes handler params (see below), so a
+            // handler with declared params but no msg payload type must still
+            // declare matching payload arity — otherwise vue-tsc reports
+            // "Expected 1 arguments, but got 2" on the emit('X', arg) call.
+            for (pattern, params) in &widget.handler_params {
+                if params.is_empty() {
+                    continue;
+                }
+                let name = pattern.trim_start_matches('.');
+                if self.emit_events.contains(&name.to_string())
+                    && !event_payload_types.contains_key(name)
+                {
+                    let any_params: Vec<&str> = params.iter().map(|_| "any").collect();
+                    event_payload_types.insert(name.to_string(), any_params.join(", "));
+                }
+            }
 
             script.push_str("const emit = defineEmits<{\n");
             for event in &self.emit_events {
@@ -4302,6 +4318,22 @@ impl VueGenerator {
                 let index_str = self.expr_to_vue_text_raw(index)?;
                 Ok(format!("{}[{}]", target_str, index_str))
             }
+            Expr::FStr(fstr) => {
+                // f-string as text content: literal parts stay raw,
+                // interpolated expressions become {{ }} Vue mustaches.
+                // (Previously fell through to the "value" placeholder.)
+                let mut out = String::new();
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => out.push_str(s.as_str()),
+                        other => {
+                            let raw = self.expr_to_vue_text_raw(other)?;
+                            out.push_str(&format!("{{{{ {} }}}}", raw));
+                        }
+                    }
+                }
+                Ok(out)
+            }
             Expr::Bina(left, _, right) => {
                 let left_str = self.expr_to_vue_text_raw(left)?;
                 let right_str = self.expr_to_vue_text_raw(right)?;
@@ -4365,9 +4397,9 @@ impl VueGenerator {
         // use the raw version and wrap at the end.
         let raw = self.expr_to_vue_text_raw(expr)?;
         // If the raw result already contains {{ (e.g., from convert_template_to_vue),
-        // or is a plain literal string, return as-is.
+        // or is a plain literal string / f-string, return as-is.
         // Otherwise wrap in {{ }}.
-        if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+        if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)) {
             Ok(raw)
         } else {
             Ok(format!("{{{{ {} }}}}", raw))
