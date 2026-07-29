@@ -1644,12 +1644,7 @@ fn execute_action_vnode(
     let vnode = snap.vtree.get(vnode_id)
         .ok_or_else(|| format!("VNode not found: vnode_{}", vnode_id.as_u64()))?;
 
-    let view = shared.view.as_ref()
-        .ok_or_else(|| "No view available yet".to_string())?;
-    let target_view = find_view_by_path(view, &vnode.path)
-        .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
-
-    // Validate action type
+    // Validate action type by VNode kind (works for both VM and Rust mode)
     let action_name = match &action {
         UiActionType::Press => "press",
         UiActionType::TypeText | UiActionType::Clear => "type",
@@ -1657,22 +1652,18 @@ fn execute_action_vnode(
         UiActionType::SelectOption => "select",
         UiActionType::SetValue => "set_value",
     };
-    let kind = view_kind_str(target_view);
+    let vnode_kind_str = format!("{}", vnode.kind);
     match &action {
-        UiActionType::Press if kind != "Button" =>
-            return Err(format!("Action 'press' not valid for component type '{}'", kind)),
-        UiActionType::TypeText if kind != "Input" && kind != "Textarea" =>
-            return Err(format!("Action 'type_text' not valid for component type '{}'", kind)),
-        UiActionType::Toggle if kind != "Checkbox" =>
-            return Err(format!("Action 'toggle' not valid for component type '{}'", kind)),
+        UiActionType::Press if vnode_kind_str != "Button" =>
+            return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
+        UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
+            return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),
+        UiActionType::Toggle if vnode_kind_str != "Checkbox" =>
+            return Err(format!("Action 'toggle' not valid for component type '{}'", vnode_kind_str)),
         _ => {}
     }
 
-    // Extract handler from the View's DynamicMessage
-    let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
-        .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
-
-    // Build input_value for type_text
+    // Build input_value for type_text/clear
     let input_value = match &action {
         UiActionType::TypeText => Some(
             value.as_ref()
@@ -1686,29 +1677,64 @@ fn execute_action_vnode(
         _ => None,
     };
 
-    // Use the widget_name from the DynamicMessage (e.g. "EditorPanel") — NOT
-    // shared.widget_name ("App"). This is the key fix: child widget buttons
-    // route to the correct handler namespace.
-    let widget = if widget_name.is_empty() {
-        shared.widget_name.clone()
+    // Plan 371 Task 12: extract event name. For VM mode, the View tree
+    // carries DynamicMessage with explicit event names. For Rust mode
+    // (no shared.view), derive the event name from the VNode's label —
+    // the devtools_update handler matches by Debug-format substring.
+    let (widget, event) = if let Some(view) = shared.view.as_ref() {
+        // VM mode: extract from DynamicMessage
+        let target_view = find_view_by_path(view, &vnode.path)
+            .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
+        let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
+            .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
+        let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
+        (widget, event_name)
     } else {
-        widget_name.clone()
+        // Rust mode: derive event name from VNode label.
+        // For buttons: use the label as the event name (e.g. "+ New" → "NewNote").
+        // For inputs: use a generic "Changed" suffix.
+        let label = vnode_searchable_text(&vnode.props);
+        let event = derive_event_name_from_label(&label, &vnode_kind_str, action_name);
+        (shared.widget_name.clone(), event)
     };
 
     let msg = ActionMessage {
         widget,
-        event: event_name.clone(),
+        event: event.clone(),
         input_value,
     };
     shared.send_action(msg)?;
 
     Ok(ActionResult {
         status: "ok".to_string(),
-        element_id: AuraNodeId(0), // Placeholder — vnode_N doesn't map to AuraNodeId
+        element_id: AuraNodeId(0),
         action: action.to_string(),
-        handler: Some(format!(".{}", event_name)),
+        handler: Some(format!(".{}", event)),
         state_changes: vec![],
     })
+}
+
+/// Plan 371: derive an event name from a VNode's label for Rust mode action dispatch.
+/// In Rust mode, the View tree uses strongly-typed C::Msg (not DynamicMessage),
+/// so we can't extract event names directly. Instead, we use the node's label
+/// to match against C::Msg's Debug format in devtools_update's find_msg_by_event_name.
+fn derive_event_name_from_label(label: &str, kind: &str, action_name: &str) -> String {
+    // In Rust mode, find_msg_by_event_name does a Debug-format substring
+    // match on C::Msg. The generated enum variants typically contain the
+    // meaningful words from the label (e.g. "New" matches AppMsg::NewNote).
+    // Skip common non-meaningful prefixes like "+", "×", "📌".
+    let clean: String = label
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if clean.is_empty() {
+        action_name.to_string()
+    } else {
+        // Use the first meaningful word.
+        clean.split_whitespace().next().unwrap_or(&clean).to_string()
+    }
 }
 
 

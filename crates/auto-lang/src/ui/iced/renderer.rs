@@ -6281,10 +6281,23 @@ struct DevToolsState {
     devtools_panel_width: std::cell::RefCell<f32>,
     inspector_split_ratio: std::cell::RefCell<f32>,
     dragging_inner_divider: std::cell::RefCell<bool>,
+    // Plan 371 Task 11: MCP support for rust mode
+    mcp_shared: std::cell::RefCell<Option<crate::ui::mcp_server::SharedStateHandle>>,
+    mcp_widget_name: String,
 }
 
 impl Default for DevToolsState {
     fn default() -> Self {
+        // Plan 371 Task 11: start MCP server for rust mode
+        let port = crate::ui::mcp_server::mcp_port();
+        let widget_name = "App".to_string();
+        let (mcp_shared, mcp_action_rx) =
+            crate::ui::mcp_server::start_mcp_server(widget_name.clone(), port);
+        // Store the action receiver in the global for devtools_subscription to drain
+        {
+            let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+            *guard.lock().unwrap() = Some(mcp_action_rx);
+        }
         DevToolsState {
             debug_mode: false,
             devtools_open: std::cell::RefCell::new(false),
@@ -6297,6 +6310,8 @@ impl Default for DevToolsState {
             devtools_panel_width: std::cell::RefCell::new(420.0),
             inspector_split_ratio: std::cell::RefCell::new(0.42),
             dragging_inner_divider: std::cell::RefCell::new(false),
+            mcp_shared: std::cell::RefCell::new(Some(mcp_shared)),
+            mcp_widget_name: widget_name,
         }
     }
 }
@@ -6649,6 +6664,18 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             self.inner.view().map_msg(WrapperMsg::<C>::Inner),
             |_| None,
         );
+
+        // Plan 371 Task 11: sync VTree to MCP SharedState so MCP tools
+        // (snapshot/vtree/find/exists) work in rust mode.
+        if let Some(ref mcp_shared) = *self.dt.mcp_shared.borrow() {
+            let snap = crate::ui::mcp_server::StyledNodeSnapshot {
+                widget_name: self.dt.mcp_widget_name.clone(),
+                vtree: tree.clone(),
+                computed: std::collections::HashMap::new(),
+            };
+            mcp_shared.lock().unwrap().set_styled_vtree(snap);
+        }
+
         *self.dt.live_vtree.borrow_mut() = Some(tree);
 
         // Walk the view again to fill the inspector cache (style + insets).
@@ -6686,14 +6713,94 @@ fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Elemen
 fn devtools_update<C: Component + 'static>(
     w: &mut DevToolsWrapper<C>,
     msg: WrapperMsg<C>,
-) -> iced::Task<WrapperMsg<C>> {
+) -> iced::Task<WrapperMsg<C>>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(s) => {
+            // Plan 371 Task 12: handle MCP actions by finding the matching
+            // C::Msg in the View tree and dispatching it to inner.on().
+            if let Some(rest) = s.strip_prefix("__mcp_action|") {
+                let parts: Vec<&str> = rest.splitn(2, '|').collect();
+                let event_name = parts.get(0).unwrap_or(&"");
+                let input_value = parts.get(1).filter(|v| !v.is_empty());
+
+                // Search the View tree for a node with a matching event handler.
+                let view = w.inner.view();
+                if let Some(msg) = find_msg_by_event_name::<C>(&view, event_name, input_value.copied()) {
+                    w.inner.on(msg);
+                }
+                return iced::Task::none();
+            }
             apply_debug_event(&mut w.dt, &s);
         }
     }
     iced::Task::none()
+}
+
+/// Plan 371 Task 12: search a View<C::Msg> tree for a button/input/textarea
+/// whose handler matches the given event name, and return the C::Msg to dispatch.
+/// For buttons: matches by Debug formatting of the msg (e.g. "Edit" in AppMsg::Edit).
+/// For inputs: returns the msg with input_value encoded.
+fn find_msg_by_event_name<C: Component + 'static>(
+    view: &AbstractView<C::Msg>,
+    event_name: &str,
+    _input_value: Option<&str>,
+) -> Option<C::Msg>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    // Walk the view tree looking for buttons/inputs whose handler matches.
+    fn walk<M: Clone + Debug>(
+        view: &AbstractView<M>,
+        event_name: &str,
+    ) -> Option<M> {
+        match view {
+            AbstractView::Button { onclick, .. } => {
+                let dbg = format!("{:?}", onclick);
+                if dbg.contains(event_name) {
+                    return Some(onclick.clone());
+                }
+            }
+            AbstractView::Input { on_change, .. } | AbstractView::Textarea { on_change, .. } => {
+                if let Some(msg) = on_change {
+                    let dbg = format!("{:?}", msg);
+                    if dbg.contains(event_name) {
+                        return Some(msg.clone());
+                    }
+                }
+            }
+            AbstractView::Checkbox { on_toggle, .. } => {
+                if let Some(msg) = on_toggle {
+                    let dbg = format!("{:?}", msg);
+                    if dbg.contains(event_name) {
+                        return Some(msg.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+        let children = extract_view_children(view);
+        for child in &children {
+            if let Some(msg) = walk(child, event_name) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+    walk(view, event_name)
+}
+
+/// Extract children from a View (mirrors vnode_converter's extract_children).
+fn extract_view_children<M: Clone + Debug>(view: &AbstractView<M>) -> Vec<AbstractView<M>> {
+    match view {
+        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => children.clone(),
+        AbstractView::Grid { cells, .. } => cells.clone(),
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => vec![(**child).clone()],
+        _ => Vec::new(),
+    }
 }
 
 /// iced `subscription` callback for `run_app_devtools`: forwards the inner
@@ -6705,6 +6812,29 @@ where
     C::Msg: Send + 'static,
 {
     let inner = w.inner.subscription().map(WrapperMsg::Inner);
+    // Plan 371 Task 13: drain MCP actions into WrapperMsg::Debug events.
+    // The MCP thread sends ActionMessage { widget, event, input_value };
+    // we encode as "__mcp_action|event|input_value" for devtools_update
+    // to resolve against the inner component's View tree.
+    let mcp = iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        if let Some(rx) = lock.as_mut() {
+            match rx.try_recv() {
+                Ok(action) => {
+                    // Encode: __mcp_action|<event>|<input_value_or_empty>
+                    let payload = match &action.input_value {
+                        Some(v) => format!("__mcp_action|{}|{}", action.event, v),
+                        None => format!("__mcp_action|{}|", action.event),
+                    };
+                    Some(WrapperMsg::<C>::Debug(payload))
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
+    });
     let f12 = iced::event::listen_with(|event, _status, _window_id| {
         if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event {
             if matches!(
@@ -6728,7 +6858,7 @@ where
         }
         _ => None,
     });
-    iced::Subscription::batch(vec![inner, f12, win])
+    iced::Subscription::batch(vec![inner, f12, win, mcp])
 }
 
 /// Run a rust-mode Component with the F12 DevTools layer (Plan 311).
