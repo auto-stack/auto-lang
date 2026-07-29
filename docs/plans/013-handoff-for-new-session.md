@@ -1,5 +1,20 @@
 # Plan 013 交接摘要（用于新会话续开发）
 
+> ⚠️ **2026-07-29 状态更新（请先读本条）**：本文件下文是 **2026-07-24 的历史
+> 快照**，若干结论已被后续工作**超越/推翻**：
+> - 阶段 3 已**全部 35 个 .at 文件移植完成**（非下文说的 24/26）。
+> - **agent.at 的 ReAct 循环已完整移植**（轮询式，绕过 dyn-Fn/闭包——见下文
+>   §C/D 的纠正，该判断是对的）。
+> - 原 F.3 的"~344 个 cargo 错误阻塞"**已解决**：plan 372（3 个系统性 a2r 根因）
+>   + plan 373（B1 类细节）+ plan-373-followup（manifest + post_process backport）
+>   让 `crates/auto-ai-agent/rust/` 达到 **cargo check 0 错 + cargo run 跑通真实
+>   ReAct 问答**。**Auto 版 ReAct MVP 已达成。**
+> - 当前进度与剩余差距的权威记录已迁到 **`013-auto-ai-port-to-auto.md` 文末
+>   「★ MVP 里程碑与剩余差距」**。**新会话请直接读那一节**，本文件仅作历史参考。
+>
+> 下文保留以备追溯（含 parser 限制根因分析、auto-coder 参考索引、流式路线图，
+> 仍有价值）。
+
 > **2026-07-24 续作更新**：阶段 3 又完成 **roles / skill / workflow_validator /
 > orchestration/{budget,flow,handoff,pipeline,driver,mod} / agent（部分） /
 > workflow（占位）/ lib.at** 共 12 个文件。全部 `auto trans ... rust` 通过。
