@@ -1,0 +1,21 @@
+""" The Tester role — writes/runs tests, verifies behavior.
+ Auto port of builtin_roles/tester.rs.
+ Soul ported verbatim from AutoForge's relay/souls/tester.md. Defaults
+ (max_turns=40, mid-tier model, moderate temperature) follow AutoForge.
+"""
+
+use role_def: Role
+use ai_config: ModelTier
+
+""" Soul marker (full soul loaded from resources in Rust original).
+"""
+const SOUL = "Soul of the Tester"
+
+/// The Tester: produces tests, runs them, and reports failures precisely.
+pub type Tester has Role {
+    pub fn name() str { return "tester" }
+    pub fn system_prompt() str { return SOUL }
+    pub fn model_tier() ModelTier { return ModelTier.Mid }
+    pub fn temperature() float { return 0.3 }
+    pub fn max_turns() uint { return 40 }
+}

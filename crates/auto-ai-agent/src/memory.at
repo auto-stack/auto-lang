@@ -147,17 +147,20 @@ ext Memory {
         return -1
     }
 
-    /// Return a copy of `messages` with the half-open range [from, to) removed.
-    fn remove_range(from int, to int) List<Message> {
+    /// Return a copy of `messages` with the half-open range [from, up_to) removed.
+    ///
+    /// NOTE: the Rust param is named `to`, but `to` is a reserved keyword in
+    /// Auto (range syntax) — renamed to `up_to` (plan 013 rule 16).
+    fn remove_range(from int, up_to int) List<Message> {
         var out List<Message> = []
         var i = 0
         for m in self.messages {
-            // Keep messages OUTSIDE [from, to). (Auto's parser doesn't accept
-            // `||` in conditions; use nested if/else.)
+            // Keep messages OUTSIDE [from, up_to). (Nested if/else; || also
+            // works in current parser but nested form is left as-is.)
             if i < from {
                 out.push(m)
             } else {
-                if i >= to {
+                if i >= up_to {
                     out.push(m)
                 }
             }

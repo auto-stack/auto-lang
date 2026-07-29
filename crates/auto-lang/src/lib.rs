@@ -3509,13 +3509,68 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                         sib_parser.skip_check = true;
                         if let Ok(sib_ast) = sib_parser.parse() {
                             for stmt in &sib_ast.stmts {
-                                if let crate::ast::Stmt::TypeDecl(td) = stmt {
-                                    let field_names: Vec<auto_val::AutoStr> = td.members.iter()
-                                        .map(|m| m.name.clone()).collect();
-                                    if !field_names.is_empty()
-                                        && !trans.struct_fields().contains_key(&td.name)
-                                    {
-                                        trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                match stmt {
+                                    crate::ast::Stmt::TypeDecl(td) => {
+                                        let field_names: Vec<auto_val::AutoStr> = td.members.iter()
+                                            .map(|m| m.name.clone()).collect();
+                                        if !field_names.is_empty()
+                                            && !trans.struct_fields().contains_key(&td.name)
+                                        {
+                                            trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                        }
+                                    }
+                                    // Plan 371 (defect A): pre-populate spec names from
+                                    // sibling .at files so cross-module specs (e.g.
+                                    // `use role_def: Role` then `role Role`) resolve to
+                                    // Type::Spec (-> Box<dyn X>) on the single-file path.
+                                    crate::ast::Stmt::SpecDecl(sd) => {
+                                        let name = sd.name.clone();
+                                        if !trans.spec_decls_mut().contains_key(&name) {
+                                            trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                        }
+                                    }
+                                    // Plan 372 follow-up: pre-populate enum names from
+                                    // sibling .at files so cross-module enum errors like
+                                    // `Err(AgentError::Config(...))` don't get wrongly
+                                    // Box::new'd (AgentError lives in error.at, not the
+                                    // file being transpiled).
+                                    crate::ast::Stmt::EnumDecl(ed) => {
+                                        trans.known_enum_names_mut().insert(ed.name.clone());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Plan 372 follow-up: also scan the grandparent directory (one level up)
+        // to catch enums/specs defined in sibling directories (e.g. error.at in
+        // src/ when transpiling orchestration/driver.at in src/orchestration/).
+        if let Some(grandparent) = parent.parent() {
+            if let Ok(entries) = std::fs::read_dir(grandparent) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if entry_path == std::path::Path::new(path) { continue; }
+                        if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                            let mut sib_parser = Parser::from(sibling_code.as_str());
+                            sib_parser.set_dest(crate::parser::CompileDest::TransRust);
+                            sib_parser.skip_check = true;
+                            if let Ok(sib_ast) = sib_parser.parse() {
+                                for stmt in &sib_ast.stmts {
+                                    match stmt {
+                                        crate::ast::Stmt::EnumDecl(ed) => {
+                                            trans.known_enum_names_mut().insert(ed.name.clone());
+                                        }
+                                        crate::ast::Stmt::SpecDecl(sd) => {
+                                            let name = sd.name.clone();
+                                            if !trans.spec_decls_mut().contains_key(&name) {
+                                                trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                            }
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }

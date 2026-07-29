@@ -365,6 +365,20 @@ impl RustTrans {
         &mut self.struct_fields
     }
 
+    /// Mutable access to the spec_decls cache (plan 371 defect A: lets callers
+    /// pre-populate spec names from sibling files so cross-module specs resolve
+    /// to Type::Spec / Box<dyn X> on the single-file transpile path).
+    pub fn spec_decls_mut(&mut self) -> &mut HashMap<AutoStr, Vec<SpecMethod>> {
+        &mut self.spec_decls
+    }
+
+    /// Mutable access to known_enum_names (plan 372 follow-up: lets callers
+    /// pre-populate enum names from sibling files so cross-module enum errors
+    /// like `Err(AgentError::Config(...))` don't get wrongly Box::new'd).
+    pub fn known_enum_names_mut(&mut self) -> &mut std::collections::HashSet<AutoStr> {
+        &mut self.known_enum_names
+    }
+
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
     }
@@ -870,7 +884,20 @@ impl RustTrans {
                 // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
             }
-            Type::User(usr) => self.qualify_type_name(&usr.name.to_string()),
+            Type::User(usr) => {
+                // Plan 371 (defect A): if this bare User type name is actually a
+                // known spec (from this file's pre-scan OR a sibling .at file's
+                // pre-populated spec_decls), emit Box<dyn X> — the parser failed
+                // to mark it Type::Spec because the spec lives in another module
+                // / was declared later. Without this, `role Role` (Role a spec)
+                // emits bare `Role` (E0782). Mirrors what Type::Spec does (below).
+                let name = usr.name.to_string();
+                if self.spec_decls.contains_key(name.as_str()) {
+                    format!("Box<dyn {}>", name)
+                } else {
+                    self.qualify_type_name(&name)
+                }
+            }
             Type::Enum(en) => self.qualify_type_name(&en.borrow().name.to_string()),
             Type::Spec(spec) => format!("Box<dyn {}>", spec.borrow().name), // Spec 作为类型标注 → Box<dyn Trait>
             Type::Union(u) => u.name.to_string(),
@@ -4212,6 +4239,23 @@ impl RustTrans {
 
         // Also handle Expr::Dot method calls (parser emits Dot for method calls)
         if let Expr::Dot(object, method_name) = call.name.as_ref() {
+            // Plan 371 (defect B): Optional method dispatch. Auto's VM lets you
+            // call `.as_string()` on a `JsonValue?` (None -> "", Some(v) -> v.as_string()).
+            // Rust's Option has no such method. The common pattern is
+            // `<json>.get(key).as_string()` where get returns Option<&Value>.
+            // Detect that and lower to the runtime helper as_string_opt.
+            // The receiver `args.get("path")` is an Expr::Call whose name is
+            // Expr::Dot(_, "get") — match on that.
+            if method_name.as_str() == "as_string"
+                && call.args.args.is_empty()
+                && matches!(object.as_ref(), Expr::Call(c) if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
+            {
+                self.a2r_std_used.set(true);
+                write!(out, "a2r_std::json::as_string_opt(")?;
+                self.expr(object, out)?;
+                write!(out, ")")?;
+                return Ok(());
+            }
             // Plan 162: Pointer intrinsic methods (only unique names that won't conflict)
             // ptr.is_null() -> ptr.is_null()
             // ptr.is_not_null() -> !ptr.is_null()
@@ -5793,9 +5837,25 @@ impl RustTrans {
                                 .copied()
                                 .unwrap_or(false)
                         };
+                        // Plan 371 (defect C): the i+1 lookahead above reads the
+                        // NEXT param's flag, which wrongly flags enum/struct args
+                        // as str params. Guard: only auto-borrow when the arg is
+                        // genuinely a string-like value (a str literal, or a local
+                        // var whose type is a str variant). Enum/struct/int args
+                        // are skipped regardless of the flag.
+                        let arg_is_str_like = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                            || self.is_str_slice_var(arg)
+                            || if let Expr::Ident(name) = expr {
+                                self.local_var_types.get(name).map(|ty| matches!(
+                                    ty,
+                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+                                )).unwrap_or(false)
+                            } else {
+                                false
+                            };
                         if is_str_param
-                            && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _))
-                            && !self.is_str_slice_var(arg)
+                            && arg_is_str_like
+                            && !matches!(expr, Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_int_var(arg, &self.local_var_types)
                         {
                             write!(out, ".as_str()")?;
@@ -12366,10 +12426,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     ("pub type ", &trimmed[9..])
                 } else if trimmed.starts_with("pub enum ") {
                     ("pub enum ", &trimmed[9..])
+                } else if trimmed.starts_with("pub spec ") {
+                    ("pub spec ", &trimmed[9..])
                 } else if trimmed.starts_with("type ") {
                     ("type ", &trimmed[5..])
                 } else if trimmed.starts_with("enum ") {
                     ("enum ", &trimmed[5..])
+                } else if trimmed.starts_with("spec ") {
+                    ("spec ", &trimmed[5..])
                 } else {
                     continue;
                 };
@@ -12409,6 +12473,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
+                } else if prefix.contains("spec ") {
+                    // Plan 371 (defect A): pre-register specs so cross-module /
+                    // out-of-order `use`s resolve to Type::Spec (→ Box<dyn X>)
+                    // instead of the Type::User placeholder. Only the name is
+                    // needed for lookup_type to pick the right branch; the full
+                    // SpecDecl (with methods) is filled in during Phase 2 parse.
+                    let spec_decl = SpecDecl::new(name.into(), Vec::new());
+                    store.register_spec_decl(&spec_decl);
                 }
             }
         }
@@ -12952,10 +13024,14 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                     ("pub type ", &trimmed[9..])
                 } else if trimmed.starts_with("pub enum ") {
                     ("pub enum ", &trimmed[9..])
+                } else if trimmed.starts_with("pub spec ") {
+                    ("pub spec ", &trimmed[9..])
                 } else if trimmed.starts_with("type ") {
                     ("type ", &trimmed[5..])
                 } else if trimmed.starts_with("enum ") {
                     ("enum ", &trimmed[5..])
+                } else if trimmed.starts_with("spec ") {
+                    ("spec ", &trimmed[5..])
                 } else {
                     continue;
                 };
@@ -12987,6 +13063,14 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
+                } else if prefix.contains("spec ") {
+                    // Plan 371 (defect A): pre-register specs so cross-module /
+                    // out-of-order `use`s resolve to Type::Spec (→ Box<dyn X>)
+                    // instead of the Type::User placeholder. Only the name is
+                    // needed for lookup_type to pick the right branch; the full
+                    // SpecDecl (with methods) is filled in during Phase 2 parse.
+                    let spec_decl = SpecDecl::new(name.into(), Vec::new());
+                    store.register_spec_decl(&spec_decl);
                 }
             }
         }

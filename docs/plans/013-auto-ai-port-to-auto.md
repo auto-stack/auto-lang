@@ -178,24 +178,25 @@ Rust 路径。已验证可翻译，且 `fn ... ~Result<T,E>` 正确译为
 |---|---|---|
 | `error.rs` | `error.at` | ✅ 已移植 |
 | `role_def.rs` | `role_def.at` | ✅ 已移植（Role spec） |
-| `relay.rs` | `relay.at` | ✅ 已移植（RelayTarget spec；2026-07-24 修 `task` 保留字） |
+| `relay.rs` | `relay.at` | ✅ 已移植（RelayTarget spec；修 `task` 保留字） |
 | `tool.rs` | `tool.at` | ✅ 已移植（Tool spec + ToolRegistry） |
-| `memory.rs` | `memory.at` | ⚠️ 已移植但 transpile 失败（`&&` 条件，见 B17；AutoVM 可运行） |
+| `memory.rs` | `memory.at` | ✅ 已移植（修 `to` 保留字→`up_to`；transpile 通过） |
 | `validate.rs` | `validate.at` | ✅ 已移植 |
-| `lib.rs` | `lib.at` | ✅ 已移植（2026-07-24，re-export，排除 workflow） |
-| `roles.rs` (395) | `roles.at` | ✅ 已移植（2026-07-24，a2r-first） |
-| `skill.rs` (476) | `skill.at` | ✅ 已移植（2026-07-24，a2r-first） |
-| `role_def` 之上的 15 个 `builtin_roles/*` | `builtin_roles/*.at` | ✅ 已移植 |
+| `lib.rs` | `lib.at` | ✅ 已移植（re-export，排除 workflow） |
+| `roles.rs` (395) | `roles.at` | ✅ 已移植（a2r-first） |
+| `skill.rs` (476) | `skill.at` | ✅ 已移植（a2r-first） |
+| `builtin_roles/*` (14 roles + mod) | `builtin_roles/*.at` | ✅ 已移植（含 tester，2026-07-29 补） |
 | `config/role_config.rs` (712) | `config/role_config.at` | ✅ 已移植 |
-| `workflow.rs` (1181) | `workflow.at` | ⏳ 占位（2026-07-24，已弃用模块推迟移植） |
-| `workflow_validator.rs` (192) | `workflow_validator.at` | ✅ 已移植（2026-07-24） |
-| `orchestration/*` (5 文件, ~1487) | `orchestration/*.at` | ✅ 已移植（2026-07-24：budget/flow/handoff/pipeline/driver/mod） |
-| `agent.rs` (918) | `agent.at` | ⚠️ 部分移植（2026-07-24：类型层+stub；ReAct 循环阻塞于平台限制） |
+| `workflow.rs` (1181) | `workflow.at` | ⏳ 占位（已弃用模块，推迟移植） |
+| `workflow_validator.rs` (192) | `workflow_validator.at` | ✅ 已移植 |
+| `orchestration/*` (5 文件, ~1487) | `orchestration/*.at` | ✅ 已移植（budget/flow/handoff/pipeline/driver/mod） |
+| `agent.rs` (918) | `agent.at` | ✅ 已移植（ReAct 循环完整，轮询式阶段 1；详见 §D 流式路线图） |
 
-**阶段 3 进度**：基础层 6 文件 ✅；本批新增 roles/skill/workflow_validator/
-orchestration×6/lib ✅；agent（部分）⚠️；workflow（占位）⏳。
-核心 ReAct 循环（`agent.rs`）本体未移植，阻塞于闭包/dyn-Fn/泛型方法等
-解析器限制（详见 013-handoff-for-new-session.md「本轮新发现的 Auto 语法限制」）。
+**阶段 3 进度（2026-07-29 更新）**：全部 35 个 .at 文件已移植且 transpile 通过。
+agent.at 的 ReAct 循环已完整移植（轮询式架构，绕过 dyn-Fn/闭包限制——参考
+auto-coder 的事件列表模式，详见 handoff 文档 §C/D）。workflow.at 为已弃用
+模块的占位。rust/ 组装 crate 架构验证可行，剩余 ~361 个 cargo 错误为 a2r
+codegen 保真度细节问题（plan 372 范畴），非移植缺口。
 
 ## 已知不足与补救路径
 
