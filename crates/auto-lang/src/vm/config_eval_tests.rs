@@ -186,3 +186,59 @@ fn diag_scu001_real_manifest() {
     assert!(kernel.repr().contains("heap_4"),
         "osal.kernel must be the lanshan-branch value, got {}", kernel.repr());
 }
+
+// Plan 375: regression guard for the parser fix that lets a Pair's value be a
+// node *instance* with a body block. Real SCU001 manifests write things like
+//   icf: file(`${sdk}/x/y.icf`) {}
+//   ddf: file("a.ddf") {}
+// inside `device(...) { ... }`. Before the fix, `rhs_expr` (used by `pair_expr`)
+// parsed `file(...)` as a function call and choked on the trailing `{}` with
+// "Expected end of statement, got LBrace". This test pins the fix in place with
+// a self-contained source (no dependency on the external SCU001 checkout).
+#[test]
+fn test_config_pair_value_is_node_with_block() {
+    let src = r#"
+        var sdk = "LS_E14XX_Sdk"
+        device("Lanshan-LSE1480-MCAL") {
+            // Pair values are node instances carrying a body block:
+            icf: file(`${sdk}/device/linker/x.icf`) {}
+            board: file(`${sdk}/flash.board`) {}
+            dir("Adc") {}
+            dir("Can") {}
+        }
+    "#;
+    let mut args = Obj::new();
+    args.set("port", auto_val::Value::str("lanshan"));
+    let cfg = AutoConfig::from_code(src, &args).expect("device.at-style manifest must parse");
+
+    let dev = cfg
+        .root
+        .get_nodes("device")
+        .into_iter()
+        .next()
+        .expect("device node");
+    assert_eq!(dev.id().as_str(), "Lanshan-LSE1480-MCAL");
+
+    // icf / board pairs survive as props on the device node
+    let icf = dev.get_prop("icf");
+    assert!(
+        icf.repr().contains("x.icf"),
+        "icf f-string must be evaluated, got {}",
+        icf.repr()
+    );
+    let board = dev.get_prop("board");
+    assert!(
+        board.repr().contains("flash.board"),
+        "board prop must survive, got {}",
+        board.repr()
+    );
+
+    // bare-name dir nodes inside the body still work
+    let dir_names: Vec<String> = dev
+        .get_nodes("dir")
+        .iter()
+        .map(|n| n.id().to_string())
+        .collect();
+    assert!(dir_names.iter().any(|n| n == "Adc"), "dir Adc, got {:?}", dir_names);
+    assert!(dir_names.iter().any(|n| n == "Can"), "dir Can, got {:?}", dir_names);
+}

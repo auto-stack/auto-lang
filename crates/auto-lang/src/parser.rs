@@ -3286,6 +3286,18 @@ impl<'a> Parser<'a> {
         // Only delegate to node_or_call_expr when we see these patterns,
         // to avoid changing semantics of function calls like Point(x: 1, y: 2)
         if self.is_kind(TokenKind::Ident) {
+            // Plan 375: also support a node instance in rhs position when the
+            // value is a plain node call with a body block, e.g.
+            //   icf: file("x") {}
+            //   ddf: file(`${sdk}/y`) {}
+            // Without this, `pair_expr` -> `rhs_expr` falls through to
+            // `parse_expr`, parses `file("x")` as a function call, and leaves
+            // the trailing `{}` — yielding "Expected end of statement, got LBrace".
+            // Only delegate when we can confirm a `{` follows the node head, so
+            // ordinary function calls keep their semantics.
+            if self.rhs_lookahead_is_node() {
+                return self.node_or_call_expr();
+            }
             let saved_cur = self.cur.clone();
             self.next(); // consume first identifier
             if self.is_kind(TokenKind::Ident) {
@@ -3323,6 +3335,62 @@ impl<'a> Parser<'a> {
             }
         }
         self.parse_expr()
+    }
+
+    /// Plan 375: lookahead helper for `rhs_expr`. Returns true when the tokens
+    /// starting at the current cursor form a node *instance* (i.e. carry a body
+    /// block), as opposed to a plain function call or a bare identifier.
+    ///
+    /// Recognized shapes:
+    ///   `Ident { ... }`            — node with no args
+    ///   `Ident ( ... ) { ... }`    — node call with args, then a body block
+    ///
+    /// It scans with the lexer's pushback buffer, balancing `()`, `[]` while
+    /// skipping over the argument group, so nested calls inside the args don't
+    /// fool it. Returns false for `Ident ( ... )` with no trailing `{` (a real
+    /// function call) — this is what keeps `Point(x: 1)` semantics intact.
+    fn rhs_lookahead_is_node(&mut self) -> bool {
+        debug_assert!(self.is_kind(TokenKind::Ident));
+        let mut depth = 0i32; // tracks () nesting (node args use parens only)
+        let mut pushed: Vec<Token> = Vec::new();
+        let mut result = false;
+
+        // First token is the Ident (current cursor) — consume it for the scan.
+        loop {
+            let tok = match self.lexer.next() {
+                Ok(t) => t,
+                Err(_) => break,
+            };
+            pushed.push(tok.clone());
+            match tok.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => depth -= 1,
+                TokenKind::LBrace if depth == 0 => {
+                    // Top-level `{` immediately after the node head / arg group.
+                    result = true;
+                    break;
+                }
+                TokenKind::RBrace | TokenKind::Semi | TokenKind::Newline | TokenKind::EOF
+                    if depth == 0 =>
+                {
+                    // Statement separator without ever seeing a `{` — not a node.
+                    break;
+                }
+                // The generic-args form `Ident<...>` uses Lt/Gt; we don't need to
+                // special-case it — depth stays 0 and a following `{` still wins.
+                _ => {}
+            }
+            // If depth went negative (unbalanced), bail.
+            if depth < 0 {
+                break;
+            }
+        }
+
+        // Push everything back so the real parser re-reads from the Ident.
+        for t in pushed.into_iter().rev() {
+            self.lexer.push_token(t);
+        }
+        result
     }
 
     fn tag_cover(&mut self, tag_name: &Name) -> AutoResult<Expr> {

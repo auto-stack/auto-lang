@@ -3248,7 +3248,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     let rt = get_global_runtime();
     rt.block_on(async {
         let flash = VirtualFlash::new_with_code_and_keys(bytecode, object_keys, object_types);
-        let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
+        let mut vm = AutoVM::new(flash, 32768); // 32KB RAM for config (deeply nested manifests)
         vm.load_strings(strings);
         vm.load_generic_registry(generic_registry);
         vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
@@ -3256,7 +3256,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
         // 5. Execute from entry point (default to 0 for config)
         let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
 
-        let task_id = vm.spawn_task(entry_point, 4096);
+        let task_id = vm.spawn_task(entry_point, 32768); // 32KB task stack (deeply nested manifests)
 
         // Run the VM to completion
         vm.run_task_loop().await;
