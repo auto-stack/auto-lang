@@ -965,3 +965,91 @@ pub fn stmts_have_router_nav(stmts: &[Stmt]) -> bool {
 
     stmts.iter().any(walk_stmt)
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auto_val::Op;
+
+    fn test_ctx() -> AuraTsContext {
+        AuraTsContext::new(
+            ["notes".to_string(), "tags".to_string()]
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    fn self_dot(field: &str) -> Expr {
+        Expr::Dot(Box::new(Expr::Ident("self".into())), field.into())
+    }
+
+    fn bare_call(name: &str) -> Expr {
+        Expr::Call(Call {
+            name: Box::new(Expr::Ident(name.into())),
+            args: Args::new(),
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        })
+    }
+
+    fn self_method_call(method: &str) -> Expr {
+        Expr::Call(Call {
+            name: Box::new(self_dot(method)),
+            args: Args::new(),
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        })
+    }
+
+    /// D2 (Plan 358): array `+` must not degrade into JS string concat.
+    /// `.tags = .tags + [t]` -> `tags.value = tags.value.concat([t])`.
+    #[test]
+    fn d2_array_plus_uses_concat() {
+        let stmt = Stmt::Expr(Expr::Bina(
+            Box::new(self_dot("tags")),
+            Op::Asn,
+            Box::new(Expr::Bina(
+                Box::new(self_dot("tags")),
+                Op::Add,
+                Box::new(Expr::Array(vec![Expr::Ident("t".into())])),
+            )),
+        ));
+        let out = transpile_handler_body(&[stmt], &test_ctx());
+        assert!(
+            out.contains("tags.value = tags.value.concat([t])"),
+            "output:\n{}",
+            out
+        );
+    }
+
+    /// D3 (Plan 358): a self-method call statement (`.RefreshTags()`) must be
+    /// emitted as a standalone statement, not chained onto the previous
+    /// statement's expression (`list_notes().RefreshTags()`).
+    #[test]
+    fn d3_self_method_call_is_standalone_statement() {
+        let stmts = vec![
+            // .notes = list_notes()
+            Stmt::Expr(Expr::Bina(
+                Box::new(self_dot("notes")),
+                Op::Asn,
+                Box::new(bare_call("list_notes")),
+            )),
+            // .RefreshTags()
+            Stmt::Expr(self_method_call("RefreshTags")),
+        ];
+        let out = transpile_handler_body(&stmts, &test_ctx());
+        assert!(out.contains("notes.value = list_notes();"), "output:\n{}", out);
+        assert!(out.contains("RefreshTags();"), "output:\n{}", out);
+        assert!(
+            !out.contains("list_notes().RefreshTags()"),
+            "chained call regression:\n{}",
+            out
+        );
+    }
+}
