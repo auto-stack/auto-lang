@@ -315,15 +315,31 @@ cargo run            # → 打印真实 LLM 回答
 | E0423 | 5 | 保留字冲突 |
 | 其他 | 17 | 杂项 |
 
-**结论**：re-transpile 后仍有 285 个错误，与手修版（0 错误）的差距主要来自：
-1. **手写组装层不参与 re-transpile**（lib.rs/config.rs/orchestration.rs 等——这些文件
-   原本就是手写的 glue，re-transpile 时要么被覆盖为纯 import 文件、要么丢失关键声明）
-2. **B1 细节修复仍需进一步自动化**（String/&str、move/borrow、桥接 deref 等）
-3. **间接 `&mut self`** 约 5 处
-4. **合成 `RoleTrait` 等 trait 冲突**（`has Spec` 修复后仍残留旧路径）
+**结论**：re-transpile 后仍有约 285–300 个错误。组装层自动化实验（rebuild.sh 脚本）
+成功恢复了手写 glue 文件（lib.rs/config.rs/orchestration.rs/builtin_roles.rs/client_impl.rs/
+main.rs），但 **错误数没有显著下降**（301 vs 无脚本 285）——说明组装层不是主要瓶颈。
 
-**当前可用的路径**仍然是"hand-assembled rust/src/（0 错误）"，re-transpile 可重现性
-需要进一步的 a2r 生成器改进（特别是组装层自动化和跨方法 mutation 分析）。
+真正的瓶颈是 **a2r transpile 产物本身的 B1 细节质量问题**（String/&str、move/borrow、
+桥接 deref 等），这些是 transpile 过程中的类型推断/borrow 分析不足导致的，不是组装层
+能解决的。
+
+**关键发现**：组装层的缺失主要导致 `lib.rs` 的 E0432（模块找不到），而 B1 细节错误
+（E0308/E0599/E0658 等）在有无组装层脚本时**数量基本相同**（~285 vs ~300）。
+
+### 推进的后续路径（优先级重新排序）
+
+| 优先级 | 工作项 | 预计消除 | 性质 |
+|---|---|---|---|
+| ~~最高~~ | ~~组装层自动化~~ | ~~~100+~~ | **已实验：效果远低于预期（~16 个）**，非主要瓶颈 |
+| **最高** | String/`&str` 修复（`.as_str()` 去重 + `.to_string()` 补全 + `HashMap.get` Option unwrap） | ~50 | a2r codegen 质量 |
+| **高** | `for x in &self.field` 循环改写 post_process | ~15 | a2r codegen |
+| **高** | 桥接类型 deref（`*(*node).clone()`） + `HashMap.get` 返回 Option 处理 | ~20 | a2r codegen |
+| **中** | 合成 `RoleTrait` 彻底清除（`has Spec` 旧路径残留） | ~7 | a2r codegen |
+| **中** | 间接 `&mut self`（跨方法分析） | ~5 | a2r codegen |
+
+**结论更新**：组装层自动化不是 re-transpile 可重现性的瓶颈。真正的瓶颈是 a2r 生成器
+对类型推断和 borrow 分析的深度不足。下一步应聚焦于 **String/`&str` 自动修复** 和
+**move/borrow 自动修复** 两个 post_process pass。
 
 ### D. 计划外扩展（G2+G3）
 
