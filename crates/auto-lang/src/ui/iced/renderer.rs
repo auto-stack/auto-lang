@@ -2109,6 +2109,19 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
     }
 
     iced::event::listen_with(|event, status, _window_id| {
+        // F12 → DevTools toggle (always active, even when a widget has focus)
+        // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
+        // when a text input is focused (Plan 371: F12 reliability fix).
+        if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
+            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+                return Some(IcedMessage {
+                    widget: String::new(),
+                    event: DEBUG_TOGGLE_EVENT.to_string(),
+                    input_value: None,
+                });
+            }
+        }
+
         // Skip events already consumed by a focused widget (e.g., text input)
         if matches!(status, iced::event::Status::Captured) {
             return None;
@@ -2118,14 +2131,6 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
             iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                 key, modifiers, ..
             }) => {
-                // F12 → DevTools toggle (always active)
-                if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
-                    return Some(IcedMessage {
-                        widget: String::new(),
-                        event: DEBUG_TOGGLE_EVENT.to_string(),
-                        input_value: None,
-                    });
-                }
 
                 // Build key string for lookup
                 let key_str = match &key {
@@ -2648,6 +2653,8 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
                 *state.devtools_open.borrow_mut() = false;
                 state.pending_hovers.borrow_mut().clear();
             }
+            // Plan 371: force view rebuild so the DevTools panel appears/disappears.
+            *state.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
         // Handle click-to-select: set selected element and open DevTools panel

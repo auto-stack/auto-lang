@@ -631,7 +631,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "properties": {
                     "key": {
                         "type": "string",
-                        "enum": ["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"],
+                        "enum": ["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "F12"],
                         "description": "The key to press"
                     },
                     "modifiers": {
@@ -1307,7 +1307,7 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
 // ── Tool: autoui_keyboard (Plan 299 Phase 3) ──
 
 fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
-    let _key = match args.get("key").and_then(|v| v.as_str()) {
+    let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return error_result("Missing required parameter: key"),
     };
@@ -1316,22 +1316,28 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
-    // For now, keyboard events are forwarded as an action message.
-    // The iced renderer can intercept these via key_bindings in DynamicComponent.
     let shared = shared_handle.lock().unwrap();
     let widget_name = shared.widget_name.clone();
 
-    // Map common keys to handler names
-    let handler = format!("key_{}", _key.to_lowercase());
-
-    let msg = ActionMessage {
-        widget: widget_name,
-        event: handler,
-        input_value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), _key)),
+    // Plan 371: F12 toggles DevTools directly (bypasses key_binding lookup).
+    let msg = if key == "F12" {
+        ActionMessage {
+            widget: String::new(),
+            event: "__toggle_debug".to_string(),
+            input_value: None,
+        }
+    } else {
+        // Other keys: forward as a key_binding action message.
+        let handler = format!("key_{}", key.to_lowercase());
+        ActionMessage {
+            widget: widget_name,
+            event: handler,
+            input_value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+        }
     };
 
     match shared.send_action(msg) {
-        Ok(()) => text_result(format!("Key sent: {}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), _key)),
+        Ok(()) => text_result(format!("Key sent: {}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
         Err(e) => error_result(format!("Failed to send key event: {}", e)),
     }
 }
