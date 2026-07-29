@@ -1,0 +1,121 @@
+widget App {
+    msg Msg {
+        Nav,
+        Pick,
+        CloseMenu,
+        StartDrag,
+        DragMove,
+        EndDrag,
+        DocWheel
+    }
+
+    model {
+        var commands = ["New Note", "Delete Note", "Toggle Pin", "Rename", "Export"]
+        var active int = 0
+        var picked str = "(none)"
+        var menu_open int = 1
+        var dragging int = 0
+        var drag_start int = 0
+        var base_y int = 0
+        var drag_y int = 120
+        var wheel_count int = 0
+        var last_delta int = 0
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-8",
+            // Scenario 2 (cont.): drag tracking must keep firing outside the
+            // element → window-level listeners (addEventListener on mount,
+            // removeEventListener on unmount).
+            onmousemove.window: .DragMove($event.clientY),
+            onmouseup.window: .EndDrag,
+            // Scenario 3: document-level wheel lock, capture phase +
+            // preventDefault (CodeBlockMenu scroll-lock style).
+            onwheel.document.capture.prevent: .DocWheel($event.deltaY)
+
+            h1 "026 — keyboard / mouse / wheel events" { class: "text-xl font-bold" }
+
+            // Scenario 1: SlashMenu-style keyboard navigation.
+            col {
+                class: "w-72 border rounded p-2 outline-none focus:ring-2",
+                tabindex: "0",
+                // Generic keydown with the DOM event object: read e.key.
+                onkeydown: .Nav($event),
+                // Key modifiers (Vue style): enter / escape.
+                onkeydown.enter: .Pick,
+                onkeydown.escape: .CloseMenu
+
+                text "Slash menu — ArrowUp/ArrowDown/Enter/Escape (click to focus)" { class: "text-xs text-gray-500 mb-2" }
+                for i, cmd in .commands {
+                    if i == .active {
+                        text f"> ${cmd}" { class: "px-2 py-1 bg-blue-100 rounded" }
+                    }
+                    if i != .active {
+                        text f"  ${cmd}" { class: "px-2 py-1" }
+                    }
+                }
+                text f"picked: ${.picked}" { class: "text-xs mt-2" }
+            }
+
+            // Scenario 2: CustomScrollbar-style drag.
+            col {
+                class: "w-72 border rounded p-2"
+                text "Drag the thumb — window mousemove/mouseup keep tracking outside" { class: "text-xs text-gray-500 mb-2" }
+                col {
+                    class: "relative h-40 bg-gray-100 rounded"
+                    col {
+                        class: "absolute right-1 top-2 w-3 h-10 bg-blue-500 rounded cursor-ns-resize",
+                        onmousedown: .StartDrag($event.clientY)
+                    }
+                }
+                text f"drag_y: ${.drag_y}, dragging: ${.dragging}" { class: "text-xs mt-2" }
+            }
+
+            // Scenario 3 (readout): document-level wheel capture.
+            col {
+                class: "w-72 border rounded p-2"
+                text "Wheel anywhere on the page is captured at document level" { class: "text-xs text-gray-500 mb-2" }
+                text f"wheel events: ${.wheel_count}, last deltaY: ${.last_delta}" { class: "text-xs" }
+            }
+        }
+    }
+
+    on {
+        .Nav(e) -> {
+            if e.key == "ArrowDown" {
+                if .active < 4 { .active = .active + 1 }
+            }
+            if e.key == "ArrowUp" {
+                if .active > 0 { .active = .active - 1 }
+            }
+        }
+
+        .Pick -> {
+            let idx = .active
+            let cmd = commands[idx]
+            .picked = cmd
+        }
+
+        .CloseMenu -> { .menu_open = 0 }
+
+        .StartDrag(y) -> {
+            .dragging = 1
+            .drag_start = y
+            .base_y = .drag_y
+        }
+
+        .DragMove(y) -> {
+            if .dragging == 1 {
+                .drag_y = .base_y + (y - .drag_start)
+            }
+        }
+
+        .EndDrag -> { .dragging = 0 }
+
+        .DocWheel(d) -> {
+            .wheel_count = .wheel_count + 1
+            .last_delta = d
+        }
+    }
+}
