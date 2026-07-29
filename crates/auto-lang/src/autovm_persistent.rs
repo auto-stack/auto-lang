@@ -1201,6 +1201,46 @@ mod tests {
     }
 
     #[test]
+    fn test_debug_to_int_native_id() {
+        let mut session = AutovmReplSession::new();
+        let result = session.run("\"42\".to_int()");
+        eprintln!("[DEBUG to_int test] result = {:?}", result);
+        eprintln!("[DEBUG to_int test] last_result = {:?}", session.last_result);
+        assert_eq!(session.last_result, Some(42), "to_int should return 42");
+    }
+
+    #[test]
+    fn test_debug_to_uint_native_id() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"42\".to_uint()");
+        eprintln!("[DEBUG to_uint test] last_result = {:?}", session.last_result);
+        assert_eq!(session.last_result, Some(42), "to_uint should return 42");
+    }
+
+    #[test]
+    fn test_to_int_arithmetic() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"42\".to_int() + 8");
+        assert_eq!(session.last_result, Some(50), "to_int()+8 should be 50");
+    }
+
+    #[test]
+    fn test_hashmap_get_str_missing_key() {
+        // Diagnostic: get_str on missing key still returns null (-7) instead
+        // of empty string. The shim_hashmap_get_str edit (push empty string
+        // instead of encode_null) doesn't take effect — likely because the
+        // inventory macro generates a separate FFI shim that overrides the
+        // hand-written one via native_catalog.rs. Needs further investigation
+        // of the catalog/inventory shim dispatch mechanism.
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var m = HashMap.new()");
+        let _ = session.run("m.insert_str(\"a\", \"1\")");
+        let _ = session.run("m.get_str(\"missing\")");
+        eprintln!("[DEBUG get_str missing] last_result = {:?}", session.last_result);
+        // Currently returns Some(-7) = null marker. When fixed should be empty string.
+    }
+
+    #[test]
     fn test_autovm_task_reuse_variable_persistence() {
         let mut session = AutovmReplSession::new();
 
