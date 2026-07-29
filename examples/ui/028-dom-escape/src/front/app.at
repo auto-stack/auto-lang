@@ -1,0 +1,221 @@
+widget App {
+    msg Msg {
+        ToggleMenu,
+        Wheel,
+        ThumbDown,
+        ThumbMove,
+        ThumbUp
+    }
+
+    model {
+        var menu_open int = 0
+        var menu_left int = 0
+        var menu_top int = 0
+        var scroll_top int = 0
+        var dragging int = 0
+        var drag_start int = 0
+        var scroll_start int = 0
+        var items = ["item 0", "item 1", "item 2", "item 3", "item 4", "item 5", "item 6", "item 7", "item 8", "item 9", "item 10", "item 11", "item 12", "item 13", "item 14", "item 15", "item 16", "item 17", "item 18", "item 19", "item 20", "item 21", "item 22", "item 23", "item 24", "item 25", "item 26", "item 27", "item 28", "item 29"]
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-8",
+            // Thumb drag must keep tracking outside the thumb element.
+            onmousemove.window: .ThumbMove($event),
+            onmouseup.window: .ThumbUp
+
+            h1 "028 — DOM escape hatch" { class: "text-xl font-bold" }
+
+            // Scenario 1: popover positioning (useMenuBounds style).
+            // getBoundingClientRect() on the trigger, window.innerWidth /
+            // innerHeight for clamping, left/top written back to the model
+            // AND applied imperatively via the popover element ref.
+            col {
+                class: "space-y-2"
+
+                button "toggle menu" {
+                    ref: "triggerEl",
+                    class: "pop-trigger",
+                    onclick: .ToggleMenu
+                }
+
+                // Always mounted (display:none toggled imperatively) so the
+                // ref is valid inside the handler that repositions it.
+                col {
+                    ref: "menuEl",
+                    class: "pop-menu"
+
+                    text "Popover (position: fixed)" { class: "pop-item" }
+                    text "positioned via getBoundingClientRect()" { class: "pop-item text-gray-500" }
+                }
+
+                text f"menu_open: ${.menu_open}, left: ${.menu_left}, top: ${.menu_top}" { class: "text-xs text-gray-500" }
+            }
+
+            // Scenario 2: custom scrollbar. The viewport has overflow:hidden;
+            // wheel events and thumb drags drive scrollTop imperatively, and
+            // the thumb position is derived from scrollTop / scrollHeight /
+            // clientHeight — all through element refs.
+            col {
+                class: "space-y-2"
+
+                text "wheel over the list, or drag the thumb" { class: "text-xs text-gray-500" }
+
+                row {
+                    class: "space-x-2"
+
+                    col {
+                        ref: "scrollEl",
+                        class: "scroll-viewport",
+                        onwheel: .Wheel($event)
+
+                        for it in .items {
+                            text f"${it}" { class: "scroll-item" }
+                        }
+                    }
+
+                    col {
+                        ref: "trackEl",
+                        class: "scroll-track"
+
+                        col {
+                            ref: "thumbEl",
+                            class: "scroll-thumb",
+                            onmousedown: .ThumbDown($event)
+                        }
+                    }
+                }
+
+                text f"scrollTop: ${.scroll_top}, dragging: ${.dragging}" { class: "text-xs text-gray-500" }
+            }
+        }
+    }
+
+    on {
+        .ToggleMenu -> {
+            if .menu_open == 0 {
+                let r = .triggerEl.getBoundingClientRect()
+                let left = r.left
+                if left + 180 > window.innerWidth {
+                    left = window.innerWidth - 180
+                }
+                let top = r.bottom + 4
+                if top + 80 > window.innerHeight {
+                    top = r.top - 80
+                }
+                .menu_left = left
+                .menu_top = top
+                .menuEl.style.left = f"${left}px"
+                .menuEl.style.top = f"${top}px"
+                .menuEl.style.display = "block"
+                .menu_open = 1
+                // document-level access passes through unchanged
+                let probe = document.querySelector(".pop-menu")
+                let ae = document.activeElement
+            } else {
+                .menuEl.style.display = "none"
+                .menu_open = 0
+            }
+        }
+
+        .Wheel(e) -> {
+            .scrollEl.scrollTop = .scrollEl.scrollTop + e.deltaY
+            .scroll_top = .scrollEl.scrollTop
+            // Sync the thumb: ratio of scroll offset to scrollable range,
+            // mapped onto the draggable span of the track.
+            let max_scroll = .scrollEl.scrollHeight - .scrollEl.clientHeight
+            let track_h = .trackEl.clientHeight - .thumbEl.clientHeight
+            let ratio = .scrollEl.scrollTop / max_scroll
+            let thumb_y = ratio * track_h
+            .thumbEl.style.top = f"${thumb_y}px"
+        }
+
+        .ThumbDown(e) -> {
+            .dragging = 1
+            .drag_start = e.clientY
+            .scroll_start = .scrollEl.scrollTop
+        }
+
+        .ThumbMove(e) -> {
+            if .dragging == 1 {
+                let track_h = .trackEl.clientHeight - .thumbEl.clientHeight
+                let max_scroll = .scrollEl.scrollHeight - .scrollEl.clientHeight
+                let delta = e.clientY - .drag_start
+                let ratio = delta / track_h
+                .scrollEl.scrollTop = .scroll_start + ratio * max_scroll
+                .scroll_top = .scrollEl.scrollTop
+                let thumb_y = .scrollEl.scrollTop / max_scroll * track_h
+                .thumbEl.style.top = f"${thumb_y}px"
+            }
+        }
+
+        .ThumbUp -> {
+            .dragging = 0
+        }
+    }
+
+    style {
+        .pop-trigger {
+            width: fit-content;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            background: #3b82f6;
+            color: white;
+        }
+
+        .pop-trigger:hover {
+            background: #2563eb;
+        }
+
+        .pop-menu {
+            position: fixed;
+            display: none;
+            width: 180px;
+            background: white;
+            border: 1px solid #d4d4d8;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            padding: 0.5rem;
+            z-index: 50;
+        }
+
+        .pop-item {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .scroll-viewport {
+            height: 160px;
+            width: 220px;
+            overflow: hidden;
+            border: 1px solid #d4d4d8;
+            border-radius: 6px;
+            padding: 0.25rem;
+        }
+
+        .scroll-item {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .scroll-track {
+            position: relative;
+            width: 10px;
+            height: 160px;
+            background: #f4f4f5;
+            border-radius: 5px;
+        }
+
+        .scroll-thumb {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 10px;
+            height: 40px;
+            background: #3b82f6;
+            border-radius: 5px;
+            cursor: ns-resize;
+        }
+    }
+}
