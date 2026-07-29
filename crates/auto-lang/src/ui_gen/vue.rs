@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
-use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -2513,6 +2513,13 @@ impl VueGenerator {
                     let mut first_prop_expr: Option<String> = None;
                     // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
                     for (key, value) in props {
+                        // Inline style object on a component: style_obj → :style="{...}"
+                        if key == "style_obj" {
+                            if let AuraPropValue::StyleBinding(bindings) = value {
+                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                            }
+                            continue;
+                        }
                         let value_str = match value {
                             AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
                             AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
@@ -2673,6 +2680,14 @@ impl VueGenerator {
                     for (key, value) in props {
                         if key == "class" || key == "style" {
                             continue; // Already handled in extract_classes
+                        }
+                        // Inline style object: style_obj: { top: f"${.y}px", "z-index": 50 }
+                        // → :style="{ top: `${y}px`, 'z-index': 50 }"
+                        if key == "style_obj" {
+                            if let AuraPropValue::StyleBinding(bindings) = value {
+                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                            }
+                            continue;
                         }
                         // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
                         // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
@@ -3898,6 +3913,35 @@ impl VueGenerator {
         }
     }
 
+    /// Render a key for a JS object literal: bare when it is a valid JS
+    /// identifier, single-quoted otherwise (CSS props like `z-index`, class
+    /// names like `line-through`).
+    fn js_obj_key(name: &str) -> String {
+        let valid = !name.is_empty()
+            && name.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_' || c == '$').unwrap_or(false)
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        if valid {
+            name.to_string()
+        } else {
+            format!("'{}'", name.replace('\\', "\\\\").replace('\'', "\\'"))
+        }
+    }
+
+    /// Render a `style_obj: { ... }` map as a Vue `:style` object binding.
+    /// Values are arbitrary expressions (state refs, f-string px concat, …).
+    /// The `as any` cast keeps loosely-typed values (e.g. a plain `string`
+    /// state var for `visibility`, whose CSS type is a literal union)
+    /// assignable to Vue's `StyleValue`.
+    fn style_obj_to_vue(&self, bindings: &[AuraStyleBinding]) -> String {
+        let parts: Vec<String> = bindings.iter()
+            .map(|b| {
+                let v = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "null".to_string());
+                format!("{}: {}", Self::js_obj_key(&b.style_name), v)
+            })
+            .collect();
+        format!("({{ {} }} as any)", parts.join(", "))
+    }
+
     /// Extract Tailwind classes from tag and props
     /// Returns (static_classes, dynamic_class_binding)
     fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>) {
@@ -4049,7 +4093,9 @@ impl VueGenerator {
                     let binding_strs: Vec<String> = bindings.iter()
                         .map(|b| {
                             let cond = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "false".to_string());
-                            format!("{}: {}", b.style_name, cond)
+                            // Class names may contain '-' (e.g. "line-through")
+                            // — quote keys that aren't valid JS identifiers.
+                            format!("{}: {}", Self::js_obj_key(&b.style_name), cond)
                         })
                         .collect();
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
@@ -4792,6 +4838,27 @@ impl VueGenerator {
                     _ => Ok(format!("!{}", expr_str)),
                 }
             }
+            Expr::FStr(fstr) => {
+                // f-string in a bound position → JS template literal:
+                // f"${.top}px" → `${top}px` (needed e.g. for style_obj values).
+                let mut out = String::from("`");
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => {
+                            out.push_str(&s
+                                .replace("\\", "\\\\")
+                                .replace("`", "\\`")
+                                .replace("${", "\\${"));
+                        }
+                        other => {
+                            let v = self.expr_to_vue_bound_value(other)?;
+                            out.push_str(&format!("${{{}}}", v));
+                        }
+                    }
+                }
+                out.push('`');
+                Ok(out)
+            }
             _ => Ok("null".to_string()),
         }
     }
@@ -4983,6 +5050,13 @@ impl VueGenerator {
                 }
                 attrs.push(format!("ref=\"{}\"", ref_name));
             }
+        }
+
+        // Inline style object: `style_obj: { top: f"${.y}px", "z-index": 50 }`
+        // → `:style="{ top: `${y}px`, 'z-index': 50 }"`. Handled generically
+        // (like `ref` above) so every shadcn-mapped element supports it.
+        if let Some(AuraPropValue::StyleBinding(bindings)) = props.get("style_obj") {
+            attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
         }
 
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
@@ -8067,7 +8141,22 @@ impl VueGenerator {
 
     /// Split an event key into (base, modifiers).
     /// "onwheel.document.capture" → ("onwheel", ["document", "capture"])
+    ///
+    /// Quoted custom event names (`on"autodown:slash-open"`) may contain
+    /// characters that are illegal in identifiers (':'/'-'); the base then
+    /// runs to the closing quote and only what follows it is modifiers.
     fn split_event_key(event: &str) -> (&str, Vec<&str>) {
+        if let Some(rest) = event.strip_prefix("on\"") {
+            if let Some(close) = rest.find('"') {
+                let end = 3 + close + 1; // just past the closing quote
+                let base = &event[..end];
+                let mods: Vec<&str> = event[end..]
+                    .strip_prefix('.')
+                    .map(|t| t.split('.').filter(|m| !m.is_empty()).collect())
+                    .unwrap_or_default();
+                return (base, mods);
+            }
+        }
         let mut parts = event.split('.');
         let base = parts.next().unwrap_or(event);
         (base, parts.collect())
@@ -8076,7 +8165,11 @@ impl VueGenerator {
     /// Map the base event key (without modifiers) to the DOM/Vue event name.
     /// Covers the full common set: keyboard, mouse, wheel, focus, pointer,
     /// touch, drag, scroll. Unknown `onxxx` keys fall back to stripping `on`.
+    /// Quoted custom names (`on"autodown:slash-open"`) map to the raw name.
     fn base_event_to_dom(base: &str) -> String {
+        if let Some(inner) = base.strip_prefix("on\"").and_then(|b| b.strip_suffix('"')) {
+            return inner.to_string();
+        }
         match base.to_ascii_lowercase().as_str() {
             "onclick" | "on_click" => "click",
             "ondblclick" | "on_double_click" => "dblclick",
@@ -8184,6 +8277,15 @@ impl VueGenerator {
         }
     }
 
+    /// Make an arbitrary DOM event name safe for embedding in a JS identifier.
+    /// Custom event names may contain ':'/'-' (e.g. "autodown:slash-open"),
+    /// which would otherwise produce an invalid wrapper function name.
+    fn sanitize_ident(s: &str) -> String {
+        s.chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .collect()
+    }
+
     /// Intercept `.window` / `.document` event modifiers and register a global
     /// listener instead of emitting a template attribute. Returns true when
     /// the event was claimed (caller must skip normal attribute emission).
@@ -8237,7 +8339,7 @@ impl VueGenerator {
         // (the DOM passes the event object as first argument).
         let needs_wrapper = prevent || stop || !aura_event.params.is_empty();
         let (listener, wrapper) = if needs_wrapper {
-            let wrapper_fn = format!("__auto_gl_{}_{}", dom_event, handler_fn);
+            let wrapper_fn = format!("__auto_gl_{}_{}", Self::sanitize_ident(&dom_event), handler_fn);
             let mut body = String::new();
             if stop {
                 body.push_str("  e.stopPropagation()\n");
@@ -11180,5 +11282,148 @@ widget App {
         );
         assert!(sfc.contains("<AutoDownEditor"), "component tag:\n{}", sfc);
         assert!(sfc.contains(":content=\"body\""), "prop binding:\n{}", sfc);
+    }
+
+    // ====================================================================
+    // Quoted custom event names: on "autodown:slash-open" — global
+    // (document/window) listeners and element-level bindings.
+    // ====================================================================
+
+    /// document-level CustomEvent listeners with ':'/'-' in the event name
+    /// (SlashMenu integration: a hand-written TS extension dispatches
+    /// `autodown:slash-open` etc. on document).
+    #[test]
+    fn test_global_custom_event_listeners() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    msg Msg { OnOpen, OnClose }
+    model { var query str = "" }
+    view {
+        col {
+            on "autodown:slash-open".document: .OnOpen($event),
+            on "autodown:slash-close".document: .OnClose
+        }
+    }
+    on {
+        .OnOpen(e) -> { .query = "x" }
+        .OnClose -> { .query = "" }
+    }
+}
+"#);
+        // No template attribute for global listeners.
+        assert!(!sfc.contains("@autodown:slash-open"), "no template attr:\n{}", sfc);
+        // add/remove pairs carry the raw custom event name.
+        assert!(
+            sfc.contains("document.addEventListener('autodown:slash-open', __auto_gl_autodown_slash_open_OnOpen)"),
+            "custom event add (sanitized wrapper name):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("document.removeEventListener('autodown:slash-open', __auto_gl_autodown_slash_open_OnOpen)"),
+            "custom event remove:\n{}",
+            sfc
+        );
+        // No-param handler → bare function reference.
+        assert!(
+            sfc.contains("document.addEventListener('autodown:slash-close', OnClose)"),
+            "bare fn ref:\n{}",
+            sfc
+        );
+        // Wrapper adapts the DOM event arg.
+        assert!(
+            sfc.contains("function __auto_gl_autodown_slash_open_OnOpen(e: any) {\n  OnOpen(e)\n}"),
+            "wrapper body:\n{}",
+            sfc
+        );
+    }
+
+    /// Element-level custom event binding (child component emit with a
+    /// ':'/'-' name). Verified against @vue/compiler-dom + runtime-dom:
+    /// `@autodown:slash-open` compiles and patches to
+    /// addEventListener('autodown:slash-open').
+    #[test]
+    fn test_element_custom_event_listener() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Menu {
+    msg Msg { Poked }
+    model { var x int = 0 }
+    view {
+        col {
+            on "demo:poke": .Poked($event)
+        }
+    }
+    on {
+        .Poked(e) -> { .x = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@demo:poke=\"Poked($event)\""),
+            "element-level custom event binding:\n{}",
+            sfc
+        );
+    }
+
+    // ====================================================================
+    // style_obj: inline-style object binding (:style), distinct from the
+    // style: { class: cond } dynamic-class binding.
+    // ====================================================================
+
+    /// style_obj generates a Vue :style object binding; values are arbitrary
+    /// expressions including f-string px concatenation; hyphenated CSS
+    /// property names are quoted.
+    #[test]
+    fn test_style_obj_inline_style_binding() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Popover {
+    msg Msg { Nop }
+    model {
+        var menu_x int = 50
+        var menu_y int = 100
+        var menu_vis str = "visible"
+    }
+    view {
+        col {
+            style_obj: { top: f"${.menu_y}px", left: f"${.menu_x}px", "z-index": 50, visibility: .menu_vis }
+        }
+    }
+    on {
+        .Nop -> { .menu_x = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":style=\"({ top: `${menu_y}px`, left: `${menu_x}px`, 'z-index': 50, visibility: menu_vis } as any)\""),
+            ":style object binding:\n{}",
+            sfc
+        );
+        // Must NOT be emitted as a class binding.
+        assert!(!sfc.contains(":class=\"{ top:"), "not a class binding:\n{}", sfc);
+    }
+
+    /// The classic style: { class: cond } map stays a dynamic class binding;
+    /// hyphenated class names are quoted (previously emitted as a bare,
+    /// invalid JS key).
+    #[test]
+    fn test_style_class_binding_quotes_hyphenated_keys() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Todo {
+    msg Msg { Nop }
+    model { var done int = 0 }
+    view {
+        col {
+            text "x" { style: { completed: .done, "line-through": .done } }
+        }
+    }
+    on {
+        .Nop -> { .done = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":class=\"{ completed: done, 'line-through': done }\""),
+            "hyphenated class key quoted:\n{}",
+            sfc
+        );
     }
 }
