@@ -753,12 +753,59 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
         None => return error_result("Missing required parameter: element_id"),
     };
 
-    let element_id = match parse_aura_id(element_id_str) {
+    let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N'", element_id_str)),
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
     };
 
     let shared = shared.lock().unwrap();
+
+    // Plan 371: vnode_N path — inspect from styled VTree + View tree
+    if let ElementId::Vnode(vnode_id) = element_id {
+        let snap = match &shared.styled_vtree {
+            Some(s) => s,
+            None => return error_result("No styled VTree available yet"),
+        };
+        let vnode = match snap.vtree.get(vnode_id) {
+            Some(n) => n,
+            None => return error_result(format!("Element not found: vnode_{}", vnode_id.as_u64())),
+        };
+        let mut out = format!("Inspect vnode_{}\n", vnode_id.as_u64());
+        out.push_str(&format!("  kind: {}\n", vnode.kind));
+        // Show label/content from props
+        match &vnode.props {
+            crate::ui::vnode::VNodeProps::Text { content } => {
+                out.push_str(&format!("  text: {}\n", content));
+            }
+            crate::ui::vnode::VNodeProps::Button { label } => {
+                out.push_str(&format!("  label: {}\n", label));
+            }
+            crate::ui::vnode::VNodeProps::Input { value, placeholder, .. } => {
+                out.push_str(&format!("  value: {}\n", value));
+                out.push_str(&format!("  placeholder: {}\n", placeholder));
+            }
+            _ => {}
+        }
+        // Show events from the View tree
+        if let Some(view) = &shared.view {
+            if let Some(target) = find_view_by_path(view, &vnode.path) {
+                let events = collect_view_events(target);
+                if !events.is_empty() {
+                    out.push_str("  events:\n");
+                    for (ev, handler) in &events {
+                        out.push_str(&format!("    {} -> {}\n", ev, handler));
+                    }
+                }
+            }
+        }
+        return text_result(out);
+    }
+
+    // Legacy aura_N path
+    let element_id = match element_id {
+        ElementId::Aura(id) => id,
+        _ => unreachable!(),
+    };
 
     match &shared.view_template {
         Some(t) => {
@@ -793,6 +840,47 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
     }
 }
 
+/// Collect event handlers from a View as (event_type, handler_string) pairs.
+fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    match view {
+        View::Button { onclick, .. } => {
+            if let Some((w, e)) = extract_dyn_msg(onclick) {
+                out.push(("onclick".into(), format!("{}.{}", w, e)));
+            }
+        }
+        View::Input { on_change, on_submit, .. } => {
+            if let Some(m) = on_change {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onchange".into(), format!("{}.{}", w, e)));
+                }
+            }
+            if let Some(m) = on_submit {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onsubmit".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        View::Textarea { on_change, .. } => {
+            if let Some(m) = on_change {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onchange".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        View::Checkbox { on_toggle, .. } => {
+            if let Some(m) = on_toggle {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("ontoggle".into(), format!("{}.{}", w, e)));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+
 // ── Tool: autoui_action ──
 
 fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
@@ -806,9 +894,9 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         None => return error_result("Missing required parameter: action"),
     };
 
-    let element_id = match parse_aura_id(element_id_str) {
+    let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}'", element_id_str)),
+        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
     };
 
     let action_type = match action_str {
@@ -829,19 +917,26 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
 
         let before_state = shared.state.clone();
 
-        let (view, id_map) = match (&shared.view, &shared.id_map) {
-            (Some(v), Some(m)) => (v, m),
-            _ => return error_result("No UI available yet"),
+        // Plan 371: dual-path dispatch — vnode_N covers all elements,
+        // aura_N covers root-only (backward compat).
+        let result = match element_id {
+            ElementId::Vnode(vnode_id) => {
+                execute_action_vnode(&shared, vnode_id, action_type, value)
+            }
+            ElementId::Aura(aura_id) => {
+                let (view, id_map) = match (&shared.view, &shared.id_map) {
+                    (Some(v), Some(m)) => (v, m),
+                    _ => return error_result("No UI available yet"),
+                };
+                let snapshot = SnapshotBuilder::build(
+                    &shared.widget_name,
+                    &shared.state,
+                    view,
+                    id_map,
+                );
+                execute_action_on_shared(&shared, &snapshot.tree, aura_id, action_type, value)
+            }
         };
-
-        let snapshot = SnapshotBuilder::build(
-            &shared.widget_name,
-            &shared.state,
-            view,
-            id_map,
-        );
-
-        let result = execute_action_on_shared(&shared, &snapshot.tree, element_id, action_type, value);
         (before_state, result)
     };
 
@@ -1385,6 +1480,173 @@ fn parse_aura_id(s: &str) -> Option<AuraNodeId> {
         .and_then(|n| n.parse::<u32>().ok())
         .map(AuraNodeId)
 }
+
+// ============================================================================
+// Plan 371: vnode_N support for action/inspect (unified ID system)
+// ============================================================================
+
+/// A unified element identifier — supports both legacy `aura_N` (root-only)
+/// and `vnode_N` (covers all rendered elements including child widget internals).
+enum ElementId {
+    Aura(AuraNodeId),
+    Vnode(VNodeId),
+}
+
+/// Parse either `aura_N` or `vnode_N` from a string.
+fn parse_element_id(s: &str) -> Option<ElementId> {
+    if let Some(n) = s.strip_prefix("aura_") {
+        return n.parse::<u32>().ok().map(|n| ElementId::Aura(AuraNodeId(n)));
+    }
+    if let Some(n) = s.strip_prefix("vnode_") {
+        return n.parse::<u64>().ok().map(|n| ElementId::Vnode(VNodeId::new(n)));
+    }
+    None
+}
+
+/// Navigate the View tree by a VNode's path (child-index sequence) to find the
+/// corresponding rendered View. Mirrors `extract_children` from vnode_converter.
+fn find_view_by_path<'a>(
+    view: &'a View<DynamicMessage>,
+    path: &[u16],
+) -> Option<&'a View<DynamicMessage>> {
+    let mut current = view;
+    for &idx in path {
+        let children: Vec<&View<DynamicMessage>> = match current {
+            View::Column { children, .. } | View::Row { children, .. } => {
+                children.iter().collect()
+            }
+            View::Grid { cells, .. } => cells.iter().collect(),
+            View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
+            View::List { items, .. } => items.iter().collect(),
+            _ => return None,
+        };
+        current = children.get(idx as usize)?;
+    }
+    Some(current)
+}
+
+/// Extract (widget_name, event_name) from a DynamicMessage.
+fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
+    match msg {
+        DynamicMessage::Typed { widget_name, event_name, .. } => {
+            Some((widget_name.clone(), event_name.clone()))
+        }
+        DynamicMessage::String(name) => Some((String::new(), name.clone())),
+    }
+}
+
+/// Extract the handler (widget_name, event_name) from a View for a given action.
+/// `action_name`: "press" / "type" / "toggle" / "select" / "set_value".
+fn extract_action_from_view(
+    view: &View<DynamicMessage>,
+    action_name: &str,
+) -> Option<(String, String)> {
+    match view {
+        View::Button { onclick, .. } if action_name == "press" => extract_dyn_msg(onclick),
+        View::Input { on_change, .. } | View::Textarea { on_change, .. }
+            if action_name == "type" =>
+        {
+            on_change.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
+            on_toggle.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        _ => None,
+    }
+}
+
+/// Get the VNodeKind string for a View (for action validation).
+fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
+    match view {
+        View::Button { .. } => "Button",
+        View::Input { .. } => "Input",
+        View::Textarea { .. } => "Textarea",
+        View::Checkbox { .. } => "Checkbox",
+        View::Slider { .. } => "Slider",
+        _ => "Other",
+    }
+}
+
+/// Execute an action on a vnode_N element: look up the VNode, find the View by
+/// path, extract the handler from the DynamicMessage, and dispatch.
+fn execute_action_vnode(
+    shared: &SharedState,
+    vnode_id: VNodeId,
+    action: UiActionType,
+    value: Option<auto_val::Value>,
+) -> Result<ActionResult, String> {
+    let snap = shared.styled_vtree.as_ref()
+        .ok_or_else(|| "No styled VTree available yet".to_string())?;
+    let vnode = snap.vtree.get(vnode_id)
+        .ok_or_else(|| format!("VNode not found: vnode_{}", vnode_id.as_u64()))?;
+
+    let view = shared.view.as_ref()
+        .ok_or_else(|| "No view available yet".to_string())?;
+    let target_view = find_view_by_path(view, &vnode.path)
+        .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
+
+    // Validate action type
+    let action_name = match &action {
+        UiActionType::Press => "press",
+        UiActionType::TypeText | UiActionType::Clear => "type",
+        UiActionType::Toggle => "toggle",
+        UiActionType::SelectOption => "select",
+        UiActionType::SetValue => "set_value",
+    };
+    let kind = view_kind_str(target_view);
+    match &action {
+        UiActionType::Press if kind != "Button" =>
+            return Err(format!("Action 'press' not valid for component type '{}'", kind)),
+        UiActionType::TypeText if kind != "Input" && kind != "Textarea" =>
+            return Err(format!("Action 'type_text' not valid for component type '{}'", kind)),
+        UiActionType::Toggle if kind != "Checkbox" =>
+            return Err(format!("Action 'toggle' not valid for component type '{}'", kind)),
+        _ => {}
+    }
+
+    // Extract handler from the View's DynamicMessage
+    let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
+        .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
+
+    // Build input_value for type_text
+    let input_value = match &action {
+        UiActionType::TypeText => Some(
+            value.as_ref()
+                .map(|v| match v {
+                    auto_val::Value::Str(s) => s.to_string(),
+                    other => other.to_string(),
+                })
+                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?
+        ),
+        UiActionType::Clear => Some(String::new()),
+        _ => None,
+    };
+
+    // Use the widget_name from the DynamicMessage (e.g. "EditorPanel") — NOT
+    // shared.widget_name ("App"). This is the key fix: child widget buttons
+    // route to the correct handler namespace.
+    let widget = if widget_name.is_empty() {
+        shared.widget_name.clone()
+    } else {
+        widget_name.clone()
+    };
+
+    let msg = ActionMessage {
+        widget,
+        event: event_name.clone(),
+        input_value,
+    };
+    shared.send_action(msg)?;
+
+    Ok(ActionResult {
+        status: "ok".to_string(),
+        element_id: AuraNodeId(0), // Placeholder — vnode_N doesn't map to AuraNodeId
+        action: action.to_string(),
+        handler: Some(format!(".{}", event_name)),
+        state_changes: vec![],
+    })
+}
+
 
 /// Convert a JSON value to an Auto Value.
 fn json_value_to_auto_val(v: &serde_json::Value) -> Option<auto_val::Value> {
