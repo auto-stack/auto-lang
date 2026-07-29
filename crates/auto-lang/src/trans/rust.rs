@@ -10981,6 +10981,11 @@ impl RustTrans {
         Self::fix_non_ord_derives(&mut content);
         Self::fix_missing_trait_impl_uses(&mut content);
         Self::fix_string_literal_enum_args(&mut content);
+        // Plan 376: Type-flow analysis post_process passes
+        Self::fix_for_in_self_field_borrow(&mut content);
+        Self::fix_option_get_field_access(&mut content);
+        Self::fix_some_str_to_string(&mut content);
+        Self::fix_a2r_std_fs_result_patterns(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -12486,6 +12491,96 @@ impl RustTrans {
             }
         }
     }
+
+    /// Plan 376 Pass 4: Fix `for x in self.field` → `for x in &self.field`
+    /// when the enclosing method is `&self` (not `&mut self`). Without this,
+    /// iterating a Vec field of `&self` causes E0507 (cannot move out of self.field).
+    fn fix_for_in_self_field_borrow(content: &mut String) {
+        let re = cached_regex(r"for\s+(\w+)\s+in\s+self\.(\w+)\s*\{");
+        if let Some(re) = re {
+            let mut new_content = content.clone();
+            let mut offset = 0;
+            for caps in re.captures_iter(content.as_str()) {
+                let full = caps.get(0).unwrap();
+                let var = caps.get(1).unwrap().as_str();
+                let field = caps.get(2).unwrap().as_str();
+                let before = &content[..full.start()];
+                let fn_line = before.rfind("fn ").map(|pos| &content[pos..full.start()]);
+                let is_mut = fn_line.map_or(false, |line| line.contains("&mut self"));
+                if !is_mut {
+                    let old = format!("for {} in self.{} {{", var, field);
+                    let new = format!("for {} in &self.{} {{", var, field);
+                    let pos = new_content[offset..].find(&old);
+                    if let Some(p) = pos {
+                        let abs = offset + p;
+                        new_content.replace_range(abs..abs + old.len(), &new);
+                        offset = abs + new.len();
+                    }
+                }
+            }
+            if new_content != *content {
+                *content = new_content;
+            }
+        }
+    }
+
+    /// Plan 376 Pass 2: Fix `.get(key).field` → `.get(key).unwrap().field`
+    /// (HashMap.get returns Option, not the value directly).
+    fn fix_option_get_field_access(content: &mut String) {
+        let safe_methods = ["is_some", "is_none", "unwrap", "unwrap_or",
+            "unwrap_or_default", "map", "and_then", "unwrap_or_else",
+            "as_ref", "as_deref", "copied", "cloned", "ok", "err",
+            "iter", "into_iter", "as_mut"];
+        if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.(\w+)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let key = caps.get(1).unwrap().as_str();
+                let field = caps.get(2).unwrap().as_str();
+                if safe_methods.contains(&field) {
+                    return format!(".get({}).{}", key, field);
+                }
+                format!(".get({}).unwrap().{}", key, field)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376 Pass 3: Fix `Some(ident)` where target is Option<String>.
+    /// Adds `.to_string()` to the inner value.
+    fn fix_some_str_to_string(content: &mut String) {
+        let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
+        if let Some(re) = re {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let prefix = caps.get(1).unwrap().as_str();
+                let ident = caps.get(2).unwrap().as_str();
+                let suffix = caps.get(3).unwrap().as_str();
+                format!("{}{}.to_string(){}", prefix, ident, suffix)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+        let re2 = cached_regex(r#"(self\.\w+\s*=\s*Some\()("(?:[^"\\]|\\.)*")(\))"#);
+        if let Some(re2) = re2 {
+            let new = re2.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("{}{}.to_string(){}",
+                    caps.get(1).unwrap().as_str(),
+                    caps.get(2).unwrap().as_str(),
+                    caps.get(3).unwrap().as_str())
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376 Pass 2b: Fix a2r_std::fs function return type mismatches.
+    /// read_to_string returns String (not Result); wrap in Ok() so match works.
+    fn fix_a2r_std_fs_result_patterns(content: &mut String) {
+        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\([^)]*\))\s*\{");
+        if let Some(re) = re {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let call = caps.get(1).unwrap().as_str();
+                format!("match Ok({}) {{", call)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
 }
 
 lazy_static::lazy_static! {
@@ -12645,6 +12740,19 @@ impl Trans for RustTrans {
         }
 
         // No custom Err trait — use Box<dyn std::error::Error> for !T error types
+
+        // Plan 376 Pass 1: Pre-scan struct field types for assignment-time
+        // type conversion (e.g., self.field = Some(&str) → Some(&str.to_string())).
+        for stmt in &ast.stmts {
+            if let Stmt::TypeDecl(td) = stmt {
+                let fields: Vec<(AutoStr, Type)> = td.members.iter()
+                    .map(|m| (m.name.clone(), m.ty.clone()))
+                    .collect();
+                if !fields.is_empty() {
+                    self.struct_field_types.insert(td.name.clone(), fields);
+                }
+            }
+        }
 
         // Phase 2: Split into declarations and main, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
