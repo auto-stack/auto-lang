@@ -95,7 +95,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path) {
+        match compile_at_file(at_path, &[]) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -179,6 +179,25 @@ pub fn generate_rust_ui(
         "MyApp".to_string()
     };
 
+    // Plan 374 Task 2-3: Pre-scan all .at files to collect StoreDecls.
+    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
+    for at_path in &at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
+                        all_stores.push(store.clone());
+                    }
+                }
+            }
+        }
+    }
+    if !all_stores.is_empty() {
+        println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
+    }
+
     // Compile each .at file and collect generated components
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
@@ -189,7 +208,7 @@ pub fn generate_rust_ui(
             .to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
-        match compile_at_file(at_path) {
+        match compile_at_file(at_path, &all_stores) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -297,7 +316,10 @@ fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
 
 /// Compile a single .at file to Rust UI code.
 /// Returns (generated_code, api_imports) so callers can deduplicate API stubs.
-fn compile_at_file(at_path: &Path) -> AutoResult<(String, Vec<String>)> {
+fn compile_at_file(
+    at_path: &Path,
+    stores: &[auto_lang::ast::ui::StoreDecl],
+) -> AutoResult<(String, Vec<String>)> {
     let code = fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
@@ -314,6 +336,41 @@ fn compile_at_file(at_path: &Path) -> AutoResult<(String, Vec<String>)> {
 
     // Extract API imports from `use back.api: ...` statements
     let api_imports = extract_api_imports_from_ast(&ast);
+
+    // Plan 374 Task 1: Register view fn fragments BEFORE extracting widgets.
+    auto_lang::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            auto_lang::aura::extract::register_view_fragment(frag);
+        }
+    }
+
+    // Plan 374 Task 2: Generate store composables as Rust structs.
+    for store in stores {
+        generator.register_store("store", store.name.as_str());
+        let fake_decl = auto_lang::ast::ui::WidgetDecl {
+            name: store.name.clone(),
+            messages: store.messages.clone(),
+            model: store.model.clone(),
+            computed: store.computed.clone(),
+            view: None,
+            on: store.on.clone(),
+            bind: None,
+            props: Vec::new(),
+            routes: None,
+            lifecycle: Vec::new(),
+        };
+        match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
+            Ok(aura_widget) => {
+                let rust_code = generator.generate(&aura_widget).map_err(|e| e.to_string())?;
+                output.push_str(&rust_code);
+                output.push('\n');
+            }
+            Err(e) => {
+                eprintln!("  Warning: store '{}' extraction failed: {}", store.name, e);
+            }
+        }
+    }
 
     // Extract AURA widgets from AST
     for stmt in &ast.stmts {

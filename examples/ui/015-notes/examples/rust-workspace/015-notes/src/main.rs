@@ -7,6 +7,139 @@ use auto_lang::ui::{Component, View};
 
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
+
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum AppMsg {
     Init,
     NewNote,
@@ -29,6 +162,7 @@ pub enum AppMsg {
 #[derive(Debug)]
 pub struct App {
     pub search: String,
+    pub store: NotesStore,
 }
 
 impl App {
@@ -49,61 +183,61 @@ impl Component for App {
 
     fn on(&mut self, msg: Self::Msg) {
         match msg {
+            AppMsg::NewNoteInFolder(i) => {
+                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
+            }
+            AppMsg::DeleteActive => {
+                delete_note(self.store.notes[self.store.active_id as usize].id);
+                self.store.notes = list_notes();
+                if self.store.notes.len() as i32 > 0 { self.store.active_id = 0 }
+            }
+            AppMsg::ToggleDarkMode => {
+                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            }
+            AppMsg::TagsChanged => {
+                self.store.notes = list_notes()
+            }
+            AppMsg::SelectAll => {
+                self.store.active_folder = "all".to_string();
+                self.store.active_tag = "".to_string()
+            }
+            AppMsg::SelectPinned => {
+                self.store.active_folder = "pinned".to_string();
+                self.store.active_tag = "".to_string()
+            }
+            AppMsg::SelectTag(i) => {
+                self.store.active_tag = t
+            }
+            AppMsg::ClearTag => {
+                self.store.active_tag = "".to_string()
+            }
+            AppMsg::TogglePin(i) => {
+                self.store.on(NotesStoreMsg::TogglePin(self.store.active_id))
+            }
+            AppMsg::NewNote => {
+                self.store.on(NotesStoreMsg::NewNote)
+            }
             AppMsg::SelectNote(i) => {
-                store.active_id = i
+                self.store.active_id = i
+            }
+            AppMsg::SelectRecent => {
+                self.store.active_folder = "recent".to_string();
+                self.store.active_tag = "".to_string()
             }
             AppMsg::SearchChanged => {
                 self.search = self.search.clone()
             }
-            AppMsg::DeleteActive => {
-                delete_note(self.store.notes[self.store.active_id as usize].id);
-                store.notes = list_notes();
-                if self.store.notes.len() as i32 > 0 { store.active_id = 0 }
-            }
-            AppMsg::TagsChanged => {
-                store.notes = list_notes()
-            }
-            AppMsg::SelectAll => {
-                store.active_folder = "all".to_string();
-                store.active_tag = "".to_string()
-            }
-            AppMsg::SelectPinned => {
-                store.active_folder = "pinned".to_string();
-                store.active_tag = "".to_string()
-            }
-            AppMsg::SelectRecent => {
-                store.active_folder = "recent".to_string();
-                store.active_tag = "".to_string()
-            }
-            AppMsg::SelectTag(i) => {
-                store.active_tag = t
-            }
-            AppMsg::NewNoteInFolder(i) => {
-                store.NewNoteInFolder(f)
-            }
-            AppMsg::TogglePin(i) => {
-                store.TogglePin(store.active_id)
-            }
-            AppMsg::ToggleDarkMode => {
-                store.ToggleDarkMode()
-            }
-            AppMsg::ClearTag => {
-                store.active_tag = "".to_string()
-            }
-            AppMsg::NewNote => {
-                store.NewNote()
-            }
             AppMsg::Init => {
-                store.Init()
+                self.store.on(NotesStoreMsg::Init)
             }
             AppMsg::NavTree(inner) => {
-                let mut __child = NavTree::new(self.search, self.store.active_tag, self.store.active_id, self.store.active_folder);
+                let mut __child = NavTree::new(self.search, self.store.active_tag, self.store.active_folder, self.store.active_id);
                 __child.search = self.search.clone();
                 __child.on(inner);
                 self.search = __child.search;
             }
             AppMsg::EditorPanel(inner) => {
-                let mut __child = EditorPanel::new(self.search, self.store.active_tag, self.store.active_id, self.store.active_folder);
+                let mut __child = EditorPanel::new(self.search, self.store.active_tag, self.store.active_folder, self.store.active_id);
                 __child.search = self.search.clone();
                 __child.on(inner);
                 self.search = __child.search;
@@ -112,10 +246,143 @@ impl Component for App {
     }
 
     fn view(&self) -> View<Self::Msg> {
-        View::col().style("w-full h-screen flex-col bg-muted/30 p-3 gap-3").child(View::row().style("items-center justify-between px-5 py-3 bg-card rounded-xl shadow-sm").child(View::row().style("items-center gap-2").child(View::text_styled("📝".to_string(), "text-xl")).child(View::text_styled("Notes".to_string(), "text-3xl font-bold text-lg font-bold text-foreground")).build()).child(View::button("New").style("px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build()).child(View::row().style("flex-1 gap-3 min-h-0").child(NavTree::new(self.search, self.store.active_tag, self.store.active_id, self.store.active_folder).view().map_msg(|m| AppMsg::NavTree(m))).child(View::col().style("flex-1 min-h-0").child(if self.store.notes.len ( ) > 0 { EditorPanel::new(self.store.notes[self.store.active_id as usize]).view().map_msg(|m| AppMsg::EditorPanel(m)) } else { View::col().style("flex-1 items-center justify-center bg-card rounded-xl shadow-sm").child(View::text_styled("📝".to_string(), "text-6xl mb-4 opacity-40")).child(View::text_styled("No notes yet".to_string(), "text-lg text-muted-foreground")).child(View::button("Create your first note").style("mt-4 px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build() }).build()).build()).build()
+        View::col().style("w-full h-screen flex-col bg-muted/30 p-3 gap-3").child(View::row().style("items-center justify-between px-5 py-3 bg-card rounded-xl shadow-sm").child(View::row().style("items-center gap-2").child(View::text_styled("📝".to_string(), "text-xl")).child(View::text_styled("Notes".to_string(), "text-3xl font-bold text-lg font-bold text-foreground")).build()).child(View::button("New").style("px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build()).child(View::row().style("flex-1 gap-3 min-h-0").child(NavTree::new(self.search, self.store.active_tag, self.store.active_folder, self.store.active_id).view().map_msg(|m| AppMsg::NavTree(m))).child(View::col().style("flex-1 min-h-0").child(if self.store.notes.len ( ) > 0 { EditorPanel::new(self.store.notes[self.store.active_id as usize]).view().map_msg(|m| AppMsg::EditorPanel(m)) } else { View::col().style("flex-1 items-center justify-center bg-card rounded-xl shadow-sm").child(View::text_styled("📝".to_string(), "text-6xl mb-4 opacity-40")).child(View::text_styled("No notes yet".to_string(), "text-lg text-muted-foreground")).child(View::button("Create your first note").style("mt-4 px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build() }).build()).build()).build()
     }
 }
 
+
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
 
 // Auto-generated from Auto language
 // DO NOT EDIT - changes will be overwritten
@@ -175,11 +442,17 @@ impl Component for EditorPanel {
 
     fn on(&mut self, msg: Self::Msg) {
         match msg {
+            EditorPanelMsg::Edit => {
+                self.edit_title = self.note.title.to_string();
+                self.edit_body = self.note.body.to_string();
+                self.tag_input = "".to_string();
+                self.editing = true
+            }
+            EditorPanelMsg::EditBody(i) => {
+                self.edit_body = md.to_string()
+            }
             EditorPanelMsg::AddTag => {
                 if self.tag_input != "".to_string() { self.note.tags.push(self.tag_input.clone()); update_tags(self.note.id, self.note.tags); self.tag_input = "".to_string(); self.show_tag_input = false; on_tags_changed() }
-            }
-            EditorPanelMsg::Delete => {
-                on_delete()
             }
             EditorPanelMsg::Save => {
                 self.note.title = self.edit_title;
@@ -187,17 +460,11 @@ impl Component for EditorPanel {
                 update_note(self.note.id, self.edit_title.clone(), self.edit_body.clone());
                 self.editing = false
             }
-            EditorPanelMsg::TogglePin => {
-                on_toggle_pin()
-            }
-            EditorPanelMsg::EditTagInput => {
-                
-            }
             EditorPanelMsg::EditTitle(i) => {
                 self.edit_title = t.to_string()
             }
-            EditorPanelMsg::ShowTagInput => {
-                self.show_tag_input = true
+            EditorPanelMsg::EditTagInput => {
+                
             }
             EditorPanelMsg::RemoveTag(i) => {
                 let mut new_tags = vec![];
@@ -206,17 +473,17 @@ impl Component for EditorPanel {
                 update_tags(self.note.id, self.note.tags);
                 on_tags_changed()
             }
-            EditorPanelMsg::EditBody(i) => {
-                self.edit_body = md.to_string()
+            EditorPanelMsg::ShowTagInput => {
+                self.show_tag_input = true
+            }
+            EditorPanelMsg::TogglePin => {
+                on_toggle_pin()
+            }
+            EditorPanelMsg::Delete => {
+                on_delete()
             }
             EditorPanelMsg::Cancel => {
                 self.editing = false
-            }
-            EditorPanelMsg::Edit => {
-                self.edit_title = self.note.title.to_string();
-                self.edit_body = self.note.body.to_string();
-                self.tag_input = "".to_string();
-                self.editing = true
             }
             EditorPanelMsg::Init => {
                 if self.note.title == "".to_string() { self.edit_title = "".to_string(); self.edit_body = "".to_string(); self.editing = true }
@@ -229,6 +496,139 @@ impl Component for EditorPanel {
     }
 }
 
+
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
 
 // Auto-generated from Auto language
 // DO NOT EDIT - changes will be overwritten
@@ -277,6 +677,272 @@ impl Component for NoteItem {
 }
 
 
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
+
+
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
 
 // Auto-generated from Auto language
 // DO NOT EDIT - changes will be overwritten
@@ -293,7 +959,6 @@ pub enum NavTreeMsg {
     NewNoteInFolder(String),
     ToggleDarkMode,
     SetAccent(String),
-    NoteItem(NoteItemMsg),
 }
 
 #[derive(Debug)]
@@ -320,49 +985,178 @@ impl Component for NavTree {
 
     fn on(&mut self, msg: Self::Msg) {
         match msg {
-            NavTreeMsg::SelectAll => {
-                store.active_folder = "all".to_string();
-                store.active_tag = "".to_string()
-            }
-            NavTreeMsg::SelectNote(i) => {
-                store.active_id = i
-            }
-            NavTreeMsg::NewNote => {
-                store.NewNote()
-            }
-            NavTreeMsg::NewNoteInFolder(i) => {
-                store.NewNoteInFolder(f)
-            }
-            NavTreeMsg::SelectTag(i) => {
-                store.active_tag = t
-            }
-            NavTreeMsg::ToggleDarkMode => {
-                store.ToggleDarkMode()
-            }
             NavTreeMsg::SelectRecent => {
-                store.active_folder = "recent".to_string();
-                store.active_tag = "".to_string()
-            }
-            NavTreeMsg::SelectPinned => {
-                store.active_folder = "pinned".to_string();
-                store.active_tag = "".to_string()
+                self.store.active_folder = "recent".to_string();
+                self.store.active_tag = "".to_string()
             }
             NavTreeMsg::SetAccent(i) => {
-                store.SetAccent(name)
+                self.store.on(NotesStoreMsg::SetAccent(name))
             }
-            NavTreeMsg::NoteItem(inner) => {
-                let mut __child = NoteItem::new("px-3".to_string(), note, i == self.store.active_id);
-                __child.on(inner);
+            NavTreeMsg::SelectTag(i) => {
+                self.store.active_tag = t
+            }
+            NavTreeMsg::NewNoteInFolder(i) => {
+                self.store.on(NotesStoreMsg::NewNoteInFolder(f))
+            }
+            NavTreeMsg::SelectAll => {
+                self.store.active_folder = "all".to_string();
+                self.store.active_tag = "".to_string()
+            }
+            NavTreeMsg::SelectNote(i) => {
+                self.store.active_id = i
+            }
+            NavTreeMsg::ToggleDarkMode => {
+                self.store.on(NotesStoreMsg::ToggleDarkMode)
+            }
+            NavTreeMsg::NewNote => {
+                self.store.on(NotesStoreMsg::NewNote)
+            }
+            NavTreeMsg::SelectPinned => {
+                self.store.active_folder = "pinned".to_string();
+                self.store.active_tag = "".to_string()
             }
         }
     }
 
     fn view(&self) -> View<Self::Msg> {
-        View::col().style("w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0").child(View::row().style("gap-1 m-3 p-1 bg-muted rounded-lg").child(View::button("All").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectAll).build()).child(View::button("Pinned").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectPinned).build()).child(View::button("Recent").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectRecent).build()).build()).child(View::row().style("mx-3 mb-2 items-center gap-2 px-3 py-1.5 bg-muted rounded-lg").child(View::text_styled("🔍".to_string(), "text-sm opacity-50")).child(View::input("Search notes...").style("flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground").build()).build()).child(View::row().style("flex-wrap gap-1 px-3 mb-2").children(self.store.all_tags.iter().map(|t| { View::button(format!("{}", self.t)).style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectTag(t)).build() })).build()).child(View::col().style("flex-1 overflow-y-auto px-2 gap-0.5").child(if self.active_folder == "all" { View::row().child(View::row().style("px-2 py-1 items-center").child(View::text_styled("📁 Notes".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNote).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "" { if self.store.active_tag == "" { NoteItem::new("px-3".to_string(), note, i == self.store.active_id).view().map_msg(|m| NavTreeMsg::NoteItem(m)) } else { if note.tags.contains(self.store.active_tag) { NoteItem::new(i == self.store.active_id, note, "px-3".to_string()).view().map_msg(|m| NavTreeMsg::NoteItem(m)) } else { View::Empty } } } else { View::Empty } })).child(View::row().style("px-2 py-1 items-center mt-2").child(View::text_styled("📁 Work".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNoteInFolder("work")).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "work" { if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } } else { View::Empty } })).child(View::row().style("px-2 py-1 items-center mt-2").child(View::text_styled("📁 Personal".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNoteInFolder("personal")).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "personal" { if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } } else { View::Empty } })).build() } else { View::Empty }).child(if self.active_folder == "pinned" { self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.pinned { View::row().child(if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty }).child(if self.store.active_tag != "" { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } else { View::Empty }).build() } else { View::Empty } }) } else { View::Empty }).child(if self.active_folder == "recent" { self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty }
+        View::col().style("w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0").child(View::row().style("gap-1 m-3 p-1 bg-muted rounded-lg").child(View::button("All").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectAll).build()).child(View::button("Pinned").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectPinned).build()).child(View::button("Recent").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectRecent).build()).build()).child(View::row().style("mx-3 mb-2 items-center gap-2 px-3 py-1.5 bg-muted rounded-lg").child(View::text_styled("🔍".to_string(), "text-sm opacity-50")).child(View::input("Search notes...").style("flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground").build()).build()).child(View::row().style("flex-wrap gap-1 px-3 mb-2").children(self.store.all_tags.iter().map(|t| { View::button(format!("{}", self.t)).style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SelectTag(t)).build() })).build()).child(View::col().style("flex-1 overflow-y-auto px-2 gap-0.5").child(if self.active_folder == "all" { View::row().child(View::row().style("px-2 py-1 items-center").child(View::text_styled("📁 Notes".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNote).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "" { if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } } else { View::Empty } })).child(View::row().style("px-2 py-1 items-center mt-2").child(View::text_styled("📁 Work".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNoteInFolder("work")).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "work" { if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } } else { View::Empty } })).child(View::row().style("px-2 py-1 items-center mt-2").child(View::text_styled("📁 Personal".to_string(), "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide")).child(View::button("+").style("text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::NewNoteInFolder("personal")).build()).build()).child(self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.folder == "personal" { if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } } else { View::Empty } })).build() } else { View::Empty }).child(if self.active_folder == "pinned" { self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if note.pinned { View::row().child(if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty }).child(if self.store.active_tag != "" { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } else { View::Empty }).build() } else { View::Empty } }) } else { View::Empty }).child(if self.active_folder == "recent" { self.store.notes.iter().enumerate().map(|(i, note)| { let i = i as i32; if self.store.active_tag == "" { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty }
 if self.store.active_tag != "" { if note.tags.contains(self.store.active_tag) { View::button(()).style(/* expr */.as_str()).child(View::text_styled(note.title, "block truncate")).child(View::text_styled(note.time, "block text-xs text-muted-foreground mt-0.5")).on_click(|_| NavTreeMsg::SelectNote(i)).build() } else { View::Empty } } else { View::Empty } }) } else { View::Empty }).build()).child(View::col().style("border-t border-border").build()).child(View::row().style("items-center gap-2 m-3 mb-1").child(View::text_styled("Theme".to_string(), "text-xs text-muted-foreground font-medium mr-1")).child(View::button("").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SetAccent("indigo")).build()).child(View::button("").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SetAccent("coral")).build()).child(View::button("").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SetAccent("ocean")).build()).child(View::button("").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SetAccent("sage")).build()).child(View::button("").style(/* expr */.as_str()).on_click(|_| NavTreeMsg::SetAccent("amber")).build()).build()).child(if self.store.dark_mode { View::button("☀ Light").style("mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::ToggleDarkMode).build() } else { View::button("🌙 Dark").style("mx-3 mb-3 px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-accent transition-colors").on_click(|_| NavTreeMsg::ToggleDarkMode).build() }).build()
     }
 }
 
+
+// Auto-generated from Auto language
+// DO NOT EDIT - changes will be overwritten
+
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotesStoreMsg {
+    Init,
+    Refresh,
+    SelectNote(i32),
+    NewNote,
+    DeleteNote(i32),
+    TogglePin(i32),
+    SetSort(String),
+    Search(String),
+    UpdateTags(i32),
+    ToggleDarkMode,
+    SetAccent(String),
+    SelectFolder(String),
+    SelectTag(String),
+    MoveNote(i32),
+}
+
+#[derive(Debug)]
+pub struct NotesStore {
+    pub notes: Vec<Note>,
+    pub active_id: i32,
+    pub sort_mode: String,
+    pub search: String,
+    pub loading: bool,
+    pub dark_mode: bool,
+    pub active_folder: String,
+    pub active_tag: String,
+    pub accent_color: String,
+}
+
+impl NotesStore {
+    pub fn new() -> Self {
+        let mut __self = Self {
+            notes: vec![],
+            active_id: 0,
+            sort_mode: "updated".to_string(),
+            search: "".to_string(),
+            loading: false,
+            dark_mode: false,
+            active_folder: "all".to_string(),
+            active_tag: "".to_string(),
+            accent_color: "indigo".to_string(),
+        };
+        __self.on(NotesStoreMsg::Init);
+        __self
+    }
+}
+impl Default for NotesStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl Component for NotesStore {
+    type Msg = NotesStoreMsg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            NotesStoreMsg::SelectNote(i) => {
+                self.active_id = id
+            }
+            NotesStoreMsg::UpdateTags(i) => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::SetSort(i) => {
+                self.sort_mode = mode.to_string()
+            }
+            NotesStoreMsg::ToggleDarkMode => {
+                self.dark_mode = !(self.dark_mode)
+            }
+            NotesStoreMsg::DeleteNote(i) => {
+                delete_note(id);
+                self.notes = list_notes();
+                if self.notes.len() as i32 > 0 { self.active_id = 0 }
+            }
+            NotesStoreMsg::SetAccent(i) => {
+                self.accent_color = name.to_string()
+            }
+            NotesStoreMsg::Search(i) => {
+                self.search = q.to_string()
+            }
+            NotesStoreMsg::SelectFolder(i) => {
+                self.active_folder = folder.to_string();
+                self.active_tag = "".to_string()
+            }
+            NotesStoreMsg::SelectTag(i) => {
+                self.active_tag = t.to_string()
+            }
+            NotesStoreMsg::TogglePin(i) => {
+                if idx < self.notes.len() as i32 { self.notes[idx as usize].pinned = !(self.notes[idx as usize].pinned) }
+            }
+            NotesStoreMsg::MoveNote(i) => {
+                let mut note = /* expr */;
+                for mut n in self.notes.iter_mut() { if n["id"].as_i64().unwrap_or(0) as i32 == id { note = /* expr */ } };
+                if note != /* expr */ { update_note(id, note.title, note.body) };
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::NewNote => {
+                create_note("".to_string(), "".to_string(), "".to_string());
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::NewNoteInFolder => {
+                create_note("".to_string(), "".to_string(), folder);
+                self.notes = list_notes();
+                self.active_id = self.notes.len() as i32 - 1
+            }
+            NotesStoreMsg::Refresh => {
+                self.notes = list_notes()
+            }
+            NotesStoreMsg::Init => {
+                self.loading = true;
+                self.notes = list_notes();
+                self.loading = false
+            }
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col().build()
+    }
+}
+
+impl NotesStore {
+    pub fn pinned_notes(&self) -> impl std::fmt::Display {
+        self.notes.filter(|n| n["pinned"].as_str().unwrap_or_default().to_string())
+    }
+
+}
 
 
 

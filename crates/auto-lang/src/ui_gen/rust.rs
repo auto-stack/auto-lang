@@ -111,6 +111,9 @@ pub struct RustGenerator {
 thread_local! {
     static ROOT_STATE_FIELDS: std::cell::RefCell<Vec<(String, String)>> =
         std::cell::RefCell::new(Vec::new());
+    /// Plan 374: store composable names (e.g. {"store" => "NotesStore"}).
+    pub static STORE_NAMES: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Detected Init handler pattern: `self.state_var = api_func()`
@@ -138,6 +141,13 @@ impl RustGenerator {
             has_init: false,
             init_api_info: None,
         }
+    }
+
+    /// Plan 374: Register a store composable name.
+    pub fn register_store(&mut self, alias: &str, store_name: &str) {
+        STORE_NAMES.with(|sn| {
+            sn.borrow_mut().insert(alias.to_string(), store_name.to_string());
+        });
     }
 
     /// Reset state for new widget
@@ -533,6 +543,14 @@ impl RustGenerator {
         // fields that it doesn't already have. This mirrors VM path's Plan 320
         // unified state — child handlers can reference parent state fields.
         let is_root = widget.name == "App";
+        // Plan 374 Task 2: for root widget, add `pub store: StoreName` field
+        if is_root {
+            STORE_NAMES.with(|sn| {
+                for (_alias, store_name) in sn.borrow().iter() {
+                    code.push_str(&format!("    pub store: {},\n", store_name));
+                }
+            });
+        }
         if is_root {
             // Record root state fields for child widgets to pick up.
             ROOT_STATE_FIELDS.with(|rsf| {
@@ -641,6 +659,14 @@ impl RustGenerator {
             code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
             code.push_str("        __self\n");
         } else {
+            // Plan 374 Task 2: initialize store field for root widget
+            if widget.name == "App" {
+                STORE_NAMES.with(|sn| {
+                    for (_alias, store_name) in sn.borrow().iter() {
+                        code.push_str(&format!("            store: {}::new(),\n", store_name));
+                    }
+                });
+            }
             code.push_str("        }\n");
         }
 
@@ -2677,6 +2703,13 @@ impl RustGenerator {
             Expr::Bool(b) => b.to_string(),
             Expr::Ident(name) => {
                 let s = name.as_str();
+                // Plan 374 Task 2: store composable rewriting
+                if s == "store" || s == ".store" {
+                    return "self.store".to_string();
+                }
+                if s.starts_with(".store.") {
+                    return format!("self.{}", &s[1..]);
+                }
                 if s.starts_with('.') {
                     let path = &s[1..];
                     // Check for dotted path on Value-type var (e.g., ".note.title")
@@ -2697,6 +2730,12 @@ impl RustGenerator {
             }
             Expr::Dot(obj, field) => {
                 let field_str = field.as_str();
+                // Plan 374 Task 2: store.field → self.store.field
+                if let Expr::Ident(name) = obj.as_ref() {
+                    if name.as_str() == "store" {
+                        return format!("self.store.{}", field_str);
+                    }
+                }
                 // Detect pattern: Dot(Dot(Ident("self"), prop_name), field_name)
                 // This is self.prop_name.field_name — check if prop_name is Value-type
                 if let Expr::Dot(inner_obj, inner_field) = obj.as_ref() {
@@ -2925,6 +2964,33 @@ impl RustGenerator {
                 let fn_name: String = call.get_name_text_safe()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| self.ast_expr_to_rust(&call.name));
+                // Plan 374 Task 2: store.Method(args) → self.store.on(StoreMsg::Method(args))
+                // Only match PascalCase methods (store handlers like NewNote, TogglePin).
+                // Don't match `store.notes.len()` or `store.field.lowercase()`.
+                if (fn_name.starts_with("store.") || fn_name.starts_with("self.store.")) {
+                    let method = if fn_name.starts_with("self.store.") {
+                        &fn_name["self.store.".len()..]
+                    } else {
+                        &fn_name["store.".len()..]
+                    };
+                    // Only rewrite if it's a direct store method (no nested dots like "notes.len")
+                    // and starts with uppercase (PascalCase handler name).
+                    if !method.contains('.') && method.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    let args_str = call.args.args.iter()
+                        .map(|a| self.ast_expr_to_rust(&a.get_expr()))
+                        .collect::<Vec<_>>().join(", ");
+                    let store_msg = STORE_NAMES.with(|sn| {
+                        sn.borrow().values().next().cloned()
+                            .map(|name| format!("{}Msg", name))
+                            .unwrap_or_else(|| "StoreMsg".to_string())
+                    });
+                    if args_str.is_empty() {
+                        return format!("self.store.on({}::{})", store_msg, method);
+                    } else {
+                        return format!("self.store.on({}::{}({}))", store_msg, method, args_str);
+                    }
+                    }
+                }
                 let args: Vec<String> = call.args.args.iter()
                     .map(|a| {
                         let expr = self.ast_expr_to_rust(&a.get_expr());
@@ -3095,6 +3161,13 @@ impl RustGenerator {
             Expr::Bool(b) => b.to_string(),
             Expr::Ident(name) => {
                 let s = name.as_str();
+                // Plan 374 Task 2: store composable rewriting
+                if s == "store" || s == ".store" {
+                    return "self.store".to_string();
+                }
+                if s.starts_with(".store.") {
+                    return format!("self.{}", &s[1..]);
+                }
                 if s.starts_with('.') {
                     format!("self.{}", &s[1..])
                 } else if self.state_types.contains_key(s) || self.prop_names.contains(s) {
