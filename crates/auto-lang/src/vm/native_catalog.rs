@@ -629,16 +629,18 @@ macro_rules! for_each_bigvm_native {
             ("HashMap.new", 120, Void),
             ("auto.hashmap.insert_str", 121, Void),
             ("auto.hashmap.insert_int", 122, Void),
-            ("auto.hashmap.get_str", 123, Void),
-            ("auto.hashmap.get_int", 124, Void),
-            ("auto.hashmap.contains", 125, Void),
+            ("auto.hashmap.get_str", 123, String),    // Plan 036 workaround-5: returns string (push_str_idx)
+            ("auto.hashmap.get_int", 124, Int),       // Plan 036 workaround-5: returns int or null
+            ("auto.hashmap.contains", 125, Bool),     // Plan 036 workaround-5: returns 0/1
             ("auto.hashmap.remove", 126, Void),
-            ("auto.hashmap.size", 127, Void),
+            ("auto.hashmap.size", 127, Int),          // Plan 036 workaround-5: returns count
             ("auto.hashmap.clear", 128, Void),
             ("auto.hashmap.drop", 129, Void),
+            ("auto.hashmap.is_empty", 1290, Bool),    // Plan 036 workaround-5: returns bool
+            ("auto.hashmap.get_or", 1291, Int),       // Plan 036 workaround-5: returns value or default
             ("auto.hashmap.insert", 121, Void),
-            ("auto.hashmap.get", 123, Void),
-            ("auto.hashmap.keys", 1292, Void),
+            ("auto.hashmap.get", 123, String),        // Plan 036 workaround-5: alias for get_str
+            ("auto.hashmap.keys", 1292, List),        // Plan 036 workaround-5: returns list of keys
 
             // === HashSet (129-135) ===
             ("auto.hashset.new", 129, Void),

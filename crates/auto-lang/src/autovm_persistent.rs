@@ -58,8 +58,10 @@ pub struct AutovmReplSession {
     object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
 
     /// Last result from the previous REPL input (Plan 080)
-    /// Stores the result value for access in subsequent inputs
-    last_result: Option<i32>,
+    /// Plan 036 workaround-5: Store as NanoValue (u64) to preserve type tags.
+    /// Previously Option<i32> lost the nanbox tag, so string results displayed
+    /// as raw i32 payload (e.g., empty string as -7).
+    last_result: Option<auto_val::NanoValue>,
 
     /// Plan 300 Phase 2: Persistent Python FFI bridge for REPL.
     /// Lazily created on first `use.py`, persists across inputs.
@@ -837,7 +839,8 @@ impl AutovmReplSession {
         // Check if there's a temporary result on stack (sp > target_sp)
         if task.ram.sp > target_sp {
             // Save the result to last_result (Plan 080)
-            let result = task.ram.pop_i32();
+            // Plan 036 workaround-5: Use pop_nv() to preserve nanbox type tag.
+            let result = task.ram.pop_nv();
             self.last_result = Some(result);
             vm_debug!("DEBUG: Saved result to last_result: {}", result);
         } else {
@@ -1058,80 +1061,25 @@ impl AutovmReplSession {
     /// Get the last result (Plan 080)
     ///
     /// Returns the result from the previous REPL input, if any.
-    /// This is used by the REPL to display results to the user.
+    /// Plan 036 workaround-5: Decodes NanoValue → i32 for backward compat.
+    /// Prefer `format_last_result()` for type-aware display.
     pub fn get_last_result(&self) -> Option<i32> {
+        self.last_result.map(|nv| auto_val::decode_i32(nv))
+    }
+
+    /// Get the raw last result as NanoValue (Plan 036 workaround-5).
+    /// Preserves the nanbox type tag for type-aware formatting.
+    pub fn get_last_result_nv(&self) -> Option<auto_val::NanoValue> {
         self.last_result
     }
 
     /// Format the last result for display
     ///
-    /// If the result is a heap object ID (like a list), format it appropriately.
-    /// Otherwise, return the integer value as-is.
-    ///
-    /// Note: This is a heuristic - we can't distinguish between a list ID and an integer
-    /// value that happens to be the same number. We check if the object exists to reduce
-    /// false positives, but there's still ambiguity (e.g., if list ID 1 exists and you
-    /// evaluate an expression that returns 1, it will be formatted as a list).
+    /// Plan 036 workaround-5: Uses nanbox type tags (via `decode_nv_value`)
+    /// instead of i32-range heuristics. Strings, bools, floats, lists, and
+    /// heap objects are now correctly distinguished from plain integers.
     pub fn format_last_result(&self) -> Option<String> {
-        self.last_result.map(|value| {
-            // Check if this is an array ID (arrays use IDs starting from 2000000)
-            if value >= 2000000 {
-                let array_id = value as u64;
-                if let Some(arc) = self.vm.arrays.get(&array_id) {
-                    let guard = arc.read().unwrap();
-                    let elems: Vec<String> = guard.iter()
-                        .map(|v| match v {
-                            auto_val::Value::Int(n) => n.to_string(),
-                            auto_val::Value::Float(f) => f.to_string(),
-                            auto_val::Value::Bool(b) => b.to_string(),
-                            auto_val::Value::Str(s) => format!("\"{}\"", s.as_str()),
-                            auto_val::Value::Nil => "nil".to_string(),
-                            _ => "?".to_string(),
-                        })
-                        .collect();
-                    return format!("[{}]", elems.join(", "));
-                }
-            }
-
-            // Check if this is a heap object ID (heap objects use IDs starting from 4000000)
-            if value >= 4000000 {
-                let list_id = value as u64;
-                if let Some(obj) = self.vm.get_heap_object(list_id) {
-                    let guard = obj.read().unwrap();
-                    // Check if it's a List<int>
-                    use crate::vm::types::ListData;
-                    if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                        // Check if this looks like it could be an element value vs a list reference
-                        // Heuristic: If the value is small (0-10) and matches a list element value,
-                        // it's more likely to be an element than a list ID. But we can't be 100% sure.
-                        // For now, always format lists properly - users will see the issue if
-                        // they index into lists and get elements that happen to match list IDs.
-                        let elems: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
-                        return format!("List[{}]", elems.join(", "));
-                    }
-                    if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
-                        return format!("List[{}]", list.elems.join(", "));
-                    }
-                    if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
-                        let elems: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
-                        return format!("List[{}]", elems.join(", "));
-                    }
-                    // Generic heap object
-                    return format!("<heap object {}>", list_id);
-                }
-            }
-
-            // Check if this is a node ID (nodes use IDs starting from 3000000)
-            if value >= 3000000 && value < 4000000 {
-                let node_id = value as u64;
-                if self.vm.nodes.contains_key(&node_id) {
-                    return format!("<node>");
-                }
-            }
-
-            // Regular integer value
-            value.to_string()
-        })
+        self.last_result.map(|nv| self.decode_nv_value(nv))
     }
 }
 
@@ -1205,39 +1153,46 @@ mod tests {
         let mut session = AutovmReplSession::new();
         let result = session.run("\"42\".to_int()");
         eprintln!("[DEBUG to_int test] result = {:?}", result);
-        eprintln!("[DEBUG to_int test] last_result = {:?}", session.last_result);
-        assert_eq!(session.last_result, Some(42), "to_int should return 42");
+        eprintln!("[DEBUG to_int test] last_result = {:?}", session.get_last_result());
+        assert_eq!(session.get_last_result(), Some(42), "to_int should return 42");
     }
 
     #[test]
     fn test_debug_to_uint_native_id() {
         let mut session = AutovmReplSession::new();
         let _ = session.run("\"42\".to_uint()");
-        eprintln!("[DEBUG to_uint test] last_result = {:?}", session.last_result);
-        assert_eq!(session.last_result, Some(42), "to_uint should return 42");
+        eprintln!("[DEBUG to_uint test] last_result = {:?}", session.get_last_result());
+        assert_eq!(session.get_last_result(), Some(42), "to_uint should return 42");
     }
 
     #[test]
     fn test_to_int_arithmetic() {
         let mut session = AutovmReplSession::new();
         let _ = session.run("\"42\".to_int() + 8");
-        assert_eq!(session.last_result, Some(50), "to_int()+8 should be 50");
+        assert_eq!(session.get_last_result(), Some(50), "to_int()+8 should be 50");
     }
 
     #[test]
     fn test_hashmap_get_str_missing_key() {
-        // Diagnostic: get_str on missing key still returns null (-7) instead
-        // of empty string. The shim_hashmap_get_str edit (push empty string
-        // instead of encode_null) doesn't take effect — likely because the
-        // inventory macro generates a separate FFI shim that overrides the
-        // hand-written one via native_catalog.rs. Needs further investigation
-        // of the catalog/inventory shim dispatch mechanism.
+        // Plan 036 workaround-5: get_str should return empty string for missing keys.
+        // The return type in native_catalog.rs was Void → now String.
+        // The last_result now preserves the nanbox tag (NanoValue, not i32).
         let mut session = AutovmReplSession::new();
         let _ = session.run("var m = HashMap.new()");
         let _ = session.run("m.insert_str(\"a\", \"1\")");
         let _ = session.run("m.get_str(\"missing\")");
-        eprintln!("[DEBUG get_str missing] last_result = {:?}", session.last_result);
-        // Currently returns Some(-7) = null marker. When fixed should be empty string.
+        let nv = session.get_last_result_nv();
+        eprintln!("[DEBUG get_str missing] last_result_nv = {:?}, is_string={}", nv, nv.map(|v| auto_val::is_string(v)).unwrap_or(false));
+        // After fix: get_str returns empty string (TAG_STRING nanbox), not null.
+        assert!(nv.is_some(), "get_str should return a value");
+        let nv = nv.unwrap();
+        assert!(auto_val::is_string(nv), "get_str should return string type, got tag={}", auto_val::tag_of(nv));
+        // Empty string: decode_string gives the string pool index (0 or higher)
+        let _idx = auto_val::decode_string(nv);
+        // Verify formatting produces empty string
+        let formatted = session.format_last_result();
+        eprintln!("[DEBUG get_str missing] formatted = {:?}", formatted);
+        assert_eq!(formatted, Some("".to_string()), "get_str on missing key should format as empty string");
     }
 
     #[test]
@@ -1386,7 +1341,7 @@ mod tests {
         // Verify a is 1
         let r1a = session.run("a");
         assert!(r1a.is_ok(), "a should succeed: {:?}", r1a);
-        println!("DEBUG: after 'a', last_result={:?}", session.last_result);
+        println!("DEBUG: after 'a', last_result={:?}", session.get_last_result());
 
         let r2 = session.run("let a = 3");
         assert!(r2.is_ok(), "let a = 3 should succeed: {:?}", r2);
@@ -1394,8 +1349,8 @@ mod tests {
         // After rebinding, a should be 3
         let r3 = session.run("a");
         assert!(r3.is_ok(), "a should succeed after rebinding: {:?}", r3);
-        println!("DEBUG: after second 'a', last_result={:?}", session.last_result);
-        let val = session.last_result.expect("a should produce a result");
+        println!("DEBUG: after second 'a', last_result={:?}", session.get_last_result());
+        let val = session.get_last_result().expect("a should produce a result");
         assert_eq!(val, 3, "a should be 3 after let rebinding");
     }
 
