@@ -12,7 +12,7 @@
 
 | # | 缺陷 | 类别 | 严重度 | 当前状态 |
 |---|---|---|---|---|
-| D1 | Vue 生成器 OOM（for + style:if + msg/on） | 生成器 | 🔴 高 | Workaround：内联到 App.vue |
+| D1 | Vue 生成器 OOM（for + style:if + msg/on） | 生成器 | 🔴 高 | ✅ 已修复（a86c183c 移除 view_tree Debug format；压力回归测试 `test_plan358_d1_for_style_if_msg_on_stress`） |
 | D2 | Store handler 数组操作（`+` 变字符串拼接） | 转译器 | 🟡 中 | Workaround：computed getter |
 | D3 | Store handler 方法间调用（链式调用 bug） | 转译器 | 🟡 中 | Workaround：避免方法间调用 |
 | D4 | `tag` 保留关键字冲突 | Parser | 🟢 低 | Workaround：改用 `t` |
@@ -31,7 +31,9 @@
 
 **现象**：当 widget 同时有 `for` 循环 + `style:if` 条件样式 + `msg`/`on` 块时，生成器消耗 1.7GB+ 内存。
 
-**根因推测**：
+**实际根因（已确认并修复，a86c183c）**：`generate_sfc` 的暗色模式检测用 `format!("{:?}", widget.view_tree)` 扫描整棵 view 树的 Debug 输出找 `dark_mode` 字符串；含 `Expr::If` 节点（来自 `style:if`）的大树经 Rc 共享节点被 Debug 反复展开，输出指数级增长 → OOM。修复：删除该 Debug format，handler 名（ToggleDarkMode）检查已足够。验证：10 个 for 循环 × 60 个 `style:if` 分支（600 个 if 节点）+ `msg`/`on` 的放大复现，生成耗时 ~0.1s、峰值内存 ~34MB（预算：5s / 200MB）。回归测试：`crates/auto-lang/src/ui_gen/api.rs::test_plan358_d1_for_style_if_msg_on_stress`。
+
+**根因推测（修复前的原始分析，保留存档）**：
 - `generate_script` 扫描 view 树寻找 handler 绑定时，遇到 `for` + `style:if` 组合，可能对每个迭代变体展开 handler 代码
 - 或者 `extract_classes` 处理 `Expr::If` 时与 handler 扫描产生笛卡尔积
 - 精确触发条件：`for tag in .all_tags { button { style:if tag == "a" { ... } else { ... } } }` + widget 有 `msg Msg { ... }` 和 `on { ... }`

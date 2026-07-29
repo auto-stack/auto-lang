@@ -405,4 +405,45 @@ widget W(active: bool) {
         let out = transpile_vue_aura(src, None).expect("normal loop var must generate");
         assert!(out.contains("v-for"));
     }
+
+    /// Plan 358 D1 stress guard: the `for` + `style:if` + `msg`/`on`
+    /// combination that OOM'd (1.7GB+) on the real 015-notes sidebar. The
+    /// root cause was a `format!("{:?}", widget.view_tree)` dark-mode scan in
+    /// `generate_sfc` whose Debug output exploded on large trees with
+    /// `Expr::If` nodes (fixed in a86c183c by removing the Debug format).
+    ///
+    /// This test generates a widget with 10 for-loops x 60 `style:if`
+    /// branches (600 if-nodes) plus `msg`/`on`, and asserts generation
+    /// completes well under the Plan 358 budget (< 5s; measured ~0.1s) so a
+    /// reintroduced tree-wide Debug format — or any other superlinear blowup
+    /// on this pattern — fails loudly instead of OOMing a build.
+    #[test]
+    fn test_plan358_d1_for_style_if_msg_on_stress() {
+        let mut src = String::from(
+            "widget NavTree(active: bool) {\n    msg Msg { SelectTag(str) }\n    view {\n        col {\n",
+        );
+        for l in 0..10 {
+            src.push_str(&format!(
+                "            for tag{l} in .items {{\n                button {{\n                    text tag{l}\n                    onclick: .SelectTag(tag{l})\n"
+            ));
+            for i in 0..60 {
+                src.push_str(&format!(
+                    "                    style: if tag{l} == \"t{i}\" {{ \"l{l}c{i}a\" }} else if .active {{ \"l{l}c{i}b\" }} else {{ \"l{l}c{i}c\" }}\n"
+                ));
+            }
+            src.push_str("                }\n            }\n");
+        }
+        src.push_str("        }\n    }\n    on { .SelectTag(t) -> { } }\n}\n");
+
+        let start = std::time::Instant::now();
+        let out = transpile_vue_aura(&src, None).expect("D1 trigger pattern must generate");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_secs() < 5,
+            "generation took {:?}, over the 5s Plan 358 budget (possible D1 regression)",
+            elapsed
+        );
+        assert_eq!(out.matches("v-for").count(), 10, "expected 10 v-for loops");
+        assert!(out.contains("SelectTag"), "expected handler binding");
+    }
 }
