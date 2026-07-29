@@ -1,0 +1,95 @@
+widget App {
+    use {
+        // Hand-written TS "extension": dispatches the CustomEvents the
+        // widget listens to (SlashMenu integration style).
+        fn: fireSlashOpen, fireSlashClose, firePoke from "src/front/utils/slash.ts"
+    }
+
+    msg Msg { SimOpen, SimOpenFar, SimClose, OnOpen, OnClose, Poke, Poked }
+
+    model {
+        var query str = "(closed)"
+        var menu_top int = 0
+        var menu_left int = 0
+        var menu_vis str = "hidden"
+        var open_count int = 0
+        var poke_note str = "(none)"
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-6",
+            // document-level CustomEvent listeners (quoted names carry ':'
+            // and '-', which identifier event keys cannot hold).
+            on "autodown:slash-open".document: .OnOpen($event),
+            on "autodown:slash-close".document: .OnClose
+
+            h1 "030 — custom events + style_obj" { class: "text-xl font-bold" }
+
+            row {
+                class: "space-x-2",
+                button "open @ (100,120)" {
+                    class: "px-3 py-1 bg-blue-600 text-white rounded",
+                    onclick: .SimOpen
+                }
+                button "open @ (220,320)" {
+                    class: "px-3 py-1 bg-blue-600 text-white rounded",
+                    onclick: .SimOpenFar
+                }
+                button "close" {
+                    class: "px-3 py-1 bg-gray-600 text-white rounded",
+                    onclick: .SimClose
+                }
+            }
+
+            // Element-level custom event: `demo:poke` dispatched directly
+            // on this box by the TS helper.
+            col {
+                ref: "pokeEl",
+                class: "w-72 border rounded p-2 space-y-1",
+                on "demo:poke": .Poked($event)
+                text "element-level: demo:poke listened on this box" { class: "text-xs text-gray-500" }
+                button "poke it" {
+                    class: "px-2 py-1 bg-emerald-600 text-white rounded text-sm",
+                    onclick: .Poke
+                }
+                text f"poke note: ${.poke_note}" { class: "text-xs" }
+            }
+
+            text f"query: ${.query} — opened: ${.open_count}" { class: "text-sm text-gray-700" }
+
+            // SlashMenu-style popover: inline style driven by the model via
+            // style_obj (f-string px concat + quoted hyphenated CSS key).
+            col {
+                class: "absolute w-56 border rounded bg-white shadow-lg p-2",
+                style_obj: { top: f"${.menu_top}px", left: f"${.menu_left}px", visibility: .menu_vis, "z-index": 50 }
+                text f"SlashMenu — query: ${.query}" { class: "text-sm font-medium" }
+                text "New Note" { class: "text-xs px-1 py-0.5 hover:bg-blue-100 rounded" }
+                text "Delete Note" { class: "text-xs px-1 py-0.5 hover:bg-blue-100 rounded" }
+            }
+        }
+    }
+
+    on {
+        .SimOpen -> { fireSlashOpen("fil", 120, 100) }
+        .SimOpenFar -> { fireSlashOpen("ren", 220, 320) }
+        .SimClose -> { fireSlashClose() }
+
+        // e.detail.* chains flow through to the CustomEvent payload.
+        .OnOpen(e) -> {
+            .query = e.detail.query
+            .menu_top = e.detail.top
+            .menu_left = e.detail.left
+            .menu_vis = "visible"
+            .open_count = .open_count + 1
+        }
+
+        .OnClose -> {
+            .menu_vis = "hidden"
+            .query = "(closed)"
+        }
+
+        .Poke -> { firePoke(.pokeEl, "pong") }
+        .Poked(e) -> { .poke_note = e.detail.note }
+    }
+}
