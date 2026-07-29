@@ -195,8 +195,14 @@ Rust 路径。已验证可翻译，且 `fn ... ~Result<T,E>` 正确译为
 **阶段 3 进度（2026-07-29 更新）**：全部 35 个 .at 文件已移植且 transpile 通过。
 agent.at 的 ReAct 循环已完整移植（轮询式架构，绕过 dyn-Fn/闭包限制——参考
 auto-coder 的事件列表模式，详见 handoff 文档 §C/D）。workflow.at 为已弃用
-模块的占位。rust/ 组装 crate 架构验证可行，剩余 ~361 个 cargo 错误为 a2r
-codegen 保真度细节问题（plan 372 范畴），非移植缺口。
+模块的占位。
+
+> 🎉 **2026-07-29 MVP 达成**：rust/ 组装 crate **`cargo check` 0 错误**，且
+> **`cargo run` 跑通真实 ReAct 问答**（对 daemon 发"你好"，返回 GLM 回答）。
+> 即原 ~343 个 a2r codegen 错误（B1）已全部消除——由 plan 372（3 个系统性
+> a2r 根因）+ plan 373（B1 类 codegen 细节）+ plan-373-followup（manifest
+> 路径 + post_process backport）共同完成。**Auto 版 ReAct MVP 已达成。**
+> 详见文末「★ MVP 里程碑与剩余差距」。
 
 ## 已知不足与补救路径
 
@@ -229,7 +235,7 @@ codegen 保真度细节问题（plan 372 范畴），非移植缺口。
 
 | # | 限制 | 影响 | 触及文件 |
 |---|---|---|---|
-| B1 | a2r 译出的 Rust **过不了 cargo check** | enum 缺 Eq/Ord derive、返回 String 字段漏 .clone()、本地类型被误加 crate 前缀、`&iter()` 借用错误 | 全部经 a2r 的文件 |
+| B1 | ~~a2r 译出的 Rust 过不了 cargo check~~ **✅ 已解决（plan 372 + 373）** | 原 ~343 个 cargo 错误已归零；`crates/auto-ai-agent/rust/` 通过 cargo check 且 `cargo run` 跑通真实 ReAct 问答（见文末 MVP 里程碑）。核心修法：plan 372 的 3 个系统性 a2r 根因 + plan 373 的 B1 类细节 + plan-373-followup 把修法 backport 进 `post_process` 链 | 全部经 a2r 的文件 |
 | B2 | `ContentBlock` 用 tuple 变体 → 丢失 `serde(tag="type")` 线上判别符 | client↔daemon 序列化格式不一致（wire 模块的核心目的） | `wire.at` |
 | B3 | AutoVM 不能解构 struct-style enum 变体 | B2 的根因 | `wire.at` |
 | B4 | `json.encode/decode[T]` 在 VM 返回垃圾值 / panic | JSON 编解码只能走 a2r | client、agent |
@@ -336,3 +342,68 @@ Auto 源码（loader.at）：
 
 **成果**：loader.at 从 70 错 → **0 错**。**tier + provider + loader 全部通过
 cargo check**（0 错误，仅警告）。**a2r→Rust 验收标准对阶段 1 ai-config 达成。**
+
+---
+
+## ★ MVP 里程碑与剩余差距（2026-07-29 更新）
+
+> 本节是 **Auto 版 ReAct MVP** 的进度追踪。MVP 定义：用 Auto 版的
+> auto-ai 架构（.at 源码 → a2r 译 Rust → cargo 编译）跑起来一个**简单的
+> ReAct 对话循环**，能对 daemon 发问并拿到真实 LLM 回答。
+
+### 🎉 MVP 已达成
+
+**验收实测**（2026-07-29，master）：
+
+```bash
+cd D:/autostack/auto-lang/crates/auto-ai-agent/rust
+cargo check          # → 0 errors（仅 35 warnings）
+cargo run            # → 打印真实 LLM 回答：
+# [react] talking to daemon at http://127.0.0.1:17654
+# [react] task: 你好，请用一句话介绍你自己。
+# [react] turns: 1
+# [react] answer: 你好！我是由Z.ai开发的GLM大语言模型…
+```
+
+**达成路径**（B1 从 ~343 错 → 0 的三个计划）：
+1. **plan 372**：修 3 个系统性 a2r 根因（spec 跨模块/乱序解析、`?T` 方法
+   分发、self 方法 auto-borrow）—— 最高杠杆。
+2. **plan 373**：手修生成的 `rust/src/*.rs` 消除剩余 343 个 B1 类细节错误
+   （int/uint、多余 `.as_str()`、enum derive、桥接、move/borrow、impl Role、
+   `&mut self`、async `.await` 等），达成 cargo check 0 + cargo run 跑通。
+3. **plan-373-followup**：修 `Cargo.toml` manifest 路径（主检出能编译）+
+   把 6 类修法 backport 进 a2r 生成器的 `post_process` 链（re-transpile 持久）。
+
+### MVP 覆盖范围与剩余差距
+
+MVP 跑的是 `main.rs` 的**最小 ReAct 路径**：Assistant role + AiClient（真
+auto-ai-client HTTP 桥）+ 单轮无工具问答。下表是"从最小 MVP 到完整 Auto 版
+auto-ai"还差什么，按优先级排：
+
+| # | 项 | MVP 状态 | 剩余工作 | 优先级 |
+|---|---|---|---|---|
+| G1 | **ReAct 循环本体**（多轮、tool-calling、loop-detect、max-turns） | ✅ 已移植 + 编译（agent.at 轮询式） | 实跑验证多轮 + 工具链路（MVP 只验了单轮无工具） | 高 |
+| G2 | **工具执行端到端**（ToolRegistry + execute → 喂回模型） | ✅ 已移植 + 编译 | 未实跑验证；需一个示例工具（如 echo）跑通 tool-call 轮 | 高 |
+| G3 | **交互式入口**（auto-ai-cli 或简易 REPL） | ❌ 无（plan 013 明确不移植 ratatui TUI） | 写一个**简易交互循环**（stdin 读问题 → agent.run → 打印）替代 TUI；或移植 auto-ai-cli 的非 TUI 部分 | 中 |
+| G4 | **re-transpile 可重现**（无需手修 .rs 即可重建 rust/） | ⚠️ 部分 | post_process backport 覆盖约一半修法；剩余深层（impl Role / `&mut self` / async `.await` 插入 / ContentBlock 结构体变体构造）需改 `trans()` 主 pass 或 .at 源码，re-transpile 仍达不到 0 错 | 中 |
+| G5 | **流式（逐 token 显示）** | ❌ 阶段 1 轮询（整段返回） | handoff §D 路线图阶段 2/3（事件队列 → 真·流式，需 dyn-Fn 或 actor） | 低（MVP 不需要） |
+| G6 | **全栈自举**（a2r-std http 扩展 + Auto 重写 complete，脱离手写 Rust 桥） | ❌ 选项 A（HTTP 用真 Rust） | handoff §F.1 选项 B，远期独立路线 | 低（MVP 不需要） |
+
+### 距离"完整 Auto 版 auto-ai"的判断
+
+- **最小 ReAct MVP（单轮无工具问答）**：✅ **已达成**，可立即演示。
+- **带工具的多轮 ReAct（演示级）**：差 **G1/G2 的实跑验证** + **G3 简易入口**
+  —— 代码都在，主要是端到端跑通 + 写个简单 CLI/REPL。估计 **1–2 个聚焦会话**。
+- **可重现构建（re-transpile = 0 错，不靠手修 .rs）**：差 **G4 的深层 a2r 修复**
+  —— 需在 `trans/rust.rs` 主 pass 补 spec→`impl Trait`、async `.await` 插入、
+  struct 变体构造等（非 post_process 正则能解决）。体量中等，**独立计划**。
+- **真·流式 / 全栈自举**：G5/G6，**远期**，非 MVP 范畴。
+
+### 建议的下一步（按 MVP 演进优先级）
+
+1. **G1+G2 实跑验证**：给 main.rs 加一个 echo/bash 工具，跑通"模型调工具→
+   结果喂回→继续推理"的多轮循环，确认 tool-calling 端到端正确。
+2. **G3 简易交互入口**：写一个 ~50 行的 stdin REPL（循环读问题 → run → 打印），
+   作为 Auto 版 auto-ai-cli 的最小替代，方便演示和后续迭代。
+3. **G4 深层 a2r 修复**（独立计划）：让 re-transpile 不再依赖手修 .rs。
+
