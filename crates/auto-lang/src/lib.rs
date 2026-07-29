@@ -3545,6 +3545,40 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                 }
             }
         }
+        // Plan 372 follow-up: also scan the grandparent directory (one level up)
+        // to catch enums/specs defined in sibling directories (e.g. error.at in
+        // src/ when transpiling orchestration/driver.at in src/orchestration/).
+        if let Some(grandparent) = parent.parent() {
+            if let Ok(entries) = std::fs::read_dir(grandparent) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if entry_path == std::path::Path::new(path) { continue; }
+                        if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                            let mut sib_parser = Parser::from(sibling_code.as_str());
+                            sib_parser.set_dest(crate::parser::CompileDest::TransRust);
+                            sib_parser.skip_check = true;
+                            if let Ok(sib_ast) = sib_parser.parse() {
+                                for stmt in &sib_ast.stmts {
+                                    match stmt {
+                                        crate::ast::Stmt::EnumDecl(ed) => {
+                                            trans.known_enum_names_mut().insert(ed.name.clone());
+                                        }
+                                        crate::ast::Stmt::SpecDecl(sd) => {
+                                            let name = sd.name.clone();
+                                            if !trans.spec_decls_mut().contains_key(&name) {
+                                                trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     trans.trans(ast, &mut sink)?;

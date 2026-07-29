@@ -5,7 +5,7 @@ pub fn builtin_names() -> Vec<String> {
     return vec!["assistant".to_string(), "coder".to_string(), "architect".to_string(), "tester".to_string(), "reviewer".to_string(), "documenter".to_string(), "translator".to_string(), "runner".to_string(), "advisor".to_string(), "planner".to_string(), "gofer".to_string(), "super-advisor".to_string(), "super-coder".to_string(), "super-tester".to_string()];
 }
 
-pub fn load_builtin(name: &str) -> Option<Role> {
+pub fn load_builtin(name: &str) -> Option<Box<dyn Role>> {
     match name.as_str() {
         "assistant" => return Some(Assistant {}),
         "coder" => return Some(Coder {}),

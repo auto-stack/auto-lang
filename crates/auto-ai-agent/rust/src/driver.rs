@@ -198,7 +198,7 @@ impl PipelineDriver {
         self.on_event(started);
 
 
-        let agent = match self.factory.build_agent(role_id, last_handoff) { Ok(a) => a, Err(msg) => return Err(Box::new(AgentError::Config(msg))), };
+        let agent = match self.factory.build_agent(role_id, last_handoff) { Ok(a) => a, Err(msg) => return Err(AgentError::Config(msg)), };
 
 
         let input = build_step_input(task_msg, last_handoff.clone());
@@ -232,7 +232,7 @@ impl PipelineDriver {
         let decision = match self.gate_handler { Some(handler) => handler(step_id), None => GateDecision::Approve, };
         let gate_result = self.engine.resolve_gate(decision);
         match gate_result {
-            AdvanceResult::Failed(_e) => return Err(Box::new(AgentError::Config("gate resolution failed"))),
+            AdvanceResult::Failed(_e) => return Err(AgentError::Config("gate resolution failed")),
             _ => return Ok(None),
         }
     }
@@ -269,7 +269,7 @@ impl PipelineDriver {
             AdvanceResult::Failed(error) => {
                 let ev = PipelineEvent::Failed(error);
                 self.on_event(ev);
-                return Err(Box::new(AgentError::Config(error)));
+                return Err(AgentError::Config(error));
             },
             AdvanceResult::Paused(step_id, reason) => {
                 let ev = PipelineEvent::Paused(step_id, reason);

@@ -132,10 +132,10 @@ impl RoleConfig {
 trait RoleTrait {
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub struct ConfigRole {
     pub cfg: RoleConfig,
-    pub base: Option<Role>,
+    pub base: Option<Box<dyn Role>>,
 }
 
 impl RoleTrait for ConfigRole {
@@ -237,7 +237,7 @@ pub fn config_role_new(cfg: RoleConfig) -> ConfigRole {
     return ConfigRole { cfg: cfg, base: None };
 }
 
-pub fn config_role_with_base(cfg: RoleConfig, base: Role) -> ConfigRole {
+pub fn config_role_with_base(cfg: RoleConfig, base: Box<dyn Role>) -> ConfigRole {
     return ConfigRole { cfg: cfg, base: Some(base) };
 }
 
@@ -271,10 +271,10 @@ pub fn parse_at_role(content: &str) -> Result<RoleConfig, AgentError> {
                     cfg.soul_file = opt_str(*(*node).clone(), "soul_file");
                     return Ok(cfg);
                 },
-                _ => return Err(Box::new(AgentError::Config("expected a 'role' node"))),
+                _ => return Err(AgentError::Config("expected a 'role' node")),
             }
         },
-        Err(e) => return Err(Box::new(AgentError::Config(format!("failed to parse role .at: {}", e)))),
+        Err(e) => return Err(AgentError::Config(format!("failed to parse role .at: {}", e))),
     }
 }
 
@@ -294,7 +294,7 @@ pub fn load_role(content: &str) -> Result<RoleConfig, AgentError> {
 
 
                         },
-                        None => return Err(Box::new(AgentError::Config(format!("inherit: unknown role '{}'", name)))),
+                        None => return Err(AgentError::Config(format!("inherit: unknown role '{}'", name))),
                     }
                 },
                 None => {},
