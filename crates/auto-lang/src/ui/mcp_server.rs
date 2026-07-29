@@ -682,7 +682,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_find",
             "title": "Find Widgets in VTree",
-            "description": "Search the live rendered VTree for nodes matching given criteria. Returns matching nodes as Atom text (with their vnode_N IDs) — much faster than dumping the entire tree when you only need to verify specific elements.\n\n## When to use\n- Verify a specific widget is present (e.g. 'is there a Save button?')\n- Find all buttons/inputs matching a label\n- Check if an element exists after an action\n\n## Search criteria (all optional, combined with AND)\n- kind: node type (button, input, text, textarea, col, row, checkbox...)\n- label: substring match on label/content/value/placeholder\n- limit: max results (default 20)\n\n## Output\nAtom text of matching nodes, each prefixed by its path depth.",
+            "description": "Search the live rendered VTree for nodes matching given criteria. Returns each match as an Atom-format ancestor-chain subtree (root → ... → matched node), showing the matched node's position in the UI hierarchy. Use autoui_exists for a faster concise summary when you only need 'does it exist?'.\n\n## When to use\n- Understand WHERE a widget sits in the UI hierarchy\n- Find all buttons/inputs matching a label, with structural context\n- Debug UI structure after an action\n\n## Search criteria (all optional, combined with AND)\n- kind: node type (button, input, text, textarea, col, row, checkbox...)\n- label: substring match on label/content/value/placeholder\n- limit: max results (default 20)\n\n## Output\nAtom subtrees showing the ancestor chain for each match, e.g.:\ncol vnode_0 { ... col vnode_5 { ... row vnode_8 { button vnode_10 {label: \"Edit\"} } } }",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -699,6 +699,31 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                         "minimum": 1,
                         "default": 20,
                         "description": "Maximum number of matching nodes to return"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
+        // Plan 371: quick existence check (concise summary, no Atom subtree)
+        json!({
+            "name": "autoui_exists",
+            "title": "Check Widget Exists",
+            "description": "Quick existence check — search the VTree and return a concise FOUND/NOT FOUND summary with match count and IDs. Faster than autoui_find when you only need to verify 'does this element exist?'\n\n## When to use\n- After an action, verify a widget appeared (e.g. 'is there a Save button now?')\n- Before an action, verify a widget is present\n- Assert-based test validation\n\n## Output\n'FOUND N match(es): kind=X, label~=Y\\n  button \"Save\"; button \"Cancel\"' or 'NOT FOUND (0 matches): ...'",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "Filter by node kind (button, input, text, textarea, col, row...)"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Case-insensitive substring match on label/content/value/placeholder"
                     }
                 }
             },
@@ -729,6 +754,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_keyboard" => tool_keyboard(shared, args),
         "autoui_vtree" => tool_vtree(shared, args),
         "autoui_find" => tool_find(shared, args),
+        "autoui_exists" => tool_exists(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -1768,7 +1794,6 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
         None => return error_result("No live VTree snapshot yet — retry after the window has painted."),
     };
 
-    // Build Atom options for output (props only, no box/style/events for speed)
     let opts = VTreeAtomOptions {
         scope: None,
         depth: None,
@@ -1779,47 +1804,223 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
         include_props: true,
     };
 
-    // Walk the VTree, collecting matching nodes
-    let mut matches: Vec<String> = Vec::new();
     let kind_lower = kind_filter.map(|s| s.to_lowercase());
     let label_lower = label_filter.map(|s: &str| s.to_lowercase());
 
-    // Iterate all nodes in the VTree
-    for vnode in &snap.vtree.nodes {
-        // Kind filter
-        if let Some(ref kf) = kind_lower {
-            let node_kind = format!("{}", vnode.kind).to_lowercase();
-            if node_kind != *kf {
-                continue;
+    // Find matching nodes
+    let matched_ids: Vec<VNodeId> = snap.vtree.nodes.iter()
+        .filter(|vnode| {
+            if let Some(ref kf) = kind_lower {
+                if format!("{}", vnode.kind).to_lowercase() != *kf {
+                    return false;
+                }
             }
-        }
-
-        // Label filter — check label/content/value/placeholder (case-insensitive substring)
-        if let Some(ref lf) = label_lower {
-            let searchable = vnode_searchable_text(&vnode.props).to_lowercase();
-            if !searchable.contains(lf) {
-                continue;
+            if let Some(ref lf) = label_lower {
+                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                    return false;
+                }
             }
-        }
+            true
+        })
+        .map(|n| n.id)
+        .take(limit)
+        .collect();
 
-        // Build a compact Atom snippet for this node
-        let atom = VTreeAtomBuilder::build_node_only(vnode, &snap.computed, &opts);
-        let depth = vnode.path.len();
-        matches.push(format!("  {}{}", "  ".repeat(depth), atom));
-
-        if matches.len() >= limit {
-            break;
-        }
-    }
-
-    if matches.is_empty() {
+    if matched_ids.is_empty() {
         let mut criteria = Vec::new();
         if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
         if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
-        text_result(format!("No nodes found matching: {}", criteria.join(", ")))
+        return text_result(format!("No nodes found matching: {}", criteria.join(", ")));
+    }
+
+    // Build ancestor-chain Atom subtrees for each match
+    let mut out = format!("Found {} node(s):\n\n", matched_ids.len());
+    for match_id in &matched_ids {
+        // Build the ancestor chain: root → ... → matched node
+        // Each ancestor shows its kind + vnode_N, with non-matched siblings collapsed.
+        let subtree = build_ancestor_subtree(&snap, *match_id, &opts);
+        out.push_str(&subtree);
+        out.push('\n');
+    }
+    text_result(out)
+}
+
+/// Build an Atom-format ancestor-chain subtree for a matched node.
+/// Shows the path from root to the matched node, with each ancestor's
+/// siblings collapsed to a count (only the ancestor on the path is expanded).
+fn build_ancestor_subtree(
+    snap: &StyledNodeSnapshot,
+    target_id: VNodeId,
+    opts: &VTreeAtomOptions,
+) -> String {
+    let target = match snap.vtree.get(target_id) {
+        Some(n) => n,
+        None => return format!("(node vnode_{} not found)\n", target_id.as_u64()),
+    };
+    let path = &target.path;
+
+    // Walk from root, following the path, building nested Atom text
+    let mut out = String::new();
+    let mut current_children: &[VNodeId] = match snap.vtree.root() {
+        Some(root) => {
+            // Root node itself
+            let root_atom = VTreeAtomBuilder::build_node_only(root, &snap.computed, opts);
+            out.push_str(&format!("{}", root_atom));
+            &root.children
+        }
+        None => return out,
+    };
+
+    for (depth, &idx) in path.iter().enumerate() {
+        let is_last = depth == path.len() - 1;
+        let child_id = match current_children.get(idx as usize) {
+            Some(id) => *id,
+            None => break,
+        };
+        let child = match snap.vtree.get(child_id) {
+            Some(n) => n,
+            None => break,
+        };
+
+        // Count siblings (for collapse annotation)
+        let sibling_count = current_children.len();
+
+        out.push_str(" {\n");
+        // Annotate collapsed siblings
+        if sibling_count > 1 {
+            out.push_str(&format!("  // {} sibling(s) collapsed\n", sibling_count - 1));
+        }
+
+        let child_atom = VTreeAtomBuilder::build_node_only(child, &snap.computed, opts);
+        out.push_str(&format!("  {}", child_atom));
+
+        if is_last {
+            // Show the matched node's direct children too (1 level)
+            if !child.children.is_empty() {
+                out.push_str(" {\n");
+                for cid in &child.children {
+                    if let Some(gc) = snap.vtree.get(*cid) {
+                        let gc_atom = VTreeAtomBuilder::build_node_only(gc, &snap.computed, opts);
+                        out.push_str(&format!("    {}\n", gc_atom));
+                    }
+                }
+                out.push_str("  }");
+            }
+            out.push('\n');
+            // Close all open braces
+            for _ in 0..=depth {
+                out.push_str(&"  ".repeat(depth - (path.len() - 1 - depth) + 1));
+                out.push_str("}\n");
+            }
+            break;
+        }
+
+        current_children = &child.children;
+    }
+
+    // Simplify: just return a clean ancestor chain
+    build_ancestor_chain(snap, target_id, opts)
+}
+
+/// Simpler approach: build a linear ancestor chain as nested Atom.
+fn build_ancestor_chain(
+    snap: &StyledNodeSnapshot,
+    target_id: VNodeId,
+    opts: &VTreeAtomOptions,
+) -> String {
+    let target = match snap.vtree.get(target_id) {
+        Some(n) => n,
+        None => return String::new(),
+    };
+    let path = &target.path;
+
+    // Collect ancestor nodes by walking the path from root
+    let mut chain: Vec<&VNode> = Vec::new();
+    let mut current = snap.vtree.root();
+    for &idx in path {
+        if let Some(node) = current {
+            chain.push(node);
+            current = node.children.get(idx as usize).and_then(|id| snap.vtree.get(*id));
+        }
+    }
+    // Add the target itself
+    chain.push(target);
+
+    // Build nested Atom text
+    let mut out = String::new();
+    for (i, node) in chain.iter().enumerate() {
+        let indent = "  ".repeat(i);
+        let atom = VTreeAtomBuilder::build_node_only(node, &snap.computed, opts);
+        if i > 0 {
+            out.push_str(" {\n");
+        }
+        out.push_str(&format!("{}{}", indent, atom));
+    }
+    // Close braces
+    for i in (0..chain.len()).rev() {
+        if i > 0 {
+            let indent = "  ".repeat(i - 1);
+            out.push_str(&format!("\n{}}}", indent));
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// Plan 371: Quick existence check — returns a concise summary (count + IDs),
+/// without the full Atom subtree. Faster than autoui_find for simple
+/// "does this element exist?" validation.
+fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let kind_filter = args.get("kind").and_then(|v| v.as_str());
+    let label_filter = args.get("label").and_then(|v| v.as_str());
+
+    let snap = shared.lock().unwrap().clone_styled_vtree();
+    let snap = match snap {
+        Some(s) => s,
+        None => return error_result("No live VTree snapshot yet."),
+    };
+
+    let kind_lower = kind_filter.map(|s| s.to_lowercase());
+    let label_lower = label_filter.map(|s: &str| s.to_lowercase());
+
+    let matches: Vec<&VNode> = snap.vtree.nodes.iter()
+        .filter(|vnode| {
+            if let Some(ref kf) = kind_lower {
+                if format!("{}", vnode.kind).to_lowercase() != *kf {
+                    return false;
+                }
+            }
+            if let Some(ref lf) = label_lower {
+                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    let mut criteria = Vec::new();
+    if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
+    if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+
+    if matches.is_empty() {
+        text_result(format!("NOT FOUND (0 matches): {}", criteria.join(", ")))
     } else {
-        let header = format!("Found {} node(s):\n", matches.len());
-        text_result(header + &matches.join("\n"))
+        let ids: Vec<String> = matches.iter()
+            .map(|n| format!("vnode_{}", n.id.as_u64()))
+            .collect();
+        let labels: Vec<String> = matches.iter()
+            .map(|n| {
+                let txt = vnode_searchable_text(&n.props);
+                if txt.is_empty() { format!("{}", n.kind) } else { format!("{} \"{}\"", n.kind, txt) }
+            })
+            .collect();
+        text_result(format!(
+            "FOUND {} match(es): {}\n  {}",
+            matches.len(),
+            criteria.join(", "),
+            labels.join("; ")
+        ))
     }
 }
 
