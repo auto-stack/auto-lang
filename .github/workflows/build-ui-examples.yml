@@ -1,0 +1,61 @@
+# Build regression for examples/ui — runs `auto build --gen-only` on a
+# representative set of UI examples so generator/parser breakage shows up in
+# CI instead of only on local machines.
+#
+# Scope note: this gates the .at → Vue SFC generation pipeline (parse,
+# ui_gen, post-generation validators). It deliberately skips the npm
+# install + vite build phase: per-example npm installs are too heavy for
+# this matrix, and 015-notes declares `npm_deps` with `link:` entries
+# pointing at absolute local paths (D:/autostack/...) that cannot resolve
+# on a CI runner. Full npm-level verification stays a local workflow.
+
+name: Build UI examples
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'crates/auto-lang/**'
+      - 'crates/auto-man/**'
+      - 'crates/auto/**'
+      - 'examples/ui/**'
+      - '.github/workflows/build-ui-examples.yml'
+  pull_request:
+    paths:
+      - 'crates/auto-lang/**'
+      - 'crates/auto-man/**'
+      - 'crates/auto/**'
+      - 'examples/ui/**'
+      - '.github/workflows/build-ui-examples.yml'
+
+jobs:
+  gen-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          # Baseline smoke coverage
+          - 001-helloworld
+          - 002-counter
+          # Classic CRUD
+          - 013-todo
+          # Most complete app; link: npm_deps are fine here because
+          # --gen-only never reaches the npm install phase
+          - 015-notes
+          # Phase-1 UI capability examples (DOM events, native CSS,
+          # DOM escape hatch, external TS imports)
+          - 026-keyboard-mouse-events
+          - 027-native-css
+          - 028-dom-escape
+          - 029-external-imports
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build auto CLI
+        run: cargo build -p auto
+      - name: auto build --gen-only (${{ matrix.example }})
+        working-directory: examples/ui/${{ matrix.example }}
+        run: ../../../target/debug/auto build --gen-only
