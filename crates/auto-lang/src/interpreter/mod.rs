@@ -132,9 +132,14 @@ impl AutoInterpreter {
         flipped_code.push_str("var __out__ = \"\"\n");
 
         for line in template.lines() {
-            if line.starts_with(&prefix) {
+            // Plan 375: allow leading whitespace before the code marker, so
+            // indented directive lines like `    @ for app in apps {` in mold
+            // templates (e.g. the IAR .eww workspace template) are recognized
+            // as code instead of being mis-wrapped as F-string text.
+            let trimmed_start = line.trim_start();
+            if let Some(rest) = trimmed_start.strip_prefix(prefix.as_str()) {
                 // Code line: strip the prefix and append as is
-                flipped_code.push_str(&line[prefix.len()..]);
+                flipped_code.push_str(rest);
                 flipped_code.push('\n');
             } else {
                 // Text line: wrap in F-string so $variable interpolation works
