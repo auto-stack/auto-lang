@@ -496,6 +496,105 @@ impl AutoVM {
         self.strings = Arc::new(RwLock::new(strings));
     }
 
+    /// Plan 375: Inject an `auto_val::Value` into this VM, returning the
+    /// `NanoValue` that represents it on the data stack / in `globals`.
+    ///
+    /// Scalars are encoded directly. Compound values (Array / Obj / Node) are
+    /// recursively registered into the VM heap registries (`arrays` / `objects`
+    /// / `nodes`) and represented by their tagged id — mirroring the reverse
+    /// `extract_value_from_vm`. This lets mold templates read globals set via
+    /// `AutoInterpreter::set_global` / `merge_atom` (e.g. the IAR `.eww`
+    /// template's `@ for app in apps { ... }`).
+    pub fn inject_value(&mut self, value: &auto_val::Value) -> auto_val::NanoValue {
+        use auto_val::Value;
+        use std::sync::atomic::Ordering;
+        match value {
+            // --- scalars ---
+            Value::Int(i) => auto_val::encode_i32(*i),
+            Value::Uint(u) => auto_val::encode_i32(*u as i32),
+            Value::I64(i) => auto_val::encode_i32(*i as i32),
+            Value::USize(u) => auto_val::encode_i32(*u as i32),
+            Value::Bool(b) => auto_val::encode_bool(*b),
+            Value::Nil | Value::Null => auto_val::encode_null(),
+            Value::Float(f) => auto_val::encode_f64(*f),
+            Value::Double(d) => auto_val::encode_f64(*d),
+            Value::Byte(b) => auto_val::encode_i32(*b as i32),
+            Value::Char(c) => auto_val::encode_i32(*c as i32),
+            Value::Str(s) => {
+                // Intern into the string pool and return its tagged index.
+                let idx = self.intern_string(s.as_bytes());
+                auto_val::encode_string(idx as u32)
+            }
+            Value::VmRef(r) => auto_val::encode_i32(r.id as i32),
+
+            // --- Array: register into arrays[], element values recurse ---
+            Value::Array(arr) => {
+                let id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
+                let mut elems: Vec<auto_val::Value> = Vec::with_capacity(arr.values.len());
+                for v in &arr.values {
+                    elems.push(self.materialize_value(v));
+                }
+                self.arrays.insert(id, Arc::new(RwLock::new(elems)));
+                // Runtime pushes array ids as plain i32 (see CREATE_ARRAY), so
+                // ARRAY_LEN/GET_ELEM recognize them via is_i32 — match that.
+                auto_val::encode_i32(id as i32)
+            }
+
+            // --- Obj: register into objects[] ---
+            Value::Obj(obj) => {
+                let id = self.object_id_gen.fetch_add(1, Ordering::SeqCst);
+                let mut data = crate::vm::types::ObjectData::new();
+                for (key, val) in obj.iter() {
+                    data.fields.insert(key.clone(), self.materialize_value(val));
+                }
+                self.objects.insert(id, Arc::new(RwLock::new(data)));
+                auto_val::encode_i32(id as i32)
+            }
+
+            // --- Node: register into nodes[] (encoded as a plain id, like runtime) ---
+            Value::Node(node) => {
+                let id = self.node_id_gen.fetch_add(1, Ordering::SeqCst);
+                let mut cloned = node.clone();
+                // Recurse into props so nested VmRefs point at real heap entries.
+                let props = cloned.props_clone();
+                for (key, val) in props.iter() {
+                    cloned.set_prop(key.clone(), self.materialize_value(val));
+                }
+                self.nodes.insert(id, Arc::new(RwLock::new(cloned)));
+                auto_val::encode_i32(id as i32)
+            }
+
+            _ => auto_val::encode_null(),
+        }
+    }
+
+    /// Plan 375: helper used by `inject_value`. For compound element values it
+    /// injects them into the registries and records the resulting id as a
+    /// `Value::VmRef` (so the array/object stores carry heap references, just
+    /// like values produced at runtime). Scalars are returned as-is.
+    fn materialize_value(&mut self, val: &auto_val::Value) -> auto_val::Value {
+        match val {
+            auto_val::Value::Array(_) | auto_val::Value::Obj(_) | auto_val::Value::Node(_) => {
+                let nv = self.inject_value(val);
+                // ids are pushed as plain i32 (see inject_value above).
+                let id = auto_val::decode_i32(nv) as usize;
+                auto_val::Value::VmRef(auto_val::VmRef { id })
+            }
+            auto_val::Value::VmRef(r) => auto_val::Value::VmRef(r.clone()),
+            other => other.clone(),
+        }
+    }
+
+    /// Plan 375: intern a byte string into the VM string pool, returning its
+    /// index. Used by `inject_value` for Str globals (mirrors codegen's
+    /// `add_string` but runs at injection time on an already-built VM).
+    fn intern_string(&mut self, bytes: &[u8]) -> usize {
+        let mut strings = self.strings.write().unwrap();
+        let idx = strings.len();
+        strings.push(bytes.to_vec());
+        idx
+    }
+
     /// Plan 199: Set a custom debugger controller
     pub fn set_debugger(&mut self, controller: Box<dyn crate::vm::debugger::DebuggerController>) {
         self.debugger = Arc::new(std::sync::Mutex::new(controller));
@@ -4155,7 +4254,46 @@ impl AutoVM {
                     drop(strings); // Release lock before potentially writing below
 
                     // Get object from registry
-                    if let Some(obj_ref) = self.objects.get(&obj_id) {
+                    // Plan 375: Node registry first — mold templates read node
+                    // fields like `app.id` / `dep.at`. Nodes set `id`/`name`/`at`
+                    // etc. as props (see Target::to_node), so resolve via props
+                    // and fall back to the struct-level id/name.
+                    if let Some(node_ref) = self.nodes.get(&obj_id) {
+                        let node = node_ref.read().unwrap();
+                        let prop = node.get_prop(field_name.as_str());
+                        let resolved: auto_val::Value = if !prop.is_nil() {
+                            prop
+                        } else {
+                            match field_name.as_str() {
+                                "id" if !node.id.is_empty() =>
+                                    auto_val::Value::Str(node.id.clone()),
+                                "name" if !node.name.is_empty() =>
+                                    auto_val::Value::Str(node.name.clone()),
+                                "text" if !node.text.is_empty() =>
+                                    auto_val::Value::Str(node.text.clone()),
+                                _ => auto_val::Value::Nil,
+                            }
+                        };
+                        drop(node);
+                        if !resolved.is_nil() {
+                            match resolved {
+                                auto_val::Value::Str(s) => {
+                                    let mut strings = self.strings.write().unwrap();
+                                    let str_idx = strings.len();
+                                    strings.push(s.as_bytes().to_vec());
+                                    drop(strings);
+                                    push_str_tag(&mut task.ram, str_idx as u32);
+                                }
+                                auto_val::Value::Int(i) => task.ram.push_i32(i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
+                                auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
+                                auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
+                                _ => task.ram.push_i32(0),
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else if let Some(obj_ref) = self.objects.get(&obj_id) {
                         let obj = obj_ref.read().unwrap();
 
                         // Try multiple key formats: string, integer, boolean
