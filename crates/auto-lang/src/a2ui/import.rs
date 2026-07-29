@@ -84,6 +84,7 @@ fn import_surface_update(
         api_imports: vec![],
         style_css: None,
         ext_imports: Vec::new(),
+        watchers: Vec::new(),
     })
 }
 

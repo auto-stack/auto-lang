@@ -63,6 +63,42 @@ pub struct WidgetDecl {
     /// Emitted as ES import statements into the component's `<script setup>`
     /// by the Vue backend; other backends ignore them.
     pub ext_imports: Vec<ExtImport>,
+
+    /// Reactive watchers declared in a widget-level `watch { ... }` block.
+    /// The Vue backend emits them as Vue `watch(source, handler)` calls;
+    /// other backends ignore them.
+    pub watch: Vec<WatchDecl>,
+}
+
+/// A single watcher inside a widget-level `watch { ... }` block.
+///
+/// ```auto
+/// widget SlashMenu {
+///     watch {
+///         .filtered_items -> { .selected_index = 0 }
+///         .ratio, .viewport_h.immediate -> { ... }
+///         .items.deep -> { ... }
+///     }
+/// }
+/// ```
+///
+/// Each source is a single field name (model field, prop, or computed)
+/// written dot-prefixed in the DSL; the body uses the same conventions as
+/// `on` handlers (`.field` reads/writes state, template refs via `.value!`).
+#[derive(Debug, Clone)]
+pub struct WatchDecl {
+    /// Watched source field names (without the leading dot). More than one
+    /// source emits a multi-source watch (`watch([a, b], ...)` in Vue).
+    pub sources: Vec<Name>,
+
+    /// `.immediate` modifier: run the handler once on setup.
+    pub immediate: bool,
+
+    /// `.deep` modifier: deep-watch the source.
+    pub deep: bool,
+
+    /// Handler body (same statement conventions as `on` handlers).
+    pub body: Body,
 }
 
 /// Kind of an external import declared in a widget `use { ... }` block.
@@ -761,6 +797,7 @@ mod tests {
             lifecycle: vec![],
             style: None,
             ext_imports: Vec::new(),
+            watch: Vec::new(),
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

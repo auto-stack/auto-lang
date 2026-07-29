@@ -2806,6 +2806,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
     }
 

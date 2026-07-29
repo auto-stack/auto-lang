@@ -106,6 +106,31 @@ pub struct AuraWidget {
     /// `component` entries also become instantiable tags in the view tree.
     /// Other backends ignore them.
     pub ext_imports: Vec<crate::ast::ExtImport>,
+
+    /// Reactive watchers from the widget-level `watch { ... }` block.
+    /// The Vue backend emits them as `watch(source, handler, opts)` calls
+    /// in `<script setup>`; other backends ignore them.
+    pub watchers: Vec<AuraWatch>,
+}
+
+/// A reactive watcher (widget-level `watch { ... }` entry).
+///
+/// ```auto
+/// watch {
+///     .filtered_items -> { .selected_index = 0 }
+///     .ratio.immediate -> { ... }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct AuraWatch {
+    /// Watched source field names (model field, prop, or computed).
+    pub sources: Vec<String>,
+    /// Run the handler once on setup (`.immediate` modifier).
+    pub immediate: bool,
+    /// Deep-watch the source (`.deep` modifier).
+    pub deep: bool,
+    /// Handler body (same conventions as `on` handlers).
+    pub payload: LogicPayload,
 }
 
 // ============================================================================
@@ -841,6 +866,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         assert_eq!(widget.name, "Counter");
@@ -941,6 +967,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         // logic 视图

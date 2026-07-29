@@ -1070,6 +1070,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
     }
 
@@ -1201,6 +1202,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1395,6 +1397,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let comp = DynamicComponent::new(&widget).unwrap();
@@ -1467,6 +1470,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
@@ -1658,6 +1662,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         comp.reload(&new_widget).unwrap();

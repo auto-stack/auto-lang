@@ -120,6 +120,7 @@ pub(crate) fn build_015_component() -> Option<DynamicComponent> {
                                 lifecycle: Vec::new(),
                                 style: None,
                                 ext_imports: Vec::new(),
+                                watch: Vec::new(),
                             });
                         }
                     }
@@ -158,6 +159,7 @@ pub(crate) fn build_015_component() -> Option<DynamicComponent> {
                 lifecycle: Vec::new(),
                 style: None,
                 ext_imports: Vec::new(),
+                watch: Vec::new(),
             });
         }
     }

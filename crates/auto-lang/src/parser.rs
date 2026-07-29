@@ -10384,6 +10384,7 @@ impl<'a> Parser<'a> {
         let mut routes = None;
         let mut style = None;
         let mut ext_imports = Vec::new();
+        let mut watch = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10420,9 +10421,12 @@ impl<'a> Parser<'a> {
                 "use" => {
                     ext_imports.extend(self.parse_widget_use_block_inner()?);
                 }
+                "watch" => {
+                    watch.extend(self.parse_watch_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', or 'routes' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -10444,6 +10448,7 @@ impl<'a> Parser<'a> {
             lifecycle: vec![],
             style,
             ext_imports,
+            watch,
         }))
     }
 
@@ -10534,6 +10539,131 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
         Ok(imports)
+    }
+
+    /// Parse a widget-level watch block (Vue backend reactive watchers):
+    ///
+    /// ```auto
+    /// widget SlashMenu {
+    ///     watch {
+    ///         .filtered_items -> { .selected_index = 0 }
+    ///         .ratio, .viewport_h.immediate -> { ... }
+    ///         .items.deep -> { ... }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Each entry lists one or more comma-separated sources (`.field` — a
+    /// model field, prop, or computed), optional `.immediate` / `.deep`
+    /// modifiers after the source list, `->`, then a handler body parsed
+    /// with the same conventions as `on` handlers.
+    fn parse_watch_block_inner(&mut self) -> AutoResult<Vec<WatchDecl>> {
+        self.expect_ident("watch")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut watchers = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Sources: .field (, .field)*
+            let mut sources = Vec::new();
+            loop {
+                if !self.is_kind(TokenKind::Dot) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected '.field' watch source in watch block, got '{}'",
+                            self.cur.text
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                self.next(); // consume the dot
+                let name = self.cur.text.clone();
+                self.next();
+                sources.push(name);
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+
+            // Optional modifiers: .immediate / .deep (after the source list)
+            let mut immediate = false;
+            let mut deep = false;
+            while self.is_kind(TokenKind::Dot) {
+                // Peek at the identifier after the dot.
+                let modifier = if let Ok(tok) = self.lexer.next() {
+                    let text = tok.text.to_string();
+                    self.lexer.push_token(tok);
+                    text
+                } else {
+                    String::new()
+                };
+                match modifier.as_str() {
+                    "immediate" => {
+                        self.next(); // dot
+                        self.next(); // immediate
+                        immediate = true;
+                    }
+                    "deep" => {
+                        self.next(); // dot
+                        self.next(); // deep
+                        deep = true;
+                    }
+                    other => {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Unknown watch modifier '.{}' (expected .immediate or .deep)",
+                                other
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+            }
+
+            // Expect -> (might be Arrow, or Asn followed by Gt)
+            if self.is_kind(TokenKind::Arrow) {
+                self.next();
+            } else if self.is_kind(TokenKind::Asn) {
+                self.next();
+                self.expect(TokenKind::Gt)?;
+            } else if self.is_kind(TokenKind::Gt) {
+                self.next();
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected '->' after watch sources, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+
+            // Parse body with on-handler conventions (`.field` = state access)
+            self.in_on_body = true;
+            let body = self.body()?;
+            self.in_on_body = false;
+
+            watchers.push(WatchDecl {
+                sources,
+                immediate,
+                deep,
+                body,
+            });
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(watchers)
     }
 
     /// Parse a widget-level native CSS block: `style { ...raw CSS... }`.
@@ -11445,8 +11575,23 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Dynamic component: dyn (expr) { props } — the parenthesized
+        // expression is the component value (a loop-iterator field like
+        // .item.icon, a model field, or a computed), emitted by the Vue
+        // backend as <component :is="expr">. Additional props/class/events
+        // go in the braces (or as an `is:` prop without parentheses).
+        if tag == "dyn" && self.is_kind(TokenKind::LParen) {
+            self.next();
+            self.skip_empty_lines();
+            let is_expr = self.parse_expr()?;
+            self.skip_empty_lines();
+            self.expect(TokenKind::RParen)?;
+            props.push(ViewProp {
+                name: "is".to_string(),
+                value: ViewPropValue::Expr(is_expr),
+            });
         // Parse props/events in parentheses: tag (props) { children }
-        if self.is_kind(TokenKind::LParen) {
+        } else if self.is_kind(TokenKind::LParen) {
             self.next();
             self.skip_empty_lines();
 
@@ -11548,8 +11693,11 @@ impl<'a> Parser<'a> {
 
                 // Check if this looks like a prop: identifier followed by colon
                 // e.g., "class:" or "onclick:"
+                // "is" is a keyword token but a legitimate prop key
+                // (Vue's <component is="..."> / dyn { is: ... }).
                 let is_prop_like = if self.is_kind(TokenKind::Ident)
                     || (self.is_kind(TokenKind::On) && self.cur.text == "on")
+                    || self.cur.text == "is"
                 {
                     // Peek at next token to see if it's a colon
                     if let Ok(next_token) = self.lexer.next() {
@@ -12758,6 +12906,108 @@ mod tests {
             }
             other => panic!("expected StyleBinding, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_view_dyn_component_parens() {
+        // dyn (expr) { props } — the parenthesized expression becomes the
+        // "is" prop; brace props/class parse like any other element.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var items list = [] }\n",
+            "  view {\n",
+            "    col {\n",
+            "      for item in .items {\n",
+            "        dyn (.item.icon) { size: 16, class: \"w-4 h-4\" }\n",
+            "      }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let children = match root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let body = match &children[0] {
+            ViewNode::ForLoop { body, .. } => body,
+            other => panic!("expected for loop, got {:?}", other),
+        };
+        let (tag, props) = match &body[0] {
+            ViewNode::Element { tag, props, .. } => (tag, props),
+            other => panic!("expected dyn element, got {:?}", other),
+        };
+        assert_eq!(tag, "dyn");
+        let is_prop = props.iter().find(|p| p.name == "is").expect("is prop");
+        match &is_prop.value {
+            ViewPropValue::Expr(Expr::Dot(obj, field)) => {
+                assert_eq!(field.as_str(), "icon");
+                // .item.icon → Dot(Dot(self, item), icon)
+                match obj.as_ref() {
+                    Expr::Dot(inner, item) => {
+                        assert_eq!(item.as_str(), "item");
+                        assert!(matches!(inner.as_ref(), Expr::Ident(n) if n.as_str() == "self"));
+                    }
+                    other => panic!("expected Dot(self, item), got {:?}", other),
+                }
+            }
+            other => panic!("expected Dot expr for is, got {:?}", other),
+        }
+        assert!(props.iter().any(|p| p.name == "size"));
+        assert!(props.iter().any(|p| p.name == "class"));
+    }
+
+    #[test]
+    fn test_widget_watch_block() {
+        // watch { .a -> {...}  .b, .c.immediate -> {...}  .d.deep -> {...} }
+        let code = concat!(
+            "widget App {\n",
+            "  model {\n",
+            "    var q str = \"\"\n",
+            "    var sel int = 0\n",
+            "  }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  watch {\n",
+            "    .q -> { .sel = 0 }\n",
+            "    .q, .sel.immediate -> { .sel = 1 }\n",
+            "    .q.deep -> { .sel = 2 }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        assert_eq!(widget.watch.len(), 3);
+        assert_eq!(widget.watch[0].sources.len(), 1);
+        assert_eq!(widget.watch[0].sources[0].as_str(), "q");
+        assert!(!widget.watch[0].immediate);
+        assert!(!widget.watch[0].deep);
+        assert!(!widget.watch[0].body.stmts.is_empty());
+        assert_eq!(widget.watch[1].sources.len(), 2);
+        assert_eq!(widget.watch[1].sources[0].as_str(), "q");
+        assert_eq!(widget.watch[1].sources[1].as_str(), "sel");
+        assert!(widget.watch[1].immediate);
+        assert!(!widget.watch[1].deep);
+        assert!(widget.watch[2].deep);
     }
 
     #[test]
