@@ -198,6 +198,7 @@ pub struct RustTrans {
     // Full parameter types per function: fn_name -> Vec<Type>
     // Used for precise type-aware call site generation (&mut, &str, etc.)
     fn_param_types: HashMap<AutoStr, Vec<Type>>,
+    fn_ret_types: HashMap<AutoStr, Type>,  // Plan 373: return-type cache for .await insertion
     // In merge mode, track which params use &mut (context types like Parser, TypeEnv)
     fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are Int type (need enum→i32 cast at call sites)
@@ -280,6 +281,7 @@ impl RustTrans {
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             fn_param_types: HashMap::new(),
+            fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
@@ -339,6 +341,7 @@ impl RustTrans {
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
             fn_param_types: HashMap::new(),
+            fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
@@ -6375,7 +6378,74 @@ impl RustTrans {
                 write!(out, ", ")?;
             }
         }
-        write!(out, ")").map_err(Into::into)
+        write!(out, ")")?;
+
+        // Plan 373: Auto-insert .await for calls to methods returning ~Result/Future.
+        if let Expr::Dot(object, mname) = call.name.as_ref() {
+            if self.call_needs_await(object, mname) {
+                write!(out, ".await")?;
+            }
+        } else if let Expr::Ident(fname) = call.name.as_ref() {
+            if let Some(ret) = self.fn_ret_types.get(fname.as_str()) {
+                if Self::type_is_async(ret) {
+                    write!(out, ".await")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Plan 373: Check if a type represents an async result (Future/~Result).
+    fn type_is_async(ty: &Type) -> bool {
+        matches!(ty, Type::Result(_)) ||
+        matches!(ty, Type::Handle { .. }) ||
+        matches!(ty, Type::GenericInstance(inst) if inst.base_name == "Future")
+    }
+
+    /// Plan 373: Resolve the return type of `object.method()` and check if it
+    /// needs `.await`. Looks up `fn_ret_types` by qualified key ("Type.method")
+    /// or bare method name.
+    fn call_needs_await(&self, object: &Expr, method_name: &AutoStr) -> bool {
+        // Try bare name first (common for same-file calls).
+        if let Some(ret) = self.fn_ret_types.get(method_name.as_str()) {
+            if Self::type_is_async(ret) {
+                return true;
+            }
+        }
+        // Try qualified "Type.method" for calls on self.field.
+        let type_name = match object {
+            Expr::Dot(inner, field) => {
+                // self.field.method() — resolve field's type.
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if name.as_str() == "self" {
+                        self.local_var_types.get(field.as_str())
+                            .and_then(Self::type_name_of)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(tn) = type_name {
+            let qualified = format!("{}.{}", tn, method_name);
+            if let Some(ret) = self.fn_ret_types.get(qualified.as_str()) {
+                return Self::type_is_async(ret);
+            }
+        }
+        false
+    }
+
+    /// Extract the type name from a Type (for qualified key lookup).
+    fn type_name_of(ty: &Type) -> Option<String> {
+        match ty {
+            Type::User(td) => Some(td.name.to_string()),
+            Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
+            _ => None,
+        }
     }
 
     /// Check if an arg is a string literal ("...") — doesn't need & at call site
@@ -7438,7 +7508,10 @@ impl RustTrans {
             && fn_decl.params.first().map_or(false, |p| p.name.as_str() == "self");
         if is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new" {
             // Plan 163: &mut self for mut methods
-            if fn_decl.is_mut {
+            // Plan 373: also auto-detect self-mutation (self.field = ... or
+            // self.field.push/insert/...) when source doesn't explicitly say mut fn.
+            let needs_mut = fn_decl.is_mut || Self::method_mutates_self(&fn_decl.body.stmts);
+            if needs_mut {
                 write!(sink.body, "&mut self")?;
             } else {
                 write!(sink.body, "&self")?;
@@ -7532,6 +7605,13 @@ impl RustTrans {
         if let Some(parent) = &fn_decl.parent {
             let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
             self.fn_param_types.insert(qualified, param_types);
+        }
+
+        // Plan 373: Cache return type for .await insertion (keyed same as params).
+        self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+        if let Some(parent) = &fn_decl.parent {
+            let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
+            self.fn_ret_types.insert(qualified, fn_decl.ret.clone());
         }
 
         // In merge mode, track which params are context types (need &mut instead of .clone())
@@ -10114,6 +10194,104 @@ impl RustTrans {
             Stmt::Is(_) => true,
             // Return statement already provides a value — no tail expression needed
             Stmt::Return(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Plan 373: Detect whether a method body mutates `self` (either by direct
+    /// field assignment `self.x = ...` or by calling a mutating method on a
+    /// self-field like `self.vec.push(...)`). If so, the method needs `&mut self`.
+    fn method_mutates_self(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    if Self::expr_mutates_self(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Store(store) => {
+                    if Self::expr_mutates_self(&store.expr) {
+                        return true;
+                    }
+                }
+                Stmt::Return(expr) => {
+                    if Self::expr_mutates_self(expr) {
+                        return true;
+                    }
+                }
+                Stmt::Block(body) => {
+                    if Self::method_mutates_self(&body.stmts) {
+                        return true;
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        if Self::method_mutates_self(&branch.body.stmts) {
+                            return true;
+                        }
+                    }
+                    if let Some(els) = &if_stmt.else_ {
+                        if Self::method_mutates_self(&els.stmts) {
+                            return true;
+                        }
+                    }
+                }
+                Stmt::For(for_stmt) => {
+                    if Self::method_mutates_self(&for_stmt.body.stmts) {
+                        return true;
+                    }
+                }
+                Stmt::Is(is_stmt) => {
+                    for branch in &is_stmt.branches {
+                        let body = match branch {
+                            crate::ast::IsBranch::EqBranch(_, b) => b,
+                            crate::ast::IsBranch::IfBranch(_, b) => b,
+                            crate::ast::IsBranch::ElseBranch(b) => b,
+                        };
+                        if Self::method_mutates_self(&body.stmts) {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Check if an expression mutates self (assignment to self.field, or
+    /// mutating method call on self.field like push/insert).
+    fn expr_mutates_self(expr: &Expr) -> bool {
+        match expr {
+            // self.field = value  (Op::Asn, AddEq, SubEq, etc.)
+            Expr::Bina(lhs, op, _) => {
+                if matches!(op, auto_val::Op::Asn | auto_val::Op::AddEq | auto_val::Op::SubEq | auto_val::Op::MulEq | auto_val::Op::DivEq | auto_val::Op::ModEq) {
+                    if Self::is_self_dot(lhs) {
+                        return true;
+                    }
+                }
+                false
+            }
+            // self.field.push(...) / self.field.insert(...) / etc.
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    let mut_methods = ["push", "pop", "insert", "remove", "clear",
+                        "extend", "truncate", "retain", "sort", "reverse",
+                        "dedup", "swap", "splice", "drain", "append", "resize"];
+                    if mut_methods.contains(&method.as_str()) && Self::is_self_dot(obj) {
+                        return true;
+                    }
+                    // Also check nested: self.inner.push(...)
+                    if mut_methods.contains(&method.as_str()) {
+                        if let Expr::Dot(inner_obj, _) = obj.as_ref() {
+                            if Self::is_self_dot(inner_obj) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }
             _ => false,
         }
     }
