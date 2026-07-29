@@ -1628,6 +1628,10 @@ impl VueGenerator {
                 imports.push("onUnmounted");
             }
         }
+        // Widget-level `watch { ... }` block → Vue watch() calls
+        if !widget.watchers.is_empty() && !imports.contains(&"watch") {
+            imports.push("watch");
+        }
         // Global (window/document-level) listeners are registered in onMounted
         // and removed in onUnmounted.
         if !self.global_listeners.is_empty() {
@@ -1932,6 +1936,42 @@ impl VueGenerator {
             let first = &self.store_deps[0];
             script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
             script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
+        }
+
+        // Widget-level `watch { ... }` block → Vue watch() calls.
+        // Emitted after state/computed/defineProps so the watched refs are
+        // already initialized (watch() runs immediately at setup time).
+        // Source resolution: model fields and computed are refs (watched
+        // directly); props need a getter (`() => props.x`).
+        for watcher in &widget.watchers {
+            let body = self.generate_handler_body(&watcher.payload)?;
+            let sources: Vec<String> = watcher.sources.iter().map(|s| {
+                if self.prop_names.contains(s) {
+                    format!("() => props.{}", s)
+                } else {
+                    s.clone()
+                }
+            }).collect();
+            let source = if sources.len() == 1 {
+                sources[0].clone()
+            } else {
+                format!("[{}]", sources.join(", "))
+            };
+            let opts = match (watcher.immediate, watcher.deep) {
+                (false, false) => String::new(),
+                (immediate, deep) => {
+                    let mut parts = Vec::new();
+                    if immediate {
+                        parts.push("immediate: true");
+                    }
+                    if deep {
+                        parts.push("deep: true");
+                    }
+                    format!(", {{ {} }}", parts.join(", "))
+                }
+            };
+            let indented = Self::indent_body(&body, "  ");
+            script.push_str(&format!("watch({}, () => {{\n{}\n}}{})\n\n", source, indented, opts));
         }
 
         // Generate event handlers
@@ -2422,6 +2462,101 @@ impl VueGenerator {
         style
     }
 
+    /// Dynamic component: `dyn (.item.icon) { size: 16, class: "..." }` →
+    /// `<component :is="item.icon" :size="16" class="..." />`.
+    ///
+    /// The `is` value is an arbitrary bound expression — a for-loop iterator
+    /// field (`item.icon`), a model field, or a computed. Additional props
+    /// are passed through as `:prop` bindings; `class` / `style_obj` and
+    /// event listeners behave like on plain elements.
+    fn generate_dyn_component_html(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        events: &std::collections::HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let mut attrs: Vec<String> = Vec::new();
+
+        // :is binding (required). The value may be `any` (e.g. a component
+        // constructor carried in list data), so cast for vue-tsc strict mode.
+        if let Some(is_value) = props.get("is") {
+            if let AuraPropValue::Expr(expr) = is_value {
+                let is_str = self.expr_to_vue_bound_value(expr)?;
+                attrs.push(format!(":is=\"({}) as any\"", is_str));
+            }
+        }
+
+        // Class attribute (both static and dynamic)
+        let (static_classes, dynamic_classes) = self.extract_classes("dyn", props);
+        if !static_classes.is_empty() {
+            attrs.push(format!("class=\"{}\"", static_classes));
+        }
+        if let Some(dynamic) = dynamic_classes {
+            attrs.push(format!(":class=\"{}\"", dynamic));
+        }
+
+        // Remaining props as v-bind attributes
+        for (key, value) in props {
+            if key == "is" || key == "class" || key == "style" {
+                continue;
+            }
+            // Inline style object: style_obj: { top: expr } → :style="{...}"
+            if key == "style_obj" {
+                if let AuraPropValue::StyleBinding(bindings) = value {
+                    attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                }
+                continue;
+            }
+            match value {
+                AuraPropValue::Expr(expr) => {
+                    let value_str = self.expr_to_vue_bound_value(expr)?;
+                    attrs.push(format!(":{}=\"{}\"", key, value_str));
+                }
+                AuraPropValue::StyleBinding(_) => {}
+            }
+        }
+
+        // Event listeners (same conventions as plain elements)
+        for (event, aura_event) in events {
+            // .window/.document modifiers → global listener, no template attr
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
+            let vue_event = self.auto_event_to_vue(event);
+            let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            // Inside a for-loop, pass the loop variable when the handler
+            // doesn't already have explicit params.
+            if let Some(ref loop_var) = self.current_loop_var {
+                if aura_event.params.is_empty() {
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                }
+            }
+            self.used_handlers.insert(handler_name);
+            attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+        }
+
+        let attr_str = if attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", attrs.join(" "))
+        };
+
+        if children.is_empty() {
+            Ok(format!("{}<component{} />\n", ind, attr_str))
+        } else {
+            let mut html = format!("{}<component{}>\n", ind, attr_str);
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+            html.push_str(&format!("{}</component>\n", ind));
+            Ok(html)
+        }
+    }
+
     /// Convert AuraNode to HTML string
     fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
@@ -2463,6 +2598,13 @@ impl VueGenerator {
                         html.push_str(&format!("{}</{}>\n", ind, lucide_component));
                         return Ok(html);
                     }
+                }
+
+                // Special handling for dyn element — dynamic component:
+                // dyn (.item.icon) { size: 16, class: "..." } →
+                // <component :is="item.icon" :size="16" class="..." />
+                if tag == "dyn" {
+                    return self.generate_dyn_component_html(props, events, children, indent);
                 }
 
                 // Special handling for category-section element
@@ -2958,7 +3100,14 @@ impl VueGenerator {
                             let child_html = self.node_to_html(&body[0], indent)?;
                             if let Some(gt_pos) = child_html.find('>') {
                                 let mut result = child_html;
-                                result.insert_str(gt_pos, &format!(" {}", v_for));
+                                // Self-closing tag (<Foo />): insert before the
+                                // '/', not between '/' and '>'.
+                                let insert_pos = if gt_pos > 0 && result.as_bytes()[gt_pos - 1] == b'/' {
+                                    gt_pos - 1
+                                } else {
+                                    gt_pos
+                                };
+                                result.insert_str(insert_pos, &format!(" {}", v_for));
                                 Some(Ok(result))
                             } else {
                                 None
@@ -9594,6 +9743,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
 ;
 
@@ -9631,6 +9781,7 @@ mod tests {
             api_imports: vec![],
             style_css: Some(css.to_string()),
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9670,6 +9821,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9705,6 +9857,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9751,6 +9904,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -9820,6 +9974,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -10689,6 +10844,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();
@@ -10722,6 +10878,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
     }
 
@@ -10851,6 +11008,141 @@ widget Icon(language: str) {
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new();
         gen.generate(&widget).expect("generate SFC")
+    }
+
+    // ====================================================================
+    // Dynamic components (dyn) and reactive watchers (watch).
+    // ====================================================================
+
+    /// dyn (.item.icon) { size: 16, class: "..." } inside a for loop →
+    /// <component :is="(item.icon) as any" :size="16" class="..." />.
+    #[test]
+    fn test_dyn_component_in_for_loop() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    model { var items list = [] }
+    view {
+        col {
+            for item in .items {
+                dyn (.item.icon) { size: 16, class: "w-4 h-4 shrink-0" }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#":is="(item.icon) as any""#),
+            "dyn :is binding:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(r#"v-for="item in items""#),
+            "v-for on dyn element:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("/ v-for"),
+            "v-for not inserted after self-closing slash:\n{}",
+            sfc
+        );
+        assert!(sfc.contains(r#":size="16""#), "extra prop bound:\n{}", sfc);
+        assert!(
+            sfc.contains(r#"class="w-4 h-4 shrink-0""#),
+            "static class:\n{}",
+            sfc
+        );
+    }
+
+    /// dyn without parentheses: is as a plain prop; model-field source.
+    #[test]
+    fn test_dyn_component_is_prop_model_field() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget IconBox {
+    model { var current_icon str = "x" }
+    view {
+        col {
+            dyn { is: .current_icon }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<component :is="(current_icon) as any" />"#),
+            "is prop form:\n{}",
+            sfc
+        );
+    }
+
+    /// watch { .computed -> { ... } } → watch(filtered, () => { ... }) with
+    /// on-handler body conventions (.field = state access via .value).
+    #[test]
+    fn test_watch_computed_source() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    model {
+        var query str = ""
+        var selected_index int = 0
+    }
+    computed {
+        filtered => query
+    }
+    view { col { text "hi" } }
+    watch {
+        .filtered -> { .selected_index = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import { ref, computed, watch } from 'vue'"),
+            "watch imported:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("watch(filtered, () => {"),
+            "watch call:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("selected_index.value = 0"),
+            "handler body transpiled like on block:\n{}",
+            sfc
+        );
+    }
+
+    /// Prop source needs a getter; .immediate/.deep become watch options;
+    /// multiple sources become an array.
+    #[test]
+    fn test_watch_prop_source_and_modifiers() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Scrollbar(ratio: int, viewport_h: int) {
+    model { var thumb_h int = 0 }
+    view { col { text "hi" } }
+    watch {
+        .ratio, .viewport_h.immediate -> { .thumb_h = .viewport_h }
+        .ratio.deep -> { .thumb_h = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("watch([() => props.ratio, () => props.viewport_h], () => {"),
+            "multi-source prop getters:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("{ immediate: true }"),
+            "immediate option:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("{ deep: true }"),
+            "deep option:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("thumb_h.value = props.viewport_h"),
+            "prop read in body:\n{}",
+            sfc
+        );
     }
 
     /// Element-level generic events: keyboard, mouse, wheel, contextmenu.
