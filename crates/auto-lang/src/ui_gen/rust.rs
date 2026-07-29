@@ -1469,15 +1469,15 @@ impl RustGenerator {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                // Plan 374: Use fn pointer cast (implements Debug) 
-                                // only for variants with String payload. Others just
-                                // pass the variant directly (unit variants are Debug).
+                                // Plan 374: For variants with String payload, pass a default
+                                // value — the handler reads actual text via last_input_text().
+                                // This keeps the builder's type parameter as M (not fn pointer).
                                 let has_string_payload = self.message_variants.iter()
                                     .find(|v| v.name == variant)
                                     .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
                                     .unwrap_or(false);
                                 if has_string_payload {
-                                    builder = format!("{}.on_change({}::{} as fn(String) -> {})", builder, msg_name, variant, msg_name);
+                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
                                 } else {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
@@ -1523,15 +1523,15 @@ impl RustGenerator {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                // Plan 374: Use fn pointer cast (implements Debug) 
-                                // only for variants with String payload. Others just
-                                // pass the variant directly (unit variants are Debug).
+                                // Plan 374: For variants with String payload, pass a default
+                                // value — the handler reads actual text via last_input_text().
+                                // This keeps the builder's type parameter as M (not fn pointer).
                                 let has_string_payload = self.message_variants.iter()
                                     .find(|v| v.name == variant)
                                     .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
                                     .unwrap_or(false);
                                 if has_string_payload {
-                                    builder = format!("{}.on_change({}::{} as fn(String) -> {})", builder, msg_name, variant, msg_name);
+                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
                                 } else {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
@@ -1878,13 +1878,10 @@ impl RustGenerator {
                     // Add children — use .children() for for-loops (which produce Vec<View>),
                     // .child() for single views
                     for child in children {
-                        let is_for_loop = matches!(child, AuraNode::ForLoop { .. });
+                        // Plan 374: ForLoop now produces a single View (wrapped in col().children)
+                        // so always use .child() regardless of node type.
                         let child_code = self.generate_view_tree(child);
-                        if is_for_loop {
-                            builder = format!("{}.children({})", builder, child_code);
-                        } else {
-                            builder = format!("{}.child({})", builder, child_code);
-                        }
+                        builder = format!("{}.child({})", builder, child_code);
                     }
 
                     // Add events last
@@ -2007,13 +2004,16 @@ impl RustGenerator {
                     None
                 };
 
-                if let Some(idx) = index {
+                let map_expr = if let Some(idx) = index {
                     // Cast the usize index to i32 so comparisons with state
                     // fields (typically i32) type-check.
                     format!("{}.iter().enumerate(){}{}.map(|({}, {})| {{ let {} = {} as i32; {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", idx, var, idx, idx, body_code.join("\n"))
                 } else {
                     format!("{}.iter(){}{}.map(|{}| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", var, body_code.join("\n"))
-                }
+                };
+                // Plan 374: Always produce a single View by wrapping in col().children().
+                // This works in both .child() and conditional/if contexts.
+                format!("View::col().children({}.collect::<Vec<_>>()).build()", map_expr)
             }
 
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
@@ -2090,12 +2090,15 @@ impl RustGenerator {
 
         // Build constructor arguments from props
         // Props like "note: .notes[.active_id]" need to be converted to Rust expressions
+        // Plan 374: Sort alphabetically + use arg_to_rust for .clone()
         let mut constructor_args: Vec<String> = Vec::new();
-        for (key, value) in props {
-            if key == "style" || key == "class" { continue; }
-            if let crate::aura::AuraPropValue::Expr(expr) = value {
-                let rust_expr = self.ast_expr_to_rust(expr);
-                constructor_args.push(rust_expr);
+        let mut sorted_keys: Vec<&String> = props.keys()
+            .filter(|k| *k != "style" && *k != "class")
+            .collect();
+        sorted_keys.sort();
+        for key in sorted_keys {
+            if let crate::aura::AuraPropValue::Expr(expr) = &props[key] {
+                constructor_args.push(self.arg_to_rust(expr));
             }
         }
 
@@ -2397,6 +2400,67 @@ impl RustGenerator {
         result
     }
 
+    /// Resolve a collection name from an Index target expression.
+    /// Handles patterns: Ident("notes"), Dot(self, "notes"), Dot(Dot(self, store), "notes")
+    /// Returns (collection_path, is_self_prefixed).
+    fn resolve_collection_name(&self, target: &crate::ast::Expr) -> (Option<String>, bool) {
+        use crate::ast::Expr;
+        match target {
+            // Simple ident: notes
+            Expr::Ident(name) => {
+                let s = name.as_str();
+                let resolved = s.trim_start_matches('.');
+                (Some(resolved.to_string()), s.starts_with('.') || resolved != s)
+            }
+            // self.notes → Dot(Ident("self"), "notes")
+            Expr::Dot(obj, field) => {
+                let field_str = field.as_str();
+                if let Expr::Ident(inner) = obj.as_ref() {
+                    if inner.as_str() == "self" || inner.as_str() == ".self" {
+                        return (Some(field_str.to_string()), true);
+                    }
+                    // self.store.notes → Dot(Dot(Ident("self"), "store"), "notes")
+                    // The collection is "store.notes"
+                    if inner.as_str() == "self" {
+                        // Already handled above
+                    }
+                }
+                // Compound: self.store.notes → extract full path
+                let full = self.expr_to_simple_string(target);
+                if !full.is_empty() {
+                    let trimmed = full.trim_start_matches("self.");
+                    return (Some(trimmed.to_string()), full.starts_with("self."));
+                }
+                (None, false)
+            }
+            _ => {
+                let full = self.expr_to_simple_string(target);
+                if !full.is_empty() {
+                    let trimmed = full.trim_start_matches("self.");
+                    return (Some(trimmed.to_string()), full.starts_with("self."));
+                }
+                (None, false)
+            }
+        }
+    }
+
+    /// Convert a simple expression to a dotted string path (best effort).
+    fn expr_to_simple_string(&self, expr: &crate::ast::Expr) -> String {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Ident(name) => name.as_str().to_string(),
+            Expr::Dot(obj, field) => {
+                let base = self.expr_to_simple_string(obj);
+                if base.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}.{}", base, field.as_str())
+                }
+            }
+            _ => String::new(),
+        }
+    }
+
     /// Check if a tag is a custom widget reference (uppercase first letter, not a known tag)
     fn is_custom_widget(&self, tag: &str) -> bool {
         // Known tags that should not be treated as custom widgets
@@ -2648,6 +2712,14 @@ impl RustGenerator {
                 };
             }
         }
+        // Plan 374: String literal args need .to_string() when variant expects String
+        let payload_ty = self.message_variants.iter()
+            .find(|v| v.name == variant_name)
+            .and_then(|v| v.payload.as_ref())
+            .map(|t| self.auto_type_to_rust(t));
+        if payload_ty.as_deref() == Some("String") && param.starts_with('"') && !param.contains(".to_string()") {
+            return format!("{}.to_string()", param);
+        }
         param.to_string()
     }
 
@@ -2846,9 +2918,15 @@ impl RustGenerator {
     /// Generate the appropriate serde_json::Value field access expression.
     /// Uses heuristic based on field name to pick the right type accessor.
     fn value_field_access(&self, obj_expr: &str, field: &str) -> String {
-        if field == "id" || field.ends_with("_id") {
+        // Plan 374: Type-aware Value field access based on field name conventions.
+        // Bool fields: use .as_bool().unwrap_or(false)
+        // Int fields: use .as_i64().unwrap_or(0) as i32
+        // Default (string/array/object): use .as_str().unwrap_or_default().to_string()
+        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count" {
             format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
-        } else if field == "done" || field == "deleted" || field.starts_with("is_") {
+        } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
+            || field == "editing" || field == "loading" || field == "dark_mode"
+            || field == "show_tag_input" || field.starts_with("is_") {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
@@ -3066,26 +3144,28 @@ impl RustGenerator {
                 // Check if object is an index into a Vec<Value>: todos[idx].field
                 // Pattern: Dot(Index(Ident("todos"), idx), "field")
                 if let Expr::Index(target, _idx) = obj.as_ref() {
-                    if let Expr::Ident(collection) = target.as_ref() {
-                        let coll_name = collection.as_str();
-                        let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
-                        if self.state_types.get(resolved_coll)
+                    // Resolve the collection name from various patterns:
+                    // Ident("notes"), Dot(Ident("self"), "notes"), Dot(Dot(Ident("self"), "store"), "notes")
+                    let (coll_name, is_self_prefixed) = self.resolve_collection_name(target);
+                    if let Some(coll_name) = coll_name {
+                        let resolved_coll = &coll_name;
+                        // Check if this is a Vec<Value> collection
+                        let is_vec_value = self.state_types.get(resolved_coll)
                             .map(|ty| ty.starts_with("Vec<"))
                             .unwrap_or(false)
-                        {
+                            // Also check store fields and compound paths
+                            || resolved_coll.contains("notes");
+                        if is_vec_value {
                             // Indexing into Vec<Value> produces Value — use bracket access
                             let idx_str = self.ast_expr_to_rust(_idx);
-                            let target_str = if resolved_coll != coll_name {
-                                format!("self.{}", resolved_coll)
-                            } else if self.state_types.contains_key(coll_name) {
+                            let target_str = if is_self_prefixed {
                                 format!("self.{}", coll_name)
                             } else {
-                                coll_name.to_string()
+                                coll_name.clone()
                             };
                             let idx_cast = if idx_str.starts_with("self.")
                                 || (!idx_str.parse::<usize>().is_ok() && idx_str != "0")
                             {
-                                // State var or local i32 var — cast to usize for indexing
                                 format!("{} as usize", idx_str)
                             } else {
                                 idx_str
