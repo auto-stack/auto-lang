@@ -7,6 +7,8 @@
 > `cargo check`（0 错误），最终 `cargo run` 跑通一个简单 ReAct 问答。
 > **验收**：`cd crates/auto-ai-agent/rust && cargo check` → 0 errors →
 > `cargo run` 打印 LLM 回答。
+> **实际达成**（2026-07-29）：✅ 全部达成。额外推进了 G2（工具端到端）和 G3（REPL），
+> 并修复了 a2r `has Spec` lowering 缺陷。详见下文「验收记录与剩余缺口」。
 
 ## 背景
 
@@ -219,3 +221,95 @@ cd crates/auto-ai-agent/rust
 cargo check   # → 0 errors
 cargo run     # → 打印 LLM 回答（daemon 在跑，glm-5.2 可用）
 ```
+
+---
+
+## 验收记录与剩余缺口（2026-07-29 最终更新）
+
+### A. 验收达成
+
+```bash
+cd D:/autostack/auto-lang/crates/auto-ai-agent/rust
+cargo check          # → 0 errors（仅 35 warnings）
+cargo run            # → 打印真实 LLM 回答
+# [react] talking to daemon at http://127.0.0.1:17654
+# [react] task: 你好，请用一句话介绍你自己。
+# [react] turns: 1
+# [react] answer: 你好！我是由Z.ai训练的GLM大语言模型…
+```
+
+### B. 各缺陷的修法分类
+
+"修法" 列指使 cargo check 通过的实际手段。"持久性" 列指 re-transpile 后修法是否
+仍然有效（即是否已进 a2r 生成器）。
+
+| 缺陷 | 原始错误数 | 修法 | 持久性 |
+|---|---|---|---|
+| D (int/uint) | ~20 | 手修 rust/src/*.rs：`as i32`→`as u32`、标注改 `u32` | ⚠️ 部分：`fix_u32_i32_casts` + `fix_integer_type_mismatches`（已有）覆盖了常见模式；剩余的需 a2r 整型宽化 pass（本计划推荐但未做，因为实际 i32/u32 错仅 ~20 个，大部分 E0308 是 String/Option） |
+| E (enum derive) | ~36 | (a) 手修：含 JsonValue/ModelTier/Message 的 enum/struct derive 降级为 PartialEq；(b) post_process `fix_non_ord_derives`（本计划新增）自动降级 | ✅ 持久：`fix_non_ord_derives` 已入 post_process 链 |
+| F (多余 as_str) | 17 | 手修 sed 去 `param.as_str()`（param 已是 `&str`） | ⚠️ 部分：`.as_str()` 去重依赖调用上下文（接收方是不是 `&str`），未做通用 post_process。实际影响小（新 transpile 的文件不经过这些特定调用路径） |
+| G (方法找不到) | ~22 | 手修：`self.on_event`→`(self.on_event)`、`.substring`→`&s[a..b]`、`.to_float`→`as f64`、`.message()`→`.to_string()`/`format!` | ✅ 持久（4/6 子类）：`fix_substring_method`、`fix_numeric_conversion_methods`、`fix_fn_field_calls`（均本计划新增，已入 post_process）；`.message()` 为手修（需 enum 方法体分析）；`.clone` 为手修（缺 `#[derive(Clone)]` 是 struct 级别判断） |
+| H (桥接类型) | ~13 | 手修 role_config.rs：`*(*node).clone()`→`node.clone()`、accessor 改 &self 借用、`Config("…")`→`.to_string()` | ⚠️ 手修：role_config.rs 是 a2r-first 桥接文件，本就不走纯 transpile 重建（它的源码 .at 依赖 auto_val/auto_atom，transpile 后仍需手修桥接 API 差异）。本计划修的是 hand-assembled rust/src/ 版本。 |
+| I (move/borrow) | ~17 | 手修：`for m in &self.messages`、`step.id.clone()`、`HashMap.get(&k)`、`*n` deref | ⚠️ 部分：`fix_borrowing_issues`（已有）+ `fix_push_move`（已有）覆盖常见模式；剩余的如 `for-in-self.field` 需作用域分析 |
+| J (aggregator) | ~12 | 手修：删 `orchestration/mod.rs` + `config/mod.rs`（重复模块）、`Result<None>`→`Result<()>`、`Ok(None)`→`Ok(())` | ✅ 持久（模块删除为一次性）；`fix_result_none_unit`（本计划新增）覆盖 re-transpile |
+| K (残余 Box) | ~7 | 手修 sed：`Err(Box::new(X))`→`Err(X)` | ✅ 持久：`fix_residual_error_box`（本计划新增）已入 post_process |
+| — (Cargo.toml path) | — | 改同仓依赖为 `../../a2r-std`（4 级跨仓），保持 main checkout 可编译 | ✅ 持久（一次性 manifest 修改） |
+| — (builtin_roles) | ~14 | 手修：`impl Role for X` 替换 `trait RoleTrait`+`impl RoleTrait for X` | ⚠️ 已持久化（plan 373 G2）：a2r 的 `has Spec` lowering 现在直接生成 `impl Role for X`。但 rust/src/ 里已有文件不会自动重建（需 re-transpile + 重组装） |
+| — (ClientError Clone) | 1 | 手修：AgentError derive 降级为 Debug + 添加 `From<ClientError>` | ✅ 持久（一次性修改 error.rs） |
+| — (ContentBlock 结构体) | 2 | 手修：`ContentBlock::Text(resp.content)`→`ContentBlock::Text { text: … }`、`ToolUse(tc.id,…)`→`ToolUse { id: …, … }` | ❌ 未持久：a2r 把 struct 变体当 tuple 变体输出（已知 B2/B3 平台限制，需 AutoVM 支持 struct 变体解构后才能从根源修，或 post_process 做 AST 级别的变体构造修正） |
+| — (async .await) | ~5 | 手修：在 agent.rs/driver.rs 的多处 async 调用点加 `.await` | ❌ 未持久：a2r 的 `.await` 插入依赖调用图分析（哪些调用返回 Future），当前 post_process 不做。**这是 re-transpile 后最大的缺口** |
+| — (&mut self) | ~8 | 手修：`run`/`drive`/`dispatch`/`drive_step` 等方法从 `&self` 改为 `&mut self`（因为它们修改了 self 的字段） | ❌ 未持久：a2r 不分析方法的 mutation 语义；**re-transpile 后这些方法会回退为 `&self`，需手修或做 mutation 分析 pass** |
+
+### C. 持久性总结
+
+本计划实际达成了两种修复：
+
+**1. 永久性 a2r 修复（已入 `post_process` 链，re-transpile 可重现）：**
+
+| fix_* 函数 | 覆盖的缺陷 |
+|---|---|
+| `fix_substring_method` | G：`.substring(a,b)` → `&s[a as usize..b as usize]` |
+| `fix_numeric_conversion_methods` | G：`.to_float()`→`as f64`、`.to_uint()`→`as u32` |
+| `fix_residual_error_box` | K：`Err(Box::new(X))` → `Err(X)` |
+| `fix_result_none_unit` | J：`Result<None,E>`→`Result<(),E>`、`Ok(None)`→`Ok(())` |
+| `fix_fn_field_calls` | G：`self.field(args)` → `(self.field)(args)`（fn 类型字段） |
+| `fix_non_ord_derives` | E：含非 Ord 字段的 enum/struct derive 降级 |
+| `fix_missing_trait_impl_uses` | —：缺失的 `use crate::wire::JsonValue;` 等自动补 |
+| `fix_string_literal_enum_args` | —：`ToolError::Args("msg")`→`.to_string()` |
+| `has Spec` lowering（`trans()` 主 pass） | builtin_roles + echo tool：`has Tool`→`impl Tool for X`、`~Result`→`async fn`、去 `pub`、`#[async_trait]` on impl |
+
+**2. 一次性手修（已应用到 rust/src/*.rs，但 re-transpile 后需重做）：**
+
+以下修改仅存在于当前 hand-assembled `rust/src/*.rs` 中，不属于 a2r 生成器：
+
+- `&mut self` 标注（~8 处：run/drive/dispatch/drive_step/with_context/build_request）
+- async `.await` 插入（~5 处）
+- ContentBlock struct-variant 构造语法（2 处）
+- `#[async_trait]` on Client trait（1 处，agent.rs）
+- role_config.rs 桥接 API 适配（~13 处，此文件本就是手修的桥接层）
+- `for x in &self.field` 循环改写（~10 处）
+- AgentError `From<ClientError>` impl（1 处）
+- builtin_roles.rs 的 `Box<dyn Role>` 装箱（1 处）
+
+**如果现在 re-transpile 全部 .at 并重新组装 rust/，预计还有 ~30–50 个 cargo 错误**，
+主要来自 `&mut self` 和 async `.await` 两类。其余 B1 细节已被上述 post_process 链覆盖。
+
+### D. 计划外扩展（G2+G3）
+
+本计划完成后，额外推进了"写 .at 工具 + REPL 交互入口"（plan 013 G2+G3 里程碑）：
+
+- **echo.at**（30 行）：极简 `has Tool` 工具，transpile 后零手修可编译
+- **REPL**（~50 行 main.rs 改动）：交互式循环，注册 EchoTool，支持多轮对话 + 工具调用
+- **验证**：`cargo run` → 模型发起 `echo` 工具调用 → 返回 `ECHO: hello world` → 模型给出最终答案 → 2 turns
+
+这些改动已合入 master（commit `13078c2e`、`9f8e63e2`、`aa221bb9`）。
+
+### E. 建议的后续
+
+按优先级：
+
+1. **`&mut self` 分析 pass**（最大缺口，~15 错误）—— a2r 对改变 `self` 字段的方法加 `&mut self`
+2. **async `.await` 插入**（~5 错误）—— a2r 对返回 `Future`/`~Result` 的调用点加 `.await`
+3. **ContentBlock struct-variant 构造**（2 错误）—— 需要知道变体是 struct 还是 tuple（当前 a2r 一律当 tuple）
+4. **re-transpile 验证** —— 修完上面三项后，走一遍完整的"transpile 全部 .at → 组装 rust/src/ → cargo check"，确认达到同样的 0 错误（即"re-transpile 可重现"）
+
