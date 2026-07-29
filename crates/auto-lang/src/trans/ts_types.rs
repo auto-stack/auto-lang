@@ -17,23 +17,26 @@ impl TypeScriptTrans {
             Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => "string".to_string(),
 
             // Array types → T[]
+            // Element types that are unions (e.g. `int?` → `number | null`) or
+            // function types must be parenthesized: `number | null[]` would
+            // mean "number OR array-of-null", not "array of nullable numbers".
             Type::Array(arr) => {
-                let elem_ts = Self::type_to_ts(&arr.elem);
+                let elem_ts = Self::array_elem_to_ts(&arr.elem);
                 format!("{}[]", elem_ts)
             }
             Type::RuntimeArray(rta) => {
-                let elem_ts = Self::type_to_ts(&rta.elem);
+                let elem_ts = Self::array_elem_to_ts(&rta.elem);
                 format!("{}[]", elem_ts)
             }
             Type::List(elem) => {
-                let elem_ts = Self::type_to_ts(elem);
+                let elem_ts = Self::array_elem_to_ts(elem);
                 format!("{}[]", elem_ts)
             }
             Type::Map(k, v) => {
                 format!("Record<{}, {}>", Self::type_to_ts(k), Self::type_to_ts(v))
             }
             Type::Slice(slice) => {
-                let elem_ts = Self::type_to_ts(&slice.elem);
+                let elem_ts = Self::array_elem_to_ts(&slice.elem);
                 format!("{}[]", elem_ts)
             }
 
@@ -103,6 +106,17 @@ impl TypeScriptTrans {
                 let elems: Vec<String> = ts.iter().map(|t| Self::type_to_ts(t)).collect();
                 format!("[{}]", elems.join(", "))
             }
+        }
+    }
+
+    /// Render an array element type, parenthesizing union and function types
+    /// so that `T[]` binds to the whole element type.
+    fn array_elem_to_ts(elem: &Type) -> String {
+        let ts = Self::type_to_ts(elem);
+        if ts.contains(" | ") || ts.contains(" => ") {
+            format!("({})", ts)
+        } else {
+            ts
         }
     }
 }
