@@ -3597,9 +3597,12 @@ impl AutoVM {
                             {
                                 vm_debug!("DEBUG GET_ELEM: Found List<String>");
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
-                                    // TODO: Support string elements (currently push placeholder)
-                                    let _elem = &list.elems[normalized_idx];
-                                    task.ram.push_i32(0);
+                                    let elem = &list.elems[normalized_idx];
+                                    let mut strings = self.strings.write().unwrap();
+                                    let str_idx = strings.len() as u32;
+                                    strings.push(elem.as_bytes().to_vec());
+                                    drop(strings);
+                                    task.ram.push_str_idx(str_idx);
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
                                 }
@@ -3675,6 +3678,14 @@ impl AutoVM {
                                     auto_val::Value::Nil => task.ram.push_i32(0),
                                     // Plan 197 Bug E: heap object references stored in arrays
                                     auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
+                                    auto_val::Value::Str(s) => {
+                                        // Push string back into pool and restore TAG_STRING
+                                        let mut strings = self.strings.write().unwrap();
+                                        let str_idx = strings.len() as u32;
+                                        strings.push(s.as_bytes().to_vec());
+                                        drop(strings);
+                                        task.ram.push_str_idx(str_idx);
+                                    }
                                     _ => {
                                         // Unsupported type - push 0 as placeholder
                                         task.ram.push_i32(0);
