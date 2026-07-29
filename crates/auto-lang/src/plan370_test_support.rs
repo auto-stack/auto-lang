@@ -118,6 +118,7 @@ pub(crate) fn build_015_component() -> Option<DynamicComponent> {
                                 props: Vec::new(),
                                 routes: None,
                                 lifecycle: Vec::new(),
+                                style: None,
                             });
                         }
                     }
@@ -154,6 +155,7 @@ pub(crate) fn build_015_component() -> Option<DynamicComponent> {
                 props: Vec::new(),
                 routes: None,
                 lifecycle: Vec::new(),
+                style: None,
             });
         }
     }

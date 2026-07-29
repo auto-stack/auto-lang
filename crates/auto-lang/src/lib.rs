@@ -2522,6 +2522,7 @@ fn run_file_dynamic_ui_inner(
                                     props: Vec::new(),
                                     routes: None,
                                     lifecycle: Vec::new(),
+                                    style: None,
                                 });
                             }
                         }
@@ -2575,6 +2576,7 @@ fn run_file_dynamic_ui_inner(
                 props: Vec::new(),
                 routes: None,
                 lifecycle: Vec::new(),
+                style: None,
             };
             store_as_child_decls.push(fake_widget);
         }

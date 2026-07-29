@@ -53,6 +53,11 @@ pub struct WidgetDecl {
 
     /// Lifecycle methods (aboutToAppear, aboutToDisappear, etc.)
     pub lifecycle: Vec<LifecycleMethod>,
+
+    /// Raw native CSS from a widget-level `style { ... }` block, captured
+    /// verbatim by the lexer (never tokenized/parsed). Emitted into the
+    /// component's `<style scoped>` by the Vue backend.
+    pub style: Option<String>,
 }
 
 // ============================================================================
@@ -708,6 +713,7 @@ mod tests {
             computed: None,
             routes: None,
             lifecycle: vec![],
+            style: None,
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

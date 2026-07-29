@@ -115,6 +115,127 @@ impl<'a> Lexer<'a> {
     pub fn push_token(&mut self, token: Token) {
         self.buffer.push_front(token);
     }
+
+    /// Capture raw source text up to and including the `}` that matches the
+    /// just-lexed `{`. Used for widget-level `style { ... }` blocks: the CSS
+    /// content is captured verbatim (never tokenized) so nested `{}`, `/* */`
+    /// comments, strings, and arbitrary CSS punctuation survive unchanged.
+    ///
+    /// Must be called when the lexer is positioned immediately after the
+    /// opening `{` (i.e. the caller has just consumed the LBrace token and no
+    /// further tokens have been produced). The returned string is the raw
+    /// content *between* the braces; the closing `}` itself is consumed but
+    /// not included. Position counters (line/at/pos) are advanced so that
+    /// subsequent tokens get correct source positions.
+    pub fn capture_raw_block(&mut self) -> AutoResult<String> {
+        let mut out = String::new();
+        let mut depth = 1usize;
+        while let Some(c) = self.chars.next() {
+            // Keep position tracking consistent with the rest of the lexer:
+            // newline → line += 1, at reset (then +1 like the Newline token);
+            // any other char → at += 1. `pos` advances one char at a time.
+            if c == '\n' {
+                self.line += 1;
+                self.at = 1;
+            } else {
+                self.at += 1;
+            }
+            self.pos += 1;
+
+            match c {
+                '{' => {
+                    depth += 1;
+                    out.push(c);
+                }
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Ok(out);
+                    }
+                    out.push(c);
+                }
+                '/' if self.chars.peek() == Some(&'*') => {
+                    // CSS block comment: copy verbatim until `*/`.
+                    out.push(c);
+                    // consume '*'
+                    let star = self.chars.next().unwrap();
+                    self.at += 1;
+                    self.pos += 1;
+                    out.push(star);
+                    let mut prev = '\0';
+                    loop {
+                        match self.chars.next() {
+                            Some(cc) => {
+                                if cc == '\n' {
+                                    self.line += 1;
+                                    self.at = 1;
+                                } else {
+                                    self.at += 1;
+                                }
+                                self.pos += 1;
+                                out.push(cc);
+                                if prev == '*' && cc == '/' {
+                                    break;
+                                }
+                                prev = cc;
+                            }
+                            None => {
+                                return Err(format!(
+                                    "unterminated CSS comment in style block (line {})",
+                                    self.line
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                }
+                '"' | '\'' => {
+                    // CSS string: copy verbatim until the matching quote,
+                    // honoring backslash escapes (e.g. content: "\"").
+                    out.push(c);
+                    let quote = c;
+                    loop {
+                        match self.chars.next() {
+                            Some(cc) => {
+                                if cc == '\n' {
+                                    self.line += 1;
+                                    self.at = 1;
+                                } else {
+                                    self.at += 1;
+                                }
+                                self.pos += 1;
+                                out.push(cc);
+                                if cc == '\\' {
+                                    // Copy the escaped char verbatim too.
+                                    if let Some(esc) = self.chars.next() {
+                                        if esc == '\n' {
+                                            self.line += 1;
+                                            self.at = 1;
+                                        } else {
+                                            self.at += 1;
+                                        }
+                                        self.pos += 1;
+                                        out.push(esc);
+                                    }
+                                } else if cc == quote {
+                                    break;
+                                }
+                            }
+                            None => {
+                                return Err(format!(
+                                    "unterminated string in style block (line {})",
+                                    self.line
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        Err("unterminated style block: missing closing '}'".into())
+    }
 }
 
 // Lexer methods for various token types

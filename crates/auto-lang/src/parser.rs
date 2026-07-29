@@ -10382,6 +10382,7 @@ impl<'a> Parser<'a> {
         let mut on = None;
         let mut bind = None;
         let mut routes = None;
+        let mut style = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10412,9 +10413,12 @@ impl<'a> Parser<'a> {
                 "routes" => {
                     routes = Some(self.parse_routes_block_inner()?);
                 }
+                "style" => {
+                    style = Some(self.parse_style_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', or 'routes' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -10434,7 +10438,36 @@ impl<'a> Parser<'a> {
             props,
             routes,
             lifecycle: vec![],
+            style,
         }))
+    }
+
+    /// Parse a widget-level native CSS block: `style { ...raw CSS... }`.
+    ///
+    /// The CSS content is captured verbatim by the lexer
+    /// ([`Lexer::capture_raw_block`]) — never tokenized — so nested `{}`,
+    /// `/* */` comments, media queries, and pseudo-classes pass through
+    /// unchanged. Returns the raw text between the braces.
+    fn parse_style_block_inner(&mut self) -> AutoResult<String> {
+        self.expect_ident("style")?;
+        self.skip_empty_lines();
+
+        if !self.is_kind(TokenKind::LBrace) {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected '{{' after 'style', got '{}'", self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+
+        // `cur` is the LBrace token and the lexer sits immediately after it,
+        // with no buffered tokens in between — safe to capture raw source.
+        let css = self.lexer.capture_raw_block()?;
+
+        // Advance `cur` past the LBrace to the first token after the
+        // captured block (the closing '}' was consumed by the capture).
+        self.next();
+        Ok(css)
     }
 
     /// Parse a `store` declaration (Plan 351 / Design 18).
