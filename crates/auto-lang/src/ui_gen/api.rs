@@ -107,6 +107,132 @@ mod tests {
         assert!(true);
     }
 
+    /// DOM escape hatch, end to end (plain Tailwind mode):
+    /// `ref: "menuEl"` in the view → `ref="menuEl"` template attribute +
+    /// `const menuEl = ref<HTMLElement | null>(null)` script declaration;
+    /// `.menuEl.xxx` in `on` handlers → `menuEl.value!.xxx`;
+    /// `document.*` / `window.*` pass through unchanged.
+    #[test]
+    fn test_dom_escape_hatch_plain_mode() {
+        let src = r#"
+widget App {
+    msg Msg {
+        Open
+        Scrolled
+    }
+    model {
+        var menu_left int = 0
+    }
+    view {
+        col {
+            button "open" {
+                ref: "triggerEl",
+                onclick: .Open
+            }
+            col {
+                ref: "menuEl"
+                text "menu"
+            }
+            col {
+                ref: "scrollEl",
+                onwheel: .Scrolled($event)
+                text "content"
+            }
+        }
+    }
+    on {
+        .Open -> {
+            let r = .triggerEl.getBoundingClientRect()
+            .menu_left = r.left
+            let w = window.innerWidth
+            let h = window.innerHeight
+            let ae = document.activeElement
+        }
+
+        .Scrolled(e) -> {
+            .scrollEl.scrollTop = .scrollEl.scrollTop + e.deltaY
+            let sh = .scrollEl.scrollHeight
+            let ch = .scrollEl.clientHeight
+            let q = .menuEl.querySelector(".item")
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("dom escape hatch must generate");
+        // Template ref attributes
+        assert!(out.contains("ref=\"triggerEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"scrollEl\""), "sfc:\n{out}");
+        // Script declarations
+        assert!(out.contains("const triggerEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        assert!(out.contains("const menuEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        assert!(out.contains("const scrollEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        // Handler body: ref access maps onto the DOM element
+        assert!(out.contains("triggerEl.value!.getBoundingClientRect()"), "sfc:\n{out}");
+        assert!(out.contains("scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + e.deltaY"), "sfc:\n{out}");
+        assert!(out.contains("scrollEl.value!.scrollHeight"), "sfc:\n{out}");
+        assert!(out.contains("scrollEl.value!.clientHeight"), "sfc:\n{out}");
+        assert!(out.contains("menuEl.value!.querySelector('.item')"), "sfc:\n{out}");
+        // document/window pass-through
+        assert!(out.contains("window.innerWidth"), "sfc:\n{out}");
+        assert!(out.contains("window.innerHeight"), "sfc:\n{out}");
+        assert!(out.contains("document.activeElement"), "sfc:\n{out}");
+    }
+
+    /// Same escape hatch in shadcn mode: layout elements (col) and buttons
+    /// are mapped through the shadcn branch, which whitelists props — the
+    /// `ref` prop must survive there too.
+    #[test]
+    fn test_dom_escape_hatch_shadcn_mode() {
+        let src = r#"
+widget App {
+    msg Msg {
+        Open
+    }
+    model {
+        var menu_left int = 0
+    }
+    view {
+        col {
+            button "open" {
+                ref: "triggerEl",
+                onclick: .Open
+            }
+            col {
+                ref: "menuEl"
+                text "menu"
+            }
+        }
+    }
+    on {
+        .Open -> {
+            let r = .triggerEl.getBoundingClientRect()
+            .menu_left = r.left
+        }
+    }
+}
+"#;
+        use crate::session::CompilerSession;
+        use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+        let session = CompilerSession::ui().with_backend("vue");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut generated = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(w) = stmt {
+                let widget = crate::aura::extract_widget_from_decl(w).expect("extract");
+                let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+                generated = Some(gen.generate(&widget).expect("generate"));
+            }
+        }
+        let out = generated.expect("widget");
+        assert!(out.contains("ref=\"triggerEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
+        assert!(out.contains("const triggerEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        assert!(out.contains("const menuEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        assert!(out.contains("triggerEl.value!.getBoundingClientRect()"), "sfc:\n{out}");
+    }
+
     /// Plan 356 follow-up #2: a reserved-keyword identifier (e.g. `tag`,
     /// lexed as TokenKind::Tag) used inside an `if` condition — specifically
     /// as the right-hand side of a comparison in a `style: if` attribute:

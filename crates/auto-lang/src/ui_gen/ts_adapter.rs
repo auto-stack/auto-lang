@@ -21,6 +21,9 @@ pub struct AuraTsContext {
     pub state_names: HashSet<String>,
     /// Names of component props (need `props.` prefix in script, no `.value`).
     pub prop_names: HashSet<String>,
+    /// Names of template refs declared in the view (`ref: "menuEl"`).
+    /// `.menuEl` maps to `menuEl.value!` (the DOM element behind the ref).
+    pub ref_names: HashSet<String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
 }
@@ -40,12 +43,19 @@ impl AuraTsContext {
         Self {
             state_names,
             prop_names: HashSet::new(),
+            ref_names: HashSet::new(),
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         }
     }
 
     pub fn with_props(mut self, prop_names: HashSet<String>) -> Self {
         self.prop_names = prop_names;
+        self
+    }
+
+    /// Set template ref names (declared via `ref: "name"` in the view).
+    pub fn with_refs(mut self, ref_names: HashSet<String>) -> Self {
+        self.ref_names = ref_names;
         self
     }
 
@@ -61,6 +71,10 @@ impl AuraTsContext {
 
     fn is_prop(&self, name: &str) -> bool {
         self.prop_names.contains(name)
+    }
+
+    fn is_ref(&self, name: &str) -> bool {
+        self.ref_names.contains(name)
     }
 
     fn is_api(&self, name: &str) -> bool {
@@ -290,6 +304,12 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         write!(out, "props.{}", field_name).ok();
                     } else if ctx.is_state(field_name) {
                         write!(out, "{}.value", field_name).ok();
+                    } else if ctx.is_ref(field_name) {
+                        // Template ref: `.menuEl` → `menuEl.value!` (the DOM
+                        // element). Chained access (`.menuEl.scrollTop`,
+                        // `.menuEl.getBoundingClientRect()`) flows through the
+                        // general Dot/Call paths and lands on this element.
+                        write!(out, "{}.value!", field_name).ok();
                     } else {
                         write!(out, "{}", field_name).ok();
                     }
@@ -626,6 +646,10 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
                 if name.as_str() == "self" {
                     let field_name = field.as_str();
                     if ctx.is_state(field_name) {
+                        write!(out, "{}.value", field_name).ok();
+                    } else if ctx.is_ref(field_name) {
+                        // `.menuEl = el` assigns the element behind the ref
+                        // (rare; `.menuEl.prop = v` takes the general path).
                         write!(out, "{}.value", field_name).ok();
                     } else {
                         write!(out, "{}", field_name).ok();
@@ -1051,5 +1075,95 @@ mod tests {
             "chained call regression:\n{}",
             out
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // DOM escape hatch: template refs + document/window pass-through
+    // -----------------------------------------------------------------------
+
+    fn test_ctx_with_refs() -> AuraTsContext {
+        AuraTsContext::new(HashSet::new()).with_refs(
+            ["menuEl".to_string(), "scrollEl".to_string()]
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    fn ref_method_call(ref_name: &str, method: &str) -> Expr {
+        Expr::Call(Call {
+            name: Box::new(Expr::Dot(Box::new(self_dot(ref_name)), method.into())),
+            args: Args::new(),
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        })
+    }
+
+    /// `.menuEl.getBoundingClientRect()` → `menuEl.value!.getBoundingClientRect()`
+    #[test]
+    fn template_ref_method_call() {
+        let stmts = vec![
+            Stmt::Expr(ref_method_call("menuEl", "getBoundingClientRect")),
+            Stmt::Expr(ref_method_call("menuEl", "querySelector")),
+        ];
+        let out = transpile_handler_body(&stmts, &test_ctx_with_refs());
+        assert!(
+            out.contains("menuEl.value!.getBoundingClientRect();"),
+            "output:\n{}",
+            out
+        );
+        assert!(
+            out.contains("menuEl.value!.querySelector();"),
+            "output:\n{}",
+            out
+        );
+    }
+
+    /// `.scrollEl.clientHeight` (property read) → `scrollEl.value!.clientHeight`
+    #[test]
+    fn template_ref_property_read() {
+        let stmt = Stmt::Expr(Expr::Dot(Box::new(self_dot("scrollEl")), "clientHeight".into()));
+        let out = transpile_handler_body(&[stmt], &test_ctx_with_refs());
+        assert!(out.contains("scrollEl.value!.clientHeight;"), "output:\n{}", out);
+    }
+
+    /// `.scrollEl.scrollTop = .scrollEl.scrollTop + 10` (property write)
+    /// → `scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + 10;`
+    #[test]
+    fn template_ref_property_write() {
+        let scroll_top = || Expr::Dot(Box::new(self_dot("scrollEl")), "scrollTop".into());
+        let stmt = Stmt::Expr(Expr::Bina(
+            Box::new(scroll_top()),
+            Op::Asn,
+            Box::new(Expr::Bina(
+                Box::new(scroll_top()),
+                Op::Add,
+                Box::new(Expr::Int(10)),
+            )),
+        ));
+        let out = transpile_handler_body(&[stmt], &test_ctx_with_refs());
+        assert!(
+            out.contains("scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + 10;"),
+            "output:\n{}",
+            out
+        );
+    }
+
+    /// `document.activeElement` / `window.innerWidth` pass through unchanged.
+    #[test]
+    fn document_window_passthrough() {
+        let stmts = vec![
+            Stmt::Expr(Expr::Dot(
+                Box::new(Expr::Ident("document".into())),
+                "activeElement".into(),
+            )),
+            Stmt::Expr(Expr::Dot(
+                Box::new(Expr::Ident("window".into())),
+                "innerWidth".into(),
+            )),
+        ];
+        let out = transpile_handler_body(&stmts, &test_ctx());
+        assert!(out.contains("document.activeElement;"), "output:\n{}", out);
+        assert!(out.contains("window.innerWidth;"), "output:\n{}", out);
     }
 }

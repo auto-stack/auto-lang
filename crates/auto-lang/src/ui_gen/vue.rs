@@ -898,6 +898,11 @@ pub struct VueGenerator {
     /// Populated during template generation, consumed during script generation
     /// to emit addEventListener/removeEventListener pairs.
     global_listeners: Vec<GlobalListener>,
+
+    /// Template refs declared in the view via `ref: "menuEl"`.
+    /// Populated during template generation, consumed during script generation
+    /// to emit `const menuEl = ref<HTMLElement | null>(null)` declarations.
+    template_refs: Vec<String>,
 }
 
 /// A document/window-level event listener (Plan: generic DOM events).
@@ -999,6 +1004,7 @@ impl VueGenerator {
             needs_child_delete_handler: false,
             explicit_api_imports: false,
             global_listeners: Vec::new(),
+            template_refs: Vec::new(),
         }
     }
 
@@ -1178,6 +1184,7 @@ impl VueGenerator {
         self.dark_mode_var = None;
         self.use_theme_toggle = false;
         self.global_listeners.clear();
+        self.template_refs.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1419,7 +1426,7 @@ impl VueGenerator {
         let mut script = String::new();
 
         // Determine needed imports
-        let needs_ref = !widget.state_vars.is_empty();
+        let needs_ref = !widget.state_vars.is_empty() || !self.template_refs.is_empty();
         let needs_computed = !widget.computed.is_empty();
 
         // Generate Vue import statement
@@ -1609,6 +1616,15 @@ impl VueGenerator {
         }
 
         if !widget.state_vars.is_empty() {
+            script.push('\n');
+        }
+
+        // Template refs (`ref: "menuEl"` in the view) → Vue template-ref
+        // declarations. Handlers access them via `.menuEl` → `menuEl.value!`.
+        for ref_name in &self.template_refs {
+            script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
+        }
+        if !self.template_refs.is_empty() {
             script.push('\n');
         }
 
@@ -2175,7 +2191,8 @@ impl VueGenerator {
         match payload {
             LogicPayload::AstStmts(stmts) => {
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
-                    .with_props(self.prop_names.iter().cloned().collect());
+                    .with_props(self.prop_names.iter().cloned().collect())
+                    .with_refs(self.template_refs.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
@@ -2477,6 +2494,23 @@ impl VueGenerator {
                     for (key, value) in props {
                         if key == "class" || key == "style" {
                             continue; // Already handled in extract_classes
+                        }
+                        // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
+                        // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
+                        // declaration in <script setup> (emitted later from
+                        // self.template_refs). Accessible in `on` handlers as
+                        // `.menuEl` (→ `menuEl.value!`).
+                        if key == "ref" {
+                            let ref_name: String = match value {
+                                AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
+                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
+                                _ => continue,
+                            };
+                            if !ref_name.is_empty() && !self.template_refs.contains(&ref_name) {
+                                self.template_refs.push(ref_name.clone());
+                            }
+                            attrs.push(format!("ref=\"{}\"", ref_name));
+                            continue;
                         }
                         if key == "gap" {
                             continue; // Handled in extract_classes for layout elements
@@ -4746,6 +4780,24 @@ impl VueGenerator {
         let mut attrs = Vec::new();
         let mut slot_content: Option<String> = None;
         let mut slot_children: Option<String> = None;
+
+        // Template ref escape hatch: `ref: "menuEl"` → static `ref="menuEl"`
+        // attribute + a `const menuEl = ref<HTMLElement | null>(null)` in
+        // <script setup> (from self.template_refs). Handled generically so
+        // every shadcn-mapped element supports it without per-arm changes.
+        if let Some(value) = props.get("ref") {
+            let ref_name = match value {
+                AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
+                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
+                _ => String::new(),
+            };
+            if !ref_name.is_empty() {
+                if !self.template_refs.contains(&ref_name) {
+                    self.template_refs.push(ref_name.clone());
+                }
+                attrs.push(format!("ref=\"{}\"", ref_name));
+            }
+        }
 
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
         let normalized_tag = tag.replace('-', "_").to_lowercase();
@@ -9276,6 +9328,44 @@ mod tests {
         assert!(sfc.contains("@media (max-width: 768px) {"));
         // The plain generated <style> block is still present.
         assert!(sfc.contains("<style>"));
+    }
+
+    /// Template ref escape hatch: a `ref` prop on a view element emits a
+    /// static `ref="menuEl"` template attribute plus a
+    /// `const menuEl = ref<HTMLElement | null>(null)` script declaration,
+    /// and pulls in the `ref` import even without state vars.
+    #[test]
+    fn test_template_ref_declaration() {
+        let widget = AuraWidget {
+            name: "Menu".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col")
+                .with_prop("ref", crate::ast::Expr::Str("menuEl".into()))
+                .with_child(AuraNode::text("hi")),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+        };
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(sfc.contains("import { ref } from 'vue'"), "sfc:\n{}", sfc);
+        assert!(
+            sfc.contains("const menuEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("ref=\"menuEl\""), "sfc:\n{}", sfc);
     }
 
     /// Without a style block, no `<style scoped>` is emitted.
