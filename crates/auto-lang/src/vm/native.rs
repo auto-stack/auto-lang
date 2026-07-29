@@ -514,6 +514,7 @@ pub const NATIVE_STR_CONTAINS: u16 = 1504;
 pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
 pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
 pub const NATIVE_STR_TO_INT: u16 = 1516;
+pub const NATIVE_STR_TO_UINT: u16 = 1523;
 
 // Math functions registered in stdlib.rs via register_shim_by_name
 pub const NATIVE_MATH_ABS: u16 = 1700;
@@ -2718,9 +2719,15 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         }
     }
 
-    // Not found — push nil marker
+    // Not found — push empty string (bash associative-array semantics:
+    // ${arr[key]} returns empty when key doesn't exist, not null/error).
+    // Use contains_key to distinguish "missing" from "empty value".
     {
-        task.ram.push_nv(auto_val::encode_null());
+        let mut strings = vm.strings.write().unwrap();
+        let str_idx = strings.len() as u32;
+        strings.push(Vec::new()); // empty string
+        drop(strings);
+        task.ram.push_str_idx(str_idx);
     }
     Ok(())
 }
@@ -3765,6 +3772,28 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
             String::new()
         };
         let result = s.trim().parse::<i32>().unwrap_or(0);
+        task.ram.push_nv(auto_val::encode_i32(result));
+    }
+    Ok(())
+}
+
+/// Nanbox-aware shim for String.to_uint().
+/// The FFI macro shim returns i64 (2-slot), but the nanbox VM has no
+/// encode_i64 — the slot mismatch caused to_uint() to return 0.
+/// This override returns the value as i32 (truncated for values > 2^31,
+/// which is fine for typical script use: file sizes, line counts, etc.).
+pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = task.ram.pop_nv();
+        let s = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx as u16)
+                .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let result = s.trim().parse::<i64>().unwrap_or(0) as i32;
         task.ram.push_nv(auto_val::encode_i32(result));
     }
     Ok(())

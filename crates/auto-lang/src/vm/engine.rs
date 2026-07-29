@@ -364,6 +364,7 @@ impl AutoVM {
             native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
             native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
             native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
+            native_interface.register(crate::vm::native::NATIVE_STR_TO_UINT, crate::vm::native::shim_str_to_uint_nv);
         }
 
         // Plan 011 (MS3-B): shell-host bridge natives.
