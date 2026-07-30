@@ -99,20 +99,17 @@ impl FlowStep {
     pub fn new(id: &str, role_id: &str) -> FlowStep {
         return FlowStep { id: id.to_string(), role_id: role_id.to_string(), gate: GateType::Auto, max_turns: None, exit: ExitRouting::Next, token_budget: None };
     }
-    pub fn with_gate(&self, gate: GateType) -> FlowStep {
-        let mut s = self.clone();
-        s.gate = gate;
-        return s;
+    pub fn with_gate(&mut self, gate: GateType) -> FlowStep {
+        self.gate = gate;
+        return self.clone();
     }
-    pub fn with_exit(&self, exit: ExitRouting) -> FlowStep {
-        let mut s = self.clone();
-        s.exit = exit;
-        return s;
+    pub fn with_exit(&mut self, exit: ExitRouting) -> FlowStep {
+        self.exit = exit;
+        return self.clone();
     }
-    pub fn with_budget(&self, budget: u32) -> FlowStep {
-        let mut s = self.clone();
-        s.token_budget = Some(budget);
-        return s;
+    pub fn with_budget(&mut self, budget: u32) -> FlowStep {
+        self.token_budget = Some(budget.to_string());
+        return self.clone();
     }
 }
 
@@ -140,16 +137,16 @@ impl FlowSpec {
         return self.clone();
     }
     pub fn get_step(&self, step_id: &str) -> Option<FlowStep> {
-        for s in &self.steps {
+        for s in self.steps.clone() {
             if s.id == step_id {
-                return Some(s.clone());
+                return Some(s);
             }
         }
         return None;
     }
     pub fn get_step_index(&self, step_id: &str) -> Option<u32> {
-        let mut i: u32 = 0;
-        for s in &self.steps {
+        let mut i: u32 = 0 as u32;
+        for s in self.steps.clone() {
             if s.id == step_id {
                 return Some(i as u32);
             }

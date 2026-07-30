@@ -13,7 +13,7 @@ use crate::wire::{Message};
 /// "Turns" are counted as user+assistant message pairs (a tool round-trip is
 /// two messages but counts as one turn). [Memory.trim] enforces the limit,
 /// always preserving leading system messages.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Memory {
     pub messages: Vec<Message>,
     pub limit: Option<u32>,
@@ -24,7 +24,7 @@ impl Memory {
         return Memory { messages: vec![], limit: limit };
     }
     pub fn add(&mut self, role: &str, content: &str) {
-        match role {
+        match role.as_str() {
             "assistant" => self.add_message(Message::assistant(content)),
             "system" => self.add_message(Message::system(content)),
             _ => self.add_message(Message::user(content)),
@@ -32,11 +32,11 @@ impl Memory {
     }
     pub fn add_message(&mut self, msg: Message) {
         self.messages.push(msg.clone());
-        self.trim();
+        let _ = self.trim().to_string();
     }
     pub fn extend_pairs(&mut self, pairs: Vec<(String, String)>) {
         for pair in pairs {
-            self.add(&pair.0, &pair.1);
+            self.add(pair.0, pair.1);
         }
     }
     pub fn messages(&self) -> Vec<Message> {
@@ -46,14 +46,14 @@ impl Memory {
         return self.messages.clone();
     }
     pub fn len(&self) -> u32 {
-        return self.messages.len() as u32;
+        return ((self.messages.len() as i32) as u32);
     }
     pub fn is_empty(&self) -> bool {
         return (self.messages.len() as i32) == 0;
     }
     pub fn non_system_count(&self) -> u32 {
-        let mut count: u32 = 0;
-        for m in &self.messages {
+        let mut count: u32 = 0 as u32;
+        for m in self.messages.clone() {
             if m.role.to_string() != "system" {
                 count = count + 1
             }
@@ -65,12 +65,12 @@ impl Memory {
         if self.limit.is_none() {
             return;
         }
-        let limit: u32 = self.limit.unwrap_or(0);
+        let limit: Option<u32> = self.limit.unwrap_or(0);
         if limit == 0 {
             
 
             let mut kept: Vec<Message> = vec![];
-            for m in &self.messages {
+            for m in self.messages {
                 if m.role.to_string() == "system" {
                     kept.push(m.clone());
                 }
@@ -79,7 +79,7 @@ impl Memory {
             return;
         }
 
-        let max_non_system = limit * 2;
+        let max_non_system = limit.unwrap_or(0) * 2;
         while self.non_system_count() > max_non_system {
             
             let start = self.first_non_system_index();
@@ -92,7 +92,7 @@ impl Memory {
 
             let mut end: i32 = s + 1;
             if self.messages[(s) as usize].clone().role.to_string() == "assistant" {
-                while end < (self.messages.len() as i32) && self.messages[(end) as usize].clone().role.to_string() == "user" {
+                while end < ((self.messages.len() as i32) as i32) && self.messages[(end) as usize].clone().role.to_string() == "user" {
                     end = end + 1;
                 }
             }
@@ -102,7 +102,7 @@ impl Memory {
     }
     pub fn first_non_system_index(&self) -> i32 {
         let mut i: i32 = 0;
-        for m in &self.messages {
+        for m in self.messages.clone() {
             if m.role.to_string() != "system" {
                 return i;
             }
@@ -113,8 +113,8 @@ impl Memory {
     pub fn remove_range(&self, from: i32, up_to: i32) -> Vec<Message> {
         let mut out: Vec<Message> = vec![];
         let mut i: i32 = 0;
-        for m in &self.messages {
-
+        for m in self.messages.clone() {
+            
 
             if i < from {
                 out.push(m.clone())
