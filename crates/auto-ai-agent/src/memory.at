@@ -41,7 +41,7 @@ ext Memory {
     /// blocks that aren't plain text).
     pub mut fn add_message(msg Message) void {
         self.messages.push(msg)
-        self.trim()
+        let _ = self.trim()
     }
 
     /// Pre-load a sequence of (role, content) turns from a prior conversation.

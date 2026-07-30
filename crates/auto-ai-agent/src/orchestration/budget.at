@@ -127,10 +127,10 @@ ext BudgetTracker {
         let total = input + output
         self.cumulative = self.cumulative + total
         if self.per_step.contains(step) == false {
-            self.per_step_names.push(step)
+            self.per_step_names.push(step.to_string())
             self.per_step.set(step, total)
         } else {
-            let prev = self.per_step.get(step)
+            let prev = self.per_step.get(step) ?? 0
             self.per_step.set(step, prev + total)
         }
     }
@@ -161,7 +161,7 @@ ext BudgetTracker {
     /// Set a per-step budget.
     pub mut fn set_step_budget(step str, budget TokenBudget) void {
         if self.step_budgets.contains(step) == false {
-            self.step_names.push(step)
+            self.step_names.push(step.to_string())
         }
         self.step_budgets.set(step, budget)
     }

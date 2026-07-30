@@ -39,7 +39,7 @@ pub enum Validator {
 ext Validator {
     /// Run this validator against `output`. Returns Ok(None) on pass,
     /// Err(message) on fail (message explains what failed).
-    pub fn check(output str) Result<None, str> {
+    pub fn check(output str) ~Result<None, str> {
         is self {
             Validator.OutputContains(pattern) -> {
                 if output.contains(pattern) {
@@ -54,7 +54,7 @@ ext Validator {
                 return Err(f"output must NOT contain '${pattern}' (it does)")
             },
             Validator.OutputMinLength(min) -> {
-                if output.len() >= min {
+                if output.len() as uint >= min {
                     return Ok(None)
                 }
                 return Err(f"output is ${output.len()} chars, must be at least ${min}")
@@ -67,7 +67,7 @@ ext Validator {
 
 /// Run a list of validators against `output`. Passes only if ALL pass.
 /// Returns the first failure message, or Ok if all pass.
-pub fn check_all(validators List<Validator>, output str) Result<None, str> {
+pub fn check_all(validators List<Validator>, output str) ~Result<None, str> {
     for v in validators {
         is v.check(output) {
             Ok(_) -> {},
@@ -79,7 +79,7 @@ pub fn check_all(validators List<Validator>, output str) Result<None, str> {
 
 /// Run a list of validators against `output`. Passes if AT LEAST ONE passes.
 /// Returns Err only when every validator fails.
-pub fn check_any(validators List<Validator>, output str) Result<None, str> {
+pub fn check_any(validators List<Validator>, output str) ~Result<None, str> {
     var failures uint = 0
     for v in validators {
         is v.check(output) {
@@ -87,9 +87,10 @@ pub fn check_any(validators List<Validator>, output str) Result<None, str> {
             Err(_msg) -> failures = failures + 1
         }
     }
-    if failures < validators.len() {
+    let total = validators.len() as uint
+    if failures < total {
         // at least one passed (handled above); unreachable but kept for parity
         return Ok(None)
     }
-    return Err(f"none of ${validators.len()} validators passed")
+    return Err(f"none of ${total} validators passed")
 }
