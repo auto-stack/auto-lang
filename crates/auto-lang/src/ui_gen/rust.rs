@@ -1336,9 +1336,14 @@ impl RustGenerator {
         if views.len() == 1 {
             views[0].clone()
         } else {
-            // Use row() for multi-child conditionals so siblings sit side-by-side.
-            // The parent col/row already controls the outer layout direction.
-            let mut builder = "View::row()".to_string();
+            // Use col() for multi-statement conditional bodies so siblings
+            // stack VERTICALLY (the common case — e.g. a section header row
+            // followed by a for-loop list, repeated per category). The parent
+            // col/row already controls the outer layout direction; an if-body
+            // with several children is almost always a vertical sequence.
+            // (Previously row() was used, which laid mixed row+for siblings out
+            // side-by-side, producing a diagonal/tilted arrangement.)
+            let mut builder = "View::col()".to_string();
             for v in views {
                 builder = format!("{}.child({})", builder, v);
             }

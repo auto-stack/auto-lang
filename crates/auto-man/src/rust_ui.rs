@@ -754,12 +754,30 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
         let fields: Vec<String> = api_type.fields.iter().map(|f| {
             let val = match f.ty.as_str() {
                 "int" | "i64" => format!("{}", i),
-                "bool" => "false".to_string(),
+                "bool" => match f.name.as_str() {
+                    // pinned: first note pinned so the "Pinned" tab isn't empty.
+                    "pinned" => if i == 0 { "true" } else { "false" }.to_string(),
+                    _ => "false".to_string(),
+                },
+                s if s.starts_with("[]") => {
+                    // Array field (e.g. tags) — emit a non-empty JSON array so
+                    // tag filters and renders have data to show.
+                    let sample = match f.name.as_str() {
+                        "tags" => match i { 0 => "intro", 1 => "home", _ => "work" },
+                        _ => "item",
+                    };
+                    format!("[\"{}\"]", sample)
+                }
                 _ => {
                     let sample = match f.name.as_str() {
                         "title" | "name" => match i { 0 => "Welcome", 1 => "Shopping List", _ => "Meeting Notes" },
                         "body" | "description" | "content" => match i { 0 => "This is your notes app. Click on any note to view it.", 1 => "Milk, Eggs, Bread, Cheese", _ => "Q3 roadmap discussion with the team" },
                         "time" | "date" | "created_at" => match i { 0 => "Just now", 1 => "2 hours ago", _ => "Yesterday" },
+                        // folder: spread the 3 seed notes across the categories
+                        // ("" / "personal" / "work") so each folder tab shows at
+                        // least one note. Without this all notes get a generic
+                        // value and folder-filtered lists render empty.
+                        "folder" | "category" => match i { 0 => "", 1 => "personal", _ => "work" },
                         _ => "Sample",
                     };
                     format!("\"{}\"", sample)
