@@ -5863,7 +5863,17 @@ impl RustTrans {
                             && !matches!(expr, Expr::Int(_) | Expr::Float(_, _))
                             && !Self::is_int_var(arg, &self.local_var_types)
                         {
-                            write!(out, ".as_str()")?;
+                            // Plan 376 Pass 7: skip .as_str() when the arg variable
+                            // is already &str (StrSlice) — adding .as_str() on a &str
+                            // triggers E0658 (unstable str_as_str feature).
+                            let arg_already_str_slice = if let Expr::Ident(name) = expr {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else { false };
+                            if !arg_already_str_slice {
+                                write!(out, ".as_str()")?;
+                            }
                         }
                         // Auto-borrow for external crate calls: when calling crate::method()
                         // with a String-typed variable, add .as_str() since most Rust
@@ -6362,8 +6372,41 @@ impl RustTrans {
             }
 
             // After expression: add .as_str() for String→&str conversion
-            if needs_borrow || needs_borrow_unknown_callee {
+            // Plan 376 Pass 7: skip .as_str() when the callee param is already &str
+            // (the callee declared `param str` which renders as &str in Rust).
+            // In this case needs_borrow is true (is_str_param), but the argument
+            // is already &str — adding .as_str() causes E0658 (unstable feature).
+            // The fix: if the arg variable's type IS StrSlice (it's a &str param),
+            // don't add .as_str() even when is_str_param says to borrow.
+            let arg_is_str_slice = if let Arg::Pos(Expr::Ident(name)) = arg {
+                self.local_var_types.get(name)
+                    .map(|ty| matches!(ty, Type::StrSlice))
+                    .unwrap_or(false)
+            } else { false };
+            let arg_is_str_literal = matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
+            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal {
                 write!(out, ".as_str()")?;
+            }
+
+            // Plan 376 Pass 5: &str → String conversion when param expects owned
+            // String (StrOwned/StrFixed). Auto-detect from param_types: if param
+            // is StrOwned and arg is &str (StrSlice param or string literal), add .to_string().
+            if !needs_borrow && !needs_borrow_unknown_callee {
+                // Only when we didn't already handle it via borrow path
+                if let Some(pts) = &param_types {
+                    if let Some(pt) = pts.get(i) {
+                        let param_is_owned_str = matches!(pt, Type::StrOwned | Type::StrFixed(_));
+                        let arg_is_str_value = arg_is_str_slice || arg_is_str_literal
+                            || (if let Arg::Pos(Expr::Ident(name)) = arg {
+                                self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false)
+                            } else { false });
+                        if param_is_owned_str && arg_is_str_value {
+                            write!(out, ".to_string()")?;
+                        }
+                    }
+                }
             }
 
             // Enum→i32 cast for int-expecting params
