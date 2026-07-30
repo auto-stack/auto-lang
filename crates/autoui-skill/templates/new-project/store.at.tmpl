@@ -1,0 +1,15 @@
+store {{STORE_NAME}} {
+    model {
+        var dark_mode bool = false
+        var accent_color str = "indigo"
+    }
+
+    on {
+        .ToggleDarkMode -> {
+            .dark_mode = !.dark_mode
+        }
+        .SetAccent(name str) -> {
+            .accent_color = name
+        }
+    }
+}
