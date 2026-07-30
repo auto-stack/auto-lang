@@ -35,10 +35,22 @@ fn check(n: u32, name: &str, actual: &str, expected: &str) {
     }
 }
 
+fn post_status(body: &str) -> i32 {
+    match ureq::post(MOCK_URL).send_string(body) {
+        Ok(resp) => resp.status() as i32,
+        Err(ureq::Error::Status(code, _)) => code as i32,
+        Err(_) => 0,
+    }
+}
+
+fn check_int(n: u32, name: &str, actual: i32, expected: i32) {
+    if actual == expected { tap_ok(n, name); }
+    else { tap_not_ok(n, name, "status mismatch"); }
+}
+
 #[test]
 fn test_post_echo_basic() {
     let resp = post_echo(r#"{"hello":"auto"}"#);
-    // Note: prints TAP line so cargo test output is comparable to the Auto side.
     check(1, "test_post_echo_basic", &resp, r#"{"echo":"ok"}"#);
     assert_eq!(resp, r#"{"echo":"ok"}"#);
 }
@@ -55,4 +67,18 @@ fn test_post_echo_empty_body() {
     let resp = post_echo("");
     check(3, "test_post_echo_empty_body", &resp, r#"{"echo":"ok"}"#);
     assert_eq!(resp, r#"{"echo":"ok"}"#);
+}
+
+#[test]
+fn test_post_status_200() {
+    let status = post_status(r#"{"hello":"auto"}"#);
+    check_int(4, "test_post_status_200", status, 200);
+    assert_eq!(status, 200);
+}
+
+#[test]
+fn test_post_status_200_empty() {
+    let status = post_status("");
+    check_int(5, "test_post_status_200_empty", status, 200);
+    assert_eq!(status, 200);
 }

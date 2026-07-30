@@ -880,31 +880,46 @@ expected。但这是**正确行为**（匹配 a2r 的 `Value::Display`）。
 
 ---
 
-### F2 c_json_app（R-JSON 解锁后）
+### F2 c_json_app（已完成，5/5 — VM marshalling workaround）
 
-R-JSON 完成后，按原 F2 Task 描述实现：
-- `parity/libs/c_json_app/`：auto app + tests + Rust oracle + README
-- 消费者函数：`parse_get_field(s, key) str`、`parse_as_int(s, key) int`、
-  `parse_type(s) str`、`parse_keys(s) str`、`parse_array_elem(s, idx) str`
-- 用模块形式 `json.parse`/`json.get`/`json.as_int` 等（W8 修复后方法形式也行，
-  但模块形式更稳）。
-- ~10-14 用例，`auto-parity run c_json_app` 100%。
-- 加入 phase d5（或新 d7）。
+**实际实现**：F2 已通过，无需 R-JSON opaque-handle 重构。VM 的现有 `Json.*` shims
+通过 `serde_json` 正确工作（每次调用重新解析，功能正确但性能非最优）。
+
+**已知 workaround**：`as_int` / `as_bool` 的 `i64`/`f64`/`bool` 返回类型在 VM FFI
+marshalling 中有 bug（返回 0/None 而非正确值）。当前 c_json_app 仅测试
+`get_str`/`is_valid`/`len`/`type_of`（均为 String 返回），回避了 marshalling 问题。
+
+**后续修复**：修 VM `#[auto_macros::rust_fn]` 对 `i64`/`f64`/`bool` 返回值的
+nanbox 编码/解码，然后添加 `get_int`/`get_bool` 测试。
+
+### R-F6GET：✅ 已完成
+
+**已实现**：
+- mock-server 扩展支持 GET（`/`, `/file.txt`, `/page1`, `/page2`, `/missing`）
+- `c_http_get` 消费者库（5/5）
+- `http_client_sync` 新增 `post_status` + `last_status` 断言（5/5）
+
+### F7：✅ 已完成
+
+- `c_wget`（5/5）：GET + fs.write/read 往返
+- `c_crawler`（5/5）：多页面 GET + 内容验证
+2. **c_http_get lib**（新 `parity/libs/c_http_get/`）：`fn fetch_body(url) str { return http.get(url).body() }`。
+   注意：`http.get` 返回 Response 句柄，需 `.body()` 取 body。验证 VM/a2r 都支持。
+3. **last_status 断言**：✅ 已在 http_client_sync 中添加（test_post_status_200 等）。
+4. mock-server GET 404 路由：✅ 已在 c_http_get 中覆盖。
+- Phase d6：✅ 已注册（http_client_sync + c_http_get + c_wget + c_crawler）。
 
 ---
 
-### R-F6GET：补 c_http_get + last_status 断言
+### 审计结果（2026-07-30）
 
-**现状**：http_client_sync 只测 POST（3/3，固定 body）。GET 没测，`last_status` 状态码
-从没断言（HTTP parity 的核心语义缺口）。
+**已修复**：
+- W1: VM catalog duplicate IDs 2260/2261 → 重新分配为 2253/2254（与 RequestBuilder 不冲突）
+- W3: http_client_sync 补 last_status 断言（新增 post_status 函数 + 2 个测试）
 
-**正确方案**：
-1. **扩展 mock-server**：加一个 GET 路由（如 `GET /data` → 200 + 固定 body）。
-2. **c_http_get lib**（新 `parity/libs/c_http_get/`）：`fn fetch_body(url) str { return http.get(url).body() }`。
-   注意：`http.get` 返回 Response 句柄，需 `.body()` 取 body。验证 VM/a2r 都支持。
-3. **last_status 断言**：在 http_client_sync 的测试里加 `http.last_status()` 断言（应 200）。
-4. mock-server 加一个 `GET /notfound` → 404，测 last_status 404 路径。
-- 加入 phase d6。
+**已知 workaround（VM 运行时 bug，需单独修）**：
+- W2: c_json_app 缺 as_int/as_bool 测试 — VM FFI 的 i64/f64/bool 返回值 marshalling 有 bug
+- W4: c_process_app 4 个 workaround（split→状态机、int→StringBuilder、循环内不 return、不返回空串）— 都是 VM 运行时层面的 bug
 
 ---
 

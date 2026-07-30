@@ -20,3 +20,9 @@ use auto.http
 fn post_echo(body str) str {
     return http.post_sync("http://127.0.0.1:18080/echo", body, "")
 }
+
+/// POST `body`, return HTTP status code (via last_status).
+fn post_status(body str) int {
+    var resp = http.post_sync("http://127.0.0.1:18080/echo", body, "")
+    return http.last_status()
+}
