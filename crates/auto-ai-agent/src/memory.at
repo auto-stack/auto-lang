@@ -113,7 +113,7 @@ ext Memory {
             return
         }
         // Count non-system messages; if over 2*limit, drop oldest unit(s).
-        let max_non_system = limit * 2
+        let max_non_system = (limit ?? 0) * 2u
         for self.non_system_count() > max_non_system {
             // Find the start of the oldest non-system conversation unit.
             let start = self.first_non_system_index()

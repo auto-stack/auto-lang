@@ -131,7 +131,7 @@ ext BudgetTracker {
             self.per_step.set(step, total)
         } else {
             let prev = self.per_step.get(step) ?? 0
-            self.per_step.set(step, prev + total)
+            self.per_step.set(step.to_string(), prev + total)
         }
     }
 
