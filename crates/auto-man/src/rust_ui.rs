@@ -685,6 +685,20 @@ fn auto_type_to_rust(ty: &str) -> String {
     }
 }
 
+/// Build the RHS expression that stores a merged-client parameter into a JSON
+/// object field. `[]str`/array params (`Vec<String>`) become a JSON array so
+/// the field keeps its array shape (e.g. Note.tags); scalars use Value::from.
+fn merged_param_to_value(ty: &str, param_name: &str) -> String {
+    if ty.starts_with("[]") {
+        format!(
+            "serde_json::Value::Array({}.iter().map(|s| serde_json::Value::from(s.clone())).collect())",
+            param_name
+        )
+    } else {
+        format!("serde_json::Value::from({}.clone())", param_name)
+    }
+}
+
 /// Generate heuristic stub functions when API module can't be parsed.
 fn generate_api_stubs(api_imports: &[String]) -> String {
     let mut code = String::new();
@@ -804,24 +818,32 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
             }
             "POST" => {
                 let body_fields: Vec<String> = body_params.iter()
-                    .map(|p| format!("\"{}\": serde_json::Value::from({}.clone())", p.name, p.name))
+                    .map(|p| format!("\"{}\": {}", p.name, merged_param_to_value(&p.ty, &p.name)))
                     .collect();
                 code.push_str(&format!(
                     "fn {}({}) -> Value {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    item\n}}\n\n",
                     fn_name,
-                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
                     body_fields.join(", ")
                 ));
             }
             "PUT" => {
+                // PUT is fire-and-forget in the UI (callers don't use the
+                // return value), so return () — matching split mode's
+                // fire-and-forget PUT. Param types come from the declared type
+                // (e.g. []str → Vec<String>), and array params are stored as
+                // JSON arrays rather than a single Value::from(String).
                 let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
                 let body_fields: Vec<String> = body_params.iter()
-                    .map(|p| format!("item[\"{}\"] = serde_json::Value::from({}.clone())", p.name, p.name))
+                    .map(|p| {
+                        let rhs = merged_param_to_value(&p.ty, &p.name);
+                        format!("item[\"{}\"] = {}", p.name, rhs)
+                    })
                     .collect();
                 code.push_str(&format!(
-                    "fn {}({}: i32, {}) -> Option<Value> {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| n[\"id\"].as_i64() == Some({} as i64)) {{\n        {};\n        return Some(item.clone());\n    }}\n    None\n}}\n\n",
+                    "fn {}({}: i32, {}) {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| n[\"id\"].as_i64() == Some({} as i64)) {{\n        {};\n    }}\n}}\n\n",
                     fn_name, id_param,
-                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
                     id_param,
                     body_fields.join("; ")
                 ));
@@ -847,16 +869,16 @@ fn generate_http_utility_functions() -> String {
     r#"// Plan 349: File upload (multipart) + download utilities (a2r)
 
 fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
     std::thread::spawn(move || {
-        let form = reqwest::blocking::multipart::Form::new()
-            .file("file", file_path)
-            .map_err(|e| e.to_string())?;
-        let resp = reqwest::blocking::Client::new()
-            .post(url)
+        let form = match reqwest::blocking::multipart::Form::new()
+            .file("file", &file_path) { Ok(f) => f, Err(_) => return serde_json::Value::Null };
+        let resp = match reqwest::blocking::Client::new()
+            .post(&url)
             .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+            .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }
@@ -877,12 +899,11 @@ fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Valu
         if let Ok(part) = reqwest::blocking::multipart::Part::file(&file_path) {
             form = form.part("file", part);
         }
-        let resp = reqwest::blocking::Client::new()
+        let resp = match reqwest::blocking::Client::new()
             .post(&url)
             .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+            .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }

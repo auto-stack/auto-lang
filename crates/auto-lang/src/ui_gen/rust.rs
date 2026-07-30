@@ -2857,6 +2857,44 @@ impl RustGenerator {
             ".as_array().into_iter().flatten()"
         );
 
+        // Fix 2b: #[api] Vec<String> argument marshalling.
+        // update_tags(id, tags) expects `tags: Vec<String>` (both merged and
+        // split clients), but value_field_access emits the tags field as a single
+        // String (`.as_str().unwrap_or_default().to_string()`). Rewrite that
+        // specific argument into a Vec<String> built from the JSON array.
+        // We scan each update_tags(...) call and replace the String-marshalled
+        // tags arg, leaving other tags usages (iter/contains/push) untouched.
+        let needle = r#"["tags"].as_str().unwrap_or_default().to_string())"#;
+        let marshalled = r#"["tags"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect::<Vec<String>>()).unwrap_or_default())"#;
+        let mut search = 0;
+        while let Some(rel) = result[search..].find("update_tags(") {
+            let pos = search + rel;
+            // Find the matching close paren of this update_tags(...) call.
+            let bytes = result.as_bytes();
+            let mut depth = 0i32;
+            let mut end = pos;
+            for (j, &b) in bytes[pos..].iter().enumerate() {
+                match b {
+                    b'(' => depth += 1,
+                    b')' => { depth -= 1; if depth == 0 { end = pos + j; break; } }
+                    _ => {}
+                }
+            }
+            let call_end = end;
+            // Only the substring within this call is a candidate.
+            if result[pos..=call_end].contains(needle) {
+                let before = &result[..pos];
+                let this_call = &result[pos..=call_end];
+                let after = &result[call_end + 1..];
+                let new_call = this_call.replace(needle, marshalled);
+                let gained = new_call.len();
+                result = format!("{}{}{}", before, new_call, after);
+                search = pos + gained;
+            } else {
+                search = call_end + 1;
+            }
+        }
+
         // Fix 3: Value bool toggle assignment
         // Pattern: self.notes[idx]["field"].as_bool().unwrap_or(false) = !(self.notes[idx]["field"].as_bool().unwrap_or(false))
         // This can't be assigned to — replace with a json! assignment.
@@ -2900,10 +2938,13 @@ impl RustGenerator {
         // Fix 4: if X != None { ... }; — use .is_some() to avoid type issues
         result = result.replace(" != None {", ".is_some() {");
         result = result.replace(" == None {", ".is_none() {");
-        // E0317 fix: add `else { None }` for `if note.is_some() { ... };`
-        // This handles the MoveNote handler where the if is in expression position.
+        // E0317 fix: add `else {}` for `if note.is_some() { ... };`
+        // The if-body is an #[api] call (e.g. update_note) which returns () in
+        // both merged and split modes (PUT is fire-and-forget). An empty else
+        // branch returns (), matching the if-body. (Previously `else { None }`
+        // was injected, producing a `()` vs `Option<_>` mismatch.)
         if result.contains("if note.is_some() {") {
-            // Find the pattern and add else { None }
+            // Find the pattern and add else {}
             let pattern = "if note.is_some() {";
             let mut search_start = 0;
             while let Some(pos) = result[search_start..].find(pattern) {
@@ -2923,8 +2964,9 @@ impl RustGenerator {
                 // Check if there's already an else after brace_end
                 let after = &result[brace_end+1..];
                 if !after.trim_start().starts_with("else") {
-                    // Insert `else { None }`
-                    result.insert_str(brace_end + 1, " else { None }");
+                    // Insert `else {}` (unit-typed else branch matches the
+                    // statement-context if-body).
+                    result.insert_str(brace_end + 1, " else {}");
                 }
                 search_start = brace_end + 1;
             }
@@ -3099,6 +3141,11 @@ impl RustGenerator {
         // Bool fields: use .as_bool().unwrap_or(false)
         // Int fields: use .as_i64().unwrap_or(0) as i32
         // Default (string/array/object): use .as_str().unwrap_or_default().to_string()
+        // NOTE: array fields (e.g. tags) are intentionally handled as String here.
+        // Iteration/push/contains on them is rewritten by postprocess_handler_body
+        // (Fix 2 / __a push), and #[api] Vec<String> arguments are rewritten by
+        // the update_tags special-case in postprocess. Keeping this branch as
+        // String avoids breaking those rewrites.
         if field == "id" || field.ends_with("_id") || field == "idx" || field == "count" {
             format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
         } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
