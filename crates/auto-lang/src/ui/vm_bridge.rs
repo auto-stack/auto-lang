@@ -1042,6 +1042,8 @@ mod tests {
             key_bindings: HashMap::new(),
             api_imports: vec![],
             style_css: None,
+            ext_imports: vec![],
+            watchers: vec![],
         }
     }
 
@@ -1520,7 +1522,8 @@ mod tests {
         let mut visited = std::collections::HashSet::new();
         let mut seen = std::collections::HashSet::new();
         let mut imports: Vec<crate::ast::Stmt> = Vec::new();
-        crate::collect_module_imports(&cal_path, &mut visited, &mut imports, &mut seen);
+        let mut compile_session = crate::compile::CompileSession::new();
+        crate::collect_module_imports(&cal_path, &mut visited, &mut imports, &mut seen, &mut compile_session, None);
 
         let session = CompilerSession::ui();
         let mut parser = Parser::from(app_src.as_str()).with_session(session);
