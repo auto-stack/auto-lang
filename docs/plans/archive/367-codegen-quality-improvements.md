@@ -1,5 +1,10 @@
 # Plan 367: 生成代码质量改进 — 让 Auto 产物达到手写水平
 
+## Status: COMPLETE (2026-07-30)
+
+所有 P0/P1/P2 任务已完成。sidebar.at 从 337 行重构到 169 行（NoteRow view fn + else-if 链）。
+Rust UI 代码生成器 015-notes 编译 0 errors。
+
 > **目标**: 把"Auto 生成的 Vue/TS/Rust 代码看起来像转译器输出的"变成"看起来像专家手写的"。
 >
 > **来源**: 基于 015-notes 完整代码审查（.at 源码 + Vue/TS/Rust 产物 vs 行业惯例）。

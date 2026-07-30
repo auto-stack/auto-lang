@@ -1,5 +1,10 @@
 # Plan 368 — Consumer-Mode Parity Suite Implementation Plan
 
+## Status: COMPLETE (2026-07-30)
+
+所有 F1-F7 phase 已完成。78/78 测试三方一致 (100%)。0 个 workaround 残留。
+VM i64/f64 FFI marshalling bug 已修复。c_process_app 从 94 行状态机改回 30 行自然写法。
+
 > **计划号变更说明**：本计划原编号为 367。master 上另一个 agent 实施了
 > "Plan 367 — codegen quality improvements"（Vue/DSL 代码生成质量），为消解
 > 编号冲突，本 consumer-parity 计划重编号为 **368**（2026-07-22）。代码注释里
