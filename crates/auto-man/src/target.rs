@@ -533,17 +533,27 @@ impl Target {
             node.add_kid(n);
         }
 
-        if !self.deps.iter().any(|t| t.kind == TargetKind::Device) {
-            node.set_prop("devices", Value::empty_array());
+        // Plan 375: expose deps grouped by kind as array props so mold templates
+        // can iterate them (e.g. IAR `.ewp` does `@ for dev in devices { ... }`
+        // and reads `dev.icf`). Previously these were only set to *empty* arrays
+        // as a fallback when the kind was absent — so an app whose deps include
+        // a Device ended up with NO `devices` prop at all, yielding
+        // `Undefined variable: devices` at template render time.
+        let mut dep_devices = Vec::new();
+        let mut dep_deps = Vec::new();
+        let mut dep_bags = Vec::new();
+        for dep in &self.deps {
+            let dep_node = Value::Node(dep.to_node());
+            match dep.kind {
+                TargetKind::Device => dep_devices.push(dep_node.clone()),
+                TargetKind::Dep => dep_deps.push(dep_node.clone()),
+                TargetKind::Bag => dep_bags.push(dep_node.clone()),
+                _ => {}
+            }
         }
-
-        if !self.deps.iter().any(|t| t.kind == TargetKind::Dep) {
-            node.set_prop("deps", Value::empty_array());
-        }
-
-        if !self.deps.iter().any(|t| t.kind == TargetKind::Bag) {
-            node.set_prop("bags", Value::empty_array());
-        }
+        node.set_prop("devices", Value::Array(Array::from_vec(dep_devices)));
+        node.set_prop("deps", Value::Array(Array::from_vec(dep_deps)));
+        node.set_prop("bags", Value::Array(Array::from_vec(dep_bags)));
 
         // Add defines property
         node.set_prop("defines", Value::str_array(self.defines.clone()));
