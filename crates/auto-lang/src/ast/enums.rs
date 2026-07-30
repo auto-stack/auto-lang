@@ -55,6 +55,12 @@ pub struct EnumDecl {
     pub kind: EnumKind,
     pub doc: Option<AutoStr>,
     pub is_pub: bool,
+    /// Plan 376: User-supplied attributes (`#[derive(...)]`, `#[serde(...)]`, etc.)
+    /// captured before `enum`/`tag`. When non-empty, the Rust transpiler emits
+    /// these verbatim instead of the auto-generated `#[derive(Clone, Debug, PartialEq)]`.
+    /// Needed because foreign payload types (e.g. `ClientError`) may not impl
+    /// Clone/PartialEq, which the default derive requires.
+    pub attrs: Vec<AutoStr>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +143,7 @@ impl EnumDecl {
             },
             doc: None,
             is_pub: false,
+            attrs: Vec::new(),
         }
     }
 

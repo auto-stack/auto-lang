@@ -290,7 +290,7 @@ ext PipelineDriver {
         let gate_result = self.engine.resolve_gate(decision)
         is gate_result {
             AdvanceResult.Failed(_e) -> return Err(AgentError.Config("gate resolution failed")),
-            else -> return Ok(None)
+            _ -> return Ok(None)
         }
     }
 
@@ -331,8 +331,8 @@ ext PipelineDriver {
 
     /// Handle the engine's result after submitting a handoff (the second half
     /// of the ExecuteStep branch). Terminates drive() on terminal results.
-    fn handle_after_submit(next AdvanceResult) ~Result<None, AgentError> {
-        is next {
+    fn handle_after_submit(next_result AdvanceResult) ~Result<None, AgentError> {
+        is next_result {
             AdvanceResult.Completed -> {
                 (self.on_event)(PipelineEvent.Completed)
                 return Ok(None)
@@ -391,7 +391,7 @@ fn emit_budget_warning(engine PipelineEngine, last_handoff ?HandoffDocument, on_
     let action = engine.budget_tracker.check(role_for_budget)
     is action {
         BudgetAction.Warning(remaining) -> on_event(PipelineEvent.BudgetWarning(remaining)),
-        else -> {}
+        _ -> {}
     }
 }
 

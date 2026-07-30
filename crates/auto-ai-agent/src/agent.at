@@ -446,7 +446,7 @@ fn is_cancelled(cancel ?Arc<AtomicBool>) bool {
 /// Increment the recurrence count for a (tool, args) key, returning the new
 /// count. Keeps the parallel `seen_names` key list in sync (Auto's VM Map has
 /// no iteration API — plan 013 gotcha B5).
-fn bump_seen(var seen Map<str, uint>, var seen_names List<str>, key str) uint {
+fn bump_seen(seen Map<str, uint>, seen_names List<str>, key str) uint {
     var prev uint = 0
     // seen.get(key) returns Option<&u32>; destructure + .clone() to get an owned
     // u32 (a bare `prev = seen.get(key)` assigned Option<&u32> to u32).

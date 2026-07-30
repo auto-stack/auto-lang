@@ -230,7 +230,7 @@ ext PipelineEngine {
                     f"Paused at '${step.id}'. Call resume() to continue."
                 )
             },
-            else -> {}
+            _ -> {}
         }
 
         if self.current_step >= self.flow.steps.len() {
@@ -245,7 +245,7 @@ ext PipelineEngine {
         if step.gate == GateType.Human {
             if self.gate_resolved_for_step != Some(step.id.clone()) {
                 self.status = PipelineStatus.WaitingForHuman(step.id.clone(), now)
-                self.pending_gate = Some(PendingGate(step_id: step.id.clone(), since: now))
+                self.pending_gate = Some(PendingGate(step.id.clone(), now))
                 return AdvanceResult.WaitForHuman(step.id)
             }
         }
@@ -340,7 +340,7 @@ ext PipelineEngine {
             PipelineStatus.Running(_sid, _rid, _t) -> {
                 self.status = PipelineStatus.Paused(self.current_step)
             },
-            else -> {}
+            _ -> {}
         }
     }
 
@@ -419,7 +419,7 @@ ext PipelineEngine {
                     started_at: started
                 ))
             },
-            else -> return None
+            _ -> return None
         }
     }
 
@@ -577,7 +577,7 @@ fn log_budget_advisory(action BudgetAction) void {
         BudgetAction.Warning(_remaining) -> {
             // tracing::warn!(pipeline budget warning ...) — advisory
         },
-        else -> {}
+        _ -> {}
     }
 }
 
@@ -594,7 +594,7 @@ use.rust std::time::Duration
 
 fn now_secs() uint {
     let now = SystemTime.now()
-    let dur = now.duration_since(UNIX_EPOCH) ?? Duration.new(0, 0)
+    let dur = now.duration_since(std::time::UNIX_EPOCH) ?? std::time::Duration::new(0, 0)
     return dur.as_secs() as uint
 }
 
@@ -610,7 +610,7 @@ fn saturating_sub(a uint, b uint) uint {
 fn is_paused(status PipelineStatus) bool {
     is status {
         PipelineStatus.Paused(_at) -> return true,
-        else -> return false
+        _ -> return false
     }
 }
 
@@ -618,7 +618,7 @@ fn is_paused(status PipelineStatus) bool {
 fn is_failed(status PipelineStatus) bool {
     is status {
         PipelineStatus.Failed(_e) -> return true,
-        else -> return false
+        _ -> return false
     }
 }
 

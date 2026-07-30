@@ -9820,7 +9820,18 @@ impl RustTrans {
             _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]",
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
-        writeln!(sink.body, "{}", derive_attrs)?;
+        // Plan 376: If the user supplied explicit attrs (e.g. `#[derive(Debug)]`),
+        // emit them verbatim instead of the auto-generated derive. Mirrors the
+        // TypeDecl (struct) handler. Needed when foreign payload types (e.g.
+        // `ClientError`) don't impl Clone/PartialEq, which the default derive
+        // requires — the user opts into the conservative `#[derive(Debug)]`.
+        if !enum_decl.attrs.is_empty() {
+            for attr in &enum_decl.attrs {
+                write!(sink.body, "#[{}]\n", attr)?;
+            }
+        } else {
+            writeln!(sink.body, "{}", derive_attrs)?;
+        }
 
         // Plan 163: Output pub prefix
         if enum_decl.is_pub {
@@ -11346,6 +11357,9 @@ impl RustTrans {
             "routes", "data", "properties", "fields",
             "professions", "souls", "flows", "agents", "providers",
             "runs", "checkpoints", "project_locks",
+            // Plan 376: ToolRegistry.tools is HashMap<String, Arc<...>>;
+            // lookups are string-keyed, never integer-indexed.
+            "tools",
         ];
         let vec_field_names = [
             "tool_call_ids", "tool_call_names", "tool_call_args", "tool_call_started",
@@ -11713,7 +11727,9 @@ impl RustTrans {
 
     /// Fix derive macros on structs containing `Box<dyn Trait>` fields.
     /// `dyn Trait` doesn't implement Clone/PartialEq/Eq/PartialOrd/Ord,
-    /// so we remove those derives, keeping only Debug.
+    /// so we replace those derives with `#[derive(Debug)]` (which `dyn Trait`
+    /// does support). If the user explicitly supplied `#[derive(Debug)]`
+    /// already, leave it untouched (Plan 376: user override).
     fn fix_dyn_trait_derives(content: &mut String) {
         if let Some(re) = cached_regex(
             r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*Box<dyn)"
@@ -11721,8 +11737,33 @@ impl RustTrans {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(0).unwrap().as_str();
                 let derives = caps.get(2).unwrap().as_str();
-                // dyn Trait doesn't implement any standard derives — remove entirely
-                full.replace(&format!("#[derive({})]", derives), "#[allow(dead_code)]")
+                let derive_list: Vec<&str> = derives.split(',').map(|s| s.trim()).collect();
+                // Plan 376: respect a user-supplied derive that already omits the
+                // unsafe traits (e.g. just "Debug", or "Clone, Debug" when the
+                // dyn-Trait is wrapped in an Arc — which IS Clone). Only strip
+                // PartialEq/Eq/PartialOrd/Ord from the AUTO-generated derive.
+                let unsafe_traits = ["PartialEq", "Eq", "PartialOrd", "Ord"];
+                let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
+                if !needs_fix {
+                    return full.to_string();
+                }
+                // Keep only the safe traits (Clone, Debug, Copy, Default, ...).
+                let kept: Vec<&&str> = derive_list
+                    .iter()
+                    .filter(|d| !unsafe_traits.contains(d))
+                    .collect();
+                if kept.is_empty() {
+                    full.replace(
+                        &format!("#[derive({})]", derives),
+                        "#[derive(Debug)]",
+                    )
+                } else {
+                    let new_derives: Vec<&str> = kept.into_iter().copied().collect();
+                    full.replace(
+                        &format!("#[derive({})]", derives),
+                        &format!("#[derive({})]", new_derives.join(", ")),
+                    )
+                }
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -13516,6 +13557,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         },
                         doc: None,
                         is_pub: prefix.starts_with("pub"),
+                        attrs: Vec::new(),
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
@@ -14132,6 +14174,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         },
                         doc: None,
                         is_pub: prefix.starts_with("pub"),
+                        attrs: Vec::new(),
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));

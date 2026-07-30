@@ -129,7 +129,7 @@ ext SkillRegistry {
             let s = self.skills.get(name).clone()
             out.push((s.name, s.description))
         }
-        out.sort_by_key((pair) => pair.0)
+        out.sort_by_key((pair) => pair[0])
         return out
     }
 
@@ -421,7 +421,7 @@ ext SkillTool {
         out = out + "To use a skill, call the `skill` tool with its name; its content will be\n"
         out = out + "returned to you, and you follow its instructions directly.\n\n"
         for pair in descs {
-            out = out + f"- ${pair.0}: ${pair.1}\n"
+            out = out + f"- ${pair[0]}: ${pair[1]}\n"
         }
         out = out + "\nInvoke a skill whenever its trigger applies, even slightly.\n"
         out = out + "</available_skills>"

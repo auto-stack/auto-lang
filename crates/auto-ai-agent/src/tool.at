@@ -68,6 +68,7 @@ pub fn tool_to_definition(tool Arc<Tool>) ToolDefinition {
 /// The Arc matches the Rust original's `Arc<dyn Tool>` for shared ownership
 /// across agents / workflow steps. Carries a parallel `names List<str>` for
 /// iteration (Auto VM Map has no keys()/entries()).
+#[derive(Clone, Debug)]
 pub type ToolRegistry {
     tools Map<str, Arc<Tool>>
     names List<str>
@@ -83,7 +84,7 @@ ext ToolRegistry {
     pub mut fn register_shared(tool Arc<Tool>) void {
         let n = tool.name()
         if self.tools.contains(n) == false {
-            self.names.push(n)
+            self.names.push(n.to_string())
         }
         self.tools.set(n, tool)
     }
@@ -119,16 +120,16 @@ ext ToolRegistry {
         var out List<Arc<Tool>> = []
         if filter.len() == 0 {
             for n in self.names.clone() {
-                is self.get(n) {
-                    Some(t) -> out.push(t),
+                is self.tools.get(n.as_str()) {
+                    Some(t) -> out.push(t.clone()),
                     None -> {}
                 }
             }
             return out
         }
         for n in filter {
-            is self.get(n) {
-                Some(t) -> out.push(t),
+            is self.tools.get(n.as_str()) {
+                Some(t) -> out.push(t.clone()),
                 None -> {}
             }
         }
