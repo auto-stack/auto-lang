@@ -177,6 +177,10 @@ pub fn generate_component_from_file(
     let sub_widgets = opts.sub_widgets.unwrap_or_default();
 
     // Extract store declarations → generate composables
+    // Clear thread-local first to avoid cross-test contamination
+    crate::STORE_EXTRA_FILES.with(|cell| {
+        cell.borrow_mut().clear();
+    });
     let mut store_composables: Vec<(String, String)> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
