@@ -408,7 +408,7 @@ fn emit_budget_warning(engine PipelineEngine, last_handoff ?HandoffDocument, on_
 /// Take up to `max` characters from `s` (best-effort; Auto has no char-range
 /// slice, so this is a byte-truncation approximation — adequate for a summary).
 fn truncate_chars(s str, max uint) str {
-    let end = s.len()
+    let end = s.len() as uint
     if end <= max {
         return s
     }
