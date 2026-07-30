@@ -171,7 +171,7 @@ ext PipelineDriver {
     /// auto-approved.
     pub fn with_gate_handler(handler fn(str) GateDecision) PipelineDriver {
         self.gate_handler = Some(handler)
-        return self
+        return self.clone()
     }
 
     /// Run the pipeline to completion (or until a gate/pause/failure).
@@ -183,7 +183,7 @@ ext PipelineDriver {
         var last_handoff ?HandoffDocument = None
         loop {
             let result = self.engine.advance()
-            let outcome = self.dispatch(result, task_msg, last_handoff)
+            let outcome = self.dispatch(result, task_msg, last_handoff).await
             is outcome {
                 DriveOutcome.Continue -> {
                     last_handoff = self.last_handoff_after(result, last_handoff)
@@ -200,26 +200,26 @@ ext PipelineDriver {
     fn dispatch(result AdvanceResult, task_msg str, last_handoff ?HandoffDocument) ~DriveOutcome {
         is result {
             AdvanceResult.ExecuteStep(step_id, role_id) -> {
-                return self.drive_step(task_msg, step_id, role_id, last_handoff)
+                return self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await
             },
             AdvanceResult.Completed -> {
-                self.on_event(PipelineEvent.Completed)
+                (self.on_event)(PipelineEvent.Completed)
                 return DriveOutcome.Done
             },
             AdvanceResult.Failed(error) -> {
-                let ev = PipelineEvent.Failed(error)
-                self.on_event(ev)
+                let ev = PipelineEvent.Failed(error.clone())
+                (self.on_event)(ev)
                 return DriveOutcome.Fail(AgentError.Config(error))
             },
             AdvanceResult.Paused(step_id, reason) -> {
-                let ev = PipelineEvent.Paused(step_id, reason)
-                self.on_event(ev)
+                let ev = PipelineEvent.Paused(step_id.clone(), reason)
+                (self.on_event)(ev)
                 return DriveOutcome.Done
             },
             AdvanceResult.WaitForHuman(step_id) -> {
-                let ev = PipelineEvent.GateWaiting(step_id)
-                self.on_event(ev)
-                let gr = self.resolve_gate_auto(step_id)
+                let ev = PipelineEvent.GateWaiting(step_id.clone())
+                (self.on_event)(ev)
+                let gr = self.resolve_gate_auto(step_id.as_str()).await
                 is gr {
                     Ok(_) -> return DriveOutcome.Continue,
                     Err(e) -> return DriveOutcome.Fail(e)
@@ -251,7 +251,7 @@ ext PipelineDriver {
     /// continue the loop, or Err/Ok to terminate drive().
     fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<None, AgentError> {
         let started = PipelineEvent.StepStarted(step_id, role_id)
-        self.on_event(started)
+        (self.on_event)(started)
 
         // Build the agent for this step.
         let agent = is self.factory.build_agent(role_id, last_handoff) {
@@ -262,37 +262,29 @@ ext PipelineDriver {
         // Construct the input: original task for step 0, else the handoff render.
         let input = build_step_input(task_msg, last_handoff)
 
-        // Forward the agent's stream events to the driver's event sink. The
-        // Rust original builds an inline closure capturing accumulators; Auto
-        // doesn't support closures inside function bodies, so we pass the
-        // driver's own on_event-bound stream handler. (Text/tool accumulation
-        // is read back from agent_result.content after the run.)
-        let stream_cb = noop_stream_handler
-
         // Pipelines run to completion — pass a never-cancel dummy.
         let no_cancel = Arc.new(AtomicBool.new(false))
-        let agent_result = agent.run_stream(input, stream_cb, no_cancel).await.?
+        let agent_result = agent.run_stream(input.as_str(), no_cancel).await.?
 
         // Build the handoff from the result + the agent's text output.
-        let content = agent_result.content
+        let content = agent_result.content()
         let handoff = self.build_handoff(role_id, agent_result, content)
-        let completed = PipelineEvent.StepCompleted(step_id, handoff)
-        self.on_event(completed)
-        last_handoff = Some(handoff)
+        let completed = PipelineEvent.StepCompleted(step_id, handoff.clone())
+        (self.on_event)(completed)
+        last_handoff = Some(handoff.clone())
 
         // Submit to the engine — it routes to the next step.
         let submitted = self.engine.submit_handoff(handoff)
-        // Surface budget warnings (review-003: re-check the engine's advisory
-        // signal here so the UI gets it alongside the step outcome).
+        // Surface budget warnings.
         emit_budget_warning(self.engine, last_handoff, self.on_event)
-        return self.handle_after_submit(submitted)
+        return self.handle_after_submit(submitted).await
     }
 
     /// Resolve a gate, honoring the optional handler (else auto-approve).
     /// Errors when the engine reports a failure resolving the gate.
     fn resolve_gate_auto(step_id str) ~Result<None, AgentError> {
         let decision = is self.gate_handler {
-            Some(handler) -> handler(step_id),
+            Some(handler) -> handler(step_id.to_string()),
             None -> GateDecision.Approve
         }
         let gate_result = self.engine.resolve_gate(decision)
@@ -342,31 +334,29 @@ ext PipelineDriver {
     fn handle_after_submit(next AdvanceResult) ~Result<None, AgentError> {
         is next {
             AdvanceResult.Completed -> {
-                self.on_event(PipelineEvent.Completed)
+                (self.on_event)(PipelineEvent.Completed)
                 return Ok(None)
             },
             AdvanceResult.Failed(error) -> {
-                let ev = PipelineEvent.Failed(error)
-                self.on_event(ev)
+                let ev = PipelineEvent.Failed(error.clone())
+                (self.on_event)(ev)
                 return Err(AgentError.Config(error))
             },
             AdvanceResult.Paused(step_id, reason) -> {
-                let ev = PipelineEvent.Paused(step_id, reason)
-                self.on_event(ev)
-                // Paused is not an error — app can resume.
+                let ev = PipelineEvent.Paused(step_id.clone(), reason)
+                (self.on_event)(ev)
                 return Ok(None)
             },
             AdvanceResult.WaitForHuman(step_id) -> {
-                let ev = PipelineEvent.GateWaiting(step_id)
-                self.on_event(ev)
-                let gr = self.resolve_gate_auto(step_id)
+                let ev = PipelineEvent.GateWaiting(step_id.clone())
+                (self.on_event)(ev)
+                let gr = self.resolve_gate_auto(step_id.as_str()).await
                 is gr {
                     Ok(_) -> return Ok(None),
                     Err(e) -> return Err(e)
                 }
             },
             AdvanceResult.ExecuteStep(_sid, _rid) -> {
-                // Engine already advanced to the next step — continue loop.
                 return Ok(None)
             }
         }
@@ -379,9 +369,9 @@ ext PipelineDriver {
 
 /// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
 fn now_secs() uint {
-    let now = std.time.SystemTime.now()
-    let dur = now.duration_since(std.time.UNIX_EPOCH)
-    return dur.as_secs()
+    let now = std::time::SystemTime::now()
+    let dur = now.duration_since(std::time::UNIX_EPOCH) ?? std::time::Duration::new(0, 0)
+    return dur.as_secs() as uint
 }
 
 /// The step input: the previous handoff's render, or (for step 0) the task.
