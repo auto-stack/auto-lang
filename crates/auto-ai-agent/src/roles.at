@@ -20,7 +20,9 @@
 
 use.rust std::path::PathBuf
 use.rust std::fs
+use.rust std::fs::DirEntry
 use.rust std::sync::Arc
+use.rust dirs
 
 use ai_config: ModelTier
 use role_def: Role
@@ -183,23 +185,16 @@ ext RoleRegistry {
     /// built-ins with the same name, so ~/.config/autoos/roles/assistant.at
     /// can override the built-in assistant role's model_tier and other fields.
     pub fn resolve_role(name str) ?Arc<Role> {
-        // 1. User override (.at file) takes precedence — even when it shares
-        //    the same name as a built-in. load_role resolves the inherit:
-        //    chain internally so the override gets the built-in's prompt/etc.
-        if self.roles.contains(name) {
-            let detail = self.roles.get(name)
+        // 1. User override (.at file) takes precedence.
+        if let Some(detail) = self.roles.get(name) {
             if detail.summary.is_builtin == false {
                 let src = serialize_at_role(detail.config.clone())
                 is load_role(src) {
                     Ok(_cfg) -> {
-                        // load_role re-parses the serialized .at to validate it;
-                        // build a live ConfigRole from the original config and
-                        // wrap it in an Arc (ConfigRole has Role).
                         let role = config_role_new(detail.config.clone())
                         return Some(Arc(role))
                     },
                     Err(_e) -> {
-                        // Parse failure: warn and fall through to built-in.
                     }
                 }
             }
@@ -217,16 +212,17 @@ ext RoleRegistry {
     pub fn list() List<RoleSummary> {
         var user_list List<RoleSummary> = []
         var builtin_list List<RoleSummary> = []
-        for name in self.names {
-            let d = self.roles.get(name)
-            if d.summary.is_builtin {
-                builtin_list.push(d.summary)
-            } else {
-                user_list.push(d.summary)
+        for name in self.names.clone() {
+            if let Some(d) = self.roles.get(name) {
+                if d.summary.is_builtin {
+                    builtin_list.push(d.summary.clone())
+                } else {
+                    user_list.push(d.summary.clone())
+                }
             }
         }
-        user_list.sort_by_key((s) => s.name)
-        builtin_list.sort_by_key((s) => s.name)
+        user_list.sort_by_key((s) => s.name.clone())
+        builtin_list.sort_by_key((s) => s.name.clone())
         var out List<RoleSummary> = []
         for s in user_list {
             out.push(s)
@@ -263,22 +259,16 @@ ext RoleRegistry {
                 "could not determine home directory for roles"
             )),
             Some(dir) -> {
-                is fs.create_dir_all(dir) {
-                    Err(e) -> return Err(AgentError.Config(
-                        f"failed to create roles dir ${dir.display()}: ${e}"
-                    )),
-                    Ok(_) -> {}
-                }
+                let _ = fs.create_dir_all(dir)
 
                 // Write the sidecar Soul when provided (and link it from .at).
                 is soul_md {
                     Some(md) -> {
                         let soul_path = dir.join(f"${name}.soul.md")
-                        is fs.write(soul_path, md) {
-                            Err(e) -> return Err(AgentError.Config(
-                                f"failed to write ${soul_path.display()}: ${e}"
-                            )),
-                            Ok(_) -> {}
+                        if fs.write(soul_path, md) == false {
+                            return Err(AgentError.Config(
+                                f"failed to write ${soul_path.display()}"
+                            ))
                         }
                         out.soul_file = Some(f"${name}.soul.md")
                     },
@@ -288,11 +278,12 @@ ext RoleRegistry {
                 // Write the .at.
                 let at_path = dir.join(f"${name}.at")
                 let src = serialize_at_role(out)
-                is fs.write(at_path, src) {
-                    Err(e) -> return Err(AgentError.Config(
-                        f"failed to write ${at_path.display()}: ${e}"
-                    )),
-                    Ok(_) -> return Ok(None)
+                if fs.write(at_path, src) {
+                    return Ok(())
+                } else {
+                    return Err(AgentError.Config(
+                        f"failed to write ${at_path.display()}"
+                    ))
                 }
             }
         }
@@ -311,12 +302,7 @@ ext RoleRegistry {
             Some(at_path) -> {
                 let existed = at_path.exists()
                 if existed {
-                    is fs.remove_file(at_path) {
-                        Err(e) -> return Err(AgentError.Config(
-                            f"failed to delete ${at_path.display()}: ${e}"
-                        )),
-                        Ok(_) -> {}
-                    }
+                    let _ = fs.remove_file(at_path)
                 }
                 // Best-effort soul removal.
                 is role_soul_path(name) {
@@ -380,11 +366,13 @@ fn scan_roles_dir(dir PathBuf, roles Map<str, RoleDetail>, names List<str>) void
     is fs.read_dir(dir) {
         Ok(entries) -> {
             for entry in entries {
-                handle_dir_entry(entry, roles, names)
+                is entry {
+                    Ok(e) -> handle_dir_entry(e, roles, names),
+                    Err(_e) -> {}
+                }
             }
         },
         Err(_e) -> {
-            // directory missing/unreadable: no user roles
         }
     }
 }
@@ -414,32 +402,29 @@ fn is_at_file(path PathBuf) bool {
 /// (overriding any same-named built-in). Parse/read failures are warned +
 /// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
 fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) void {
-    is fs.read_to_string(path) {
+    let content = fs.read_to_string(path)
+    if content.is_empty() {
+        return
+    }
+    is parse_at_role(content) {
         Err(_e) -> {
-            // role: failed to read <path> — skip
         },
-        Ok(content) -> {
-            is parse_at_role(content) {
-                Err(_e) -> {
-                    // role: failed to parse <path> — skip
-                },
-                Ok(cfg) -> {
-                    // Name: cfg.name if set, else the file stem, else "unnamed".
-                    var name str = ""
-                    is cfg.name {
-                        Some(n) -> name = n,
-                        None -> {
-                            is path.file_stem() {
-                                Some(stem) -> {
-                                    is stem.to_str() {
-                                        Some(s) -> name = s,
-                                        None -> name = "unnamed"
-                                    }
-                                },
+        Ok(cfg) -> {
+            var name str = ""
+            is cfg.name {
+                Some(n) -> name = n,
+                None -> {
+                    is path.file_stem() {
+                        Some(stem) -> {
+                            is stem.to_str() {
+                                Some(s) -> name = s,
                                 None -> name = "unnamed"
                             }
-                        }
+                        },
+                        None -> name = "unnamed"
                     }
+                }
+            }
                     // Resolve the Soul: sidecar file if present, else inline
                     // system_prompt.
                     let soul = resolve_soul(cfg, path)
@@ -480,30 +465,22 @@ type SoulResolve {
 fn resolve_soul(cfg RoleConfig, at_path PathBuf) SoulResolve {
     is cfg.soul_file {
         Some(rel) -> {
-            // sidecar path is relative to the .at's directory.
             is at_path.parent() {
                 Some(d) -> {
                     let sidecar = d.join(rel)
-                    is fs.read_to_string(sidecar) {
-                        Ok(md) -> return SoulResolve(markdown: md, from_file: true),
-                        Err(_e) -> {
-                            // soul_file not found — fall back to inline prompt.
-                            return SoulResolve(
-                                markdown: cfg.system_prompt ?? "",
-                                from_file: false
-                            )
-                        }
+                    let md = fs.read_to_string(sidecar)
+                    if md.is_empty() {
+                        return SoulResolve(markdown: cfg.system_prompt ?? "", from_file: false)
                     }
+                    return SoulResolve(markdown: md, from_file: true)
                 },
                 None -> {
                     let sidecar = PathBuf.from(rel)
-                    is fs.read_to_string(sidecar) {
-                        Ok(md) -> return SoulResolve(markdown: md, from_file: true),
-                        Err(_e) -> return SoulResolve(
-                            markdown: cfg.system_prompt ?? "",
-                            from_file: false
-                        )
+                    let md = fs.read_to_string(sidecar)
+                    if md.is_empty() {
+                        return SoulResolve(markdown: cfg.system_prompt ?? "", from_file: false)
                     }
+                    return SoulResolve(markdown: md, from_file: true)
                 }
             }
         },
