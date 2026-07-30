@@ -12763,7 +12763,13 @@ impl RustTrans {
             ("ToolError", "use crate::error::ToolError;"),
             ("AgentError", "use crate::error::AgentError;"),
         ] {
-            if content.contains(type_name) && !content.contains(use_stmt) {
+            // Skip if already imported via `use crate::wire::JsonValue;` or
+            // via `use wire: ..., JsonValue, ...` (Auto import syntax).
+            let already_via_rust = content.contains(use_stmt);
+            let already_via_auto = content.contains(&format!(": {}", type_name))
+                || content.contains(&format!(", {}", type_name))
+                || content.contains(&format!("{} ,", type_name));
+            if content.contains(type_name) && !already_via_rust && !already_via_auto {
                 if let Some(pos) = content.find("use a2r_std::*;") {
                     content.insert_str(pos + "use a2r_std::*;".len(),
                         &format!("\n{}", use_stmt));

@@ -46,12 +46,16 @@
 
 use.rust std::sync::Arc
 use.rust std::sync::atomic::AtomicBool
+use.rust std::future::Future
+use.rust std::pin::Pin
+use.rust async_trait
 
 use auto_ai_client: ClientError, CompletionRequest, CompletionResponse, Message
 use error: AgentError
 use memory: Memory
 use role_def: Role
-use tool: ToolRegistry, tool_to_definition
+use ai_config: ModelTier
+use tool: ToolRegistry, tool_to_definition, ToolDefinition, Tool
 use wire: ContentBlock, JsonValue
 
 // ═══════════════════════════════════════════════════════════════════════════
