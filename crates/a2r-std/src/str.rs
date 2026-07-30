@@ -54,6 +54,11 @@ pub fn str_ends_with(s: &str, suffix: &str) -> bool {
     s.ends_with(suffix)
 }
 
+/// Check if a string contains a substring
+pub fn str_contains<S: AsRef<str>>(s: S, needle: &str) -> bool {
+    s.as_ref().contains(needle)
+}
+
 /// Check if a string starts with a prefix
 pub fn str_starts_with(s: &str, prefix: &str) -> bool {
     s.starts_with(prefix)
