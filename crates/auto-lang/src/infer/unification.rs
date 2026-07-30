@@ -372,21 +372,18 @@ pub fn unify_with_coercion(
 ) -> Result<Type, UnificationError> {
     match (ty1, ty2) {
         // int <-> uint 强制转换（带警告）
-        (Type::Int, Type::Uint) => {
+        // Design spec (02-type-system.md): uint always wins, matching
+        // InferenceContext::unify at context.rs:429. Previously this arm
+        // returned Int (left-operand-wins), causing uint_var * 5 (uint * int)
+        // to unify as int instead of uint — inconsistent with the spec and
+        // with Rust's coercion rules.
+        (Type::Int, Type::Uint) | (Type::Uint, Type::Int) => {
             warnings.push(Warning::ImplicitTypeConversion {
                 from: "int".into(),
                 to: "uint".into(),
                 span,
             });
             Ok(Type::Uint)
-        }
-        (Type::Uint, Type::Int) => {
-            warnings.push(Warning::ImplicitTypeConversion {
-                from: "uint".into(),
-                to: "int".into(),
-                span,
-            });
-            Ok(Type::Int)
         }
 
         // float <-> double 强制转换（带警告）

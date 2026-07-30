@@ -74,7 +74,7 @@ fn max_tool_result_chars() uint {
 /// truncation happened. Returns the (possibly truncated) string.
 pub fn truncate_tool_result(s str) str {
     let cap = max_tool_result_chars()
-    let count = s.len()
+    let count = s.len() as uint
     if count <= cap {
         return s
     }
@@ -280,7 +280,7 @@ ext Agent {
 
         self.memory.add("user", task_msg)
         let soft_limit = self.role.max_turns()
-        let hard_limit = soft_limit * 5
+        let hard_limit = soft_limit * 5u
         var result = AgentResult.default()
         // Loop detection: count recurrences of each (tool, args) pair.
         var seen Map<str, uint> = Map.new()
