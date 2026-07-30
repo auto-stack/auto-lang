@@ -173,7 +173,7 @@ ext BudgetTracker {
     /// Token usage recorded for a step so far (0 if none).
     fn step_used(step str) uint {
         is self.per_step.get(step) {
-            Some(n) -> return n,
+            Some(n) -> return n.clone(),
             None -> return 0
         }
     }

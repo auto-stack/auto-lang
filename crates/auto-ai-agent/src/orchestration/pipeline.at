@@ -226,7 +226,7 @@ ext PipelineEngine {
             PipelineStatus.Paused(at) -> {
                 let step = self.flow.steps[at]
                 return AdvanceResult.Paused(
-                    step.id,
+                    step.id.clone(),
                     f"Paused at '${step.id}'. Call resume() to continue."
                 )
             },
@@ -243,14 +243,14 @@ ext PipelineEngine {
 
         // Human gate.
         if step.gate == GateType.Human {
-            if self.gate_resolved_for_step != Some(step.id) {
-                self.status = PipelineStatus.WaitingForHuman(step.id, now)
-                self.pending_gate = Some(PendingGate(step_id: step.id, since: now))
+            if self.gate_resolved_for_step != Some(step.id.clone()) {
+                self.status = PipelineStatus.WaitingForHuman(step.id.clone(), now)
+                self.pending_gate = Some(PendingGate(step_id: step.id.clone(), since: now))
                 return AdvanceResult.WaitForHuman(step.id)
             }
         }
 
-        self.status = PipelineStatus.Running(step.id, step.role_id, now)
+        self.status = PipelineStatus.Running(step.id.clone(), step.role_id.clone(), now)
         self.resumed_step_id = None
         return AdvanceResult.ExecuteStep(step.id, step.role_id)
     }
@@ -392,10 +392,7 @@ ext PipelineEngine {
 
     /// Feedback messages accumulated for a step (gate rejections, auto-notes).
     pub fn feedback_for(step_id str) List<str> {
-        if self.gate_feedback.contains(step_id) {
-            return self.gate_feedback.get(step_id)
-        }
-        return []
+        return self.gate_feedback.get(step_id) ?? []
     }
 }
 
@@ -422,7 +419,7 @@ ext PipelineEngine {
     /// Loop-iteration count recorded for a step (0 if none).
     fn loop_count(step_id str) uint {
         is self.loop_counters.get(step_id) {
-            Some(n) -> return n,
+            Some(n) -> return n.clone(),
             None -> return 0
         }
     }
@@ -430,7 +427,7 @@ ext PipelineEngine {
     /// Set a loop counter (insert-or-update), keeping loop_counter_names sync.
     mut fn set_loop_counter(step_id str, n uint) void {
         if self.loop_counters.contains(step_id) == false {
-            self.loop_counter_names.push(step_id)
+            self.loop_counter_names.push(step_id.to_string())
         }
         self.loop_counters.set(step_id, n)
     }
@@ -438,11 +435,12 @@ ext PipelineEngine {
     /// Append a feedback line for a step (insert-or-extend).
     mut fn push_gate_feedback(step_id str, line str) void {
         if self.gate_feedback.contains(step_id) == false {
-            self.gate_feedback_names.push(step_id)
+            self.gate_feedback_names.push(step_id.to_string())
             self.gate_feedback.set(step_id, [])
         }
-        let cur = self.gate_feedback.get(step_id)
-        cur.push(line)
+        let cur = self.gate_feedback.get(step_id) ?? []
+        cur.push(line.to_string())
+        self.gate_feedback.set(step_id, cur)
     }
 
     /// Remove all feedback for a step.
@@ -452,10 +450,10 @@ ext PipelineEngine {
         }
         var kept Map<str, List<str>> = Map.new()
         var kept_names List<str> = []
-        for name in self.gate_feedback_names {
+        for name in self.gate_feedback_names.clone() {
             if name != step_id {
-                kept.set(name, self.gate_feedback.get(name))
-                kept_names.push(name)
+                kept.set(name, self.gate_feedback.get(name) ?? [])
+                kept_names.push(name.clone())
             }
         }
         self.gate_feedback = kept
