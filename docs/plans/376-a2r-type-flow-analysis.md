@@ -416,3 +416,70 @@ cargo check 2>&1 | grep -c "^error"  # 看错误数下降
 - 优先级 8 + 级联消失：130 → ~100（-30）
 
 **理论极限 ~100 个错误**，主要是组装层差异和桥接 API 差异——这些需要手写组装层模板或桥接类型 API 表才能消除。
+
+---
+
+## 十、Plan 376S 实施记录（2026-07-31）
+
+### 重大发现：之前的「18 个错误」状态不准确
+
+调查 plan-376/final18 分支（commit 72a171be，标注「22→18」）发现：
+
+1. **memory.at 无法解析**：commit 99a92f27 把 `add_message` 的闭合 `}` 和 `return`
+   误删（`self.trim() / return / }` → `var _unused = self.trim()`），导致整个
+   `ext Memory` 块括号失衡，`memory.at` 完全无法 transpile。
+2. **roles.at 无法解析**：plan-376J（892a37e2）把 `load_user_at_file`「扁平化」
+   时破坏了括号嵌套（11 open vs 13 close），且引入了 Auto 不支持的 `if let Some(x) = ...`
+   语法（Auto 用 `is expr { Some(x) -> ... }`）。
+3. **skill.at 无法解析**：plan-376 引入了 Auto 不支持的 `pair.0` 元组语法
+   （Auto 用 `pair[0]`）。
+4. **agent.at 无法解析**：`bump_seen` 参数用了无效的 `var` 修饰符。
+
+→ **结论**：之前的「18 个错误」并非真实的 cargo check 结果（多个 .at 根本无法
+transpile，re-transpile 流程无法完成）。
+
+### 本轮修复（commit b3173ade）
+
+**a2r 生成器（3 项）**：
+- `EnumDecl.attrs`：新增字段 + parser 在 `enum`/`tag` 前捕获 `#[derive]`，
+  a2r 优先输出用户提供的 derive（与 struct 一致）。修复 `AgentError`：
+  `ClientError` 不 impl Clone/PartialEq。
+- `fix_dyn_trait_derives`：从「替换为 `#[allow(dead_code)]`」改为「降级为
+  `#[derive(Debug)]`」（保留 Clone/Debug，只移除 PartialEq/Eq/Ord），并尊重
+  用户显式 `#[derive(Debug)]`。
+- `fix_vec_i32_index`：`hash_map_names` 增加 `tools`（字符串键查询，不该转成
+  `[n as usize]`）。
+
+**.at 源码（9 个文件）**：修复所有导致解析失败的语法错误（见 commit message）。
+
+### 当前 re-transpile 状态
+
+| 项目 | 状态 |
+|---|---|
+| 手修版 rust/src/（MVP） | **0 错误**（未受影响，受保护） |
+| .at → transpile 成功率 | **34/36**（仅 driver.at / pipeline.at 残留 colon 解析错误，待查） |
+| re-transpile + 组装后 cargo check | **132 错误**（新基线，见下方分布） |
+
+### 132 错误分布（retranspile.sh 组装后）
+
+| 错误码 | 数量 | 主要根因 |
+|---|---|---|
+| E0308 | 42 | 类型不匹配（String/&str、Option unwrap） |
+| E0603 | 26 | **私有项**（config/role_config.at 的项未标 pub，lib.rs 导出失败） |
+| E0422 | 15 | 保留字/名字冲突 |
+| E0599 | 12 | 方法不存在 |
+| E0277 | 10 | trait 未实现 |
+| E0608 | 5 | 对非值取字段 |
+| E0382 | 5 | use after move |
+| E0195 | 5 | async_trait lifetime |
+| 其他 | 12 | 杂项 |
+
+**重点**：E0603（26 个）是新出现的最大类——transpile 产物没给 `config/role_config.at`
+的 `RoleConfig`/`parse_at_role` 等加 `pub`，但 `lib.rs` 以 `pub use` 导出。这是
+a2r 的 `pub` 传播问题（next batch 重点）。
+
+### 下一步
+
+1. **修 driver.at / pipeline.at 的 colon 解析错误**（让 36/36 transpile）
+2. **E0603 批量修复**：a2r 给 config/orchestration 模块的项加 `pub`
+3. **E0308/E0599**：继续 String/&str + 方法签名修复
