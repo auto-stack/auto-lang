@@ -51,9 +51,7 @@ ext Memory {
     /// blocks that aren't plain text).
     pub mut fn add_message(msg Message) void {
         self.messages.push(msg)
-        self.trim()
-        return
-    }
+        var _unused = self.trim()
 
     /// Pre-load a sequence of (role, content) turns from a prior conversation.
     /// Used to rebuild an agent's context across stateless HTTP requests.

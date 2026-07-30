@@ -11353,13 +11353,21 @@ impl RustTrans {
         ];
 
         // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
+        // But ONLY when `var` is NOT a string type (String vars can't cast to usize)
         if let Some(re) = cached_regex(r"(self\.(\w+))\.get\((\w+)\)") {
             let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(1).unwrap().as_str();
                 let field = caps.get(2).unwrap().as_str();
                 let var = caps.get(3).unwrap().as_str();
                 if vec_field_names.contains(&field) {
-                    format!("{}[{} as usize]", full, var)
+                    // Check if var looks like a string (starts with a letter and isn't i/idx/n/index)
+                    let is_likely_index = var.starts_with('i') || var == "idx" || var == "index" || var == "n";
+                    if is_likely_index {
+                        format!("{}[{} as usize]", full, var)
+                    } else {
+                        // Keep .get() for string-keyed lookups
+                        format!("{}.get({})", full, var)
+                    }
                 } else {
                     format!("{}.get({})", full, var)
                 }
@@ -12833,12 +12841,20 @@ impl RustTrans {
     /// Plan 376 Pass 3: Fix `Some(ident)` where target is Option<String>.
     /// Adds `.to_string()` to the inner value.
     fn fix_some_str_to_string(content: &mut String) {
+        // Only add .to_string() for string-like idents, NOT for numeric vars.
+        // Skip: pure numeric identifiers, bool, keywords.
         let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
                 let ident = caps.get(2).unwrap().as_str();
                 let suffix = caps.get(3).unwrap().as_str();
+                // Skip numeric/bool/keyword idents
+                if ident.parse::<f64>().is_ok()
+                    || ident == "true" || ident == "false"
+                    || ident == "None" || ident == "default" {
+                    return format!("{}{}{}", prefix, ident, suffix);
+                }
                 format!("{}{}.to_string(){}", prefix, ident, suffix)
             }).to_string();
             if new != *content { *content = new; }
