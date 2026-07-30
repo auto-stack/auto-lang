@@ -253,6 +253,11 @@ enum UiAction {
     },
     /// List registered library widgets
     List,
+    /// Inspect an .at file — show widget structure and validation warnings (Plan 362 Phase 5)
+    Inspect {
+        /// Path to the .at file
+        file: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -41,6 +41,7 @@ pub fn run(action: UiAction) -> Result<()> {
             }
             Ok(())
         }
+        UiAction::Inspect { file } => inspect(&file),
     }
 }
 
@@ -106,3 +107,98 @@ fn build(target: &str, out: &str, widgets: &[String]) -> Result<()> {
     );
     Ok(())
 }
+
+/// Inspect an .at file: parse, extract widgets, show structure + validation.
+///
+/// Plan 362 Phase 5: provides the core value of `auto ui repl` without
+/// the full interactive REPL. Shows:
+///  - Widget count, names
+///  - Props, state vars, handlers, messages per widget
+///  - API imports and store dependencies
+///  - SFC code preview (first 5 lines)
+///  - Validation warnings (from Plan 361 validators)
+fn inspect(path: &str) -> Result<()> {
+    use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
+    use std::path::Path;
+
+    let at_path = Path::new(path);
+    if !at_path.exists() {
+        return Err(miette::miette!("File not found: {}", path));
+    }
+
+    println!("{} {}", "▸".bright_cyan(), path);
+    println!();
+
+    let opts = ComponentGenOptions::default();
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| miette::miette!("{}", e))?;
+
+    println!("Widgets: {}", result.widgets.len());
+    for w in &result.widgets {
+        println!("  ┌─ {}", w.name.bright_white().bold());
+        println!("  │  props:    {}", w.props.len());
+        for p in &w.props {
+            println!("  │    • {}: {:?}", p.name, p.type_info);
+        }
+        println!("  │  state:    {}", w.state_vars.len());
+        for s in &w.state_vars {
+            println!("  │    • {}: {:?}", s.name, s.type_info);
+        }
+        let mut handler_names: Vec<&str> =
+            w.handlers.keys().map(|k| k.as_str()).collect();
+        handler_names.sort();
+        println!("  │  handlers: {}", handler_names.len());
+        for h in &handler_names {
+            println!("  │    • {}", h);
+        }
+        println!("  │  messages: {}", w.messages.len());
+        for m in &w.messages {
+            println!("  │    • {} ({} variants)", m.name, m.variants.len());
+        }
+        println!("  └─");
+    }
+
+    // API & Store
+    if !result.detected_api_imports.is_empty() {
+        println!(
+            "API imports: {}",
+            result.detected_api_imports.join(", ")
+        );
+    }
+    if !result.detected_store_deps.is_empty() {
+        println!(
+            "Store deps:  {}",
+            result.detected_store_deps.join(", ")
+        );
+    }
+    if !result.store_composables.is_empty() {
+        println!("Store composables:");
+        for (filename, _code) in &result.store_composables {
+            println!("  • {}", filename);
+        }
+    }
+
+    // SFC preview (first few lines)
+    for (name, code) in &result.all_widget_codes {
+        let preview: String = code.lines().take(5).collect::<Vec<_>>().join("\n");
+        println!("\n{} SFC preview ({} bytes):", name, code.len());
+        println!("{}", preview);
+        if code.lines().count() > 5 {
+            println!("  ... ({} more lines)", code.lines().count() - 5);
+        }
+    }
+
+    // Validation warnings
+    if !result.validation_warnings.is_empty() {
+        println!();
+        let warn_text =
+            auto_lang::ui_gen::validators::format_warnings(&result.validation_warnings);
+        println!("{}", warn_text);
+    } else {
+        println!("\n{} No validation warnings", "✓".bright_green());
+    }
+
+    Ok(())
+}
+
+use colored::Colorize;
