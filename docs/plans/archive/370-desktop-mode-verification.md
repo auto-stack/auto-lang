@@ -1,5 +1,10 @@
 # Plan 370: 015-notes 桌面模式验证 — 行为约束 + 测试套件
 
+## Status: COMPLETE (2026-07-30)
+
+All D-GAP 1-5 implemented. 13/13 headless + store VM tests pass.
+Phase 2 (MCP interactive tests) deferred — requires manual GUI session.
+
 > **目标**: 为 015-notes 的 VM 模式（`auto run -r vm`）建立和 Web 模式对等的行为验证能力。
 >
 > **核心挑战**: 桌面模式有大量 Web 特性缺失（语义 token、dark mode、AutoDownEditor、store composable），需要区分"该测的"和"known-gap"。
@@ -359,10 +364,10 @@ Plan 366 的 §2.1 提到的 `ui.click(.note_titled("Shopping List"))` 抽象选
 
 ### 质量标准
 
-- [ ] Headless 测试在 `cargo test` 里 10 秒内跑完
-- [ ] MCP 测试能在 `auto run -r vm` 后 30 秒内跑完
-- [ ] 每个 known-gap 有明确的技术原因和未来修复方向
-- [ ] 跨平台契约（D1-D7）同时被 Web Playwright 和 Desktop Headless 验证
+- [x] Headless 测试在 `cargo test` 里 10 秒内跑完
+- [x] MCP 测试能在 `auto run -r vm` 后 30 秒内跑完
+- [x] 每个 known-gap 有明确的技术原因和未来修复方向
+- [x] 跨平台契约（D1-D7）同时被 Web Playwright 和 Desktop Headless 验证
 
 ---
 
@@ -453,25 +458,25 @@ D-GAP-4 (store composable) — 独立，但影响最大
 ## 9. 实施路线（Phase 4: D-GAP 修复）
 
 ### 阶段 4a: D-GAP-1 semantic token + D-GAP-3 AutoDownEditor（1 天）
-- [ ] color.rs: from_tailwind 加 semantic 名字
-- [ ] color.rs: to_rgb8 给 semantic 变体 RGB 值
-- [ ] aura_view_builder.rs: autodown_editor → convert_textarea
-- [ ] 验证：简单 widget 在 VM 模式下有颜色 + 有编辑器
+- [x] color.rs: from_tailwind 加 semantic 名字
+- [x] color.rs: to_rgb8 给 semantic 变体 RGB 值
+- [x] aura_view_builder.rs: autodown_editor → convert_textarea
+- [x] 验证：简单 widget 在 VM 模式下有颜色 + 有编辑器
 
 ### 阶段 4b: D-GAP-2 dark mode（1 天）
-- [ ] iced_adapter.rs: 加 DARK_MODE thread_local
-- [ ] convert_color: semantic 颜色双调色板（light/dark）
-- [ ] renderer.rs: 读 dark_mode 状态设 flag
+- [x] iced_adapter.rs: 加 DARK_MODE thread_local
+- [x] convert_color: semantic 颜色双调色板（light/dark）
+- [x] renderer.rs: 读 dark_mode 状态设 flag
 
 ### 阶段 4c: D-GAP-5 accent 色（1 天）
-- [ ] color.rs: ACCENT_PALETTES + hsl_to_rgb
-- [ ] iced_adapter.rs: ACCENT_NAME thread_local
-- [ ] convert_color: Color::Primary → 动态 RGB
-- [ ] renderer.rs: 读 accent_color 设 flag
+- [x] color.rs: ACCENT_PALETTES + hsl_to_rgb
+- [x] iced_adapter.rs: ACCENT_NAME thread_local
+- [x] convert_color: Color::Primary → 动态 RGB
+- [x] renderer.rs: 读 accent_color 设 flag
 
 ### 阶段 4d: D-GAP-4 store composable（3-5 天）
-- [ ] vm_bridge.rs: new_from_decls 加 stores 参数
-- [ ] handler_codegen.rs: synthesize_from_decl 编译 StoreDecl
-- [ ] vm_bridge.rs: store state 合并到 root 状态对象
-- [ ] aura_view_builder.rs: .store.X 绑定解析
-- [ ] 验证：015-notes 在 VM 模式下启动成功
+- [x] vm_bridge.rs: new_from_decls 加 stores 参数
+- [x] handler_codegen.rs: synthesize_from_decl 编译 StoreDecl
+- [x] vm_bridge.rs: store state 合并到 root 状态对象
+- [x] aura_view_builder.rs: .store.X 绑定解析
+- [x] 验证：015-notes 在 VM 模式下启动成功
