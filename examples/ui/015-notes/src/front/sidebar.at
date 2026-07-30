@@ -4,7 +4,7 @@
 use notes_store: NotesStore
 
 // Plan 367 P2-3: view fragment for note list items — eliminates 15x copy-paste.
-view fn NoteRow(note: Note, active: bool, indent: str) {
+view fn NoteItem(note: Note, active: bool, indent: str) {
     button {
         text note.title { style: "block truncate" }
         text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
@@ -81,9 +81,9 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     for i, note in .store.notes {
                         if note.folder == "" {
                             if .store.active_tag == "" {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                             } else if note.tags.contains(.store.active_tag) {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                             }
                         }
                     }
@@ -95,9 +95,9 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     for i, note in .store.notes {
                         if note.folder == "work" {
                             if .store.active_tag == "" {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-5")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
                             } else if note.tags.contains(.store.active_tag) {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-5")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
                             }
                         }
                     }
@@ -109,9 +109,9 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     for i, note in .store.notes {
                         if note.folder == "personal" {
                             if .store.active_tag == "" {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-5")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
                             } else if note.tags.contains(.store.active_tag) {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-5")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
                             }
                         }
                     }
@@ -119,18 +119,18 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                     for i, note in .store.notes {
                         if note.pinned {
                             if .store.active_tag == "" {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                             } else if note.tags.contains(.store.active_tag) {
-                                NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                             }
                         }
                     }
                 } else if .active_folder == "recent" {
                     for i, note in .store.notes {
                         if .store.active_tag == "" {
-                            NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                            NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                         } else if note.tags.contains(.store.active_tag) {
-                            NoteRow(note: note, active: i == .store.active_id, indent: "px-3")
+                            NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
                         }
                     }
                 }
