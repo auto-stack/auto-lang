@@ -633,6 +633,18 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             transpile_expr(&closure.body, ctx, out);
         }
 
+        // Block in expression position — primarily closure bodies
+        // (`() => { stmts }`). Must stay Aura-aware: delegate_expr would route
+        // to a2ts, which knows nothing about StateRef and would emit
+        // `state = x` instead of `state.value = x`.
+        Expr::Block(block) => {
+            write!(out, "{{ ").ok();
+            for stmt in &block.stmts {
+                transpile_stmt(stmt, ctx, out);
+            }
+            write!(out, " }}").ok();
+        }
+
         // === Delegate to a2ts for everything else ===
         _ => delegate_expr(expr, ctx, out),
     }
@@ -1165,5 +1177,39 @@ mod tests {
         let out = transpile_handler_body(&stmts, &test_ctx());
         assert!(out.contains("document.activeElement;"), "output:\n{}", out);
         assert!(out.contains("window.innerWidth;"), "output:\n{}", out);
+    }
+
+    /// Block-bodied closures (`nextTick(() => { .state = x })`) must stay
+    /// Aura-aware: StateRef assignments inside the body get `.value`.
+    /// Regression test — previously Expr::Block fell through to a2ts, which
+    /// emitted `notes = 'tick'` (no `.value`).
+    #[test]
+    fn block_bodied_closure_keeps_state_ref_unwrapping() {
+        let body = Body {
+            stmts: vec![Stmt::Expr(Expr::Bina(
+                Box::new(self_dot("notes")),
+                Op::Asn,
+                Box::new(Expr::Str("tick".into())),
+            ))],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let closure = Expr::Closure(Closure::new(vec![], None, Expr::Block(body)));
+        let call = Expr::Call(Call {
+            name: Box::new(Expr::Ident("nextTick".into())),
+            args: Args {
+                args: vec![Arg::Pos(closure)],
+            },
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        });
+        let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
+        assert!(out.contains("() =>"), "output:\n{}", out);
+        assert!(
+            out.contains("notes.value = 'tick'") || out.contains("notes.value = \"tick\""),
+            "StateRef lost .value inside block-bodied closure:\n{}",
+            out
+        );
     }
 }
