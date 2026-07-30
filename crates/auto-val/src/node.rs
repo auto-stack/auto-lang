@@ -145,6 +145,17 @@ impl Node {
             return self.id.clone().into();
         }
         if self.args.is_empty() {
+            // Plan 375: config-mode compilation folds a node's positional args
+            // into `_argN` props (see Codegen::compile_config_node), so a node
+            // parsed from a manifest — e.g. device.at's `file(`${sdk}/...`)` —
+            // has an empty `args` vec but its first positional value lives in
+            // the `_arg0` prop. Fall back to it before `name`, otherwise
+            // `main_arg()` returns Nil and the file path is lost.
+            if let Some(value) = self.props.get("_arg0") {
+                if !value.is_nil() {
+                    return value.clone();
+                }
+            }
             if self.props.has("name") {
                 if let Some(value) = self.props.get("name") {
                     value.clone()

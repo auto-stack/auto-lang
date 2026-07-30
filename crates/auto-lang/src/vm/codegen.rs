@@ -3814,11 +3814,24 @@ impl Codegen {
                         self.emit(OpCode::DUP);
                         self.emit_store_loc(s);
                     }
-                } else {
+                } else if self.config_accum_depth == 0 {
+                    // Top-level non-injected Pair: a parameter default. Bind it
+                    // to a same-named local so later statements / f-strings can
+                    // reference it (`kernel: {...}` → `${kernel.port}`).
                     self.compile_expr(&pair.value)?;
                     let s = self.add_var(&key_str);
                     self.emit(OpCode::DUP);
                     self.emit_store_loc(s);
+                } else {
+                    // Plan 375: nested Pair (depth ≥1) is a structural field
+                    // def inside a node body. It must NOT bind a local —
+                    // config_mode has no scope isolation, so a STORE_LOCAL here
+                    // would leak into / shadow the enclosing scope (e.g. osal's
+                    // `dep("kernel") { config: `${kernel.config}` }` would
+                    // overwrite the top-level `config` local, corrupting a
+                    // later `lib("osal") { incs: [`${config}`] }`). The value
+                    // is only accumulated into the node container below.
+                    self.compile_expr(&pair.value)?;
                 }
                 let key_idx = self.add_string(&key_str);
                 self.emit(OpCode::ACCUM_PAIR);
