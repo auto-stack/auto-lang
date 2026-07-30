@@ -1,0 +1,25 @@
+/// c_crawler — 简单爬虫消费者应用。
+/// 组合 http.get_sync + Json.parse/get 做多页面爬取。
+use auto.http
+use auto.json
+
+/// 爬取 page1，验证返回 body 包含 "page"。
+fn crawl_page1_body(url str) str {
+    return http.get_sync(url)
+}
+
+/// 爬取 page2，验证返回 body。
+fn crawl_page2_body(url str) str {
+    return http.get_sync(url)
+}
+
+/// 爬取页面并返回状态码。
+fn crawl_status(url str) int {
+    var body = http.get_sync(url)
+    return http.last_status()
+}
+
+/// 爬取 file.txt 内容。
+fn crawl_file(url str) str {
+    return http.get_sync(url)
+}

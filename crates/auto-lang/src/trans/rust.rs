@@ -4945,7 +4945,7 @@ impl RustTrans {
                         if call.args.args.len() > 1 {
                             if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                         }
-                        write!(out, ")")?;
+                        write!(out, ").to_string()")?;
                         return Ok(());
                     }
                     ("json", "get_str") => {

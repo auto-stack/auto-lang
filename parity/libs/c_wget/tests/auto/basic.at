@@ -1,0 +1,33 @@
+/// c_wget 测试驱动 — 需要 mock server 运行在 127.0.0.1:18080。
+use auto.c_wget: download, fetch, fetch_status
+
+fn tap_ok(n int, name str) { print("ok " + n.to(str) + " - " + name) }
+fn tap_not_ok(n int, name str) { print("not ok " + n.to(str) + " - " + name) }
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected { tap_ok(n, name) } else { tap_not_ok(n, name) }
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected { tap_ok(n, name) } else { tap_not_ok(n, name) }
+}
+
+fn main() {
+    var base = "http://127.0.0.1:18080"
+    var tmpdir = "c_wget_tmp"
+
+    // Test 1: fetch text file content
+    check_str(1, "test_fetch_file", fetch(base + "/file.txt"), "hello wget")
+
+    // Test 2: fetch status 200
+    check_int(2, "test_fetch_200", fetch_status(base + "/"), 200)
+
+    // Test 3: download to file and read back
+    check_str(3, "test_download_readback", download(base + "/file.txt", tmpdir + "/dl1.txt"), "hello wget")
+
+    // Test 4: download JSON and read back
+    check_str(4, "test_download_json", download(base + "/", tmpdir + "/dl2.txt"), "{\"ok\":true}")
+
+    // Test 5: fetch 404 status
+    check_int(5, "test_fetch_404", fetch_status(base + "/missing"), 404)
+}

@@ -1,0 +1,9 @@
+[package]
+name = "c-wget-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ureq = "2"
+
+[workspace]
