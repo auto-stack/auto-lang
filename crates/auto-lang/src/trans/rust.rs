@@ -133,6 +133,9 @@ pub struct RustTrans {
     // Cache for struct field types: struct_name -> Vec<(field_name, field_type)>
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
+    /// Plan 376D: Shared TypeStore from all modules (for type inference).
+    /// When Some, `run_type_inference` uses this instead of building a local one.
+    shared_type_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
 
     // Set of known enum names (for needs_enum_cast: Type::User may be an enum)
     known_enum_names: std::collections::HashSet<AutoStr>,
@@ -251,6 +254,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
@@ -311,6 +315,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
@@ -383,6 +388,11 @@ impl RustTrans {
     /// like `Err(AgentError::Config(...))` don't get wrongly Box::new'd).
     pub fn known_enum_names_mut(&mut self) -> &mut std::collections::HashSet<AutoStr> {
         &mut self.known_enum_names
+    }
+
+    /// Plan 376D: Set the shared TypeStore for cross-module type inference.
+    pub fn set_shared_type_store(&mut self, store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>) {
+        self.shared_type_store = store;
     }
 
     pub fn set_edition(&mut self, edition: RustEdition) {
@@ -12742,9 +12752,26 @@ impl RustTrans {
     fn run_type_inference(&mut self, stmts: &[Stmt]) {
         use crate::infer::InferenceContext;
 
-        // Build a TypeStore from the current AST so the inference engine can
-        // resolve function/type references.
-        let type_store = {
+        // Plan 376D: Use the shared TypeStore (from all modules) if available;
+        // otherwise build a local one from the current AST only.
+        let type_store = if let Some(ref shared) = self.shared_type_store {
+            // Enrich the shared store with the current module's declarations
+            // (the shared store may have been built before this module was parsed).
+            if let Ok(mut store) = shared.write() {
+                for stmt in stmts {
+                    match stmt {
+                        Stmt::Fn(fn_decl) => { store.register_fn_decl(fn_decl); }
+                        Stmt::TypeDecl(td) => { store.register_type_decl(td); }
+                        Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
+                        Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
+                        Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                        _ => {}
+                    }
+                }
+            }
+            shared.clone()
+        } else {
+            // Single-file mode: build from current AST only.
             let mut store = crate::types::TypeStore::new();
             for stmt in stmts {
                 match stmt {
@@ -13143,6 +13170,17 @@ impl Trans for RustTrans {
 
 /// Transpile AutoLang code to Rust
 pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
+    transpile_rust_with_siblings(name, code, None)
+}
+
+/// Plan 376D: Transpile with an optional sibling TypeStore.
+/// When `sibling_store` is Some, it contains type declarations from ALL sibling
+/// .at files in the same crate, enabling cross-module type inference.
+pub fn transpile_rust_with_siblings(
+    name: impl Into<AutoStr>,
+    code: &str,
+    sibling_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+) -> AutoResult<Sink> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
@@ -13154,9 +13192,6 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     ctee.transform(&mut ast).map_err(|e| e.to_string())?;
 
     // Plan 310 Phase 1: Run escape analysis on every top-level function body.
-    // Results are stored in the transpiler but NOT consulted in Phase 1 —
-    // transpiled output bytes must stay identical (verification gate).
-    // Also analyze method bodies inside type declarations (Stmt::TypeDecl).
     let mut escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap> = HashMap::new();
     {
         use crate::trans::escape::EscapeAnalyzer;
@@ -13181,6 +13216,8 @@ pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    // Plan 376D: Share sibling TypeStore for cross-module type inference.
+    transpiler.shared_type_store = sibling_store;
     // Plan 013 (B1/BUG3): local-type pre-scan lives in trans() so all entry
     // points (single-file, project, CLI) benefit uniformly.
     transpiler.trans(ast, &mut out)?;
@@ -13528,6 +13565,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         sink.source_file = module.source_path.file_name()
             .map(|n| n.to_string_lossy().to_string());
         let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
+        // Plan 376D: Share the global TypeStore with the transpiler for type inference.
+        transpiler.shared_type_store = Some(shared_type_store.clone());
         // Only emit #![allow] for crate root (first module), not submodules
         let is_first_module = module.source_path == modules[0].source_path;
         if is_first_module {
@@ -14149,6 +14188,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     for (idx, (module, ast)) in parsed_modules.iter().enumerate() {
         let mut transpiler = RustTrans::new(AutoStr::from("merged"));
         transpiler.merge_mode = true;
+        transpiler.shared_type_store = Some(shared_type_store.clone());
         transpiler.emit_allow_pragma = idx == 0;
         transpiler.const_names = global_const_names.clone();
 
