@@ -343,7 +343,7 @@ impl Agent {
 
         let system_prompt = build_system_prompt(self.context_block.clone(), self.role.system_prompt().as_str(), self.skills_block.clone());
 
-        return CompletionRequest { model: model, messages: self.memory.to_messages(), max_tokens: None, temperature: Some(self.role.temperature()), system_prompt: Some(system_prompt), tools: tool_defs, stream: false };
+        return CompletionRequest { model: model, messages: self.memory.to_messages(), max_tokens: None, temperature: Some(self.role.temperature()), system_prompt: Some(system_prompt), tools: tool_defs, stream: false, preferred_provider: None };
     }
 }
 
