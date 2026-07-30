@@ -34,8 +34,11 @@ pub use jet::JetGenerator;
 pub use widget::{WidgetCategory, WidgetRegistry, WidgetSpec};
 pub use validators::{validate_sfc, ValidationContext, ValidationWarning, Severity};
 
-// Re-export transpiler API (Plan 175 Phase 3)
-pub use api::{transpile_file, transpile_aura, transpile_vue_aura};
+// Re-export transpiler API (Plan 175 Phase 3 + Plan 361 §3)
+pub use api::{
+    transpile_file, transpile_aura, transpile_vue_aura,
+    generate_component_from_file, ComponentGenOptions, GeneratedComponent,
+};
 
 use crate::aura::AuraWidget;
 

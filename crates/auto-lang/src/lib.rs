@@ -4222,98 +4222,33 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
-    // Read input file
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let at_path = std::path::Path::new(path);
+    let opts = ComponentGenOptions::default();
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
 
-    // Parse with UI scenario
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(code.as_str());
-    parser = parser.with_session(session);
-
-    let ast = parser.parse().map_err(|e| {
-        format!("Parse error: {:?}", e)
-    })?;
-
-    // Extract API imports from `use back.api: ...` statements
-    let api_imports = extract_api_imports_from_ast(&ast);
-    let store_deps = extract_store_imports_from_ast(&ast);
-
-    // Extract AURA stores from AST (Plan 351)
-    let mut stores: Vec<crate::aura::AuraStore> = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
-            let mut store = crate::aura::extract_store_from_decl(store_decl)
-                .map_err(|e| e.to_string())?;
-            store.api_imports = api_imports.clone();
-            stores.push(store);
-        }
-    }
-
-    // Generate store composable files and stash them via thread-local
-    for store in &stores {
-        let composable = crate::ui_gen::VueGenerator::generate_store_composable(store);
-        let filename = format!("stores/use{}Store.ts", store.name);
-        crate::STORE_EXTRA_FILES.with(|cell| {
-            cell.borrow_mut().push((filename, composable));
-        });
-    }
-
-    // Extract AURA widgets from AST
-    // Plan 367 P2-3: register view fragments before widget extraction
-    crate::aura::extract::clear_view_fragments();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            crate::aura::extract::register_view_fragment(frag);
-        }
-    }
-    let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
-            aura_widget.api_imports = api_imports.clone();
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() && stores.is_empty() {
-        return Err("No widget or store declarations found in input file".into());
-    }
-
-    // Generate code with shadcn-vue mode (with explicit API imports if present)
-    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone());
-    if !api_imports.is_empty() {
-        gen = gen.with_project_api_functions(api_imports.clone());
-    }
-    let mut output_code = String::new();
-
-    for widget in &widgets {
-        let code = gen.generate(widget).map_err(|e| e.to_string())?;
-        output_code.push_str(&code);
-        output_code.push_str("\n\n");
-    }
-
-    // Write output if specified
+    // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
-        for widget in &widgets {
+        for (name, code) in &result.all_widget_codes {
             let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", widget.name));
-            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone());
-            if !api_imports.is_empty() {
-                gen = gen.with_project_api_functions(api_imports.clone());
-            }
-            let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
-            std::fs::write(&out_path, &widget_code)
+                .join(format!("{}.vue", name));
+            std::fs::write(&out_path, code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
+        }
+        // Also write store composables
+        for (filename, code) in &result.store_composables {
+            let out_path = std::path::Path::new(out_dir).join(filename);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::write(&out_path, code).ok();
         }
     }
 
-    Ok((output_code, widgets))
+    Ok((result.vue_code, result.widgets))
 }
 
 /// Like `ui_build_shadcn_with_widgets`, but accepts a list of known sub-widget names
@@ -4324,67 +4259,35 @@ pub fn ui_build_shadcn_with_sub_widgets(
     output: Option<&str>,
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let at_path = std::path::Path::new(path);
+    let opts = ComponentGenOptions {
+        sub_widgets: Some(sub_widget_names),
+        ..Default::default()
+    };
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
 
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(code.as_str());
-    parser = parser.with_session(session);
-
-    let ast = parser.parse().map_err(|e| {
-        format!("Parse error: {:?}", e)
-    })?;
-
-    // Extract API imports from `use back.api: ...` statements
-    let api_imports = extract_api_imports_from_ast(&ast);
-    let store_deps = extract_store_imports_from_ast(&ast);
-
-    let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
-            aura_widget.api_imports = api_imports.clone();
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() {
-        return Err("No widget or store declarations found in input file".into());
-    }
-
-    // Generate code with shadcn-vue mode, passing known sub-widget names
-    let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone()).with_sub_widgets(sub_widget_names.clone());
-    if !api_imports.is_empty() {
-        gen = gen.with_project_api_functions(api_imports.clone());
-    }
-    let mut output_code = String::new();
-
-    for widget in &widgets {
-        let code = gen.generate(widget).map_err(|e| e.to_string())?;
-        output_code.push_str(&code);
-        output_code.push_str("\n\n");
-    }
-
+    // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
-        for widget in &widgets {
+        for (name, code) in &result.all_widget_codes {
             let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", widget.name));
-            let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn).with_store_deps(store_deps.clone()).with_sub_widgets(sub_widget_names.clone());
-            if !api_imports.is_empty() {
-                gen = gen.with_project_api_functions(api_imports.clone());
-            }
-            let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
-            std::fs::write(&out_path, &widget_code)
+                .join(format!("{}.vue", name));
+            std::fs::write(&out_path, code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
+        }
+        for (filename, code) in &result.store_composables {
+            let out_path = std::path::Path::new(out_dir).join(filename);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::write(&out_path, code).ok();
         }
     }
 
-    Ok((output_code, widgets))
+    Ok((result.vue_code, result.widgets))
 }
 
 // ============================================================================

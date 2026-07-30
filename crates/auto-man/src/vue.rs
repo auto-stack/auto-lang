@@ -2668,187 +2668,44 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 
 /// Compile a .at file to Vue component
 /// Returns (vue_code, widget_names)
-fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
-    use auto_lang::Parser;
-    use auto_lang::session::CompilerSession;
-    use auto_lang::ui_gen::BackendGenerator;
-    use auto_lang::aura::extract_widget_from_decl;
-    use auto_lang::aura::extract_store_from_decl;
+/// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
+fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
+    use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(content);
-    parser = parser.with_session(session);
+    let opts = ComponentGenOptions {
+        root_dir_for_validation: Some(root_dir.to_path_buf()),
+        ..Default::default()
+    };
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
 
-    let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
-
-    // Extract API imports from `use back.api: ...` statements
-    let mut api_imports: Vec<String> = Vec::new();
-    let mut store_deps: Vec<String> = Vec::new();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
-            if is_api_use(use_stmt) {
-                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-            // Plan 351/370: detect store imports.
-            // Supports: use store: Name (legacy) and use notes_store: Name (unified)
-            let is_store = use_stmt.paths.len() == 1
-                && (use_stmt.paths[0].as_str() == "store"
-                    || use_stmt.paths[0].as_str().contains("store"))
-                || use_stmt.module_path.as_ref().map_or(false, |mp| {
-                    mp.display() == "store" || mp.display().contains("store")
-                });
-            if is_store {
-                store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-        }
+    // Validate API imports against the manifest (auto-man-specific)
+    if !result.detected_api_imports.is_empty() {
+        validate_api_imports(&result.detected_api_imports, root_dir)?;
     }
 
-    // Plan 351: extract stores + generate composables
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
-            if let Ok(mut store) = extract_store_from_decl(store_decl) {
-                store.api_imports = api_imports.clone();
-                let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
-                let filename = format!("stores/use{}Store.ts", store.name);
-                auto_lang::STORE_EXTRA_FILES.with(|cell| {
-                    cell.borrow_mut().push((filename, composable));
-                });
-            }
-        }
-    }
-
-    // Plan 367 P2-3: register view fn fragments BEFORE extracting widgets, so
-    // that fragment calls (e.g. `NoteItem(...)`) inline-expand instead of being
-    // treated as external sub-components. Mirrors lib.rs::ui_build_shadcn_with_widgets.
-    // Without this, the fragment isn't in the VIEW_FRAGMENTS table and the call
-    // falls back to a sub-component import that doesn't match (wrong props).
-    auto_lang::aura::extract::clear_view_fragments();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            auto_lang::aura::extract::register_view_fragment(frag);
-        }
-    }
-
-    let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
-            aura_widget.api_imports = api_imports.clone();
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() && store_deps.is_empty() {
-        return Err("No widgets found".to_string());
-    }
-
-    // Validate API imports against the manifest
-    if !api_imports.is_empty() {
-        validate_api_imports(&api_imports, root_dir)?;
-    }
-
-    // Use shadcn mode for proper component generation
-    let mut generator = VueGenerator::new().with_mode(auto_lang::ui_gen::VueMode::Shadcn);
-    if !api_imports.is_empty() {
-        generator = generator.with_project_api_functions(api_imports);
-    }
-    if !store_deps.is_empty() {
-        generator = generator.with_store_deps(store_deps.clone());
-    }
-    let vue_code = generator.generate(&widgets[0])
-        .map_err(|e| e.to_string())?;
-
-    let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
-    Ok((vue_code, names))
+    let names: Vec<String> = result.widgets.iter().map(|w| w.name.clone()).collect();
+    Ok((result.vue_code, names))
 }
 
-/// Compile an .at file to Vue SFC with known sub-widget names (avoids shadcn name collisions)
-fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>), String> {
-    use auto_lang::Parser;
-    use auto_lang::session::CompilerSession;
-    use auto_lang::ui_gen::BackendGenerator;
-    use auto_lang::aura::extract_widget_from_decl;
-    use auto_lang::aura::extract_store_from_decl;
+/// Compile an .at file to Vue SFC with known sub-widget names (Plan 361 §3: uses generate_component_from_file).
+fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>), String> {
+    use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
-    let session = CompilerSession::ui().with_backend("vue");
-    let mut parser = Parser::from(content);
-    parser = parser.with_session(session);
+    let opts = ComponentGenOptions {
+        sub_widgets: Some(sub_widget_names),
+        root_dir_for_validation: Some(root_dir.to_path_buf()),
+        ..Default::default()
+    };
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
 
-    let ast = parser.parse().map_err(|e| format!("Parse error: {:?}", e))?;
-
-    // Extract API imports + store deps from `use` statements
-    let mut api_imports: Vec<String> = Vec::new();
-    let mut store_deps: Vec<String> = Vec::new();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::Use(use_stmt) = stmt {
-            if is_api_use(use_stmt) {
-                api_imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-            if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
-                store_deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
-            }
-        }
+    if !result.detected_api_imports.is_empty() {
+        validate_api_imports(&result.detected_api_imports, root_dir)?;
     }
 
-    // Plan 351: extract stores + generate composables
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::StoreDecl(store_decl) = stmt {
-            if let Ok(mut store) = extract_store_from_decl(store_decl) {
-                store.api_imports = api_imports.clone();
-                let composable = auto_lang::ui_gen::VueGenerator::generate_store_composable(&store);
-                let filename = format!("stores/use{}Store.ts", store.name);
-                auto_lang::STORE_EXTRA_FILES.with(|cell| {
-                    cell.borrow_mut().push((filename, composable));
-                });
-            }
-        }
-    }
-
-    // Plan 367 P2-3: register view fn fragments BEFORE extracting widgets, so
-    // that fragment calls (e.g. `NoteItem(...)`) inline-expand instead of being
-    // treated as external sub-components. Mirrors lib.rs::ui_build_shadcn_with_widgets.
-    auto_lang::aura::extract::clear_view_fragments();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            auto_lang::aura::extract::register_view_fragment(frag);
-        }
-    }
-
-    let mut widgets = Vec::new();
-    for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
-            aura_widget.api_imports = api_imports.clone();
-            widgets.push(aura_widget);
-        }
-    }
-
-    if widgets.is_empty() && store_deps.is_empty() {
-        return Err("No widgets found".to_string());
-    }
-
-    // Validate API imports against the manifest
-    if !api_imports.is_empty() {
-        validate_api_imports(&api_imports, root_dir)?;
-    }
-
-    // Use shadcn mode with sub-widget names to avoid treating child widgets as shadcn components
-    let mut generator = VueGenerator::new()
-        .with_mode(auto_lang::ui_gen::VueMode::Shadcn)
-        .with_sub_widgets(sub_widget_names);
-    if !api_imports.is_empty() {
-        generator = generator.with_project_api_functions(api_imports);
-    }
-    if !store_deps.is_empty() {
-        generator = generator.with_store_deps(store_deps.clone());
-    }
-    let vue_code = generator.generate(&widgets[0])
-        .map_err(|e| e.to_string())?;
-
-    let names: Vec<String> = widgets.iter().map(|w| w.name.clone()).collect();
-    Ok((vue_code, names))
+    let names: Vec<String> = result.widgets.iter().map(|w| w.name.clone()).collect();
+    Ok((result.vue_code, names))
 }
 
 #[cfg(test)]
