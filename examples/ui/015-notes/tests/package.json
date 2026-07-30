@@ -5,6 +5,7 @@
   "description": "Plan 366a acceptance tests for 015-notes",
   "scripts": {
     "test": "playwright test",
+    "test:smoke": "playwright test smoke.spec.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
