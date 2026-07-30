@@ -13,6 +13,10 @@
 /// is itself a2r-first (see ai-config/loader.at). So this file's runtime path
 /// runs under cargo, not the pure AutoVM.
 
+use.rust std::path::PathBuf
+use.rust std::fs
+use.rust dirs
+
 use error: AgentError
 use role_def: Role
 use ai_config
@@ -39,15 +43,11 @@ pub fn validate_role_model(role Role) Result<None, AgentError> {
 pub fn load_client_config() Result<ai_config.ClientConfig, AgentError> {
     is home_dir() {
         Some(home) -> {
-            let path = path.join(home, ".config/autoos/ai-client.at")
-            is read_file_text(path) {
-                Ok(content) -> {
-                    is ai_config.parse_client_config(content) {
-                        Ok(cfg) -> return Ok(cfg),
-                        Err(e) -> return Err(AgentError.Config(e.to_string()))
-                    }
-                }
-                Err(msg) -> return Err(AgentError.Config(f"read ${path}: ${msg}"))
+            let path = home.join(".config/autoos/ai-client.at")
+            let content = read_file_text(path)
+            is ai_config.parse_client_config(content) {
+                Ok(cfg) -> return Ok(cfg),
+                Err(e) -> return Err(AgentError.Config(e.to_string()))
             }
         }
         None -> return Err(AgentError.Config("cannot determine home directory"))
@@ -55,16 +55,13 @@ pub fn load_client_config() Result<ai_config.ClientConfig, AgentError> {
 }
 
 // ─── bridged helpers ────────────────────────────────────────────────────────
-// dirs::home_dir() and std::fs::read_to_string have no Auto-VM equivalent;
-// these wrap the Rust calls (a2r resolves them to dirs::home_dir /
-// std::fs::read_to_string).
 
 /// The user's home directory, or None if it can't be determined.
-fn home_dir() ?str {
+fn home_dir() ?PathBuf {
     return dirs.home_dir()
 }
 
 /// Read a file's full contents as a string.
-fn read_file_text(path str) Result<str, str> {
+fn read_file_text(path str) str {
     return fs.read_to_string(path)
 }

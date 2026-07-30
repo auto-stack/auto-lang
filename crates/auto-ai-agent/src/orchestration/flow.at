@@ -104,21 +104,21 @@ ext FlowStep {
     }
 
     /// Builder: set the gate type.
-    pub fn with_gate(gate GateType) FlowStep {
+    pub mut fn with_gate(gate GateType) FlowStep {
         self.gate = gate
-        return self
+        return self.clone()
     }
 
     /// Builder: set the exit routing.
-    pub fn with_exit(exit ExitRouting) FlowStep {
+    pub mut fn with_exit(exit ExitRouting) FlowStep {
         self.exit = exit
-        return self
+        return self.clone()
     }
 
     /// Builder: set a per-step token budget.
-    pub fn with_budget(budget uint) FlowStep {
+    pub mut fn with_budget(budget uint) FlowStep {
         self.token_budget = Some(budget)
-        return self
+        return self.clone()
     }
 }
 
@@ -140,7 +140,7 @@ ext FlowSpec {
     /// Append a step (builder-style).
     pub mut fn add_step(step FlowStep) FlowSpec {
         self.steps.push(step)
-        return self
+        return self.clone()
     }
 
     /// Find a step by id.

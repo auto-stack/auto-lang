@@ -12,6 +12,11 @@
 /// - ToolRegistry stores a parallel `names List<str>` because Auto's VM Map
 ///   has no iteration API (plan 013 gotcha B5). Fields are `pub` (B12).
 
+use.rust std::sync::Arc
+use.rust std::pin::Pin
+use.rust std::future::Future
+use.rust async_trait
+
 use wire: ToolDefinition, JsonValue
 use error: ToolError
 
