@@ -66,19 +66,22 @@ Step 5 只通过了单元测试，**真实 SCU001 项目从未跑通**。7-22 �
   产出的项目文件可 diff 对比（7-22 会话曾备份为 `build.bak.plan364`，已清理）。
 - 预期会触发 Task 2 / Task 3 的缺口。
 
-### Task 2：实现 `extract_node_deep` 的 kids 映射
+### Task 2：`CREATE_NODE` 的 kids 映射（降级，不影响本计划）
 
-[crates/auto-lang/src/vm/engine.rs:1879](../crates/auto-lang/src/vm/engine.rs#L1879) 有遗留 TODO：
+> **状态变更（2026-07-30）：降级为独立小任务，移出本计划范围。**
 
-```
-// TODO: Implement kids array/list mapping
-```
+[crates/auto-lang/src/vm/engine.rs](../crates/auto-lang/src/vm/engine.rs) 的
+`OpCode::CREATE_NODE` handler 仍有遗留 TODO（`// TODO: Implement kids array/list
+mapping`，行号随代码漂移，搜索该字符串定位）。它只提取 props/args，不物化 kids。
 
-当前 `extract_node_deep` 只提取 props，**不提取 kids（子节点）/ args**。
-影响：dep pac.at 里嵌套 Node 的子节点会在物化时丢失，下游 `merge_port`/
-`target.rs` 读不到嵌套结构。这是 SCU001 dep 解析很可能卡住的点。
+**但这不影响 SCU001**：config 求值走的是 Plan 375 的 ACCUM 指令链
+（`PUSH_ACCUM`/`ACCUM_PAIR`/`ACCUM_NODE`/`POP_ACCUM`），其中 `ACCUM_NODE`
+（[engine.rs](../crates/auto-lang/src/vm/engine.rs) 的 `ACCUM_NODE` handler）
+独立处理 kids 追加，完全不经过 `CREATE_NODE`。Task 1 端到端跑通即证明此点。
 
-需补全 kids（及 args）→ Node 结构的映射，并加对应单元测试。
+因此该 TODO 只影响"VM 内用 `CREATE_NODE` 显式构造带子节点的 Node"的场景，
+与本计划（SCU001 IAR 输出对齐）无关。**从本计划移除**，留作后续独立小任务
+（若将来出现 VM 内构造嵌套 Node 的需求再处理）。
 
 ### Task 3：复杂嵌套 dep pac.at 的 f-string / 字段访问覆盖
 
@@ -89,11 +92,35 @@ Step 5 只通过了单元测试，**真实 SCU001 项目从未跑通**。7-22 �
 
 ## 收尾动作（非阻塞，但建议处理）
 
-- **worktree `scu001-compat-364`**：使命（合并回 master）已完成，当前 `locked`，
-  且内含 20+ 个历史 stash（多数与本工作无关）。确认无需保留后可
-  `git worktree unlock` + `git worktree remove`，并酌情清理 stash。
+- **worktree `scu001-compat-364`**：✅ **已清理（2026-07-30）**。确认其 HEAD
+  （`e0be3e35b`，Step 5）的所有 commits 均已合并到 master（`master..HEAD` 为空）、
+  工作树干净后，`git worktree unlock` + `git worktree remove` 完成删除，
+  已不在 `git worktree list` 中。
+  仓库里仍有 23 个历史 stash（多为 plan364 WIP），未删除——内容应在 commits 中，
+  留待用户自行酌情清理。
 - **commit message 撞号**：历史 commit 不重写（按仓库规范不改写历史），
   本文件的"编号说明"即为缓解措施。
+
+## 计划完成总结
+
+**Plan 375 的核心使命已全部达成（2026-07-30）。** 目标：让集成版
+`auto.exe export -p lanshan -f iar` 对 `D:\SCU001\code\SCU001` 产出与旧独立版
+`auto-man.exe v0.1.3` 一致的 IAR 工程文件。
+
+最终验证结果：
+- `SCU001.eww` / `.ewt` / `.ewd`：与基线**字节级完全一致**。
+- `SCU001.ewp`：group / 文件 / include / define 四个集合**完全一致**；
+  顶层 group 顺序对齐基线（`Bsp` 在前）。
+- 仅剩 device（`Bsp/Mcal`）下子 group 的**内部排列顺序**差异，根因是
+  `Target::dirs: HashMap` 无序，属既有设计、IAR 不敏感，不修（见下文"不修"一节）。
+
+本计划期间的提交（按时间序）：
+- `6e1f020cb` fix(config): inject Object/Array/Bool dep override args
+- `812aa4ea5` fix(config): resolve file() node paths + nested Pair scope leak
+- `1bde4a070` fix(target): expose deps as devices/deps/bags array props in to_node
+- `55795c585` feat(interpreter): inject globals into AutoVM + Node field access
+- `47a741173` fix(pac): assemble apps/deps/devices/libs/bags/tests arrays in to_node
+- `eecf0ce7e`（及前序）fix(node/array): plural prop 展开顺序 + Array 消费迭代根因
 
 ## 追加：`.ewp` group 顺序根因分析（2026-07-30）
 
