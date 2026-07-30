@@ -258,7 +258,9 @@ ext PipelineEngine {
     /// Submit the result of an agent turn to continue the pipeline.
     pub mut fn submit_handoff(handoff HandoffDocument) AdvanceResult {
         let now = now_secs()
-        let h = handoff
+        // `var` (not `let`): h.token_usage.cumulative / .budget_remaining are
+        // assigned below — a `let h` binding isn't mutable (E0594).
+        var h = handoff
         let running = self.running_context()
         is running {
             Some(rc) -> {
@@ -270,7 +272,10 @@ ext PipelineEngine {
 
                 // Handoff target auto-correction (silently fill an empty
                 // target; log a correction when the caller named a wrong one).
-                correct_handoff_target(self.clone(), h.clone(), step_id.as_str(), exit.clone())
+                // Pass `step_id` (String) bare: a2r auto-borrows String args to
+                // free-fn &str params with ONE .as_str(); an explicit .as_str()
+                // here got doubled (str_as_str is unstable on &str).
+                correct_handoff_target(self.clone(), h.clone(), step_id, exit.clone())
 
                 // Budget tracking — update cumulative BEFORE recording so the
                 // stored handoff carries an accurate cumulative total.
@@ -451,8 +456,10 @@ ext PipelineEngine {
         var kept_names List<str> = []
         for name in self.gate_feedback_names.clone() {
             if name != step_id {
-                kept.set(name, self.gate_feedback.get(name) ?? [])
-                kept_names.push(name.clone())
+                // name is an owned String; map.get needs &str, so .as_str() the
+                // key (a bare get(name) failed: expected &str, found String).
+                kept.set(name.clone(), self.gate_feedback.get(name.as_str()) ?? [])
+                kept_names.push(name)
             }
         }
         self.gate_feedback = kept
@@ -462,7 +469,9 @@ ext PipelineEngine {
     /// Increment a loop counter, returning the new value.
     mut fn bump_loop_counter(step_id str) uint {
         let prev = self.loop_count(step_id)
-        let next = prev + 1
+        // `1u` (not bare `1`): a2r inferred `prev + 1` as i32, but
+        // set_loop_counter takes u32 and the fn returns u32.
+        let next = prev + 1u
         self.set_loop_counter(step_id, next)
         return next
     }
@@ -486,7 +495,7 @@ ext PipelineEngine {
                 return AdvanceResult.Failed(msg)
             },
             NextStep.Pause(reason, resume_step_id) -> {
-                is self.flow.get_step_index(resume_step_id) {
+                is self.flow.get_step_index(resume_step_id.as_str()) {
                     Some(idx) -> self.current_step = idx,
                     None -> {}
                 }
@@ -515,7 +524,7 @@ ext PipelineEngine {
                         target_step_id
                     )
                 }
-                is self.flow.get_step_index(target_step_id) {
+                is self.flow.get_step_index(target_step_id.as_str()) {
                     Some(idx) -> return NextStep.Index(idx),
                     None -> return NextStep.Error(
                         f"Loop target '${target_step_id}' not found"
@@ -542,10 +551,10 @@ fn correct_handoff_target(eng PipelineEngine, h HandoffDocument, step_id str, ex
                 h.target = expected
             } else {
                 if cur != expected {
-                    eng.push_gate_feedback(
-                        step_id,
-                        f"[AUTO-CORRECTION] target '${cur}' corrected to '${expected}'."
-                    )
+                    // Bind the note first — push_gate_feedback takes &str and an
+                    // inline f-string arg was passed as String (expected &str).
+                    let note = f"[AUTO-CORRECTION] target '${cur}' corrected to '${expected}'."
+                    eng.push_gate_feedback(step_id, note.as_str())
                     h.target = expected
                 }
             }

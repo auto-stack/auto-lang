@@ -38,7 +38,10 @@ pub spec Tool {
 
     /// JSON-Schema fragment describing the tool's `input` object.
     fn parameters() JsonValue {
-        return json.parse("{\"type\":\"object\",\"properties\":{}}").unwrap()
+        // json.parse returns serde_json::Value directly (not a Result), so no
+        // .unwrap() — a2r rendered `json.parse(...).unwrap()` which fails (Value
+        // has no unwrap).
+        return json.parse("{\"type\":\"object\",\"properties\":{}}")
     }
 
     /// Run the tool with the model-supplied arguments, returning a string
@@ -47,7 +50,11 @@ pub spec Tool {
 }
 
 /// Convert a [Tool] into the Layer-2 [ToolDefinition] the client sends.
-pub fn tool_to_definition(tool Tool) ToolDefinition {
+//
+// Takes `Arc<Tool>` (→ Arc<Box<dyn Tool>>) because that's what
+// ToolRegistry.filter / .get yield; a2r renders the spec `Tool` param as owned
+// `Box<dyn Tool>`, and moving out of an Arc isn't allowed.
+pub fn tool_to_definition(tool Arc<Tool>) ToolDefinition {
     return ToolDefinition.new(tool.name(), tool.description(), tool.parameters())
 }
 
@@ -83,10 +90,13 @@ ext ToolRegistry {
 
     /// Look up a tool by name.
     pub fn get(name str) ?Arc<Tool> {
-        if self.tools.contains(name) {
-            return Some(self.tools.get(name))
+        // self.tools.get(name) returns Option<&Arc<...>>; destructure + .clone()
+        // to yield an owned Arc. (a2r rendered the prior `Some(self.tools.get())`
+        // as `Some(Option<&Arc>)` and direct map.get as `[key as usize]`.)
+        is self.tools.get(name) {
+            Some(t) -> return Some(t.clone()),
+            None -> return None
         }
-        return None
     }
 
     /// All registered tool names.
@@ -108,14 +118,18 @@ ext ToolRegistry {
     pub fn filter(filter List<str>) List<Arc<Tool>> {
         var out List<Arc<Tool>> = []
         if filter.len() == 0 {
-            for n in self.names {
-                out.push(self.tools.get(n))
+            for n in self.names.clone() {
+                is self.get(n) {
+                    Some(t) -> out.push(t),
+                    None -> {}
+                }
             }
             return out
         }
         for n in filter {
-            if self.tools.contains(n) {
-                out.push(self.tools.get(n))
+            is self.get(n) {
+                Some(t) -> out.push(t),
+                None -> {}
             }
         }
         return out
@@ -126,6 +140,20 @@ ext ToolRegistry {
         is self.get(name) {
             Some(tool) -> return tool.execute(args).await,
             None -> return Err(ToolError.Exec(f"tool not found: ${name}"))
+        }
+    }
+
+    /// Run a tool by name; on error return a human-readable "[tool error: …]"
+    /// string instead of propagating (mirrors Rust's `format!("[tool error: {}]")`
+    /// fallback so the loop keeps going and the model sees the failure).
+    ///
+    /// Exists as a ToolRegistry METHOD (not a free fn taking ToolRegistry by
+    /// value) because a2r clones struct args at call sites and ToolRegistry
+    /// (holding Arc<Box<dyn Tool>>) is not Clone.
+    pub fn exec_or_msg(name str, args JsonValue) ~str {
+        is self.execute(name, args).await {
+            Ok(out) -> return out,
+            Err(e) -> return f"[tool error: ${e.message()}]"
         }
     }
 }
