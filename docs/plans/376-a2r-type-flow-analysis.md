@@ -1,8 +1,9 @@
 # Plan 376: a2r 类型流分析（让 re-transpile 达到 0 错误）
 
-> **状态**：🔄 实施中（方案 A 的 P1-4 + P5/7 已完成；方案 B 调研完成，已更新为方案 C）
+> **状态**：🔄 实施中（方案 A-F + G unify + H .at 修复已完成；剩余 225 个已分类）
 > **仓库**：auto-lang
 > **前置**：plan 372（系统性 a2r 根因）、plan 373（B1 细节 + post_process 链）
+> **当前进度**：343 → 225（-34%）；手修版保持 0 错误。
 > **目标**：让 `crates/auto-ai-agent/rust/` 的 **re-transpile**（全部 .at → a2r → 组装 → cargo check）达到与手修版同等的 0 错误水平。
 > **当前进度**：343 → 251（-27%）；手修版保持 0 错误。
 
@@ -274,3 +275,144 @@ cargo check 2>&1 | grep -c "^error"  # 看错误数下降
 - **完整类型系统**（MIR 级别）：方案 B，远期
 - **跨方法 mutation 分析**（间接 `&mut self`）：~5 个错误，ROI 低
 - **ContentBlock struct-variant 通用化**：当前硬编码 3 个变体，够用
+
+---
+
+## 九、剩余 225 个错误的深度分类与解决方案（2026-07-30）
+
+### 错误总分布（218 实测，含级联）
+
+| 根因分类 | 数量 | 主要文件 | 修复方式 |
+|---|---|---|---|
+| **E0308 String/&str 不匹配** | 47 | driver/agent/roles/validate/wf_validator | 见 9.1 |
+| **级联名字找不到** (E0425/E0423) | 18 | agent/tool/validate | 见 9.2（级联，非独立根因） |
+| **E0658 多余 .as_str()** | 14 | agent/driver/memory/wf_validator/budget/pipeline | 见 9.3 |
+| **E0599 其他方法不存在** | 13 | error/memory/role_config/roles/tool/validate/pipeline | 见 9.4 |
+| **桥接 deref** (E0614) | 13 | role_config.rs | 见 9.5 |
+| **E0308 int/usize 不匹配** | 12 | agent/memory/tool/wf_validator/driver/pipeline | 见 9.6 |
+| **move/borrow** (E0507) | 12 | memory/role_config/flow/handoff | 见 9.7 |
+| **E0308 Future 未 await** | 11 | agent/driver | 见 9.8 |
+| **E0308 其他** | 11 | agent/roles/driver/flow | 见 9.9 |
+| **E0599 fn 字段调用** | 10 | driver.rs | 见 9.10 |
+| **E0308 Option 不匹配** | 9 | agent/memory/role_config/roles/budget | 见 9.11 |
+| **E0599 non-Clone** | 6 | agent/role_config/roles | 见 9.12 |
+| **Option 字段访问** (E0609) | 6 | roles.rs | 见 9.13 |
+| **PathBuf.as_str()** (E0599) | 5 | roles.rs | 见 9.14 |
+| **重复名字** (E0252) | 4 | tool/roles/validate | 见 9.15 |
+| **binop 未实现** (E0369) | 4 | error/memory/budget | 见 9.16 |
+| **use after move** (E0382) | 3 | roles.rs | 见 9.17 |
+| **tuple 索引** (E0608) | 2 | memory.rs | 见 9.18 |
+| **trait 未实现** (E0277) | 3 | agent/error/role_config | 见 9.19 |
+| **其他** | 14 | 各文件 | 见 9.20 |
+
+### 9.1 String/&str 不匹配（47 个）— 最大类
+
+**根因**：a2r 在以下场景未自动插入类型转换：
+- `String` 传给 `&str` 参数（需 `.as_str()` 或 `&`）
+- `&str` 传给 `String` 参数（需 `.to_string()`）
+- `&str` 返回值赋给 `String` 字段（需 `.to_string()`）
+- match arms 类型不一致（`None => ""` vs `Some(x) => x` where x: String）
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 | 性质 |
+|---|---|---|---|
+| **A. .at 源码侧修复**：在 .at 里显式写 `.to_string()` / `.clone()` | ~20 | 低 | 已在 376H 部分实施 |
+| **B. post_process `fix_str_type_mismatch`**：检测 `fn(param: &str)` 被传 `String` 的模式 | ~15 | 中 | post_process 正则 |
+| **C. 生成阶段消费 `fn_param_types`**：在 call() 参数 emit 时查目标参数类型 | ~12 | 高 | 需精确的类型匹配逻辑 |
+
+**推荐**：继续 A（.at 源码侧），剩余用 B（post_process）。
+
+### 9.2 级联名字找不到（18 个）
+
+**根因**：前序错误导致 Rust 编译器放弃解析后续代码。不是独立根因——修好前序错误后这些会自动消失。
+
+**解决方案**：不需要独立修复。
+
+### 9.3 多余 .as_str()（14 个）
+
+**根因**：a2r auto-borrow 逻辑在**跨模块函数调用**时仍然加了 `.as_str()`，即使参数已经是 `&str`。
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **post_process `fix_spurious_as_str`**：检测 `param.as_str()` 其中 param 是函数参数（通过函数签名扫描）| ~14 | 中 |
+
+### 9.4 方法不存在（13 个）
+
+**子类**：
+- `e.message()` on ClientError（3）：ClientError 用 `thiserror`，无 `.message()` 方法 → 需用 `format!("{}", e)` 或 `.to_string()`
+- `().trim()` 等（2）：a2r_std 桥接函数返回值与 std 不同
+- 其他方法不存在（8）：各种桥接类型差异
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **.at 源码侧修复**：`e.message()` → `e.to_string()` / `format!("{}", e)` | ~3 | 低 |
+| **known_fn_sigs 表**：记录桥接类型的真实方法集 | ~5 | 中 |
+| **其他**：逐个手修 .at 或 post_process | ~5 | 低 |
+
+### 9.5 桥接 deref（13 个）
+
+**根因**：a2r 对 `auto_val::Node` 生成 `*(*node).clone()`，但 Node 不可 deref。
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **.at 源码侧修复**：role_config.at 中避免生成 deref 模式 | ~13 | 中 |
+
+### 9.6 int/usize 不匹配（12 个）
+
+**根因**：`.len()` 返回 `usize`，但 Auto 代码当 `uint` 用；或 `as i32` cast 残留。
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **.at 源码侧修复**：`.len()` 加 `as uint` | ~8 | 低 |
+| **post_process**：`.len() as i32` → `.len() as u32` | ~4 | 低 |
+
+### 9.7 move/borrow（12 个）
+
+**根因**：`for m in self.field` 在 `&self` 方法中 move 了 Vec 字段。
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **post_process `fix_for_in_self_field_borrow`**：已有，但需改进检测逻辑 | ~10 | 中 |
+| **.at 源码侧修复**：`for m in self.field` → `for m in self.field.clone()` | ~12 | 低 |
+
+### 9.8 Future 未 await（11 个）
+
+**根因**：`fn_ret_types` 在单文件模式下对**跨模块函数**不可见。
+
+**解决方案**：
+| 方案 | 预计消除 | 难度 |
+|---|---|---|
+| **全局 TypeStore 传播 fn_ret_types**（plan 376D 已实施） | ~8 | 已完成 |
+| **.at 源码侧**：显式写 `.await` | ~3 | 低 |
+
+### 9.9-9.20 其他类别
+
+每类 2-6 个，大多是桥接类型差异或 a2r 生成缺陷。逐个手修 .at 或 post_process 正则。
+
+### 优先级排序
+
+| 优先级 | 根因 | 数量 | 方案 |
+|---|---|---|---|
+| **1** | move/borrow（.at 侧 .clone()） | 12 | .at 修复 |
+| **2** | int/usize（.at 侧 as uint） | 12 | .at 修复 |
+| **3** | String/&str（.at 侧 .to_string()） | 20 | .at 修复 |
+| **4** | 多余 .as_str() | 14 | post_process |
+| **5** | 桥接 deref | 13 | .at 修复 |
+| **6** | 方法不存在（.message 等） | 13 | .at + known_fn_sigs |
+| **7** | Future await | 11 | 已有基础设施，验证跨模块 |
+| **8** | 其他 | 18 | 逐个 |
+| 级联 | | 18 | 随前序修复自动消失 |
+
+### 理论可达
+
+- 优先级 1-3（.at 修复）：225 → ~180（-45）
+- 优先级 4-5（post_process + .at）：180 → ~155（-25）
+- 优先级 6-7（known_fn_sigs + fn_ret_types）：155 → ~130（-25）
+- 优先级 8 + 级联消失：130 → ~100（-30）
+
+**理论极限 ~100 个错误**，主要是组装层差异和桥接 API 差异——这些需要手写组装层模板或桥接类型 API 表才能消除。
