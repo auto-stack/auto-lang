@@ -1,0 +1,32 @@
+/// c_http_get 测试驱动 — 需要 mock server 运行在 127.0.0.1:18080。
+use auto.c_http_get: fetch_body, fetch_status
+
+fn tap_ok(n int, name str) { print("ok " + n.to(str) + " - " + name) }
+fn tap_not_ok(n int, name str) { print("not ok " + n.to(str) + " - " + name) }
+
+fn check_str(n int, name str, actual str, expected str) {
+    if actual == expected { tap_ok(n, name) } else { tap_not_ok(n, name) }
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected { tap_ok(n, name) } else { tap_not_ok(n, name) }
+}
+
+fn main() {
+    var base = "http://127.0.0.1:18080"
+
+    // Test 1: GET / returns {"ok":true}
+    check_str(1, "test_get_root", fetch_body(base + "/"), "{\"ok\":true}")
+
+    // Test 2: GET / status is 200
+    check_int(2, "test_get_200", fetch_status(base + "/"), 200)
+
+    // Test 3: GET /file.txt returns text
+    check_str(3, "test_get_file", fetch_body(base + "/file.txt"), "hello wget")
+
+    // Test 4: GET /missing returns 404
+    check_int(4, "test_get_404", fetch_status(base + "/missing"), 404)
+
+    // Test 5: GET /page1 returns JSON
+    check_str(5, "test_get_page1", fetch_body(base + "/page1"), "{\"page\":1,\"links\":[\"/page2\"]}")
+}

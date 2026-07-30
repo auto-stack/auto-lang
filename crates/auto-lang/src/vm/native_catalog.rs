@@ -1083,6 +1083,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.post_stream_with_headers", 2255, Void),
             ("auto.http.post_sync", 2256, Void),
             ("auto.http.last_status", 2257, Void),
+            ("auto.http.get_sync", 2260, Void),
+            ("http.get_sync", 2261, Void),
             ("auto.http.post_bearer", 2258, Void),
             ("auto.http.listen", 2259, Void),
 
@@ -1798,6 +1800,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.post_stream_with_headers", 2255),
     ("auto.http.post_sync", 2256),
     ("auto.http.last_status", 2257),
+    ("auto.http.get_sync", 2260),
+    ("http.get_sync", 2261),
     ("auto.http.post_bearer", 2258),
     ("auto.http.listen", 2259),
     ("RequestBuilder.header", 2260),

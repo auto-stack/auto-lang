@@ -51,6 +51,35 @@ pub fn post_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     }
 }
 
+/// Synchronous HTTP GET.
+///
+/// Returns `(status_code, response_body)`.
+/// On connection or request failure, returns `(0, error_message)`.
+pub fn get_sync(url: &str) -> (u32, String) {
+    let result = ureq::get(url)
+        .set("Accept", "*/*")
+        .call();
+
+    match result {
+        Ok(response) => {
+            let status = response.status();
+            let body_text = response.into_string().unwrap_or_default();
+            set_last_status(status as u32);
+            (status as u32, body_text)
+        }
+        Err(ureq::Error::Status(code, response)) => {
+            let body_text = response.into_string().unwrap_or_default();
+            set_last_status(code as u32);
+            (code as u32, body_text)
+        }
+        Err(ureq::Error::Transport(e)) => {
+            let msg = format!("transport error: {}", e);
+            set_last_status(0);
+            (0, msg)
+        }
+    }
+}
+
 /// Synchronous HTTP POST with `Authorization: Bearer <api_key>` header (OpenAI-style auth).
 ///
 /// Sends JSON body with `Content-Type: application/json` and `Authorization: Bearer <api_key>`.

@@ -1,0 +1,16 @@
+/// c_http_get — HTTP GET 消费者应用。
+///
+/// 使用 http.get_sync 做 GET 请求，验证 body 和 status code。
+/// 与 Rust oracle（ureq）三方一致。
+use auto.http
+
+/// GET 请求，返回响应 body。
+fn fetch_body(url str) str {
+    return http.get_sync(url)
+}
+
+/// GET 请求，返回 HTTP 状态码。
+fn fetch_status(url str) int {
+    var body = http.get_sync(url)
+    return http.last_status()
+}

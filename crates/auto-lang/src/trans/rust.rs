@@ -3159,7 +3159,6 @@ impl RustTrans {
                             if i > 0 { write!(out, ", ")?; }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
-                                // Only add .as_str() if expr is not already &str
                                 let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
                                         self.local_var_types.get(name)
@@ -3174,8 +3173,24 @@ impl RustTrans {
                         write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
                         return Ok(());
                     }
+                    ("http", "get_sync") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "{{ let __resp = a2r_std::http::get_sync(")?;
+                        if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                            self.expr(expr, out)?;
+                            let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                || if let Expr::Ident(name) = expr {
+                                    self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty, Type::StrSlice))
+                                        .unwrap_or(false)
+                                } else { false };
+                            if !already_str { write!(out, ".as_str()")?; }
+                        }
+                        write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        return Ok(());
+                    }
                     ("http", "last_status") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status() as i32")?;
                         return Ok(());
                     }
                     ("http", "post_bearer") => {
