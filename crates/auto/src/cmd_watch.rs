@@ -42,6 +42,9 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     let output_dir = project_dir.join("gen").join("front").join("vue").join("src").join("components");
     let cache_path = project_dir.join(".auto").join("build").join("cache.json");
 
+    // Backend directory (optional)
+    let back_dir = find_back_dir(project_dir);
+
     // Load or init cache
     let mut cache = load_cache(&cache_path);
 
@@ -78,7 +81,23 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
         "▸".bright_cyan(),
         output_dir.display()
     );
-    println!("{} Vite HMR will reload on .vue changes\n", "▸".bright_cyan());
+    println!("{} Vite HMR will reload on .vue changes", "▸".bright_cyan());
+
+    // Backend info
+    if let Some(ref bd) = back_dir {
+        let back_count = collect_at_files(bd).unwrap_or_default().len();
+        println!(
+            "{} Backend: {} .at files in {}",
+            "▸".bright_cyan(),
+            back_count,
+            bd.display()
+        );
+        println!(
+            "{} Tip: run 'cargo watch -x run' in another terminal for auto-restart",
+            "💡".bright_yellow()
+        );
+    }
+    println!();
 
     // Channel for file events
     let (tx, rx) = mpsc::channel();
@@ -94,6 +113,13 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     watcher
         .watch(&front_dir, RecursiveMode::Recursive)
         .map_err(|e| format!("Failed to watch {}: {}", front_dir.display(), e))?;
+
+    // Also watch backend if present (Plan 362 Phase 4)
+    if let Some(ref bd) = back_dir {
+        watcher
+            .watch(bd, RecursiveMode::Recursive)
+            .map_err(|e| format!("Failed to watch {}: {}", bd.display(), e))?;
+    }
 
     // Debounce: collect events over 100ms, then process the batch
     let debounce = Duration::from_millis(100);
@@ -134,16 +160,22 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
 
                     // Process the batch
                     for (path, _kind) in pending.drain() {
-                        if let Err(e) = rebuild_single_file(&path, &output_dir, &mut cache) {
-                            eprintln!(
-                                "{} {}: {}",
-                                "✗".bright_red(),
-                                path.display(),
-                                e
-                            );
+                        let is_back = back_dir.as_ref()
+                            .map(|bd| path.starts_with(bd))
+                            .unwrap_or(false);
+
+                        if is_back {
+                            if let Err(e) = rebuild_backend_file(&path, &mut cache) {
+                                eprintln!("{} {}: {}", "✗".bright_red(), path.display(), e);
+                            } else {
+                                let _ = save_cache(&cache_path, &cache);
+                            }
                         } else {
-                            // Save cache after each successful rebuild
-                            let _ = save_cache(&cache_path, &cache);
+                            if let Err(e) = rebuild_single_file(&path, &output_dir, &mut cache) {
+                                eprintln!("{} {}: {}", "✗".bright_red(), path.display(), e);
+                            } else {
+                                let _ = save_cache(&cache_path, &cache);
+                            }
                         }
                     }
                 }
@@ -159,6 +191,21 @@ pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Find the backend directory from the project root.
+fn find_back_dir(root: &Path) -> Option<PathBuf> {
+    let candidates = [
+        root.join("src").join("back"),
+        root.join("source").join("back"),
+        root.join("back"),
+    ];
+    for c in &candidates {
+        if c.exists() && c.is_dir() {
+            return Some(c.clone());
+        }
+    }
+    None
 }
 
 /// Find the front-end directory from the project root.
@@ -324,6 +371,85 @@ fn save_cache(path: &Path, cache: &WatchCache) -> Result<(), String> {
     std::fs::write(path, json)
         .map_err(|e| format!("Failed to write cache: {}", e))?;
     Ok(())
+}
+
+/// Rebuild a single backend .at file: transpile to Rust via a2r.
+///
+/// Phase 4: Backend hot reload. Transpiles the changed .at to .rs and
+/// writes it to `gen/back/` so `cargo watch` picks up the change.
+fn rebuild_backend_file(at_path: &Path, cache: &mut WatchCache) -> Result<(), String> {
+    let path_key = at_path.to_string_lossy().to_string();
+    let rel_path = at_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown.at".to_string());
+
+    // Compute content hash for cache check
+    let content = std::fs::read_to_string(at_path)
+        .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
+    let content_hash = hash_string(&content);
+
+    if let Some(cached_hash) = cache.entries.get(&path_key) {
+        if *cached_hash == content_hash {
+            return Ok(()); // No change
+        }
+    }
+
+    let start = std::time::Instant::now();
+
+    // Transpile .at → Rust using a2r
+    let path_str = at_path.to_string_lossy().to_string();
+    let rust_code = auto_lang::trans_rust(&path_str)
+        .map_err(|e| format!("Failed to transpile {}: {}", at_path.display(), e))?;
+
+    // Write to gen/back/ matching the .at file structure
+    let workspace_root = find_workspace_root(at_path);
+    let output_dir = workspace_root.join("gen").join("back");
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Failed to create output dir: {}", e))?;
+
+    let out_path = output_dir.join(
+        at_path
+            .file_stem()
+            .map(|s| format!("{}.rs", s.to_string_lossy()))
+            .unwrap_or_else(|| "unknown.rs".to_string()),
+    );
+    std::fs::write(&out_path, &rust_code)
+        .map_err(|e| format!("Failed to write {}: {}", out_path.display(), e))?;
+
+    cache.entries.insert(path_key, content_hash);
+
+    let elapsed = start.elapsed();
+    println!(
+        "{} {} → {}.rs ({:.0}ms) — restart backend to apply",
+        "✓".bright_green(),
+        rel_path,
+        out_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+        elapsed.as_secs_f64() * 1000.0,
+    );
+
+    Ok(())
+}
+
+/// Find workspace root by walking up from a file path until we find pac.at.
+fn find_workspace_root(path: &Path) -> PathBuf {
+    let mut current = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        path.parent().unwrap_or(path).to_path_buf()
+    };
+    loop {
+        if current.join("pac.at").exists() {
+            return current;
+        }
+        if let Some(parent) = current.parent() {
+            current = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+    // Fallback: use the path's parent directory
+    path.parent().unwrap_or(path).to_path_buf()
 }
 
 /// Very simple parser for pac.at `app("front")` path declarations.
