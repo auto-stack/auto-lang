@@ -5227,11 +5227,11 @@ fn spawn_async_http(method: String, url: String, body: Option<String>, request_i
 }
 
 pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Plan 349 step 7: Non-blocking async HTTP.
-    // Check if we have a pending request (re-entry after yield).
+    // Plan 349 step 7: Non-blocking async HTTP. The engine retries this CALL_NAT
+    // after a yield (it rewinds IP, so the shim re-enters from the top). On
+    // re-entry the args were already popped on the first call, so we must
+    // check the pending request BEFORE popping — otherwise we eat the wrong
+    // values off the stack and underflow.
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(body) = check_async_http_result(req_id) {
             // Result ready — push and return.
@@ -5243,7 +5243,10 @@ pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
         return Ok(());
     }
 
-    // First call — spawn the request and yield.
+    // First call — pop the url, spawn the request and yield.
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
     let req_id = alloc_async_id();
     spawn_async_http("GET".into(), url, None, req_id);
     if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
@@ -5256,11 +5259,7 @@ pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
 /// `auto.http.post_json(url, body) -> String` — POST JSON, return body.
 pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+    // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(resp) = check_async_http_result(req_id) {
             task.waiting_http_request_id = None;
@@ -5269,6 +5268,11 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
+
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
     spawn_async_http("POST".into(), url, Some(body), req_id);
@@ -5282,11 +5286,7 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 
 /// `auto.http.put_json(url, body) -> String` — PUT JSON, return body.
 pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+    // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(resp) = check_async_http_result(req_id) {
             task.waiting_http_request_id = None;
@@ -5295,6 +5295,11 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
+
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
     spawn_async_http("PUT".into(), url, Some(body), req_id);
@@ -5308,9 +5313,7 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
 /// `auto.http.delete_json(url) -> String` — DELETE, return body.
 pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+    // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(resp) = check_async_http_result(req_id) {
             task.waiting_http_request_id = None;
@@ -5319,6 +5322,9 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
+
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
     spawn_async_http("DELETE".into(), url, None, req_id);
