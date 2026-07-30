@@ -4008,8 +4008,6 @@ impl Codegen {
     /// (stringified via str concatenation). Remaining args form the JSON body
     /// via `json.from_value`.
     fn emit_api_http_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
-        
-
         // Collect positional arg expressions in order.
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
 
@@ -4098,22 +4096,36 @@ impl Codegen {
         self.emit_call_nat_by_name("auto.json.to_value", 1)?;
 
         // 6. Set last_expr_type from the API fn's return type.
+        //
+        // The value pushed by `auto.json.to_value` is a SINGLE 1-slot NanoValue
+        // for ints/uints/bools/strings/objects (json_to_vm_value uses push_nv),
+        // and a 2-slot f64 pair for doubles. So we map by the ACTUAL stack
+        // layout, not the declared type: uint/U64/USize JSON integers land as
+        // encode_i32 (1 slot), so they must be ObjectType::Int here — using
+        // ObjectType::Uint would make Stmt::Expr / Stmt::Store emit POP_N(2)
+        // / two STORE_LOCs and corrupt the stack (only 1 slot was pushed).
+        // Double stays Double because json_to_vm_value pushes a 2-slot f64.
         self.last_expr_type = match &api.ret_type {
             crate::ast::Type::Array(_) | crate::ast::Type::List(_) => ObjectType::NestedObject,
             crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned
             | crate::ast::Type::CStrLit | crate::ast::Type::StrSlice => ObjectType::String,
             crate::ast::Type::Int | crate::ast::Type::I64 => ObjectType::Int,
-            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Uint,
+            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Int,
             crate::ast::Type::Bool => ObjectType::Bool,
             crate::ast::Type::Float => ObjectType::Float,
             crate::ast::Type::Double => ObjectType::Double,
             _ => ObjectType::NestedObject, // struct / Option / unknown
         };
 
-        // Discard if the result isn't needed (statement context).
-        if self.should_pop_expr_result {
-            self.emit(OpCode::POP);
-        }
+        // NOTE: do NOT emit a POP here. This function is invoked from
+        // `compile_expr` (Expr::Call branch), so the result must stay on the
+        // stack for the consumer — a Stmt::Store RHS reads it via STORE_LOC,
+        // and a bare statement-expr is popped by `Stmt::Expr` (compile_stmt,
+        // the `should_pop_expr_result` / `last_was_native_void` check). Emitting
+        // POP here too double-consumes the value: when this call is a store
+        // RHS the inherited `should_pop_expr_result` is often true (set for a
+        // sibling statement), so the POP would discard the return value and
+        // leave STORE_LOC reading garbage, corrupting the stack frame (bp).
         Ok(())
     }
 

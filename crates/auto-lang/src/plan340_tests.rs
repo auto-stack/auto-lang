@@ -247,6 +247,154 @@ widget App {
         );
     }
 
+    /// Regression: a `#[api]` fn returning a 1-slot scalar (uint/int) and
+    /// called as a bare statement must NOT emit POP_N(2). The HTTP rewrite
+    /// pushes a single NanoValue (from `auto.json.to_value`), but before the
+    /// fix `emit_api_http_call` set `last_expr_type = Uint` for uint-returning
+    /// APIs, which made `Stmt::Expr` emit `POP_N(2)` — popping 2 slots when
+    /// only 1 was pushed, corrupting the stack.
+    ///
+    /// We scan the synthesized module's bytecode for a POP_N opcode (0x02
+    /// followed by its count byte) and assert none appears.
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_api_http_call_scalar_return_uses_single_pop() {
+        use crate::compile::CompileSession;
+        use crate::use_scanner::scan_use_statements;
+        use crate::vm::opcode::OpCode;
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+#[api(method = "GET", path = "/api/count")]
+pub fn count_notes() uint {
+    return 42
+}
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []int {
+    return []
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        // Two call sites exercising the hazard:
+        //   - `count_notes()` as a bare statement (Stmt::Expr) returning uint
+        //   - `count_notes()` as a store RHS into an int var
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: count_notes, list_notes
+
+widget App {
+    msg Msg { Load }
+
+    model {
+        var n int = 0
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Load -> {
+            count_notes()
+            .n = count_notes()
+            list_notes()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        // collect imports
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
+            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts, &aliases, true,
+        )
+        .expect("synthesize split");
+
+        // Disassemble: find POP_N (0x02) opcodes and report their count byte.
+        let pop_n: Vec<(usize, u8)> = module
+            .code
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b == OpCode::POP_N as u8)
+            .map(|(i, _)| (i, *module.code.get(i + 1).unwrap_or(&0)))
+            .collect();
+        // For each POP_N, print a window of preceding raw bytes to locate the
+        // call site. (We deliberately avoid transmuting operand bytes to OpCode
+        // — only opcode positions are meaningful, and naive byte-walking hits
+        // operands that happen to be valid-but-wrong opcode values.)
+        for &(idx, cnt) in &pop_n {
+            let start = idx.saturating_sub(16);
+            let trace: Vec<String> = (start..=idx)
+                .map(|j| format!("[{}]=0x{:02x}", j, module.code.get(j).copied().unwrap_or(0)))
+                .collect();
+            eprintln!("plan340 POP_N@{} cnt={} bytes: {}", idx, cnt, trace.join(" "));
+        }
+        eprintln!(
+            "plan340 scalar-return: POP_N sites = {:?}, code len = {}",
+            pop_n, module.code.len()
+        );
+        // The hazard is POP_N with count >= 1: a single 1-slot NanoValue was
+        // pushed but 2+ slots would be popped, corrupting the stack. POP_N(0)
+        // is harmless (it's emitted as a no-op after some SET_FIELD sites).
+        // Before the Uint fix, the bare `count_notes()` statement emitted
+        // POP_N(2) because emit_api_http_call set last_expr_type=Uint.
+        let over_pops: Vec<(usize, u8)> = pop_n.iter().filter(|(_, c)| *c >= 1).copied().collect();
+        assert!(
+            over_pops.is_empty(),
+            "HTTP-rewritten #[api] calls push a single 1-slot NanoValue; \
+             POP_N(count>=1) must never be emitted for them (found {:?}, all sites {:?})",
+            over_pops, pop_n
+        );
+    }
+
     /// Local copy of collect_module_imports (private in lib.rs) for the test.
     fn collect_imports_test(
         module_path: &std::path::Path,
