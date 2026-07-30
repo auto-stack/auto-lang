@@ -388,7 +388,7 @@ ext PipelineEngine {
 
     /// Id of the current step (None if past the end).
     pub fn current_step_id() ?str {
-        if self.current_step < self.flow.steps.len() {
+        if self.current_step < self.flow.steps.len() as uint {
             return Some(self.flow.steps[self.current_step].id)
         }
         return None
@@ -408,7 +408,7 @@ ext PipelineEngine {
     fn running_context() ?RunningContext {
         is self.status {
             PipelineStatus.Running(sid, rid, started) -> {
-                let step = self.flow.steps[self.current_step]
+                let step = self.flow.steps[self.current_step].clone()
                 return Some(RunningContext(
                     step_id: sid,
                     role_id: rid,
@@ -486,7 +486,7 @@ ext PipelineEngine {
                 return self.advance()
             },
             NextStep.Complete -> {
-                self.current_step = self.flow.steps.len()
+                self.current_step = self.flow.steps.len() as uint
                 self.status = PipelineStatus.Completed
                 return AdvanceResult.Completed
             },
@@ -511,7 +511,7 @@ ext PipelineEngine {
         is exit {
             ExitRouting.Next -> {
                 let next = self.current_step + 1
-                if next >= self.flow.steps.len() {
+                if next >= self.flow.steps.len() as uint {
                     return NextStep.Complete
                 }
                 return NextStep.Index(next)
@@ -542,8 +542,8 @@ ext PipelineEngine {
 /// Apply handoff target auto-correction in place: silently fill an empty
 /// target, or record a feedback note + correct when the caller named a wrong
 /// target. (Split out of submit_handoff to keep that body shallow.)
-fn correct_handoff_target(eng PipelineEngine, h HandoffDocument, step_id str, exit ExitRouting) void {
-    let expected_role = expected_target_role(eng, exit)
+fn correct_handoff_target(mut eng PipelineEngine, mut h HandoffDocument, step_id str, exit ExitRouting) void {
+    let expected_role = expected_target_role(eng.clone(), exit.clone())
     is expected_role {
         Some(expected) -> {
             let cur = h.target
@@ -585,10 +585,12 @@ fn log_budget_advisory(action BudgetAction) void {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
+use.rust std::time
+
 fn now_secs() uint {
-    let now = time.SystemTime.now()
-    let dur = now.duration_since(time.UNIX_EPOCH)
-    return dur.as_secs()
+    let now = std.time.SystemTime.now()
+    let dur = now.duration_since(std.time.UNIX_EPOCH)
+    return dur.as_secs() as uint
 }
 
 /// a - b, clamped at 0 (mirrors u64::saturating_sub).
