@@ -101,14 +101,16 @@ SCU001 四个 IAR 文件中，`.eww/.ewt/.ewd` 已与 auto-man 0.1.3 基线**字
 `.ewp` 的 group 集合 / 文件集合 / include 集合 / define 集合也全部一致，
 仅剩 group/文件的**排列顺序**不同。本轮定位并修复了其中最关键的根因。
 
-### 已修复：`get_kids` plural 展开逆序（commit 待提交）
+### 已修复：`get_kids` plural 展开逆序 + `Array` 消费迭代根因（commit 待提交）
 
 `links: ["a","b","c"]` 这类**复数 prop** 会被 `Node::get_kids("link")` 惰性展开
 为一组名为 `link` 的子节点（[crates/auto-val/src/node.rs](../crates/auto-val/src/node.rs)
 的 `get_kids`，plural 分支）。app target 的直接依赖顺序、进而整个 `.ewp` group
 树的顶层顺序都来自这条路径。
 
-**根因**：`crates/auto-val/src/array.rs` 里 `impl Iterator for Array` 的实现是
+**直接根因**：`get_kids` 的 plural 分支写成 `for kid in simple_kids`（消费
+`Array`）。而 `crates/auto-val/src/array.rs` 里 `impl Iterator for Array` 的
+实现是
 
 ```rust
 fn next(&mut self) -> Option<Self::Item> {
@@ -116,29 +118,41 @@ fn next(&mut self) -> Option<Self::Item> {
 }
 ```
 
-而 `get_kids` 的 plural 分支写成 `for kid in simple_kids`（消费 `Array`），
-走的就是这个 `Iterator`——于是元素被**逆序**追加到结果。诊断证据：
+Rust 的 blanket `impl<I: Iterator> IntoIterator for I` 让 `for x in arr` 复用了
+这个 `pop`-based `next`——于是元素被**逆序**追加。诊断证据：
 
 - 原始 prop `links` 数组顺序正确：`[device, osal, xmen, kernel, log, common, EB, lseconfig]`
 - `get_kids("link")` 返回却是逆序：`[lseconfig, EB, common, log, kernel, xmen, osal, device]`
 - 顶层 group 树因此与基线相反。
 
-**修复**：plural 分支改为按引用迭代 `for kid in simple_kids.iter()`（走
-[array.rs](../crates/auto-val/src/array.rs) 的 `iter()`，正序、非破坏），
-并加单元测试 `test_get_kids_plural_preserves_order` 锁定声明顺序。
-修复后顶层 group 顺序对齐基线（`Bsp` 回到最前），group/file/inc 三个集合全部一致。
+**深层根因 + 根治**：`pop` 本身没错（它是栈操作，LIFO + 掏空是栈的正确语义），
+错的是把"栈操作"伪装成"遍历操作"——`impl Iterator for Array { next = pop }`
+让 `for x in arr` 这个本该正序遍历的语法糖，落到了逆序破坏性的栈弹出上。
 
-### 已知隐患（未修，记录在此）：`Array` 的破坏性 `Iterator`
+按"三套接口各司其职"的原则重构 [array.rs](../crates/auto-val/src/array.rs)：
 
-`impl Iterator for Array { fn next → Vec::pop }` 本身是个反模式陷阱：
+| 用途 | 接口 | 语义 |
+|---|---|---|
+| 栈操作 | `Array::push` / `Array::pop` | LIFO，破坏性（保留） |
+| 借用遍历 | `Array::iter` / `Array::iter_mut` | 正序，非破坏（保留） |
+| 消费遍历 `for x in arr` | `impl IntoIterator for Array` | **正序** drain（新增） |
 
-1. **逆序**：`next()` 从尾部弹，违反 `Iterator` 的"从头到尾"直觉。
-2. **破坏性**：迭代会掏空数组（`for x in arr` 之后 `arr` 为空）。
-3. 任何 `for x in <Array 变量>`（消费，非 `.iter()`）的写法都会踩中。
+具体改动：**移除** `impl Iterator for Array { next = pop }`，**新增**
+`impl IntoIterator for Array { into_iter → Vec::into_iter }`（正序 move 出每个元素）。
+之所以必须移除 `impl Iterator`：core 的 blanket impl 会与手写的 `IntoIterator`
+冲突（`E0119 conflicting implementations`），只要 `Array: Iterator` 存在就无法
+给 `for x in arr` 换一个正序的 `IntoIterator`。移除后全 workspace 编译通过，
+证明没有任何代码把 `Array` 当 `Iterator` trait 对象用——所有消费都是
+`for x in arr`，现在统一走正序。
 
-本计划只修了 `get_kids` 一处（SCU001 可观测的 group 顺序）。全量排查/根治
-（改 `Array::next` 为正序 drain，或移除 `impl Iterator` 改用 `IntoIterator`）
-影响面广，需单独评估所有消费点——**不在本计划范围内**，留作后续。
+同时 `get_kids` 的 plural 分支改为 `for kid in simple_kids.iter()`（更显式的
+正序借用迭代，即使消费语义已修也保留），并加单元测试
+`test_get_kids_plural_preserves_order` 锁定声明顺序。
+
+修复后 SCU001 顶层 group 顺序对齐基线（`Bsp` 回到最前），group/file/inc 三个
+集合全部一致；全 workspace 编译通过，auto-val（164）/auto-man（176）测试全绿，
+auto-lang 的失败均为基线既有（`StringBuilder.push` FFI 缺失、router keyword、
+python doctest），与本改动无关。
 
 ### 不修：device 子 group 内部顺序
 

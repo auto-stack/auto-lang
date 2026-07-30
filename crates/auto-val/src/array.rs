@@ -26,11 +26,29 @@ impl IndexMut<usize> for Array {
     }
 }
 
-impl Iterator for Array {
+/// Consuming iteration (`for x in arr`) drains the array in **declaration
+/// order** (front to back), moving each element out.
+///
+/// Design note — three distinct access patterns, three distinct interfaces:
+///   * **Stack**: [`Array::push`] / [`Array::pop`] — LIFO, destructive.
+///   * **Borrowing iteration**: [`Array::iter`] / [`Array::iter_mut`] —
+///     in order, non-destructive.
+///   * **Consuming iteration** (`for x in arr`, this impl) — in order,
+///     drains (moves out).
+///
+/// Previously `Array` also implemented `Iterator` directly with
+/// `next = Vec::pop`. The blanket `impl<I: Iterator> IntoIterator for I` then
+/// routed `for x in arr` through that `pop`, which **reversed** the visit order
+/// and silently drained the array. That conflated stack semantics with
+/// iteration semantics; the dedicated `IntoIterator` below fixes `for x in arr`
+/// to mean "visit in order". Code that genuinely needs LIFO popping should call
+/// [`Array::pop`] in a loop explicitly.
+impl IntoIterator for Array {
     type Item = Value;
+    type IntoIter = std::vec::IntoIter<Value>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.values.pop()
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
     }
 }
 
