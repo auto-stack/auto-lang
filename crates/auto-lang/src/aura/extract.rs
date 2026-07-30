@@ -936,6 +936,18 @@ fn expand_fragment_node(
 fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
     use crate::ast::Expr;
     match expr {
+        // Bare ident parameter reference. View fn bodies use params as bare
+        // idents (e.g. `if active`, or the `note` in `note.title`), not just as
+        // `.param`/`self.param`. The parser binds view fn params into scope
+        // precisely so these bare ident uses parse (see parser.rs view fn).
+        // So in addition to the Dot forms below, substitute any bare ident that
+        // names a formal parameter.
+        Expr::Ident(name) => {
+            if let Some(replacement) = subs.get(name.as_str()) {
+                return replacement.clone();
+            }
+            expr.clone()
+        }
         // .param_name → substitution
         Expr::Dot(obj, field) if matches!(obj.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self") => {
             if let Some(replacement) = subs.get(field.as_str()) {
@@ -969,6 +981,18 @@ fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
             let mut new_c = c.clone();
             new_c.body = Box::new(substitute_expr(&c.body, subs));
             Expr::Closure(new_c)
+        }
+        // `if` expressions used as prop values, e.g. `style: if active {..} else {..}`.
+        // Substitute parameter refs in each branch's condition (where a bare
+        // param like `active` lives). Branch/else bodies are string-literal
+        // style payloads in this context and don't reference params, so we
+        // leave them untouched (avoiding a stmt-level substitution recursion).
+        Expr::If(if_expr) => {
+            let mut new_if = if_expr.clone();
+            for branch in &mut new_if.branches {
+                branch.cond = substitute_expr(&branch.cond, subs);
+            }
+            Expr::If(new_if)
         }
         _ => expr.clone(),
     }

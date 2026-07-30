@@ -2717,6 +2717,18 @@ fn compile_at_to_vue(_at_path: &Path, content: &str, root_dir: &Path) -> Result<
         }
     }
 
+    // Plan 367 P2-3: register view fn fragments BEFORE extracting widgets, so
+    // that fragment calls (e.g. `NoteItem(...)`) inline-expand instead of being
+    // treated as external sub-components. Mirrors lib.rs::ui_build_shadcn_with_widgets.
+    // Without this, the fragment isn't in the VIEW_FRAGMENTS table and the call
+    // falls back to a sub-component import that doesn't match (wrong props).
+    auto_lang::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            auto_lang::aura::extract::register_view_fragment(frag);
+        }
+    }
+
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -2790,6 +2802,16 @@ fn compile_at_to_vue_with_sub_widgets(_at_path: &Path, content: &str, sub_widget
                     cell.borrow_mut().push((filename, composable));
                 });
             }
+        }
+    }
+
+    // Plan 367 P2-3: register view fn fragments BEFORE extracting widgets, so
+    // that fragment calls (e.g. `NoteItem(...)`) inline-expand instead of being
+    // treated as external sub-components. Mirrors lib.rs::ui_build_shadcn_with_widgets.
+    auto_lang::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            auto_lang::aura::extract::register_view_fragment(frag);
         }
     }
 
