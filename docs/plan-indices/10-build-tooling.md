@@ -27,9 +27,10 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 225 | Playground Interactive Debugger | ✅ | Browser-based VM debugger with breakpoints, step controls, stack/locals panels via WebSocket |
 | 243 | LSP & VSCode Modernization | 🔧 | Rewrite auto-lsp over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
 | 267 | FFI Complex Patterns | ✅ | WalkDir iterator, same_file real impl, TarGzip/tar+flate2 composition shims |
+| 362 | Fast Feedback — auto watch + Cache + Snapshots | ✅ | notify-based incremental SFC regeneration (<1s), content-hash cache, insta snapshot tests, backend transpile-on-change |
 
 ## Status Summary
-- Completed: 7 | Partial: 1 | Planned: 7 | Deprecated: 0
+- Completed: 8 | Partial: 1 | Planned: 7 | Deprecated: 0
 
 ## Key Achievements
 - AIE incremental compilation architecture delivered with file hashing, dirty tracking, and transpiler caching achieving 2-3x speedups
