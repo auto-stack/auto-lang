@@ -10452,6 +10452,7 @@ impl<'a> Parser<'a> {
         let mut routes = None;
         let mut style = None;
         let mut ext_imports = Vec::new();
+        let mut watch = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10488,9 +10489,12 @@ impl<'a> Parser<'a> {
                 "use" => {
                     ext_imports.extend(self.parse_widget_use_block_inner()?);
                 }
+                "watch" => {
+                    watch.extend(self.parse_watch_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', or 'routes' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -10512,6 +10516,7 @@ impl<'a> Parser<'a> {
             lifecycle: vec![],
             style,
             ext_imports,
+            watch,
         }))
     }
 
@@ -10602,6 +10607,131 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
         Ok(imports)
+    }
+
+    /// Parse a widget-level watch block (Vue backend reactive watchers):
+    ///
+    /// ```auto
+    /// widget SlashMenu {
+    ///     watch {
+    ///         .filtered_items -> { .selected_index = 0 }
+    ///         .ratio, .viewport_h.immediate -> { ... }
+    ///         .items.deep -> { ... }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Each entry lists one or more comma-separated sources (`.field` — a
+    /// model field, prop, or computed), optional `.immediate` / `.deep`
+    /// modifiers after the source list, `->`, then a handler body parsed
+    /// with the same conventions as `on` handlers.
+    fn parse_watch_block_inner(&mut self) -> AutoResult<Vec<WatchDecl>> {
+        self.expect_ident("watch")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut watchers = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Sources: .field (, .field)*
+            let mut sources = Vec::new();
+            loop {
+                if !self.is_kind(TokenKind::Dot) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected '.field' watch source in watch block, got '{}'",
+                            self.cur.text
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                self.next(); // consume the dot
+                let name = self.cur.text.clone();
+                self.next();
+                sources.push(name);
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+
+            // Optional modifiers: .immediate / .deep (after the source list)
+            let mut immediate = false;
+            let mut deep = false;
+            while self.is_kind(TokenKind::Dot) {
+                // Peek at the identifier after the dot.
+                let modifier = if let Ok(tok) = self.lexer.next() {
+                    let text = tok.text.to_string();
+                    self.lexer.push_token(tok);
+                    text
+                } else {
+                    String::new()
+                };
+                match modifier.as_str() {
+                    "immediate" => {
+                        self.next(); // dot
+                        self.next(); // immediate
+                        immediate = true;
+                    }
+                    "deep" => {
+                        self.next(); // dot
+                        self.next(); // deep
+                        deep = true;
+                    }
+                    other => {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Unknown watch modifier '.{}' (expected .immediate or .deep)",
+                                other
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+            }
+
+            // Expect -> (might be Arrow, or Asn followed by Gt)
+            if self.is_kind(TokenKind::Arrow) {
+                self.next();
+            } else if self.is_kind(TokenKind::Asn) {
+                self.next();
+                self.expect(TokenKind::Gt)?;
+            } else if self.is_kind(TokenKind::Gt) {
+                self.next();
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected '->' after watch sources, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+
+            // Parse body with on-handler conventions (`.field` = state access)
+            self.in_on_body = true;
+            let body = self.body()?;
+            self.in_on_body = false;
+
+            watchers.push(WatchDecl {
+                sources,
+                immediate,
+                deep,
+                body,
+            });
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(watchers)
     }
 
     /// Parse a widget-level native CSS block: `style { ...raw CSS... }`.
@@ -11513,8 +11643,23 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Dynamic component: dyn (expr) { props } — the parenthesized
+        // expression is the component value (a loop-iterator field like
+        // .item.icon, a model field, or a computed), emitted by the Vue
+        // backend as <component :is="expr">. Additional props/class/events
+        // go in the braces (or as an `is:` prop without parentheses).
+        if tag == "dyn" && self.is_kind(TokenKind::LParen) {
+            self.next();
+            self.skip_empty_lines();
+            let is_expr = self.parse_expr()?;
+            self.skip_empty_lines();
+            self.expect(TokenKind::RParen)?;
+            props.push(ViewProp {
+                name: "is".to_string(),
+                value: ViewPropValue::Expr(is_expr),
+            });
         // Parse props/events in parentheses: tag (props) { children }
-        if self.is_kind(TokenKind::LParen) {
+        } else if self.is_kind(TokenKind::LParen) {
             self.next();
             self.skip_empty_lines();
 
@@ -11527,6 +11672,18 @@ impl<'a> Parser<'a> {
                 let key = self.cur.text.to_string();
                 self.next();
 
+                // Custom event with a quoted name (allows ':'/'-' in the event
+                // name, which an identifier key cannot hold):
+                //   on "autodown:slash-open".document: .OnOpen($event)
+                // Internally the name is kept quoted: on"autodown:slash-open".
+                let key = if key == "on" && self.is_kind(TokenKind::Str) {
+                    let custom = self.cur.text.to_string();
+                    self.next();
+                    format!("on\"{}\"", custom)
+                } else {
+                    key
+                };
+
                 // Check if it's an event (onclick, etc.)
                 if key.starts_with("on") {
                     let key = self.parse_event_modifiers(key)?;
@@ -11538,7 +11695,8 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::Colon)?;
 
                     // Check for style binding: style: { completed: todo.done }
-                    if key == "style" && self.is_kind(TokenKind::LBrace) {
+                    // style_obj: { top: expr } is the inline-style (:style) form.
+                    if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
@@ -11603,7 +11761,12 @@ impl<'a> Parser<'a> {
 
                 // Check if this looks like a prop: identifier followed by colon
                 // e.g., "class:" or "onclick:"
-                let is_prop_like = if self.is_kind(TokenKind::Ident) {
+                // "is" is a keyword token but a legitimate prop key
+                // (Vue's <component is="..."> / dyn { is: ... }).
+                let is_prop_like = if self.is_kind(TokenKind::Ident)
+                    || (self.is_kind(TokenKind::On) && self.cur.text == "on")
+                    || self.cur.text == "is"
+                {
                     // Peek at next token to see if it's a colon
                     if let Ok(next_token) = self.lexer.next() {
                         let is_colon = next_token.kind == TokenKind::Colon;
@@ -11612,8 +11775,12 @@ impl<'a> Parser<'a> {
                         let is_event_modifier = !is_colon
                             && next_token.kind == TokenKind::Dot
                             && self.cur.text.starts_with("on");
+                        // Quoted custom event: `on "autodown:slash-open":` —
+                        // `on` followed by a string literal.
+                        let is_quoted_event = self.cur.text == "on"
+                            && next_token.kind == TokenKind::Str;
                         self.lexer.push_token(next_token);
-                        is_colon || is_event_modifier
+                        is_colon || is_event_modifier || is_quoted_event
                     } else {
                         false
                     }
@@ -11625,6 +11792,16 @@ impl<'a> Parser<'a> {
                     // Parse as prop/event
                     let key = self.cur.text.to_string();
                     self.next();
+                    // Quoted custom event name: on "autodown:slash-open" —
+                    // keep the quotes in the internal key (on"name") so the
+                    // generators can tell it apart from identifier events.
+                    let key = if key == "on" && self.is_kind(TokenKind::Str) {
+                        let custom = self.cur.text.to_string();
+                        self.next();
+                        format!("on\"{}\"", custom)
+                    } else {
+                        key
+                    };
                     // Event modifiers (onwheel.prevent, onmousemove.window) are
                     // dot-suffixed and must be consumed before the colon.
                     let key = if key.starts_with("on") {
@@ -11638,7 +11815,7 @@ impl<'a> Parser<'a> {
                     if key.starts_with("on") {
                         let (handler, params) = self.parse_event_handler()?;
                         events.push(ViewEvent { name: key, handler, params });
-                    } else if key == "style" && self.is_kind(TokenKind::LBrace) {
+                    } else if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
@@ -12707,6 +12884,198 @@ mod tests {
         assert_eq!(col_events[0].name, "onwheel.document.capture");
         assert_eq!(col_events[0].handler, ".Lock");
         assert_eq!(col_events[0].params, vec!["$event.key".to_string()]);
+    }
+
+    #[test]
+    fn test_view_quoted_custom_event_names() {
+        // Custom event names containing ':'/'-' (CustomEvent dispatched by
+        // hand-written TS): on "autodown:slash-open".document — in both paren
+        // and brace prop styles. Internally the name keeps its quotes:
+        // on"autodown:slash-open".document.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var x int = 0 }\n",
+            "  view {\n",
+            "    col {\n",
+            "      input (on \"autodown:slash-open\".document: .Open($event))\n",
+            "      col { on \"autodown:slash-close\".document.capture: .Close($event.detail) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let children = match root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let input_events = match &children[0] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected input element, got {:?}", other),
+        };
+        assert_eq!(input_events[0].name, "on\"autodown:slash-open\".document");
+        assert_eq!(input_events[0].handler, ".Open");
+        assert_eq!(input_events[0].params, vec!["$event".to_string()]);
+        let col_events = match &children[1] {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected col element, got {:?}", other),
+        };
+        assert_eq!(col_events[0].name, "on\"autodown:slash-close\".document.capture");
+        assert_eq!(col_events[0].handler, ".Close");
+        assert_eq!(col_events[0].params, vec!["$event.detail".to_string()]);
+    }
+
+    #[test]
+    fn test_view_style_obj_binding() {
+        // style_obj: { css_prop: expr } parses to a StyleBinding prop named
+        // "style_obj" (inline-style form), distinct from style: (class map).
+        let code = concat!(
+            "widget App {\n",
+            "  model { var y int = 0 }\n",
+            "  view {\n",
+            "    col {\n",
+            "      style_obj: { top: f\"${.y}px\", \"z-index\": 50 }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let props = match root {
+            ViewNode::Element { props, .. } => props,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let style_obj = props.iter().find(|p| p.name == "style_obj").expect("style_obj prop");
+        match &style_obj.value {
+            ViewPropValue::StyleBinding(entries) => {
+                assert_eq!(entries.len(), 2);
+                assert_eq!(entries[0].style_name, "top");
+                assert_eq!(entries[1].style_name, "z-index");
+            }
+            other => panic!("expected StyleBinding, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_view_dyn_component_parens() {
+        // dyn (expr) { props } — the parenthesized expression becomes the
+        // "is" prop; brace props/class parse like any other element.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var items list = [] }\n",
+            "  view {\n",
+            "    col {\n",
+            "      for item in .items {\n",
+            "        dyn (.item.icon) { size: 16, class: \"w-4 h-4\" }\n",
+            "      }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let children = match root {
+            ViewNode::Element { children, .. } => children,
+            other => panic!("expected element root, got {:?}", other),
+        };
+        let body = match &children[0] {
+            ViewNode::ForLoop { body, .. } => body,
+            other => panic!("expected for loop, got {:?}", other),
+        };
+        let (tag, props) = match &body[0] {
+            ViewNode::Element { tag, props, .. } => (tag, props),
+            other => panic!("expected dyn element, got {:?}", other),
+        };
+        assert_eq!(tag, "dyn");
+        let is_prop = props.iter().find(|p| p.name == "is").expect("is prop");
+        match &is_prop.value {
+            ViewPropValue::Expr(Expr::Dot(obj, field)) => {
+                assert_eq!(field.as_str(), "icon");
+                // .item.icon → Dot(Dot(self, item), icon)
+                match obj.as_ref() {
+                    Expr::Dot(inner, item) => {
+                        assert_eq!(item.as_str(), "item");
+                        assert!(matches!(inner.as_ref(), Expr::Ident(n) if n.as_str() == "self"));
+                    }
+                    other => panic!("expected Dot(self, item), got {:?}", other),
+                }
+            }
+            other => panic!("expected Dot expr for is, got {:?}", other),
+        }
+        assert!(props.iter().any(|p| p.name == "size"));
+        assert!(props.iter().any(|p| p.name == "class"));
+    }
+
+    #[test]
+    fn test_widget_watch_block() {
+        // watch { .a -> {...}  .b, .c.immediate -> {...}  .d.deep -> {...} }
+        let code = concat!(
+            "widget App {\n",
+            "  model {\n",
+            "    var q str = \"\"\n",
+            "    var sel int = 0\n",
+            "  }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  watch {\n",
+            "    .q -> { .sel = 0 }\n",
+            "    .q, .sel.immediate -> { .sel = 1 }\n",
+            "    .q.deep -> { .sel = 2 }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        assert_eq!(widget.watch.len(), 3);
+        assert_eq!(widget.watch[0].sources.len(), 1);
+        assert_eq!(widget.watch[0].sources[0].as_str(), "q");
+        assert!(!widget.watch[0].immediate);
+        assert!(!widget.watch[0].deep);
+        assert!(!widget.watch[0].body.stmts.is_empty());
+        assert_eq!(widget.watch[1].sources.len(), 2);
+        assert_eq!(widget.watch[1].sources[0].as_str(), "q");
+        assert_eq!(widget.watch[1].sources[1].as_str(), "sel");
+        assert!(widget.watch[1].immediate);
+        assert!(!widget.watch[1].deep);
+        assert!(widget.watch[2].deep);
     }
 
     #[test]

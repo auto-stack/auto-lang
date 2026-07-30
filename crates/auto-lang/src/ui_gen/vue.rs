@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
-use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -1628,6 +1628,10 @@ impl VueGenerator {
                 imports.push("onUnmounted");
             }
         }
+        // Widget-level `watch { ... }` block → Vue watch() calls
+        if !widget.watchers.is_empty() && !imports.contains(&"watch") {
+            imports.push("watch");
+        }
         // Global (window/document-level) listeners are registered in onMounted
         // and removed in onUnmounted.
         if !self.global_listeners.is_empty() {
@@ -1932,6 +1936,42 @@ impl VueGenerator {
             let first = &self.store_deps[0];
             script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
             script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
+        }
+
+        // Widget-level `watch { ... }` block → Vue watch() calls.
+        // Emitted after state/computed/defineProps so the watched refs are
+        // already initialized (watch() runs immediately at setup time).
+        // Source resolution: model fields and computed are refs (watched
+        // directly); props need a getter (`() => props.x`).
+        for watcher in &widget.watchers {
+            let body = self.generate_handler_body(&watcher.payload)?;
+            let sources: Vec<String> = watcher.sources.iter().map(|s| {
+                if self.prop_names.contains(s) {
+                    format!("() => props.{}", s)
+                } else {
+                    s.clone()
+                }
+            }).collect();
+            let source = if sources.len() == 1 {
+                sources[0].clone()
+            } else {
+                format!("[{}]", sources.join(", "))
+            };
+            let opts = match (watcher.immediate, watcher.deep) {
+                (false, false) => String::new(),
+                (immediate, deep) => {
+                    let mut parts = Vec::new();
+                    if immediate {
+                        parts.push("immediate: true");
+                    }
+                    if deep {
+                        parts.push("deep: true");
+                    }
+                    format!(", {{ {} }}", parts.join(", "))
+                }
+            };
+            let indented = Self::indent_body(&body, "  ");
+            script.push_str(&format!("watch({}, () => {{\n{}\n}}{})\n\n", source, indented, opts));
         }
 
         // Generate event handlers
@@ -2422,6 +2462,101 @@ impl VueGenerator {
         style
     }
 
+    /// Dynamic component: `dyn (.item.icon) { size: 16, class: "..." }` →
+    /// `<component :is="item.icon" :size="16" class="..." />`.
+    ///
+    /// The `is` value is an arbitrary bound expression — a for-loop iterator
+    /// field (`item.icon`), a model field, or a computed. Additional props
+    /// are passed through as `:prop` bindings; `class` / `style_obj` and
+    /// event listeners behave like on plain elements.
+    fn generate_dyn_component_html(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        events: &std::collections::HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let mut attrs: Vec<String> = Vec::new();
+
+        // :is binding (required). The value may be `any` (e.g. a component
+        // constructor carried in list data), so cast for vue-tsc strict mode.
+        if let Some(is_value) = props.get("is") {
+            if let AuraPropValue::Expr(expr) = is_value {
+                let is_str = self.expr_to_vue_bound_value(expr)?;
+                attrs.push(format!(":is=\"({}) as any\"", is_str));
+            }
+        }
+
+        // Class attribute (both static and dynamic)
+        let (static_classes, dynamic_classes) = self.extract_classes("dyn", props);
+        if !static_classes.is_empty() {
+            attrs.push(format!("class=\"{}\"", static_classes));
+        }
+        if let Some(dynamic) = dynamic_classes {
+            attrs.push(format!(":class=\"{}\"", dynamic));
+        }
+
+        // Remaining props as v-bind attributes
+        for (key, value) in props {
+            if key == "is" || key == "class" || key == "style" {
+                continue;
+            }
+            // Inline style object: style_obj: { top: expr } → :style="{...}"
+            if key == "style_obj" {
+                if let AuraPropValue::StyleBinding(bindings) = value {
+                    attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                }
+                continue;
+            }
+            match value {
+                AuraPropValue::Expr(expr) => {
+                    let value_str = self.expr_to_vue_bound_value(expr)?;
+                    attrs.push(format!(":{}=\"{}\"", key, value_str));
+                }
+                AuraPropValue::StyleBinding(_) => {}
+            }
+        }
+
+        // Event listeners (same conventions as plain elements)
+        for (event, aura_event) in events {
+            // .window/.document modifiers → global listener, no template attr
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
+            let vue_event = self.auto_event_to_vue(event);
+            let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let handler_name = self.handler_to_function_call(&aura_event.handler);
+            // Inside a for-loop, pass the loop variable when the handler
+            // doesn't already have explicit params.
+            if let Some(ref loop_var) = self.current_loop_var {
+                if aura_event.params.is_empty() {
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                }
+            }
+            self.used_handlers.insert(handler_name);
+            attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+        }
+
+        let attr_str = if attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", attrs.join(" "))
+        };
+
+        if children.is_empty() {
+            Ok(format!("{}<component{} />\n", ind, attr_str))
+        } else {
+            let mut html = format!("{}<component{}>\n", ind, attr_str);
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+            html.push_str(&format!("{}</component>\n", ind));
+            Ok(html)
+        }
+    }
+
     /// Convert AuraNode to HTML string
     fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
@@ -2463,6 +2598,13 @@ impl VueGenerator {
                         html.push_str(&format!("{}</{}>\n", ind, lucide_component));
                         return Ok(html);
                     }
+                }
+
+                // Special handling for dyn element — dynamic component:
+                // dyn (.item.icon) { size: 16, class: "..." } →
+                // <component :is="item.icon" :size="16" class="..." />
+                if tag == "dyn" {
+                    return self.generate_dyn_component_html(props, events, children, indent);
                 }
 
                 // Special handling for category-section element
@@ -2513,6 +2655,13 @@ impl VueGenerator {
                     let mut first_prop_expr: Option<String> = None;
                     // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
                     for (key, value) in props {
+                        // Inline style object on a component: style_obj → :style="{...}"
+                        if key == "style_obj" {
+                            if let AuraPropValue::StyleBinding(bindings) = value {
+                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                            }
+                            continue;
+                        }
                         let value_str = match value {
                             AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
                             AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
@@ -2673,6 +2822,14 @@ impl VueGenerator {
                     for (key, value) in props {
                         if key == "class" || key == "style" {
                             continue; // Already handled in extract_classes
+                        }
+                        // Inline style object: style_obj: { top: f"${.y}px", "z-index": 50 }
+                        // → :style="{ top: `${y}px`, 'z-index': 50 }"
+                        if key == "style_obj" {
+                            if let AuraPropValue::StyleBinding(bindings) = value {
+                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                            }
+                            continue;
                         }
                         // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
                         // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
@@ -2943,7 +3100,14 @@ impl VueGenerator {
                             let child_html = self.node_to_html(&body[0], indent)?;
                             if let Some(gt_pos) = child_html.find('>') {
                                 let mut result = child_html;
-                                result.insert_str(gt_pos, &format!(" {}", v_for));
+                                // Self-closing tag (<Foo />): insert before the
+                                // '/', not between '/' and '>'.
+                                let insert_pos = if gt_pos > 0 && result.as_bytes()[gt_pos - 1] == b'/' {
+                                    gt_pos - 1
+                                } else {
+                                    gt_pos
+                                };
+                                result.insert_str(insert_pos, &format!(" {}", v_for));
                                 Some(Ok(result))
                             } else {
                                 None
@@ -3898,6 +4062,35 @@ impl VueGenerator {
         }
     }
 
+    /// Render a key for a JS object literal: bare when it is a valid JS
+    /// identifier, single-quoted otherwise (CSS props like `z-index`, class
+    /// names like `line-through`).
+    fn js_obj_key(name: &str) -> String {
+        let valid = !name.is_empty()
+            && name.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_' || c == '$').unwrap_or(false)
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        if valid {
+            name.to_string()
+        } else {
+            format!("'{}'", name.replace('\\', "\\\\").replace('\'', "\\'"))
+        }
+    }
+
+    /// Render a `style_obj: { ... }` map as a Vue `:style` object binding.
+    /// Values are arbitrary expressions (state refs, f-string px concat, …).
+    /// The `as any` cast keeps loosely-typed values (e.g. a plain `string`
+    /// state var for `visibility`, whose CSS type is a literal union)
+    /// assignable to Vue's `StyleValue`.
+    fn style_obj_to_vue(&self, bindings: &[AuraStyleBinding]) -> String {
+        let parts: Vec<String> = bindings.iter()
+            .map(|b| {
+                let v = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "null".to_string());
+                format!("{}: {}", Self::js_obj_key(&b.style_name), v)
+            })
+            .collect();
+        format!("({{ {} }} as any)", parts.join(", "))
+    }
+
     /// Extract Tailwind classes from tag and props
     /// Returns (static_classes, dynamic_class_binding)
     fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>) {
@@ -4049,7 +4242,9 @@ impl VueGenerator {
                     let binding_strs: Vec<String> = bindings.iter()
                         .map(|b| {
                             let cond = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "false".to_string());
-                            format!("{}: {}", b.style_name, cond)
+                            // Class names may contain '-' (e.g. "line-through")
+                            // — quote keys that aren't valid JS identifiers.
+                            format!("{}: {}", Self::js_obj_key(&b.style_name), cond)
                         })
                         .collect();
                     dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
@@ -4792,6 +4987,27 @@ impl VueGenerator {
                     _ => Ok(format!("!{}", expr_str)),
                 }
             }
+            Expr::FStr(fstr) => {
+                // f-string in a bound position → JS template literal:
+                // f"${.top}px" → `${top}px` (needed e.g. for style_obj values).
+                let mut out = String::from("`");
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => {
+                            out.push_str(&s
+                                .replace("\\", "\\\\")
+                                .replace("`", "\\`")
+                                .replace("${", "\\${"));
+                        }
+                        other => {
+                            let v = self.expr_to_vue_bound_value(other)?;
+                            out.push_str(&format!("${{{}}}", v));
+                        }
+                    }
+                }
+                out.push('`');
+                Ok(out)
+            }
             _ => Ok("null".to_string()),
         }
     }
@@ -4983,6 +5199,13 @@ impl VueGenerator {
                 }
                 attrs.push(format!("ref=\"{}\"", ref_name));
             }
+        }
+
+        // Inline style object: `style_obj: { top: f"${.y}px", "z-index": 50 }`
+        // → `:style="{ top: `${y}px`, 'z-index': 50 }"`. Handled generically
+        // (like `ref` above) so every shadcn-mapped element supports it.
+        if let Some(AuraPropValue::StyleBinding(bindings)) = props.get("style_obj") {
+            attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
         }
 
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
@@ -8067,7 +8290,22 @@ impl VueGenerator {
 
     /// Split an event key into (base, modifiers).
     /// "onwheel.document.capture" → ("onwheel", ["document", "capture"])
+    ///
+    /// Quoted custom event names (`on"autodown:slash-open"`) may contain
+    /// characters that are illegal in identifiers (':'/'-'); the base then
+    /// runs to the closing quote and only what follows it is modifiers.
     fn split_event_key(event: &str) -> (&str, Vec<&str>) {
+        if let Some(rest) = event.strip_prefix("on\"") {
+            if let Some(close) = rest.find('"') {
+                let end = 3 + close + 1; // just past the closing quote
+                let base = &event[..end];
+                let mods: Vec<&str> = event[end..]
+                    .strip_prefix('.')
+                    .map(|t| t.split('.').filter(|m| !m.is_empty()).collect())
+                    .unwrap_or_default();
+                return (base, mods);
+            }
+        }
         let mut parts = event.split('.');
         let base = parts.next().unwrap_or(event);
         (base, parts.collect())
@@ -8076,7 +8314,11 @@ impl VueGenerator {
     /// Map the base event key (without modifiers) to the DOM/Vue event name.
     /// Covers the full common set: keyboard, mouse, wheel, focus, pointer,
     /// touch, drag, scroll. Unknown `onxxx` keys fall back to stripping `on`.
+    /// Quoted custom names (`on"autodown:slash-open"`) map to the raw name.
     fn base_event_to_dom(base: &str) -> String {
+        if let Some(inner) = base.strip_prefix("on\"").and_then(|b| b.strip_suffix('"')) {
+            return inner.to_string();
+        }
         match base.to_ascii_lowercase().as_str() {
             "onclick" | "on_click" => "click",
             "ondblclick" | "on_double_click" => "dblclick",
@@ -8184,6 +8426,15 @@ impl VueGenerator {
         }
     }
 
+    /// Make an arbitrary DOM event name safe for embedding in a JS identifier.
+    /// Custom event names may contain ':'/'-' (e.g. "autodown:slash-open"),
+    /// which would otherwise produce an invalid wrapper function name.
+    fn sanitize_ident(s: &str) -> String {
+        s.chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .collect()
+    }
+
     /// Intercept `.window` / `.document` event modifiers and register a global
     /// listener instead of emitting a template attribute. Returns true when
     /// the event was claimed (caller must skip normal attribute emission).
@@ -8237,7 +8488,7 @@ impl VueGenerator {
         // (the DOM passes the event object as first argument).
         let needs_wrapper = prevent || stop || !aura_event.params.is_empty();
         let (listener, wrapper) = if needs_wrapper {
-            let wrapper_fn = format!("__auto_gl_{}_{}", dom_event, handler_fn);
+            let wrapper_fn = format!("__auto_gl_{}_{}", Self::sanitize_ident(&dom_event), handler_fn);
             let mut body = String::new();
             if stop {
                 body.push_str("  e.stopPropagation()\n");
@@ -9492,6 +9743,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
 ;
 
@@ -9529,6 +9781,7 @@ mod tests {
             api_imports: vec![],
             style_css: Some(css.to_string()),
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9568,6 +9821,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9603,6 +9857,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9649,6 +9904,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -9718,6 +9974,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -10587,6 +10844,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();
@@ -10620,6 +10878,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
     }
 
@@ -10749,6 +11008,141 @@ widget Icon(language: str) {
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new();
         gen.generate(&widget).expect("generate SFC")
+    }
+
+    // ====================================================================
+    // Dynamic components (dyn) and reactive watchers (watch).
+    // ====================================================================
+
+    /// dyn (.item.icon) { size: 16, class: "..." } inside a for loop →
+    /// <component :is="(item.icon) as any" :size="16" class="..." />.
+    #[test]
+    fn test_dyn_component_in_for_loop() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    model { var items list = [] }
+    view {
+        col {
+            for item in .items {
+                dyn (.item.icon) { size: 16, class: "w-4 h-4 shrink-0" }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#":is="(item.icon) as any""#),
+            "dyn :is binding:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(r#"v-for="item in items""#),
+            "v-for on dyn element:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("/ v-for"),
+            "v-for not inserted after self-closing slash:\n{}",
+            sfc
+        );
+        assert!(sfc.contains(r#":size="16""#), "extra prop bound:\n{}", sfc);
+        assert!(
+            sfc.contains(r#"class="w-4 h-4 shrink-0""#),
+            "static class:\n{}",
+            sfc
+        );
+    }
+
+    /// dyn without parentheses: is as a plain prop; model-field source.
+    #[test]
+    fn test_dyn_component_is_prop_model_field() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget IconBox {
+    model { var current_icon str = "x" }
+    view {
+        col {
+            dyn { is: .current_icon }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<component :is="(current_icon) as any" />"#),
+            "is prop form:\n{}",
+            sfc
+        );
+    }
+
+    /// watch { .computed -> { ... } } → watch(filtered, () => { ... }) with
+    /// on-handler body conventions (.field = state access via .value).
+    #[test]
+    fn test_watch_computed_source() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    model {
+        var query str = ""
+        var selected_index int = 0
+    }
+    computed {
+        filtered => query
+    }
+    view { col { text "hi" } }
+    watch {
+        .filtered -> { .selected_index = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("import { ref, computed, watch } from 'vue'"),
+            "watch imported:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("watch(filtered, () => {"),
+            "watch call:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("selected_index.value = 0"),
+            "handler body transpiled like on block:\n{}",
+            sfc
+        );
+    }
+
+    /// Prop source needs a getter; .immediate/.deep become watch options;
+    /// multiple sources become an array.
+    #[test]
+    fn test_watch_prop_source_and_modifiers() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Scrollbar(ratio: int, viewport_h: int) {
+    model { var thumb_h int = 0 }
+    view { col { text "hi" } }
+    watch {
+        .ratio, .viewport_h.immediate -> { .thumb_h = .viewport_h }
+        .ratio.deep -> { .thumb_h = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("watch([() => props.ratio, () => props.viewport_h], () => {"),
+            "multi-source prop getters:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("{ immediate: true }"),
+            "immediate option:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("{ deep: true }"),
+            "deep option:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("thumb_h.value = props.viewport_h"),
+            "prop read in body:\n{}",
+            sfc
+        );
     }
 
     /// Element-level generic events: keyboard, mouse, wheel, contextmenu.
@@ -11180,5 +11574,148 @@ widget App {
         );
         assert!(sfc.contains("<AutoDownEditor"), "component tag:\n{}", sfc);
         assert!(sfc.contains(":content=\"body\""), "prop binding:\n{}", sfc);
+    }
+
+    // ====================================================================
+    // Quoted custom event names: on "autodown:slash-open" — global
+    // (document/window) listeners and element-level bindings.
+    // ====================================================================
+
+    /// document-level CustomEvent listeners with ':'/'-' in the event name
+    /// (SlashMenu integration: a hand-written TS extension dispatches
+    /// `autodown:slash-open` etc. on document).
+    #[test]
+    fn test_global_custom_event_listeners() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SlashMenu {
+    msg Msg { OnOpen, OnClose }
+    model { var query str = "" }
+    view {
+        col {
+            on "autodown:slash-open".document: .OnOpen($event),
+            on "autodown:slash-close".document: .OnClose
+        }
+    }
+    on {
+        .OnOpen(e) -> { .query = "x" }
+        .OnClose -> { .query = "" }
+    }
+}
+"#);
+        // No template attribute for global listeners.
+        assert!(!sfc.contains("@autodown:slash-open"), "no template attr:\n{}", sfc);
+        // add/remove pairs carry the raw custom event name.
+        assert!(
+            sfc.contains("document.addEventListener('autodown:slash-open', __auto_gl_autodown_slash_open_OnOpen)"),
+            "custom event add (sanitized wrapper name):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("document.removeEventListener('autodown:slash-open', __auto_gl_autodown_slash_open_OnOpen)"),
+            "custom event remove:\n{}",
+            sfc
+        );
+        // No-param handler → bare function reference.
+        assert!(
+            sfc.contains("document.addEventListener('autodown:slash-close', OnClose)"),
+            "bare fn ref:\n{}",
+            sfc
+        );
+        // Wrapper adapts the DOM event arg.
+        assert!(
+            sfc.contains("function __auto_gl_autodown_slash_open_OnOpen(e: any) {\n  OnOpen(e)\n}"),
+            "wrapper body:\n{}",
+            sfc
+        );
+    }
+
+    /// Element-level custom event binding (child component emit with a
+    /// ':'/'-' name). Verified against @vue/compiler-dom + runtime-dom:
+    /// `@autodown:slash-open` compiles and patches to
+    /// addEventListener('autodown:slash-open').
+    #[test]
+    fn test_element_custom_event_listener() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Menu {
+    msg Msg { Poked }
+    model { var x int = 0 }
+    view {
+        col {
+            on "demo:poke": .Poked($event)
+        }
+    }
+    on {
+        .Poked(e) -> { .x = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@demo:poke=\"Poked($event)\""),
+            "element-level custom event binding:\n{}",
+            sfc
+        );
+    }
+
+    // ====================================================================
+    // style_obj: inline-style object binding (:style), distinct from the
+    // style: { class: cond } dynamic-class binding.
+    // ====================================================================
+
+    /// style_obj generates a Vue :style object binding; values are arbitrary
+    /// expressions including f-string px concatenation; hyphenated CSS
+    /// property names are quoted.
+    #[test]
+    fn test_style_obj_inline_style_binding() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Popover {
+    msg Msg { Nop }
+    model {
+        var menu_x int = 50
+        var menu_y int = 100
+        var menu_vis str = "visible"
+    }
+    view {
+        col {
+            style_obj: { top: f"${.menu_y}px", left: f"${.menu_x}px", "z-index": 50, visibility: .menu_vis }
+        }
+    }
+    on {
+        .Nop -> { .menu_x = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":style=\"({ top: `${menu_y}px`, left: `${menu_x}px`, 'z-index': 50, visibility: menu_vis } as any)\""),
+            ":style object binding:\n{}",
+            sfc
+        );
+        // Must NOT be emitted as a class binding.
+        assert!(!sfc.contains(":class=\"{ top:"), "not a class binding:\n{}", sfc);
+    }
+
+    /// The classic style: { class: cond } map stays a dynamic class binding;
+    /// hyphenated class names are quoted (previously emitted as a bare,
+    /// invalid JS key).
+    #[test]
+    fn test_style_class_binding_quotes_hyphenated_keys() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Todo {
+    msg Msg { Nop }
+    model { var done int = 0 }
+    view {
+        col {
+            text "x" { style: { completed: .done, "line-through": .done } }
+        }
+    }
+    on {
+        .Nop -> { .done = 1 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":class=\"{ completed: done, 'line-through': done }\""),
+            "hyphenated class key quoted:\n{}",
+            sfc
+        );
     }
 }

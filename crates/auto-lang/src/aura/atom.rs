@@ -500,6 +500,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         }
 ;
 
@@ -531,6 +532,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
         };
 
         let atom = to_atom(&widget);
@@ -575,6 +577,7 @@ mod tests {
             api_imports: vec![],
             style_css: None,
             ext_imports: Vec::new(),
+            watchers: Vec::new(),
             }],
             messages: vec![],
             app: Some(AuraApp {

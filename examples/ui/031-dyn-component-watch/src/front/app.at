@@ -1,0 +1,94 @@
+widget App {
+    use {
+        // Hand-written TS: menu item data (icon = Vue component) + filter.
+        fn: menuItems, filterItems from "src/front/utils/menu.ts"
+    }
+
+    msg Msg { QueryChanged, ZoomIn, ZoomOut }
+
+    model {
+        var query str = ""
+        var selected_index int = 0
+        var ratio int = 30
+    }
+
+    computed {
+        items => menuItems()
+        filtered => filterItems(query)
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-8",
+
+            h1 "031 — dyn component + watch" { class: "text-xl font-bold" }
+
+            // (a) Dynamic components: each item's `icon` field is a Vue
+            // component (lucide) carried by the data — the SlashMenu shape.
+            col {
+                class: "space-y-1",
+                text "(a) dyn: component carried by list data" { class: "text-sm font-medium" }
+                for item in .items {
+                    row {
+                        class: "items-center space-x-2",
+                        dyn (.item.icon) { size: 16, class: "w-4 h-4 text-gray-600" }
+                        text item.label { class: "text-sm" }
+                    }
+                }
+            }
+
+            // (b) Search filter + watch: when the filtered list changes,
+            // reset the selected index.
+            col {
+                class: "space-y-1",
+                text "(b) watch: reset selection when filter changes" { class: "text-sm font-medium" }
+                input (value: .query) {
+                    class: "border rounded px-2 py-1 text-sm w-64",
+                    placeholder: "filter…",
+                    oninput: .QueryChanged
+                }
+                for i, item in .filtered {
+                    row {
+                        class: "items-center space-x-2",
+                        dyn (.item.icon) { size: 16, class: "w-4 h-4 text-gray-600" }
+                        text f"${i}: ${item.label}" { class: "text-sm" }
+                    }
+                }
+                text f"selected: ${.selected_index}" { class: "text-xs text-gray-500" }
+            }
+
+            // (c) watch a prop: parent changes `ratio`, child recomputes
+            // geometry from the DOM (CustomScrollbar thumb scenario).
+            col {
+                class: "space-y-1",
+                text "(c) watch prop: imperative thumb geometry" { class: "text-sm font-medium" }
+                row {
+                    class: "space-x-2",
+                    button "zoom in" {
+                        class: "px-2 py-1 bg-blue-600 text-white rounded text-sm",
+                        onclick: .ZoomIn
+                    }
+                    button "zoom out" {
+                        class: "px-2 py-1 bg-gray-600 text-white rounded text-sm",
+                        onclick: .ZoomOut
+                    }
+                }
+                ThumbBar { ratio: .ratio }
+                text f"ratio: ${.ratio}" { class: "text-xs text-gray-500" }
+            }
+        }
+    }
+
+    watch {
+        // (b) filtered list changed → selection resets (same handler-body
+        // conventions as `on`: .field = state access).
+        .filtered -> { .selected_index = 0 }
+    }
+
+    on {
+        // v-model keeps .query in sync; nothing else to do here.
+        .QueryChanged -> { .selected_index = 0 }
+        .ZoomIn -> { .ratio = .ratio + 10 }
+        .ZoomOut -> { .ratio = .ratio - 10 }
+    }
+}

@@ -584,6 +584,14 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         api_imports: Vec::new(),
         style_css: decl.style.clone(),
         ext_imports: decl.ext_imports.clone(),
+        watchers: decl.watch.iter()
+            .map(|w| crate::aura::types::AuraWatch {
+                sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
+                immediate: w.immediate,
+                deep: w.deep,
+                payload: LogicPayload::AstStmts(w.body.stmts.clone()),
+            })
+            .collect(),
     }
 )
 }

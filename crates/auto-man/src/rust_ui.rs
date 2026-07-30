@@ -367,6 +367,7 @@ fn compile_at_file(
             lifecycle: Vec::new(),
             style: None,
             ext_imports: Vec::new(),
+            watch: Vec::new(),
         };
         match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
             Ok(aura_widget) => {
