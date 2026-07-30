@@ -94,3 +94,62 @@ Step 5 只通过了单元测试，**真实 SCU001 项目从未跑通**。7-22 �
   `git worktree unlock` + `git worktree remove`，并酌情清理 stash。
 - **commit message 撞号**：历史 commit 不重写（按仓库规范不改写历史），
   本文件的"编号说明"即为缓解措施。
+
+## 追加：`.ewp` group 顺序根因分析（2026-07-30）
+
+SCU001 四个 IAR 文件中，`.eww/.ewt/.ewd` 已与 auto-man 0.1.3 基线**字节一致**，
+`.ewp` 的 group 集合 / 文件集合 / include 集合 / define 集合也全部一致，
+仅剩 group/文件的**排列顺序**不同。本轮定位并修复了其中最关键的根因。
+
+### 已修复：`get_kids` plural 展开逆序（commit 待提交）
+
+`links: ["a","b","c"]` 这类**复数 prop** 会被 `Node::get_kids("link")` 惰性展开
+为一组名为 `link` 的子节点（[crates/auto-val/src/node.rs](../crates/auto-val/src/node.rs)
+的 `get_kids`，plural 分支）。app target 的直接依赖顺序、进而整个 `.ewp` group
+树的顶层顺序都来自这条路径。
+
+**根因**：`crates/auto-val/src/array.rs` 里 `impl Iterator for Array` 的实现是
+
+```rust
+fn next(&mut self) -> Option<Self::Item> {
+    self.values.pop()   // 从尾部弹 → 逆序 + 破坏性 drain
+}
+```
+
+而 `get_kids` 的 plural 分支写成 `for kid in simple_kids`（消费 `Array`），
+走的就是这个 `Iterator`——于是元素被**逆序**追加到结果。诊断证据：
+
+- 原始 prop `links` 数组顺序正确：`[device, osal, xmen, kernel, log, common, EB, lseconfig]`
+- `get_kids("link")` 返回却是逆序：`[lseconfig, EB, common, log, kernel, xmen, osal, device]`
+- 顶层 group 树因此与基线相反。
+
+**修复**：plural 分支改为按引用迭代 `for kid in simple_kids.iter()`（走
+[array.rs](../crates/auto-val/src/array.rs) 的 `iter()`，正序、非破坏），
+并加单元测试 `test_get_kids_plural_preserves_order` 锁定声明顺序。
+修复后顶层 group 顺序对齐基线（`Bsp` 回到最前），group/file/inc 三个集合全部一致。
+
+### 已知隐患（未修，记录在此）：`Array` 的破坏性 `Iterator`
+
+`impl Iterator for Array { fn next → Vec::pop }` 本身是个反模式陷阱：
+
+1. **逆序**：`next()` 从尾部弹，违反 `Iterator` 的"从头到尾"直觉。
+2. **破坏性**：迭代会掏空数组（`for x in arr` 之后 `arr` 为空）。
+3. 任何 `for x in <Array 变量>`（消费，非 `.iter()`）的写法都会踩中。
+
+本计划只修了 `get_kids` 一处（SCU001 可观测的 group 顺序）。全量排查/根治
+（改 `Array::next` 为正序 drain，或移除 `impl Iterator` 改用 `IntoIterator`）
+影响面广，需单独评估所有消费点——**不在本计划范围内**，留作后续。
+
+### 不修：device 子 group 内部顺序
+
+`.ewp` 仍有约 585 行 diff，全部是 device（`Bsp/Mcal`）下子 group 的**内部排列**
+（如 `Dio,Can,Pwm,...` vs `Dma,Lin,Gpt,...`）。根因是：
+
+- `Target::dirs` 是 `HashMap<AutoStr, Dir>`（[target.rs](../crates/auto-man/src/target.rs)），
+  无序；device 的子目录 group 顺序取决于此 HashMap 的遍历顺序。
+- `extract_selects` 用 `HashSet`（仅用于过滤，不决定顺序）。
+- 基线自身的子顺序也不规则（既非字母序，也非 `selects` 声明序）。
+
+这是既有设计，与 Plan 375 无关，且 **IAR 对 group 内部顺序不敏感**（只影响
+工程树展示）。改 `dirs` 为有序结构（如 `IndexMap`）风险大、收益低，**不在本计划处理**。
+
