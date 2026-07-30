@@ -4164,17 +4164,24 @@ fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
     false
 }
 
-/// Check if a use statement targets `store` module (Plan 351).
+/// Check if a use statement targets a `store` module.
+///
+/// Plan 351/370: supports two forms:
+/// - legacy:  `use store: Name`        (path exactly "store")
+/// - unified: `use notes_store: Name`  (path contains "store", e.g. `*_store`)
+///
+/// This mirrors the looser detection in auto-man/vue.rs so that widgets built
+/// via ui_build_shadcn_with_sub_widgets (the App root path) get store_deps
+/// populated the same way as components built via auto-man's generator.
 fn is_store_use_stmt(use_stmt: &crate::ast::Use) -> bool {
-    if use_stmt.paths.len() == 1 && use_stmt.paths[0].as_str() == "store" {
-        return true;
-    }
-    if let Some(ref mp) = use_stmt.module_path {
-        if mp.display() == "store" {
-            return true;
-        }
-    }
-    false
+    let path_match = use_stmt.paths.len() == 1
+        && (use_stmt.paths[0].as_str() == "store"
+            || use_stmt.paths[0].as_str().contains("store"));
+    let mp_match = use_stmt.module_path.as_ref().map_or(false, |mp| {
+        let d = mp.display();
+        d == "store" || d.contains("store")
+    });
+    path_match || mp_match
 }
 
 /// Extract store names from `use store: <Name>` declarations.

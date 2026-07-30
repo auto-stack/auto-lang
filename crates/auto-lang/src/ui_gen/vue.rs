@@ -9008,7 +9008,17 @@ export function cn(...inputs: ClassValue[]) {
 
         // Expose handlers as action functions.
         for (pattern, payload) in &store.handlers {
-            let action_name = pattern.trim_start_matches('.');
+            // Plan 374: the aura extractor embeds parameter names in the pattern
+            // key (e.g. ".SelectFolder(folder)"), so we must strip both the
+            // leading dot AND the parameter list to recover the bare action name.
+            // Otherwise we'd emit `SelectFolder(folder): (folder: any) => ...`,
+            // a JS method-shorthand followed by an arrow — a syntax error.
+            // Params still come from handler_params below for the arrow signature.
+            let after_dot = pattern.trim_start_matches('.');
+            let action_name = match after_dot.find('(') {
+                Some(paren) => after_dot[..paren].to_string(),
+                None => after_dot.to_string(),
+            };
             let mut body = match payload {
                 crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
                 _ => String::new(),
@@ -9039,7 +9049,11 @@ export function cn(...inputs: ClassValue[]) {
 
         // Auto-generate a computed 'all_tags' property that collects unique tags
         // from all notes — but only if the store doesn't already declare all_tags.
-        let has_all_tags = store.state_vars.iter().any(|s| s.name == "all_tags");
+        // Check both model state_vars AND the user-declared computed block: a
+        // `computed { all_tags => ... }` declaration must suppress this auto-inject,
+        // otherwise we'd emit a duplicate `get all_tags()` key (vite warning).
+        let has_all_tags = store.state_vars.iter().any(|s| s.name == "all_tags")
+            || store.computed.iter().any(|c| c.name == "all_tags");
         if !has_all_tags {
             code.push_str("        get all_tags() {\n");
             code.push_str("            const tags = new Set<string>();\n");
