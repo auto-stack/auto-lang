@@ -946,15 +946,13 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Clean completed"})));
             }
         }
-        Some(Commands::Watch { dir, back_port, front_port }) => {
+        Some(Commands::Watch { dir, .. }) => {
             init_logger();
             println_logo();
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let project_dir = PathBuf::from(&dir).canonicalize()
                 .map_err(|e| miette::miette!("Invalid project directory: {}", e))?;
-            let bp = back_port.and_then(|p| p.parse::<u16>().ok());
-            let fp = front_port.and_then(|p| p.parse::<u16>().ok());
-            cmd_watch::run_watch(&project_dir, bp, fp)
+            cmd_watch::run_watch(&project_dir)
                 .map_err(|e| {
                     if ai_mode {
                         eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));

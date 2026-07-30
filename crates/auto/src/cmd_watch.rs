@@ -4,27 +4,59 @@
 //! Vue SFC files. Vite's dev server picks up the changed .vue files via HMR,
 //! delivering <1s feedback.
 //!
-//! Plan 362 Phase 1: MVP — notify watcher + incremental SFC generation.
+//! Plan 362:
+//!   Phase 1: MVP — notify watcher + incremental SFC generation.
+//!   Phase 2: caching — content-hash skip + GENERATOR_VERSION.
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
+/// Bump when generated SFC format has a breaking change.
+/// Embedded in generated .vue comments so `auto watch` can detect
+/// generator-code changes and trigger full rebuild.
+const GENERATOR_VERSION: &str = "1.0";
+
+/// Cache of .at file content hashes, persisted to `.auto/build/cache.json`.
+/// Skips regeneration when content hasn't changed (e.g., file was just saved
+/// without edits, or formatting-only change).
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct WatchCache {
+    /// Map: absolute .at path → hex content hash
+    entries: HashMap<String, String>,
+    /// Generator version when cache was written.
+    /// If current GENERATOR_VERSION differs, all entries are invalidated.
+    generator_version: String,
+}
+
 /// Run the `auto watch` command.
 ///
 /// `project_dir` is the workspace root (where pac.at lives).
-/// `back_port` and `front_port` let the user control port forwarding
-/// (baked into generated code), mirroring `auto build` / `auto run`.
-pub fn run_watch(
-    project_dir: &Path,
-    _back_port: Option<u16>,
-    _front_port: Option<u16>,
-) -> Result<(), String> {
+pub fn run_watch(project_dir: &Path) -> Result<(), String> {
     let front_dir = find_front_dir(project_dir)?;
     let output_dir = project_dir.join("gen").join("front").join("vue").join("src").join("components");
+    let cache_path = project_dir.join(".auto").join("build").join("cache.json");
+
+    // Load or init cache
+    let mut cache = load_cache(&cache_path);
+
+    // If generator version changed, invalidate all entries
+    if cache.generator_version != GENERATOR_VERSION {
+        println!(
+            "{} Generator version changed ({} → {}), full rebuild needed",
+            "⟳".bright_yellow(),
+            cache.generator_version,
+            GENERATOR_VERSION
+        );
+        cache.entries.clear();
+        cache.generator_version = GENERATOR_VERSION.to_string();
+        save_cache(&cache_path, &cache)?;
+    }
 
     // Collect initial set of watched .at files
     let at_files = collect_at_files(&front_dir)?;
@@ -102,13 +134,16 @@ pub fn run_watch(
 
                     // Process the batch
                     for (path, _kind) in pending.drain() {
-                        if let Err(e) = rebuild_single_file(&path, &output_dir) {
+                        if let Err(e) = rebuild_single_file(&path, &output_dir, &mut cache) {
                             eprintln!(
                                 "{} {}: {}",
                                 "✗".bright_red(),
                                 path.display(),
                                 e
                             );
+                        } else {
+                            // Save cache after each successful rebuild
+                            let _ = save_cache(&cache_path, &cache);
                         }
                     }
                 }
@@ -171,7 +206,23 @@ fn collect_at_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// Rebuild a single .at file: parse → generate → write .vue SFC.
-fn rebuild_single_file(at_path: &Path, output_dir: &Path) -> Result<(), String> {
+///
+/// Returns Ok(true) if regeneration happened, Ok(false) if skipped (cache hit).
+fn rebuild_single_file(at_path: &Path, output_dir: &Path, cache: &mut WatchCache) -> Result<bool, String> {
+    let path_key = at_path.to_string_lossy().to_string();
+
+    // Compute content hash
+    let content = std::fs::read_to_string(at_path)
+        .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
+    let content_hash = hash_string(&content);
+
+    // Check cache — skip if content hasn't changed
+    if let Some(cached_hash) = cache.entries.get(&path_key) {
+        if *cached_hash == content_hash {
+            return Ok(false); // No change, skip
+        }
+    }
+
     let start = std::time::Instant::now();
     let rel_path = at_path
         .file_name()
@@ -187,23 +238,32 @@ fn rebuild_single_file(at_path: &Path, output_dir: &Path) -> Result<(), String> 
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("Failed to create output dir: {}", e))?;
 
-    // Write each widget's SFC
+    // Write each widget's SFC with generator version comment
+    let version_comment = format!(
+        "<!-- Auto-generated from {} (gen v{}, Plan 362) -->\n",
+        rel_path, GENERATOR_VERSION
+    );
     let mut written = 0usize;
     for (widget_name, code) in &result.all_widget_codes {
         let out_path = output_dir.join(format!("{}.vue", widget_name));
-        std::fs::write(&out_path, code)
+        let code_with_version = format!("{}{}", version_comment, code);
+        std::fs::write(&out_path, &code_with_version)
             .map_err(|e| format!("Failed to write {}: {}", out_path.display(), e))?;
         written += 1;
     }
 
     // Write store composables
     for (filename, code) in &result.store_composables {
-        let out_path = output_dir.join(filename);
+        let out_path = output_dir.join("..").join(filename);
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        std::fs::write(&out_path, code).ok();
+        let code_with_version = format!("{}{}", version_comment, code);
+        std::fs::write(&out_path, &code_with_version).ok();
     }
+
+    // Update cache
+    cache.entries.insert(path_key, content_hash);
 
     // Print validation warnings if any
     let warn_count = result.validation_warnings.len();
@@ -227,6 +287,42 @@ fn rebuild_single_file(at_path: &Path, output_dir: &Path) -> Result<(), String> 
         }
     );
 
+    Ok(true)
+}
+
+/// Compute a stable hex hash of a string using std's DefaultHasher.
+fn hash_string(s: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+/// Load cache from disk, or return default empty cache.
+fn load_cache(path: &Path) -> WatchCache {
+    if let Ok(mut file) = std::fs::File::open(path) {
+        let mut content = String::new();
+        if file.read_to_string(&mut content).is_ok() {
+            if let Ok(cache) = serde_json::from_str::<WatchCache>(&content) {
+                return cache;
+            }
+        }
+    }
+    WatchCache {
+        generator_version: GENERATOR_VERSION.to_string(),
+        ..Default::default()
+    }
+}
+
+/// Save cache to disk.
+fn save_cache(path: &Path, cache: &WatchCache) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let json = serde_json::to_string_pretty(cache)
+        .map_err(|e| format!("Failed to serialize cache: {}", e))?;
+    std::fs::write(path, json)
+        .map_err(|e| format!("Failed to write cache: {}", e))?;
     Ok(())
 }
 
