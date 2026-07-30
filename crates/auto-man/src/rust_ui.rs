@@ -1321,6 +1321,35 @@ fn compute_target_rel_path(project_dir: &Path) -> String {
     "../../autostack/auto-lang/target".to_string()
 }
 
+/// Check whether a directory is a *complete* Cargo crate — i.e. it declares at
+/// least one target, so cargo won't reject it with "no targets specified in the
+/// manifest" when the workspace is resolved.
+///
+/// Mirrors cargo's own target discovery: a `src/main.rs` or `src/lib.rs`, or an
+/// explicit `[lib]` / `[[bin]]` section in `Cargo.toml`.
+///
+/// An incomplete member (e.g. a half-generated frontend crate whose `src/` was
+/// removed) would otherwise poison the whole workspace: cargo validates *every*
+/// member when resolving the workspace manifest, so one bad member fails even an
+/// unrelated `cargo run --manifest-path <other-member>`.
+fn has_cargo_targets(dir: &Path) -> bool {
+    if dir.join("src").join("main.rs").exists() || dir.join("src").join("lib.rs").exists() {
+        return true;
+    }
+    // Fall back to explicit target declarations in Cargo.toml.
+    if let Ok(content) = fs::read_to_string(dir.join("Cargo.toml")) {
+        // A `[lib]` table or any `[[bin]]` array counts as a target. Match on a
+        // line-starting header to avoid catching these strings in comments.
+        for line in content.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("[lib]") || trimmed.starts_with("[[bin]]") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Ensure the shared Rust workspace exists and is configured.
 ///
 /// Creates/updates:
@@ -1334,7 +1363,11 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
 
     let ws_cargo = ws_dir.join("Cargo.toml");
 
-    // Scan existing member directories (each subdirectory with a Cargo.toml)
+    // Scan existing member directories (each subdirectory with a Cargo.toml).
+    // Skip incomplete members (no src/main.rs, src/lib.rs, [lib], or [[bin]]):
+    // cargo rejects them with "no targets specified" when resolving the
+    // workspace, which would poison unrelated member runs. They get re-included
+    // automatically once generate_rust_ui writes their src/.
     let mut members: Vec<String> = Vec::new();
     if let Ok(entries) = fs::read_dir(&ws_dir) {
         for entry in entries.flatten() {
@@ -1342,9 +1375,19 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
             if path.is_dir() && path.join("Cargo.toml").exists() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     // Skip .cargo directory
-                    if name != ".cargo" {
-                        members.push(name.to_string());
+                    if name == ".cargo" {
+                        continue;
                     }
+                    if !has_cargo_targets(&path) {
+                        eprintln!(
+                            "⚠ Skipping incomplete workspace member '{}' \
+                             (no src/lib.rs, src/main.rs, [lib], or [[bin]] — \
+                             re-included once generated)",
+                            name
+                        );
+                        continue;
+                    }
+                    members.push(name.to_string());
                 }
             }
         }

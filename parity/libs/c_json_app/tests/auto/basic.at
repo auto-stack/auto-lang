@@ -1,13 +1,8 @@
 /// c_json_app 测试驱动。
-use auto.c_json_app: get_str, check_valid, get_array_len, get_type
+use auto.c_json_app: get_str, get_int, get_bool, check_valid, get_array_len, get_type
 
-fn tap_ok(n int, name str) {
-    print("ok " + n.to(str) + " - " + name)
-}
-
-fn tap_not_ok(n int, name str) {
-    print("not ok " + n.to(str) + " - " + name)
-}
+fn tap_ok(n int, name str) { print("ok " + n.to(str) + " - " + name) }
+fn tap_not_ok(n int, name str) { print("not ok " + n.to(str) + " - " + name) }
 
 fn check_str(n int, name str, actual str, expected str) {
     if actual == expected { tap_ok(n, name) } else { tap_not_ok(n, name) }
@@ -18,10 +13,13 @@ fn check_int(n int, name str, actual int, expected int) {
 }
 
 fn main() {
-    var obj = "{\"name\":\"hello\",\"n\":42,\"arr\":[1,2,3]}"
+    var obj = "{\"name\":\"hello\",\"n\":42,\"flag\":true,\"arr\":[1,2,3]}"
+
     check_str(1, "test_get_str", get_str(obj, "name"), "hello")
-    check_int(2, "test_valid_json", check_valid("{\"a\":1}"), 1)
-    check_int(3, "test_invalid_json", check_valid("{broken}"), 0)
-    check_int(4, "test_array_len", get_array_len("[1,2,3]"), 3)
-    check_str(5, "test_type_object", get_type("{\"a\":1}"), "object")
+    check_int(2, "test_get_int", get_int(obj, "n"), 42)
+    check_int(3, "test_get_bool", get_bool(obj, "flag"), 1)
+    check_int(4, "test_valid_json", check_valid("{\"a\":1}"), 1)
+    check_int(5, "test_invalid_json", check_valid("{broken}"), 0)
+    check_int(6, "test_array_len", get_array_len("[1,2,3]"), 3)
+    check_str(7, "test_type_object", get_type("{\"a\":1}"), "object")
 }

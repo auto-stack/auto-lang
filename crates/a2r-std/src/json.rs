@@ -51,6 +51,13 @@ pub fn as_string(val: &Value) -> String {
     val.as_str().unwrap_or("").to_string()
 }
 
+/// Parse a JSON-encoded string and extract the string value.
+/// Used by a2r when `json.get()` returns a serialized String, not a Value.
+pub fn as_string_str(s: &str) -> String {
+    let val: Value = serde_json::from_str(s).unwrap_or_default();
+    val.as_str().unwrap_or("").to_string()
+}
+
 pub fn as_number(val: &Value) -> f64 {
     val.as_f64().unwrap_or(0.0)
 }
@@ -59,7 +66,19 @@ pub fn as_int(val: &Value) -> i64 {
     val.as_i64().unwrap_or(0)
 }
 
+/// Parse a JSON-encoded string and extract the integer value.
+pub fn as_int_str(s: &str) -> i64 {
+    let val: Value = serde_json::from_str(s).unwrap_or_default();
+    val.as_i64().unwrap_or(0)
+}
+
 pub fn as_bool(val: &Value) -> bool {
+    val.as_bool().unwrap_or(false)
+}
+
+/// Parse a JSON-encoded string and extract the boolean value.
+pub fn as_bool_str(s: &str) -> bool {
+    let val: Value = serde_json::from_str(s).unwrap_or_default();
     val.as_bool().unwrap_or(false)
 }
 

@@ -57,7 +57,12 @@ impl VMConvertible for i64 {
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        task.ram.push_i64(*self);
+        // Plan 368: FFI return values must occupy exactly 1 slot to match
+        // the 1-slot calling convention used by CALL_NAT + codegen store/load.
+        // i64's push_i64 pushes 2 slots (low+high), but the caller reads only
+        // the top slot (high=0), causing Json.as_int("42") → 0.
+        // Truncate to i32 (Auto's int type is 32-bit) and push single slot.
+        task.ram.push_i32(*self as i32);
         Ok(())
     }
 }
@@ -79,7 +84,8 @@ impl VMConvertible for u64 {
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        task.ram.push_u64(*self);
+        // Plan 368: truncate to i32 for 1-slot FFI return (see i64 impl above)
+        task.ram.push_i32(*self as i32);
         Ok(())
     }
 }
@@ -118,7 +124,8 @@ impl VMConvertible for f64 {
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        task.ram.push_f64(*self);
+        // Plan 368: truncate to f32 for 1-slot FFI return (see i64 impl above)
+        task.ram.push_f32(*self as f32);
         Ok(())
     }
 }

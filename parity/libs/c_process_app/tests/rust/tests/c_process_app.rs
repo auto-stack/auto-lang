@@ -14,9 +14,7 @@ fn parse_count(args_str: &str) -> i32 {
     args_str.split(' ').filter(|p| !p.is_empty()).count() as i32
 }
 
-/// Nth non-empty arg (0-based), "<none>" if out of range. Mirrors Auto parse_nth
-/// (Auto uses "<none>" rather than "" to avoid a VM `print("")` quirk that
-/// swallows the preceding output line — see c_process_app.at notes).
+/// Nth non-empty arg (0-based), "" if out of range. Mirrors Auto parse_nth.
 fn parse_nth(args_str: &str, n: i32) -> String {
     let mut idx = 0i32;
     for p in args_str.split(' ').filter(|p| !p.is_empty()) {
@@ -25,7 +23,7 @@ fn parse_nth(args_str: &str, n: i32) -> String {
         }
         idx += 1;
     }
-    "<none>".to_string()
+    String::new()
 }
 
 fn tap_ok(n: u32, name: &str) {
@@ -83,6 +81,6 @@ fn test_nth_last() {
 
 #[test]
 fn test_nth_out_of_range() {
-    assert_eq!(parse_nth("cmd arg1", 5), "<none>");
+    assert_eq!(parse_nth("cmd arg1", 5), "");
     tap_ok(9, "test_nth_out_of_range");
 }

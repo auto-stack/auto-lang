@@ -4959,8 +4959,8 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_string") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string_str(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
@@ -5049,14 +5049,14 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_int") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int_str(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ") as i32")?;
                         return Ok(());
                     }
                     ("json", "as_bool") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool_str(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }

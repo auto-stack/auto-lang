@@ -9,6 +9,21 @@ fn get_str(json_str str, key str) str {
     return Json.as_string(val)
 }
 
+/// 提取整数值：parse → get → as_int
+fn get_int(json_str str, key str) int {
+    var v = Json.parse(json_str)
+    var val = Json.get(v, key)
+    return Json.as_int(val)
+}
+
+/// 提取布尔值：parse → get → as_bool (返回 0/1)
+fn get_bool(json_str str, key str) int {
+    var v = Json.parse(json_str)
+    var val = Json.get(v, key)
+    if Json.as_bool(val) { return 1 }
+    return 0
+}
+
 /// 检查 JSON 是否合法。
 fn check_valid(json_str str) int {
     if Json.is_valid(json_str) { return 1 }
