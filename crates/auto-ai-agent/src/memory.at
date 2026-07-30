@@ -49,7 +49,7 @@ ext Memory {
     /// (Plan 008.)
     pub mut fn extend_pairs(pairs List<(str, str)>) void {
         for pair in pairs {
-            self.add(pair[0], pair[1])
+            self.add(pair.0, pair.1)
         }
     }
 
@@ -65,7 +65,7 @@ ext Memory {
 
     /// Current number of stored messages.
     pub fn len() uint {
-        return self.messages.len()
+        return self.messages.len() as uint
     }
 
     pub fn is_empty() bool {
@@ -75,7 +75,7 @@ ext Memory {
     /// Number of non-system messages currently held.
     fn non_system_count() uint {
         var count uint = 0
-        for m in self.messages {
+        for m in self.messages.clone() {
             if m.role != "system" {
                 count = count + 1
             }
@@ -126,7 +126,7 @@ ext Memory {
             // ToolUse).
             var end = s + 1
             if self.messages[s].role == "assistant" {
-                for end < self.messages.len() && self.messages[end].role == "user" {
+                for end < (self.messages.len() as int) && self.messages[end].role == "user" {
                     end = end + 1
                 }
             }
@@ -138,7 +138,7 @@ ext Memory {
     /// Index of the first non-system message, or -1 if none.
     fn first_non_system_index() int {
         var i = 0
-        for m in self.messages {
+        for m in self.messages.clone() {
             if m.role != "system" {
                 return i
             }
@@ -154,7 +154,7 @@ ext Memory {
     fn remove_range(from int, up_to int) List<Message> {
         var out List<Message> = []
         var i = 0
-        for m in self.messages {
+        for m in self.messages.clone() {
             // Keep messages OUTSIDE [from, up_to). (Nested if/else; || also
             // works in current parser but nested form is left as-is.)
             if i < from {

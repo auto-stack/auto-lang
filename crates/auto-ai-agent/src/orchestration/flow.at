@@ -145,7 +145,7 @@ ext FlowSpec {
 
     /// Find a step by id.
     pub fn get_step(step_id str) ?FlowStep {
-        for s in self.steps {
+        for s in self.steps.clone() {
             if s.id == step_id {
                 return Some(s)
             }
@@ -156,7 +156,7 @@ ext FlowSpec {
     /// Index of a step by id, or None if absent.
     pub fn get_step_index(step_id str) ?uint {
         var i uint = 0
-        for s in self.steps {
+        for s in self.steps.clone() {
             if s.id == step_id {
                 return Some(i)
             }

@@ -135,7 +135,7 @@ ext SkillRegistry {
 
     /// Number of loaded skills.
     pub fn len() uint {
-        return self.names.len()
+        return self.names.len() as uint
     }
 
     pub fn is_empty() bool {
@@ -293,7 +293,7 @@ fn body_offset(after_open str, close_idx uint) uint {
     for line in after_open.lines() {
         if i <= close_idx {
             // +1 for the newline that terminated this line.
-            acc = acc + line.len() + 1
+            acc = acc + line.len() as uint + 1
         }
         i = i + 1
     }
@@ -303,7 +303,7 @@ fn body_offset(after_open str, close_idx uint) uint {
 /// Return the substring of `s` starting at `start`, leading whitespace trimmed.
 /// Clamped to s length.
 fn slice_and_trim(s str, start uint) str {
-    let end = s.len()
+    let end = s.len() as uint
     var lo uint = start
     if lo > end {
         lo = end
@@ -340,7 +340,7 @@ fn clean_field_value(val str) str {
 
 /// Remove the first and last character (used after the quote-pair check).
 fn unquote(val str) str {
-    let end = val.len() - 1
+    let end = val.len() as uint - 1
     return val.substring(1, end)
 }
 

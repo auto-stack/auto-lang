@@ -437,7 +437,7 @@ fn is_cancelled(cancel ?Arc<AtomicBool>) bool {
         Some(c) -> {
             // Bridge to std::sync::atomic::AtomicBool::load (SeqCst).
             let v = c.load()
-            return v != 0
+            return v
         }
     }
 }

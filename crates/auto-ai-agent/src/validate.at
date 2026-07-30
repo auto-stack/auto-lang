@@ -44,7 +44,7 @@ pub fn load_client_config() Result<ai_config.ClientConfig, AgentError> {
                 Ok(content) -> {
                     is ai_config.parse_client_config(content) {
                         Ok(cfg) -> return Ok(cfg),
-                        Err(e) -> return Err(AgentError.Config(e.message()))
+                        Err(e) -> return Err(AgentError.Config(e.to_string()))
                     }
                 }
                 Err(msg) -> return Err(AgentError.Config(f"read ${path}: ${msg}"))

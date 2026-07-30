@@ -91,7 +91,7 @@ ext ToolRegistry {
 
     /// Number of registered tools.
     pub fn len() uint {
-        return self.names.len()
+        return self.names.len() as uint
     }
 
     pub fn is_empty() bool {

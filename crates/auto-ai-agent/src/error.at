@@ -54,7 +54,7 @@ ext AgentError {
     /// Human-readable message (mirrors Rust's Display impl).
     pub fn message() str {
         is self {
-            AgentError.Client(e) -> return f"client error: ${e.message()}",
+            AgentError.Client(e) -> return f"client error: ${e}",
             AgentError.Tool(e) -> return f"tool error: ${e.message()}",
             AgentError.ToolNotFound(name) -> return f"tool not found: ${name}",
             AgentError.MaxTurnsExceeded(n) -> return f"max turns (${n}) exceeded without completion",
