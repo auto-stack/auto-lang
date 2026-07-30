@@ -1351,7 +1351,78 @@ impl RustGenerator {
         }
     }
 
-    /// Generate view tree code
+    /// Collect a composite label expression for a button that has children.
+    ///
+    /// `View::Button` has no children field, so a button with child views
+    /// (e.g. `button "" { col { text .note.title; text .note.time } }`) would
+    /// render empty (the `.child()` calls are dropped at build). This folds
+    /// the button's TEXT-bearing children into a single `format!` label so the
+    /// content is visible.
+    ///
+    /// Recurses into col/row containers to reach their text children. Non-text
+    /// children (buttons, components, images) are skipped. Returns a Rust
+    /// expression evaluating to `String`, or `"\"\""` if no text children found.
+    fn collect_button_label(&self, children: &[AuraNode]) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for child in children {
+            self.collect_text_parts(child, &mut parts);
+        }
+        if parts.is_empty() {
+            return "\"\"".to_string();
+        }
+        if parts.len() == 1 {
+            return format!("format!(\"{{}}\", {})", parts[0]);
+        }
+        let fmt = parts.iter().map(|_| "{}").collect::<Vec<_>>().join("\\n");
+        format!("format!(\"{}\", {})", fmt, parts.join(", "))
+    }
+
+    /// Recursive helper for `collect_button_label`: push a Rust String
+    /// expression for each text-bearing node into `parts`.
+    fn collect_text_parts(&self, node: &AuraNode, parts: &mut Vec<String>) {
+        match node {
+            AuraNode::Text(content) => match content {
+                AuraTextContent::Literal(s) => {
+                    parts.push(format!("\"{}\".to_string()", s));
+                }
+                AuraTextContent::Interpolated { template, bindings } => {
+                    let mut fmt = template.clone();
+                    let mut args: Vec<String> = Vec::new();
+                    for name in bindings.iter() {
+                        if let Some(start) = fmt.find("${") {
+                            if let Some(end) = fmt[start..].find('}') {
+                                fmt.replace_range(start..=start + end, "{}");
+                            }
+                        }
+                        let stripped = name.trim_start_matches('.');
+                        args.push(format!("self.{}", stripped));
+                    }
+                    if args.is_empty() {
+                        parts.push(format!("\"{}\".to_string()", fmt));
+                    } else {
+                        parts.push(format!("format!(\"{}\", {})", fmt, args.join(", ")));
+                    }
+                }
+            },
+            AuraNode::Element { tag, props, children, .. } => {
+                if tag == "text" {
+                    if let Some(AuraPropValue::Expr(expr)) = props.get("text") {
+                        parts.push(self.ast_expr_to_rust(expr));
+                        return;
+                    }
+                    for c in children {
+                        self.collect_text_parts(c, parts);
+                    }
+                } else if tag == "col" || tag == "row" || tag == "column" {
+                    for c in children {
+                        self.collect_text_parts(c, parts);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
@@ -1374,6 +1445,30 @@ impl RustGenerator {
                         return format!("{}.build()", col);
                     }
                     return "View::Empty".to_string();
+                }
+
+                // Rich-content elements with no native iced mapping (e.g.
+                // autodown_editor { content: .note.body }) would otherwise fall
+                // through to an empty View::col(), hiding the content. Render
+                // their `content` prop as styled text so the data is visible.
+                if tag == "autodown_editor" || tag == "markdown" || tag == "editor" {
+                    if let Some(AuraPropValue::Expr(expr)) = props.get("content") {
+                        let content_expr = self.ast_expr_to_rust(expr);
+                        // text_styled takes content by value; clone self-field
+                        // references (e.g. self.edit_body) to avoid E0507 moves.
+                        let content_expr = if content_expr.starts_with("self.") {
+                            format!("{}.clone()", content_expr)
+                        } else {
+                            content_expr
+                        };
+                        let style_str = props.get("style").or_else(|| props.get("class"))
+                            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                            .unwrap_or_default();
+                        return format!(
+                            "View::col().style(\"{}\").child(View::text_styled({}, \"text-sm text-foreground whitespace-pre-wrap\")).build()",
+                            style_str, content_expr
+                        );
+                    }
                 }
 
                 // grid → View::grid() builder. iced has no native grid; the
@@ -1892,6 +1987,25 @@ impl RustGenerator {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
 
+                    format!("{}.build()", builder)
+                } else if tag == "button" {
+                    // Button with children. The View::Button model only has a
+                    // `label` (no children field), so `.child()` calls are
+                    // silently dropped at build time and the button renders
+                    // empty. Fold the button's text children into a single
+                    // composite label so the content is visible.
+                    let label_expr = self.collect_button_label(children);
+                    let mut builder = format!("View::button({})", label_expr);
+                    for (key, value) in props {
+                        if key == "text" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    for (event, handler) in events {
+                        builder = self.add_event_to_builder(&builder, event, handler);
+                    }
+                    if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                        builder = format!("{}.on_click(|_| ())", builder);
+                    }
                     format!("{}.build()", builder)
                 } else {
                     // Element with children
