@@ -45,19 +45,19 @@ ext Validator {
                 if output.contains(pattern) {
                     return Ok(None)
                 }
-                return Err(f"output must contain '${pattern}' (it doesn't)")
+                return Err(f"output must contain '${pattern}' (it doesn't)".to_string())
             },
             Validator.OutputNotContains(pattern) -> {
                 if output.contains(pattern) == false {
                     return Ok(None)
                 }
-                return Err(f"output must NOT contain '${pattern}' (it does)")
+                return Err(f"output must NOT contain '${pattern}' (it does)".to_string())
             },
             Validator.OutputMinLength(min) -> {
                 if output.len() as uint >= min {
                     return Ok(None)
                 }
-                return Err(f"output is ${output.len()} chars, must be at least ${min}")
+                return Err(f"output is ${output.len() as uint} chars, must be at least ${min}".to_string())
             },
             Validator.All(validators) -> return check_all(validators, output),
             Validator.Any(validators) -> return check_any(validators, output)
@@ -92,5 +92,5 @@ pub fn check_any(validators List<Validator>, output str) ~Result<None, str> {
         // at least one passed (handled above); unreachable but kept for parity
         return Ok(None)
     }
-    return Err(f"none of ${total} validators passed")
+    return Err(f"none of ${total} validators passed".to_string())
 }
