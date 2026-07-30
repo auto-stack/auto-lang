@@ -4,10 +4,12 @@ use miette::{Diagnostic, MietteHandlerOpts, Result};
 use serde_json::{json, Value};
 use colored::Colorize;
 use log::info;
+use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
 mod cmd_block;
 mod cmd_ui;
+mod cmd_watch;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
@@ -351,6 +353,15 @@ enum Commands {
     Clean {
         #[arg(short, long)]
         dir: Option<String>,
+    },
+    #[command(about = "Watch .at files and auto-regenerate SFCs (Plan 362)")]
+    Watch {
+        #[arg(short, long)]
+        dir: Option<String>,
+        #[arg(short = 'B', long = "back-port", help = "Backend HTTP API server port (default 8080)")]
+        back_port: Option<String>,
+        #[arg(short = 'F', long = "front-port", help = "Frontend dev server port (default 3000)")]
+        front_port: Option<String>,
     },
 
     // ========== Dependencies ==========
@@ -934,6 +945,23 @@ fn real_main(cli: Cli) -> Result<()> {
             if ai_mode {
                 println!("{}", format_success_json(json!({"message": "Clean completed"})));
             }
+        }
+        Some(Commands::Watch { dir, back_port, front_port }) => {
+            init_logger();
+            println_logo();
+            let dir = dir.unwrap_or_else(|| ".".to_string());
+            let project_dir = PathBuf::from(&dir).canonicalize()
+                .map_err(|e| miette::miette!("Invalid project directory: {}", e))?;
+            let bp = back_port.and_then(|p| p.parse::<u16>().ok());
+            let fp = front_port.and_then(|p| p.parse::<u16>().ok());
+            cmd_watch::run_watch(&project_dir, bp, fp)
+                .map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{}", e)
+                })?;
         }
 
         // ========== Dependencies ==========
