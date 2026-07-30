@@ -6507,6 +6507,39 @@ impl RustTrans {
                 write!(out, " as i32")?;
             }
 
+            // Plan 376E: Broad type-aware argument conversion using local_var_types.
+            // When neither the str-borrow path nor the str-to_string path fired,
+            // check for other type mismatches between the arg's inferred type and
+            // the param's declared type.
+            if !needs_borrow && !needs_borrow_unknown_callee && !needs_enum_cast && !is_spec_param {
+                if let (Some(pts), Arg::Pos(Expr::Ident(name))) = (&param_types, arg) {
+                    if let Some(pt) = pts.get(i) {
+                        let arg_ty = self.local_var_types.get(name);
+                        if let Some(aty) = arg_ty {
+                            // Option<T> → T: need .unwrap() or .cloned().unwrap_or_default()
+                            if matches!(pt, Type::User(td) if td.name.as_str() != "Option")
+                               && matches!(aty, Type::Option(_))
+                               && !matches!(pt, Type::Option(_))
+                            {
+                                write!(out, ".unwrap()")?;
+                            }
+                            // u32 param, i32 arg: cast
+                            else if matches!(pt, Type::Uint) && matches!(aty, Type::Int) {
+                                write!(out, " as u32")?;
+                            }
+                            // i32 param, u32 arg: cast
+                            else if matches!(pt, Type::Int) && matches!(aty, Type::Uint) {
+                                write!(out, " as i32")?;
+                            }
+                            // usize param, i32/u32 arg: cast
+                            else if matches!(pt, Type::USize) && (matches!(aty, Type::Int) || matches!(aty, Type::Uint)) {
+                                write!(out, " as usize")?;
+                            }
+                        }
+                    }
+                }
+            }
+
             if is_spec_param {
                 write!(out, ".clone())")?;
             }
