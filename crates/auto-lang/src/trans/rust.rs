@@ -12664,6 +12664,82 @@ impl RustTrans {
             if new != *content { *content = new; }
         }
     }
+
+    /// Plan 376 Phase 2: Run Auto's type inference engine over each function body
+    /// to determine local variable types, then populate `local_var_types`.
+    /// This gives the codegen type context for decisions like:
+    /// - `.to_string()` when assigning &str to String field
+    /// - `.unwrap()` when HashMap.get() returns Option
+    /// - `.as_str()` when passing String to &str param
+    fn run_type_inference(&mut self, stmts: &[Stmt]) {
+        use crate::infer::InferenceContext;
+
+        // Build a TypeStore from the current AST so the inference engine can
+        // resolve function/type references.
+        let type_store = {
+            let mut store = crate::types::TypeStore::new();
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Fn(fn_decl) => { store.register_fn_decl(fn_decl); }
+                    Stmt::TypeDecl(td) => { store.register_type_decl(td); }
+                    Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
+                    Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
+                    Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                    _ => {}
+                }
+            }
+            std::sync::Arc::new(std::sync::RwLock::new(store))
+        };
+
+        let mut ctx = InferenceContext::with_type_store(type_store);
+
+        // Process each top-level function and each method inside type declarations
+        for stmt in stmts {
+            match stmt {
+                Stmt::Fn(fn_decl) => {
+                    self.infer_fn_body(&mut ctx, fn_decl);
+                }
+                Stmt::TypeDecl(td) => {
+                    for method in &td.methods {
+                        self.infer_fn_body(&mut ctx, method);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Infer variable types for a single function body and populate local_var_types.
+    fn infer_fn_body(&mut self, ctx: &mut crate::infer::InferenceContext, fn_decl: &Fn) {
+        use crate::infer::stmt::check_body;
+
+        // Push scope, bind params, run check_body (without popping), extract types.
+        ctx.push_scope();
+        for param in &fn_decl.params {
+            let ty = if !matches!(param.ty, Type::Unknown) {
+                param.ty.clone()
+            } else {
+                Type::Unknown
+            };
+            ctx.bind_var(param.name.clone(), ty);
+        }
+        ctx.current_ret = Some(fn_decl.ret.clone());
+
+        // Run inference on the body (may push/pop inner scopes for if/for blocks,
+        // but function-level locals persist in our pushed scope).
+        let _ = check_body(ctx, &fn_decl.body);
+
+        // Extract all variable types from the function-level scope.
+        if let Some(scope) = ctx.scopes.last() {
+            for (name, ty) in scope.iter() {
+                if !matches!(ty, Type::Unknown) {
+                    self.local_var_types.insert(name.clone(), ty.clone());
+                }
+            }
+        }
+
+        ctx.pop_scope();
+    }
 }
 
 lazy_static::lazy_static! {
@@ -12836,6 +12912,12 @@ impl Trans for RustTrans {
                 }
             }
         }
+
+        // Plan 376 Phase 2: Expression type inference pass.
+        // For each function, run Auto's inference engine to determine the types
+        // of local variables (including those inferred from expressions), then
+        // populate local_var_types so codegen can make type-aware decisions.
+        self.run_type_inference(&ast.stmts);
 
         // Phase 2: Split into declarations and main, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
@@ -13420,6 +13502,30 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         for (name, ptypes) in &global_fn_param_types {
             if !transpiler.fn_param_types.contains_key(name) {
                 transpiler.fn_param_types.insert(name.clone(), ptypes.clone());
+            }
+        }
+        // Plan 376 Phase 1: Pre-populate fn_ret_types cross-module for .await insertion
+        for (_other_mod, other_ast) in &parsed_modules {
+            for stmt in &other_ast.stmts {
+                if let Stmt::Fn(fn_decl) = stmt {
+                    if !transpiler.fn_ret_types.contains_key(&fn_decl.name) {
+                        transpiler.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+                    }
+                    if let Some(parent) = &fn_decl.parent {
+                        let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
+                        if !transpiler.fn_ret_types.contains_key(&qualified) {
+                            transpiler.fn_ret_types.insert(qualified, fn_decl.ret.clone());
+                        }
+                    }
+                }
+                if let Stmt::TypeDecl(td) = stmt {
+                    for method in &td.methods {
+                        let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
+                        if !transpiler.fn_ret_types.contains_key(&qualified) {
+                            transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                        }
+                    }
+                }
             }
         }
 
