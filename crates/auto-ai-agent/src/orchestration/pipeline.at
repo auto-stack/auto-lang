@@ -396,7 +396,10 @@ ext PipelineEngine {
 
     /// Feedback messages accumulated for a step (gate rejections, auto-notes).
     pub fn feedback_for(step_id str) List<str> {
-        return self.gate_feedback.get(step_id) ?? []
+        is self.gate_feedback.get(step_id) {
+            Some(v) -> return v.clone(),
+            None -> return []
+        }
     }
 }
 
@@ -491,7 +494,7 @@ ext PipelineEngine {
                 return AdvanceResult.Completed
             },
             NextStep.Error(msg) -> {
-                self.status = PipelineStatus.Failed(msg)
+                self.status = PipelineStatus.Failed(msg.clone())
                 return AdvanceResult.Failed(msg)
             },
             NextStep.Pause(reason, resume_step_id) -> {
@@ -585,11 +588,13 @@ fn log_budget_advisory(action BudgetAction) void {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
-use.rust std::time
+use.rust std::time::SystemTime
+use.rust std::time::UNIX_EPOCH
+use.rust std::time::Duration
 
 fn now_secs() uint {
-    let now = std.time.SystemTime.now()
-    let dur = now.duration_since(std.time.UNIX_EPOCH)
+    let now = SystemTime.now()
+    let dur = now.duration_since(UNIX_EPOCH) ?? Duration.new(0, 0)
     return dur.as_secs() as uint
 }
 
@@ -629,8 +634,8 @@ fn expected_target_role(eng PipelineEngine, exit ExitRouting) ?str {
             return None
         },
         ExitRouting.Loop(target_step_id, _max) -> {
-            is eng.flow.get_step_index(target_step_id) {
-                Some(idx) -> return Some(eng.flow.steps[idx].role_id),
+            is eng.flow.get_step_index(target_step_id.as_str()) {
+                Some(idx) -> return Some(eng.flow.steps[idx].role_id.clone()),
                 None -> return None
             }
         }

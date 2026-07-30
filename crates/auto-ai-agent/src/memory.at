@@ -51,9 +51,8 @@ ext Memory {
     /// blocks that aren't plain text).
     pub mut fn add_message(msg Message) void {
         self.messages.push(msg)
-        // Call trim() as a bare statement — a2r rendered `let _ = self.trim()` as
-        // `self.trim().to_string()`, but trim() returns () (no to_string).
         self.trim()
+        return
     }
 
     /// Pre-load a sequence of (role, content) turns from a prior conversation.
@@ -124,7 +123,7 @@ ext Memory {
         if limit == 0 {
             // Keep only system messages.
             var kept List<Message> = []
-            for m in self.messages {
+            for m in self.messages.clone() {
                 if m.role == "system" {
                     kept.push(m)
                 }
