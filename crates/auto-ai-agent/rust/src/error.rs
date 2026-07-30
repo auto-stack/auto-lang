@@ -35,7 +35,7 @@ impl ToolError {
 /// The ReAct loop exceeded its turn budget without finishing.
 /// The loop detected a tool being called identically in a tight cycle.
 /// A Role or Workflow configuration was malformed.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum AgentError {
     Client(ClientError),
     Tool(ToolError),
@@ -43,6 +43,12 @@ pub enum AgentError {
     MaxTurnsExceeded(u32),
     LoopDetected(String),
     Config(String),
+}
+
+impl From<ClientError> for AgentError {
+    fn from(e: ClientError) -> Self {
+        AgentError::Client(e)
+    }
 }
 
 

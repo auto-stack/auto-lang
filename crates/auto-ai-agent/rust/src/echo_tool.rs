@@ -4,9 +4,9 @@
 #[allow(unused_imports)]
 use a2r_std;
 use a2r_std::*;
+use crate::error::ToolError;
+use crate::wire::JsonValue;
 
-use crate::wire::{JsonValue};
-use crate::error::{ToolError};
 /// EchoTool — the simplest possible Tool, for testing the agent tool-calling loop.
 /// 
 /// Design: `pub type has Tool` with four required methods.  The a2r generator

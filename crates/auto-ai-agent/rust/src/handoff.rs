@@ -102,7 +102,7 @@ impl HandoffDocument {
 
         if self.decisions.is_empty() == false {
             lines.push("## Decisions Made".to_string());
-            for d in self.decisions.clone() {
+            for d in &self.decisions {
                 let line: String = format!("- **{}**: {}", d.status, d.title);
                 lines.push(line);
                 if d.rationale.is_empty() == false {
@@ -115,7 +115,7 @@ impl HandoffDocument {
 
         if self.open_questions.is_empty() == false {
             lines.push("## Open Questions".to_string());
-            for q in self.open_questions.clone() {
+            for q in &self.open_questions {
                 lines.push(format!("- {}", q.text));
             }
             lines.push("".to_string());
@@ -123,7 +123,7 @@ impl HandoffDocument {
 
         if self.work_product.is_empty() == false {
             lines.push("## Work Product".to_string());
-            for wp in self.work_product.clone() {
+            for wp in &self.work_product {
                 let size = format_size(wp.lines);
                 let line: String = format!("- `{}`{}{}", wp.path, size, wp.description);
                 lines.push(line);
