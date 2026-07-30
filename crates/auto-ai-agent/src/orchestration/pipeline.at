@@ -270,18 +270,17 @@ ext PipelineEngine {
 
                 // Handoff target auto-correction (silently fill an empty
                 // target; log a correction when the caller named a wrong one).
-                correct_handoff_target(self, h, step_id, exit)
+                correct_handoff_target(self.clone(), h.clone(), step_id.as_str(), exit.clone())
 
                 // Budget tracking — update cumulative BEFORE recording so the
                 // stored handoff carries an accurate cumulative total.
                 self.cumulative_tokens = self.cumulative_tokens + h.token_usage.step_tokens
-                self.budget_tracker.record(role_id, h.token_usage.step_tokens, 0)
+                self.budget_tracker.record(role_id.as_str(), h.token_usage.step_tokens, 0)
                 h.token_usage.cumulative = self.cumulative_tokens
                 let limit = self.budget_tracker.run_budget.limit
                 h.token_usage.budget_remaining = saturating_sub(limit, self.cumulative_tokens)
 
-                let iteration = self.loop_count(step_id)
-                let iteration = self.loop_count(step_id)
+                let iteration = self.loop_count(step_id.as_str())
                 // Bind the record to a local first — constructing it directly
                 // inside .push(...) confuses the type checker (plan 013 gotcha).
                 let rec = StepRecord(
@@ -296,9 +295,9 @@ ext PipelineEngine {
 
                 // Budget check is advisory (Plan 008 recheck): a LimitReached
                 // signal logs a warning but does NOT halt the run.
-                log_budget_advisory(self.budget_tracker.check(role_id))
+                log_budget_advisory(self.budget_tracker.check(role_id.as_str()))
 
-                return self.advance_after_step(step_id, exit)
+                return self.advance_after_step(step_id.as_str(), exit)
             },
             None -> {
                 self.status = PipelineStatus.Failed("submit_handoff called but no step is running")
@@ -320,8 +319,8 @@ ext PipelineEngine {
                         return self.advance()
                     },
                     GateDecision.Reject(feedback) -> {
-                        self.push_gate_feedback(pending.step_id, feedback)
-                        self.gate_resolved_for_step = Some(pending.step_id)
+                        self.push_gate_feedback(pending.step_id.as_str(), feedback.as_str())
+                        self.gate_resolved_for_step = Some(pending.step_id.clone())
                         self.status = PipelineStatus.Idle
                         return self.advance()
                     }
@@ -346,8 +345,8 @@ ext PipelineEngine {
         if paused == false {
             return None
         }
-        for step in self.flow.steps {
-            self.set_loop_counter(step.id, 0)
+        for step in self.flow.steps.clone() {
+            self.set_loop_counter(step.id.as_str(), 0)
         }
         if self.current_step < self.flow.steps.len() {
             let step = self.flow.steps[self.current_step]
@@ -367,8 +366,8 @@ ext PipelineEngine {
             return None
         }
         let step_id = self.flow.steps[self.current_step].id
-        self.set_loop_counter(step_id, 0)
-        self.remove_gate_feedback(step_id)
+        self.set_loop_counter(step_id.as_str(), 0)
+        self.remove_gate_feedback(step_id.as_str())
         self.gate_resolved_for_step = None
         self.status = PipelineStatus.Idle
         return Some(self.advance())
