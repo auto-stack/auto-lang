@@ -108,6 +108,12 @@ pub fn len(val: &Value) -> usize {
     json_len(val)
 }
 
+/// Parse a JSON string and return its array/object length.
+pub fn len_str(s: &str) -> usize {
+    let val: Value = serde_json::from_str(s).unwrap_or_default();
+    json_len(&val)
+}
+
 /// Convert a Value to its JSON string representation.
 pub fn to_string(val: &Value) -> String {
     serde_json::to_string(val).unwrap_or_default()

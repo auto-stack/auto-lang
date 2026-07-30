@@ -1,0 +1,26 @@
+/// c_json_app — JSON 消费者应用。
+/// 组合 Json stdlib 做 JSON 解析与提取。验证三方一致。
+use auto.json
+
+/// 提取字符串值：parse → get → as_string
+fn get_str(json_str str, key str) str {
+    var v = Json.parse(json_str)
+    var val = Json.get(v, key)
+    return Json.as_string(val)
+}
+
+/// 检查 JSON 是否合法。
+fn check_valid(json_str str) int {
+    if Json.is_valid(json_str) { return 1 }
+    return 0
+}
+
+/// 获取数组长度。
+fn get_array_len(json_str str) int {
+    return Json.len(json_str)
+}
+
+/// 获取 JSON 值的类型。
+fn get_type(json_str str) str {
+    return Json.type_of(json_str)
+}

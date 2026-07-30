@@ -3383,6 +3383,30 @@ impl RustTrans {
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
+                                ("json", "as_string") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("json", "as_bool") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("json", "len") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::len(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("json", "is_valid") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
                                 ("json", "is_null") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
@@ -3670,7 +3694,7 @@ impl RustTrans {
                             }
                             _ => {}
                         },
-                        "json" => match method.as_str() {
+                        "json" | "Json" => match method.as_str() {
                             "parse" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
@@ -3700,6 +3724,24 @@ impl RustTrans {
                             "as_string" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "as_int" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ") as i32")?;
+                                return Ok(());
+                            }
+                            "as_bool" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "is_valid" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -3772,6 +3814,12 @@ impl RustTrans {
                             "is_null" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "type_of" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::value_type(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -4530,7 +4578,7 @@ impl RustTrans {
                     // But if the name is a known local variable (e.g. param named "json"), it's NOT a module.
                     let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
                         let name_is_local = self.local_var_types.contains_key(name);
-                        !name_is_local && matches!(name.as_str(), "json" | "shell" | "fs" | "regex" | "env" | "http")
+                        !name_is_local && matches!(name.as_str(), "json" | "Json" | "shell" | "fs" | "regex" | "env" | "http")
                     } else { false };
 
                     if !is_stdlib_module {
@@ -4720,7 +4768,7 @@ impl RustTrans {
                     // handle `env.set` -> `a2r_std::env::set`.
                     let receiver_is_stdlib_module = matches!(object.as_ref(),
                         Expr::Ident(name) if matches!(name.as_str(),
-                            "env" | "json" | "fs" | "file" | "http" | "io"
+                            "env" | "json" | "Json" | "fs" | "file" | "http" | "io"
                             | "shell" | "regex" | "math" | "str" | "time" | "process"));
                     if receiver_is_stdlib_module {
                         // fall through to the stdlib (module, method) routing.
@@ -4838,7 +4886,9 @@ impl RustTrans {
                 // If the identifier is a known local variable, skip stdlib routing
                 let is_local_var = self.local_var_types.contains_key(type_name);
                 if !is_local_var {
-                match (type_name.as_str(), method_name.as_str()) {
+                // Plan 368: Normalize "Json" → "json" for consistent module dispatch
+                let normalized_type = if type_name.as_str() == "Json" { "json" } else { type_name.as_str() };
+                match (normalized_type, method_name.as_str()) {
                     ("json", "parse") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -4868,7 +4918,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_string") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
@@ -4922,7 +4972,7 @@ impl RustTrans {
                                 write!(out, ") as i32)")?;
                             } else {
                                 self.a2r_std_used.set(true);
-                                write!(out, "(a2r_std::json::len(")?;
+                                write!(out, "(a2r_std::json::len(&")?;
                                 self.expr(expr, out)?;
                                 write!(out, ") as i32)")?;
                             }
@@ -4963,10 +5013,28 @@ impl RustTrans {
                         write!(out, ") as i32")?;
                         return Ok(());
                     }
+                    ("json", "as_bool") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "is_valid") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("json", "is_null") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                         write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "type_of") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::value_type(&a2r_std::json::parse(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, "))")?;
                         return Ok(());
                     }
                     ("shell", "exec") => {
