@@ -145,6 +145,17 @@ impl Node {
             return self.id.clone().into();
         }
         if self.args.is_empty() {
+            // Plan 375: config-mode compilation folds a node's positional args
+            // into `_argN` props (see Codegen::compile_config_node), so a node
+            // parsed from a manifest — e.g. device.at's `file(`${sdk}/...`)` —
+            // has an empty `args` vec but its first positional value lives in
+            // the `_arg0` prop. Fall back to it before `name`, otherwise
+            // `main_arg()` returns Nil and the file path is lost.
+            if let Some(value) = self.props.get("_arg0") {
+                if !value.is_nil() {
+                    return value.clone();
+                }
+            }
             if self.props.has("name") {
                 if let Some(value) = self.props.get("name") {
                     value.clone()
@@ -259,7 +270,12 @@ impl Node {
         let plural = format!("{}s", name);
         if self.has_prop(&plural) {
             let simple_kids = self.props.get_array_of(&plural);
-            for kid in simple_kids {
+            // NOTE: iterate by reference, NOT `for kid in simple_kids`. `Array`
+            // implements `Iterator` via `Vec::pop` (see array.rs), which yields
+            // elements in REVERSE and destructively drains the array. Consuming
+            // it here reversed the `link` kids expanded from a `links: [...]`
+            // prop, scrambling IAR group order vs the auto-man 0.1.3 baseline.
+            for kid in simple_kids.iter() {
                 let mut n = Node::new(name.clone());
                 match kid {
                     Value::Str(_) => n.set_main_arg(kid.clone()),
@@ -969,7 +985,31 @@ impl fmt::Display for Instance {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Array;
     use crate::AutoStr;
+
+    #[test]
+    fn test_get_kids_plural_preserves_order() {
+        // Plan 375: `links: [a, b, c]` prop must expand to `link` kids in the
+        // SAME order. SCU001's IAR group order depends on this — a reversed
+        // expansion made the .ewp group tree differ from the auto-man 0.1.3
+        // baseline.
+        let mut node = Node::new("app");
+        let arr = Array::from(vec![
+            Value::str("first"),
+            Value::str("second"),
+            Value::str("third"),
+        ]);
+        node.set_prop("links", Value::Array(arr));
+
+        let kids = node.get_kids("link");
+        let order: Vec<String> = kids.iter().map(|k| k.id().to_string()).collect();
+        assert_eq!(
+            order,
+            vec!["first", "second", "third"],
+            "plural `links` prop must expand to `link` kids in declaration order"
+        );
+    }
 
     #[test]
     fn test_nodebody_insertion_order_props() {

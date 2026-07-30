@@ -1,0 +1,24 @@
+/// c_wget — 简单下载器消费者应用。
+///
+/// 组合 http.get_sync + fs.write_text + fs.read_text 做 GET→保存→读回验证。
+/// 与 Rust oracle（ureq + std::fs）三方一致。
+use auto.http
+use auto.fs
+
+/// 下载 URL 内容到文件，返回文件内容。
+fn download(url str, filepath str) str {
+    var body = http.get_sync(url)
+    fs.write_text(filepath, body)
+    return fs.read_text(filepath)
+}
+
+/// 下载 URL 内容，不保存，直接返回。
+fn fetch(url str) str {
+    return http.get_sync(url)
+}
+
+/// 下载 URL，返回状态码。
+fn fetch_status(url str) int {
+    var body = http.get_sync(url)
+    return http.last_status()
+}

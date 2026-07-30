@@ -3250,7 +3250,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     let rt = get_global_runtime();
     rt.block_on(async {
         let flash = VirtualFlash::new_with_code_and_keys(bytecode, object_keys, object_types);
-        let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
+        let mut vm = AutoVM::new(flash, 32768); // 32KB RAM for config (deeply nested manifests)
         vm.load_strings(strings);
         vm.load_generic_registry(generic_registry);
         vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
@@ -3258,7 +3258,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
         // 5. Execute from entry point (default to 0 for config)
         let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
 
-        let task_id = vm.spawn_task(entry_point, 4096);
+        let task_id = vm.spawn_task(entry_point, 32768); // 32KB task stack (deeply nested manifests)
 
         // Run the VM to completion
         vm.run_task_loop().await;
@@ -3486,6 +3486,48 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Full transpilation via RustTrans::trans()
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
+
+    // Plan 376D: Build a shared TypeStore from ALL sibling .at files (including
+    // subdirectories) so the type inference engine can resolve cross-module types.
+    {
+        let src_root = std::path::Path::new(path)
+            .parent()
+            .and_then(|p| p.parent()) // go up from file's dir to crate src root
+            .unwrap_or(std::path::Path::new("."));
+        let mut type_store = crate::types::TypeStore::new();
+        // Scan the source root recursively for .at files
+        fn scan_at_files(dir: &std::path::Path, store: &mut crate::types::TypeStore) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.is_dir() {
+                        scan_at_files(&entry_path, store);
+                    } else if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
+                        if let Ok(code) = std::fs::read_to_string(&entry_path) {
+                            let mut p = crate::parser::Parser::from(code.as_str());
+                            p.set_dest(crate::parser::CompileDest::TransRust);
+                            p.skip_check = true;
+                            if let Ok(ast) = p.parse() {
+                                for stmt in &ast.stmts {
+                                    use crate::ast::Stmt;
+                                    match stmt {
+                                        Stmt::Fn(fd) => { store.register_fn_decl(fd); }
+                                        Stmt::TypeDecl(td) => { store.register_type_decl(td); }
+                                        Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
+                                        Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
+                                        Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        scan_at_files(src_root, &mut type_store);
+        trans.set_shared_type_store(Some(std::sync::Arc::new(std::sync::RwLock::new(type_store))));
+    }
 
     // Pre-populate struct_fields from sibling .at files in the same directory.
     // This allows cross-file positional struct construction (e.g., Pos(1, 0, 0)

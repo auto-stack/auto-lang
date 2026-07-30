@@ -98,6 +98,7 @@ impl AutoInterpreter {
     /// Default is '$'.
     pub fn with_fstr_note(mut self, note: char) -> Self {
         self.fstr_note = note;
+        self.vm.set_fstr_note(note);
         self
     }
 
@@ -132,9 +133,14 @@ impl AutoInterpreter {
         flipped_code.push_str("var __out__ = \"\"\n");
 
         for line in template.lines() {
-            if line.starts_with(&prefix) {
+            // Plan 375: allow leading whitespace before the code marker, so
+            // indented directive lines like `    @ for app in apps {` in mold
+            // templates (e.g. the IAR .eww workspace template) are recognized
+            // as code instead of being mis-wrapped as F-string text.
+            let trimmed_start = line.trim_start();
+            if let Some(rest) = trimmed_start.strip_prefix(prefix.as_str()) {
                 // Code line: strip the prefix and append as is
-                flipped_code.push_str(&line[prefix.len()..]);
+                flipped_code.push_str(rest);
                 flipped_code.push('\n');
             } else {
                 // Text line: wrap in F-string so $variable interpolation works
@@ -309,5 +315,49 @@ mod tests {
 
         assert_eq!(interp.get_global("name"), Some(Value::str("Alice")));
         assert_eq!(interp.get_global("age"), Some(Value::Int(30)));
+    }
+
+    // Plan 375: an injected global must be visible to evaluated code. This is
+    // the foundation for mold-template rendering (e.g. IAR `.eww`'s
+    // `@ for app in apps { ... }`): `merge_atom`/`set_global` seed globals,
+    // and `VmInterpreter::run` now injects them into the AutoVM it spawns
+    // (registering Array/Obj/Node values into the heap registries).
+    #[test]
+    fn test_global_scalar_visible_in_eval() {
+        let mut interp = AutoInterpreter::new();
+        interp.set_global("who", Value::str("world"));
+        let r = interp.eval("who").unwrap();
+        assert_eq!(r.to_astr().as_str(), "world", "global scalar must be readable");
+    }
+
+    #[test]
+    fn test_for_over_injected_global_array() {
+        let mut interp = AutoInterpreter::new();
+        let arr = auto_val::Array::from_vec(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        interp.set_global("nums", Value::Array(arr));
+        let sum = interp.eval("var s = 0\nfor x in nums { s = s + x }\ns").unwrap();
+        assert_eq!(sum, Value::Int(6), "for-in must iterate an injected global array");
+    }
+
+    // Plan 375: minimal mold-style template (note='@') with a for-loop over an
+    // injected Node array, mirroring the IAR `.eww` workspace template. Run with
+    // `RUST_BACKTRACE` off; on failure the printed `flipped_code` shows exactly
+    // how eval_template turns the template into AutoLang.
+    #[test]
+    fn test_mold_template_for_over_node_array() {
+        let mut app = auto_val::Node::new("app");
+        app.id = "SCU001".into();
+        let arr = auto_val::Array::from_vec(vec![Value::Node(app)]);
+        let mut interp = AutoInterpreter::new().with_fstr_note('@');
+        interp.set_global("apps", Value::Array(arr));
+        let tpl = "@ for app in apps {\n<project id=\"@{app.id}\" />\n@ }\n";
+        let r = interp.eval_template("", tpl);
+        match r {
+            Ok(v) => {
+                let s = v.to_astr();
+                assert!(s.contains("SCU001"), "template must interpolate app.id, got: {}", s);
+            }
+            Err(e) => panic!("mold template eval failed: {:?}\n(template was:\n{})", e, tpl),
+        }
     }
 }

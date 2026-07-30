@@ -1,0 +1,12 @@
+[package]
+name = "mock-server"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal HTTP mock server for http_client_sync parity tests"
+
+# Standalone crate so it builds/runs independently of the parity workspace.
+[workspace]
+
+[[bin]]
+name = "mock-server"
+path = "src/main.rs"

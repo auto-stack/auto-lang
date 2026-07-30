@@ -299,6 +299,22 @@ pub struct Codegen {
     /// available. Defaults false — Script/TransC/TransRust paths are unchanged.
     pub config_mode: bool,
 
+    /// Plan 375: keys that were injected as context args (dep override props)
+    /// via `compile_config_program`. A top-level Pair with the same name acts as
+    /// a *default* value, so it must NOT overwrite the injected local — only
+    /// injected-but-absent keys fall back to the Pair's literal. Used by
+    /// `compile_config_stmt_expr` to skip the `STORE_LOCAL` for these keys.
+    pub config_injected_keys: std::collections::HashSet<String>,
+
+    /// Plan 375: compile-time nesting depth of the config accumulator stack.
+    /// Depth 0 = inside the root container (where top-level Pair statements
+    /// like `kernel: {...}` live — these are *parameter defaults* and subject
+    /// to injected-key override). Depth ≥1 = inside a nested node/dir body
+    /// (where `at:` / `port:` are structural field defs, NOT parameter
+    /// defaults, and must NOT be replaced by an injected value). Bumped by
+    /// `compile_config_node` on entry / exit.
+    pub config_accum_depth: u32,
+
     /// Plan 118: Track the type of the last compiled expression for result formatting
     /// Used to format output correctly (e.g., byte as hex, uint with suffix)
     pub last_expr_type: ObjectType,
@@ -446,6 +462,8 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             config_mode: false, // Plan 364 Step 5: Script mode by default
+            config_injected_keys: std::collections::HashSet::new(), // Plan 375
+            config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
@@ -513,16 +531,24 @@ impl Codegen {
         self.emit(OpCode::RESERVE_STACK);
         self.code.push(n_locals);
 
-        // Inject context args (e.g. `port`) as locals. Each becomes a string
-        // local so `if port == "win32"` / f-string `${port}` works at runtime.
+        // Inject context args (e.g. `port`, `kernel`) as locals. Plan 375:
+        // previously only `Value::Str` args were injected, so object/array/
+        // numeric dep overrides (e.g. SCU001's `dep osal { kernel: kernel_config }`
+        // where `kernel_config` is an Object) were silently dropped — leaving the
+        // child package's defaults in effect and producing wrong include paths.
+        // We now materialize every literal arg via `compile_expr` so all value
+        // types reach the child pac.at's scope.
         for (key, val) in args.iter() {
-            let slot = self.add_var(&key.to_string());
-            // Only string args are supported as context (matches legacy env).
-            if let auto_val::Value::Str(s) = val {
-                let idx = self.add_string(s);
-                self.emit(OpCode::LOAD_STR);
-                self.code.extend_from_slice(&idx.to_le_bytes());
-                self.emit_store_loc(slot);
+            if let auto_val::ValueKey::Str(name) = key {
+                if let Some(expr) = Self::value_to_expr(val) {
+                    let slot = self.add_var(name.as_str());
+                    self.compile_expr(&expr)?;
+                    self.emit_store_loc(slot);
+                    // Record this key so a later top-level Pair of the same
+                    // name (the package's default) does NOT overwrite the
+                    // injected override value.
+                    self.config_injected_keys.insert(name.to_string());
+                }
             }
         }
 
@@ -546,6 +572,53 @@ impl Codegen {
         self.emit(OpCode::RET);
         self.code.push(0); // n_args
         Ok(())
+    }
+
+    /// Plan 375: Convert a runtime `auto_val::Value` literal into an `Expr`
+    /// so it can be compiled via `compile_expr` and injected as a config-mode
+    /// local (dep override props). Returns `None` for non-literal value kinds
+    /// (functions, views, vm refs, etc.) that have no literal representation.
+    fn value_to_expr(val: &auto_val::Value) -> Option<crate::ast::Expr> {
+        use crate::ast::{Expr, Key, Pair};
+        let expr = match val {
+            auto_val::Value::Int(i) => Expr::Int(*i),
+            auto_val::Value::Uint(u) => Expr::Uint(*u),
+            auto_val::Value::I64(i) => Expr::I64(*i),
+            auto_val::Value::U8(b) => Expr::U8(*b),
+            auto_val::Value::I8(i) => Expr::I8(*i),
+            auto_val::Value::Bool(b) => Expr::Bool(*b),
+            auto_val::Value::Byte(b) => Expr::Byte(*b),
+            auto_val::Value::Char(c) => Expr::Char(*c),
+            auto_val::Value::Str(s) => Expr::Str(s.clone()),
+            auto_val::Value::Float(f) => Expr::Float(*f, auto_val::AutoStr::new()),
+            auto_val::Value::Double(f) => Expr::Double(*f, auto_val::AutoStr::new()),
+            auto_val::Value::Nil | auto_val::Value::Null => Expr::Nil,
+            auto_val::Value::Array(arr) => {
+                let elems: Vec<Expr> = arr.iter().filter_map(Self::value_to_expr).collect();
+                Expr::Array(elems)
+            }
+            auto_val::Value::Obj(obj) => {
+                let pairs: Vec<Pair> = obj
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        let key = match k {
+                            auto_val::ValueKey::Str(s) => Key::NamedKey(s.clone()),
+                            auto_val::ValueKey::Int(i) => Key::IntKey(*i),
+                            auto_val::ValueKey::Bool(b) => Key::BoolKey(*b),
+                        };
+                        Self::value_to_expr(v).map(|e| Pair {
+                            key,
+                            value: Box::new(e),
+                        })
+                    })
+                    .collect();
+                Expr::Object(pairs)
+            }
+            // Non-literal kinds (Node, Fn, VmRef, Instance, ...) have no literal
+            // form; skip them rather than risk an incorrect injection.
+            _ => return None,
+        };
+        Some(expr)
     }
 
     /// Plan 197 Task 16: Register built-in Option.Some and Option.None as enum variant templates
@@ -698,6 +771,8 @@ impl Codegen {
             max_locals: 0,
             should_pop_expr_result: false,
             config_mode: false, // Plan 364 Step 5: Script mode by default
+            config_injected_keys: std::collections::HashSet::new(), // Plan 375
+            config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
@@ -1560,7 +1635,12 @@ impl Codegen {
                                         Expr::Dot(obj, method) => {
                                             if let Expr::Ident(obj_name) = obj.as_ref() {
                                                 let full_name = format!("{}.{}", obj_name, method);
-                                                if let Some(ty) = self.fn_return_types.get(&full_name) {
+                                                // Plan 368 W6-cross-domain: try qualified name,
+                                                // then fall back to bare method name (same as R-W4
+                                                // at the CALL reloc site, line 7894).
+                                                let ret_ty = self.fn_return_types.get(&full_name)
+                                                    .or_else(|| self.fn_return_types.get(method.as_str()));
+                                                if let Some(ty) = ret_ty {
                                                     ty.clone()
                                                 } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
                                                     let type_method = format!("{}.{}", type_name, method);
@@ -1583,7 +1663,10 @@ impl Codegen {
                                                 }
                                             } else {
                                                 let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
-                                                if let Some(ty) = self.fn_return_types.get(&fn_name) {
+                                                // Plan 368 W6-cross-domain: bare-name fallback
+                                                let ret_ty = self.fn_return_types.get(&fn_name)
+                                                    .or_else(|| self.fn_return_types.get(method.as_ref()));
+                                                if let Some(ty) = ret_ty {
                                                     ty.clone()
                                                 } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
                                                     let type_method = format!("{}.{}", type_name, method.as_ref());
@@ -3688,21 +3771,68 @@ impl Codegen {
     fn compile_config_stmt_expr(&mut self, expr: &Expr) -> AutoResult<()> {
         match expr {
             Expr::Pair(pair) => {
-                self.compile_expr(&pair.value)?;
                 let key_str = match &pair.key {
                     crate::ast::Key::NamedKey(name) => name.to_string(),
                     crate::ast::Key::StrKey(s) => s.to_string(),
                     crate::ast::Key::IntKey(i) => i.to_string(),
                     crate::ast::Key::BoolKey(b) => b.to_string(),
                 };
-                // Plan 364 Step 5: also bind the value to a same-named local
-                // variable so later statements can reference it at runtime —
-                // `kernel: {...}` makes `kernel.heap` / `${kernel.heap}` work,
-                // and `modules: [...]` makes `for d in modules` work. DUP keeps
-                // one copy for the accumulator and stores the other as a local.
-                let slot = self.add_var(&key_str);
-                self.emit(OpCode::DUP);
-                self.emit_store_loc(slot);
+                // Plan 364 Step 5: bind the value to a same-named local so later
+                // statements can reference it — `kernel: {...}` makes
+                // `kernel.heap` / `${kernel.heap}` work, `modules: [...]` makes
+                // `for d in modules` work. DUP keeps one copy for the
+                // accumulator and stores the other as a local.
+                //
+                // Plan 375: a top-level Pair is a *default* parameter value. If
+                // an arg of the same name was injected via
+                // `compile_config_program` (a dep override), the injected value
+                // wins — discard this default literal and load the injected
+                // local instead, so BOTH the local binding and the accumulated
+                // root prop reflect the override. This is what lets SCU001's
+                // `dep osal { kernel: kernel_config }` override osal's built-in
+                // `kernel: {...}` default.
+                // Plan 375: only a *top-level* Pair (depth 0, directly in the
+                // root container) is a parameter default subject to override.
+                // Pairs inside nested nodes (dir/app/dep bodies, depth ≥1) are
+                // structural field definitions and must keep their literal
+                // value — otherwise an injected `at` would rewrite every nested
+                // dir's `at:`, producing doubled paths like Bsp/Mcal/Bsp/Mcal.
+                let is_top_level_default =
+                    self.config_accum_depth == 0 && self.config_injected_keys.contains(&key_str);
+                if is_top_level_default {
+                    // Reuse the slot allocated at injection time; do NOT call
+                    // add_var (it would mint a fresh, never-written slot and
+                    // shadow the injected value). Push the injected override
+                    // value for ACCUM_PAIR (the default literal is not compiled
+                    // in this branch, so nothing to discard).
+                    if let Some(slot) = self.lookup_var(&key_str) {
+                        self.emit_load_loc(slot);
+                    } else {
+                        // Fallback: treat as a normal default binding.
+                        self.compile_expr(&pair.value)?;
+                        let s = self.add_var(&key_str);
+                        self.emit(OpCode::DUP);
+                        self.emit_store_loc(s);
+                    }
+                } else if self.config_accum_depth == 0 {
+                    // Top-level non-injected Pair: a parameter default. Bind it
+                    // to a same-named local so later statements / f-strings can
+                    // reference it (`kernel: {...}` → `${kernel.port}`).
+                    self.compile_expr(&pair.value)?;
+                    let s = self.add_var(&key_str);
+                    self.emit(OpCode::DUP);
+                    self.emit_store_loc(s);
+                } else {
+                    // Plan 375: nested Pair (depth ≥1) is a structural field
+                    // def inside a node body. It must NOT bind a local —
+                    // config_mode has no scope isolation, so a STORE_LOCAL here
+                    // would leak into / shadow the enclosing scope (e.g. osal's
+                    // `dep("kernel") { config: `${kernel.config}` }` would
+                    // overwrite the top-level `config` local, corrupting a
+                    // later `lib("osal") { incs: [`${config}`] }`). The value
+                    // is only accumulated into the node container below.
+                    self.compile_expr(&pair.value)?;
+                }
                 let key_idx = self.add_string(&key_str);
                 self.emit(OpCode::ACCUM_PAIR);
                 self.code.extend_from_slice(&key_idx.to_le_bytes());
@@ -3788,9 +3918,15 @@ impl Codegen {
         // in config_mode accumulates Pairs/sub-nodes into THIS container (the
         // top of accum_stack). Nested control flow (if/for) also accumulates
         // directly into this container per legacy Config semantics.
+        //
+        // Plan 375: bump the compile-time accum depth so Pairs inside this
+        // node body are treated as structural field defs, not parameter
+        // defaults (an injected `at` must not rewrite a nested dir's `at:`).
+        self.config_accum_depth += 1;
         for stmt in &node.body.stmts {
             self.compile_stmt(stmt)?;
         }
+        self.config_accum_depth -= 1;
 
         // POP_ACCUM: pop the assembled Node, store in registry, push its id.
         self.emit(OpCode::POP_ACCUM);

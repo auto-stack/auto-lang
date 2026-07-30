@@ -5508,6 +5508,17 @@ pub fn shim_http_last_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
     Ok(())
 }
 
+/// Synchronous HTTP GET — returns response body as string.
+/// Stack: [url] -> [response_body_str]
+pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, resp_body) = simple_http_request_with_auth("GET", &url, None, None);
+    LAST_HTTP_STATUS.with(|s| s.set(status));
+    resp_body.push_to_stack(task, vm)?;
+    Ok(())
+}
+
 /// HTTP listen stub — starts a simple HTTP server.
 /// Stack: [callback_closure, port, host] -> []
 /// Currently a stub that prints a message and returns.
@@ -6284,6 +6295,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);
     natives.register_shim_by_name("auto.http.post_bearer", shim_http_post_bearer);
     natives.register_shim_by_name("auto.http.last_status", shim_http_last_status);
+    natives.register_shim_by_name("auto.http.get_sync", shim_http_get_sync);
+    natives.register_shim_by_name("http.get_sync", shim_http_get_sync);
     natives.register_shim_by_name("auto.http.listen", shim_http_listen);
 
     // Regex (manual shim — heap objects for compiled regex)

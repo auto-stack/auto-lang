@@ -371,8 +371,11 @@ enum Commands {
     Export {
         #[arg(short, long, help = "Name of the port to export")]
         port: String,
-        #[arg(short, long, help = "Format to export to (cmake, iar, ghs)")]
-        format: String,
+        // NOTE: named `fmt` (not `format`) to avoid clashing with the global
+        // `--format <OutputFormat>` error-diagnostic flag, which caused a clap
+        // downcast panic whenever `export --format ...` was used.
+        #[arg(short = 'f', long = "fmt", help = "Format to export to (cmake, iar, ghs)")]
+        fmt: String,
     },
 
     // ========== Project Utils ==========
@@ -1035,7 +1038,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Some(Commands::Export { port, format }) => {
+        Some(Commands::Export { port, fmt }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1048,7 +1051,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 miette::miette!("{}", e)
             })?;
-            am.export(port.clone(), format.clone()).map_err(|e| {
+            am.export(port.clone(), fmt.clone()).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
                     std::process::exit(1);
@@ -1056,7 +1059,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 miette::miette!("{}", e)
             })?;
             if ai_mode {
-                println!("{}", format_success_json(json!({"message": "Export completed", "port": port, "format": format})));
+                println!("{}", format_success_json(json!({"message": "Export completed", "port": port, "format": fmt})));
             }
         }
 

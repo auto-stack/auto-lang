@@ -14,6 +14,9 @@ pub struct VmInterpreter {
     exports: StdHashMap<String, u32>,
     /// Global variables (name -> value)
     globals: StdHashMap<String, Value>,
+    /// F-string interpolation note character (default '$'). Set to '@' for
+    /// mold templates so f-strings like `f"@{app.id}"` interpolate correctly.
+    fstr_note: char,
 }
 
 impl VmInterpreter {
@@ -21,17 +24,38 @@ impl VmInterpreter {
         Self {
             exports: StdHashMap::new(),
             globals: StdHashMap::new(),
+            fstr_note: '$',
         }
+    }
+
+    /// Set the F-string interpolation note character used when parsing/running
+    /// code (mirrors `AutoInterpreter::with_fstr_note`).
+    pub fn set_fstr_note(&mut self, note: char) {
+        self.fstr_note = note;
     }
 
     /// Run code and return result
     pub fn run(&mut self, code: &str) -> AutoResult<Value> {
         // 1. Parse the code
-        let mut parser = Parser::from(code);
+        let mut parser = Parser::new_with_note(code, self.fstr_note);
+        // Plan 375: relax the strict undefined-symbol check so that template-
+        // injected globals (e.g. `apps` in mold templates) parse even though
+        // they are never declared in the source. The values are supplied via
+        // `set_global` / `merge_atom` and injected into the AutoVM below.
+        parser.skip_check = true;
         let ast = parser.parse()?;
 
         // 2. Compile to bytecode
         let mut codegen = Codegen::new();
+
+        // Plan 375: register injected globals as module-level global vars
+        // BEFORE compiling, so that bare references (e.g. `apps` in a mold
+        // template) resolve to LOAD_GLOBAL during compile_stmt instead of
+        // hitting codegen's "Undefined variable" fallback. The values are
+        // seeded into the AutoVM's own globals map after the VM is created.
+        for name in self.globals.keys() {
+            codegen.global_vars.insert(name.clone());
+        }
 
         // Compile each statement
         let n = ast.stmts.len();
@@ -102,12 +126,22 @@ impl VmInterpreter {
         // Plan 197 Task 9: Transfer generic registry to VM for runtime field name lookup
         let generic_registry = std::mem::take(&mut codegen.generic_registry);
 
+        // Plan 375: snapshot the injected globals so the async block can seed
+        // them into the AutoVM (registering Array/Obj/Node values into the VM
+        // heap registries and storing their tagged ids / scalars in vm.globals).
+        let globals_snapshot: Vec<(String, Value)> =
+            self.globals.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
         // Use global runtime to avoid creating/dropping runtimes in async context
         let rt = crate::get_global_runtime();
         let final_result = rt.block_on(async move {
             let mut vm = AutoVM::new(flash, 4096);
             vm.load_strings(strings);
             vm.load_generic_registry(generic_registry);
+            for (name, value) in &globals_snapshot {
+                let nv = vm.inject_value(value);
+                vm.globals.insert(name.clone(), nv);
+            }
 
             let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
             let task_id = vm.spawn_task(entry_point, 4096);

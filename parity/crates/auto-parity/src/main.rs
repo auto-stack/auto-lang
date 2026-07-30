@@ -342,10 +342,10 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
         // `auto.<module>` stdlib and is compared three-way with a native Rust
         // oracle that calls the same underlying crate directly.
-        ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app"]),
+        ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app", "c_json_app"]),
         // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
         // (parity runner auto-spawns libs/<name>/mock-server/ via MockServer).
-        ("d6", &["http_client_sync"]),
+        ("d6", &["http_client_sync", "c_http_get", "c_wget", "c_crawler"]),
         // Plan 369 (Python parity): three-way parity against a Python oracle
         // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
         // library's `tests/python/` directory by `detect_parity_mode`.

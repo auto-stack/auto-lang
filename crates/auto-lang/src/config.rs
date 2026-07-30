@@ -306,3 +306,64 @@ impl BackendConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auto_val::{Obj, Value};
+
+    // Plan 375: an Object arg injected via `from_code` must be readable inside
+    // the config via `${obj.field}`. Reproduces SCU001's `dep osal { kernel:
+    // kernel_config }` → osal's `dep("kernel") { port: `${kernel.port}` }` chain.
+    #[test]
+    fn test_injected_object_arg_field_access() {
+        let mut args = Obj::new();
+        let mut kobj = Obj::new();
+        kobj.set("port", Value::str("IAR/ARM_CM4F"));
+        kobj.set("heap", Value::str("heap_4"));
+        args.set("kernel", Value::Obj(kobj));
+
+        // Child config: a default `kernel` Pair (must NOT override the injected
+        // arg), then a dep node whose prop reads `${kernel.port}`.
+        let code = r#"
+kernel: { port: "msvc/x64", heap: "heap_5" }
+dep("kernel") {
+    port: `${kernel.port}`
+    heap: `${kernel.heap}`
+}
+"#;
+        let cfg = AutoConfig::from_code(code, &args).unwrap();
+        // Find the dep("kernel") kid and read its `port` prop.
+        let mut got = String::new();
+        for (_, kid) in cfg.root.kids_iter() {
+            if let auto_val::Kid::Node(n) = kid {
+                got = n.get_prop("port").to_astr().as_str().to_string();
+            }
+        }
+        assert_eq!(
+            got, "IAR/ARM_CM4F",
+            "injected kernel.port must override the default; got {:?}",
+            got
+        );
+    }
+
+    #[test]
+    fn test_injected_bool_arg() {
+        let mut args = Obj::new();
+        args.set("use_rtt", Value::Bool(true));
+        let code = r#"
+use_rtt: false
+dep("log") {
+    use_rtt: use_rtt
+}
+"#;
+        let cfg = AutoConfig::from_code(code, &args).unwrap();
+        let mut got = Value::Nil;
+        for (_, kid) in cfg.root.kids_iter() {
+            if let auto_val::Kid::Node(n) = kid {
+                got = n.get_prop("use_rtt");
+            }
+        }
+        assert_eq!(got, Value::Bool(true), "injected bool must propagate");
+    }
+}

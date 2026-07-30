@@ -1,0 +1,9 @@
+[package]
+name = "c-http-get-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ureq = "2"
+
+[workspace]

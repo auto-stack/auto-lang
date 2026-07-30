@@ -66,19 +66,22 @@ Step 5 只通过了单元测试，**真实 SCU001 项目从未跑通**。7-22 �
   产出的项目文件可 diff 对比（7-22 会话曾备份为 `build.bak.plan364`，已清理）。
 - 预期会触发 Task 2 / Task 3 的缺口。
 
-### Task 2：实现 `extract_node_deep` 的 kids 映射
+### Task 2：`CREATE_NODE` 的 kids 映射（降级，不影响本计划）
 
-[crates/auto-lang/src/vm/engine.rs:1879](../crates/auto-lang/src/vm/engine.rs#L1879) 有遗留 TODO：
+> **状态变更（2026-07-30）：降级为独立小任务，移出本计划范围。**
 
-```
-// TODO: Implement kids array/list mapping
-```
+[crates/auto-lang/src/vm/engine.rs](../crates/auto-lang/src/vm/engine.rs) 的
+`OpCode::CREATE_NODE` handler 仍有遗留 TODO（`// TODO: Implement kids array/list
+mapping`，行号随代码漂移，搜索该字符串定位）。它只提取 props/args，不物化 kids。
 
-当前 `extract_node_deep` 只提取 props，**不提取 kids（子节点）/ args**。
-影响：dep pac.at 里嵌套 Node 的子节点会在物化时丢失，下游 `merge_port`/
-`target.rs` 读不到嵌套结构。这是 SCU001 dep 解析很可能卡住的点。
+**但这不影响 SCU001**：config 求值走的是 Plan 375 的 ACCUM 指令链
+（`PUSH_ACCUM`/`ACCUM_PAIR`/`ACCUM_NODE`/`POP_ACCUM`），其中 `ACCUM_NODE`
+（[engine.rs](../crates/auto-lang/src/vm/engine.rs) 的 `ACCUM_NODE` handler）
+独立处理 kids 追加，完全不经过 `CREATE_NODE`。Task 1 端到端跑通即证明此点。
 
-需补全 kids（及 args）→ Node 结构的映射，并加对应单元测试。
+因此该 TODO 只影响"VM 内用 `CREATE_NODE` 显式构造带子节点的 Node"的场景，
+与本计划（SCU001 IAR 输出对齐）无关。**从本计划移除**，留作后续独立小任务
+（若将来出现 VM 内构造嵌套 Node 的需求再处理）。
 
 ### Task 3：复杂嵌套 dep pac.at 的 f-string / 字段访问覆盖
 
@@ -89,8 +92,105 @@ Step 5 只通过了单元测试，**真实 SCU001 项目从未跑通**。7-22 �
 
 ## 收尾动作（非阻塞，但建议处理）
 
-- **worktree `scu001-compat-364`**：使命（合并回 master）已完成，当前 `locked`，
-  且内含 20+ 个历史 stash（多数与本工作无关）。确认无需保留后可
-  `git worktree unlock` + `git worktree remove`，并酌情清理 stash。
+- **worktree `scu001-compat-364`**：✅ **已清理（2026-07-30）**。确认其 HEAD
+  （`e0be3e35b`，Step 5）的所有 commits 均已合并到 master（`master..HEAD` 为空）、
+  工作树干净后，`git worktree unlock` + `git worktree remove` 完成删除，
+  已不在 `git worktree list` 中。
+  仓库里仍有 23 个历史 stash（多为 plan364 WIP），未删除——内容应在 commits 中，
+  留待用户自行酌情清理。
 - **commit message 撞号**：历史 commit 不重写（按仓库规范不改写历史），
   本文件的"编号说明"即为缓解措施。
+
+## 计划完成总结
+
+**Plan 375 的核心使命已全部达成（2026-07-30）。** 目标：让集成版
+`auto.exe export -p lanshan -f iar` 对 `D:\SCU001\code\SCU001` 产出与旧独立版
+`auto-man.exe v0.1.3` 一致的 IAR 工程文件。
+
+最终验证结果：
+- `SCU001.eww` / `.ewt` / `.ewd`：与基线**字节级完全一致**。
+- `SCU001.ewp`：group / 文件 / include / define 四个集合**完全一致**；
+  顶层 group 顺序对齐基线（`Bsp` 在前）。
+- 仅剩 device（`Bsp/Mcal`）下子 group 的**内部排列顺序**差异，根因是
+  `Target::dirs: HashMap` 无序，属既有设计、IAR 不敏感，不修（见下文"不修"一节）。
+
+本计划期间的提交（按时间序）：
+- `6e1f020cb` fix(config): inject Object/Array/Bool dep override args
+- `812aa4ea5` fix(config): resolve file() node paths + nested Pair scope leak
+- `1bde4a070` fix(target): expose deps as devices/deps/bags array props in to_node
+- `55795c585` feat(interpreter): inject globals into AutoVM + Node field access
+- `47a741173` fix(pac): assemble apps/deps/devices/libs/bags/tests arrays in to_node
+- `eecf0ce7e`（及前序）fix(node/array): plural prop 展开顺序 + Array 消费迭代根因
+
+## 追加：`.ewp` group 顺序根因分析（2026-07-30）
+
+SCU001 四个 IAR 文件中，`.eww/.ewt/.ewd` 已与 auto-man 0.1.3 基线**字节一致**，
+`.ewp` 的 group 集合 / 文件集合 / include 集合 / define 集合也全部一致，
+仅剩 group/文件的**排列顺序**不同。本轮定位并修复了其中最关键的根因。
+
+### 已修复：`get_kids` plural 展开逆序 + `Array` 消费迭代根因（commit 待提交）
+
+`links: ["a","b","c"]` 这类**复数 prop** 会被 `Node::get_kids("link")` 惰性展开
+为一组名为 `link` 的子节点（[crates/auto-val/src/node.rs](../crates/auto-val/src/node.rs)
+的 `get_kids`，plural 分支）。app target 的直接依赖顺序、进而整个 `.ewp` group
+树的顶层顺序都来自这条路径。
+
+**直接根因**：`get_kids` 的 plural 分支写成 `for kid in simple_kids`（消费
+`Array`）。而 `crates/auto-val/src/array.rs` 里 `impl Iterator for Array` 的
+实现是
+
+```rust
+fn next(&mut self) -> Option<Self::Item> {
+    self.values.pop()   // 从尾部弹 → 逆序 + 破坏性 drain
+}
+```
+
+Rust 的 blanket `impl<I: Iterator> IntoIterator for I` 让 `for x in arr` 复用了
+这个 `pop`-based `next`——于是元素被**逆序**追加。诊断证据：
+
+- 原始 prop `links` 数组顺序正确：`[device, osal, xmen, kernel, log, common, EB, lseconfig]`
+- `get_kids("link")` 返回却是逆序：`[lseconfig, EB, common, log, kernel, xmen, osal, device]`
+- 顶层 group 树因此与基线相反。
+
+**深层根因 + 根治**：`pop` 本身没错（它是栈操作，LIFO + 掏空是栈的正确语义），
+错的是把"栈操作"伪装成"遍历操作"——`impl Iterator for Array { next = pop }`
+让 `for x in arr` 这个本该正序遍历的语法糖，落到了逆序破坏性的栈弹出上。
+
+按"三套接口各司其职"的原则重构 [array.rs](../crates/auto-val/src/array.rs)：
+
+| 用途 | 接口 | 语义 |
+|---|---|---|
+| 栈操作 | `Array::push` / `Array::pop` | LIFO，破坏性（保留） |
+| 借用遍历 | `Array::iter` / `Array::iter_mut` | 正序，非破坏（保留） |
+| 消费遍历 `for x in arr` | `impl IntoIterator for Array` | **正序** drain（新增） |
+
+具体改动：**移除** `impl Iterator for Array { next = pop }`，**新增**
+`impl IntoIterator for Array { into_iter → Vec::into_iter }`（正序 move 出每个元素）。
+之所以必须移除 `impl Iterator`：core 的 blanket impl 会与手写的 `IntoIterator`
+冲突（`E0119 conflicting implementations`），只要 `Array: Iterator` 存在就无法
+给 `for x in arr` 换一个正序的 `IntoIterator`。移除后全 workspace 编译通过，
+证明没有任何代码把 `Array` 当 `Iterator` trait 对象用——所有消费都是
+`for x in arr`，现在统一走正序。
+
+同时 `get_kids` 的 plural 分支改为 `for kid in simple_kids.iter()`（更显式的
+正序借用迭代，即使消费语义已修也保留），并加单元测试
+`test_get_kids_plural_preserves_order` 锁定声明顺序。
+
+修复后 SCU001 顶层 group 顺序对齐基线（`Bsp` 回到最前），group/file/inc 三个
+集合全部一致；全 workspace 编译通过，auto-val（164）/auto-man（176）测试全绿，
+auto-lang 的失败均为基线既有（`StringBuilder.push` FFI 缺失、router keyword、
+python doctest），与本改动无关。
+
+### 不修：device 子 group 内部顺序
+
+`.ewp` 仍有约 585 行 diff，全部是 device（`Bsp/Mcal`）下子 group 的**内部排列**
+（如 `Dio,Can,Pwm,...` vs `Dma,Lin,Gpt,...`）。根因是：
+
+- `Target::dirs` 是 `HashMap<AutoStr, Dir>`（[target.rs](../crates/auto-man/src/target.rs)），
+  无序；device 的子目录 group 顺序取决于此 HashMap 的遍历顺序。
+- `extract_selects` 用 `HashSet`（仅用于过滤，不决定顺序）。
+- 基线自身的子顺序也不规则（既非字母序，也非 `selects` 声明序）。
+
+这是既有设计，与 Plan 375 无关，且 **IAR 对 group 内部顺序不敏感**（只影响
+工程树展示）。改 `dirs` 为有序结构（如 `IndexMap`）风险大、收益低，**不在本计划处理**。
+

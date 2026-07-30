@@ -19,26 +19,20 @@
 
 ## 阶段总览
 
-> **实施进度（2026-07-22 worktree `plan-367/consumer-parity`）**
+> **实施进度（2026-07-29 复核）**
 >
-> - **F1 ✅ 完成**（c_fs_app，7/7 三方一致，已提交）。实际用例数 7（非预估 ~16），
->   覆盖 write/read/empty/overwrite/exists±/mkdir+nested。
->   实施中发现并修复两个 a2r 缺口（让消费者代码在三端行为一致）：
->   1. `a2r-std::fs::read_text/read_to_string` 返回 `Option<String>` 而 VM 的
->      `auto.fs.read_text` 返回 `String`（错误时空串）——已对齐为返回 `String`。
->   2. a2r 转译器 `fs.*` 的 obj.method 分支未借用字符串参数，导致 owned path
->      被 move——已改为 `expr_as_str` 借用（见 commit）。
->   另外两条 a2r 转译器怪癖（owned `str` 变量登记为 StrSlice；用户函数的内联
->   拼接参数不自动 `.as_str()`）以 `.at` 源码侧的写法规避并记录在 README，
->   不在本计划范围内修。
-> - **F2 ⛔ 阻塞**（c_json_app）：VM 无法 import `auto.json`——stdlib `json.at`
->   里的 `pub fn JsonValue.as_int(self JsonValue) int` 方法声明触发
->   `auto_syntax_E0007 Expected term, got Newline`（解析 `json.at:58` 附近）。
->   仅 `use auto.json`（无任何调用）即可复现。这是 VM 解析 stdlib json.at 的 bug，
->   类似 DIV-HTTP-LANG-1 但针对 json 模块，**超出 Plan 367 范围**。需单独修 VM
->   解析器（`self Type` 方法声明语法）后才能做 F2。
-> - **F3 / F4 / F5 → 继续实施**：`auto.env`、`auto.process.args`、`auto.fs`+文本
->   均在 VM + a2r 双端实测可用，立即可做。实施顺序调整为 F3 → F4 → F5。
+> - **F1 ✅ PASS 7/7**（c_fs_app）。R-AREG（a2r `fs.read_text(owned_string)` 回归）
+>   已修（commit `7bd728d4`），c_fs_app 恢复三方一致。
+> - **F2 ⛔ 仍未实现**（c_json_app）。R-JSON（VM json 运行时占位）**DEFERRED**
+>   （需 ~300 行改动跨 native.rs / native_catalog.rs / stdlib.rs）。解析层阻塞
+>   （FU-1）已修，但运行时层未补。
+> - **F3 ✅ PASS 7/7**（c_env_app）。
+> - **F4 ✅ PASS 9/9**（c_process_app）。W6-cross-domain 裸名 fallback 已加
+>   （commit `929db9a0`，`infer_expr_type` 内），但 workaround（StringBuilder 写法）
+>   仍在位 → **PARTIALLY FIXED**。
+> - **F5 ✅ PASS 6/6**（c_text_app）。str_as_str 修复 commit `823613bd`。
+> - **F6 ◐ PARTIAL**（http_client_sync）：3/3 POST 一致，GET 未实现。
+> - **F7 ⛔ 未实现**（c_wget/c_crawler）。
 
 | 阶段 | 用例 | 调用能力 | 前置 | 预估用例数 |
 |------|------|---------|------|-----------|
@@ -502,23 +496,22 @@ mock-server 提供固定 HTML/JSON 页面（含已知链接）。测试（~10 �
 
 ## 全局验收
 
-> **进度复核（2026-07-29）**：Layer 1 的 4 个 lib 中，c_env_app/c_process_app 仍
-> 100% 一致，但 **c_fs_app 和 c_text_app 的 a2r 后端出现回归**（`fs.read_text(fullpath)`
-> 的 owned-String 参数未加 `.as_str()` → E0308）。根因疑似 R-W4 修复（返回类型查找
-> 改进）改变了 a2r 的 `needs_as_str` 判断路径。需修（见 §R-AREG）。
+> **进度复核（2026-07-29）**：Layer 1 全部 PASS（c_fs_app 7/7、c_env_app 7/7、
+> c_process_app 9/9、c_text_app 6/6）。R-AREG 回归已修（commit `7bd728d4`），
+> c_fs_app/c_text_app 恢复三方一致。Layer 2 部分（http POST 3/3）。
 
-- [~] **V1**: Layer 1（F2 json 阻塞除外）。
-      - c_fs_app 7/7 → **当前 0/8（a2r 回归，需修 R-AREG）**
+- [x] **V1**: Layer 1（F2 json 阻塞除外）。
+      - c_fs_app 7/7 ✅（R-AREG 已修，commit `7bd728d4`）
       - c_env_app 7/7 ✅
-      - c_process_app 9/9 ✅（仍有 StringBuilder workaround，待 W6-cross-domain 修）
-      - c_text_app 6/6 → **当前 0/7（a2r 回归，同 R-AREG）**
-      - `auto-parity phase d5` 当前 2/4 libs 100%。
+      - c_process_app 9/9 ✅（W6-cross-domain 裸名 fallback 已加，commit `929db9a0`，workaround 仍在）
+      - c_text_app 6/6 ✅（str_as_str 修复，commit `823613bd`）
+      - `auto-parity phase d5` 全 4 lib 100% 一致。
 - [~] **V2**: Layer 2 部分。http_client_sync 3/3 ✅（POST），但 GET 未做。
 - [x] **V3**: mock-server runner hook 已实现 ✅。
 - [x] **V4**: parity dashboard 配置已就绪（d5+d6 在 report phases）。
       ⚠️ dashboard HTML 尚未实际重新生成。
 - [ ] **V5**: 覆盖 4/6 领域（fs/env/process/text）。json（F2）阻塞于 VM json 运行时占位
-      （见 §R-JSON）；http 仅 POST（缺 GET + last_status 断言）。
+      （见 §R-JSON，DEFERRED）；http 仅 POST（缺 GET + last_status 断言）。
 
 ---
 
@@ -550,18 +543,18 @@ Layer 1（F1/F3/F4/F5）实施完成后做了一次完整审计，确认了**未
 
 | Phase | 状态 | 用例数 | 说明 |
 |-------|------|--------|------|
-| F1 c_fs_app | ✅ 完成 | 7/7 | auto.fs 文件读写 |
-| F2 c_json_app | ⛔ 阻塞 | — | VM parser bug（FU-1）|
-| F3 c_env_app | ✅ 完成 | 7/7 | auto.env |
-| F4 c_process_app | ✅ 完成 | 9/9 | CLI argv 解析（规避最多 VM bug）|
-| F5 c_text_app | ✅ 完成 | 6/6 | auto.fs + 文本变换 |
-| F6 c_http_get/post | ⛔ 未实现 | — | 同 FU-1 + mock hook（FU-4）|
+| F1 c_fs_app | ✅ PASS | 7/7 | auto.fs 文件读写（R-AREG 已修，commit `7bd728d4`）|
+| F2 c_json_app | ⛔ 未实现 | — | R-JSON DEFERRED（VM json 运行时占位）|
+| F3 c_env_app | ✅ PASS | 7/7 | auto.env |
+| F4 c_process_app | ✅ PASS | 9/9 | CLI argv 解析（W6-cross-domain PARTIALLY FIXED，commit `929db9a0`，workaround 仍在）|
+| F5 c_text_app | ✅ PASS | 6/6 | auto.fs + 文本变换（str_as_str 修复，commit `823613bd`）|
+| F6 c_http_get/post | ◐ PARTIAL | 3/3 POST | POST 一致；GET 未实现 |
 | F7 c_wget/c_crawler | ⛔ 未实现 | — | 依赖 F6 |
-| F6.1 mock-server hook | ⛔ 未实现 | — | runner.rs 无相关代码 |
+| F6.1 mock-server hook | ✅ 完成 | — | runner.rs 已实现 |
 
-**已完成**：4 lib / 29 用例，`auto-parity phase d5` 全 100% 一致，无回归
+**已完成**：4 lib（F1/F3/F4/F5）/ 29 用例，`auto-parity phase d5` 全 100% 一致，无回归
 （string_utils 22/22 不变，332 个转译器测试通过）。
-**未实现**：F2、F6、F7、F6.1。没有 `d6` phase 注册。
+**未实现**：F2（DEFERRED）、F7。**部分**：F6（仅 POST）。
 
 ### 后续工作项（按投入产出比排序）
 
@@ -711,8 +704,11 @@ workaround 已全部去除（见下"已修的 bug"）。下表保留作历史记
 
 > **教训**：W6/W7 的"现象"大多是 W8 值丢失的次生表现，或工具输出误读。真正的根因是 W8（一处 CALL 返回类型查找漏了 native 兜底）。修 W8 后大部分 workaround 自动消失。
 
-#### 残留待修：W4-残差（跨模块用户函数返回类型查找）— 根因已定位，见 §R-W4
+#### 残留待修：W4-残差（跨模块用户函数返回类型查找）— ✅ R-W4 已修，W6-cross-domain PARTIALLY FIXED（commit `929db9a0`）
 
+- **状态**: R-W4 已修。**W6-cross-domain PARTIALLY FIXED**：裸名 fallback 已加在
+  `infer_expr_type` 内（commit `929db9a0`），但 c_process_app 的 StringBuilder
+  workaround 仍在位（待源码侧改回自然 `str.split` 写法后去除）。
 - **现象**：被跨模块调用的函数（`use auto.<lib>: fn`）里，返回字符串元素时调用方拿到空值。
   `parse_count`（返回 int）恰好"对"，`parse_nth`（返回 str from list）"错"——但两者返回类型
   标记其实**都错**，只是 int 的情况恰好被后续表达式掩盖。
@@ -747,12 +743,15 @@ R-JSON (json 运行时) ─────┼─→ F2 c_json_app
                           └─→ R-F6GET (c_http_get + last_status)
 ```
 
-**最高优先级：R-AREG（a2r 回归）**——c_fs_app/c_text_app 当前 a2r 后端坏掉，必须先修。
-R-W4 已修并合并。W6-cross-domain 和 R-JSON 是两个大任务，各自需要专门会话。
+**最高优先级：R-AREG**——✅ 已修（commit `7bd728d4`），c_fs_app/c_text_app 恢复三方一致。
+R-W4 已修并合并；W6-cross-domain PARTIALLY FIXED（commit `929db9a0`，workaround 仍在）。
+R-JSON DEFERRED（~300 行，跨 native.rs/native_catalog.rs/stdlib.rs），是后续最大的单一任务。
 
 ---
 
-### R-AREG（紧急）：修 a2r 的 `fs.read_text(owned_string)` 回归
+### R-AREG（紧急）：修 a2r 的 `fs.read_text(owned_string)` 回归 — ✅ FIXED（commit `7bd728d4`）
+
+**状态**: ✅ FIXED（commit `7bd728d4`）。c_fs_app 7/7、c_text_app 6/6 恢复三方一致。
 
 **现象**：c_fs_app 和 c_text_app 的 a2r 后端编译失败（E0308）——
 `a2r_std::fs::read_text(fullpath)` 传了 owned `String`，但函数要 `&str`。
@@ -822,7 +821,9 @@ if let Some(ret_ty) = ret_ty {
 
 ---
 
-### R-JSON：实现 json opaque-handle 运行时（解锁 F2）
+### R-JSON：实现 json opaque-handle 运行时（解锁 F2）— ⛔ DEFERRED
+
+**状态**: ⛔ DEFERRED。需要 ~300 行改动，跨三个文件（`native.rs` / `native_catalog.rs` / `stdlib.rs`）。F2 c_json_app 仍未实现。
 
 **根因**：`json.parse(s)`（`stdlib.rs:1947`）是占位——原样返回输入串。所有 `json.get`/
 `as_int` 等（`stdlib.rs:2230-2361`）都重新解析文本串。VM 里没有真 `JsonValue`，
