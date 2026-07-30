@@ -79,7 +79,7 @@ ext RoleConfig {
                     None -> r.system_prompt_append = Some(extra)
                 }
             },
-            None -> r.system_prompt_append = self.system_prompt_append
+            None -> r.system_prompt_append = self.system_prompt_append.clone()
         }
         // tools: replace; tools_append: extend.
         is self.tools {

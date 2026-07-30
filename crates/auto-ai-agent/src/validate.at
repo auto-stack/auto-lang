@@ -44,7 +44,7 @@ pub fn load_client_config() Result<ai_config.ClientConfig, AgentError> {
     is home_dir() {
         Some(home) -> {
             let path = home.join(".config/autoos/ai-client.at")
-            let content = read_file_text(path)
+            let content = read_file_text(path.to_str().unwrap())
             is ai_config.parse_client_config(content) {
                 Ok(cfg) -> return Ok(cfg),
                 Err(e) -> return Err(AgentError.Config(e.to_string()))
