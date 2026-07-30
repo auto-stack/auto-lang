@@ -833,6 +833,22 @@ impl RustTrans {
         if needs_self_clone && !needs_to_string {
             out.write(b".clone()")?;
         }
+        // Plan 376F: Integer cast on return when fn return type differs from expr type.
+        if let Some(ret_ty) = &self.current_fn_ret_type {
+            let expr_ty = self.infer_type_from_expr(expr);
+            let need_cast = match (ret_ty, &expr_ty) {
+                (Type::Int, Type::Uint) => Some(" as i32"),
+                (Type::Uint, Type::Int) => Some(" as u32"),
+                (Type::USize, Type::Int) => Some(" as usize"),
+                (Type::USize, Type::Uint) => Some(" as usize"),
+                (Type::Int, Type::USize) => Some(" as i32"),
+                (Type::Uint, Type::USize) => Some(" as u32"),
+                _ => None,
+            };
+            if let Some(cast) = need_cast {
+                write!(out, "{}", cast)?;
+            }
+        }
         if add_semi { out.write(b";")?; }
         Ok(())
     }
@@ -6763,6 +6779,40 @@ impl RustTrans {
                 }
                 Type::Unknown
             }
+            // Plan 376F: Infer type from plain identifier via local_var_types
+            Expr::Ident(name) => {
+                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
+            }
+            // Plan 376F: Binary arithmetic — infer from operands
+            Expr::Bina(lhs, op, rhs) => {
+                // For arithmetic ops, the result type follows the "wider" operand.
+                let lt = self.infer_type_from_expr(lhs);
+                let rt = self.infer_type_from_expr(rhs);
+                match op {
+                    auto_val::Op::Add | auto_val::Op::Sub | auto_val::Op::Mul | auto_val::Op::Div
+                    | auto_val::Op::Mod => {
+                        // If either is float, result is float; otherwise follow int/uint
+                        if matches!(lt, Type::Float | Type::Double) || matches!(rt, Type::Float | Type::Double) {
+                            Type::Float
+                        } else if matches!(lt, Type::Uint) && matches!(rt, Type::Uint) {
+                            Type::Uint
+                        } else if matches!(lt, Type::Int) && matches!(rt, Type::Int) {
+                            Type::Int
+                        } else if matches!(lt, Type::Uint) || matches!(rt, Type::Uint) {
+                            Type::Uint  // mixed int/uint → uint (Auto semantics)
+                        } else if matches!(lt, Type::Int) || matches!(rt, Type::Int) {
+                            Type::Int
+                        } else if !matches!(lt, Type::Unknown) {
+                            lt
+                        } else {
+                            rt
+                        }
+                    }
+                    _ => Type::Unknown,
+                }
+            }
+            // Plan 376F: Cast expression (x as T) → T
+            Expr::Cast { target_type, .. } => target_type.clone(),
             _ => Type::Unknown,
         }
     }
@@ -7576,6 +7626,27 @@ impl RustTrans {
         // self.field assignment in &self context needs .clone()
         if Self::is_self_dot(&store.expr) {
             write!(out, ".clone()")?;
+        }
+
+        // Plan 376F: Integer type conversion for Store assignments.
+        // When `let x: i32 = <u32 expr>` or `let x: u32 = <i32 expr>`,
+        // insert the appropriate cast. The declared type (store.ty) is the
+        // target; the expression type is inferred from local_var_types.
+        if !matches!(store.ty, Type::Unknown) {
+            // Get the expression's inferred type
+            let expr_ty = self.infer_type_from_expr(&store.expr);
+            let need_cast = match (&store.ty, &expr_ty) {
+                (Type::Int, Type::Uint) => Some(" as i32"),
+                (Type::Uint, Type::Int) => Some(" as u32"),
+                (Type::USize, Type::Int) => Some(" as usize"),
+                (Type::USize, Type::Uint) => Some(" as usize"),
+                (Type::Int, Type::USize) => Some(" as i32"),
+                (Type::Uint, Type::USize) => Some(" as u32"),
+                _ => None,
+            };
+            if let Some(cast) = need_cast {
+                write!(out, "{}", cast)?;
+            }
         }
 
         Ok(())
