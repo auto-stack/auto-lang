@@ -94,7 +94,7 @@ ext SkillRegistry {
     /// Look up a skill by name.
     pub fn get(name str) ?Skill {
         if self.skills.contains(name) {
-            return Some(self.skills.get(name))
+            return Some(self.skills.get(name).clone())
         }
         return None
     }
@@ -105,11 +105,11 @@ ext SkillRegistry {
     pub mut fn retain(whitelist List<str>) void {
         var kept Map<str, Skill> = Map.new()
         var kept_names List<str> = []
-        for name in self.names {
+        for name in self.names.clone() {
             if whitelist.contains(name) {
-                let s = self.skills.get(name)
+                let s = self.skills.get(name).clone()
                 kept.set(name, s)
-                kept_names.push(name)
+                kept_names.push(name.clone())
             }
         }
         self.skills = kept
@@ -125,11 +125,11 @@ ext SkillRegistry {
     /// the `<available_skills>` bootstrap block injected into the system prompt.
     pub fn descriptions() List<(str, str)> {
         var out List<(str, str)> = []
-        for name in self.names {
-            let s = self.skills.get(name)
+        for name in self.names.clone() {
+            let s = self.skills.get(name).clone()
             out.push((s.name, s.description))
         }
-        out.sort_by_key((pair) => pair[0])
+        out.sort_by_key((pair) => pair.0)
         return out
     }
 
@@ -163,8 +163,8 @@ fn scan_one_entry(entry DirEntry, skills Map<str, Skill>, names List<str>) void 
     is parse_skill_file(skill_md) {
         Ok(skill) -> {
             if skill.name.is_empty() == false {
-                if skills.contains(skill.name) == false {
-                    names.push(skill.name)
+                if skills.contains(skill.name.clone()) == false {
+                    names.push(skill.name.clone())
                 }
                 skills.set(skill.name, skill)
             }
@@ -421,7 +421,7 @@ ext SkillTool {
         out = out + "To use a skill, call the `skill` tool with its name; its content will be\n"
         out = out + "returned to you, and you follow its instructions directly.\n\n"
         for pair in descs {
-            out = out + f"- ${pair[0]}: ${pair[1]}\n"
+            out = out + f"- ${pair.0}: ${pair.1}\n"
         }
         out = out + "\nInvoke a skill whenever its trigger applies, even slightly.\n"
         out = out + "</available_skills>"

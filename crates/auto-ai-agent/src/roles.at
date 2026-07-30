@@ -189,13 +189,13 @@ ext RoleRegistry {
         if self.roles.contains(name) {
             let detail = self.roles.get(name)
             if detail.summary.is_builtin == false {
-                let src = serialize_at_role(detail.config)
+                let src = serialize_at_role(detail.config.clone())
                 is load_role(src) {
                     Ok(_cfg) -> {
                         // load_role re-parses the serialized .at to validate it;
                         // build a live ConfigRole from the original config and
                         // wrap it in an Arc (ConfigRole has Role).
-                        let role = config_role_new(detail.config)
+                        let role = config_role_new(detail.config.clone())
                         return Some(Arc(role))
                     },
                     Err(_e) -> {
@@ -240,7 +240,7 @@ ext RoleRegistry {
     /// Full detail for one role.
     pub fn get(name str) ?RoleDetail {
         if self.roles.contains(name) {
-            return Some(self.roles.get(name))
+            return Some(self.roles.get(name).clone())
         }
         return None
     }
@@ -360,7 +360,7 @@ fn load_one_builtin(name str, roles Map<str, RoleDetail>, names List<str>) void 
                 config: cfg
             )
             roles.set(name, detail)
-            names.push(name)
+            names.push(name.to_string())
         },
         None -> {}
     }
@@ -459,7 +459,7 @@ fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) 
                         config: cfg
                     )
                     if roles.contains(name) == false {
-                        names.push(name)
+                        names.push(name.to_string())
                     }
                     roles.set(name, detail)
                 }

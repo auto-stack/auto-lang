@@ -111,25 +111,20 @@ pub type ConfigRole has Role {
     base ?Role
 
     pub fn name() str {
-        is self.cfg.name {
-            Some(n) -> return n,
-            None -> return self.base_name()
-        }
+        return self.cfg.name ?? self.base_name()
     }
 
     pub fn system_prompt() str {
         var prompt = self.cfg.system_prompt ?? self.base_prompt()
-        is self.cfg.system_prompt_append {
+        var append = self.cfg.system_prompt_append
+        is append {
             Some(extra) -> return f"${prompt}\n${extra}",
             None -> return prompt
         }
     }
 
     pub fn model_tier() ModelTier {
-        is self.cfg.model_tier {
-            Some(t) -> return t,
-            None -> return self.base_tier()
-        }
+        return self.cfg.model_tier ?? self.base_tier()
     }
 
     pub fn model() str {
@@ -137,17 +132,11 @@ pub type ConfigRole has Role {
     }
 
     pub fn temperature() float {
-        is self.cfg.temperature {
-            Some(t) -> return t,
-            None -> return self.base_temp()
-        }
+        return self.cfg.temperature ?? self.base_temp()
     }
 
     pub fn max_turns() uint {
-        is self.cfg.max_turns {
-            Some(n) -> return n,
-            None -> return self.base_turns()
-        }
+        return self.cfg.max_turns ?? self.base_turns()
     }
 
     pub fn allowed_tools() List<str> {
@@ -155,10 +144,7 @@ pub type ConfigRole has Role {
     }
 
     pub fn memory_limit() ?uint {
-        is self.cfg.memory_limit {
-            Some(n) -> return Some(n),
-            None -> return self.base_mem()
-        }
+        return self.cfg.memory_limit ?? self.base_mem()
     }
 
     pub fn skills() List<str> {
@@ -180,25 +166,20 @@ pub fn config_role_with_base(cfg RoleConfig, base Role) ConfigRole {
 
 ext ConfigRole {
     pub fn name() str {
-        is self.cfg.name {
-            Some(n) -> return n,
-            None -> return self.base_name()
-        }
+        return self.cfg.name ?? self.base_name()
     }
 
     pub fn system_prompt() str {
         var prompt = self.cfg.system_prompt ?? self.base_prompt()
-        is self.cfg.system_prompt_append {
+        var append = self.cfg.system_prompt_append
+        is append {
             Some(extra) -> return f"${prompt}\n${extra}",
             None -> return prompt
         }
     }
 
     pub fn model_tier() ModelTier {
-        is self.cfg.model_tier {
-            Some(t) -> return t,
-            None -> return self.base_tier()
-        }
+        return self.cfg.model_tier ?? self.base_tier()
     }
 
     pub fn model() str {
@@ -206,17 +187,11 @@ ext ConfigRole {
     }
 
     pub fn temperature() float {
-        is self.cfg.temperature {
-            Some(t) -> return t,
-            None -> return self.base_temp()
-        }
+        return self.cfg.temperature ?? self.base_temp()
     }
 
     pub fn max_turns() uint {
-        is self.cfg.max_turns {
-            Some(n) -> return n,
-            None -> return self.base_turns()
-        }
+        return self.cfg.max_turns ?? self.base_turns()
     }
 
     pub fn allowed_tools() List<str> {
@@ -224,10 +199,7 @@ ext ConfigRole {
     }
 
     pub fn memory_limit() ?uint {
-        is self.cfg.memory_limit {
-            Some(n) -> return Some(n),
-            None -> return self.base_mem()
-        }
+        return self.cfg.memory_limit ?? self.base_mem()
     }
 
     pub fn skills() List<str> {

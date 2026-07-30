@@ -396,7 +396,7 @@ fn build_step_input(task_msg str, last_handoff ?HandoffDocument) str {
 fn emit_budget_warning(engine PipelineEngine, last_handoff ?HandoffDocument, on_event fn(PipelineEvent)) void {
     let role_for_budget = is last_handoff {
         Some(h) -> h.from,
-        None -> ""
+        None -> Str.new()
     }
     let action = engine.budget_tracker.check(role_for_budget)
     is action {
