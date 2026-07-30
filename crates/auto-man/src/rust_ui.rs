@@ -1650,11 +1650,26 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // by the Iced renderer's load_image_bytes(). The cargo subprocess uses
     // --manifest-path instead of current_dir so it can find Cargo.toml, but
     // the final binary (profile-card.exe) inherits this CWD for asset resolution.
+    //
+    // IMPORTANT: resolve the manifest to an ABSOLUTE path BEFORE changing CWD.
+    // `rust_dir` is relative to the repo root (get_rust_workspace_dir returns
+    // "examples/rust-workspace"), so after set_current_dir(front_dir) the
+    // relative path no longer resolves and `cargo run --manifest-path` fails
+    // with "manifest path does not exist".
+    let cargo_toml = {
+        let rel = rust_dir.join("Cargo.toml");
+        // Prefer canonicalize (resolves symlinks/relative parts); fall back to
+        // anchoring the relative path to the pre-CWD-change current directory.
+        std::fs::canonicalize(&rel).unwrap_or_else(|_| {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            cwd.join(&rel)
+        })
+    };
+
     let front_dir = project_dir.join("src").join("front");
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 
-    let cargo_toml = rust_dir.join("Cargo.toml");
     let mut cmd = std::process::Command::new("cargo");
     cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
     for arg in &args {
