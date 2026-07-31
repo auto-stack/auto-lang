@@ -1,5 +1,6 @@
 # Plan 371: AutoUI MCP 功能大改进 — Agent 驱动的 UI 自动化验证
 
+> **状态**: ✅ COMPLETE (2026-07-31) — Tasks 1-22 全部完成；L1（特判泛化）+ 013-todo 新应用验证通过。L2/L3 为可选后续。
 > **目标**: 让 Agent 通过 MCP 服务直接操纵 AutoUI 界面（类似 playwright-mcp），实现"开发→构建→启动→自动验证"的闭环。
 >
 > **核心挑战**: 当前 MCP 的 action/inspect 工具只覆盖根组件元素（`aura_N`），子组件内部元素（EditorPanel 的按钮、NavTree 的列表项）无法操作。需要统一 ID 系统为 `vnode_N`（覆盖全部渲染元素）。
