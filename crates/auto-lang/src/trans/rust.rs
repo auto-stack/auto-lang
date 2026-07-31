@@ -11295,6 +11295,7 @@ impl RustTrans {
         Self::fix_option_get_field_access(&mut content);
         Self::fix_some_str_to_string(&mut content);
         Self::fix_a2r_std_fs_result_patterns(&mut content);
+        Self::fix_spec_trait_boxing(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -12938,6 +12939,33 @@ impl RustTrans {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let call = caps.get(1).unwrap().as_str();
                 format!("match Ok({}) {{", call)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: Box spec-trait constructors in functions returning Box<dyn Trait>.
+    /// `Some(Assistant())` → `Some(Box::new(Assistant()))` when the enclosing
+    /// function returns Option<Box<dyn Role>> (or similar spec-trait). Auto's
+    /// `has Role` spec means a concrete `Assistant` value must be boxed to
+    /// satisfy `Box<dyn Role>`. Without this, `Some(Assistant {})` fails E0308
+    /// (expected Box<dyn Role>, found Assistant).
+    fn fix_spec_trait_boxing(content: &mut String) {
+        // Find functions returning Option<Box<dyn <Trait>>> and box their
+        // Some(Constructor()) returns. The signature pattern:
+        //   fn name(...) -> Option<Box<dyn Trait>> {
+        // Match the trait name so we only box inside the right functions.
+        if let Some(re) = cached_regex(
+            r"(?ms)(fn \w+\([^)]*\)[^{]*->\s*Option<Box<dyn (\w+)>>\s*\{)(.*?)(^\})",
+        ) {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let header = caps.get(1).unwrap().as_str();
+                let body = caps.get(3).unwrap().as_str();
+                let close = caps.get(4).unwrap().as_str();
+                // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
+                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
+                let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
+                format!("{}{}{}", header, new_body, close)
             }).to_string();
             if new != *content { *content = new; }
         }
