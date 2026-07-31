@@ -98,7 +98,7 @@ ext SkillRegistry {
                                                 if skills.contains(skill.name.clone()) == false {
                                                     names.push(skill.name.clone())
                                                 }
-                                                skills.set(skill.name, skill)
+                                                skills.set(skill.name.clone(), skill)
                                             }
                                         },
                                         Err(_e) -> {
@@ -140,9 +140,11 @@ ext SkillRegistry {
         for name in self.names.clone() {
             if whitelist.contains(name) {
                 // Plan 380 (A4): map.get → `is`-destructure (Option<&T>).
-                is self.skills.get(name) {
+                // name is an owned String (self.names clone) — .as_str().
+                is self.skills.get(name.as_str()) {
                     Some(s) -> {
-                        kept.set(name, s.clone())
+                        // clone: `name` is also pushed to kept_names below.
+                        kept.set(name.clone(), s.clone())
                         kept_names.push(name.clone())
                     },
                     None -> {}
@@ -164,7 +166,8 @@ ext SkillRegistry {
         var out List<(str, str)> = []
         for name in self.names.clone() {
             // Plan 380 (A4): map.get → `is`-destructure (Option<&T>).
-            is self.skills.get(name) {
+            // name is an owned String (self.names clone) — .as_str().
+            is self.skills.get(name.as_str()) {
                 Some(s) -> out.push((s.name.clone(), s.description.clone())),
                 None -> {}
             }
@@ -226,8 +229,11 @@ fn parse_frontmatter(raw str) Frontmatter {
     // Strip a UTF-8 BOM if present (common when editors save as "UTF-8 with
     // BOM"); otherwise the `---` prefix won't match.
     let stripped = strip_bom(raw)
-    let open = stripped.strip_prefix("---\n")
-    is open {
+    // Inline the strip_prefix: a2r only records `Some(x)` is-bindings from
+    // &str-returning scrutinees as &str when the scrutinee IS the call — a
+    // bound `let open = ...; is open` would miss it and append `.as_str()`
+    // (E0658 str_as_str) at the parse_frontmatter_body call.
+    is stripped.strip_prefix("---\n") {
         None -> {
             // No frontmatter: empty name/desc, whole file is the body.
             return Frontmatter(name: "", description: "", content: stripped)
@@ -247,8 +253,7 @@ fn parse_frontmatter_body(after_open str) Frontmatter {
             return Frontmatter(name: name, description: desc, content: "")
         },
         Some(idx) -> {
-            let lines = after_open.lines()
-            let fm = take_lines_joined(lines, idx)
+            let fm = take_lines_joined(after_open, idx)
             let body_start = body_offset(after_open, idx)
             let body = slice_and_trim(after_open, body_start)
             let name = extract_field(fm, "name")
@@ -280,13 +285,15 @@ fn find_close_marker(after_open str) ?uint {
     return None
 }
 
-/// Join the first `count` lines of `lines` with newlines.
-fn take_lines_joined(lines List<str>, count uint) str {
+/// Join the first `count` lines of `text` with newlines.
+/// (Takes the raw text: a2r can't pass `.lines()` (an iterator) where a
+/// `List<str>` (Vec<String>) is expected — E0308.)
+fn take_lines_joined(text str, count uint) str {
     var out List<str> = []
     var i uint = 0
-    for line in lines {
+    for line in text.lines() {
         if i < count {
-            out.push(line)
+            out.push(line.to_string())
         }
         i = i + 1
     }
@@ -388,7 +395,8 @@ pub type SkillTool has Tool {
             return Err(ToolError.Args("missing 'skill_name' argument"))
         }
         let name = v
-        is self.registry.get(name) {
+        // registry.get takes &str — name is an owned String.
+        is self.registry.get(name.as_str()) {
             Some(skill) -> {
                 return Ok(f"# Skill: ${skill.name}\n\n${skill.content}")
             },

@@ -40,7 +40,7 @@ impl Memory {
     }
     pub fn add_message(&mut self, msg: Message) {
         self.messages.push(msg.clone());
-        self.trim().to_string();
+        self.trim();
     }
     pub fn extend_pairs(&mut self, pairs: Vec<(String, String)>) {
         for pair in pairs {

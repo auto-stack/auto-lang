@@ -87,7 +87,7 @@ impl SkillRegistry {
                                             if skill.name.is_empty() == false {
                                                 if skills.contains_key(&skill.name.clone()) == false {
                                                     names.push(skill.name.clone());
-                                                }                                                skills.insert(skill.name, skill);
+                                                }                                                skills.insert(skill.name.clone(), skill);
                                             }
                                         },
                                         Err(_e) => {
@@ -126,9 +126,12 @@ impl SkillRegistry {
             if whitelist.contains(&name) {
                 
 
-                match self.skills.get(name) {
+
+                match self.skills.get(name.as_str()) {
                     Some(s) => {
-                        kept.insert(name, s.clone());
+                        
+
+                        kept.insert(name.clone(), s.clone());
                         kept_names.push(name.clone());
                     },
                     None => {},
@@ -145,7 +148,8 @@ impl SkillRegistry {
         let mut out: Vec<(String, String)> = vec![];
         for name in self.names.clone() {
             
-            match self.skills.get(name) {
+
+            match self.skills.get(name.as_str()) {
                 Some(s) => out.push((s.name.clone(), s.description.clone())),
                 None => {},
             }
@@ -210,14 +214,17 @@ fn parse_frontmatter(raw: &str) -> Frontmatter {
 
 
     let stripped = strip_bom(raw);
-    let open = stripped.strip_prefix("---\n");
-    match open {
+
+
+
+
+    match stripped.strip_prefix("---\n") {
         None => {
             
 
             return Frontmatter { name: "".to_string(), description: "".to_string(), content: stripped.to_string() };
         },
-        Some(after_open) => return parse_frontmatter_body(after_open.as_str()),
+        Some(after_open) => return parse_frontmatter_body(after_open),
     }
 }
 
@@ -233,8 +240,7 @@ fn parse_frontmatter_body(after_open: &str) -> Frontmatter {
             return Frontmatter { name: name.to_string(), description: desc.to_string(), content: "".to_string() };
         },
         Some(idx) => {
-            let lines = after_open.lines();
-            let fm = take_lines_joined(lines, idx);
+            let fm = take_lines_joined(after_open, idx);
             let body_start = body_offset(after_open, idx);
             let body = slice_and_trim(after_open, body_start);
             let name = extract_field(fm.as_str(), "name");
@@ -266,13 +272,15 @@ fn find_close_marker(after_open: &str) -> Option<u32> {
     return None;
 }
 
-/// Join the first `count` lines of `lines` with newlines.
-fn take_lines_joined(lines: Vec<String>, count: u32) -> String {
+/// Join the first `count` lines of `text` with newlines.
+/// (Takes the raw text: a2r can't pass `.lines()` (an iterator) where a
+/// `List<str>` (Vec<String>) is expected — E0308.)
+fn take_lines_joined(text: &str, count: u32) -> String {
     let mut out: Vec<String> = vec![];
     let mut i: u32 = 0 as u32;
-    for line in lines {
+    for line in text.lines() {
         if i < count {
-            out.push(line.clone());
+            out.push(line.to_string());
         }
         i = i + 1;
     }
@@ -316,7 +324,7 @@ fn extract_field(frontmatter: &str, key: &str) -> String {
 
         let rest = trimmed.strip_prefix(prefix.as_str());
         match rest {
-            Some(r) => return clean_field_value(r.trim().to_string()),
+            Some(r) => return clean_field_value(r.trim()),
             None => {},
         }
     }
@@ -369,7 +377,8 @@ impl Tool for SkillTool {
             return Err(ToolError::Args("missing 'skill_name' argument".to_string()));
         }
         let name = v.clone();
-        match self.registry.get(name) {
+
+        match self.registry.get(name.as_str()) {
             Some(skill) => return Ok(format!("# Skill: {}
 
 {}", skill.name, skill.content)),

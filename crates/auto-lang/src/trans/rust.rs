@@ -6528,9 +6528,22 @@ impl RustTrans {
                 // Box, yielding T. (Plan 013 B16.)
                 write!(out, "*(*{}).clone()", Self::rust_ident(name.as_str()))?;
             } else {
-                self.arg(arg, out)?;
-                if needs_clone {
-                    write!(out, ".clone()")?;
+                // Plan 380: when passing a trim*() call (which the expr handler
+                // renders with a trailing .to_string()) to a `&str` param, emit
+                // via expr_as_str so the suffix is stripped — trim() already
+                // returns &str (`clean_field_value(r.trim())` → E0308 String).
+                let trim_arg = if let Arg::Pos(expr) = arg {
+                    Self::is_trim_method_call(expr)
+                } else { false };
+                if is_str_param && trim_arg {
+                    if let Arg::Pos(expr) = arg {
+                        self.expr_as_str(expr, out)?;
+                    }
+                } else {
+                    self.arg(arg, out)?;
+                    if needs_clone {
+                        write!(out, ".clone()")?;
+                    }
                 }
             }
 
@@ -6925,18 +6938,25 @@ impl RustTrans {
         }
     }
 
+    /// True when `expr` is a call to a str-returning trim-like method
+    /// (trim/trim_start/trim_end/trim_matches) or an explicit .as_str().
+    fn is_trim_method_call(expr: &Expr) -> bool {
+        if let Expr::Call(call) = expr {
+            if let Expr::Dot(_, m) = call.name.as_ref() {
+                let f = m.as_str();
+                return f == "trim" || f == "trim_start" || f == "trim_end"
+                    || f == "trim_matches" || f == "as_str";
+            }
+        }
+        false
+    }
+
     /// Emit an expression with .as_str() appended if needed for &str parameter.
     fn expr_as_str(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         // Plan 368 R-AREG: For trim* methods, expr() appends .to_string() which
         // makes it String. But we need &str here, so render to a temp buffer,
         // strip the .to_string() suffix, and write the base (which is already &str).
-        let is_trim_method = if let Expr::Call(call) = expr {
-            if let Expr::Dot(_, m) = call.name.as_ref() {
-                let f = m.as_str();
-                f == "trim" || f == "trim_start" || f == "trim_end"
-                || f == "trim_matches" || f == "as_str"
-            } else { false }
-        } else { false };
+        let is_trim_method = Self::is_trim_method_call(expr);
         if is_trim_method {
             let mut buf: Vec<u8> = Vec::new();
             self.expr(expr, &mut buf)?;
@@ -13605,6 +13625,16 @@ impl Trans for RustTrans {
                     .collect();
                 if !fields.is_empty() {
                     self.struct_field_types.insert(td.name.clone(), fields);
+                }
+                // Plan 380: pre-register method return types so the trim-void
+                // check (and other ret-type lookups) work regardless of
+                // declaration order — e.g. `Memory.trim() void` must suppress
+                // the str-trim `.to_string()` suffix even when a call to it
+                // appears before its declaration (E0599 `()` Display).
+                for method in &td.methods {
+                    self.fn_ret_types.insert(method.name.clone(), method.ret.clone());
+                    let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
+                    self.fn_ret_types.insert(qualified, method.ret.clone());
                 }
             }
         }
