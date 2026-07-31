@@ -11762,10 +11762,23 @@ impl RustTrans {
                 // unsafe traits (e.g. just "Debug", or "Clone, Debug" when the
                 // dyn-Trait is wrapped in an Arc — which IS Clone). Only strip
                 // PartialEq/Eq/PartialOrd/Ord from the AUTO-generated derive.
-                let unsafe_traits = ["PartialEq", "Eq", "PartialOrd", "Ord"];
+                // Plan 376V: Clone AND Debug are unsafe for Box<dyn Trait>:
+                //   - Box<T>: Clone requires T: Clone (dyn Trait never is)
+                //   - Box<dyn Trait>: Debug requires Trait: Debug (specs don't bound it)
+                // So when a struct has a bare Box<dyn> field, replace the whole
+                // derive with #[allow(dead_code)] (matches the hand-written version).
+                let unsafe_traits = ["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"];
                 let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
                 if !needs_fix {
                     return full.to_string();
+                }
+                // If ALL derives are unsafe (typical for Box<dyn>), use allow(dead_code).
+                let any_safe = derive_list.iter().any(|d| !unsafe_traits.contains(d));
+                if !any_safe {
+                    return full.replace(
+                        &format!("#[derive({})]", derives),
+                        "#[allow(dead_code)]",
+                    );
                 }
                 // Keep only the safe traits (Clone, Debug, Copy, Default, ...).
                 let kept: Vec<&&str> = derive_list
