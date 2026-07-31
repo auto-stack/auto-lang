@@ -60,7 +60,7 @@ ext Memory {
     pub mut fn extend_pairs(pairs List<(str, str)>) void {
         for pair in pairs {
             // pair.0 / pair.1 are owned String; add() takes &str.
-            self.add(pair.0.as_str(), pair.1.as_str())
+            self.add(pair[0].as_str(), pair[1].as_str())
         }
     }
 
