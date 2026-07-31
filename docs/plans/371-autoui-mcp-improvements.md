@@ -742,11 +742,27 @@ EditorPanel 自身状态（`editing`/`edit_title`/...）和 NavTree 的 `store.a
 | **VM**（`--mode vm`） | **13 passed, 0 failed, 0 skipped** | 完全回归 |
 | **Rust**（`--mode rust`） | **13 passed, 0 failed, 0 skipped** | **全部通过**（含此前失败的 T2a/T2c/T5b/T5c/T5e） |
 
-Rust 模式现在**完整可跑**：编辑/保存/取消/输入标题、文件夹标签切换、暗黑模式、主题色全可用。`.autotest` 中已无 `skip_if rust`（T5c 也通过了——`edit_title` 现在通过提升字段可见）。
+Rust 模式现在**完整可跑**：编辑/保存/取消/输入标题、文件夹标签切换、暗黑模式、主题色全可用。`.autotest` 中已无 `skip_if rust`（T5c 也真实通过——见 §12.7）。
 
-**Plan 371 Task 22（问题 a + b + c）全部完成。** Rust 模式与 VM 模式 MCP 行为一致，同一套 `.autotest` 测试用例两模式均 13/13 通过。
+### 12.7 问题 d：T5c edit_title 输入值流（Task 22d）✅ 已修复
 
-> ⚠️ 实施记录：Task 22c 的生成器改动曾多次被并行的 plan-376V 提交流（编辑相同生成器文件）覆盖丢失，最终通过原子化脚本重应用 + 立即 commit 锁定（commit `00271d9a`）。
+§12.5 的 hoist+sync 让 `edit_title` 字段在 App 可见（state_snapshot 能读到），但 T5c 仍失败——`type_text` 输入的文本值没流进 `edit_title`（一直是空字符串）。
+
+**根因（`ui_gen/rust.rs` 两处）**：
+1. `scan_input_fields` 只匹配 `Expr::Ident` 作为 `value` 绑定，但 `.edit_title` 解析为 `Expr::Dot(self, "edit_title")`——所以 EditorPanel 标题输入框从未注册进 `input_fields`，生成的 `EditTitle(t)` handler 用 `self.edit_title = t.to_string()`（静态空 on_change 参数）而非 `last_input_text()`。
+2. 即便注册了，输入注入路径只跳过 `self.X = self.X` 形式的冗余 body，不跳过 `self.edit_title = t.to_string()`——payload 赋值会在 `_text` 赋值后立即覆盖。
+
+**修复（commit `ebba8841`）**：
+- `scan_input_fields` 现在也匹配 `Expr::Dot(_, field)`。
+- 输入注入路径现在也跳过 `self.<field> = <payload>` / `.to_string()` / `.clone()` 形式的冗余 body。
+
+生成的 handler 变为：`let _text = last_input_text(); self.edit_title = _text;`（无 `t.to_string()` 覆盖）。
+
+**最终验证**：两模式均 **13 passed, 0 failed, 0 skipped**。`.autotest` 无任何 `skip_if`。Rust 模式与 VM 模式 MCP 行为完全一致。
+
+**Plan 371 Task 22（问题 a + b + c + d）全部完成。**
+
+> 实施记录更正：之前把生成器改动"丢失"归因于"并行 plan-376V 提交流"是**错误归因**——plan-376 在独立 worktree，不影响 master 工作区文件。真实原因更可能是 IDE（ZCode）缓冲区回写覆盖了未提交的工作区改动。教训：未提交的改动在多进程环境下脆弱，应尽早 commit。所有改动现已安全提交。
 
 ---
 
