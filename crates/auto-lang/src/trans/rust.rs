@@ -4349,8 +4349,15 @@ impl RustTrans {
                             write!(out, " as i32")?;
                         }
                         // trim/trim_start/trim_end return &str, auto-convert to String
+                        // Plan 380: skip when the callee `trim` returns void
+                        // (e.g. Memory.trim() — `.to_string()` on `()` is E0599).
                         if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                            write!(out, ".to_string()")?;
+                            let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                                .map(|t| matches!(t, Type::Void))
+                                .unwrap_or(false);
+                            if !trim_ret_is_void {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                         return Ok(());
                     }
@@ -4729,6 +4736,18 @@ impl RustTrans {
                     // For non-string types (e.g., Map), fall through to method remap
                 }
                 "ends_with" => {
+                    // Plan 380: char/&str literal args are valid str Patterns —
+                    // use the native `obj.ends_with(arg)` (a2r_std::str_ends_with
+                    // takes only &str — a char arg is E0308).
+                    if call.args.args.len() == 1
+                        && matches!(call.args.args[0],
+                            Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_))) {
+                        self.expr(object, out)?;
+                        write!(out, ".ends_with(")?;
+                        self.arg(&call.args.args[0], out)?;
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     // s.ends_with(suffix) -> a2r_std::str_ends_with(&s, &suffix) returns i32
                     self.a2r_std_used.set(true); write!(out, "a2r_std::str_ends_with(")?;
                     self.expr_as_str(object, out)?;
@@ -5589,8 +5608,16 @@ impl RustTrans {
                     write!(out, " as i32)")?;
                 }
                 // trim/trim_start/trim_end return &str, auto-convert to String
+                // Plan 380: skip when the callee `trim` returns void (a struct
+                // method named trim, e.g. Memory.trim() — `.to_string()` on `()`
+                // is E0599).
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                    write!(out, ".to_string()")?;
+                    let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                        .map(|t| matches!(t, Type::Void))
+                        .unwrap_or(false);
+                    if !trim_ret_is_void {
+                        write!(out, ".to_string()")?;
+                    }
                 }
                 // split returns iterator in Rust, collect into Vec so .len()/.get() work.
                 // If the Auto source needs raw iterator semantics, it should use split() without
@@ -8475,6 +8502,23 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Plan 380: true when an `is`-match scrutinee is a call whose `Some(x)`
+    /// binding is `&str` (strip_prefix / strip_suffix / to_str → Option<&str>).
+    /// Used to record bound vars as StrSlice so call-site auto-borrows don't
+    /// append `.as_str()` (E0658 str_as_str).
+    fn is_str_returning_scrutinee(target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            let m = match call.name.as_ref() {
+                Expr::Dot(_, method) => Some(method.as_str()),
+                Expr::Ident(n) => Some(n.as_str()),
+                _ => None,
+            };
+            matches!(m, Some("strip_prefix") | Some("strip_suffix") | Some("to_str"))
+        } else {
+            false
+        }
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"match ")?;
 
@@ -8515,6 +8559,15 @@ impl RustTrans {
                         // In match patterns, Some(ident) binds by value (Auto semantics)
                         if let Expr::Some(inner) = pat {
                             sink.body.write(b"Some(")?;
+                            // Plan 380: `Some(x)` binding from an &str-returning
+                            // scrutinee (strip_prefix / to_str / …) is `&str` —
+                            // record so call-site auto-borrow doesn't append
+                            // `.as_str()` (E0658 str_as_str).
+                            if let Expr::Ident(binding) = inner.as_ref() {
+                                if Self::is_str_returning_scrutinee(&is_stmt.target) {
+                                    self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                }
+                            }
                             self.expr(inner, &mut sink.body)?;
                             sink.body.write(b")")?;
                         } else if let Expr::Call(call) = pat {
@@ -8550,6 +8603,14 @@ impl RustTrans {
                                     sink.body.write(b"Some(")?;
                                     if let Some(binding) = &oc.binding {
                                         sink.body.write(binding.as_bytes())?;
+                                        // Plan 380: a `Some(x)` binding from an
+                                        // &str-returning scrutinee (strip_prefix /
+                                        // to_str / …) is `&str` — record it so the
+                                        // call-site auto-borrow doesn't append
+                                        // `.as_str()` (E0658 str_as_str).
+                                        if Self::is_str_returning_scrutinee(&is_stmt.target) {
+                                            self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                        }
                                     }
                                     sink.body.write(b")")?;
                                 }
@@ -12759,12 +12820,19 @@ impl RustTrans {
     /// that would split a char.)
     fn fix_substring_method(content: &mut String) {
         // `IDENT.substring(a, b)` — IDENT is a simple receiver (str value).
+        // Plan 380: add a leading `&` ONLY when the slice isn't chained —
+        // `let x = s[lo..hi]` would bind an unsized `str` (E0277), while
+        // `s[lo..hi].to_string()` works without `&` (and `&s[..].to_string()`
+        // would become `&String`, E0308).
         if let Some(re) = cached_regex(r"(\w+)\.substring\(([^,)]+),\s*([^)]+)\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let m0 = caps.get(0).unwrap();
+                let after_is_dot = content.as_bytes().get(m0.end()) == Some(&b'.');
                 let recv = caps.get(1).unwrap().as_str();
                 let lo = caps.get(2).unwrap().as_str().trim();
                 let hi = caps.get(3).unwrap().as_str().trim();
-                format!("&{}[{} as usize..{} as usize]", recv, lo, hi)
+                let inner = format!("{}[{} as usize..{} as usize]", recv, lo, hi);
+                if after_is_dot { inner } else { format!("&{}", inner) }
             }).to_string();
             if new != *content { *content = new; }
         }

@@ -84,7 +84,34 @@ ext SkillRegistry {
         is fs.read_dir(dir) {
             Ok(entries) -> {
                 for entry in entries {
-                    scan_one_entry(entry, skills, names)
+                    // Plan 380: ReadDir yields io::Result<DirEntry> — destructure
+                    // before `entry.path()` (E0599 on Result otherwise).
+                    is entry {
+                        Ok(e) -> {
+                            let sub = e.path()
+                            if sub.is_dir() {
+                                let skill_md = sub.join("SKILL.md")
+                                if skill_md.is_file() {
+                                    is parse_skill_file(skill_md) {
+                                        Ok(skill) -> {
+                                            if skill.name.is_empty() == false {
+                                                if skills.contains(skill.name.clone()) == false {
+                                                    names.push(skill.name.clone())
+                                                }
+                                                skills.set(skill.name, skill)
+                                            }
+                                        },
+                                        Err(_e) -> {
+                                            // parse error — not fatal
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        Err(_e) -> {
+                            // unreadable entry — skip
+                        }
+                    }
                 }
             },
             Err(_e) -> {
@@ -96,10 +123,12 @@ ext SkillRegistry {
 
     /// Look up a skill by name.
     pub fn get(name str) ?Skill {
-        if self.skills.contains(name) {
-            return Some(self.skills.get(name).clone())
+        // Plan 380 (A4): map.get returns Option<&T> — `is`-destructure before
+        // Some(); `.get().clone()` doesn't collapse the Option (E0308).
+        is self.skills.get(name) {
+            Some(s) -> return Some(s.clone()),
+            None -> return None
         }
-        return None
     }
 
     /// Keep only skills whose name is in `whitelist` (in place). Used by the
@@ -110,9 +139,14 @@ ext SkillRegistry {
         var kept_names List<str> = []
         for name in self.names.clone() {
             if whitelist.contains(name) {
-                let s = self.skills.get(name).clone()
-                kept.set(name, s)
-                kept_names.push(name.clone())
+                // Plan 380 (A4): map.get → `is`-destructure (Option<&T>).
+                is self.skills.get(name) {
+                    Some(s) -> {
+                        kept.set(name, s.clone())
+                        kept_names.push(name.clone())
+                    },
+                    None -> {}
+                }
             }
         }
         self.skills = kept
@@ -129,8 +163,11 @@ ext SkillRegistry {
     pub fn descriptions() List<(str, str)> {
         var out List<(str, str)> = []
         for name in self.names.clone() {
-            let s = self.skills.get(name).clone()
-            out.push((s.name, s.description))
+            // Plan 380 (A4): map.get → `is`-destructure (Option<&T>).
+            is self.skills.get(name) {
+                Some(s) -> out.push((s.name.clone(), s.description.clone())),
+                None -> {}
+            }
         }
         out.sort_by_key((pair) => pair[0])
         return out
@@ -147,38 +184,6 @@ ext SkillRegistry {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// scan() helpers (mutate the passed-in registry; never fatal)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Handle one read_dir entry: skip non-directories, and for each subdirectory
-/// try to load its SKILL.md.
-fn scan_one_entry(entry DirEntry, skills Map<str, Skill>, names List<str>) void {
-    let sub = entry.path()
-    let is_dir = sub.is_dir()
-    if is_dir == false {
-        return
-    }
-    let skill_md = sub.join("SKILL.md")
-    let is_file = skill_md.is_file()
-    if is_file == false {
-        return
-    }
-    is parse_skill_file(skill_md) {
-        Ok(skill) -> {
-            if skill.name.is_empty() == false {
-                if skills.contains(skill.name.clone()) == false {
-                    names.push(skill.name.clone())
-                }
-                skills.set(skill.name, skill)
-            }
-        },
-        Err(_e) -> {
-            // skipping <skill_md>: parse error — not fatal
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Frontmatter parsing
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -188,21 +193,20 @@ fn scan_one_entry(entry DirEntry, skills Map<str, Skill>, names List<str>) void 
 /// Only name and description are extracted; everything after the closing
 /// `---` is the body. No full YAML parser — these are two string fields.
 fn parse_skill_file(path PathBuf) Result<Skill, str> {
-    is fs.read_to_string(path) {
-        Err(e) -> return Err(f"read: ${e}"),
-        Ok(raw) -> {
-            let parsed = parse_frontmatter(raw)
-            if parsed.name.is_empty() {
-                return Err("frontmatter is missing 'name:'")
-            }
-            return Ok(Skill(
-                name: parsed.name,
-                description: parsed.description,
-                content: parsed.content,
-                path: path
-            ))
-        }
+    // Plan 380: a2r_std::fs::read_to_string returns String directly (VM parity,
+    // empty string on error) — NOT a Result. Matching it with `is … { Ok/Err }`
+    // made a2r wrap the String in `Ok(…)` (E0282 / type mismatch).
+    let raw = fs.read_to_string(path)
+    let parsed = parse_frontmatter(raw)
+    if parsed.name.is_empty() {
+        return Err("frontmatter is missing 'name:'")
     }
+    return Ok(Skill(
+        name: parsed.name,
+        description: parsed.description,
+        content: parsed.content,
+        path: path
+    ))
 }
 
 /// The parsed frontmatter result.
@@ -318,10 +322,12 @@ fn slice_and_trim(s str, start uint) str {
 /// Extract a `key: value` field from frontmatter text. Handles quoted values
 /// ("..."/'...') and strips a trailing comment. Returns "" if absent.
 fn extract_field(frontmatter str, key str) str {
-    let prefix = f"${key}:"
-    for line in frontmatter.lines() {
-        let trimmed = line.trim()
-        let rest = trimmed.strip_prefix(prefix)
+        let prefix = f"${key}:"
+        for line in frontmatter.lines() {
+            let trimmed = line.trim()
+            // Plan 380: `prefix` is an owned String (f-string); strip_prefix
+            // needs a Pattern (&str) — `.as_str()` (E0277 String: Pattern).
+            let rest = trimmed.strip_prefix(prefix.as_str())
         is rest {
             Some(r) -> return clean_field_value(r.trim()),
             None -> {}
@@ -401,7 +407,10 @@ ext SkillTool {
     /// parameters schema (which embeds the skill-name enum) for the tool's life.
     pub static fn new(registry Arc<SkillRegistry>) SkillTool {
         return SkillTool(
-            registry: registry,
+            // Plan 380: `registry: registry` moves the Arc into the field,
+            // then `(*registry).clone()` below uses it again (E0382 Arc not
+            // Copy) — clone explicitly.
+            registry: registry.clone(),
             description_cache: build_description((*registry).clone()),
             parameters_cache: build_parameters((*registry).clone())
         )

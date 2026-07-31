@@ -463,7 +463,12 @@ ext PipelineEngine {
             if name != step_id {
                 // name is an owned String; map.get needs &str, so .as_str() the
                 // key (a bare get(name) failed: expected &str, found String).
-                kept.set(name.clone(), self.gate_feedback.get(name.as_str()) ?? [])
+                // Plan 380: `?? []` on Option<&List> renders unwrap_or_default()
+                // which fails on `&Vec` (E0277) — `is`-destructure + .clone().
+                is self.gate_feedback.get(name.as_str()) {
+                    Some(fb) -> kept.set(name.clone(), fb.clone()),
+                    None -> kept.set(name.clone(), [])
+                }
                 kept_names.push(name)
             }
         }

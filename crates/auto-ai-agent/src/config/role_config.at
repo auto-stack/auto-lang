@@ -326,7 +326,9 @@ pub fn load_role(content str) Result<RoleConfig, AgentError> {
                     // `builtin_roles.load_builtin(...)` as `builtin_roles::...`,
                     // but the `use builtin_roles: load_builtin` import only
                     // brings the function into scope, not the module path.
-                    is load_builtin(name) {
+                    // Plan 380: `name` is an owned String (from cfg.inherit) —
+                    // load_builtin takes &str (E0308 otherwise).
+                    is load_builtin(name.as_str()) {
                         Some(base_role) -> {
                             // Merge cfg over the base role's config-derived
                             // defaults. Since builtins aren't RoleConfigs,
