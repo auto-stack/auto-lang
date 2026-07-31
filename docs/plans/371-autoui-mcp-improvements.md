@@ -1192,3 +1192,78 @@ L3 是否实施取决于 L1/L2 的实测结果——若 L1（泛化特判）+ �
 3. **子组件已 derive Clone**：`00271d9a` 为 hoist+sync 的 clone 往返已让 EditorPanel/NavTree derive Clone（`main.rs:206,477`）。L3 方案 A 无需额外加 derive。
 
 **复用的现有机制**：`component_state_fields` map、`child_components` 列表、`extract_child_constructor_args`、`find_sync_fields_for_child`、`STORE_NAMES` thread-local。L1 本质是把"硬编码特判"重构为"基于 .at 源码分析的通用代码"，复用这些既有基础设施。
+
+---
+
+## 16. L1 新应用验证：013-todo 改造（2026-07-31，commit `6eb8406d`）
+
+L1 验收的最后一项——"新应用验证"。将单组件 TodoMVC（`013-todo`）改造为 **App + TodoList** 多组件 + 后端 API，组件名/字段名均不同于 015-notes，验证 L1 泛化改动的通用性。
+
+### 16.1 改造目标
+
+015-notes 的 L1 验证存在自证嫌疑（特判曾经就是为它写的）。需要一个**不同组件名、不同字段名、不同数据布局**的应用来证明 L1 的 `handler_mutates_store_data` + `written_props` + 统一 sync 字段确实通用，而非换了名字就失效。
+
+### 16.2 应用结构
+
+```
+013-todo/
+├── pac.at                  # 加 api: "rust"
+├── src/
+│   ├── back/
+│   │   ├── api.at          # pub type Todo + #[api] CRUD（list/create/update/delete）
+│   │   └── db.at           # 种子数据（4 条 todo）+ CRUD 逻辑
+│   ├── front/
+│   │   ├── app.at          # App widget（input + TodoList 子组件）
+│   │   ├── todo_list.at    # TodoList 子组件（filter 状态 + 内联渲染）
+│   │   ├── todo_store.at   # TodoStore（list_todos/create_todo/... 调用）
+│   │   └── types.at        # Todo 类型镜像
+└── tests/
+    ├── 013-todo.autotest   # 6 个 MCP 测试场景
+    ├── run_autotest.py     # 复用 015 模式
+    └── autotest/           # 复用 015 的 autotest 库
+```
+
+### 16.3 L1 关键路径验证结果
+
+| L1 改动 | 验证场景 | 结果 |
+|---------|---------|------|
+| store sync（统一字段集） | App→TodoList 消息转发，`__child.store = self.store.clone()` | ✅ 正确生成 |
+| Init 转发（`handler_mutates_store_data`） | TodoList 无 editing 类子组件，故无 Init 转发触发——符合预期 | ✅ |
+| props 回写（`written_props`） | TodoList 不写 props——符合预期，无回写生成 | ✅ |
+| 组件名通用性 | "TodoList"（非 "Editor"）、"todo"（非 "note"） | ✅ 无硬编码依赖 |
+
+### 16.4 测试结果
+
+**VM 6/0/0 + Rust 6/0/0 双绿**，覆盖：种子数据渲染、Active/Completed/All 过滤、items left 计数。
+
+### 16.5 改造中发现的 a2r 预存限制（非 L1 引入）
+
+首次在非 015-notes 应用上暴露的既有缺陷，全部记录留待后续改进：
+
+**① `todo` 循环变量名与 Rust `todo!` 宏冲突**
+- `for todo in .store.todos` 生成的 `TodoItem::new(todo)` 被解析为 `todo!()` 宏调用
+- 修复：循环变量改用 `item`（`.at` 层面）
+- 根因：a2r 未对与 Rust 关键字/宏冲突的变量名做转义
+
+**② for 循环内子组件的 `on()` 转发引用循环变量但不在作用域**
+- `TodoListMsg::TodoItem(inner) => { let mut __child = TodoItem::new(item); ... }` — `item` 是 view 循环变量，在 `on()` 方法中不可用
+- 修复：暂改为内联渲染（不用子组件），保留 App→TodoList 父子关系验证
+- 根因：hoist+sync 的 `on()` 转发 arm 无法访问 view 循环变量。这是 §15.2 ② 的"三处临时构造"问题在循环场景的体现，L3 持久化实例方案可解决
+
+**③ API 生成器按 HTTP method 名生成签名**
+- `generate_merged_api_client`（`rust_ui.rs:990`）按 GET/POST/PUT/DELETE 分发生成逻辑：
+  - PATCH → 落入 `_` 分支 → `fn name() {}`（丢弃所有参数）
+  - 无 `:id` 的 DELETE → 仍生成 `(id: i32)`（硬编码 id 参数）
+- 修复：避开 PATCH，toggle 用 PUT，clear_completed 改用 POST
+- 根因：API 生成器不支持 PATCH，且 DELETE 分支硬编码 id 参数
+
+**④ `store.Method(self.field)` 传 String 状态变量未自动 `.clone()`**
+- `store.AddTodo(.input)` 生成 `self.store.on(StoreMsg::AddTodo(self.input))` — 移动了 `self.input`
+- 修复：改为无参消息 `store.AddTodo()` + store 自有 `input` 字段（通过 hoist+sync 同名匹配）
+- 根因：a2r 未对传递给 store 消息构造函数的 String 状态变量自动 clone
+
+### 16.6 结论
+
+L1 的核心目标——**泛化特判使其对任意组件名/字段名的应用通用**——已验证达成。013-todo 用完全不同的命名（TodoList/todo/TodoStore）成功生成可运行的 Rust 代码，store sync 正确工作。
+
+上述 4 个预存限制为后续 L2/L3 或独立改进提供了明确方向，其中 ②（循环内子组件）和 ④（String 自动 clone）影响面最大，建议优先处理。
