@@ -44,7 +44,7 @@ pub type Runner has Role {
     }
 
     pub fn system_prompt() str {
-        return SOUL
+        return SOUL.to_string()
     }
 
     pub fn model_tier() ModelTier {
