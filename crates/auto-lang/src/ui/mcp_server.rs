@@ -1270,7 +1270,16 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
 
     for (name, value) in &entries {
         if let Some(ref fields) = filter_fields {
-            if !fields.contains(name) {
+            // Match a field if it's requested exactly OR ends with the requested
+            // name as a path suffix (Plan 371 Task 22b). Rust mode exposes
+            // nested-component state with a prefix (e.g. `store.dark_mode`), so
+            // querying `dark_mode` should still surface it; VM mode has the
+            // bare name (`dark_mode`) and matches exactly.
+            let matches = fields.iter().any(|f| {
+                name.as_str() == f.as_str()
+                    || name.ends_with(&format!(".{}", f))
+            });
+            if !matches {
                 continue;
             }
         }
