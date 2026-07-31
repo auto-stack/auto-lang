@@ -77,6 +77,31 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     (false, false)
 }
 
+/// Plan 374 / Plan 371 Task 22a: pre-scan `.at` files for `StoreDecl`s.
+///
+/// Shared by both `generate_rust_ui` (full regen) and `regenerate_code_only`
+/// (incremental regen). Previously the incremental path skipped this and
+/// passed an empty store list, starving the store-composable pipeline
+/// (struct/enum generation + `store.X` rewriting registration) and producing
+/// 86 errors on store-composable apps like 015-notes.
+fn collect_store_decls(at_files: &[std::path::PathBuf]) -> Vec<auto_lang::ast::ui::StoreDecl> {
+    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
+                        all_stores.push(store.clone());
+                    }
+                }
+            }
+        }
+    }
+    all_stores
+}
+
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
@@ -92,10 +117,20 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         "MyApp".to_string()
     };
 
+    // Plan 374 / Plan 371 Task 22a: pre-scan all .at files for StoreDecls,
+    // exactly like `generate_rust_ui` does. Previously this passed `&[]`,
+    // which starved `compile_at_file`'s store registration + struct/enum
+    // generation — producing 86 "no field `store`" / "cannot find type
+    // `StoreMsg`" errors on incremental regen of store-composable apps.
+    let all_stores = collect_store_decls(&at_files);
+    if !all_stores.is_empty() {
+        println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
+    }
+
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path, &[]) {
+        match compile_at_file(at_path, &all_stores) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -180,20 +215,7 @@ pub fn generate_rust_ui(
     };
 
     // Plan 374 Task 2-3: Pre-scan all .at files to collect StoreDecls.
-    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
-    for at_path in &at_files {
-        if let Ok(code) = std::fs::read_to_string(at_path) {
-            let session = CompilerSession::ui().with_backend("rust");
-            let mut parser = Parser::from(code.as_str()).with_session(session);
-            if let Ok(ast) = parser.parse() {
-                for stmt in &ast.stmts {
-                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
-                        all_stores.push(store.clone());
-                    }
-                }
-            }
-        }
-    }
+    let all_stores = collect_store_decls(&at_files);
     if !all_stores.is_empty() {
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
