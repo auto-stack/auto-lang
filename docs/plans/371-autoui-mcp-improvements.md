@@ -623,42 +623,49 @@ acceptance.atd 有 13 个场景（T1-T13），MCP 可执行的子集：
 
 - `cargo build -p auto-lang --features ui-iced` ✅（默认方法，零回归）
 - 生成器单元测试：`test_state_snapshot_scalar_override`、`test_state_snapshot_no_scalars_no_override` ✅（25 passed in ui_gen::rust）
-- 015-notes rust workspace `cargo build` ✅（已手工注入 5 个组件的 `state_snapshot` override，见下）
+- 015-notes rust workspace `cargo build` ✅（committed main.rs 是手工拼装版，未含 state_snapshot；见 §11.5）
 
-### 11.5 手工注入 override（未用 a2r 重生成）
+### 11.5 重生成受阻：a2r store-composable 预存缺陷
 
-尝试 `touch .at + auto run -r rust` 强制重生成时发现：**原生 a2r 输出有 86 个预存错误**（`no field store`、`cannot find type StoreMsg` 等 store-composable 处理缺陷），而 committed 的 `main.rs` 是手工拼装修复版（commit `cd9205b9` "restore hand-assembled rust/src/ (0 errors)"）。直接重生成会破坏手工修复。
+Task 21 的生成器改动（§11.2，commit `f863f9ff`）**已正确落地**：当 a2r 正常输出时，`generate_component_impl` 会为标量字段生成 `state_snapshot` override。
 
-**采用方案**：在手工修复版 `main.rs` 上**手工注入** 5 个组件（App/EditorPanel/NoteItem/NotesStore/NavTree）的 `state_snapshot` override，镜像生成器会发的代码。关键：根组件 `App` 的 snapshot 把 `store` 的标量字段以 `store.` 前缀展平（如 `store.dark_mode`、`store.accent_color`、`store.active_folder`），让 Rust 模式 `autoui_state` 能读到主题相关字段。
+但尝试对 015-notes 重生成时发现：**原生 a2r 输出有 86 个预存错误**（`no field store`、`cannot find type StoreMsg` 等 store-composable 处理缺陷），生成的 `NotesStore` 只有 4 个字段（缺 `dark_mode`/`accent_color` 等）。committed 的 `main.rs` 是**手工拼装修复版**（commit `cd9205b9` "restore hand-assembled rust/src/ (0 errors)"），并非 a2r 直接产物。
 
-### 11.6 ⚠️ skip_if rust 暂不移除（字段语义差异）
+**关键决策（已纠正）**：**不修改生成的 `main.rs`**。生成文件会被下次重生成覆盖，手工改它没有意义。因此 015-notes 的 `main.rs` 当前**不含** `state_snapshot`——要让它有，必须先修复 a2r 的 store-composable 缺陷（属 Plan 374 范畴，超出 Plan 371），再重生成。
 
-移除 `skip_if rust` 需 T5c/T11/T11b/T12 在 Rust 模式实际通过，但存在字段语义差异：
+> 历史教训：本轮曾误在手工版 `main.rs` 上注入 `state_snapshot`（commit `9f297b06`），已被回退——生成文件不该手改。正确的修复点永远是生成器本身。
 
-| 场景 | 断言字段 | VM 模式（flat state） | Rust 模式（App snapshot） |
+### 11.6 ⚠️ skip_if rust 暂不移除（依赖 a2r 修复 + 字段语义对齐）
+
+移除 `skip_if rust` 的前置条件尚未满足：
+
+1. **a2r store 缺陷未修**（§11.5）：重生成前 015-notes 的 Rust 组件没有 `state_snapshot`，Rust 模式 `autoui_state` 仍返回空。
+2. **字段语义差异**：即便 `state_snapshot` 生效，VM 与 Rust 模式的 state 形状不一致——
+
+| 场景 | 断言字段 | VM 模式（flat state） | Rust 模式（root App snapshot） |
 |---|---|---|---|
-| T11/T11b | `dark_mode` | ✅ 顶层 | ⚠️ 展平为 `store.dark_mode`（字段名带前缀） |
-| T12 | `accent_color` | ✅ 顶层 | ⚠️ 展平为 `store.accent_color` |
-| T5c | `edit_title` | ✅ 当前 EditorPanel 状态 | ❌ 不在 App snapshot（属于子组件 EditorPanel） |
+| T11/T11b | `dark_mode` | ✅ 顶层 | ⚠️ 属于子组件 `store`（NotesStore），不在根 App snapshot |
+| T12 | `accent_color` | ✅ 顶层 | ⚠️ 同上 |
+| T5c | `edit_title` | ✅ 当前 EditorPanel 状态 | ❌ 属于子组件 EditorPanel |
 
-根因：VM 模式 `shared.state` 是**所有组件状态的扁平 map**（含当前 EditorPanel 的 `edit_title`），而 Rust 模式只读根组件 `App` 的 `state_snapshot`。子组件（EditorPanel）的状态不在根快照里，且展平字段名带 `store.` 前缀与 `.autotest` 断言的 `dark_mode` 不匹配。
+根因：VM 模式 `shared.state` 是**所有组件状态的扁平 map**（含当前 EditorPanel 的 `edit_title`、顶层 `dark_mode`），而 Rust 模式 `view_element` 只调根组件 `App::state_snapshot()`。子组件状态不在根快照里。
 
-**结论**：本轮**保留** `skip_if rust`。要让这些场景在 Rust 模式通过，需要后续工作之一：
-- (a) `.autotest` 的 `state` 断言支持 `store.` 前缀路径 + 子组件状态（改 Python adapter + 断言语义）；或
-- (b) 让 Rust 模式 `SharedState.state` 像 VM 一样扁平聚合所有组件状态（需 DevToolsWrapper 递归收集，工程量较大）。
+**结论**：本轮**保留** `skip_if rust`。要让这些场景在 Rust 模式通过，需后续工作（按依赖顺序）：
+- (a) 修复 a2r 的 store-composable 缺陷（Plan 374），使重生成产出可编译的 `main.rs`（含 `state_snapshot`）；
+- (b) 让 Rust 模式 `SharedState.state` 像 VM 一样扁平聚合所有组件状态（`DevToolsWrapper` 递归收集子组件 `state_snapshot`），而非只读根组件。
 
-`autoui_state` 在 Rust 模式现已**部分可用**（App 顶层标量 + `store.*` 主题字段），相比此前完全不可用是实质改进。
+`autoui_state` 的 Rust 模式基础设施（trait 默认方法 + 生成器 override + `set_state` + `view_element` 推送）已就绪，待 (a)(b) 完成后即可生效。
 
 ---
 
 ## 12. 实施顺序与风险
 
 1. **Task 19 先做**（最高优先级，修复静默失败 + 输入值断裂，纯重构不破坏 VM 模式）。✅
-2. **Task 21 次之**（依赖 Task 19 验证 Rust 模式 action 稳定后，再补 state）。✅（代码 + 手工注入；a2r 原生重生成因 86 个预存错误不可用，见 §11.5；skip_if rust 因字段语义差异暂不移除，见 §11.6）
+2. **Task 21 次之**（基础设施已就绪：trait 默认方法 + 生成器 override + SharedState.set_state + view_element 推送）。✅（代码部分；015-notes 实际生效待 a2r store 修复 + 重生成，见 §11.5；skip_if rust 暂不移除，见 §11.6）
 3. **Task 20 最后**（独立功能，工作量集中在 renderer 截图改造）。✅
 
 每个 Task 完成后：单独 `cargo build` + 对应验证。
 
 > ⚠️ 实施记录：Task 19 + 21 的代码改动曾因一次 `git stash` 操作与工作区既有 in-flight 改动冲突而丢失，已重新应用。此外，用户 IDE（ZCode）打开了部分文件，其缓冲区回写一度还原 agent 的编辑；最终通过原子化重应用 + 立即 build 锁定状态。
 >
-> **a2r 重生成结论**：原生 a2r 输出 015-notes 有 86 个预存错误（store-composable 处理缺陷），committed `main.rs` 是手工拼装修复版。Task 21 改为在手工版上手工注入 `state_snapshot` override（5 个组件），而非重生成。`skip_if rust` 暂不移除（字段名前缀 + 子组件状态差异，见 §11.6）。端到端 GUI 跑 `.autotest` 验证需在 IDE 不争用文件时进行。
+> **a2r 重生成结论**：原生 a2r 输出 015-notes 有 86 个预存错误（store-composable 缺陷，Plan 374 范畴），committed `main.rs` 是手工拼装版。Task 21 的生成器改动已正确落地，但**不手改生成的 main.rs**（会被覆盖、无意义）。`skip_if rust` 暂不移除。端到端 GUI 跑 `.autotest` 验证需在 IDE 不争用文件时进行。
