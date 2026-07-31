@@ -41,7 +41,7 @@ pub enum Validator {
 
 
 impl Validator {
-    pub async fn check(&self, output: &str) -> Result<(), String> {
+    pub fn check(&self, output: &str) -> Result<(), String> {
         match self {
             Validator::OutputContains(pattern) => {
                 if a2r_std::str_contains(output, pattern.as_str()) {
@@ -71,29 +71,30 @@ impl Validator {
                 let msg = format!("output is {} chars, must be at least {}", ((output.len() as i32) as u32), m).to_string();
                 return Err(msg);
             },
-            Validator::All(validators) => return check_all(validators.clone(), output).await,
-            Validator::Any(validators) => return check_any(validators.clone(), output).await,
-        }
+            Validator::All(validators) => return check_all(validators.clone(), output),
+            Validator::Any(validators) => return check_any(validators.clone(), output),
+        };
     }
 }
 
-pub async fn check_all(validators: Vec<Validator>, output: &str) -> Result<(), String> {
-    for v in validators {
-        match v.check(output).await {
+pub fn check_all(validators: Vec<Validator>, output: &str) -> Result<(), String> {
+    for v in validators.clone() {
+        match v.check(output) {
             Ok(_) => {},
             Err(msg) => return Err(msg),
-        }
+        };
     }
     return Ok(());
 }
 
-pub async fn check_any(validators: Vec<Validator>, output: &str) -> Result<(), String> {
+pub fn check_any(validators: Vec<Validator>, output: &str) -> Result<(), String> {
     let mut failures: u32 = 0 as u32;
-    for v in validators {
-        match v.check(output).await {
+
+    for v in validators.clone() {
+        match v.check(output) {
             Ok(_) => return Ok(()),
             Err(_msg) => failures = failures + 1,
-        }
+        };
     }
     let total: u32 = ((validators.len() as u32) as u32);
     if failures < total {

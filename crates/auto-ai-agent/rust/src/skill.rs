@@ -94,21 +94,21 @@ impl SkillRegistry {
                                             
 
                                         },
-                                    }
+                                    };
                                 }                            }
                         },
                         Err(_e) => {
                             
 
                         },
-                    }
+                    };
                 }
             },
             Err(_e) => {
                 
 
             },
-        }
+        };
         return SkillRegistry { skills: skills, names: names };
     }
     pub fn get(&self, name: &str) -> Option<Skill> {
@@ -117,7 +117,7 @@ impl SkillRegistry {
         match self.skills.get(name) {
             Some(s) => return Some(s.clone()),
             None => return None,
-        }
+        };
     }
     pub fn retain(&mut self, whitelist: Vec<String>) {
         let mut kept: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
@@ -135,7 +135,7 @@ impl SkillRegistry {
                         kept_names.push(name.clone());
                     },
                     None => {},
-                }
+                };
             }
         }
         self.skills = kept;
@@ -152,7 +152,7 @@ impl SkillRegistry {
             match self.skills.get(name.as_str()) {
                 Some(s) => out.push((s.name.clone(), s.description.clone())),
                 None => {},
-            }
+            };
         }
         out.sort_by_key(|pair| pair.0.clone());
         return out;
@@ -225,7 +225,7 @@ fn parse_frontmatter(raw: &str) -> Frontmatter {
             return Frontmatter { name: "".to_string(), description: "".to_string(), content: stripped.to_string() };
         },
         Some(after_open) => return parse_frontmatter_body(after_open),
-    }
+    };
 }
 
 /// Parse the body after the opening `---\n`.
@@ -247,7 +247,7 @@ fn parse_frontmatter_body(after_open: &str) -> Frontmatter {
             let desc = extract_field(fm.as_str(), "description");
             return Frontmatter { name: name.to_string(), description: desc.to_string(), content: body.to_string() };
         },
-    }
+    };
 }
 
 /// Strip a leading UTF-8 BOM (\u{feff}) if present.
@@ -256,7 +256,7 @@ fn strip_bom(raw: &str) -> String {
     match p {
         Some(rest) => return rest.to_string(),
         None => return raw.to_string(),
-    }
+    };
 }
 
 /// Index of the line (within `after_open`) whose trimmed content is `---`, or
@@ -326,7 +326,7 @@ fn extract_field(frontmatter: &str, key: &str) -> String {
         match rest {
             Some(r) => return clean_field_value(r.trim()),
             None => {},
-        }
+        };
     }
     return "".to_string();
 }
@@ -386,7 +386,7 @@ impl Tool for SkillTool {
                 let available = self.registry.names().join(", ");
                 return Err(ToolError::Exec(format!("skill '{}' not found; available: {}", name, available)));
             },
-        }
+        };
     }
 }
 

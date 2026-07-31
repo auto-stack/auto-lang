@@ -50,6 +50,7 @@ pub mod wire {
 
 // ── hand-written glue (no .at source) ──────────────────────────────────────
 pub mod client_impl;
+pub mod echo_tool;
 
 SHIMS
 }

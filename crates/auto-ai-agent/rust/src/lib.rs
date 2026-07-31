@@ -16,6 +16,7 @@ pub mod wire {
 
 // ── hand-written glue (no .at source) ──────────────────────────────────────
 pub mod client_impl;
+pub mod echo_tool;
 pub mod agent;
 pub mod budget;
 pub mod builtin_role_advisor;

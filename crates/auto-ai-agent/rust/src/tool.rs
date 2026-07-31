@@ -82,7 +82,7 @@ impl ToolRegistry {
         match self.tools.get(name) {
             Some(t) => return Some(t.clone()),
             None => return None,
-        }
+        };
     }
     pub fn names(&self) -> Vec<String> {
         return self.names.clone();
@@ -100,7 +100,7 @@ impl ToolRegistry {
                 match self.tools.get(n.as_str()) {
                     Some(t) => out.push(t.clone()),
                     None => {},
-                }
+                };
             }
             return out;
         }
@@ -108,7 +108,7 @@ impl ToolRegistry {
             match self.tools.get(n.as_str()) {
                 Some(t) => out.push(t.clone()),
                 None => {},
-            }
+            };
         }
         return out;
     }
@@ -116,12 +116,12 @@ impl ToolRegistry {
         match self.get(name) {
             Some(tool) => return tool.execute(args).await,
             None => return Err(ToolError::Exec(format!("tool not found: {}", name))),
-        }
+        };
     }
     pub async fn exec_or_msg(&self, name: &str, args: JsonValue) -> String {
         match self.execute(name, args).await {
             Ok(out) => return out,
             Err(e) => return format!("[tool error: {}]", e.message()),
-        }
+        };
     }
 }

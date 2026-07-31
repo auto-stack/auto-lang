@@ -132,7 +132,7 @@ impl BudgetTracker {
         match self.per_step.get(step) {
             Some(n) => prev = n.clone(),
             None => {},
-        }
+        };
         self.per_step.insert(step.to_string(), prev + total);
     }
     pub fn check(&self, step: &str) -> BudgetAction {
@@ -147,7 +147,7 @@ impl BudgetTracker {
                 }
             },
             None => {},
-        }
+        };
 
 
         let action = check_budget(self.cumulative.clone(), self.run_budget.clone());
@@ -166,7 +166,7 @@ impl BudgetTracker {
         match self.per_step.get(step) {
             Some(n) => return n.clone(),
             None => return 0 as u32,
-        }
+        };
     }
 }
 

@@ -254,7 +254,7 @@ impl Agent {
                     return Err(AgentError::Config(err));
                 },
                 None => {},
-            }
+            };
             result.total_tokens = record_usage(result.clone(), resp.clone());
             
             if resp.wants_tool() {
@@ -394,7 +394,7 @@ fn is_cancelled(cancel: Option<Arc<AtomicBool>>) -> bool {
             let v = c.load(Ordering::SeqCst);
             return v;
         },
-    }
+    };
 }
 
 /// Increment the recurrence count for a (tool, args) key, returning the new
@@ -407,7 +407,7 @@ fn bump_seen(mut seen: std::collections::HashMap<String, u32>, mut seen_names: V
     match seen.get(key) {
         Some(n) => prev = n.clone(),
         None => seen_names.push(key.to_string()),
-    }
+    };
     let next: u32 = prev + 1;
     seen.insert(key.to_string(), next);
     return next;
@@ -421,7 +421,7 @@ fn record_usage(result: AgentResult, resp: CompletionResponse) -> u32 {
     match resp.usage {
         Some(u) => return result.total_tokens + u.total_tokens(),
         None => return result.total_tokens,
-    }
+    };
 }
 
 /// A Cancelled event carrying a snapshot of the current result.
@@ -454,11 +454,11 @@ fn build_system_prompt(context_block: Option<String>, soul: &str, skills_block: 
             }
         },
         None => {},
-    }
+    };
     prompt = format!("{}{}", prompt, soul);
     match skills_block {
         Some(block) => prompt = format!("{}{}", prompt, block),
         None => {},
-    }
+    };
     return prompt;
 }

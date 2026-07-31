@@ -174,8 +174,18 @@ ext RoleRegistry {
         var names List<str> = []
 
         // 1. Built-in professions (compiled-in defaults, read-only).
+        // load_one_builtin RETURNS the detail: a2r params are by value, so a
+        // void helper mutating `roles`/`names` would never reach the caller
+        // (the registry would come back empty).
         for name in builtin_names() {
-            load_one_builtin(name, roles, names)
+            is load_one_builtin(name) {
+                Some(detail) -> {
+                    // clone: `name` is also pushed to names below.
+                    roles.set(name.clone(), detail)
+                    names.push(name)
+                },
+                None -> {}
+            }
         }
 
         // 2. User roles from ~/.config/autoos/roles/*.at (override built-ins).
@@ -283,7 +293,8 @@ ext RoleRegistry {
                 "could not determine home directory for roles"
             )),
             Some(dir) -> {
-                is fs.create_dir_all(dir) {
+                // clone: the error arm below formats dir.display().
+                is fs.create_dir_all(dir.clone()) {
                     Err(e) -> return Err(AgentError.Config(
                         f"failed to create roles dir ${dir.display()}: ${e}"
                     )),
@@ -336,7 +347,8 @@ ext RoleRegistry {
             Some(at_path) -> {
                 let existed = at_path.exists()
                 if existed {
-                    is fs.remove_file(at_path) {
+                    // clone: the error arm below formats at_path.display().
+                    is fs.remove_file(at_path.clone()) {
                         Err(e) -> return Err(AgentError.Config(
                             f"failed to delete ${at_path.display()}: ${e}"
                         )),
@@ -365,7 +377,10 @@ ext RoleRegistry {
 
 /// Load one built-in profession into the registry (step 1 of load()).
 /// Unknown names are silently skipped.
-fn load_one_builtin(name str, roles Map<str, RoleDetail>, names List<str>) void {
+/// Build one built-in role's detail (name → RoleDetail), or None if the
+/// built-in isn't found. Returns the detail rather than mutating by-value
+/// `roles`/`names` params (which couldn't reach the caller's registry).
+fn load_one_builtin(name str) ?RoleDetail {
     is load_builtin(name) {
         Some(prof) -> {
             // Plan 380: read all trait-method results FIRST, then pass `prof`
@@ -394,10 +409,9 @@ fn load_one_builtin(name str, roles Map<str, RoleDetail>, names List<str>) void 
                 soul_from_file: false,
                 config: cfg
             )
-            roles.set(name, detail)
-            names.push(name.to_string())
+            return Some(detail)
         },
-        None -> {}
+        None -> return None
     }
 }
 
@@ -423,7 +437,9 @@ fn scan_roles_dir(dir PathBuf, roles Map<str, RoleDetail>, names List<str>) void
                     Ok(e) -> {
                         let path = e.path()
                         if is_at_file(path) {
-                            load_user_at_file(path, roles, names)
+                            // clone: `names` is reused across loop iterations
+                            // (a2r auto-clones struct/map args, not lists).
+                            load_user_at_file(path, roles, names.clone())
                         }
                     },
                     Err(_e) -> {}
@@ -468,7 +484,10 @@ fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) 
                 Ok(cfg) -> {
                     // Name: cfg.name if set, else the file stem, else "unnamed".
                     var name str = ""
-                    is cfg.name {
+                    is cfg.name.clone() {
+                        // .clone(): destructuring cfg.name by value would
+                        // partially move cfg (E0382 — cfg is used below for
+                        // resolve_soul/RoleSummary/RoleDetail).
                         Some(n) -> name = n,
                         None -> {
                             is path.file_stem() {

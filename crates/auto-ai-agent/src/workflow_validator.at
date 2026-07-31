@@ -39,7 +39,7 @@ pub enum Validator {
 ext Validator {
     /// Run this validator against `output`. Returns Ok(None) on pass,
     /// Err(message) on fail (message explains what failed).
-    pub fn check(output str) ~Result<None, str> {
+    pub fn check(output str) Result<None, str> {
         is self {
             Validator.OutputContains(pattern) -> {
                 if output.contains(pattern) {
@@ -67,17 +67,17 @@ ext Validator {
                 let msg = f"output is ${output.len() as uint} chars, must be at least ${m}".to_string()
                 return Err(msg)
             },
-            Validator.All(validators) -> return check_all(validators.clone(), output).await,
-            Validator.Any(validators) -> return check_any(validators.clone(), output).await
+            Validator.All(validators) -> return check_all(validators.clone(), output),
+            Validator.Any(validators) -> return check_any(validators.clone(), output)
         }
     }
 }
 
 /// Run a list of validators against `output`. Passes only if ALL pass.
 /// Returns the first failure message, or Ok if all pass.
-pub fn check_all(validators List<Validator>, output str) ~Result<None, str> {
-    for v in validators {
-        is v.check(output).await {
+pub fn check_all(validators List<Validator>, output str) Result<None, str> {
+    for v in validators.clone() {
+        is v.check(output) {
             Ok(_) -> {},
             Err(msg) -> return Err(msg)
         }
@@ -87,10 +87,11 @@ pub fn check_all(validators List<Validator>, output str) ~Result<None, str> {
 
 /// Run a list of validators against `output`. Passes if AT LEAST ONE passes.
 /// Returns Err only when every validator fails.
-pub fn check_any(validators List<Validator>, output str) ~Result<None, str> {
+pub fn check_any(validators List<Validator>, output str) Result<None, str> {
     var failures uint = 0
-    for v in validators {
-        is v.check(output).await {
+    // clone: `validators` is still needed below (validators.len()).
+    for v in validators.clone() {
+        is v.check(output) {
             Ok(_) -> return Ok(None),
             Err(_msg) -> failures = failures + 1
         }

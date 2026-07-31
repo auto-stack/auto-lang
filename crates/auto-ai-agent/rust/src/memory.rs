@@ -81,7 +81,7 @@ impl Memory {
         match self.limit.clone() {
             Some(n) => limit = n,
             None => {},
-        }
+        };
         if limit == 0 {
             
 

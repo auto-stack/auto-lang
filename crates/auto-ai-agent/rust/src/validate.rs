@@ -21,10 +21,10 @@ pub fn validate_role_model(role: Box<dyn Role>) -> Result<(), AgentError> {
             match ai_config::validate_model_exists(&cfg, role.model().as_str()) {
                 Ok(_) => return Ok(()),
                 Err(msg) => return Err(AgentError::Config(msg)),
-            }
+            };
         },
         Err(e) => return Err(e),
-    }
+    };
 }
 
 pub fn load_client_config() -> Result<ai_config::ClientConfig, AgentError> {
@@ -35,10 +35,10 @@ pub fn load_client_config() -> Result<ai_config::ClientConfig, AgentError> {
             match ai_config::parse_client_config(content.as_str()) {
                 Ok(cfg) => return Ok(cfg),
                 Err(e) => return Err(AgentError::Config(e.to_string())),
-            }
+            };
         },
         None => return Err(AgentError::Config("cannot determine home directory".to_string())),
-    }
+    };
 }
 
 /// Runtime model validation for Professions.

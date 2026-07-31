@@ -177,7 +177,7 @@ fn format_size(lines: Option<u32>) -> String {
     match lines {
         Some(n) => return format!(" ({} lines)", n),
         None => return "".to_string(),
-    }
+    };
 }
 
 /// True when any of the context pointer lists is non-empty.

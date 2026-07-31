@@ -320,7 +320,11 @@ pub fn load_role(content str) Result<RoleConfig, AgentError> {
         Ok(cfg) -> {
             var result = cfg
             // Resolve inherit chain (one level — the base is a builtin).
-            is cfg.inherit {
+            // (result, not cfg: `var result = cfg` moved cfg — reading
+            // cfg.inherit after the move is E0382. .clone(): destructuring
+            // result.inherit by value would partially move result, breaking
+            // the final `return Ok(result)`.)
+            is result.inherit.clone() {
                 Some(name) -> {
                     // Use the imported (unqualified) name: a2r renders
                     // `builtin_roles.load_builtin(...)` as `builtin_roles::...`,

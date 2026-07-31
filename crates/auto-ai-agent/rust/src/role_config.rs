@@ -44,55 +44,55 @@ impl RoleConfig {
         match self.name.clone() {
             Some(v) => r.name = Some(v),
             None => {},
-        }
+        };
         match self.description.clone() {
             Some(v) => r.description = Some(v),
             None => {},
-        }
+        };
         match self.model.clone() {
             Some(v) => r.model = Some(v),
             None => {},
-        }
+        };
         match self.model_tier.clone() {
             Some(v) => r.model_tier = Some(v),
             None => {},
-        }
+        };
         match self.temperature.clone() {
             Some(v) => r.temperature = Some(v),
             None => {},
-        }
+        };
         match self.max_turns.clone() {
             Some(v) => r.max_turns = Some(v),
             None => {},
-        }
+        };
         match self.system_prompt.clone() {
             Some(v) => r.system_prompt = Some(v),
             None => {},
-        }
+        };
         match self.memory_limit.clone() {
             Some(v) => r.memory_limit = Some(v),
             None => {},
-        }
+        };
         match self.inherit.clone() {
             Some(v) => r.inherit = Some(v),
             None => {},
-        }
+        };
         match self.allowed_tiers.clone() {
             Some(v) => r.allowed_tiers = Some(v),
             None => {},
-        }
+        };
         match self.skills.clone() {
             Some(v) => r.skills = Some(v),
             None => {},
-        }
+        };
         match self.token_budget.clone() {
             Some(v) => r.token_budget = Some(v),
             None => {},
-        }
+        };
         match self.soul_file.clone() {
             Some(v) => r.soul_file = Some(v),
             None => {},
-        }
+        };
 
         match base.system_prompt_append {
             Some(extra) => {
@@ -100,15 +100,15 @@ impl RoleConfig {
                     Some(mine) => r.system_prompt_append = Some(format!("{}
 {}", extra, mine)),
                     None => r.system_prompt_append = Some(extra),
-                }
+                };
             },
             None => r.system_prompt_append = self.system_prompt_append.clone(),
-        }
+        };
 
         match self.tools.clone() {
             Some(replace) => r.tools = Some(replace),
             None => {},
-        }
+        };
         match self.tools_append.clone() {
             Some(extra) => {
                 
@@ -119,14 +119,14 @@ impl RoleConfig {
                 match r.tools.clone() {
                     Some(existing) => combined = existing,
                     None => {},
-                }
+                };
                 for t in extra {
                     combined.push(t.clone());
                 }
                 r.tools = Some(combined);
             },
             None => {},
-        }
+        };
         return r;
     }
 }
@@ -152,12 +152,12 @@ impl Role for ConfigRole {
         match self.cfg.system_prompt.clone() {
             Some(p) => prompt = p,
             None => {},
-        }
+        };
         match self.cfg.system_prompt_append.clone() {
             Some(extra) => return format!("{}
 {}", prompt, extra),
             None => return prompt,
-        }
+        };
     }
     fn model_tier(&self) -> ModelTier {
         return self.cfg.model_tier.clone().unwrap_or(self.base_tier());
@@ -178,7 +178,7 @@ impl Role for ConfigRole {
         match self.cfg.memory_limit.clone() {
             Some(n) => return Some(n as u32),
             None => return Some(20),
-        }
+        };
     }
     fn skills(&self) -> Vec<String> {
         return self.cfg.skills.clone().unwrap_or_default();
@@ -233,10 +233,10 @@ pub fn parse_at_role(content: &str) -> Result<RoleConfig, AgentError> {
                             match parse_tier_field(s.as_str()) {
                                 Some(t) => cfg.model_tier = Some(t),
                                 None => {},
-                            }
+                            };
                         },
                         None => {},
-                    }
+                    };
                     cfg.temperature = opt_float(n.clone(), "temperature");
                     cfg.max_turns = opt_uint(n.clone(), "max_turns");
                     cfg.memory_limit = opt_uint(n.clone(), "memory_limit");
@@ -249,10 +249,10 @@ pub fn parse_at_role(content: &str) -> Result<RoleConfig, AgentError> {
                     return Ok(cfg);
                 },
                 _ => return Err(AgentError::Config("expected a 'role' node".to_string())),
-            }
+            };
         },
         Err(e) => return Err(AgentError::Config(format!("failed to parse role .at: {}", e))),
-    }
+    };
 }
 
 pub fn load_role(content: &str) -> Result<RoleConfig, AgentError> {
@@ -261,7 +261,11 @@ pub fn load_role(content: &str) -> Result<RoleConfig, AgentError> {
             let mut result = cfg;
             
 
-            match cfg.inherit {
+
+
+
+
+            match result.inherit.clone() {
                 Some(name) => {
                     
 
@@ -279,14 +283,14 @@ pub fn load_role(content: &str) -> Result<RoleConfig, AgentError> {
 
                         },
                         None => return Err(AgentError::Config(format!("inherit: unknown role '{}'", name))),
-                    }
+                    };
                 },
                 None => {},
-            }
+            };
             return Ok(result);
         },
         Err(e) => return Err(e),
-    }
+    };
 }
 
 pub fn parse_tier_field(s: &str) -> Option<ModelTier> {
@@ -298,31 +302,31 @@ pub fn serialize_at_role(cfg: RoleConfig) -> String {
     match cfg.name {
         Some(v) => lines.push(format!("    name : \"{}\"", v)),
         None => {},
-    }
+    };
     match cfg.model {
         Some(v) => lines.push(format!("    model : \"{}\"", v)),
         None => {},
-    }
+    };
     match cfg.model_tier {
         Some(t) => lines.push(format!("    model_tier : {}", t.display_name())),
         None => {},
-    }
+    };
     match cfg.temperature {
         Some(v) => lines.push(format!("    temperature : {}", v)),
         None => {},
-    }
+    };
     match cfg.max_turns {
         Some(v) => lines.push(format!("    max_turns : {}", v)),
         None => {},
-    }
+    };
     match cfg.system_prompt {
         Some(v) => lines.push(format!("    system_prompt : \"{}\"", v)),
         None => {},
-    }
+    };
     match cfg.inherit {
         Some(v) => lines.push(format!("    inherit : \"{}\"", v)),
         None => {},
-    }
+    };
     lines.push("}".to_string());
     return lines.join("\n");
 }
@@ -340,7 +344,7 @@ fn opt_str(node: auto_val::Node, key: &str) -> Option<String> {
         Value::String(s) => return Some(s.to_string()),
         Value::Nil => return None,
         _ => return Some(val.to_astr().to_string()),
-    }
+    };
 }
 
 fn opt_float(node: auto_val::Node, key: &str) -> Option<f64> {
@@ -350,7 +354,7 @@ fn opt_float(node: auto_val::Node, key: &str) -> Option<f64> {
         Value::Double(d) => return Some(d),
         Value::Int(i) => return (Some(i as f64)),
         _ => return None,
-    }
+    };
 }
 
 fn opt_uint(node: auto_val::Node, key: &str) -> Option<u32> {
@@ -364,7 +368,7 @@ fn opt_uint(node: auto_val::Node, key: &str) -> Option<u32> {
             return None;
         },
         _ => return None,
-    }
+    };
 }
 
 fn opt_str_list(node: auto_val::Node, key: &str) -> Option<Vec<String>> {
@@ -376,12 +380,12 @@ fn opt_str_list(node: auto_val::Node, key: &str) -> Option<Vec<String>> {
                 match el {
                     Value::Str(s) => out.push(s.to_string()),
                     _ => {},
-                }
+                };
             }
             return Some(out);
         },
         _ => return None,
-    }
+    };
 }
 
 fn parse_tier(s: &str) -> Option<ModelTier> {

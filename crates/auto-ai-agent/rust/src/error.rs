@@ -23,7 +23,7 @@ impl ToolError {
         match self {
             ToolError::Args(msg) => return format!("invalid tool arguments: {}", msg),
             ToolError::Exec(msg) => return format!("tool execution failed: {}", msg),
-        }
+        };
     }
 }
 
@@ -55,6 +55,6 @@ impl AgentError {
             AgentError::MaxTurnsExceeded(n) => return format!("max turns ({}) exceeded without completion", n),
             AgentError::LoopDetected(name) => return format!("loop detected: tool '{}' called with identical args repeatedly", name),
             AgentError::Config(msg) => return format!("config error: {}", msg),
-        }
+        };
     }
 }

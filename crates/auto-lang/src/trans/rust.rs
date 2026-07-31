@@ -105,6 +105,13 @@ pub struct RustTrans {
     // the inner value is cloned, not the Box wrapper.
     bridge_pattern_bound_idents: HashSet<AutoStr>,
 
+    // Plan 380: identifiers bound from `Some(x)` / `Ok(x)` is-patterns whose
+    // scrutinee returns Option<Spec>/Result<Spec> (e.g. `is load_builtin(n) {
+    // Some(prof) }` binds `prof: Box<dyn Role>`). Auto-cloning such an ident
+    // at a call site is E0599 (`Box<dyn Trait>` has no Clone impl), so the
+    // call-site auto-clone skips these — the value is moved instead.
+    spec_bound_idents: HashSet<AutoStr>,
+
     // Plan 310 Phase 0.2: Cache for union type names (to rewrite construction
     // and field-access into safe accessor methods, since Rust union fields
     // require `unsafe`).
@@ -265,6 +272,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
+            spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -327,6 +335,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
+            spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -382,6 +391,12 @@ impl RustTrans {
     /// Mutable access to the struct_fields cache
     pub fn struct_fields_mut(&mut self) -> &mut HashMap<AutoStr, Vec<AutoStr>> {
         &mut self.struct_fields
+    }
+
+    /// Mutable access to the fn_ret_types cache (for cross-module / sibling
+    /// pre-population from the CLI single-file path).
+    pub fn fn_ret_types_mut(&mut self) -> &mut HashMap<AutoStr, Type> {
+        &mut self.fn_ret_types
     }
 
     /// Mutable access to the spec_decls cache (plan 371 defect A: lets callers
@@ -6489,7 +6504,13 @@ impl RustTrans {
             } else { false };
             let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
                 && !is_sb_param
-                && matches!(arg, Arg::Pos(Expr::Ident(_)));
+                && matches!(arg, Arg::Pos(Expr::Ident(_)))
+                // Plan 380: spec-bound idents (`Some(prof)` from an Option<Spec>
+                // scrutinee) are `Box<dyn Trait>` — no Clone impl (E0599).
+                // Pass them by value (move) instead.
+                && !(if let Arg::Pos(Expr::Ident(name)) = arg {
+                    self.spec_bound_idents.contains(name)
+                } else { false });
 
             // Auto-box when passing a value to a function that takes a spec param
             let is_spec_param = spec_flags.as_ref()
@@ -7245,6 +7266,11 @@ impl RustTrans {
 
             Stmt::Is(is_stmt) => {
                 self.is_stmt(is_stmt, sink)?;
+                // Statement-position `is` is a `match` block; if its arms
+                // end in a value-bearing expression (e.g. map.insert(...)
+                // returning Option), the match's type isn't `()` → E0308.
+                // A trailing `;` discards the value, making it a unit stmt.
+                sink.body.write(b";")?;
                 Ok(true)
             }
 
@@ -8539,6 +8565,38 @@ impl RustTrans {
         }
     }
 
+    /// True when the is-scrutinee resolves to `Option<Spec>` / `Result<Spec>`
+    /// (or a bare `Spec`) — `Some(x)` then binds `x` to a `Box<dyn Trait>`,
+    /// which has no Clone impl (call-site auto-clone would be E0599).
+    fn is_spec_returning_scrutinee(&self, target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            let name = match call.name.as_ref() {
+                Expr::Ident(n) => Some(n.as_str().to_string()),
+                Expr::Dot(_, m) => Some(m.as_str().to_string()),
+                _ => None,
+            };
+            if let Some(n) = name {
+                return self.fn_ret_types.get(n.as_str()).map(|t| {
+                    match t {
+                        Type::Spec(_) => true,
+                        Type::Option(inner) | Type::Result(inner) => {
+                            matches!(inner.as_ref(), Type::Spec(_))
+                                // Plan 380: on the single-file CLI path a
+                                // cross-module spec can be typed `User(Role)`
+                                // (spec_decls knows it's a spec) rather than
+                                // `Spec(Role)`.
+                                || (if let Type::User(usr) = inner.as_ref() {
+                                    self.spec_decls.contains_key(&usr.name)
+                                } else { false })
+                        }
+                        _ => false,
+                    }
+                }).unwrap_or(false);
+            }
+        }
+        false
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"match ")?;
 
@@ -8555,9 +8613,23 @@ impl RustTrans {
         let is_self_field = Self::is_self_dot(&is_stmt.target);
 
         if has_str_pattern {
-            // Use match target.as_str() to allow &str patterns against String
+            // Use match target.as_str() to allow &str patterns against String —
+            // but NOT when the target is already `&str` (a str param / StrSlice
+            // local): `.as_str()` on `&str` is E0658 (str_as_str, unstable).
+            // e.g. `match name.as_str()` where `name: &str` (load_builtin).
             self.expr(&is_stmt.target, &mut sink.body)?;
-            sink.body.write(b".as_str()")?;
+            let target_is_str = match &is_stmt.target {
+                Expr::Ident(name) => {
+                    self.current_fn_str_params.contains(name)
+                        || self.local_var_types.get(name)
+                            .map(|t| matches!(t, Type::StrSlice))
+                            .unwrap_or(false)
+                }
+                _ => false,
+            };
+            if !target_is_str {
+                sink.body.write(b".as_str()")?;
+            }
         } else if is_self_field {
             // self.field needs .clone() to avoid move in &self methods
             self.expr(&is_stmt.target, &mut sink.body)?;
@@ -8586,6 +8658,12 @@ impl RustTrans {
                             if let Expr::Ident(binding) = inner.as_ref() {
                                 if Self::is_str_returning_scrutinee(&is_stmt.target) {
                                     self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                }
+                                // Plan 380: `Some(x)` from an Option<Spec>
+                                // scrutinee binds a Box<dyn Trait> — record so
+                                // call-site auto-clone skips it (E0599).
+                                if self.is_spec_returning_scrutinee(&is_stmt.target) {
+                                    self.spec_bound_idents.insert(binding.clone());
                                 }
                             }
                             self.expr(inner, &mut sink.body)?;
@@ -8630,6 +8708,12 @@ impl RustTrans {
                                         // `.as_str()` (E0658 str_as_str).
                                         if Self::is_str_returning_scrutinee(&is_stmt.target) {
                                             self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                        }
+                                        // Plan 380: Option<Spec> scrutinee → the
+                                        // binding is a Box<dyn Trait>; skip
+                                        // call-site auto-clone (E0599).
+                                        if self.is_spec_returning_scrutinee(&is_stmt.target) {
+                                            self.spec_bound_idents.insert(binding.clone());
                                         }
                                     }
                                     sink.body.write(b")")?;
@@ -12285,16 +12369,27 @@ impl RustTrans {
             let last_p = params_str[cur_start..].trim();
             if !last_p.is_empty() { params.push(last_p); }
 
-            // Locate the end of the body via brace balance.
-            let mut brace = line.bytes().filter(|b| *b == b'{').count()
-                - line.bytes().filter(|b| *b == b'}').count();
+            // Locate the end of the body via brace balance. i64 so lines with
+            // more `}` than `{` (block closes) can't underflow. Trait/impl
+            // method DECLARATIONS without a body (`fn name(&self) -> String;`)
+            // have no `{` — skip them entirely.
+            if !line.contains('{') { continue; }
+            let mut brace: i64 = line.bytes().filter(|b| *b == b'{').count() as i64
+                - line.bytes().filter(|b| *b == b'}').count() as i64;
             let mut j = i;
             while brace > 0 && j + 1 < lines.len() {
                 j += 1;
-                brace += lines[j].bytes().filter(|b| *b == b'{').count();
-                brace -= lines[j].bytes().filter(|b| *b == b'}').count();
+                brace += lines[j].bytes().filter(|b| *b == b'{').count() as i64;
+                brace -= lines[j].bytes().filter(|b| *b == b'}').count() as i64;
             }
-            let body = &lines[i + 1..=j.min(lines.len() - 1)];
+            // One-liner (`fn f(mut_me: Vec<String>) { mut_me.push(x); }`) has
+            // brace 0 → body is just the signature line; otherwise the lines
+            // between the sig and the balanced `}`.
+            let body = if j > i {
+                &lines[i + 1..=j.min(lines.len() - 1)]
+            } else {
+                &lines[i..=i]
+            };
 
             // For each plain `name: Type` param, check for mutation in body.
             let mut mutated: Vec<String> = Vec::new();
@@ -13307,7 +13402,11 @@ impl RustTrans {
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let call = caps.get(1).unwrap().as_str();
-                format!("match Ok({}) {{", call)
+                // Plan 380: the bridged read_to_string returns String (not
+                // Result), so we fake a Result with Ok(...) for the match.
+                // Annotate the error type (the Err arm is dead) — bare
+                // `Ok(x)` can't infer E (E0282).
+                format!("match Ok::<String, std::io::Error>({}) {{", call)
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -13332,7 +13431,9 @@ impl RustTrans {
                 let body = caps.get(3).unwrap().as_str();
                 let close = caps.get(4).unwrap().as_str();
                 // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
-                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
+                // (escaped \) — the unescaped form panicked with "unopened
+                // group" and silently dropped the builtin_roles module).
+                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\}\)").unwrap();
                 let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
                 format!("{}{}{}", header, new_body, close)
             }).to_string();
@@ -14262,6 +14363,20 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
                         if !transpiler.fn_ret_types.contains_key(&qualified) {
                             transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                        }
+                    }
+                }
+                if let Stmt::SpecDecl(spec_decl) = stmt {
+                    // Plan 380: spec methods too (e.g. builtin_roles.load_builtin
+                    // returns ?Role) — needed for the spec-bound-ident detection
+                    // in is-scrutinees (Option<Spec> → Box<dyn Trait>).
+                    for method in &spec_decl.methods {
+                        let qualified: AutoStr = format!("{}.{}", spec_decl.name, method.name).into();
+                        if !transpiler.fn_ret_types.contains_key(&qualified) {
+                            transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                        }
+                        if !transpiler.fn_ret_types.contains_key(&method.name) {
+                            transpiler.fn_ret_types.insert(method.name.clone(), method.ret.clone());
                         }
                     }
                 }

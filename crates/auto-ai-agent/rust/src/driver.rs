@@ -154,7 +154,7 @@ impl PipelineDriver {
                 DriveOutcome::Continue => last_handoff = self.last_handoff_after(result, last_handoff),
                 DriveOutcome::Done => return Ok(()),
                 DriveOutcome::Fail(e) => return Err(e),
-            }
+            };
         }
     }
     pub async fn dispatch(&mut self, result: AdvanceResult, task_msg: &str, last_handoff: Option<HandoffDocument>) -> DriveOutcome {
@@ -165,7 +165,7 @@ impl PipelineDriver {
                 match self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
                     Ok(_) => return DriveOutcome::Continue,
                     Err(e) => return DriveOutcome::Fail(e),
-                }
+                };
             },
             AdvanceResult::Completed => {
                 (self.on_event)(PipelineEvent::Completed);
@@ -188,9 +188,9 @@ impl PipelineDriver {
                 match gr {
                     Ok(_) => return DriveOutcome::Continue,
                     Err(e) => return DriveOutcome::Fail(e),
-                }
+                };
             },
-        }
+        };
     }
     pub fn last_handoff_after(&self, result: AdvanceResult, last_handoff: Option<HandoffDocument>) -> Option<HandoffDocument> {
         return last_handoff;
@@ -238,7 +238,7 @@ impl PipelineDriver {
         match gate_result {
             AdvanceResult::Failed(_e) => return Err(AgentError::Config("gate resolution failed".to_string())),
             _ => return Ok(()),
-        }
+        };
     }
     pub fn build_handoff(&self, role_id: &str, result: AgentResult, content: &str) -> HandoffDocument {
 
@@ -287,10 +287,10 @@ impl PipelineDriver {
                 match gr {
                     Ok(_) => return Ok(()),
                     Err(e) => return Err(e),
-                }
+                };
             },
             AdvanceResult::ExecuteStep(_sid, _rid) => return Ok(()),
-        }
+        };
     }
 }
 
@@ -351,7 +351,7 @@ fn build_step_input(task_msg: &str, last_handoff: Option<HandoffDocument>) -> St
     match last_handoff {
         Some(h) => return h.render(),
         None => return task_msg.to_string(),
-    }
+    };
 }
 
 /// If the engine's budget check reports a Warning, emit a BudgetWarning event.
@@ -360,7 +360,7 @@ fn emit_budget_warning(engine: PipelineEngine, role_for_budget: &str, on_event: 
     match action {
         BudgetAction::Warning(remaining) => on_event(PipelineEvent::BudgetWarning(remaining)),
         _ => {},
-    }
+    };
 }
 
 /// Take up to `max` characters from `s` (best-effort; Auto has no char-range
