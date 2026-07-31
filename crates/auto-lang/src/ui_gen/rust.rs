@@ -57,6 +57,17 @@
 use super::{BackendGenerator, GenResult};
 use crate::aura::{AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 
+/// Plan 371 L1: Semantic info about a child component, collected via
+/// cross-file pre-scan. Used to replace hardcoded special-case logic (Init
+/// forwarding, prop writeback) with .at-source-driven general code.
+#[derive(Debug, Clone, Default)]
+pub struct ComponentSemantics {
+    /// Prop names that are WRITTEN by the component's handlers (e.g. EditorPanel
+    /// `.Save -> { .note.title = .edit_title }` → writes "note").
+    /// Drives prop-writeback generation in the parent's child-forwarding arm.
+    pub written_props: Vec<String>,
+}
+
 /// Rust/GPUI code generator
 pub struct RustGenerator {
     /// Current widget name
@@ -78,6 +89,11 @@ pub struct RustGenerator {
     /// (name, rust_type), collected across all widgets parsed in the same
     /// compile unit, so a parent using a child can hoist+sync its state.
     component_state_fields: std::collections::HashMap<String, Vec<(String, String)>>,
+
+    /// Plan 371 L1: map of component name -> its semantics (written props),
+    /// collected cross-file. Drives general prop-writeback generation,
+    /// replacing the old "constructor_args.contains(\"note\")" heuristic.
+    component_semantics: std::collections::HashMap<String, ComponentSemantics>,
 
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
@@ -151,6 +167,7 @@ impl RustGenerator {
             indent: 0,
             child_components: Vec::new(),
             component_state_fields: std::collections::HashMap::new(),
+            component_semantics: std::collections::HashMap::new(),
             loop_vars: Vec::new(),
             input_fields: std::collections::HashMap::new(),
             state_types: std::collections::HashMap::new(),
@@ -181,6 +198,18 @@ impl RustGenerator {
     ) {
         self.component_state_fields
             .insert(component_name.to_string(), fields);
+    }
+
+    /// Plan 371 L1: record a component's semantics (which props its handlers
+    /// write), so the parent's child-forwarding arm can generate general
+    /// prop-writeback instead of hardcoding "note".
+    pub fn register_component_semantics(
+        &mut self,
+        component_name: &str,
+        semantics: ComponentSemantics,
+    ) {
+        self.component_semantics
+            .insert(component_name.to_string(), semantics);
     }
 
     /// Reset state for new widget
@@ -1085,31 +1114,47 @@ impl RustGenerator {
                     code.push_str("                }\n");
                 }
 
-                // Plan 371: After NewNote/NewNoteInFolder, the active note changes
-                // to a new empty note. In VM mode the component lifecycle auto-
-                // triggers EditorPanel.Init (which sets editing=true for empty
-                // titles). Rust mode has no such lifecycle, so simulate it:
-                // construct a temp EditorPanel, call on(Init), sync editing back.
-                if (variant_name == "NewNote" || variant_name == "NewNoteInFolder")
+                // Plan 371 L1: If this handler changes the store data that feeds
+                // a child component's props (e.g. NewNote changes active_id →
+                // EditorPanel's `note` prop changes), the child needs its Init
+                // lifecycle re-triggered so it resets its editing state for the
+                // new empty note. VM mode does this implicitly via the unified
+                // state heap; rust mode has no such lifecycle, so simulate it.
+                // General criteria (replaces the old hardcoded "NewNote" +
+                // name-contains-"Editor" check):
+                //   1. The handler body mutates store data (calls a mutating
+                //      store method or assigns to store.active_id / store.notes).
+                //   2. There exists a child component whose props are written by
+                //      its own handlers (component_semantics written_props), i.e.
+                //      a child that owns editable state tied to those props.
+                if self.handler_mutates_store_data(payload)
                     && !self.child_components.is_empty()
                 {
-                    let editor = self.child_components.iter()
-                        .find(|c| c.contains("Editor") || c.contains("editor"))
+                    // Find the first child whose handlers write props (i.e. it has
+                    // editable state to reset on data change). This replaces the
+                    // old `.contains("Editor")` name match.
+                    let target = self.child_components.iter()
+                        .find(|c| {
+                            self.component_semantics.get(*c)
+                                .map(|s| !s.written_props.is_empty())
+                                .unwrap_or(false)
+                        })
                         .cloned();
-                    if let Some(ed_name) = editor {
-                        let ed_msg = format!("{}Msg", ed_name);
-                        let sync: Vec<String> = self.component_state_fields.get(&ed_name)
+                    if let Some(child_name) = target {
+                        let child_msg = format!("{}Msg", child_name);
+                        let sync: Vec<String> = self.component_state_fields.get(&child_name)
                             .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
                             .unwrap_or_default();
+                        let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
                         // Ensure the preceding body statement ends with ';'.
                         code.push_str("                ;\n");
                         code.push_str(&format!(
-                            "                {{ let mut __ep = {ed}::new(self.store.notes[self.store.active_id as usize].clone());\n",
-                            ed = ed_name
+                            "                {{ let mut __ep = {}::new({});\n",
+                            child_name, constructor_args
                         ));
                         code.push_str(&format!(
-                            "                __ep.on({msg}::Init);\n",
-                            msg = ed_msg
+                            "                __ep.on({}::Init);\n",
+                            child_msg
                         ));
                         for f in &sync {
                             code.push_str(&format!(
@@ -1184,34 +1229,34 @@ impl RustGenerator {
                     ));
                 }
 
-                // Sync the note data back if the child has a "note" prop
-                // and the parent has notes[active_id]. The notes array may be
-                // a direct state var OR accessed via the store composable.
-                // Only generate for children that actually receive a `note` prop
-                // (e.g., EditorPanel) to avoid "no field `note`" on children
-                // like NavTree that don't have one.
-                let child_has_note = constructor_args.contains("note");
-                let has_notes = self.state_types.contains_key("notes");
-                let has_store_notes = STORE_NAMES.with(|sn| !sn.borrow().is_empty())
-                    && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
-                let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
-                let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
-                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
-                    code.push_str(&format!(
-                        "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = __child.note.clone();\n                }}\n",
-                        notes_prefix, active_prefix
-                    ));
-                }
-
-                // Check if the child's note was marked as deleted via .note.deleted = true
-                // If so, remove the note at active_id from the parent's notes array
-                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
-                    code.push_str(&format!(
-                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    {}.remove({} as usize);\n                    if {} >= {}.len() as i32 && !{}.is_empty() {{\n                        {} = {}.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n",
-                        notes_prefix, active_prefix,
-                        active_prefix, notes_prefix, notes_prefix,
-                        active_prefix, notes_prefix
-                    ));
+                // Plan 371 L1: General prop-writeback. Replaces the old hardcoded
+                // "constructor_args.contains(\"note\")" check with semantics-driven
+                // logic: for each prop the child's handlers WRITE (from the cross-
+                // file pre-scan), write the (possibly mutated) child prop value back
+                // to the parent's data source. Only generate for props whose value
+                // comes from an indexable parent collection (e.g. notes[active_id]).
+                // The old "note[\"deleted\"]" delete-check is removed — it was dead
+                // code (EditorPanel's Delete handler is `()` in rust mode; real
+                // deletion is handled by the parent's own DeleteActive arm).
+                let written_props: Vec<String> = self.component_semantics.get(child_name)
+                    .map(|s| s.written_props.clone())
+                    .unwrap_or_default();
+                if !written_props.is_empty() {
+                    let has_notes = self.state_types.contains_key("notes");
+                    let has_store_notes = STORE_NAMES.with(|sn| !sn.borrow().is_empty())
+                        && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
+                    let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
+                    let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
+                    if !notes_prefix.is_empty() && !active_prefix.is_empty() {
+                        for prop in &written_props {
+                            // Write the child's (possibly mutated) prop back to the
+                            // parent's collection at the active index.
+                            code.push_str(&format!(
+                                "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = __child.{}.clone();\n                }}\n",
+                                notes_prefix, active_prefix, prop
+                            ));
+                        }
+                    }
                 }
 
                 code.push_str("            }\n");
@@ -2478,15 +2523,25 @@ impl RustGenerator {
 
         let args_str = constructor_args.join(", ");
 
-        // Find parent state vars that should be synced to child before rendering.
-        // This ensures the child's view reflects the current parent state (e.g., editing=true).
+        // Plan 371 L1: Find parent state vars that should be synced to child
+        // before rendering, so the child's view reflects current parent state
+        // (e.g., editing=true). This mirrors `find_sync_fields_for_child` (used
+        // by the on() forwarding arm) to keep the two paths consistent — the old
+        // heuristic filter (exclude Vec<_id/notes/search) diverged from the on()
+        // path and could drop fields. We now collect the same field set: all
+        // scalar state_types + store field + child-own hoisted fields.
         let mut sync_fields: Vec<String> = self.state_types.keys()
             .filter(|name| {
                 let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
-                !ty.starts_with("Vec<") && !name.ends_with("_id") && **name != "notes" && **name != "search"
+                !ty.starts_with("Vec<")
             })
             .cloned()
             .collect();
+        // Sync the store composable field (same as find_sync_fields_for_child).
+        let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+        if has_store && !sync_fields.iter().any(|f| f == "store") {
+            sync_fields.push("store".to_string());
+        }
         // Plan 371 Task 22c: also sync hoisted child-own state fields before .view().
         if let Some(child_fields) = self.component_state_fields.get(tag) {
             for (f, _ty) in child_fields {
@@ -2537,6 +2592,35 @@ impl RustGenerator {
             }
         }
         fields
+    }
+
+    /// Plan 371 L1: Detect whether a handler body mutates the store data that
+    /// feeds child component props (e.g. `store.NewNote()` changes active_id;
+    /// `store.active_id = i` or `store.notes = list_notes()` change the data
+    /// backing a child's `note` prop). Used to decide whether to re-trigger the
+    /// child's Init lifecycle. Replaces the old hardcoded `variant_name ==
+    /// "NewNote"` check.
+    ///
+    /// Detects two patterns in the handler's AST statements:
+    ///   1. Assignment to `store.active_id` / `store.notes` (or `active_id` /
+    ///      `notes` if the store alias is implicit) — i.e. the parent updates
+    ///      the data a child prop reads from.
+    ///   2. Call to a mutating store method (e.g. `store.NewNote()`,
+    ///      `store.TogglePin(...)`) — the store's own `.on` handler changes data.
+    fn handler_mutates_store_data(&self, payload: &LogicPayload) -> bool {
+        use crate::ast::{Expr, Stmt};
+        use auto_val::Op;
+
+        let stmts = match payload {
+            LogicPayload::AstStmts(s) => s,
+            _ => return false,
+        };
+        for stmt in stmts {
+            if stmt_mutates_store_data(stmt) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Find constructor args expression for child component instantiation in handler.
@@ -4308,6 +4392,59 @@ fn extract_call_name(expr: &crate::ast::Expr) -> Option<String> {
         call.get_name_text_safe().map(|s| s.to_string())
     } else {
         None
+    }
+}
+
+/// Plan 371 L1: Check if a statement mutates the store data that feeds child
+/// component props. Detects:
+///   1. Assignment to `store.active_id` or `store.notes` (the canonical props
+///      that back a child's `note` prop via `notes[active_id]`).
+///   2. A call to a mutating store method via `store.Xxx(...)` — the store's
+///      `.on` handler changes `notes`/`active_id` internally.
+/// Recurses into control-flow bodies (if/for/block) so nested mutations count.
+fn stmt_mutates_store_data(stmt: &crate::ast::Stmt) -> bool {
+    use crate::ast::{Expr, Stmt};
+    use auto_val::Op;
+
+    match stmt {
+        // Assignment: lhs = rhs. Check if lhs targets store data.
+        Stmt::Expr(Expr::Bina(left, op, _)) if matches!(op, Op::Asn) => {
+            // Pattern: store.active_id = ...  → Dot(Ident("store"), "active_id")
+            //          store.notes = ...       → Dot(Ident("store"), "notes")
+            if let Expr::Dot(obj, field) = left.as_ref() {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    let f = field.as_str();
+                    if (obj_name.as_str() == "store")
+                        && (f == "active_id" || f == "notes")
+                    {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        // Call: store.NewNote(...), store.TogglePin(...), etc.
+        // These route to the store's `.on` handler which mutates notes/active_id.
+        // The call name is an Expr::Dot(Ident("store"), method) — check the AST
+        // structure directly (get_name_text_safe format is unreliable here).
+        Stmt::Expr(Expr::Call(call)) => {
+            if let Expr::Dot(obj, _method) = &*call.name {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    if obj_name.as_str() == "store" {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        // Recurse into control flow.
+        Stmt::Expr(Expr::If(if_stmt)) => {
+            if_stmt.branches.iter().any(|b| b.body.stmts.iter().any(stmt_mutates_store_data))
+                || if_stmt.else_.as_ref().map_or(false, |e| e.stmts.iter().any(stmt_mutates_store_data))
+        }
+        Stmt::For(for_stmt) => for_stmt.body.stmts.iter().any(stmt_mutates_store_data),
+        Stmt::Block(body) => body.stmts.iter().any(stmt_mutates_store_data),
+        _ => false,
     }
 }
 

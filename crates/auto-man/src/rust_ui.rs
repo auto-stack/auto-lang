@@ -155,6 +155,104 @@ fn collect_component_state_fields(
     map
 }
 
+/// Semantic info about a child component, collected via cross-file pre-scan.
+/// Used by the Rust generator to replace hardcoded special-case logic
+/// (Init forwarding, prop writeback, delete handling) with .at-source-driven
+/// general code. Mirrors `collect_component_state_fields` in structure.
+/// Defined in `auto_lang::ui_gen::rust` (the generator crate) and re-exported
+/// here so `auto-man` can use it without a reverse dependency.
+pub use auto_lang::ui_gen::rust::ComponentSemantics;
+
+/// Cross-file pre-scan: for each widget, collect which props its handlers write.
+/// Scans `on` blocks for assignments `self.<prop>.<field> = ...` where `<prop>`
+/// matches a declared widget prop (so private state like `editing` is excluded).
+pub fn collect_component_semantics(
+    at_files: &[std::path::PathBuf],
+) -> std::collections::HashMap<String, ComponentSemantics> {
+    use auto_lang::ast::Stmt;
+
+    let mut map: std::collections::HashMap<String, ComponentSemantics> =
+        std::collections::HashMap::new();
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let Stmt::WidgetDecl(widget_decl) = stmt {
+                        let prop_names: std::collections::HashSet<String> = widget_decl
+                            .props
+                            .iter()
+                            .map(|p| p.name.to_string())
+                            .collect();
+                        let mut semantics = ComponentSemantics::default();
+                        // Scan handler bodies for `self.<prop>.<field> = ...` assignments.
+                        if let Some(on_block) = &widget_decl.on {
+                            for handler in &on_block.handlers {
+                                scan_written_props(&handler.body, &prop_names, &mut semantics.written_props);
+                            }
+                        }
+                        // Dedup while preserving order.
+                        semantics.written_props.sort();
+                        semantics.written_props.dedup();
+                        map.insert(widget_decl.name.to_string(), semantics);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Recursively scan statements for prop-write assignments.
+/// Matches `self.<prop>.<field> = rhs` (two-level Dot on left, Op::Asn),
+/// where `<prop>` is one of the widget's declared props.
+fn scan_written_props(
+    body: &auto_lang::ast::Body,
+    prop_names: &std::collections::HashSet<String>,
+    out: &mut Vec<String>,
+) {
+    use auto_lang::ast::{Expr, Stmt};
+    use auto_val::Op;
+    for stmt in &body.stmts {
+        match stmt {
+            Stmt::Expr(Expr::Bina(left, op, _)) if matches!(op, Op::Asn) => {
+                // left = self.<prop>.<field>  → Dot(Dot(Ident("self"), prop), field)
+                if let Expr::Dot(inner, _field) = left.as_ref() {
+                    if let Expr::Dot(obj, prop) = inner.as_ref() {
+                        if let Expr::Ident(name) = obj.as_ref() {
+                            if name.as_str() == "self" || name.as_str() == "." {
+                                let prop_str = prop.as_str().to_string();
+                                if prop_names.contains(&prop_str)
+                                    && !out.contains(&prop_str)
+                                {
+                                    out.push(prop_str);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Recurse into control-flow constructs that contain nested bodies.
+            Stmt::Expr(Expr::If(if_stmt)) => {
+                for branch in &if_stmt.branches {
+                    scan_written_props(&branch.body, prop_names, out);
+                }
+                if let Some(ref else_body) = if_stmt.else_ {
+                    scan_written_props(else_body, prop_names, out);
+                }
+            }
+            Stmt::For(for_stmt) => {
+                scan_written_props(&for_stmt.body, prop_names, out);
+            }
+            Stmt::Block(inner_body) => {
+                scan_written_props(inner_body, prop_names, out);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
@@ -181,11 +279,13 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     }
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
+    // Plan 371 L1: cross-file component semantics (written props).
+    let component_semantics = collect_component_semantics(&at_files);
 
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path, &all_stores, &component_fields) {
+        match compile_at_file(at_path, &all_stores, &component_fields, &component_semantics) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -277,6 +377,8 @@ pub fn generate_rust_ui(
 
     // Plan 371 Task 22c: cross-file component state fields.
     let component_fields = collect_component_state_fields(&at_files);
+    // Plan 371 L1: cross-file component semantics (written props).
+    let component_semantics = collect_component_semantics(&at_files);
 
     // Compile each .at file and collect generated components
     let mut all_components = String::new();
@@ -288,7 +390,7 @@ pub fn generate_rust_ui(
             .to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
-        match compile_at_file(at_path, &all_stores, &component_fields) {
+        match compile_at_file(at_path, &all_stores, &component_fields, &component_semantics) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -400,6 +502,7 @@ fn compile_at_file(
     at_path: &Path,
     stores: &[auto_lang::ast::ui::StoreDecl],
     component_fields: &std::collections::HashMap<String, Vec<(String, String)>>,
+    component_semantics: &std::collections::HashMap<String, ComponentSemantics>,
 ) -> AutoResult<(String, Vec<String>)> {
     let code = fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
@@ -467,6 +570,10 @@ fn compile_at_file(
     // Plan 371 Task 22c: register every component's own scalar state fields.
     for (name, fields) in component_fields.iter() {
         generator.register_component_state(name, fields.clone());
+    }
+    // Plan 371 L1: register every component's semantics (written props).
+    for (name, sem) in component_semantics.iter() {
+        generator.register_component_semantics(name, sem.clone());
     }
 
     // Extract AURA widgets from AST
