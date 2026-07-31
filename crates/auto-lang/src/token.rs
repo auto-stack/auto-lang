@@ -401,7 +401,12 @@ impl Token {
             "routes" => Some(TokenKind::Routes), // Plan 105: router keywords
             "outlet" => Some(TokenKind::Outlet),
             "link" => Some(TokenKind::Link),
-            "route" => Some(TokenKind::Route),
+            // Plan 379: 'route' is no longer a keyword — lexed as Ident so it
+            // can be used as a method name, in particular axum's Router::route()
+            // (.route("/", get(handler))). The singular 'route' TokenKind was
+            // never consumed by the parser (only 'routes' the block keyword is,
+            // via parse_routes_block_inner), so dropping the keyword is safe.
+            // Mirrors Plan 354's treatment of 'nav'. "route" => Some(TokenKind::Route),
             // Plan 354: 'nav' is no longer a keyword — lexed as Ident so it
             // parses as a function call nav(...) in handler bodies and view DSL.
             // The existing call() handler (parser.rs ~9926) routes it to parse_nav_call.

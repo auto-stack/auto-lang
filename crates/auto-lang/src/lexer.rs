@@ -1729,9 +1729,12 @@ mod tests {
 
     #[test]
     fn test_router_keywords() {
+        // Plan 379: 'route' is no longer a keyword (lexed as Ident, like 'nav'
+        // since Plan 354) so it can be used as a method name (e.g. axum's
+        // Router::route). Only 'routes'/'outlet'/'link' remain router keywords.
         let code = "routes outlet link route nav";
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<routes><outlet><link><route><nav>");
+        assert_eq!(tokens, "<routes><outlet><link><ident:route><ident:nav>");
     }
 
     #[test]
