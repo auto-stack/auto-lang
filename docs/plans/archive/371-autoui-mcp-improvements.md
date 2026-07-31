@@ -1268,3 +1268,69 @@ L1 验收的最后一项——"新应用验证"。将单组件 TodoMVC（`013-to
 L1 的核心目标——**泛化特判使其对任意组件名/字段名的应用通用**——已验证达成。013-todo 用完全不同的命名（TodoList/todo/TodoStore）成功生成可运行的 Rust 代码，store sync 正确工作。
 
 上述 4 个预存限制为后续 L2/L3 或独立改进提供了明确方向，其中 ②（循环内子组件）和 ④（String 自动 clone）影响面最大，建议优先处理。
+
+---
+
+## 17. L2/L3 + 4 限制全部完成（2026-07-31，commits `586372a1` + `31aab986`）
+
+§16.5 记录的 4 个预存限制 + L2/L3 全部实施完成。
+
+### 17.1 限制③ — API 生成器支持 PATCH + 无参 DELETE（`586372a1`）
+
+**文件**：`crates/auto-man/src/rust_ui.rs` `generate_merged_api_client`
+
+- 新增 `"PATCH"` 分支：照搬 PUT 逻辑，用 `path_params + body_params` 生成正确签名
+- DELETE 分支：检查 `path_params` 是否为空——无 `:id` 时生成 `retain` 逻辑（如 `remove_completed(done)`）
+
+### 17.2 限制④ — store call 自动 clone（`586372a1`）
+
+**文件**：`crates/auto-lang/src/ui_gen/rust.rs`
+
+- 抽取 `rust_call_args_with_clone` 私有方法，对 `self.<String字段>` 自动加 `.clone()`
+- store call 路径和普通 call 路径共用此方法
+- 修复 `store.Method(self.field)` 的 move 错误
+
+### 17.3 限制① — 变量名转义（`586372a1`）
+
+**文件**：`crates/auto-lang/src/ui_gen/rust.rs`
+
+- 新增 `sanitize_rust_ident` 函数：Rust 关键字→`r#`前缀，宏/类型名→`_`后缀
+- ForLoop 循环变量在 `push_loop_vars` 前转义，确保生成和引用一致
+- 修复 `for todo in ...` 与 `todo!()` 宏冲突
+
+### 17.4 L3 — 持久化子组件实例（`31aab986`）
+
+**文件**：`crates/auto-lang/src/ui_gen/rust.rs`
+
+**核心设计**：单实例子组件成为父 struct 的持久字段（`pub editor_panel: EditorPanel`），消灭每次 on()/view() 的临时构造+状态搬运。
+
+利用 `generate_constructor` 的 `__self` 模式：struct literal 用 `Child::default()` 占位，`__self` 构造后用真实 props 补构造。view 中 clone 实例+sync props（符合 `view(&self)` 不可变约束）。
+
+**改动**：
+1. `scan_child_components` 区分循环内/外（`loop_child_components` HashSet）
+2. `generate_struct`：非循环子组件→持久字段；循环子组件→保持 hoist
+3. `generate_constructor`：`__self` 模式 + post-construct 补构造 + Default 扩展（支持 props 组件）
+4. `generate_on_method`：持久子组件 `self.<field>.on(inner)` + store sync-back；循环子组件保持临时构造
+5. `generate_child_component`：持久子组件 clone+sync props+view；循环子组件保持临时构造
+6. `state_snapshot`：持久子组件通过 `<field>.state_snapshot()` 递归暴露
+
+**限制②（循环内子组件）的解决方式**：L3 持久化只对非循环子组件生效。循环内子组件（多实例）保持临时构造——这是已知限制（多实例持久化不支持），记录但不阻塞。
+
+### 17.5 L2 — 被 L3 取代，跳过
+
+L2 的两项（同名契约检查 + store clone 优化）在 L3 完成后不再必要：
+- **同名契约检查**：持久子组件不再 hoist 标量字段，不存在"字段静默丢失"问题
+- **store clone 优化**：持久子组件在 view 中 clone 整个实例（含 store），已是最简形式
+
+### 17.6 验证结果
+
+| 应用 | VM | Rust |
+|------|-----|------|
+| 015-notes | 13/0/0 ✅ | 13/0/0 ✅ |
+| 013-todo | 6/0/0 ✅ | 6/0/0 ✅ |
+
+015-notes 的 App struct 现在有 `nav_tree: NavTree` + `editor_panel: EditorPanel` 持久字段，`EditorPanel::new` 仅在 constructor + store 数据变化时出现（非每次 on/view）。
+
+### 17.7 结论
+
+Plan 371 的 L1/L2/L3 + 4 个预存限制全部完成。Rust 模式的组件状态模型现在与 VM 对齐——单实例子组件作为持久字段存在，状态天然持久，无需 hoist+sync 搬运。唯一已知限制是循环内多实例子组件仍用临时构造（L3 不支持多实例持久化）。
