@@ -190,13 +190,13 @@ ext RoleRegistry {
             let detail = self.roles.get(name).clone()
             if detail.summary.is_builtin == false {
                 let src = serialize_at_role(detail.config.clone())
-                is load_role(src) {
+                is load_role(src.as_str()) {
                     Ok(_cfg) -> {
                         // load_role re-parses the serialized .at to validate it;
                         // build a live ConfigRole from the original config and
                         // wrap it in an Arc (ConfigRole has Role).
                         let role = config_role_new(detail.config.clone())
-                        return Some(Arc(role))
+                        return Some(Arc(Box(role)))
                     },
                     Err(_e) -> {
                         // Parse failure: warn and fall through to built-in.
@@ -256,7 +256,7 @@ ext RoleRegistry {
         }
         // Ensure the name field is set so the file is self-describing.
         var out = cfg
-        out.name = Some(name)
+        out.name = Some(name.to_string())
 
         is roles_dir() {
             None -> return Err(AgentError.Config(
@@ -419,7 +419,7 @@ fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) 
             // role: failed to read <path> — skip
         },
         Ok(content) -> {
-            is parse_at_role(content) {
+            is parse_at_role(content.as_str()) {
                 Err(_e) -> {
                     // role: failed to parse <path> — skip
                 },
@@ -432,7 +432,7 @@ fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) 
                             is path.file_stem() {
                                 Some(stem) -> {
                                     is stem.to_str() {
-                                        Some(s) -> name = s,
+                                        Some(s) -> name = s.to_string(),
                                         None -> name = "unnamed"
                                     }
                                 },
