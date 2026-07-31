@@ -1037,12 +1037,23 @@ impl RustGenerator {
                     }
 
                     // Skip redundant self-assignment body (e.g. `.email = .email`)
-                    // Check if the body is entirely composed of self-assignments for the bound fields
-                    let all_self_assign = field_names.iter().all(|f| {
-                        let self_assign = format!("self.{} = self.{}", f, f);
-                        body.trim() == self_assign
+                    // or body that assigns the bound field from the msg payload
+                    // (e.g. `.edit_title = t` / `.edit_title = t.to_string()`) —
+                    // we already set it from last_input_text() above, so the
+                    // payload binding would clobber it with the static empty arg.
+                    let payload_name = if has_payload {
+                        self.extract_payload_name(pattern)
+                    } else {
+                        String::new()
+                    };
+                    let body_redundant = field_names.iter().all(|f| {
+                        let b = body.trim();
+                        b == format!("self.{} = self.{}", f, f)
+                            || b == format!("self.{} = {}", f, payload_name)
+                            || b == format!("self.{} = {}.to_string()", f, payload_name)
+                            || b == format!("self.{} = {}.clone()", f, payload_name)
                     });
-                    if !all_self_assign && !body.trim().is_empty() {
+                    if !body_redundant && !body.trim().is_empty() {
                         code.push_str(&format!("                {}\n", body));
                     }
                 } else {
@@ -1425,7 +1436,16 @@ impl RustGenerator {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
                 if tag == "input" || tag == "textarea" {
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                    // Resolve the `value` binding to a field name. Source uses
+                    // `.field` which parses to Expr::Dot(self, "field"); older
+                    // code only matched Expr::Ident, missing `.field` bindings
+                    // (Plan 371 T5c: edit_title input had no last_input_text injection).
+                    let value_field: Option<String> = match props.get("value") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(_, field))) => Some(field.to_string()),
+                        _ => None,
+                    };
+                    if let Some(name) = value_field {
                         for (event, handler) in events {
                             if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
                                 let variant = self.extract_variant_name(&handler.handler);
