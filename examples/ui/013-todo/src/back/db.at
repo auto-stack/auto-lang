@@ -1,0 +1,75 @@
+// back/db.at — Todo Database Service
+// In-memory storage with seed data.
+
+use api: Todo
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage (seed data)
+// ═══════════════════════════════════════════════════════════
+
+var todos List<Todo> = List<Todo>.new([
+    Todo { id: 0, text: "Learn Auto Language", done: true },
+    Todo { id: 1, text: "Build a TodoMVC app", done: false },
+    Todo { id: 2, text: "Master the a2r transpiler", done: false },
+    Todo { id: 3, text: "Write integration tests", done: false },
+])
+
+var nextid int = 4
+
+// ═══════════════════════════════════════════════════════════
+// CRUD operations
+// ═══════════════════════════════════════════════════════════
+
+/// Return all todos
+pub fn all_todos() []Todo {
+    return todos.to_array()
+}
+
+/// Create a new todo, returns the created todo
+pub fn create_todo(text str) Todo {
+    var todo = Todo { id: nextid, text: text, done: false }
+    todos.push(todo)
+    nextid = nextid + 1
+    return todo
+}
+
+/// Update a todo's text and done status, returns the updated todo
+pub fn update_todo(id int, text str, done bool) ?Todo {
+    var i int = 0
+    for i < todos.len() {
+        if todos[i].id == id {
+            todos[i].text = text
+            todos[i].done = done
+            return todos[i]
+        }
+        i = i + 1
+    }
+    return None
+}
+
+/// Delete a todo by id, returns true if deleted
+pub fn delete_todo(id int) bool {
+    var i int = 0
+    for i < todos.len() {
+        if todos[i].id == id {
+            todos.remove(i)
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+/// Remove all completed todos, returns true
+pub fn remove_completed() bool {
+    var i int = todos.len() - 1
+    for i >= 0 {
+        if i < todos.len() {
+            if todos[i].done {
+                todos.remove(i)
+            }
+        }
+        i = i - 1
+    }
+    return true
+}

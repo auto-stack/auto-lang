@@ -1,251 +1,76 @@
+// front/app.at — TodoMVC App (multi-component + backend).
+//
+// Layout: title + input + TodoList child component.
+// App holds the store + input state; TodoList renders items + filters.
+
+use todo_store: TodoStore
+use todo_list: TodoList
+
 widget App {
     msg Msg {
-        Init,
-        AddTodo,
-        ToggleTodo(int),
-        DeleteTodo(int),
-        ToggleAll,
-        EditTodo(int),
-        CommitEdit,
-        EditInputChanged,
-        FilterAll,
-        FilterActive,
-        FilterCompleted,
-        ClearCompleted
+        Init, AddTodo, EditInputChanged, ToggleAll
     }
 
     model {
         var input str = ""
-        var todos = []
-        var next_id int = 1
-        var filter str = "all"
-        var editing_id int = -1
-        var edit_text str = ""
-        var active_count int = 0
     }
 
     view {
         col {
-            class: "items-center bg-[#f5f5f5] h-full pt-[100px] text-[14px] text-[#111] leading-[1.4] font-['Helvetica_Neue',Helvetica,Arial,sans-serif] font-light antialiased"
+            style: "flex flex-col items-center min-h-screen bg-gray-100 pt-16"
 
-            // Title — in gray area above the white card
+            // Title
             h1 "todos" {
-                class: "text-[80px] font-extralight text-center text-[#b83f45]"
+                style: "text-6xl font-thin text-center text-red-400 mb-4"
             }
 
-            // Todoapp container — white card
+            // Main card
             col {
-                class: "bg-white mb-10 shadow-[0_2px_4px_0_rgba(0,0,0,0.2),0_25px_50px_0_rgba(0,0,0,0.1)] max-w-[550px] mx-auto"
+                style: "bg-white w-full max-w-xl shadow-lg rounded-lg overflow-hidden"
 
-                // Input
-                input {
-                    class: "w-full text-2xl font-inherit leading-[1.4] text-inherit px-4 pl-[60px] h-[65px] border-none outline-none placeholder:italic placeholder:font-normal placeholder:text-black/40",
-                    placeholder: "What needs to be done?",
-                    value: .input,
-                    onenter: .AddTodo,
-                    oninput: .EditInputChanged
-                }
-
-                // Main section — only show when there are todos
-                if .todos.len() > 0 {
-                    col {
-                        class: "relative z-10 border-t border-[#e6e6e6]"
-
-                        // Toggle all arrow
-                        col {
-                            class: "relative h-0"
-                            checkbox {
-                                id: "toggle-all",
-                                class: "w-px h-px opacity-0 absolute",
-                                checked: .active_count == 0
-                                onclick: .ToggleAll
-                            }
-                            label "❯" {
-                                class: "absolute -top-[65px] left-[8px] text-[22px] text-[#949494] cursor-pointer px-[9px] py-[10px] rotate-90"
-                            }
-                        }
-
-                        // Todo list
-                        tree {
-                            class: "m-0 p-0 list-none"
-                            for todo in .todos {
-                                if .filter == "all" || (.filter == "active" && todo.done == false) || (.filter == "completed" && todo.done == true) {
-                                    tree_item {
-                                        style: { completed: todo.done, editing: .editing_id == todo.id }
-                                        class: "text-2xl border-b border-[#ededed]"
-                                        if .editing_id == todo.id {
-                                            input {
-                                                class: "w-[calc(100%-43px)] py-3 px-4 ml-[43px] text-2xl font-inherit leading-[1.4] text-inherit border border-[#999] shadow-[inset_0_-1px_5px_0_rgba(0,0,0,0.2)] outline-none",
-                                                value: .edit_text,
-                                                oninput: .EditInputChanged,
-                                                onenter: .CommitEdit,
-                                                onblur: .CommitEdit
-                                            }
-                                        }
-                                        if .editing_id != todo.id {
-                                            row {
-                                                class: "flex items-center"
-                                                checkbox {
-                                                    class: "w-[30px] h-[30px] shrink-0 ml-2",
-                                                    checked: todo.done
-                                                    onclick: .ToggleTodo(todo.id)
-                                                }
-                                                text todo.text {
-                                                    class: "py-[15px] px-[15px] font-normal flex-1 text-[24px]"
-                                                }
-                                                button "×" {
-                                                    class: "bg-transparent border-none w-[40px] h-[40px] text-[24px] text-[#949494]",
-                                                    onclick: .DeleteTodo(todo.id)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                // Input row
+                row {
+                    style: "flex items-center border-b border-gray-200"
+                    checkbox {
+                        checked: .store.active_count == 0 && .store.todos.len() > 0
+                        onclick: .ToggleAll
+                        style: "w-10 h-12 ml-2"
+                    }
+                    input {
+                        value: .input
+                        oninput: .EditInputChanged
+                        onenter: .AddTodo
+                        placeholder: "What needs to be done?"
+                        style: "flex-1 text-xl px-2 py-3 outline-none"
                     }
                 }
 
-                // Footer
-                if .todos.len() > 0 {
-                    row {
-                        class: "flex items-center justify-between px-4 py-[10px] min-h-[40px] text-[15px] border-t border-[#e6e6e6] relative"
-                        text f"${.active_count} items left" { class: "text-left whitespace-nowrap" }
-                        row {
-                            class: "flex flex-1 justify-center gap-1 m-0 p-0"
-                            if .filter == "all" {
-                                button "All" { onclick: .FilterAll, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
-                            }
-                            if .filter != "all" {
-                                button "All" { onclick: .FilterAll, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
-                            }
-                            if .filter == "active" {
-                                button "Active" { onclick: .FilterActive, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
-                            }
-                            if .filter != "active" {
-                                button "Active" { onclick: .FilterActive, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
-                            }
-                            if .filter == "completed" {
-                                button "Completed" { onclick: .FilterCompleted, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-[#CE4646] rounded-[3px] cursor-pointer bg-transparent shadow-[0_0_2px_1px_#CF7D7D]" }
-                            }
-                            if .filter != "completed" {
-                                button "Completed" { onclick: .FilterCompleted, class: "text-inherit mx-[3px] px-[7px] py-[3px] border border-transparent rounded-[3px] cursor-pointer bg-transparent hover:border-[#DB7676]" }
-                            }
-                        }
-                        button "Clear completed" { onclick: .ClearCompleted, class: "whitespace-nowrap cursor-pointer hover:underline bg-transparent border-none text-inherit" }
-                    }
-                }
+                // Todo list (child component)
+                TodoList()
             }
 
-            // Info (outside todoapp)
-            col {
-                class: "mt-16 mx-auto text-[11px] text-[#4d4d4d]"
-                text "Double-click to edit a todo" { class: "block leading-none text-center w-full" }
-                text "Written with Auto Language" { class: "block leading-none text-center w-full" }
-                text "Part of TodoMVC" { class: "block leading-none text-center w-full" }
+            // Footer hint
+            text "Double-click text to edit" {
+                style: "mt-8 text-xs text-gray-400"
             }
         }
     }
 
     on {
         .Init -> {
-            .active_count = 0
+            store.Init()
         }
 
         .AddTodo -> {
-            if .input != "" {
-                todos.push({ id: .next_id, text: .input, done: false })
-                .next_id = .next_id + 1
-                .active_count = .active_count + 1
-                .input = ""
-            }
+            store.AddTodo()
         }
 
-        .ToggleTodo -> {
-            let idx = todos.findIndex(t => t.id == id)
-            if idx >= 0 {
-                let todo = todos[idx]
-                if todo.done {
-                    .active_count = .active_count + 1
-                } else {
-                    .active_count = .active_count - 1
-                }
-                todo.done = !todo.done
-            }
-        }
-
-        .DeleteTodo -> {
-            let idx = todos.findIndex(t => t.id == id)
-            if idx >= 0 {
-                let todo = todos[idx]
-                if todo.done == false { .active_count = .active_count - 1 }
-                todos.remove(idx)
-            }
+        .EditInputChanged -> {
+            .input = .input
         }
 
         .ToggleAll -> {
-            if .active_count > 0 {
-                for todo in .todos {
-                    if todo.done == false {
-                        todo.done = true
-                    }
-                }
-                .active_count = 0
-            } else {
-                for todo in .todos {
-                    if todo.done {
-                        todo.done = false
-                    }
-                }
-                .active_count = .todos.len()
-            }
-        }
-
-        .EditTodo -> {
-            .editing_id = id
-            let idx = todos.findIndex(t => t.id == id)
-            if idx >= 0 {
-                .edit_text = todos[idx].text
-            }
-        }
-
-        .CommitEdit -> {
-            if .editing_id >= 0 {
-                if .edit_text == "" {
-                    let idx = todos.findIndex(t => t.id == .editing_id)
-                    if idx >= 0 {
-                        let todo = todos[idx]
-                        if todo.done == false { .active_count = .active_count - 1 }
-                        todos.remove(idx)
-                    }
-                } else {
-                    let idx = todos.findIndex(t => t.id == .editing_id)
-                    if idx >= 0 {
-                        todos[idx].text = .edit_text
-                    }
-                }
-                .editing_id = -1
-                .edit_text = ""
-            }
-        }
-
-        .EditInputChanged -> { .input = .input }
-
-        .FilterAll -> { .filter = "all" }
-        .FilterActive -> { .filter = "active" }
-        .FilterCompleted -> { .filter = "completed" }
-
-        .ClearCompleted -> {
-            var i = .todos.len() - 1
-            for i >= 0 {
-                if i < .todos.len() {
-                    let todo = todos[i]
-                    if todo.done {
-                        todos.remove(i)
-                    }
-                }
-                i = i - 1
-            }
+            store.ToggleAll()
         }
     }
 }

@@ -1086,11 +1086,17 @@ AppMsg::NewNote => {
 - 现状：view 路径用启发式排除 `Vec<`/`_id`/`notes`/`search`（`rust.rs:2486`），on 路径用 `find_sync_fields_for_child`（`2517-2540`）——两套字段集合不一致
 - 目标：view 路径也调用 `find_sync_fields_for_child`，统一字段来源
 
-**L1 验收**（✅ 已完成，commit `25377aac`）：
+**L1 验收**（✅ 已完成，commit `25377aac` + 013-todo 改造）：
 - [x] 3 个特判的硬编码字符串（"Editor"/"note"/"deleted"）从 `rust.rs` 消失
 - [x] view/on sync 字段统一（不再有启发式过滤）
 - [x] `.autotest` 13 场景 VM/Rust 双绿（VM 13/0/0 + Rust 13/0/0）
-- [ ] **新应用验证**（待做）：用一个不同组件名/数据布局的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
+- [x] **新应用验证**：013-todo（TodoMVC）改造为 App+TodoList 多组件 + 后端 API，组件名/字段名均不同于 015-notes（TodoList vs EditorPanel, todo vs note），a2r 生成后 VM+Rust 双 6/0/0 通过
+
+**013-todo 改造中发现并记录的 a2r 预存限制**（非 L1 引入，留待后续）：
+- `todo` 循环变量名与 Rust `todo!` 宏冲突 → 改用 `item`
+- `for` 循环内子组件的 `on()` 转发 arm 引用循环变量但不在作用域 → 暂改为内联渲染（非子组件）
+- API 生成器按 HTTP method 名生成签名，PATCH→`fn() {}`、无参 DELETE→`(id)` → 避开用 PUT/POST
+- `store.Method(self.field)` 传 String 状态变量未自动 `.clone()` → 改为无参消息 + store 自有字段
 
 **L1 风险**：低。改动局部（特判代码块），hoist+sync 主机制不动。每改一个特判即可双跑验证。
 

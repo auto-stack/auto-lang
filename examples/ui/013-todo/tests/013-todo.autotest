@@ -1,0 +1,42 @@
+# 013-todo.autotest — TodoMVC 测试场景（VM + Rust）
+#
+# 验证 L1 改动在非 015-notes 应用上的通用性：
+# - 多组件 store sync（App→TodoList）
+# - 不同组件名/字段名（TodoList vs EditorPanel, todo vs note）
+# - 后端 API（list_todos/create_todo/toggle/delete）
+#
+# 用法: python run_autotest.py --mode vm
+#       python run_autotest.py --mode rust
+
+suite "013-todo 核心流程"
+
+# ── 种子数据 ────────────────────────────────────────────
+
+scenario T1 "种子数据渲染4条todo"
+  then  exists text label="Learn Auto Language"
+
+scenario T2 "todo文本可见"
+  then  exists text label="Build a TodoMVC app"
+
+# ── 过滤 ────────────────────────────────────────────────
+
+scenario T3 "Active 过滤只显示未完成"
+  when  click_button label="Active"
+  then  exists text label="Build a TodoMVC app"
+  then  not_exists text label="Learn Auto Language"
+
+scenario T4 "Completed 过滤只显示已完成"
+  when  click_button label="Completed"
+  then  exists text label="Learn Auto Language"
+  then  not_exists text label="Build a TodoMVC app"
+
+scenario T5 "All 过滤显示全部"
+  when  click_button label="All"
+  then  exists text label="Learn Auto Language"
+  then  exists text label="Build a TodoMVC app"
+
+# ── 计数 ────────────────────────────────────────────────
+
+scenario T6 "items left 计数正确"
+  when  click_button label="All"
+  then  exists text label="3 items left"

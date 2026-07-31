@@ -1,0 +1,102 @@
+// front/todo_store.at — SharedStore for todos.
+// Client-side cache backed by the Todo API. Mirrors 015-notes notes_store.at.
+
+use back.api: list_todos, create_todo, update_todo, delete_todo, remove_completed
+
+store TodoStore {
+    model {
+        var todos []Todo = []
+        var next_id int = 0
+        var active_count int = 0
+        var input str = ""
+    }
+
+    msg Msg { Init, Refresh, AddTodo, SetInput(str), ToggleTodo(int), DeleteTodo(int),
+              ToggleAll, ClearCompleted }
+
+    on {
+        .Init -> {
+            .todos = list_todos()
+            .active_count = 0
+            var i int = 0
+            for i < .todos.len() {
+                if .todos[i].done == false {
+                    .active_count = .active_count + 1
+                }
+                i = i + 1
+            }
+        }
+
+        .Refresh -> {
+            .todos = list_todos()
+        }
+
+        .AddTodo -> {
+            if .input != "" {
+                create_todo(.input)
+                .todos = list_todos()
+                .active_count = .active_count + 1
+                .input = ""
+            }
+        }
+
+        .SetInput(text) -> {
+            .input = text
+        }
+
+        .ToggleTodo(id) -> {
+            var current_done bool = false
+            var current_text str = ""
+            var idx int = 0
+            for idx < .todos.len() {
+                if .todos[idx].id == id {
+                    current_done = .todos[idx].done
+                    current_text = .todos[idx].text
+                }
+                idx = idx + 1
+            }
+            update_todo(id, current_text, !current_done)
+            .todos = list_todos()
+            .active_count = 0
+            var i int = 0
+            for i < .todos.len() {
+                if .todos[i].done == false {
+                    .active_count = .active_count + 1
+                }
+                i = i + 1
+            }
+        }
+
+        .DeleteTodo(id) -> {
+            delete_todo(id)
+            .todos = list_todos()
+            .active_count = 0
+            var i int = 0
+            for i < .todos.len() {
+                if .todos[i].done == false {
+                    .active_count = .active_count + 1
+                }
+                i = i + 1
+            }
+        }
+
+        .ToggleAll -> {
+            var all_done bool = .active_count == 0
+            var i int = 0
+            for i < .todos.len() {
+                update_todo(.todos[i].id, .todos[i].text, !all_done)
+                i = i + 1
+            }
+            .todos = list_todos()
+            .active_count = 0
+            if all_done {
+                .active_count = .todos.len()
+            }
+        }
+
+        .ClearCompleted -> {
+            remove_completed()
+            .todos = list_todos()
+        }
+    }
+}

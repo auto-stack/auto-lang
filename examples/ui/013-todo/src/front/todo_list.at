@@ -1,0 +1,100 @@
+// front/todo_list.at — TodoList component.
+// Holds filter state, renders todos inline (via view fn fragments, not
+// a child component in a for-loop — a2r doesn't yet support child components
+// inside for-loops because the on()-forwarding arm can't reference the loop var).
+// Child component of App — its filter state tests hoist+sync.
+
+use todo_store: TodoStore
+
+widget TodoList() {
+    msg Msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
+              ClearCompleted }
+
+    model {
+        var filter str = "all"
+    }
+
+    view {
+        col {
+            style: "border-t border-gray-200"
+
+            // Todo items — rendered inline (no child component in loop)
+            col {
+                style: "list-none m-0 p-0"
+                for item in .store.todos {
+                    if .filter == "all" || (.filter == "active" && item.done == false) || (.filter == "completed" && item.done == true) {
+                        row {
+                            style: "flex items-center py-3 px-4 border-b border-gray-200"
+                            checkbox {
+                                checked: item.done
+                                onclick: .ToggleTodo(item.id)
+                                style: "w-6 h-6 mr-3"
+                            }
+                            text item.text {
+                                style: if item.done {
+                                    "flex-1 text-lg text-gray-400 line-through"
+                                } else {
+                                    "flex-1 text-lg text-gray-800"
+                                }
+                            }
+                            button "×" {
+                                onclick: .DeleteTodo(item.id)
+                                style: "ml-2 w-8 h-8 text-xl text-gray-400 hover:text-red-500"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Footer with filter buttons + count
+            if .store.todos.len() > 0 {
+                row {
+                    style: "flex items-center justify-between px-4 py-3 border-t border-gray-200 text-sm text-gray-600"
+                    text f"${.store.active_count} items left"
+
+                    row {
+                        style: "flex gap-1"
+                        if .filter == "all" {
+                            button "All" { onclick: .FilterAll, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                        } else {
+                            button "All" { onclick: .FilterAll, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                        }
+                        if .filter == "active" {
+                            button "Active" { onclick: .FilterActive, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                        } else {
+                            button "Active" { onclick: .FilterActive, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                        }
+                        if .filter == "completed" {
+                            button "Completed" { onclick: .FilterCompleted, style: "px-2 py-1 border border-red-400 rounded text-xs" }
+                        } else {
+                            button "Completed" { onclick: .FilterCompleted, style: "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300" }
+                        }
+                    }
+
+                    button "Clear completed" {
+                        onclick: .ClearCompleted
+                        style: "text-xs hover:underline"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .FilterAll -> { .filter = "all" }
+        .FilterActive -> { .filter = "active" }
+        .FilterCompleted -> { .filter = "completed" }
+
+        .ToggleTodo(id) -> {
+            store.ToggleTodo(id)
+        }
+
+        .DeleteTodo(id) -> {
+            store.DeleteTodo(id)
+        }
+
+        .ClearCompleted -> {
+            store.ClearCompleted()
+        }
+    }
+}

@@ -1,0 +1,55 @@
+// back/api.at — Todo API Interface
+// CRUD endpoints for the TodoMVC app.
+// In rust merged mode these are in-process direct calls (not HTTP).
+
+// ═══════════════════════════════════════════════════════════
+// Types (shared between frontend and backend)
+// ═══════════════════════════════════════════════════════════
+
+/// Todo data model
+pub type Todo = {
+    id: int
+    text: str
+    done: bool
+}
+
+// ═══════════════════════════════════════════════════════════
+// API Endpoints
+// ═══════════════════════════════════════════════════════════
+
+use db
+
+/// List all todos
+/// GET /api/todos
+#[api(method = "GET", path = "/api/todos")]
+pub fn list_todos() []Todo {
+    return db.all_todos()
+}
+
+/// Create a new todo
+/// POST /api/todos
+#[api(method = "POST", path = "/api/todos")]
+pub fn create_todo(text str) Todo {
+    return db.create_todo(text)
+}
+
+/// Update a todo's text and done status
+/// PUT /api/todos/:id
+#[api(method = "PUT", path = "/api/todos/:id")]
+pub fn update_todo(id int, text str, done bool) ?Todo {
+    return db.update_todo(id, text, done)
+}
+
+/// Delete a todo
+/// DELETE /api/todos/:id
+#[api(method = "DELETE", path = "/api/todos/:id")]
+pub fn delete_todo(id int) bool {
+    return db.delete_todo(id)
+}
+
+/// Clear all completed todos
+/// POST /api/todos/clear-completed
+#[api(method = "POST", path = "/api/todos/clear-completed")]
+pub fn remove_completed() bool {
+    return db.remove_completed()
+}
