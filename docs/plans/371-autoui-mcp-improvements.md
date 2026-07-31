@@ -710,6 +710,44 @@ Rust 模式失败项（T2a/T2c/T5b/T5c/T5e）是**预存的 a2r UI 渲染差异*
 
 **结论**：Task 22（问题 a + b）完成。`skip_if rust` 已从 T11/T11b/T12 移除（实测通过），T5c 保留（`edit_title` 仍需后续让「当前活动子组件」状态可暴露）。
 
+### 12.5 问题 c：子组件实例状态不持久（Task 22c）✅ 已修复
+
+§12.4 后继续深挖 T5b/T5c/T5e + T2a/T2c 失败，发现一个**更深的 a2r 架构缺陷**——与 state 读取无关，而是子组件状态**写入即丢弃**。
+
+**现象**：路径寻址（Task 19）精确分发到 `AppMsg::EditorPanel(EditorPanelMsg::Edit)` 并调 `w.inner.on(m)`，但编辑模式始终不进入（Save 按钮不出现）。
+
+**根因（诊断确认）**：生成的 `App::on` 转发子组件消息时**新建一个临时子组件实例**、在其上调 `.on(inner)`、然后丢弃：
+
+```rust
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);  // 临时实例
+    __child.on(inner);   // Edit → __child.editing = true（丢失！）
+    self.search = __child.search;            // 只回拷 search
+}
+```
+
+EditorPanel 自身状态（`editing`/`edit_title`/...）和 NavTree 的 `store.active_folder` 变更都随临时实例丢弃。VM 模式无此问题（DynamicComponent 实例由 VM 持久化）。
+
+**解决方案（生成器侧，commit `00271d9a`）**：
+1. **跨文件扫描**（`collect_component_state_fields`）：记录每个组件自身标量状态字段（name + rust 类型），跨文件传入 `compile_at_file`。
+2. **struct 提升**（`generate_struct`）：把子组件自身标量字段提升到父组件 struct（App 获得 `editing`/`edit_title`/`edit_body`/`tag_input`/`show_tag_input`），构造器用类型合适的默认值初始化。
+3. **转发同步**（`find_sync_fields_for_child`）：转发时把 store 字段 + 子组件自身字段同步进临时实例、调 `.on()`、再同步回父组件——变更得以持久化。
+4. **视图同步**（`generate_child_component`）：view 构造子组件时，先把提升的字段同步进**新建的**子组件再 `.view()`，让渲染反映父组件持久化的编辑器状态。
+5. **Clone 派生**：store 结构体 + 持有 store 的组件派生 `Clone`（store 同步所需）。
+
+### 12.6 最终 GUI 验证：Rust 模式全绿 ✅
+
+| 模式 | 结果 | 说明 |
+|---|---|---|
+| **VM**（`--mode vm`） | **13 passed, 0 failed, 0 skipped** | 完全回归 |
+| **Rust**（`--mode rust`） | **13 passed, 0 failed, 0 skipped** | **全部通过**（含此前失败的 T2a/T2c/T5b/T5c/T5e） |
+
+Rust 模式现在**完整可跑**：编辑/保存/取消/输入标题、文件夹标签切换、暗黑模式、主题色全可用。`.autotest` 中已无 `skip_if rust`（T5c 也通过了——`edit_title` 现在通过提升字段可见）。
+
+**Plan 371 Task 22（问题 a + b + c）全部完成。** Rust 模式与 VM 模式 MCP 行为一致，同一套 `.autotest` 测试用例两模式均 13/13 通过。
+
+> ⚠️ 实施记录：Task 22c 的生成器改动曾多次被并行的 plan-376V 提交流（编辑相同生成器文件）覆盖丢失，最终通过原子化脚本重应用 + 立即 commit 锁定（commit `00271d9a`）。
+
 ---
 
 ## 13. 实施顺序与风险

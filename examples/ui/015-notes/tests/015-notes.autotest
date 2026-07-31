@@ -41,7 +41,7 @@ scenario T5c "输入标题文字"
   when  click_button label="Edit"
   when  type_text input label="Note title" value="MCP Test Title"
   then  state field="edit_title" equals="MCP Test Title"
-  skip_if rust
+  skip_if rust  # edit_title value flow needs Plan 374 input-text injection (msg arg vs last_input_text)
 
 scenario T5d "Cancel 返回只读模式"
   when  click_button label="Cancel"

@@ -892,6 +892,17 @@ impl RustGenerator {
                 }
             }
         }
+        // Plan 371 Task 22c: include hoisted child-component scalar state fields
+        // (e.g. App's editing/edit_title) so autoui_state can read them.
+        for child_name in &self.child_components {
+            if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                for (f, ty) in child_fields {
+                    if is_scalar_state_type(ty) && !scalars.iter().any(|(n, _)| n == f) {
+                        scalars.push((f.clone(), ty.clone()));
+                    }
+                }
+            }
+        }
 
         // Plan 371 Task 22b: collect component-typed fields whose state_snapshot
         // we should recurse into (with a "<field>." prefix) so the rust-mode
