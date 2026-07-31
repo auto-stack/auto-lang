@@ -554,6 +554,15 @@ impl RustTrans {
                         "to_string" | "format" | "trim" | "replace"
                         | "to_lowercase" | "to_uppercase" | "read_to_string"
                         | "read_line" | "collect")
+                } else if let Expr::Dot(obj, m) = c.name.as_ref() {
+                    // Plan 381 (Layer 2): bridged `json.to_string(v)` /
+                    // `json.get_str(v, k)` return owned String — treat as
+                    // string-containing so the &str-param auto-borrow appends
+                    // .as_str() (E0308 `&str` vs `String` otherwise).
+                    if let Expr::Ident(o) = obj.as_ref() {
+                        o.as_str() == "json"
+                            && matches!(m.as_str(), "to_string" | "get_str" | "as_string")
+                    } else { false }
                 } else {
                     false
                 }
@@ -568,6 +577,50 @@ impl RustTrans {
                     || self.expr_contains_string(inner_rhs)
             }
             _ => false,
+        }
+    }
+
+    /// Plan 381 (Layer 2): true when the call is an enum-variant construction
+    /// (`Type.Variant(...)` where Type is a known enum). Such calls must not
+    /// get the unknown-callee fallback auto-borrow (.as_str() on owned String
+    /// payloads → E0308).
+    fn is_enum_variant_ctor(&self, call: &Call) -> bool {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(type_name) = obj.as_ref() {
+                if self.known_enum_names.contains(type_name) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Plan 381 (Layer 2): true when a `json.X(...)` call argument is a JSON
+    /// *Value*-producing expression (json.get/get_at/parse/get_str/get_u64) or
+    /// a variable previously assigned from one (tracked in json_value_vars).
+    /// Used by the json as_int/as_string/as_bool dispatch to pick the
+    /// `a2r_std::json::as_*(&Value)` variant instead of the `as_*_str(&str)`
+    /// one (the latter broke `json.as_int(json.get(v, "k"))` → E0308
+    /// Option<&str>).
+    fn json_arg_is_value(&self, arg: &Arg) -> bool {
+        if let Arg::Pos(expr) = arg {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Dot(obj, m) = call.name.as_ref() {
+                        if let Expr::Ident(o) = obj.as_ref() {
+                            if o.as_str() == "json" {
+                                return matches!(m.as_str(),
+                                    "get" | "get_at" | "parse" | "get_str" | "get_u64");
+                            }
+                        }
+                    }
+                    false
+                }
+                Expr::Ident(name) => self.json_value_vars.contains(name),
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 
@@ -1997,7 +2050,7 @@ impl RustTrans {
                             write!(out, " }}").map_err(Into::into)
                         } else {
                             // Tuple variant or unknown: Enum::Variant(a, b)
-                            let binding_str = tag_cover.bindings.iter()
+                                let binding_str = tag_cover.bindings.iter()
                                 .filter(|b| b.as_str() != "_")
                                 .map(|b| b.as_str())
                                 .collect::<Vec<_>>()
@@ -4999,7 +5052,12 @@ impl RustTrans {
                         if call.args.args.len() > 1 {
                             if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                         }
-                        write!(out, ").to_string()")?;
+                        // Plan 381 (Layer 2): `json.get(v, k)` returns the
+                        // bridged Value — do NOT append .to_string() (that made
+                        // every get() a String, breaking json.len/get_at/
+                        // to_string/as_* chaining → E0308 &Value vs &String).
+                        // Use `json.get_str` for string extraction.
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("json", "get_str") => {
@@ -5013,9 +5071,21 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_string") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
+                        // Plan 381 (Layer 2): Value arg → as_string(&Value);
+                        // string arg → as_string_str(&str). The unconditional
+                        // _str variant broke `json.as_string(json.get(...))`
+                        // (E0308 Option<&str>).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_string(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_string_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                        }
                         return Ok(());
                     }
                     ("json", "to_string") => {
@@ -5103,15 +5173,33 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_int") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ") as i32")?;
+                        // Plan 381 (Layer 2): Value arg → as_int(&Value).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_int(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_int_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ") as i32")?;
+                        }
                         return Ok(());
                     }
                     ("json", "as_bool") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
+                        // Plan 381 (Layer 2): Value arg → as_bool(&Value).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_bool(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_bool_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                        }
                         return Ok(());
                     }
                     ("json", "is_valid") => {
@@ -5391,7 +5479,7 @@ impl RustTrans {
                     let has_struct_fields = self.enum_struct_variants.contains_key(&key);
                     let has_tuple_fields = self.enum_tuple_field_types.contains_key(&key);
                     if variant_is_upper || has_struct_fields || has_tuple_fields {
-                        let struct_fields = self.enum_struct_variants.get(&key).cloned();
+                            let struct_fields = self.enum_struct_variants.get(&key).cloned();
                         if let Some(ref mp) = mod_prefix {
                             if self.merge_mode || mp.as_str() == self.current_module_name {
                                 write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
@@ -5799,7 +5887,13 @@ impl RustTrans {
                                 }
                             }
                             // Auto-borrow for external crate type static methods
-                            if !is_str_param {
+                            // Plan 381 (Layer 2): skip for known ENUM types —
+                            // `OutputContentBlock.ToolUse(id, name, input)` is a
+                            // variant CONSTRUCTION (owned String payloads), not a
+                            // static method call; .as_str() on the payloads is
+                            // E0308 (`String` vs `&str`).
+                            let is_enum_ctor = self.known_enum_names.contains(type_name.as_str());
+                            if !is_str_param && !is_enum_ctor {
                                 if let Expr::Ident(name) = expr {
                                     if self.local_var_types.get(name)
                                         .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
@@ -5808,6 +5902,15 @@ impl RustTrans {
                                         write!(out, ".as_str()")?;
                                     }
                                 }
+                            }
+                            // Plan 381 (Layer 2): enum-ctor String payloads fed a
+                            // string literal need `.to_string()` (Text("") →
+                            // Text("".to_string()), E0308 `String` vs `&str`).
+                            if is_enum_ctor
+                                && matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                && !is_str_param
+                            {
+                                write!(out, ".to_string()")?;
                             }
                         } else {
                             self.arg(arg, out)?;
@@ -6427,7 +6530,14 @@ impl RustTrans {
             // `str` convention) and borrow the argument. This mirrors what the
             // same-module str-param path does above. String literals and
             // already-`&str` params are left untouched.
+            // Plan 381 (Layer 2): enum variant CONSTRUCTION
+            // (`OutputContentBlock.ToolUse(id, name, input)`) parses as a
+            // dotted call whose callee param types are unknown — the fallback
+            // below would append .as_str() to owned String payloads (E0308
+            // `String` vs `&str`). Skip the fallback for known enum ctors.
+            let is_enum_ctor = self.is_enum_variant_ctor(call);
             let needs_borrow_unknown_callee = str_flags.is_none()
+                && !is_enum_ctor
                 && !Self::is_string_literal_arg(arg)
                 && !self.is_str_slice_var(arg)
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
@@ -11461,6 +11571,18 @@ impl RustTrans {
 
     /// Apply all post-processing fixes to generated Rust source.
     /// Called after trans() on the final output.
+    /// Plan 014 Layer 3: run a post_process fix, tallying whether it rewrote
+    /// the output (for A2R_FIX_COUNTS instrumentation).
+    fn fix_counted(content: &mut String, name: &str, f: fn(&mut String)) {
+        let before = content.len();
+        f(content);
+        if content.len() != before {
+            if let Ok(mut m) = FIX_COUNTS.lock() {
+                *m.entry(name.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+
     pub fn post_process(output: &mut Vec<u8>) {
         let mut content = String::from_utf8(std::mem::take(output)).unwrap_or_default();
 
@@ -11471,105 +11593,114 @@ impl RustTrans {
         Self::remove_duplicate_imports(&mut content);
 
         // A7: Vec.get(i32_var) → Vec[i32_var as usize] (heuristic)
-        Self::fix_vec_i32_index(&mut content);
+        Self::fix_counted(&mut content, "fix_vec_i32_index", Self::fix_vec_i32_index);
 
         // A8: HashMap.get(key).field → HashMap.get(key).unwrap().field
-        Self::fix_option_unwrapping(&mut content);
+        Self::fix_counted(&mut content, "fix_option_unwrapping", Self::fix_option_unwrapping);
 
         // A9: vec.get(0.as_str()) → vec[0], vec.get(N.as_str()) → vec[N as usize]
-        Self::fix_numeric_get_as_str(&mut content);
+        Self::fix_counted(&mut content, "fix_numeric_get_as_str", Self::fix_numeric_get_as_str);
 
         // A10: self.sessions.get(X) { Some(var) => → self.sessions.get(X).cloned() { Some(var) =>
-        Self::fix_get_cloned_for_match(&mut content);
+        Self::fix_counted(&mut content, "fix_get_cloned_for_match", Self::fix_get_cloned_for_match);
 
         // B2: String/&str heuristic fixes
-        Self::fix_string_str_mismatches(&mut content);
+        Self::fix_counted(&mut content, "fix_string_str_mismatches", Self::fix_string_str_mismatches);
 
         // B13: Fix derive macros on structs with dyn Trait fields
-        Self::fix_dyn_trait_derives(&mut content);
+        Self::fix_counted(&mut content, "fix_dyn_trait_derives", Self::fix_dyn_trait_derives);
 
         // B14: Fix integer type mismatches (u32 vs i32 vs usize)
-        Self::fix_integer_type_mismatches(&mut content);
+        Self::fix_counted(&mut content, "fix_integer_type_mismatches", Self::fix_integer_type_mismatches);
 
         // B16: Add `mut` to let bindings that are later reassigned
-        Self::fix_mutable_bindings(&mut content);
+        Self::fix_counted(&mut content, "fix_mutable_bindings", Self::fix_mutable_bindings);
 
         // B16b: Add `mut` to fn params that are mutated in the body
         // (a2r only handles `let` locals; Rust params default to immutable →
         // E0596 for e.g. `fn f(seen: HashMap, names: Vec) { seen.insert(..); }`).
-        Self::fix_mutable_params(&mut content);
+        Self::fix_counted(&mut content, "fix_mutable_params", Self::fix_mutable_params);
 
         // B17: Fix return None; in void functions → return;
-        Self::fix_void_return_none(&mut content);
+        Self::fix_counted(&mut content, "fix_void_return_none", Self::fix_void_return_none);
 
         // B18: Fix borrowing issues (&Vec → Vec.clone(), etc.)
-        Self::fix_borrowing_issues(&mut content);
+        Self::fix_counted(&mut content, "fix_borrowing_issues", Self::fix_borrowing_issues);
 
         // B19: Fix HashMap.keys() used as indexable collection (Auto List → Rust iterator)
-        Self::fix_map_keys_indexing(&mut content);
+        Self::fix_counted(&mut content, "fix_map_keys_indexing", Self::fix_map_keys_indexing);
 
         // B20: Fix push move errors — add .clone() when pushing reused variables
-        Self::fix_push_move(&mut content);
+        Self::fix_counted(&mut content, "fix_push_move", Self::fix_push_move);
 
         // B21: Fix &str params assigned to String fields / pushed to Vec<String>
-        Self::fix_str_to_string_assignments(&mut content);
+        Self::fix_counted(&mut content, "fix_str_to_string_assignments", Self::fix_str_to_string_assignments);
 
         // B22: Fix Option<String>.unwrap_or("") → .unwrap_or_default()
-        Self::fix_option_unwrap_or_empty(&mut content);
+        Self::fix_counted(&mut content, "fix_option_unwrap_or_empty", Self::fix_option_unwrap_or_empty);
 
         // B23: Fix String passed where &_ is expected (map.get(var) → map.get(&var))
-        Self::fix_string_to_ref(&mut content);
+        Self::fix_counted(&mut content, "fix_string_to_ref", Self::fix_string_to_ref);
 
         // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
-        Self::fix_enum_str_comparisons(&mut content);
+        Self::fix_counted(&mut content, "fix_enum_str_comparisons", Self::fix_enum_str_comparisons);
 
         // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
-        Self::fix_vec_tuple_string_literals(&mut content);
+        Self::fix_counted(&mut content, "fix_vec_tuple_string_literals", Self::fix_vec_tuple_string_literals);
 
         // B8: Fix tuple.get_N() -> tuple.N
-        Self::fix_tuple_get_n(&mut content);
+        Self::fix_counted(&mut content, "fix_tuple_get_n", Self::fix_tuple_get_n);
 
         // B4: Fix u32/i32 cast mismatches
-        Self::fix_u32_i32_casts(&mut content);
+        Self::fix_counted(&mut content, "fix_u32_i32_casts", Self::fix_u32_i32_casts);
 
         // B5: Fix Vec/HashMap .insert() first arg needs usize
-        Self::fix_insert_usize(&mut content);
+        Self::fix_counted(&mut content, "fix_insert_usize", Self::fix_insert_usize);
 
         // B6: Fix bool-returning functions used with == 0 / != 0
-        Self::fix_bool_int_comparisons(&mut content);
+        Self::fix_counted(&mut content, "fix_bool_int_comparisons", Self::fix_bool_int_comparisons);
 
         // B9: Fix map.get(key).as_str() → map.get(key).map(|s| s.as_str()).unwrap_or("")
-        Self::fix_map_get_as_str(&mut content);
+        Self::fix_counted(&mut content, "fix_map_get_as_str", Self::fix_map_get_as_str);
 
         // B10: Fix integer.as_str() → integer.to_string().as_str()
-        Self::fix_int_as_str(&mut content);
+        Self::fix_counted(&mut content, "fix_int_as_str", Self::fix_int_as_str);
 
         // B11: Fix str.split(X).len() → str.split(X).count()
         //     and str.split(X).get(i) → str.split(X).nth(i)
-        Self::fix_split_methods(&mut content);
+        Self::fix_counted(&mut content, "fix_split_methods", Self::fix_split_methods);
 
         // Plan 373 backports — additional B1 codegen papercuts.
         // Lower Auto-VM str/numeric methods + structural fixes that the main
         // trans() pass doesn't emit correctly yet (see docs/plans/373).
-        Self::fix_substring_method(&mut content);
-        Self::fix_numeric_conversion_methods(&mut content);
-        Self::fix_residual_error_box(&mut content);
-        Self::fix_result_none_unit(&mut content);
-        Self::fix_fn_field_calls(&mut content);
-        Self::fix_non_ord_derives(&mut content);
-        Self::fix_missing_trait_impl_uses(&mut content);
-        Self::fix_string_literal_enum_args(&mut content);
+        Self::fix_counted(&mut content, "fix_substring_method", Self::fix_substring_method);
+        Self::fix_counted(&mut content, "fix_numeric_conversion_methods", Self::fix_numeric_conversion_methods);
+        Self::fix_counted(&mut content, "fix_residual_error_box", Self::fix_residual_error_box);
+        Self::fix_counted(&mut content, "fix_result_none_unit", Self::fix_result_none_unit);
+        Self::fix_counted(&mut content, "fix_fn_field_calls", Self::fix_fn_field_calls);
+        Self::fix_counted(&mut content, "fix_non_ord_derives", Self::fix_non_ord_derives);
+        Self::fix_counted(&mut content, "fix_missing_trait_impl_uses", Self::fix_missing_trait_impl_uses);
+        Self::fix_counted(&mut content, "fix_string_literal_enum_args", Self::fix_string_literal_enum_args);
         // Plan 376: Type-flow analysis post_process passes
-        Self::fix_for_in_self_field_borrow(&mut content);
-        Self::fix_option_get_field_access(&mut content);
-        Self::fix_some_str_to_string(&mut content);
-        Self::fix_a2r_std_fs_result_patterns(&mut content);
-        Self::fix_spec_trait_boxing(&mut content);
-        Self::fix_pathbuf_as_str(&mut content);
-        Self::fix_tuple_index(&mut content);
+        Self::fix_counted(&mut content, "fix_for_in_self_field_borrow", Self::fix_for_in_self_field_borrow);
+        Self::fix_counted(&mut content, "fix_option_get_field_access", Self::fix_option_get_field_access);
+        Self::fix_counted(&mut content, "fix_some_str_to_string", Self::fix_some_str_to_string);
+        Self::fix_counted(&mut content, "fix_a2r_std_fs_result_patterns", Self::fix_a2r_std_fs_result_patterns);
+        Self::fix_counted(&mut content, "fix_spec_trait_boxing", Self::fix_spec_trait_boxing);
+        Self::fix_counted(&mut content, "fix_pathbuf_as_str", Self::fix_pathbuf_as_str);
+        Self::fix_counted(&mut content, "fix_tuple_index", Self::fix_tuple_index);
 
         if !content.ends_with('\n') {
             content.push('\n');
+        }
+
+        // Plan 014 Layer 3: A2R_FIX_COUNTS=1 → print which fixes rewrote output.
+        if std::env::var("A2R_FIX_COUNTS").map(|v| v == "1").unwrap_or(false) {
+            if let Ok(m) = FIX_COUNTS.lock() {
+                for (k, v) in m.iter() {
+                    eprintln!("[fix-count] {}={}", k, v);
+                }
+            }
         }
 
         *output = content.into_bytes();
@@ -13561,6 +13692,15 @@ impl RustTrans {
 
 lazy_static::lazy_static! {
     static ref RUST_REGEX_CACHE: std::sync::Mutex<std::collections::HashMap<String, regex::Regex>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+
+    // Plan 014 Layer 3: per-process counters for post_process fix_* triggers.
+    // Gated by env A2R_FIX_COUNTS=1: at the end of post_process each fix that
+    // actually rewrote the output is tallied here, then printed as
+    // `[fix-count] <name>=<n>` lines so a multi-file transpile run can be
+    // aggregated (quantifies how much a2r still papers over vs skill-corrected
+    // source, plan 014 预期效果 3).
+    static ref FIX_COUNTS: std::sync::Mutex<std::collections::HashMap<String, u64>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
