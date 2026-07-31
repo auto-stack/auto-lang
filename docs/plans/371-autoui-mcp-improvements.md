@@ -935,7 +935,25 @@ App 持有 `editing/edit_title/edit_body/tag_input/show_tag_input` 五个本属�
 - 删除特判（`rust.rs:1208-1215`：检查 `note["deleted"]`）
 - view 路径与 on 路径 sync 字段集合**不一致**（view 用启发式过滤排除 `Vec<`/`_id`/`notes`/`search`，`rust.rs:2486`）
 
-### 15.3 目标架构：父持有持久子组件实例
+#### 15.2.1 hoist+sync 有效性评估（2026-07-31 复盘修正）
+
+> ⚠️ 本小节修正了 §15 早期判断。原 §15.2 措辞（"状态无记忆""完全失效"）过于悲观——代码侦察证明 hoist+sync **机制本身有效**，真正脆弱的是特判。
+
+**证据**：当前 hoist+sync 在 13 个 `.autotest` 场景下 **VM+Rust 双 13/0/0**（覆盖编辑全生命周期 T5a-T5e/T6/T7 + 导航 T2a-T2c + 主题 T11/T11b/T12）。`00271d9a` 的 sync 往返确实保留了子组件私有状态。
+
+**风险分层**（据此修正后续实施优先级）：
+
+| | hoist+sync 机制（①②） | 3 个特判 hack（③） |
+|---|---|---|
+| **当前状态** | 13 场景双绿 ✅ | 硬编码 "Editor"/"note"/"deleted" |
+| **换应用会坏吗** | 不会（同名匹配是通用的） | **会**（组件不叫 Editor、prop 不叫 note、无 "deleted" 标记即失效） |
+| **是否真正的风险点** | 否（理论缺陷，未暴露） | **是**（这正是"换应用就出问题"的根源） |
+
+**结论**：治病要对症。让新应用出问题的是那 3 个硬编码特判，不是 hoist+sync 机制本身。§15.5 的实施路径据此重构为风险分层（L1 优先泛化特判）。
+
+### 15.3 目标架构：父持有持久子组件实例（L3 备选方案）
+
+> ⚠️ 本节原设计的 props sync 代码示例有技术错误（`self.editor_panel.note = ...` 在 `view(&self)` 下编译不过）。2026-07-31 借用约束调研后修正。此方案现为 L3 备选（见 §15.5），非首选。
 
 **核心改动**：父 struct 新增持久子组件字段，消灭所有临时构造。
 
@@ -959,29 +977,54 @@ AppMsg::EditorPanel(inner) => {
 }
 ```
 
-view 直接调持久实例的 view，无重建：
+**关键问题：props 如何同步？——这是本方案的技术难点**
+
+VM 在 render 时把 props 写入 root state（`ensure_child_state` `vm_bridge.rs:670-704`）。Rust 侧的等价物**不能直接照搬**，因为 `view(&self)` 是不可变借用。下面三种可行方案各有取舍：
+
 ```rust
-// 目标生成代码（对比现状 view 里 __editorpanel 块）
-self.editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
+// ❌ 编译不过（原设计错误示例）：
+// fn view(&self) -> ... {
+//     self.editor_panel.note = ...;   // error: cannot assign to self.editor_panel.note
+// }
+
+// 方案 A（view 内 clone）：符合 &self，但每帧 clone 整个子组件
+fn view(&self) -> ... {
+    let mut tmp = self.editor_panel.clone();   // 需子组件 derive Clone
+    tmp.note = self.store.notes[self.store.active_id as usize].clone();
+    tmp.view().map_msg(|m| AppMsg::EditorPanel(m))
+}
+// 代价：每次 view clone（若子组件含 store，clone 整个 store）。与现有 on 转发模式（rust.rs:1162-1185）一致。
+
+// 方案 B（RefCell）：运行时可变，但 borrow 检查 + 嵌套 panic 风险
+pub struct App {
+    pub editor_panel: std::cell::RefCell<EditorPanel>,
+    ...
+}
+fn view(&self) -> ... {
+    { self.editor_panel.borrow_mut().note = ...; }  // 运行时 borrow_mut
+    self.editor_panel.borrow().view().map_msg(...)  // 再 borrow（不可变）
+}
+// 项目已有大量 RefCell 先例（renderer.rs:2343-2384 DevTools 字段），但 view 内嵌套 borrow 易 panic。
+
+// 方案 C（on 内 sync，保持 hoist+sync 现状）：props 在 on(&mut self) 里 sync，view 只读
+// 这正是当前做法。props 不需要 view 内 sync——on 消息处理后，下一帧 view 读取的是
+// 持久私有状态 + 父 state 的最新 props（通过临时构造传入）。
+// ⚠️ 方案 C 即 hoist+sync 本身，不需"持久实例"改造。
 ```
 
-**关键问题：props 如何同步？** VM 在 render 时把 props 写入 root state（`ensure_child_state`）。Rust 等价物：**在每次 view 前，把当前 props 刷写到持久实例**（`.note` 字段）。这是唯一保留的 sync，但只针对 props（如 note），不针对子组件私有状态（editing 等）。
+**调研结论**：iced runtime（`renderer.rs:6294-6311`）**不提供 update→view 之间的钩子点**——生成器无法在两阶段之间插入 `sync_props` 调用。因此持久实例方案只能在 view 内 clone（A）或 RefCell（B）二选一，两者都有代价。而方案 C（on 内 sync）无需这些代价，正是当前 hoist+sync 的做法。
 
-### 15.4 三个必须解决的子问题
+**这动摇了"完整持久化"的必要性**——见 §15.2.1 的有效性评估。hoist+sync 机制本身有效（13/0/0），持久实例改造的收益主要在"消除特判"，但特判可以单独泛化（L1）而不必动整体架构（L3）。
+
+### 15.4 三个必须解决的子问题（仅 L3 持久化方案需处理）
+
+> ⚠️ 本节的子问题 A/B/C 是 §15.3 持久化方案（L3）才需要解决的。若选 L1（泛化特判，保留 hoist+sync），这些问题以现有机制处理，见 §15.5。
 
 #### 子问题 A：props 同步时机（VM 的 ensure_child_state 等价物）
 
-VM 的 `ensure_child_state`（`vm_bridge.rs:670-704`）在**每次 render** 时把父侧解析的 prop 值写入 root state。Rust 侧对应：**每次 view() 调用前，更新持久子组件实例的 prop 字段**。
+VM 的 `ensure_child_state`（`vm_bridge.rs:670-704`）在**每次 render** 时把父侧解析的 prop 值写入 root state。Rust 侧若用持久实例，对应"每次 view 前 props sync"——但受 `view(&self)` 约束，只能选 §15.3 的方案 A（view 内 clone）或 B（RefCell）。具体代码见 §15.3，此处不重复。
 
-```rust
-// view 中，渲染子组件前
-self.editor_panel.note = self.store.notes[self.store.active_id as usize].clone();
-self.editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
-```
-
-生成器改动点：`generate_child_component`（`rust.rs:2462-2512`）从"构造临时实例 + sync 标量"改为"更新持久实例的 props + 调 view"。
-
-**为什么 props sync 不会丢子组件私有状态**：props（如 note）是父注入的只读数据，子组件私有状态（editing/edit_title）存在持久实例自身，view 前只刷 props 不动私有字段。
+**为什么 props sync 不会丢子组件私有状态**：props（如 note）是父注入的只读数据，子组件私有状态（editing/edit_title）存在持久实例自身，sync 时只刷 props 不动私有字段。
 
 #### 子问题 B：Init 生命周期（替代 NewNote 特判 hack）
 
@@ -1008,75 +1051,137 @@ AppMsg::NewNote => {
 
 **方案**：子组件 Save/Changed 消息显式声明数据回写，而非靠构造参数名启发式猜测。生成器识别 `.at` 中子组件对 prop 的写操作（如 EditorPanel `.Save -> { .note.title = .edit_title; ... }`），生成对应的回写代码。这是现有 `find_sync_fields_for_child` 的正确泛化——按 props 而非按同名匹配。
 
-### 15.5 分阶段实施计划
+### 15.5 实施计划：风险分层（L1 推荐 → L2 → L3）
 
-#### 阶段 0：安全网（先于改动）
+> ⚠️ 本节重构自原"4 阶段完整持久化"设计。基于 §15.2.1 的有效性评估，改为按 ROI 风险分层。**推荐先做 L1**，用新应用实测后再决定是否需要 L3。
+
+#### 安全网（先于任何改动）
 - **生成文件退出 git**（`f7095351` ✅ 已完成）——避免生成物 diff 干扰。
-- **建立语义保真度基线**：当前 `.autotest` 13 场景 VM/Rust 双跑（VM 13/0/0、Rust 13/0/0）作为回归基线。阶段 1-3 每步后必须保持双绿。
+- **基线**：当前 `.autotest` 13 场景 VM/Rust 双跑（VM 13/0/0、Rust 13/0/0）作为回归基线。每个层级完成后必须保持双绿。
 - **固定一个可复现的 a2r 重生成命令**，每次改动后重生成 + 双跑测试。
 
-#### 阶段 1：持久子组件字段（核心，消灭临时构造）
-**目标**：父 struct 持有持久子组件实例字段，消灭 18 处 `::new` 临时构造。
+---
 
-改动：
-1. `rust.rs` `generate_struct`（`568-685`）：新增逻辑——对每个 `child_components` 条目，生成 `pub <snake_name>: <ChildType>` 字段（替代 hoist 标量字段，`619-629` 逻辑转为持久实例字段）。
-2. `rust.rs` 构造函数生成（`generate_struct` 的 `new` 实现）：初始化 `self.<child> = <Child>::new(<初始 props>)`。
-3. `rust.rs` `generate_on_method` 通用转发（`1150-1218`）：从"构造临时 + sync in/out"改为 `self.<child>.on(inner)`。**删除 sync in/out 代码**（`1169-1185`）。
-4. `rust.rs` `generate_child_component`（`2462-2512`）：从"构造临时 + sync 标量"改为"`self.<child>.view().map_msg(...)`"。**删除 sync 块**（`2499-2511`）。
+#### L1（推荐首选，低风险高 ROI）：泛化 3 个特判 hack
 
-**保留**：note 回写 + 删除特判（`1193-1215`）暂保留，阶段 3 泛化。
-**风险**：子组件构造参数（props）在 App::new 时可能无数据（store 未 Init）。缓解：构造时用默认值/占位，view 前 props sync（阶段 2）。
+**目标**：用基于 `.at` 源码分析的通用代码，替代 3 个硬编码 "Editor"/"note"/"deleted" 的特判。**保留已验证有效的 hoist+sync 机制**。
 
-#### 阶段 2：props 同步（消灭"看不到数据"类问题）
-**目标**：每次 view 前，把当前 props 刷写到持久子组件实例。
+这正是让"换应用就坏"的根源。改动集中在 `rust.rs:1093-1215`：
 
-改动：
-1. `rust.rs` `generate_child_component`：在 `.view()` 前生成 props 赋值代码（从父 state 解析 props → `self.<child>.<prop> = <value>`）。复用 `extract_child_constructor_args`（`2554-2599`）已有的 props 解析逻辑，改为"赋值"而非"构造参数"。
-2. `rust.rs` on 转发：子组件消息处理后，若 props 可能变化（如 SelectNote 改了 active_id），下一帧 view 前 props sync 自然生效——无需 on 内额外处理。
+**改动 1：Init 转发泛化**（替代 `rust.rs:1093-1121`）
+- 现状：硬编码 `variant_name == "NewNote" || "NewNoteInFolder"` + 按名模糊匹配 `.contains("Editor")`
+- 目标：识别 `.at` 中**任何**会改变子组件 props 的父消息（如父 handler 调用 `store.NewNote()` → active_id 变 → 子组件 note 变），在该消息 arm 末尾插入 props 更新 + 子组件 `on(Init)`
+- 判据：分析父 `.at` handler，若调用了会改变子组件所依赖 props 的 store 操作，则触发子组件 Init
 
-**这取代了 VM `ensure_child_state` 的语义**：VM 每次 render 写 props 到 root；Rust 每次 view 前写 props 到持久实例。
+**改动 2：props 回写泛化**（替代 `rust.rs:1193-1204`）
+- 现状：`constructor_args.contains("note")` 才回写 `notes[active_id]`
+- 目标：分析子组件 `.at` handler，识别对 props 的**写操作**（如 EditorPanel `.Save -> { .note.title = .edit_title }`），据此生成"子组件消息后回写被改 prop 到父 state/store"
+- 这是 `find_sync_fields_for_child` 的 props 版本——按"子组件写了哪个 prop"生成回写，而非按构造参数名猜
 
-#### 阶段 3：生命周期与回写泛化（消灭特判 hack）
-**目标**：用通用机制替代 3 个 015-notes 专用 hack。
+**改动 3：删除特判泛化**（替代 `rust.rs:1208-1215`）
+- 现状：硬编码检查 `note["deleted"]`
+- 目标：`.at` 中若子组件 handler 设置了删除标记（`.note.deleted = true` 或父组件有 DeleteActive 类消息），生成器据此生成删除逻辑
 
-改动：
-1. **Init 泛化**（替代 `rust.rs:1093-1121`）：App::new 构造每个持久子组件后触发 `on(Init)`；store 数据变化（NewNote 等）后更新 props 再触发 Init。生成器识别 `.at` 中哪些父消息会改变子组件 props（如 NewNote 改 active_id → EditorPanel 的 note 变），在那些 arm 末尾插入 props 更新 + Init。
-2. **note 回写泛化**（替代 `rust.rs:1193-1204`）：分析子组件 `.at` 的 handler，识别对 props 的写操作（`.note.title = ...`），生成"子组件消息后回写 props 到父 state/store"。这是 `find_sync_fields_for_child` 的 props 版本。
-3. **删除特判泛化**（替代 `rust.rs:1208-1215`）：`.at` 中若子组件 handler 设置了删除标记（`.note.deleted = true` 或专门的 DeleteNote 消息），生成器据此生成删除逻辑，而非硬编码检查 `note["deleted"]`。
+**改动 4：view/on sync 字段统一**（修 `rust.rs:2486` 启发式过滤）
+- 现状：view 路径用启发式排除 `Vec<`/`_id`/`notes`/`search`（`rust.rs:2486`），on 路径用 `find_sync_fields_for_child`（`2517-2540`）——两套字段集合不一致
+- 目标：view 路径也调用 `find_sync_fields_for_child`，统一字段来源
 
-#### 阶段 4：语义保真度测试（防回归）
-**目标**：每个 `.at` 语义特性有对应 Rust 测试，失败即报错。
-
-改动：
-1. 审计 `.autotest` 的 `skip_if rust`（当前 015-notes 已全清，但其他示例可能有）。
-2. 新增覆盖子组件状态生命周期的测试场景：构造 → Init → 编辑 → Save → 回写 → 重建后状态保持。
-3. 长期目标：`.at` 语义特性矩阵（component model/store composable/lifecycle/props sync/conditional rendering/for loop），每个特性 VM+Rust 双跑。
-
-### 15.6 实施风险与缓解
-
-| 风险 | 缓解 |
-|------|------|
-| 阶段 1 改动大（生成器核心路径） | 严格分步：先 struct 字段 → 再 on 转发 → 再 view 渲染，每步双跑测试 |
-| props sync 时机错导致脏读 | 遵循 VM 模型：只在 view 前 sync，on 内不 sync（子组件私有状态自带持久） |
-| 多 store 场景（现状 `STORE_NAMES` 固定别名 "store"，`rust_ui.rs:432`） | 当前 015-notes 单 store，阶段 1-3 不处理多 store；标记为已知限制 |
-| `component_state_fields` 跨文件预扫（`rust_ui.rs:108`）与新机制冲突 | 持久实例方案**复用**该 map（已知子组件标量字段清单），用于 Init 默认值；不删除 |
-| 持久实例 Clone 需求（iced view 返回 'static） | 子组件已 derive Clone（`00271d9a` 为 sync 引入），持久化后仍需保留 |
-
-### 15.7 验收标准
-
-阶段 1-3 完成后，015-notes 生成代码应满足：
-- [ ] `App` struct 无 hoist 标量字段（editing/edit_title 等消失，仅持久子组件字段）
-- [ ] `EditorPanel::new` 仅在 App::new 出现 1 次（构造持久实例），on/view 中 0 次
-- [ ] 无 NewNote Init 特判（`rust.rs:1093-1121` 删除）
-- [ ] 无 note 回写特判（`rust.rs:1193-1215` 删除，改通用 props 回写）
+**L1 验收**：
+- [ ] 3 个特判的硬编码字符串（"Editor"/"note"/"deleted"）从 `rust.rs` 消失
 - [ ] `.autotest` 13 场景 VM/Rust 双绿
-- [ ] **新应用验证**：用一个含多子组件 + 编辑状态的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
+- [ ] **新应用验证**：用一个不同组件名/数据布局的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
 
-### 15.8 与现有代码的关系
+**L1 风险**：低。改动局部（特判代码块），hoist+sync 主机制不动。每改一个特判即可双跑验证。
 
-本方案**不改动 VM 模式任何代码**（VM 已正确）。改动集中在：
+---
+
+#### L2（中风险中 ROI）：可选的健壮性增强
+
+**目标**：修复 hoist+sync 机制的几个隐患（非阻塞，L1 之后按需）。
+
+**改动**：
+1. **同名隐式契约的显式化**（§15.2 ①）：`find_sync_fields_for_child` 靠"父字段名 == 子字段名"匹配。新增字段若忘登记则静默丢失。可改为显式 props/private 状态声明，或在生成期做完整性检查（子组件字段必须在父侧找到对应）。
+2. **store clone 成本**：on 转发时 `__child.store = self.store.clone()`（`rust.rs:1171`）clone 整个 store。可优化为只传子组件实际读取的 store 字段（生成期分析子组件 `.at` 的 store 字段引用）。
+
+**L2 验收**：L1 验收 + 新增字段不再静默丢失；store clone 成本降低（可选 benchmark）。
+
+---
+
+#### L3（高风险，需权衡）：完整持久化实例（§15.3/15.4 原设计）
+
+> ⚠️ 仅当 L1 + L2 验证后，仍有 hoist+sync 无法支撑的语义场景时才考虑。
+
+**目标**：App struct 持有持久子组件实例字段，消灭 18 处临时构造。
+
+**前置决策**：必须先选 §15.3 的 props sync 方案（A: view 内 clone / B: RefCell），因 iced 无 update→view 钩子点。两者都有代价（clone 开销或 RefCell 复杂度）。
+
+**改动**：L3 完整设计见 §15.3（目标架构）+ §15.4（三子问题），核心是：
+1. `generate_struct`（`rust.rs:568-685`）：把 hoist 标量字段改为持久子组件实例字段（`pub editor_panel: EditorPanel`）
+2. `generate_constructor`（`rust.rs:688-828`）：App::new 初始化持久实例（props 用零值/占位，如 `serde_json::Value::Null`）
+3. `generate_on_method` 通用转发（`rust.rs:1150-1218`）：从"临时构造 + sync in/out"改为 `self.<child>.on(inner)`，删 sync 代码
+4. `generate_child_component`（`rust.rs:2462-2512`）：从"临时构造 + sync"改为 view 内 clone 持久实例 + props sync（方案 A）
+5. §15.4 子问题 B/C（Init 生命周期 + props 回写）的通用化
+
+L3 是否实施取决于 L1/L2 的实测结果——若 L1（泛化特判）+ 新应用验证通过，L3 可能完全不需要。
+
+**L3 验收**：
+- [ ] `App` struct 无 hoist 标量字段（editing/edit_title 等消失，仅持久子组件字段）
+- [ ] `EditorPanel::new` 仅在 App::new 出现 1 次，on/view 中 0 次
+- [ ] 无 NewNote Init 特判、无 note 回写特判
+- [ ] `.autotest` 13 场景 VM/Rust 双绿 + 新应用验证
+
+---
+
+#### 语义保真度测试（贯穿所有层级）
+- 审计 `.autotest` 的 `skip_if rust`（当前 015-notes 已全清，但其他示例可能有）。
+- 新增覆盖子组件状态生命周期的测试场景：构造 → Init → 编辑 → Save → 回写 → 重建后状态保持。
+- 长期目标：`.at` 语义特性矩阵（component model/store composable/lifecycle/props sync/conditional rendering/for loop），每个特性 VM+Rust 双跑。
+
+#### 推荐实施顺序
+**L1（泛化特判）→ 新应用实测 → 视结果决定 L2/L3**。遵循 YAGNI：先用最小改动消除已知风险（特判），再等真实需求驱动架构重构（L3）。避免为未暴露的理论缺陷提前付出 clone/RefCell 代价。
+
+### 15.6 实施风险与缓解（按层级）
+
+| 风险 | 适用层级 | 缓解 |
+|------|----------|------|
+| 泛化特判时 .at 源码分析不全 | L1 | 每改一个特判即双跑测试；特判泛化的判据要有明确的 .at 语法对应 |
+| view/on sync 字段统一后字段集合变化 | L1 改动 4 | 统一用 `find_sync_fields_for_child`，对照生成代码确认无字段丢失 |
+| props sync 时机（view &self 借用约束） | L3 | iced 无 update→view 钩子点（§15.8），只能在 view 内 clone 或 RefCell |
+| 持久实例 Clone 开销（每帧 clone 整个子组件含 store） | L3 方案 A | 考虑只持久化私有 scalar（editing 等），props 仍 view 时组装 |
+| RefCell 嵌套 borrow panic | L3 方案 B | 严格限定 borrow 作用域；参考 renderer.rs:2343-2384 的既有模式 |
+| 多 store 场景（`STORE_NAMES` 固定别名 "store"，`rust_ui.rs:432`） | 所有层级 | 当前 015-notes 单 store，不处理多 store；标记为已知限制 |
+| `component_state_fields` 跨文件预扫与新机制冲突 | 所有层级 | 复用该 map（子组件标量字段清单）；L1 用于 Init 默认值，L3 用于持久实例初始化 |
+
+### 15.7 验收标准总览（详细标准见 §15.5 各层级）
+
+**L1 验收（推荐首选）**：
+- [ ] 3 个特判的硬编码字符串（"Editor"/"note"/"deleted"）从 `rust.rs` 消失
+- [ ] view/on sync 字段统一（不再有 `rust.rs:2486` 启发式过滤）
+- [ ] `.autotest` 13 场景 VM/Rust 双绿
+- [ ] **新应用验证**：不同组件名/数据布局的 `.at`，a2r 生成后 Rust 模式开箱可用
+
+**L2 验收（可选）**：L1 验收 + 新增字段不静默丢失 + store clone 成本降低
+
+**L3 验收（仅在 L1/L2 不足时）**：
+- [ ] `App` struct 无 hoist 标量字段（仅持久子组件字段）
+- [ ] `EditorPanel::new` 仅在 App::new 出现 1 次，on/view 中 0 次
+- [ ] `.autotest` 13 场景双绿 + 新应用验证
+
+### 15.8 与现有代码的关系 + 关键约束
+
+**改动范围**（所有层级均限于）：
 - `crates/auto-lang/src/ui_gen/rust.rs`（生成器，主战场）
-- `crates/auto-man/src/rust_ui.rs`（编排层，可能微调 `collect_component_state_fields` 用途）
-- `crates/auto-lang/src/ui/component.rs`（Component trait **无需改**，持久实例方案不需要新 trait 方法——子组件作为普通字段持有）
+- `crates/auto-man/src/rust_ui.rs`（编排层，L1 可能微调 `collect_component_state_fields` 用途）
+- `crates/auto-lang/src/ui/component.rs`（Component trait **无需改**——L1/L2 不涉及 trait，L3 子组件作为普通字段持有）
+- **不改动 VM 模式任何代码**（VM 已正确）
+- **不引入新依赖**
 
-**不引入新依赖**。利用已有的 `component_state_fields` map、`child_components` 列表、`extract_child_constructor_args`。本质是把"临时构造 + 状态搬运"重构为"持久实例 + props 同步"，更贴近 VM 的"持久堆 + render 时 props 注入"语义。
+**关键约束（2026-07-31 调研补充，原设计遗漏）**：
+
+1. **`view(&self)` 借用约束**：Component trait 的 `view()` 是不可变借用（`component.rs:46`）。持久实例方案（L3）无法在 view 中直接 `self.child.prop = ...`，必须选 view 内 clone（方案 A）或 RefCell（方案 B）。这是原 §15.3/15.4 设计的技术错误，已修正。
+
+2. **iced runtime 无 update→view 钩子点**：iced 的 `application(new, update, view)` 三入口由 runtime 调度（`renderer.rs:6294-6311`，`iced::application(C::default, C::update, view)`）。生成器只能编写 `on` 和 `view` 的函数体，**无法在 update 与 view 调度之间插入 `sync_props` 调用**。因此 props sync 只能放在 view 内部（受约束 1 限制）或 on 内部（当前 hoist+sync 做法）。
+
+3. **子组件已 derive Clone**：`00271d9a` 为 hoist+sync 的 clone 往返已让 EditorPanel/NavTree derive Clone（`main.rs:206,477`）。L3 方案 A 无需额外加 derive。
+
+**复用的现有机制**：`component_state_fields` map、`child_components` 列表、`extract_child_constructor_args`、`find_sync_fields_for_child`、`STORE_NAMES` thread-local。L1 本质是把"硬编码特判"重构为"基于 .at 源码分析的通用代码"，复用这些既有基础设施。
