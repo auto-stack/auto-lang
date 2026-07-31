@@ -1062,7 +1062,7 @@ AppMsg::NewNote => {
 
 ---
 
-#### L1（推荐首选，低风险高 ROI）：泛化 3 个特判 hack
+#### L1（推荐首选，低风险高 ROI）：泛化 3 个特判 hack ✅ 已完成（`25377aac`）
 
 **目标**：用基于 `.at` 源码分析的通用代码，替代 3 个硬编码 "Editor"/"note"/"deleted" 的特判。**保留已验证有效的 hoist+sync 机制**。
 
@@ -1086,10 +1086,11 @@ AppMsg::NewNote => {
 - 现状：view 路径用启发式排除 `Vec<`/`_id`/`notes`/`search`（`rust.rs:2486`），on 路径用 `find_sync_fields_for_child`（`2517-2540`）——两套字段集合不一致
 - 目标：view 路径也调用 `find_sync_fields_for_child`，统一字段来源
 
-**L1 验收**：
-- [ ] 3 个特判的硬编码字符串（"Editor"/"note"/"deleted"）从 `rust.rs` 消失
-- [ ] `.autotest` 13 场景 VM/Rust 双绿
-- [ ] **新应用验证**：用一个不同组件名/数据布局的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
+**L1 验收**（✅ 已完成，commit `25377aac`）：
+- [x] 3 个特判的硬编码字符串（"Editor"/"note"/"deleted"）从 `rust.rs` 消失
+- [x] view/on sync 字段统一（不再有启发式过滤）
+- [x] `.autotest` 13 场景 VM/Rust 双绿（VM 13/0/0 + Rust 13/0/0）
+- [ ] **新应用验证**（待做）：用一个不同组件名/数据布局的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
 
 **L1 风险**：低。改动局部（特判代码块），hoist+sync 主机制不动。每改一个特判即可双跑验证。
 
