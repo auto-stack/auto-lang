@@ -85,6 +85,12 @@ pub struct RustGenerator {
     /// Child component names referenced in the current widget's view tree
     child_components: Vec<String>,
 
+    /// Plan 371 L3: child component names that appear INSIDE a for-loop in the
+    /// view tree. These CANNOT be persistent fields (multiple instances), so
+    /// they keep the old temp-construction pattern. Single-instance children
+    /// (not in this set) become persistent struct fields.
+    loop_child_components: std::collections::HashSet<String>,
+
     /// Plan 371 Task 22c: map of component name -> its own scalar state fields
     /// (name, rust_type), collected across all widgets parsed in the same
     /// compile unit, so a parent using a child can hoist+sync its state.
@@ -166,6 +172,7 @@ impl RustGenerator {
             needs_imports: true,
             indent: 0,
             child_components: Vec::new(),
+            loop_child_components: std::collections::HashSet::new(),
             component_state_fields: std::collections::HashMap::new(),
             component_semantics: std::collections::HashMap::new(),
             loop_vars: Vec::new(),
@@ -224,6 +231,7 @@ impl RustGenerator {
         self.value_loop_vars.clear();
         self.value_locals.clear();
         self.child_components.clear();
+        self.loop_child_components.clear();
         self.has_init = false;
         self.init_api_info = None;
         self.needs_imports = true;
@@ -597,12 +605,14 @@ impl RustGenerator {
     fn generate_struct(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
-        // Plan 371 Task 22c: stores + components holding a store need Clone.
+        // Plan 371 Task 22c / L3: stores + persistent child components need Clone.
         let is_store_itself = STORE_NAMES.with(|sn| {
             sn.borrow().values().any(|s| s.as_str() == widget.name)
         });
         let has_store_field = STORE_NAMES.with(|sn| !sn.borrow().is_empty()) && !is_store_itself;
-        if is_store_itself || has_store_field {
+        let has_persistent_child = self.child_components.iter()
+            .any(|c| self.is_persistent_child(c));
+        if is_store_itself || has_store_field || has_persistent_child {
             code.push_str("#[derive(Clone, Debug)]\n");
         } else {
             code.push_str("#[derive(Debug)]\n");
@@ -645,13 +655,27 @@ impl RustGenerator {
             own_fields.insert(field_name.clone());
         }
 
-        // Plan 371 Task 22c: hoist child components' own scalar state fields.
+        // Plan 371 Task 22c / L3: child component state.
+        // - Persistent children (single-instance, not in for-loop): add a persistent
+        //   instance field (e.g. `pub editor_panel: EditorPanel`). Their scalar
+        //   state lives inside the instance, so we DON'T hoist those fields.
+        // - Loop children: hoist their scalar state fields (old behavior).
         for child_name in &self.child_components {
-            if let Some(child_fields) = self.component_state_fields.get(child_name) {
-                for (f, ty) in child_fields {
-                    if !own_fields.contains(f) {
-                        code.push_str(&format!("    pub {}: {},\n", f, ty));
-                        own_fields.insert(f.clone());
+            if self.is_persistent_child(child_name) {
+                // L3: persistent instance field.
+                let field = Self::child_field_name(child_name);
+                if !own_fields.contains(&field) {
+                    code.push_str(&format!("    pub {}: {},\n", field, child_name));
+                    own_fields.insert(field);
+                }
+            } else {
+                // Loop child: hoist scalar state fields (legacy behavior).
+                if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                    for (f, ty) in child_fields {
+                        if !own_fields.contains(f) {
+                            code.push_str(&format!("    pub {}: {},\n", f, ty));
+                            own_fields.insert(f.clone());
+                        }
                     }
                 }
             }
@@ -749,7 +773,12 @@ impl RustGenerator {
         // dispatch Init message at construction.
         // Async Init (init_api_info is Some) is dispatched by the runtime boot task instead.
         let sync_init = self.has_init && self.init_api_info.is_none();
-        if sync_init {
+        // Plan 371 L3: force __self mode if we have persistent children (need
+        // post-construct re-initialization with real props).
+        let has_persistent_child = self.child_components.iter()
+            .any(|c| self.is_persistent_child(c));
+        let force_self = sync_init || has_persistent_child;
+        if force_self {
             let _msg_name = self.current_msg_name();
             code.push_str("        let mut __self = Self {\n");
         } else {
@@ -767,7 +796,10 @@ impl RustGenerator {
             code.push_str(&format!("            {}: {},\n", state.name, init));
         }
 
-        // Plan 371 Task 22c: initialize hoisted child-component state fields.
+        // Plan 371 Task 22c / L3: initialize child-component state.
+        // - Persistent children: initialize with placeholder (Child::new(zero_values)).
+        //   Real props are synced after __self construction (see post-construct block).
+        // - Loop children: hoist scalar state fields with defaults (legacy).
         {
             let own_names: std::collections::HashSet<String> = widget
                 .state_vars
@@ -775,7 +807,14 @@ impl RustGenerator {
                 .map(|s| s.name.clone())
                 .collect();
             for child_name in &self.child_components {
-                if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                if self.is_persistent_child(child_name) {
+                    // L3: persistent instance — placeholder init via Default.
+                    // Real props are applied post-construct below.
+                    let field = Self::child_field_name(child_name);
+                    if !own_names.contains(&field) {
+                        code.push_str(&format!("            {}: {}::default(),\n", field, child_name));
+                    }
+                } else if let Some(child_fields) = self.component_state_fields.get(child_name) {
                     for (f, ty) in child_fields {
                         if own_names.contains(f) {
                             continue;
@@ -833,10 +872,27 @@ impl RustGenerator {
             }
         });
 
-        if sync_init {
+        // Plan 371 L3: close struct literal. If force_self (sync_init or
+        // persistent children), use __self pattern and add post-construct code.
+        if force_self {
             let msg_name = self.current_msg_name();
             code.push_str(&format!("        }};\n"));
-            code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
+            // L3: re-construct persistent children with real props.
+            for child_name in &self.child_components {
+                if self.is_persistent_child(child_name) {
+                    let field = Self::child_field_name(child_name);
+                    let constructor_args = self.find_constructor_args_for_child(widget, child_name);
+                    // Replace self. with __self. in constructor args (we're in __self context).
+                    let args = constructor_args.replace("self.", "__self.");
+                    code.push_str(&format!(
+                        "        __self.{} = {}::new({});\n",
+                        field, child_name, args
+                    ));
+                }
+            }
+            if sync_init {
+                code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
+            }
             code.push_str("        __self\n");
         } else {
             code.push_str("        }\n");
@@ -845,11 +901,33 @@ impl RustGenerator {
         code.push_str("    }\n");
         code.push_str("}\n");
 
-        // Default impl — only for widgets without props (props require arguments)
+        // Default impl — always generated. For widgets with props, use placeholder
+        // values (serde_json::Value::Null for custom types) so persistent-child
+        // fields can be initialized with Child::default() in the parent's struct literal.
         if !has_props {
             code.push_str(&format!(
                 "impl Default for {} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n",
                 widget_name
+            ));
+        } else {
+            // Generate Default with placeholder props matching each prop's type.
+            let placeholder_args: Vec<String> = non_msg_props.iter()
+                .map(|p| {
+                    let ty = self.prop_types.get(&p.name)
+                        .cloned()
+                        .unwrap_or_else(|| self.prop_rust_type(p));
+                    match ty.as_str() {
+                        "String" => "\"\".to_string()",
+                        "i32" | "u32" | "i64" | "u64" => "0",
+                        "f32" | "f64" => "0.0",
+                        "bool" => "false",
+                        _ => "serde_json::Value::Null",
+                    }.to_string()
+                })
+                .collect();
+            code.push_str(&format!(
+                "impl Default for {} {{\n    fn default() -> Self {{ Self::new({}) }}\n}}\n",
+                widget_name, placeholder_args.join(", ")
             ));
         }
 
@@ -921,10 +999,15 @@ impl RustGenerator {
                 }
             }
         }
-        // Plan 371 Task 22c: include hoisted child-component scalar state fields
-        // (e.g. App's editing/edit_title) so autoui_state can read them.
+        // Plan 371 Task 22c / L3: include child-component scalar state fields.
+        // - Loop children: hoist scalar fields directly (they live on the parent).
+        // - Persistent children: their state lives in the instance field, so we
+        //   recurse into self.<field>.state_snapshot() instead.
         for child_name in &self.child_components {
-            if let Some(child_fields) = self.component_state_fields.get(child_name) {
+            if self.is_persistent_child(child_name) {
+                // L3: persistent child — recurse into the instance's snapshot.
+                // (handled by the component-typed field recursion below)
+            } else if let Some(child_fields) = self.component_state_fields.get(child_name) {
                 for (f, ty) in child_fields {
                     if is_scalar_state_type(ty) && !scalars.iter().any(|(n, _)| n == f) {
                         scalars.push((f.clone(), ty.clone()));
@@ -964,6 +1047,16 @@ impl RustGenerator {
         for (name, ty) in self.state_types.iter().chain(self.prop_types.iter()) {
             if known_components.contains(ty) && !recurse_fields.contains(name) && name != "store" {
                 recurse_fields.push(name.clone());
+            }
+        }
+        // Plan 371 L3: persistent child component fields (e.g. editor_panel)
+        // also need recursion so their state (editing/edit_title) is visible.
+        for child_name in &self.child_components {
+            if self.is_persistent_child(child_name) {
+                let field = Self::child_field_name(child_name);
+                if !recurse_fields.contains(&field) {
+                    recurse_fields.push(field);
+                }
             }
         }
 
@@ -1142,26 +1235,43 @@ impl RustGenerator {
                         .cloned();
                     if let Some(child_name) = target {
                         let child_msg = format!("{}Msg", child_name);
-                        let sync: Vec<String> = self.component_state_fields.get(&child_name)
-                            .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
-                            .unwrap_or_default();
-                        let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
+                        let persistent = self.is_persistent_child(&child_name);
+                        let field = Self::child_field_name(&child_name);
                         // Ensure the preceding body statement ends with ';'.
                         code.push_str("                ;\n");
-                        code.push_str(&format!(
-                            "                {{ let mut __ep = {}::new({});\n",
-                            child_name, constructor_args
-                        ));
-                        code.push_str(&format!(
-                            "                __ep.on({}::Init);\n",
-                            child_msg
-                        ));
-                        for f in &sync {
+                        if persistent {
+                            // L3: use persistent instance — update props then Init.
+                            let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
+                            // Sync props from constructor args, then call on(Init).
                             code.push_str(&format!(
-                                "                self.{} = __ep.{}.clone();\n", f, f
+                                "                self.{} = {}::new({});\n",
+                                field, child_name, constructor_args
                             ));
+                            code.push_str(&format!(
+                                "                self.{}.on({}::Init);\n",
+                                field, child_msg
+                            ));
+                        } else {
+                            // Loop child: temp-construct, Init, sync back.
+                            let sync: Vec<String> = self.component_state_fields.get(&child_name)
+                                .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
+                                .unwrap_or_default();
+                            let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
+                            code.push_str(&format!(
+                                "                {{ let mut __ep = {}::new({});\n",
+                                child_name, constructor_args
+                            ));
+                            code.push_str(&format!(
+                                "                __ep.on({}::Init);\n",
+                                child_msg
+                            ));
+                            for f in &sync {
+                                code.push_str(&format!(
+                                    "                self.{} = __ep.{}.clone();\n", f, f
+                                ));
+                            }
+                            code.push_str("                }\n");
                         }
-                        code.push_str("                }\n");
                     }
                 }
 
@@ -1190,12 +1300,9 @@ impl RustGenerator {
             }
 
             // Add handler forwarding for child component message wrappers.
-            // Strategy: create a temp child instance, sync parent state fields that match
-            // child field names, call child.on(inner), then sync back.
             for child_name in &self.child_components {
-                let _child_msg = format!("{}Msg", child_name);
-                // Find parent state vars that likely correspond to child fields
-                // (same name in parent state as in child component)
+                let persistent = self.is_persistent_child(child_name);
+                let field_name = Self::child_field_name(child_name);
                 let sync_fields = self.find_sync_fields_for_child(widget, child_name);
                 let constructor_args = self.find_constructor_args_for_child(widget, child_name);
 
@@ -1204,40 +1311,49 @@ impl RustGenerator {
                     msg_name, child_name
                 ));
 
-                // Create temporary child instance with constructor args
-                code.push_str(&format!(
-                    "                let mut __child = {}::new({});\n",
-                    child_name, constructor_args
-                ));
-
-                // Sync parent state vars to child fields (by name matching)
-                for field in &sync_fields {
+                if persistent {
+                    // Plan 371 L3: persistent child — operate directly on the field.
+                    // The child's on() may mutate its cloned store (e.g. NavTree's
+                    // SelectPinned sets store.active_folder). Sync store back so the
+                    // parent sees the change. Private state (editing etc.) persists
+                    // in the field and needs no sync.
                     code.push_str(&format!(
-                        "                __child.{} = self.{}.clone();\n",
-                        field, field
+                        "                self.{}.on(inner);\n",
+                        field_name
                     ));
+                    // Sync store back if the child has one.
+                    let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+                    if has_store {
+                        code.push_str(&format!(
+                            "                self.store = self.{}.store.clone();\n",
+                            field_name
+                        ));
+                    }
+                } else {
+                    // Loop child (or legacy): temp-construct, sync in/out, then drop.
+                    code.push_str(&format!(
+                        "                let mut __child = {}::new({});\n",
+                        child_name, constructor_args
+                    ));
+                    for field in &sync_fields {
+                        code.push_str(&format!(
+                            "                __child.{} = self.{}.clone();\n",
+                            field, field
+                        ));
+                    }
+                    code.push_str("                __child.on(inner);\n");
+                    for field in &sync_fields {
+                        code.push_str(&format!(
+                            "                self.{} = __child.{};\n",
+                            field, field
+                        ));
+                    }
                 }
 
-                // Apply the message
-                code.push_str("                __child.on(inner);\n");
-
-                // Sync child fields back to parent state
-                for field in &sync_fields {
-                    code.push_str(&format!(
-                        "                self.{} = __child.{};\n",
-                        field, field
-                    ));
-                }
-
-                // Plan 371 L1: General prop-writeback. Replaces the old hardcoded
-                // "constructor_args.contains(\"note\")" check with semantics-driven
-                // logic: for each prop the child's handlers WRITE (from the cross-
-                // file pre-scan), write the (possibly mutated) child prop value back
-                // to the parent's data source. Only generate for props whose value
-                // comes from an indexable parent collection (e.g. notes[active_id]).
-                // The old "note[\"deleted\"]" delete-check is removed — it was dead
-                // code (EditorPanel's Delete handler is `()` in rust mode; real
-                // deletion is handled by the parent's own DeleteActive arm).
+                // Plan 371 L1: General prop-writeback. For each prop the child's
+                // handlers WRITE, write the (possibly mutated) child prop back to the
+                // parent's data source. Persistent children use self.<field>.<prop>;
+                // temp children use __child.<prop>.
                 let written_props: Vec<String> = self.component_semantics.get(child_name)
                     .map(|s| s.written_props.clone())
                     .unwrap_or_default();
@@ -1247,13 +1363,16 @@ impl RustGenerator {
                         && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
                     let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
                     let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
+                    let prop_owner = if persistent {
+                        format!("self.{}", field_name)
+                    } else {
+                        "__child".to_string()
+                    };
                     if !notes_prefix.is_empty() && !active_prefix.is_empty() {
                         for prop in &written_props {
-                            // Write the child's (possibly mutated) prop back to the
-                            // parent's collection at the active index.
                             code.push_str(&format!(
-                                "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = __child.{}.clone();\n                }}\n",
-                                notes_prefix, active_prefix, prop
+                                "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = {}.{}.clone();\n                }}\n",
+                                notes_prefix, active_prefix, prop_owner, prop
                             ));
                         }
                     }
@@ -1574,33 +1693,50 @@ impl RustGenerator {
     /// Pre-scan the view tree to find custom widget references (e.g., EditorPanel, Sidebar).
     /// These need wrapper message variants in the parent's enum.
     fn scan_child_components(&mut self, node: &AuraNode) {
+        self.scan_child_components_inner(node, false);
+    }
+
+    /// Recursive scan with in_loop tracking.
+    /// Plan 371 L3: children found inside a for-loop are added to
+    /// `loop_child_components` so they are NOT promoted to persistent fields.
+    fn scan_child_components_inner(&mut self, node: &AuraNode, in_loop: bool) {
         match node {
             AuraNode::Element { tag, children, .. } => {
-                if self.is_custom_widget(tag) && !self.child_components.contains(&tag.to_string()) {
-                    self.child_components.push(tag.clone());
+                if self.is_custom_widget(tag) {
+                    if !self.child_components.contains(&tag.to_string()) {
+                        self.child_components.push(tag.clone());
+                    }
+                    if in_loop {
+                        self.loop_child_components.insert(tag.clone());
+                    }
                 }
                 for child in children {
-                    self.scan_child_components(child);
+                    self.scan_child_components_inner(child, in_loop);
                 }
             }
             AuraNode::ForLoop { body, .. } => {
+                // Plan 371 L3: mark children inside for-loops — they can't be
+                // persistent fields (multiple instances). Scan with in_loop=true.
                 for child in body {
-                    self.scan_child_components(child);
+                    self.scan_child_components_inner(child, true);
                 }
             }
             AuraNode::Conditional { then_body, else_body, .. } => {
                 for child in then_body {
-                    self.scan_child_components(child);
+                    self.scan_child_components_inner(child, in_loop);
                 }
                 if let Some(else_nodes) = else_body {
                     for child in else_nodes {
-                        self.scan_child_components(child);
+                        self.scan_child_components_inner(child, in_loop);
                     }
                 }
             }
             AuraNode::Component { name, .. } => {
                 if !self.child_components.contains(name) {
                     self.child_components.push(name.clone());
+                }
+                if in_loop {
+                    self.loop_child_components.insert(name.clone());
                 }
             }
             _ => {}
@@ -2511,9 +2647,7 @@ impl RustGenerator {
     fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
         let msg_name = self.current_msg_name();
 
-        // Build constructor arguments from props
-        // Props like "note: .notes[.active_id]" need to be converted to Rust expressions
-        // Plan 374: Sort alphabetically + use arg_to_rust for .clone()
+        // Build constructor arguments from props (for loop children or prop sync).
         let mut constructor_args: Vec<String> = Vec::new();
         let mut sorted_keys: Vec<&String> = props.keys()
             .filter(|k| *k != "style" && *k != "class")
@@ -2524,49 +2658,71 @@ impl RustGenerator {
                 constructor_args.push(self.arg_to_rust(expr));
             }
         }
-
         let args_str = constructor_args.join(", ");
 
-        // Plan 371 L1: Find parent state vars that should be synced to child
-        // before rendering, so the child's view reflects current parent state
-        // (e.g., editing=true). This mirrors `find_sync_fields_for_child` (used
-        // by the on() forwarding arm) to keep the two paths consistent — the old
-        // heuristic filter (exclude Vec<_id/notes/search) diverged from the on()
-        // path and could drop fields. We now collect the same field set: all
-        // scalar state_types + store field + child-own hoisted fields.
-        let mut sync_fields: Vec<String> = self.state_types.keys()
-            .filter(|name| {
-                let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
-                !ty.starts_with("Vec<")
-            })
-            .cloned()
-            .collect();
-        // Sync the store composable field (same as find_sync_fields_for_child).
-        let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
-        if has_store && !sync_fields.iter().any(|f| f == "store") {
-            sync_fields.push("store".to_string());
-        }
-        // Plan 371 Task 22c: also sync hoisted child-own state fields before .view().
-        if let Some(child_fields) = self.component_state_fields.get(tag) {
-            for (f, _ty) in child_fields {
-                if !sync_fields.iter().any(|e| e == f) {
-                    sync_fields.push(f.clone());
+        // Plan 371 L3: persistent children use self.<field>.view() with prop sync.
+        // Since view() is &self (immutable), we clone the instance, sync props on
+        // the clone, then call .view() on it. The clone carries the persistent
+        // private state (editing/edit_title etc.); props (note/store) are refreshed.
+        if self.is_persistent_child(tag) {
+            let field = Self::child_field_name(tag);
+            // Collect prop sync assignments for the cloned instance.
+            let mut prop_keys: Vec<&String> = props.keys()
+                .filter(|k| *k != "style" && *k != "class")
+                .collect();
+            prop_keys.sort();
+            let mut sync_code = String::new();
+            for key in &prop_keys {
+                if let crate::aura::AuraPropValue::Expr(expr) = &props[*key] {
+                    let prop_val = self.arg_to_rust(expr);
+                    sync_code.push_str(&format!("__c.{} = {}; ", key, prop_val));
                 }
             }
-        }
-
-        if sync_fields.is_empty() {
-            format!(
-                "{}::new({}).view().map_msg(|m| {}::{}(m))",
-                tag, args_str, msg_name, tag
-            )
-        } else {
-            let mut code = format!("{{ let mut __{} = {}::new({}); ", tag.to_lowercase(), tag, args_str);
-            for field in &sync_fields {
-                code.push_str(&format!("__{}.{} = self.{}.clone(); ", tag.to_lowercase(), field, field));
+            // Store sync: persistent children may need the parent's store.
+            let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+            if has_store {
+                sync_code.push_str(&format!("__c.store = self.store.clone(); "));
             }
-            code.push_str(&format!("__{}.view().map_msg(|m| {}::{}(m)) }}", tag.to_lowercase(), msg_name, tag));
-            code
+            if sync_code.is_empty() {
+                format!("self.{}.view().map_msg(|m| {}::{}(m))", field, msg_name, tag)
+            } else {
+                format!("{{ let mut __c = self.{}.clone(); {}__c.view().map_msg(|m| {}::{}(m)) }}",
+                    field, sync_code, msg_name, tag)
+            }
+        } else {
+            // Loop child (or legacy): temp-construct, sync fields, view, drop.
+            let mut sync_fields: Vec<String> = self.state_types.keys()
+                .filter(|name| {
+                    let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
+                    !ty.starts_with("Vec<")
+                })
+                .cloned()
+                .collect();
+            let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+            if has_store && !sync_fields.iter().any(|f| f == "store") {
+                sync_fields.push("store".to_string());
+            }
+            if let Some(child_fields) = self.component_state_fields.get(tag) {
+                for (f, _ty) in child_fields {
+                    if !sync_fields.iter().any(|e| e == f) {
+                        sync_fields.push(f.clone());
+                    }
+                }
+            }
+
+            if sync_fields.is_empty() {
+                format!(
+                    "{}::new({}).view().map_msg(|m| {}::{}(m))",
+                    tag, args_str, msg_name, tag
+                )
+            } else {
+                let mut code = format!("{{ let mut __{} = {}::new({}); ", tag.to_lowercase(), tag, args_str);
+                for field in &sync_fields {
+                    code.push_str(&format!("__{}.{} = self.{}.clone(); ", tag.to_lowercase(), field, field));
+                }
+                code.push_str(&format!("__{}.view().map_msg(|m| {}::{}(m)) }}", tag.to_lowercase(), msg_name, tag));
+                code
+            }
         }
     }
 
@@ -2991,6 +3147,25 @@ impl RustGenerator {
         ];
         // Custom widgets start with uppercase letter
         tag.chars().next().map_or(false, |c| c.is_uppercase()) && !KNOWN_TAGS.contains(&tag)
+    }
+
+    /// Plan 371 L3: Check if a child component is a single-instance (not in a
+    /// for-loop) and thus eligible to be a persistent struct field.
+    fn is_persistent_child(&self, child_name: &str) -> bool {
+        !self.loop_child_components.contains(child_name)
+    }
+
+    /// Plan 371 L3: Convert a PascalCase component name to snake_case for the
+    /// persistent field name (e.g. EditorPanel → editor_panel, NavTree → nav_tree).
+    fn child_field_name(child_name: &str) -> String {
+        let mut result = String::new();
+        for (i, c) in child_name.chars().enumerate() {
+            if c.is_uppercase() && i > 0 {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        }
+        result
     }
 
     /// Default heading styles for h1-h6 tags (consistent with aura_view_builder & vue.rs)
