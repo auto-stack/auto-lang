@@ -30,7 +30,6 @@
 /// tracing crate); their intent is documented in comments.
 
 use.rust std::collections::HashMap
-use.rust std::time
 
 use budget: BudgetAction, BudgetTracker, TokenBudget
 use flow: ExitRouting, FlowSpec, FlowStep, GateType

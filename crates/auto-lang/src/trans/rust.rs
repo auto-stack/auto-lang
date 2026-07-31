@@ -214,7 +214,13 @@ pub struct RustTrans {
     var_spec_map: HashMap<AutoStr, AutoStr>,
 
     // Whether to emit #![allow(...)] pragma at file top (for full files, not test fragments)
-    emit_allow_pragma: bool,
+    pub(crate) emit_allow_pragma: bool,
+
+    // Plan 376U: When true, top-level `use module: symbol` statements render as
+    // `pub use crate::module::{symbol};` (re-exports) instead of private `use`.
+    // Set for crate-root files (lib.at, */mod.at) whose `use` statements are
+    // public re-exports, not private imports.
+    pub(crate) is_crate_root: bool,
 
     // Merge mode: all modules compiled into single .rs file
     // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
@@ -292,6 +298,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            is_crate_root: false,
             merge_mode: false,
             const_names: HashSet::new(),
             module_types: HashMap::new(),
@@ -353,6 +360,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            is_crate_root: false,
             merge_mode: false,
             const_names: HashSet::new(),
             module_types: HashMap::new(),
@@ -3611,6 +3619,12 @@ impl RustTrans {
                             }
                             "now_secs" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec().to_string()")?;
+                                return Ok(());
+                            }
+                            "now_sec" => {
+                                // Plan 376U: bare numeric now_sec() (i32) for
+                                // timestamp math (no .to_string() — caller casts).
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec()")?;
                                 return Ok(());
                             }
                             "now_ms" => {
@@ -8552,7 +8566,11 @@ impl RustTrans {
 
     // Use statement
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
-        let pub_kw = if use_stmt.is_pub { "pub " } else { "" };
+        // Plan 376U: crate-root files (lib.at, */mod.at) use top-level `use X: sym`
+        // as public re-exports, so render `pub use` even when the source has no
+        // explicit `pub` prefix. (Mirrors Rust's `pub use` in lib.rs / mod.rs.)
+        let is_reexport = self.is_crate_root && !use_stmt.is_pub;
+        let pub_kw = if use_stmt.is_pub || is_reexport { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
                 // For dir children — pub mod X; already emitted, but also need

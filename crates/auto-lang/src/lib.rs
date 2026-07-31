@@ -3486,6 +3486,14 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // Full transpilation via RustTrans::trans()
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
+    // Plan 376U: A2R_CRATE_ROOT=1 marks this file as a crate root (lib.at /
+    // */mod.at). Such files emit top-level `use` as `pub use` (re-exports) and
+    // the `#![allow(...)]` crate pragma, so they can serve as an auto-generated
+    // lib.rs / aggregator without hand-editing.
+    if std::env::var("A2R_CRATE_ROOT").map(|v| v == "1").unwrap_or(false) {
+        trans.is_crate_root = true;
+        trans.emit_allow_pragma = true;
+    }
 
     // Plan 376D: Build a shared TypeStore from ALL sibling .at files (including
     // subdirectories) so the type inference engine can resolve cross-module types.
