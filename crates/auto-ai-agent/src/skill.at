@@ -255,7 +255,7 @@ fn parse_frontmatter_body(after_open str) Frontmatter {
 fn strip_bom(raw str) str {
     let p = raw.strip_prefix("\u{feff}")
     is p {
-        Some(rest) -> return rest,
+        Some(rest) -> return rest.to_string(),
         None -> return raw
     }
 }
@@ -309,7 +309,7 @@ fn slice_and_trim(s str, start uint) str {
         lo = end
     }
     let slice = s.substring(lo, end)
-    return slice.trim_start()
+    return slice.trim_start().to_string()
 }
 
 /// Extract a `key: value` field from frontmatter text. Handles quoted values
@@ -341,7 +341,7 @@ fn clean_field_value(val str) str {
 /// Remove the first and last character (used after the quote-pair check).
 fn unquote(val str) str {
     let end = val.len() as uint - 1
-    return val.substring(1, end)
+    return val.substring(1, end).to_string()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -399,14 +399,14 @@ ext SkillTool {
     pub static fn new(registry Arc<SkillRegistry>) SkillTool {
         return SkillTool(
             registry: registry,
-            description_cache: build_description(registry),
-            parameters_cache: build_parameters(registry)
+            description_cache: build_description((*registry).clone()),
+            parameters_cache: build_parameters((*registry).clone())
         )
     }
 
     /// A read-only view of the registry (for bootstrap injection).
     pub fn registry() SkillRegistry {
-        return self.registry
+        return (*self.registry).clone()
     }
 
     /// Build the `<available_skills>` block appended to the system prompt so the
