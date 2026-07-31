@@ -829,7 +829,42 @@ impl RustGenerator {
                 }
             }
         }
-        if scalars.is_empty() {
+
+        // Plan 371 Task 22b: collect component-typed fields whose state_snapshot
+        // we should recurse into (with a "<field>." prefix) so the rust-mode
+        // autoui_state tool can see child/store state. The store field is
+        // injected via STORE_NAMES (alias "store"); child components declared
+        // as struct fields show up in state_types/prop_types with a type that
+        // matches a registered component name.
+        let mut recurse_fields: Vec<String> = Vec::new();
+        // Store composable field (always named "store" per generate_struct).
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == _widget.name)
+        });
+        if !is_store_itself {
+            STORE_NAMES.with(|sn| {
+                if !sn.borrow().is_empty() && !scalars.iter().any(|(n, _)| n == "store") {
+                    recurse_fields.push("store".to_string());
+                }
+            });
+        }
+        // Child components stored as struct fields (type matches a known
+        // component — registered store or a child_components entry).
+        let known_components: std::collections::HashSet<String> = {
+            let mut s: std::collections::HashSet<String> = STORE_NAMES
+                .with(|sn| sn.borrow().values().cloned().collect());
+            for c in &self.child_components {
+                s.insert(c.clone());
+            }
+            s
+        };
+        for (name, ty) in self.state_types.iter().chain(self.prop_types.iter()) {
+            if known_components.contains(ty) && !recurse_fields.contains(name) && name != "store" {
+                recurse_fields.push(name.clone());
+            }
+        }
+
+        if scalars.is_empty() && recurse_fields.is_empty() {
             return String::new();
         }
 
@@ -841,6 +876,13 @@ impl RustGenerator {
             code.push_str(&format!(
                 "        m.insert({:?}.to_string(), {});\n",
                 name, expr
+            ));
+        }
+        // Recurse into component-typed fields, prefixing keys with "<field>.".
+        for field in &recurse_fields {
+            code.push_str(&format!(
+                "        for (k, v) in self.{}.state_snapshot() {{ m.insert(format!(\"{{}}.{{}}\", {:?}, k), v); }}\n",
+                field, field
             ));
         }
         code.push_str("        m\n");
@@ -4483,6 +4525,89 @@ mod tests {
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
         assert!(!code.contains("fn state_snapshot"), "should not emit override: {}", code);
+    }
+
+    /// Plan 371 Task 22b: a component that has a registered store composable
+    /// must recurse into `self.store.state_snapshot()` with a `store.` prefix,
+    /// so child/store state is visible to the rust-mode autoui_state tool.
+    #[test]
+    fn test_state_snapshot_recurses_into_store() {
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "search".to_string(),
+                type_info: Type::StrFixed(0),
+                initial: crate::ast::Expr::Str("x".into()),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        // Register a store composable (as rust_ui.rs does before generating).
+        gen.register_store("store", "NotesStore");
+        let code = gen.generate(&widget).unwrap();
+
+        // The override recurses into the store field with a "store." prefix.
+        assert!(
+            code.contains("self.store.state_snapshot()"),
+            "missing store recursion: {}",
+            code
+        );
+        assert!(
+            code.contains(r#""store""#) && code.contains("format!("),
+            "missing store. prefix formatting: {}",
+            code
+        );
+        // The store struct itself should NOT recurse into a `store` field
+        // (avoid NotesStore { store: NotesStore } infinite recursion).
+        let store_widget = AuraWidget {
+            name: "NotesStore".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "dark_mode".to_string(),
+                type_info: Type::Bool,
+                initial: crate::ast::Expr::Bool(false),
+                decorators: vec![],
+            }],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+        let store_code = gen.generate(&store_widget).unwrap();
+        assert!(
+            !store_code.contains("self.store.state_snapshot()"),
+            "store struct must not recurse into itself: {}",
+            store_code
+        );
     }
 
     #[test]
