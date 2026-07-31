@@ -1655,7 +1655,18 @@ impl RustGenerator {
                     // (Plan 371 T5c: edit_title input had no last_input_text injection).
                     let value_field: Option<String> = match props.get("value") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(_, field))) => Some(field.to_string()),
+                        // Only match direct self.field (one-level Dot). Multi-level
+                        // dots like self.store.edit_text should NOT trigger field
+                        // injection — the value comes from the store, not a local
+                        // state var, so injecting self.edit_text = ... would fail.
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
+                            // Check it's a direct self.field, not self.store.field
+                            let is_direct_self = match obj.as_ref() {
+                                crate::ast::Expr::Ident(name) => name.as_str() == "self" || name.as_str() == ".",
+                                _ => false,
+                            };
+                            if is_direct_self { Some(field.to_string()) } else { None }
+                        }
                         _ => None,
                     };
                     if let Some(name) = value_field {

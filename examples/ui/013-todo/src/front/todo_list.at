@@ -1,14 +1,13 @@
 // front/todo_list.at — TodoList component.
-// Holds filter state, renders todos inline (via view fn fragments, not
-// a child component in a for-loop — a2r doesn't yet support child components
-// inside for-loops because the on()-forwarding arm can't reference the loop var).
-// Child component of App — its filter state tests hoist+sync.
+// Holds filter state, renders todos inline. TodoItem child component in a
+// for-loop requires generator fixes (§18.5) — pending. Uses inline rendering
+// + centralized editing state for now.
 
 use todo_store: TodoStore
 
 widget TodoList() {
     msg Msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
-              ClearCompleted }
+              StartEdit(int), CommitEdit, CancelEdit, EditInputChanged(str), ClearCompleted }
 
     model {
         var filter str = "all"
@@ -18,28 +17,40 @@ widget TodoList() {
         col {
             style: "border-t border-gray-200"
 
-            // Todo items — rendered inline (no child component in loop)
+            // Todo items — inline rendering with centralized editing state (§18)
             col {
                 style: "list-none m-0 p-0"
                 for item in .store.todos {
                     if .filter == "all" || (.filter == "active" && item.done == false) || (.filter == "completed" && item.done == true) {
                         row {
                             style: "flex items-center py-3 px-4 border-b border-gray-200"
-                            checkbox {
-                                checked: item.done
-                                onclick: .ToggleTodo(item.id)
-                                style: "w-6 h-6 mr-3"
-                            }
-                            text item.text {
-                                style: if item.done {
-                                    "flex-1 text-lg text-gray-400 line-through"
-                                } else {
-                                    "flex-1 text-lg text-gray-800"
+                            if .store.editing_id == item.id {
+                                input {
+                                    value: .store.edit_text
+                                    oninput: .EditInputChanged
+                                    onenter: .CommitEdit
+                                    style: "flex-1 text-lg px-2 py-1 border border-gray-400 rounded outline-none"
                                 }
-                            }
-                            button "×" {
-                                onclick: .DeleteTodo(item.id)
-                                style: "ml-2 w-8 h-8 text-xl text-gray-400 hover:text-red-500"
+                                button "✓" { onclick: .CommitEdit, style: "ml-2 px-3 py-1 text-sm bg-blue-500 text-white rounded" }
+                                button "✕" { onclick: .CancelEdit, style: "ml-1 px-3 py-1 text-sm text-gray-500 rounded" }
+                            } else {
+                                checkbox {
+                                    checked: item.done
+                                    onclick: .ToggleTodo(item.id)
+                                    style: "w-6 h-6 mr-3"
+                                }
+                                text item.text {
+                                    onclick: .StartEdit(item.id)
+                                    style: if item.done {
+                                        "flex-1 text-lg text-gray-400 line-through cursor-pointer"
+                                    } else {
+                                        "flex-1 text-lg text-gray-800 cursor-pointer"
+                                    }
+                                }
+                                button "×" {
+                                    onclick: .DeleteTodo(item.id)
+                                    style: "ml-2 w-8 h-8 text-xl text-gray-400 hover:text-red-500"
+                                }
                             }
                         }
                     }
@@ -91,6 +102,22 @@ widget TodoList() {
 
         .DeleteTodo(id) -> {
             store.DeleteTodo(id)
+        }
+
+        .StartEdit(id) -> {
+            store.StartEdit(id)
+        }
+
+        .CommitEdit -> {
+            store.CommitEdit()
+        }
+
+        .CancelEdit -> {
+            store.CancelEdit()
+        }
+
+        .EditInputChanged(text) -> {
+            store.SetEditText(text)
         }
 
         .ClearCompleted -> {

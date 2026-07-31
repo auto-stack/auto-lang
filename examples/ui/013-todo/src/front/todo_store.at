@@ -9,10 +9,15 @@ store TodoStore {
         var next_id int = 0
         var active_count int = 0
         var input str = ""
+        // §18 集中编辑状态：循环内 TodoItem 子组件不持有 per-instance 状态，
+        // 编辑态由 store 集中管理（与 VM 单一状态堆语义一致）。
+        var editing_id int = -1
+        var edit_text str = ""
     }
 
     msg Msg { Init, Refresh, AddTodo, SetInput(str), ToggleTodo(int), DeleteTodo(int),
-              ToggleAll, ClearCompleted }
+              ToggleAll, ClearCompleted,
+              StartEdit(int), SetEditText(str), CommitEdit, CancelEdit }
 
     on {
         .Init -> {
@@ -97,6 +102,46 @@ store TodoStore {
         .ClearCompleted -> {
             remove_completed(true)
             .todos = list_todos()
+        }
+
+        // §18 集中编辑 handler（循环内 TodoItem 通过 callback 触发）
+        .StartEdit(id) -> {
+            .editing_id = id
+            var idx int = 0
+            for idx < .todos.len() {
+                if .todos[idx].id == id {
+                    .edit_text = .todos[idx].text
+                }
+                idx = idx + 1
+            }
+        }
+
+        .SetEditText(text) -> {
+            .edit_text = text
+        }
+
+        .CommitEdit -> {
+            if .editing_id >= 0 {
+                if .edit_text == "" {
+                    delete_todo(.editing_id)
+                } else {
+                    var idx int = 0
+                    for idx < .todos.len() {
+                        if .todos[idx].id == .editing_id {
+                            update_todo(.editing_id, .edit_text, .todos[idx].done)
+                        }
+                        idx = idx + 1
+                    }
+                }
+                .todos = list_todos()
+                .editing_id = -1
+                .edit_text = ""
+            }
+        }
+
+        .CancelEdit -> {
+            .editing_id = -1
+            .edit_text = ""
         }
     }
 }

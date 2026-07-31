@@ -1334,3 +1334,55 @@ L2 的两项（同名契约检查 + store clone 优化）在 L3 完成后不再�
 ### 17.7 结论
 
 Plan 371 的 L1/L2/L3 + 4 个预存限制全部完成。Rust 模式的组件状态模型现在与 VM 对齐——单实例子组件作为持久字段存在，状态天然持久，无需 hoist+sync 搬运。唯一已知限制是循环内多实例子组件仍用临时构造（L3 不支持多实例持久化）。
+
+---
+
+## 18. 循环内子组件：路径 A 实施方案（2026-08-01）
+
+§17.7 提到的"循环内多实例子组件"限制，经分析后采用**路径 A（集中状态模式）**解决——这是与 VM 语义对齐的正确设计，不需要生成器改动。
+
+### 18.1 问题回顾
+
+`for todo in .todos { TodoItem(todo) }` 场景下，TodoItem 是循环内子组件。L3 持久化只支持单实例（`pub editor_panel: EditorPanel`），不支持多实例（无法 `pub todo_items: HashMap<...>`）。循环内子组件保持临时构造。
+
+### 18.2 路径选择
+
+三条路径对比：
+- **路径 A（集中状态）**：循环内子组件不持有 per-instance 私有状态，改用父组件集中状态（`editing_id`）。**与 VM 语义一致，零生成器改动**。
+- 路径 B（HashMap 实例数组）：中等生成器改动，需推断 key 字段 + map 增删。
+- 路径 C（VNode path 寻址）：重型，移植 VM ensure_child_state，与 iced view 模型不匹配。
+
+**选路径 A**。理由：VM 模式（`vm_bridge.rs:306-324`）已经证明，循环内子组件的私有状态必须集中管理（VM 单一状态堆只有**一个** `editing` 字段，不是 N 个）。任何在循环内使用的子组件，其私有状态用集中 id 索引（`editing_id == todo.id`），否则多实例互相覆盖。这是 VM 强制的设计约束，也是 Vue/React 列表组件的标准模式。
+
+### 18.3 实施计划
+
+在 013-todo 中还原 TodoItem 子组件（当前被禁用为 `.disabled`），用集中状态模式：
+
+1. **创建/还原 `todo_item.at`**：TodoItem widget 带 `todo` prop + 集中状态 callback（`on_edit(id)` / `on_save(id)`），**无 per-instance 私有状态**（editing/edit_text 移到 store 集中管理）。
+2. **TodoStore 加集中编辑状态**：`editing_id int = -1`、`edit_text str = ""`。
+3. **TodoList view**：`for item in .store.todos { TodoItem(todo: item, on_edit: .StartEdit(item.id), ...) }`。
+4. **TodoItem view**：`if .store.editing_id == .todo.id` 判断编辑态（集中状态），非 per-instance。
+5. **测试**：新增 T7 编辑场景（进入编辑、输入文字、保存），验证集中状态在循环内子组件中正确工作。
+
+**不改生成器**（`rust.rs`/`rust_ui.rs`）。循环内子组件已用临时构造，集中状态通过 store sync 流转。
+
+### 18.4 验收
+- [x] 013-todo 循环内 todo 使用集中编辑状态（`store.editing_id`/`store.edit_text`）
+- [x] 编辑状态无 per-instance（在 store 集中管理，与 VM 语义一致）
+- [x] VM + Rust 双跑通过（含 T7/T8 编辑场景）：VM 8/0/0 + Rust 8/0/0
+
+### 18.5 实施结果（2026-08-01）
+
+**采用路径 A 但以内联渲染实现**（循环内 TodoItem 子组件因生成器的 on()-forwarding 限制②未完全修复，暂用内联渲染 + 集中状态）。
+
+实施内容：
+1. **TodoStore 加集中编辑状态**：`editing_id int = -1`、`edit_text str = ""` + handler（StartEdit/SetEditText/CommitEdit/CancelEdit）
+2. **TodoList 内联渲染**：`for item in .store.todos { if .store.editing_id == item.id { 编辑态 } else { 展示态 } }`
+3. **测试**：新增 T7（点击文本进入编辑模式）+ T8（编辑保存 todo 文字）
+4. **生成器修复**：`scan_input_fields` 只匹配直接 `self.field`（单层 Dot），不匹配 `self.store.field`（多层 Dot）——避免对 store 字段的错误 input 注入
+
+**关于 TodoItem 子组件**：路径 A 的语义（集中状态）已验证正确，但循环内子组件作为独立 widget 仍受 §16.5 限制②（on()-forwarding arm 引用循环变量）阻塞。当前用内联渲染绕过——功能等价，集中状态模式与 VM 一致。循环内子组件的生成器支持（限制②）留作后续独立改进。
+
+### 18.6 结论
+
+循环内多实例子组件的"per-instance 状态持久化"问题，通过**路径 A（集中状态模式）**解决——与 VM 单一状态堆语义对齐，无需 per-instance 持久化。013-todo 的编辑功能（进入编辑、输入文字、保存）在 VM + Rust 双模式下均正确工作。

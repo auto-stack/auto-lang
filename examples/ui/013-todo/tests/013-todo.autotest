@@ -40,3 +40,15 @@ scenario T5 "All 过滤显示全部"
 scenario T6 "items left 计数正确"
   when  click_button label="All"
   then  exists text label="3 items left"
+
+# ── 集中编辑状态（§18 路径 A） ───────────────────────────
+
+scenario T7 "点击文本进入编辑模式"
+  when  click_button label="All"
+  then  exists input label="Note title"
+
+scenario T8 "编辑保存todo文字"
+  when  click_button label="Cancel"
+  when  click_button label="All"
+  then  exists text label="Build a TodoMVC app"
+

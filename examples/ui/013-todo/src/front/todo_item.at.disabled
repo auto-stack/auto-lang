@@ -1,0 +1,64 @@
+// front/todo_item.at — TodoItem component (§18 路径 A: 集中状态模式).
+//
+// 循环内子组件：完全无状态（no model, no store reference）。所有状态
+// 通过 props 传入，所有操作通过 callback props 分发到父组件。
+// 这避免了循环内子组件的 on()-forwarding 问题（item 不在 on 作用域）。
+//
+// editing_id 作为 prop 传入，TodoItem 判断 .editing_id == .todo.id。
+
+widget TodoItem(todo: Todo, editing_id: int, edit_text: str, on_toggle: msg, on_delete: msg, on_edit: msg, on_save: msg, on_cancel: msg, on_edit_text: msg) {
+    msg Msg { Toggle, Delete, Edit, Save, Cancel, EditTextChanged }
+
+    view {
+        row {
+            style: "flex items-center py-3 px-4 border-b border-gray-200"
+
+            if .editing_id == .todo.id {
+                // Editing mode
+                input {
+                    value: .edit_text
+                    oninput: .EditTextChanged
+                    onenter: .Save
+                    style: "flex-1 text-lg px-2 py-1 border border-gray-400 rounded outline-none"
+                }
+                button "✓" {
+                    onclick: .Save
+                    style: "ml-2 px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                }
+                button "✕" {
+                    onclick: .Cancel
+                    style: "ml-1 px-3 py-1 text-sm text-gray-500 rounded hover:bg-gray-100"
+                }
+            } else {
+                // Display mode
+                checkbox {
+                    checked: .todo.done
+                    onclick: .Toggle
+                    style: "w-6 h-6 mr-3"
+                }
+                text .todo.text {
+                    onclick: .Edit
+                    style: if .todo.done {
+                        "flex-1 text-lg text-gray-400 line-through cursor-pointer"
+                    } else {
+                        "flex-1 text-lg text-gray-800 cursor-pointer"
+                    }
+                }
+                button "×" {
+                    onclick: .Delete
+                    style: "ml-2 w-8 h-8 text-xl text-gray-400 hover:text-red-500"
+                }
+            }
+        }
+    }
+
+    on {
+        // All handlers delegate to callbacks (no store reference, no per-instance state)
+        .Toggle -> { on_toggle() }
+        .Delete -> { on_delete() }
+        .Edit -> { on_edit() }
+        .Save -> { on_save() }
+        .Cancel -> { on_cancel() }
+        .EditTextChanged -> { on_edit_text() }
+    }
+}
