@@ -68,6 +68,13 @@ pub struct WidgetDecl {
     /// The Vue backend emits them as Vue `watch(source, handler)` calls;
     /// other backends ignore them.
     pub watch: Vec<WatchDecl>,
+
+    /// Member names declared in a widget-level `expose { ... }` block
+    /// (without the leading dot). The Vue backend emits them as
+    /// `defineExpose({ ... })` in `<script setup>` so a parent holding a
+    /// template ref on this component can call imperative methods or read
+    /// exposed refs; other backends ignore them.
+    pub expose: Vec<Name>,
 }
 
 /// A single watcher inside a widget-level `watch { ... }` block.
@@ -798,6 +805,7 @@ mod tests {
             style: None,
             ext_imports: Vec::new(),
             watch: Vec::new(),
+            expose: Vec::new(),
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

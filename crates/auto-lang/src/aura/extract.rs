@@ -592,6 +592,9 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
                 payload: LogicPayload::AstStmts(w.body.stmts.clone()),
             })
             .collect(),
+        exposes: decl.expose.iter()
+            .map(|n| n.as_str().to_string())
+            .collect(),
     }
 )
 }

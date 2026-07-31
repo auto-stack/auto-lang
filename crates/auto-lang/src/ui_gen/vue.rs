@@ -904,6 +904,12 @@ pub struct VueGenerator {
     /// to emit `const menuEl = ref<HTMLElement | null>(null)` declarations.
     template_refs: Vec<String>,
 
+    /// Subset of `template_refs` attached to child components (not DOM
+    /// elements) via `ref: "canvasRef"` on a sub-widget instantiation.
+    /// Declared as `ref<any>(null)` since the child's defineExpose surface
+    /// is unknown to the parent.
+    component_ref_names: HashSet<String>,
+
     /// External Vue components declared via the widget-level
     /// `use { component: Name from "..." }` block. Keyed by every accepted
     /// view tag form (exact name, snake_case, kebab-case) so `FancyBadge`,
@@ -1028,6 +1034,7 @@ impl VueGenerator {
             explicit_api_imports: false,
             global_listeners: Vec::new(),
             template_refs: Vec::new(),
+            component_ref_names: HashSet::new(),
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
@@ -1798,8 +1805,14 @@ impl VueGenerator {
 
         // Template refs (`ref: "menuEl"` in the view) → Vue template-ref
         // declarations. Handlers access them via `.menuEl` → `menuEl.value!`.
+        // Refs attached to child components are typed `any` (their exposed
+        // surface is unknown to the parent).
         for ref_name in &self.template_refs {
-            script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
+            if self.component_ref_names.contains(ref_name) {
+                script.push_str(&format!("const {} = ref<any>(null)\n", ref_name));
+            } else {
+                script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
+            }
         }
         if !self.template_refs.is_empty() {
             script.push('\n');
@@ -1869,6 +1882,16 @@ impl VueGenerator {
             }
         }
 
+        // Widget-level `expose { ... }`: exposed `on` handlers must be
+        // treated as used even when the template never references them — the
+        // parent calls them through a template ref (defineExpose below).
+        // Marked before defineEmits so their emit() payloads are declared.
+        for name in &widget.exposes {
+            if widget.handlers.contains_key(&format!(".{}", name)) {
+                self.used_handlers.insert(name.clone());
+            }
+        }
+
         // Generate emit if needed
         if self.has_emit {
             // Build event → payload type map from msg declarations.
@@ -1911,13 +1934,24 @@ impl VueGenerator {
                 // Plan 367 P1-4: only declare events for handlers that are
                 // actually used in the template. Unused handlers don't get
                 // function definitions, so declaring their emit types is noise.
-                if !self.used_handlers.contains(event) {
+                // used_handlers holds sanitized fn names (emit names like
+                // "update:modelValue" sanitize to update_modelValue).
+                if !self.used_handlers.contains(event)
+                    && !self.used_handlers.contains(&Self::sanitize_ident(event))
+                {
                     continue;
                 }
-                if let Some(ts_type) = event_payload_types.get(event) {
-                    script.push_str(&format!("  {}: [{}]\n", event, ts_type));
+                // TS object-literal keys must be quoted when the emit name is
+                // not a plain identifier (e.g. 'update:modelValue').
+                let key = if event.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$') {
+                    event.clone()
                 } else {
-                    script.push_str(&format!("  {}: []\n", event));
+                    format!("'{}'", event)
+                };
+                if let Some(ts_type) = event_payload_types.get(event) {
+                    script.push_str(&format!("  {}: [{}]\n", key, ts_type));
+                } else {
+                    script.push_str(&format!("  {}: []\n", key));
                 }
             }
             script.push_str("}>()\n\n");
@@ -1975,28 +2009,46 @@ impl VueGenerator {
         }
 
         // Generate event handlers
+        // fn-name → on-block base pattern (e.g. update_modelValue →
+        // ".update:modelValue"): fn names are sanitized JS identifiers while
+        // handler_params is keyed by the verbatim pattern, so keep the mapping.
+        let mut handler_base_patterns: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         for (pattern, payload) in &widget.handlers {
             let handler_name = self.pattern_to_handler_name(pattern);
+            handler_base_patterns
+                .insert(handler_name.clone(), Self::base_pattern(pattern).to_string());
             let mut body = self.generate_handler_body(payload)?;
             // Auto-emit events for sub-widget handlers that match emit declarations.
             // Plan 367 P0-1: Skip emit if the handler already notifies the parent
             // via a callback prop (props.on_xxx()). In that case the emit is
             // redundant — the parent's callback was already invoked.
-            if self.has_emit && self.emit_events.contains(&handler_name) {
+            // Emit names are verbatim msg variant names (e.g. "update:modelValue"
+            // for a v-model contract); match against the handler's fn name, which
+            // is the sanitized form.
+            let emit_name = if self.has_emit {
+                self.emit_events
+                    .iter()
+                    .find(|e| e.as_str() == handler_name || Self::sanitize_ident(e) == handler_name)
+                    .cloned()
+            } else {
+                None
+            };
+            if let Some(emit_name) = emit_name {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
                 let already_notifies_parent = body.contains(&callback_key);
                 if !already_notifies_parent {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
-                    let pattern_key = format!(".{}", handler_name);
-                    let emit_args: String = Self::get_handler_params(&widget.handler_params, &pattern_key)
+                    let pattern_key = Self::base_pattern(pattern);
+                    let emit_args: String = Self::get_handler_params(&widget.handler_params, pattern_key)
                         .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
                         .unwrap_or_default();
                     if emit_args.is_empty() {
-                        body.push_str(&format!("\nemit('{}')", handler_name));
+                        body.push_str(&format!("\nemit('{}')", emit_name));
                     } else {
-                        body.push_str(&format!("\nemit('{}', {})", handler_name, emit_args));
+                        body.push_str(&format!("\nemit('{}', {})", emit_name, emit_args));
                     }
                 }
             }
@@ -2018,7 +2070,11 @@ impl VueGenerator {
             generated_handlers.insert(handler_name.clone());
 
             // Build params: check for loop-param handlers first, then user-defined params
-            let pattern_key = format!(".{}", handler_name);
+            // (verbatim on-block pattern — fn names are sanitized, patterns are not)
+            let pattern_key = handler_base_patterns
+                .get(handler_name)
+                .cloned()
+                .unwrap_or_else(|| format!(".{}", handler_name));
             let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
                 format!("{}: any", loop_var)
             } else {
@@ -2396,6 +2452,15 @@ impl VueGenerator {
             script.push('\n');
         }
 
+        // Widget-level `expose { ... }` block → defineExpose({ ... }) so a
+        // parent holding a template ref on this component can call imperative
+        // methods (exposed `on` handlers / imported fns) or read exposed
+        // state/template refs. Vue's expose proxy unwraps refs on access, so
+        // exposing the ref object directly is correct.
+        if !widget.exposes.is_empty() {
+            script.push_str(&format!("defineExpose({{ {} }})\n", widget.exposes.join(", ")));
+        }
+
         Ok(script)
     }
 
@@ -2550,11 +2615,68 @@ impl VueGenerator {
         } else {
             let mut html = format!("{}<component{}>\n", ind, attr_str);
             for child in children {
-                html.push_str(&self.node_to_html(child, indent + 1)?);
+                // Component children: slot(name:) elements target named slots.
+                html.push_str(&self.slot_child_to_html(child, indent + 1)?);
             }
             html.push_str(&format!("{}</component>\n", ind));
             Ok(html)
         }
+    }
+
+    /// Generate a slot outlet: `slot` → `<slot />`,
+    /// `slot(name: "header")` → `<slot name="header" />`.
+    /// Children (if any) become Vue slot fallback content.
+    fn generate_slot_outlet_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let name_attr = props
+            .get("name")
+            .and_then(|v| self.extract_string_value(v))
+            .map(|n| format!(" name=\"{}\"", n))
+            .unwrap_or_default();
+        if children.is_empty() {
+            Ok(format!("{}<slot{} />\n", ind, name_attr))
+        } else {
+            let mut html = format!("{}<slot{}>\n", ind, name_attr);
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+            html.push_str(&format!("{}</slot>\n", ind));
+            Ok(html)
+        }
+    }
+
+    /// Emit a child of a component instantiation (sub-widget, external
+    /// `use { component }`, dyn `<component :is>`, or PascalCase component).
+    /// A `slot(name: "x") { ... }` element in this position targets the
+    /// child's named slot → `<template #x>...</template>`; a bare
+    /// `slot { ... }` unwraps its children into the default slot.
+    /// Anything else is emitted normally.
+    fn slot_child_to_html(&mut self, child: &AuraNode, indent: usize) -> GenResult<String> {
+        if let AuraNode::Element { tag, props, children, .. } = child {
+            if tag == "slot" || tag == "Slot" {
+                let ind = "  ".repeat(indent);
+                if let Some(name) = props.get("name").and_then(|v| self.extract_string_value(v)) {
+                    let name = name.to_string();
+                    let mut html = format!("{}<template #{}>\n", ind, name);
+                    for c in children {
+                        html.push_str(&self.node_to_html(c, indent + 1)?);
+                    }
+                    html.push_str(&format!("{}</template>\n", ind));
+                    return Ok(html);
+                }
+                let mut html = String::new();
+                for c in children {
+                    html.push_str(&self.node_to_html(c, indent)?);
+                }
+                return Ok(html);
+            }
+        }
+        self.node_to_html(child, indent)
     }
 
     /// Convert AuraNode to HTML string
@@ -2607,6 +2729,17 @@ impl VueGenerator {
                     return self.generate_dyn_component_html(props, events, children, indent);
                 }
 
+                // Slot outlet (Plan: slots): `slot` → <slot />,
+                // `slot(name: "header")` → <slot name="header" />.
+                // Children (if any) become Vue slot fallback content.
+                // Must run before the unknown-tag div fallback in map_tag.
+                // (Named-slot TARGETING at the parent side — slot(name:) used
+                // as a component child — is handled by slot_child_to_html at
+                // the component children emission sites below.)
+                if tag == "slot" || tag == "Slot" {
+                    return self.generate_slot_outlet_html(props, children, indent);
+                }
+
                 // Special handling for category-section element
                 if tag == "category-section" || tag == "category_section" {
                     return self.generate_category_section_html(props, children, indent);
@@ -2655,6 +2788,26 @@ impl VueGenerator {
                     let mut first_prop_expr: Option<String> = None;
                     // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
                     for (key, value) in props {
+                        // Template ref on a child component: `ref: "canvasRef"`
+                        // → static `ref="canvasRef"` attribute + a `ref<any>`
+                        // declaration in <script setup> (the child's
+                        // defineExpose surface is unknown to the parent).
+                        // Lets handlers call exposed methods via `.canvasRef`.
+                        if key == "ref" {
+                            let ref_name: String = match value {
+                                AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
+                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
+                                _ => continue,
+                            };
+                            if !ref_name.is_empty() {
+                                if !self.template_refs.contains(&ref_name) {
+                                    self.template_refs.push(ref_name.clone());
+                                }
+                                self.component_ref_names.insert(ref_name.clone());
+                                attrs.push(format!("ref=\"{}\"", ref_name));
+                            }
+                            continue;
+                        }
                         // Inline style object on a component: style_obj → :style="{...}"
                         if key == "style_obj" {
                             if let AuraPropValue::StyleBinding(bindings) = value {
@@ -2743,7 +2896,8 @@ impl VueGenerator {
                     } else {
                         let mut html = format!("{}<{}{}>\n", ind, html_tag, attr_str);
                         for child in children {
-                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                            // Component children: slot(name:) elements target named slots.
+                            html.push_str(&self.slot_child_to_html(child, indent + 1)?);
                         }
                         html.push_str(&format!("{}</{}>\n", ind, html_tag));
                         return Ok(html);
@@ -2835,7 +2989,9 @@ impl VueGenerator {
                         // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
                         // declaration in <script setup> (emitted later from
                         // self.template_refs). Accessible in `on` handlers as
-                        // `.menuEl` (→ `menuEl.value!`).
+                        // `.menuEl` (→ `menuEl.value!`). When the tag is a Vue
+                        // component (PascalCase), the ref is typed `any` — the
+                        // child's defineExpose surface is unknown here.
                         if key == "ref" {
                             let ref_name: String = match value {
                                 AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
@@ -2844,6 +3000,9 @@ impl VueGenerator {
                             };
                             if !ref_name.is_empty() && !self.template_refs.contains(&ref_name) {
                                 self.template_refs.push(ref_name.clone());
+                            }
+                            if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                                self.component_ref_names.insert(ref_name.clone());
                             }
                             attrs.push(format!("ref=\"{}\"", ref_name));
                             continue;
@@ -2869,23 +3028,6 @@ impl VueGenerator {
                                 if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
                                     attrs.push(format!(":checked=\"{}\"", js_expr));
                                 }
-                            }
-                            continue;
-                        }
-
-                        // Handle two-way binding (bind:value -> v-model)
-                        if key.starts_with("bind:") {
-                            let bind_target = key.strip_prefix("bind:").unwrap();
-                            let model_value = match value {
-                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
-                                _ => "value".to_string(),
-                            };
-                            if tag == "input" && bind_target == "checked" {
-                                attrs.push(format!("v-model=\"{}\"", model_value));
-                            } else if tag == "input" && bind_target == "value" {
-                                attrs.push(format!("v-model=\"{}\"", model_value));
-                            } else {
-                                attrs.push(format!("v-model=\"{}\"", model_value));
                             }
                             continue;
                         }
@@ -3005,7 +3147,12 @@ impl VueGenerator {
                         // Has both text and children - unusual but handle it
                         let mut html = format!("{}<{}{}>{}\n", ind, html_tag, attr_str, text);
                         for child in children {
-                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                            // Component children: slot(name:) targets named slots.
+                            if is_vue_component {
+                                html.push_str(&self.slot_child_to_html(child, indent + 1)?);
+                            } else {
+                                html.push_str(&self.node_to_html(child, indent + 1)?);
+                            }
                         }
                         html.push_str(&format!("{}</{}>\n", ind, html_tag));
                         Ok(html)
@@ -3024,7 +3171,12 @@ impl VueGenerator {
 
                     // Add source children
                     for child in children {
-                        html.push_str(&self.node_to_html(child, indent + 1)?);
+                        // Component children: slot(name:) targets named slots.
+                        if is_vue_component {
+                            html.push_str(&self.slot_child_to_html(child, indent + 1)?);
+                        } else {
+                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
                     }
                     html.push_str(&format!("{}</{}>\n", ind, html_tag));
                     Ok(html)
@@ -3205,6 +3357,25 @@ impl VueGenerator {
                 // Build props as bindings
                 let mut attrs = Vec::new();
                 for (key, value) in props {
+                    // Template ref escape hatch on a child component:
+                    // `ref: "canvasRef"` → static `ref="canvasRef"` attribute
+                    // + a script-setup ref declaration (typed `any` — the
+                    // child's defineExpose surface is unknown here). Lets the
+                    // parent call exposed methods via `.canvasRef.method()`.
+                    if key == "ref" {
+                        let ref_name = match value {
+                            crate::ast::Expr::Str(n) | crate::ast::Expr::Ident(n) => n.to_string(),
+                            _ => String::new(),
+                        };
+                        if !ref_name.is_empty() {
+                            if !self.template_refs.contains(&ref_name) {
+                                self.template_refs.push(ref_name.clone());
+                            }
+                            self.component_ref_names.insert(ref_name.clone());
+                            attrs.push(format!("ref=\"{}\"", ref_name));
+                        }
+                        continue;
+                    }
                     let value_str = self.prop_to_attr_value(&AuraPropValue::Expr(value.clone()))?;
                     attrs.push(format!(":{}={}", key, value_str));
                 }
@@ -4549,6 +4720,7 @@ impl VueGenerator {
                                 Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
                             }
                         }
+                        "to_float" | "to_double" => Ok(format!("parseFloat({})", object_js)),
                         _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
                     }
                 } else {
@@ -5490,7 +5662,14 @@ impl VueGenerator {
                 // v-model for value
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model=\"{}\"", model));
+                        // Prop-backed value (v-model contract child widget):
+                        // props are read-only, so emit one-way :modelValue and
+                        // let the event handler emit update:modelValue upward.
+                        if self.prop_names.iter().any(|p| p == &model) {
+                            attrs.push(format!(":modelValue=\"{}\"", model));
+                        } else {
+                            attrs.push(format!("v-model=\"{}\"", model));
+                        }
                     }
                 }
                 // type prop
@@ -5566,7 +5745,13 @@ impl VueGenerator {
                 // v-model for value
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model=\"{}\"", model));
+                        // Prop-backed value (v-model contract child widget):
+                        // one-way :modelValue, update goes out via the handler.
+                        if self.prop_names.iter().any(|p| p == &model) {
+                            attrs.push(format!(":modelValue=\"{}\"", model));
+                        } else {
+                            attrs.push(format!("v-model=\"{}\"", model));
+                        }
                     }
                 }
                 // placeholder
@@ -6035,7 +6220,7 @@ impl VueGenerator {
             // ========================================
 
             // === Dialog/Modal ===
-            "modal" => {
+            "dialog" | "modal" => {
                 // v-model:open for dialog state
                 if let Some(value) = props.get("open") {
                     if let Some(model) = self.extract_state_ref(value) {
@@ -8228,9 +8413,30 @@ impl VueGenerator {
     }
 
     /// Extract state reference from AuraPropValue
+    ///
+    /// Accepts every shape the parser can produce for a `.state` ref:
+    /// - `Ident("name")` — bare identifier (hand-built ASTs, some legacy paths)
+    /// - `Ident(".name")` — legacy dot-prefixed identifier (dot stripped)
+    /// - `Dot(Ident("self") | Ident("."), "name")` — what `dot_item` actually
+    ///   produces for `.name` in real widget source (parser.rs dot_item).
     fn extract_state_ref(&self, value: &AuraPropValue) -> Option<String> {
         match value {
-            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => Some(name.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                let stripped = name.as_str().strip_prefix('.').unwrap_or(name.as_str());
+                if stripped.is_empty() {
+                    None
+                } else {
+                    Some(stripped.to_string())
+                }
+            }
+            AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => match obj.as_ref() {
+                crate::ast::Expr::Ident(obj_name)
+                    if obj_name.as_str() == "self" || obj_name.as_str() == "." =>
+                {
+                    Some(field.to_string())
+                }
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -8604,10 +8810,14 @@ impl VueGenerator {
     }
 
     /// Convert handler pattern to function name
+    ///
+    /// The result must be a valid JS identifier: emit names may contain
+    /// characters like ':' ("update:modelValue" v-model contracts), so the
+    /// final name is sanitized (update:modelValue → update_modelValue). The
+    /// verbatim emit name is recovered via the on-block pattern when needed.
     fn pattern_to_handler_name(&self, pattern: &str) -> String {
         let pattern = Self::base_pattern(pattern);
-        // Check for dot prefix first (e.g., ".Inc")
-        if pattern.starts_with('.') {
+        let name = if pattern.starts_with('.') {
             // Dot-prefixed handlers map directly to function name (Vue convention)
             pattern[1..].to_string()
         } else if let Some(variant) = pattern.split("::").last() {
@@ -8615,14 +8825,16 @@ impl VueGenerator {
             format!("on{}", variant)
         } else {
             format!("on{}", pattern)
-        }
+        };
+        Self::sanitize_ident(&name)
     }
 
     /// Convert handler reference to function call
+    /// (same sanitization as pattern_to_handler_name — the two must agree so
+    /// template references match the generated function definitions)
     fn handler_to_function_call(&self, handler: &str) -> String {
         let handler = Self::base_pattern(handler);
-        // Check for dot prefix first
-        if handler.starts_with('.') {
+        let name = if handler.starts_with('.') {
             // Dot-prefixed handlers map directly to function name (Vue convention)
             handler[1..].to_string()
         } else if let Some(variant) = handler.split("::").last() {
@@ -8630,7 +8842,8 @@ impl VueGenerator {
             format!("on{}", variant)
         } else {
             format!("on{}", handler)
-        }
+        };
+        Self::sanitize_ident(&name)
     }
 
     /// Find the state variable that likely represents the "active id" for a given handler.
@@ -9758,6 +9971,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         }
 ;
 
@@ -9796,6 +10010,7 @@ mod tests {
             style_css: Some(css.to_string()),
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9836,6 +10051,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9872,6 +10088,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new();
@@ -9919,6 +10136,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -9989,6 +10207,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -10554,17 +10773,73 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_modal() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
+        // Build the props through the REAL parse path (widget source → parser →
+        // aura extract → shadcn attrs). The previous version hand-built
+        // `Expr::Ident("showDialog")`, which no real `.state` ref ever produces
+        // (dot_item yields Dot(Ident("self"), name)) — so the test stayed green
+        // while v-model:open was silently dropped for real widgets.
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget ConfirmDialog {
+    model { var showDialog bool = false }
+    view {
+        modal(open: .showDialog, title: "Confirm Delete") {
+            text "Are you sure?"
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Dialog v-model:open=\"showDialog\""),
+            "modal routed to <Dialog> with v-model:open:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("data-title=\"Confirm Delete\""),
+            "title preserved:\n{}",
+            sfc
+        );
+    }
 
-        // Test modal with v-model:open
-        props.insert("open".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("showDialog".into())));
-        props.insert("title".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Confirm Delete".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("modal", &props, &events);
+    /// Item 1 regression: builtin `dialog` tag routed through the shadcn
+    /// Dialog component keeps its v-model:open binding (real parse path).
+    #[test]
+    fn test_dialog_vmodel_open_real_dsl() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    model { var show bool = false }
+    view {
+        dialog(open: .show) {
+            text "hi"
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Dialog v-model:open=\"show\""),
+            "dialog → <Dialog v-model:open>:\n{}",
+            sfc
+        );
+    }
 
-        assert!(attrs.iter().any(|a| a.contains("v-model:open=\"showDialog\"")));
-        assert!(attrs.iter().any(|a| a.contains("data-title=\"Confirm Delete\"")));
+    /// Item 1 regression: builtin `alertdialog` keeps v-model:open (this was
+    /// the original silent-drop: extract_state_ref only matched bare Ident).
+    #[test]
+    fn test_alertdialog_vmodel_open_real_dsl() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    model { var confirm_open bool = false }
+    view {
+        alertdialog(open: .confirm_open) {
+            alertdialogtitle(text: "Sure?")
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<AlertDialog v-model:open=\"confirm_open\""),
+            "alertdialog → <AlertDialog v-model:open>:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -10859,6 +11134,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = VueGenerator::new_shadcn();
@@ -10893,6 +11169,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         }
     }
 
@@ -11022,6 +11299,122 @@ widget Icon(language: str) {
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new();
         gen.generate(&widget).expect("generate SFC")
+    }
+
+    /// Same as gen_sfc_from_widget_src, but in shadcn-vue mode (real widgets
+    /// compile with `render: "vue"` + shadcn enabled; dialog/input arms only
+    /// run in this mode).
+    fn gen_sfc_from_widget_src_shadcn(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new_shadcn();
+        gen.generate(&widget).expect("generate SFC")
+    }
+
+    // ====================================================================
+    // v-model contracts (Item 2): a widget can declare a true Vue v-model
+    // target by pairing a `modelValue` prop with a quoted msg variant whose
+    // name is a literal Vue emit name (`msg Msg { "update:modelValue"(str) }`).
+    // ====================================================================
+
+    /// Child side: quoted msg variant "update:modelValue" → typed defineEmits
+    /// with a QUOTED key, a sanitized forwarding handler fn, and emit() with
+    /// the verbatim event name.
+    #[test]
+    fn test_vmodel_contract_child_quoted_emit() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget TextField(modelValue: str) {
+    msg Msg { "update:modelValue"(str) }
+    view {
+        col {
+            input { value: .modelValue, oninput: ."update:modelValue" }
+        }
+    }
+    on {
+        ."update:modelValue"(v) -> { }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("modelValue: string"),
+            "modelValue prop declared:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'update:modelValue': [string]"),
+            "quoted emit key in defineEmits:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("emit('update:modelValue', v)"),
+            "emit with verbatim name + payload:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function update_modelValue(v: any): void"),
+            "sanitized handler fn:\n{}",
+            sfc
+        );
+        // Prop-backed value: one-way :modelValue down (never v-model on a prop),
+        // @update:modelValue up — a controlled v-model contract.
+        assert!(
+            sfc.contains(":modelValue=\"modelValue\""),
+            "one-way :modelValue binding:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@update:modelValue=\"update_modelValue\""),
+            "update event wiring:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("v-model=\"modelValue\""),
+            "no v-model on a read-only prop:\n{}",
+            sfc
+        );
+    }
+
+    /// Parent side (manual wiring, no sugar): a DSL parent can already bind a
+    /// v-model contract via the modelValue prop + a quoted custom event key
+    /// `on "update:modelValue":` (Plan-367 quoted event names).
+    #[test]
+    fn test_vmodel_contract_parent_manual_wiring() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    msg Msg { NameChanged(str) }
+    model { var name str = "" }
+    view {
+        col {
+            TextField(modelValue: .name) {
+                on "update:modelValue": .NameChanged
+            }
+        }
+    }
+    on {
+        .NameChanged(v) -> { .name = v }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":modelValue=\"name\""),
+            "modelValue prop down:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@update:modelValue=\"NameChanged\""),
+            "quoted update event up:\n{}",
+            sfc
+        );
     }
 
     // ====================================================================
@@ -11155,6 +11548,159 @@ widget Scrollbar(ratio: int, viewport_h: int) {
         assert!(
             sfc.contains("thumb_h.value = props.viewport_h"),
             "prop read in body:\n{}",
+            sfc
+        );
+    }
+
+    // ====================================================================
+    // defineExpose: widget-level `expose { ... }` block.
+    // ====================================================================
+
+    /// expose { .fit } where `fit` is an imported TS fn →
+    /// defineExpose({ fit }) in <script setup>.
+    #[test]
+    fn test_expose_single_imported_fn() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget GraphView {
+    use {
+        fn: fitGraph from "src/front/utils/graph.ts"
+    }
+    model { var zoom int = 1 }
+    view { col { text "hi" } }
+    expose {
+        .fitGraph
+    }
+}
+"#);
+        assert!(
+            sfc.contains("defineExpose({ fitGraph })"),
+            "defineExpose with imported fn:\n{}",
+            sfc
+        );
+    }
+
+    /// Multiple members on one line and across lines; an exposed `on`
+    /// handler is emitted even though the template never references it.
+    #[test]
+    fn test_expose_multiple_members_and_handler() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget GraphView {
+    msg Msg { Fit, Relayout }
+    model { var zoom int = 1 }
+    computed { doubled => .zoom * 2 }
+    view { col { text "hi" } }
+    on {
+        .Fit -> { .zoom = 1 }
+        .Relayout -> { .zoom = .zoom }
+    }
+    expose {
+        .Fit, .Relayout
+        .doubled
+    }
+}
+"#);
+        assert!(
+            sfc.contains("defineExpose({ Fit, Relayout, doubled })"),
+            "defineExpose with handler + computed names:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function Fit()"),
+            "exposed handler emitted despite no template use:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function Relayout()"),
+            "second exposed handler emitted:\n{}",
+            sfc
+        );
+    }
+
+    /// Expose a model state var and a template ref (ref: "graphEl" in the
+    /// view): both exist as script-setup refs; defineExpose exposes the ref
+    /// objects (Vue's expose proxy unwraps them on parent access).
+    #[test]
+    fn test_expose_state_and_template_ref() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Editor {
+    model { var content str = "" }
+    view {
+        col {
+            ref: "rootEl"
+            text "editor"
+        }
+    }
+    expose {
+        .content, .rootEl
+    }
+}
+"#);
+        assert!(
+            sfc.contains("const content = ref"),
+            "state ref exists:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("const rootEl = ref<HTMLElement | null>(null)"),
+            "template ref exists:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("defineExpose({ content, rootEl })"),
+            "defineExpose with state + template ref:\n{}",
+            sfc
+        );
+    }
+
+    /// A widget without an expose block emits no defineExpose.
+    #[test]
+    fn test_no_expose_block_unchanged() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Plain {
+    model { var count int = 0 }
+    view { col { text "hi" } }
+}
+"#);
+        assert!(
+            !sfc.contains("defineExpose"),
+            "no defineExpose without expose block:\n{}",
+            sfc
+        );
+    }
+
+    /// Parent side: `ref: "canvasRef"` on a child component → static
+    /// `ref="canvasRef"` attribute + `ref<any>` declaration, so handlers can
+    /// call the child's exposed methods via `.canvasRef.method()`.
+    #[test]
+    fn test_component_template_ref() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    msg Msg { DoFit }
+    model { var n int = 0 }
+    view {
+        col {
+            GraphView { ref: "canvasRef" }
+            button "fit" { onclick: .DoFit }
+        }
+    }
+    on {
+        .DoFit -> { .canvasRef.Fit() }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<GraphView ref="canvasRef""#),
+            "static ref attr on child component:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("const canvasRef = ref<any>(null)"),
+            "component ref typed any:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("canvasRef.value!.Fit()"),
+            "exposed method call through the ref:\n{}",
             sfc
         );
     }
@@ -11731,5 +12277,192 @@ widget Todo {
             "hyphenated class key quoted:\n{}",
             sfc
         );
+    }
+
+    // ====================================================================
+    // Slots: `slot` outlet in a widget view (default + named) and
+    // `slot(name:) { ... }` named-slot targeting at the parent side.
+    // ====================================================================
+
+    /// Bare `slot` in a widget view → default outlet `<slot />`
+    /// (previously swallowed by the unknown-tag div fallback).
+    #[test]
+    fn test_slot_outlet_default() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Panel {
+    model { var n int = 0 }
+    view {
+        col {
+            class: "panel",
+            slot
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("<slot />"), "default slot outlet:\n{}", sfc);
+        assert!(
+            !sfc.contains("<div>\n</div>") && !sfc.contains("<div />"),
+            "slot must not fall back to an empty div:\n{}",
+            sfc
+        );
+    }
+
+    /// `slot(name: "header")` in a widget view → named outlet
+    /// `<slot name="header" />`.
+    #[test]
+    fn test_slot_outlet_named() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Panel {
+    model { var n int = 0 }
+    view {
+        col {
+            slot(name: "header")
+            slot
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<slot name=\"header\" />"),
+            "named slot outlet:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<slot />"), "default slot outlet too:\n{}", sfc);
+    }
+
+    /// Parent side: `slot(name: "header") { ... }` inside a component
+    /// instantiation's children block → `<template #header>...</template>`.
+    #[test]
+    fn test_slot_named_template_parent_side() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var n int = 0 }
+    view {
+        col {
+            Panel(title: "hi") {
+                slot(name: "header") {
+                    text "My Title"
+                }
+                text "body content"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<template #header>"),
+            "named slot template in parent:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(">My Title</span>"),
+            "named slot content rendered:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(">body content</span>"),
+            "default-slot child still rendered:\n{}",
+            sfc
+        );
+    }
+
+    /// Regression: plain children passed to a component still emit
+    /// unchanged (no <template> wrapping, no slot outlet interference).
+    #[test]
+    fn test_slot_default_children_unchanged() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var n int = 0 }
+    view {
+        col {
+            Panel(title: "hi") {
+                text "plain child"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(">plain child</span>"),
+            "default children unchanged:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("<template #"),
+            "no named-slot template without slot(name:):\n{}",
+            sfc
+        );
+    }
+
+    /// Outlet-less sub-widget receiving children → build-time warning via
+    /// AuraWidget::slot_children_warnings; widget WITH a matching outlet
+    /// produces no warning.
+    #[test]
+    fn test_slot_children_warning() {
+        let parse_widget = |src: &str| {
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::parser::Parser::from(src).with_session(session);
+            let ast = parser.parse().expect("widget source must parse");
+            let decl = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                    _ => None,
+                })
+                .expect("widget decl");
+            crate::aura::extract_widget_from_decl(decl).expect("extract widget")
+        };
+
+        let outletless = parse_widget(r#"
+widget Panel {
+    model { var n int = 0 }
+    view { col { text "no outlets" } }
+}
+"#);
+        let with_outlets = parse_widget(r#"
+widget Panel {
+    model { var n int = 0 }
+    view {
+        col {
+            slot(name: "header")
+            slot
+        }
+    }
+}
+"#);
+        assert!(with_outlets.slot_outlet_names().contains(&String::new()));
+        assert!(with_outlets.slot_outlet_names().contains(&"header".to_string()));
+        assert!(outletless.slot_outlet_names().is_empty());
+
+        let app = parse_widget(r#"
+widget App {
+    model { var n int = 0 }
+    view {
+        col {
+            Panel {
+                slot(name: "header") {
+                    text "My Title"
+                }
+                text "body content"
+            }
+        }
+    }
+}
+"#);
+
+        // Outlet-less target: both the named template and the default
+        // children must warn.
+        let mut outlets = std::collections::HashMap::new();
+        outlets.insert("Panel".to_string(), outletless.slot_outlet_names());
+        let warnings = app.slot_children_warnings(&outlets);
+        assert_eq!(warnings.len(), 2, "named + default warnings:\n{:?}", warnings);
+        assert!(warnings.iter().any(|w| w.contains("'header' slot outlet")));
+        assert!(warnings.iter().any(|w| w.contains("no default slot outlet")));
+
+        // Target with matching outlets: no warnings.
+        outlets.insert("Panel".to_string(), with_outlets.slot_outlet_names());
+        let warnings = app.slot_children_warnings(&outlets);
+        assert!(warnings.is_empty(), "no warnings when outlets match:\n{:?}", warnings);
     }
 }

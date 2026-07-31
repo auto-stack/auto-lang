@@ -383,6 +383,12 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ")").ok();
                             return;
                         }
+                        "to_float" | "to_double" => {
+                            write!(out, "parseFloat(").ok();
+                            transpile_expr(object, ctx, out);
+                            write!(out, ")").ok();
+                            return;
+                        }
                         "to_string" => {
                             write!(out, "(").ok();
                             transpile_expr(object, ctx, out);

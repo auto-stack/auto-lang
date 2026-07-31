@@ -1,0 +1,28 @@
+// Child widget with a TRUE Vue v-model contract:
+//   prop  modelValue            (value down)
+//   emit  "update:modelValue"   (change up — quoted msg variant name, the colon
+//                                is legal in a Vue emit name but not in an
+//                                identifier, hence the quotes)
+// The on-block handler pattern and the view event reference quote the name
+// the same way. The compiler sanitizes the handler FN name
+// (update_modelValue) but keeps the emit name verbatim.
+widget TextField(label: str, modelValue: str) {
+    msg Msg { "update:modelValue"(str) }
+
+    view {
+        col {
+            class: "space-y-1",
+            text .label { class: "text-sm font-medium text-gray-700" }
+            input {
+                value: .modelValue,
+                oninput: ."update:modelValue"
+            }
+        }
+    }
+
+    on {
+        // Forwarding handler: the auto-emit appends
+        // emit('update:modelValue', v) after the (empty) body.
+        ."update:modelValue"(v) -> { }
+    }
+}

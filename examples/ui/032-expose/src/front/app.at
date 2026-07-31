@@ -1,0 +1,50 @@
+widget App {
+    msg Msg { DoFit, DoReset, ReadZoom }
+
+    model {
+        var zoom_seen int = 0
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "032 — defineExpose (imperative child API)" { class: "text-xl font-bold" }
+
+            // Parent holds a template ref on the child component instance.
+            PanCanvas { ref: "canvasRef" }
+
+            row {
+                class: "space-x-2",
+                button "canvasRef.Fit()" {
+                    class: "px-2 py-1 bg-blue-600 text-white rounded text-sm",
+                    onclick: .DoFit
+                }
+                button "canvasRef.Reset()" {
+                    class: "px-2 py-1 bg-gray-600 text-white rounded text-sm",
+                    onclick: .DoReset
+                }
+                button "read canvasRef.zoom" {
+                    class: "px-2 py-1 bg-green-600 text-white rounded text-sm",
+                    onclick: .ReadZoom
+                }
+            }
+
+            text f"zoom seen through ref: ${.zoom_seen}" { class: "text-xs text-gray-500" }
+        }
+    }
+
+    on {
+        // .canvasRef is the component template ref (canvasRef.value!);
+        // Fit/Reset/zoom are the child's exposed members.
+        .DoFit -> {
+            .canvasRef.Fit()
+            .zoom_seen = .canvasRef.zoom
+        }
+        .DoReset -> {
+            .canvasRef.Reset()
+            .zoom_seen = .canvasRef.zoom
+        }
+        .ReadZoom -> { .zoom_seen = .canvasRef.zoom }
+    }
+}

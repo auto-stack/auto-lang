@@ -1,0 +1,4 @@
+name: "vmodel"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
