@@ -22,4 +22,4 @@ API imports: []
 Store deps: ["NotesStore"]
 Store composables: 0
 Validation warnings: 2
-SFC 'NavTree': 12638 bytes, has template: true, has script: true, has style: true
+SFC 'NavTree': 14918 bytes, has template: true, has script: true, has style: true
