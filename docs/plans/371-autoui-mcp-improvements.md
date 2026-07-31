@@ -688,9 +688,12 @@ Task 21 的生成器改动（§11.2，commit `f863f9ff`）**已正确落地**：
 
 ### 12.3 实施顺序
 
-1. **Task 22a**（问题 a）：修 a2r store-composable 缺陷 → 015-notes 重生成 0 错误（含自动 `state_snapshot`）。✅
-2. **Task 22b**（问题 b，依赖 22a）：生成器 `state_snapshot` 递归展开子组件字段 → store/子组件字段可见。⏳
-3. 评估移除 `skip_if rust` + `.autotest --mode rust` 验证。
+1. **Task 22a**（问题 a）：修 a2r store-composable 缺陷 → 015-notes 重生成 0 错误（含自动 `state_snapshot`）。✅ commit `6dbf400f`
+2. **Task 22b**（问题 b，依赖 22a）：生成器 `state_snapshot` 递归展开 store 字段（`store.` 前缀）+ `autoui_state` 字段查询支持路径后缀匹配。✅ commit `544e0731` + `3da51fa5`
+3. **skip_if rust 决策**：
+   - **T11/T11b（`dark_mode`）/ T12（`accent_color`）**：Rust 模式现可通过后缀匹配读到 `store.dark_mode`/`store.accent_color` → **已移除** `skip_if rust`。
+   - **T5c（`edit_title`）**：EditorPanel 是按笔记在 view 里构造的子组件，**不是 App 的 struct 字段**，故其 `edit_title` 不在 App snapshot → **保留** `skip_if rust`（需后续让生成器/运行时支持「当前活动子组件」状态暴露）。
+4. ⏳ 待：启动 GUI 跑 `python run_autotest.py --mode rust` 端到端验证 T11/T11b/T12 实际通过。
 
 ---
 
