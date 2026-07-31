@@ -1060,12 +1060,62 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
                     body_fields.join("; ")
                 ));
             }
-            "DELETE" => {
+            "PATCH" => {
+                // PATCH: partial update — same structure as PUT (id + body fields).
                 let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                let body_fields: Vec<String> = body_params.iter()
+                    .map(|p| {
+                        let rhs = merged_param_to_value(&p.ty, &p.name);
+                        format!("item[\"{}\"] = {}", p.name, rhs)
+                    })
+                    .collect();
+                let all_params: Vec<String> = path_params.iter()
+                    .map(|p| format!("{}: i32", p.name))
+                    .chain(body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))))
+                    .collect();
+                let path_filter: Vec<String> = path_params.iter()
+                    .map(|p| format!("n[\"{}\"].as_i64() == Some({} as i64)", p.name, p.name))
+                    .collect();
                 code.push_str(&format!(
-                    "fn {}({}: i32) {{\n    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| n[\"id\"].as_i64() != Some({} as i64));\n}}\n\n",
-                    fn_name, id_param, id_param
+                    "fn {}({}) {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| {}) {{\n        {};\n    }}\n}}\n\n",
+                    fn_name,
+                    all_params.join(", "),
+                    path_filter.join(" && "),
+                    body_fields.join("; ")
                 ));
+            }
+            "DELETE" => {
+                if path_params.is_empty() {
+                    // No path param (e.g. DELETE /api/todos/completed) — operate on all
+                    // matching items. Use body params as filter criteria if present.
+                    if body_params.is_empty() {
+                        // Clear all (unlikely but safe).
+                        code.push_str(&format!(
+                            "fn {}() {{\n    let mut data = API_DATA.lock().unwrap();\n    data.clear();\n}}\n\n",
+                            fn_name
+                        ));
+                    } else {
+                        // Retain items NOT matching the body filter (e.g. done != true).
+                        let retain_cond: Vec<String> = body_params.iter()
+                            .map(|p| format!("n[\"{}\"] != {}", p.name, merged_param_to_value(&p.ty, &p.name)))
+                            .collect();
+                        let params_sig: Vec<String> = body_params.iter()
+                            .map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty)))
+                            .collect();
+                        code.push_str(&format!(
+                            "fn {}({}) {{\n    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| {});\n}}\n\n",
+                            fn_name,
+                            params_sig.join(", "),
+                            retain_cond.join(" && ")
+                        ));
+                    }
+                } else {
+                    let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
+                    code.push_str(&format!(
+                        "fn {}({}: i32) {{\n    let mut data = API_DATA.lock().unwrap();\n    data.retain(|n| n[\"id\"].as_i64() != Some({} as i64));\n}}\n\n",
+                        fn_name, id_param, id_param
+                    ));
+                }
             }
             _ => {
                 code.push_str(&format!("fn {}() {{}}\n\n", fn_name));

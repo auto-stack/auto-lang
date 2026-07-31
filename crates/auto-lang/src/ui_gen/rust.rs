@@ -2353,6 +2353,10 @@ impl RustGenerator {
             }
 
             AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                // Plan 371 步骤3: Sanitize loop var to avoid Rust keyword/macro
+                // conflicts (e.g. `for todo in ...` collides with `todo!()` macro).
+                let var = sanitize_rust_ident(var);
+                let index = index.as_ref().map(|i| sanitize_rust_ident(i));
                 // Generate iterator-based view construction
                 let iter_name = iterable.trim_start_matches('.');
                 // Plan 374: Check if the last component is a computed property (needs ()).
@@ -2385,7 +2389,7 @@ impl RustGenerator {
                         && !self.state_types.contains_key(iter_last_name));
 
                 // Push loop vars into scope
-                self.push_loop_vars(var, index.as_deref());
+                self.push_loop_vars(&var, index.as_deref());
                 if is_value_iter {
                     self.value_loop_vars.insert(var.clone());
                 }
@@ -2396,8 +2400,8 @@ impl RustGenerator {
                     .collect();
 
                 // Pop loop vars from scope
-                self.pop_loop_vars(var, index.as_deref());
-                self.value_loop_vars.remove(var);
+                self.pop_loop_vars(&var, index.as_deref());
+                self.value_loop_vars.remove(&var);
 
                 // Auto-generate search filter: if the widget has a "search" state var
                 // and we're iterating a Value collection, insert .filter() before .map()
@@ -2569,6 +2573,30 @@ impl RustGenerator {
     /// Find parent state vars that should be synced to/from child component fields.
     /// Matches by name: if parent has state var "editing" and child component likely
     /// has a field "editing", they should be synced.
+    /// Generate Rust call arguments from a Call's args, applying `.clone()`
+    /// to `self.<String_field>` references to avoid move errors (E0507) when
+    /// passing state by value into a function or store message constructor.
+    /// Shared by store-call rewriting (L4037) and ordinary function calls (L4052).
+    fn rust_call_args_with_clone(&self, call: &crate::ast::Call) -> Vec<String> {
+        call.args.args.iter()
+            .map(|a| {
+                let expr = self.ast_expr_to_rust(&a.get_expr());
+                if expr.starts_with("self.") {
+                    let field_name = &expr[5..];
+                    // Don't clone for index access patterns like self.note["id"]
+                    if !field_name.contains('[') {
+                        if let Some(ty) = self.state_types.get(field_name) {
+                            if ty == "String" {
+                                return format!("{}.clone()", expr);
+                            }
+                        }
+                    }
+                }
+                expr
+            })
+            .collect()
+    }
+
     fn find_sync_fields_for_child(&self, widget: &AuraWidget, child_name: &str) -> Vec<String> {
         let mut fields = Vec::new();
         for state in &widget.state_vars {
@@ -4034,9 +4062,7 @@ impl RustGenerator {
                     // Only rewrite if it's a direct store method (no nested dots like "notes.len")
                     // and starts with uppercase (PascalCase handler name).
                     if !method.contains('.') && method.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                    let args_str = call.args.args.iter()
-                        .map(|a| self.ast_expr_to_rust(&a.get_expr()))
-                        .collect::<Vec<_>>().join(", ");
+                    let args_str = self.rust_call_args_with_clone(call).join(", ");
                     let store_msg = STORE_NAMES.with(|sn| {
                         sn.borrow().values().next().cloned()
                             .map(|name| format!("{}Msg", name))
@@ -4049,25 +4075,7 @@ impl RustGenerator {
                     }
                     }
                 }
-                let args: Vec<String> = call.args.args.iter()
-                    .map(|a| {
-                        let expr = self.ast_expr_to_rust(&a.get_expr());
-                        // In &mut self methods, passing self.field by value moves it.
-                        // Add .clone() for String-typed fields to avoid E0507.
-                        if expr.starts_with("self.") {
-                            let field_name = &expr[5..];
-                            // Don't clone for index access patterns like self.note["id"]
-                            if !field_name.contains('[') {
-                                if let Some(ty) = self.state_types.get(field_name) {
-                                    if ty == "String" {
-                                        return format!("{}.clone()", expr);
-                                    }
-                                }
-                            }
-                        }
-                        expr
-                    })
-                    .collect();
+                let args: Vec<String> = self.rust_call_args_with_clone(call);
                 match fn_name.as_str() {
                     "print" => {
                         let print_args: Vec<String> = args.iter()
@@ -4370,6 +4378,38 @@ fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
         }
         "f32" | "f64" => format!("auto_lang::ui::auto_val::Value::Float({} as f64)", val_expr),
         _ => "auto_lang::ui::auto_val::Value::Nil".to_string(),
+    }
+}
+
+/// Plan 371 步骤3: Sanitize an Auto identifier for use as a Rust identifier.
+/// Handles two classes of conflict:
+///   1. Rust reserved keywords (type, match, fn, crate, move, self, ...) →
+///      prefix with `r#` (Rust raw identifier syntax).
+///   2. Rust macro/type names that would shadow loop variables (todo, vec,
+///      format, println, String, Vec, ...) → append `_` suffix.
+/// Applied to `for`-loop variables so `for todo in ...` doesn't collide with
+/// the `todo!()` macro.
+fn sanitize_rust_ident(name: &str) -> String {
+    // Rust reserved keywords (2021 edition) that can't be bare identifiers.
+    const RUST_KEYWORDS: &[&str] = &[
+        "as", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop",
+        "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
+        "static", "struct", "super", "trait", "true", "type", "unsafe", "use",
+        "where", "while", "async", "await", "box",
+    ];
+    // Common Rust macros/types that conflict with plausible loop var names.
+    const RUST_MACROS_TYPES: &[&str] = &[
+        "todo", "unimplemented", "panic", "vec", "format", "println", "print",
+        "eprintln", "eprint", "dbg", "assert", "String", "Vec", "Option",
+        "Result", "Box",
+    ];
+    if RUST_KEYWORDS.contains(&name) {
+        format!("r#{}", name)
+    } else if RUST_MACROS_TYPES.contains(&name) {
+        format!("{}_", name)
+    } else {
+        name.to_string()
     }
 }
 
