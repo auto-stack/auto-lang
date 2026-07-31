@@ -85,6 +85,10 @@ fn prefix_power(op: Op, span: SourceSpan) -> AutoResult<PrefixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_SIGN),
         Op::Not => Ok(PREC_NOT),
+        // Plan 379: unary `*` (dereference) as a prefix operator. The transpiler
+        // already maps `Op::Mul` → `*` in Expr::Unary (Plan 052); only the parser
+        // rejected `*x` in prefix position before.
+        Op::Mul => Ok(PREC_SIGN),
         _ => Err(SyntaxError::Generic {
             message: format!("Invalid prefix operator: {}", op),
             span,
@@ -1661,7 +1665,7 @@ impl<'a> Parser<'a> {
             // if expression
             TokenKind::If => self.if_expr()?,
             // unary
-            TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
+            TokenKind::Add | TokenKind::Sub | TokenKind::Not | TokenKind::Star => {
                 let op = self.op();
                 let span = pos_to_span(self.cur.pos);
                 let power = prefix_power(op, span)?;

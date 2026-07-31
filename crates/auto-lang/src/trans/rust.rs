@@ -1622,9 +1622,11 @@ impl RustTrans {
                                 } else {
                                     // expr.field or expr.method()
                                     // Parenthesize lhs if it's a binary op (e.g., (a / b).method())
+                                    // or a unary deref (Plan 379: (*x).clone() — otherwise
+                                    // `*x.clone()` would parse as *(x.clone()) in Rust).
                                     let needs_parens = matches!(lhs.as_ref(),
                                         Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                                    );
+                                    ) || matches!(lhs.as_ref(), Expr::Unary(Op::Mul, _));
                                     if needs_parens { write!(out, "(")?; }
                                     self.expr(lhs, out)?;
                                     if needs_parens { write!(out, ")")?; }
@@ -5470,9 +5472,12 @@ impl RustTrans {
             };
 
             if let Some(rust_name) = rust_method {
+                // Plan 379: parenthesize unary-deref receivers too —
+                // `(*x).clone()` would otherwise emit `*x.clone()` which Rust
+                // parses as `*(x.clone())` (wrong precedence).
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                );
+                ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
                 if needs_i32_cast { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
@@ -5884,9 +5889,11 @@ impl RustTrans {
                 }
             };
             // Parenthesize object if it's a binary op (e.g., (a / b).method())
+            // or a unary deref (Plan 379: (*x).clone() — `*x.clone()` would
+            // parse as *(x.clone()) in Rust).
             let obj_needs_parens = matches!(object.as_ref(),
                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-            );
+            ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
             if obj_needs_parens { write!(out, "(")?; }
             // Plan 264: When object is a known module name and this is a type chain,
             // output crate::module instead of bare module name
@@ -8894,15 +8901,12 @@ impl RustTrans {
             self.struct_to_spec.insert(type_decl.name.clone(), spec_name.clone());
         }
 
-        // Plan 373 G2: known crate traits that `has Spec` should generate a real
-        // `impl Trait for Type` with method bodies (not a synthetic `{Name}Trait`).
-        // Maps spec name → (crate_trait_path, [method_names]).
-        let known_spec_traits: &[(&str, &str, &[&str])] = &[
-            ("Tool", "crate::tool::Tool", &["name", "description", "parameters", "execute"]),
-            ("Role", "crate::role_def::Role", &["name", "system_prompt", "model_tier", "model", "temperature", "max_turns", "allowed_tools", "memory_limit", "allowed_tiers", "token_budget", "skills", "handoff_to", "dispatchable_to", "approval_gates", "preferred_provider"]),
-            ("Client", "crate::agent::Client", &["complete"]),
-            ("AgentFactory", "crate::driver::AgentFactory", &["build_agent"]),
-        ];
+        // Plan 373 G2 + Plan 379: `has Spec` generates a real `impl Trait for
+        // Type` with method bodies (not a synthetic `{Name}Trait`) for ANY spec
+        // known to this transpile — declared in this file (pre-scan) or
+        // imported from a sibling module (both tracked in spec_decls). The
+        // Plan 373 G2 hardcoded Tool/Role/Client/AgentFactory list is
+        // generalized; the old `known_spec_traits` const is gone.
         // Emit doc comments
         if let Some(ref doc) = type_decl.doc {
             for line in doc.split('\n') {
@@ -8913,8 +8917,9 @@ impl RustTrans {
         // Generate traits for composed types
         for has_type in &type_decl.has {
             if let Type::User(has_decl) = has_type {
-                // Plan 373 G2: skip synthetic {Name}Trait for known crate traits.
-                let is_known = known_spec_traits.iter().any(|(n, _, _)| n == &has_decl.name.as_str());
+                // Plan 379: a spec is "known" (real trait, skip the synthetic
+                // {Name}Trait) iff it's in spec_decls (this file or sibling).
+                let is_known = self.spec_decls.contains_key(has_decl.name.as_str());
                 if is_known {
                     continue;
                 }
@@ -9216,75 +9221,108 @@ impl RustTrans {
 
         // Implement traits for composed types
         for has_type in &type_decl.has {
-            if let Type::User(has_decl) = has_type {
-                // Plan 373 G2: for known crate traits, emit real impl Trait for Type
-                // with ACTUAL method bodies (from type_decl.methods), not stubs.
-                let known_entry = known_spec_traits.iter()
-                    .find(|(n, _, _)| n == &has_decl.name.as_str());
-                if let Some((_, trait_path, method_names)) = known_entry {
-                    // Collect matching method bodies from type_decl.methods by name.
-                    let spec_has_methods: Vec<_> = type_decl.methods.iter()
-                        .filter(|m| method_names.contains(&m.name.as_str()))
-                        .collect();
-                    if spec_has_methods.is_empty() {
-                        continue;
+            // Plan 379: `has Spec` parses as Type::Spec when the spec is
+            // declared in the same file (SpecDecl embedded) and as Type::User
+            // when imported. Both get a real `impl <Spec> for <Type>` with
+            // ACTUAL method bodies (generalizes Plan 373 G2's hardcoded
+            // Tool/Role/Client/AgentFactory list to ANY spec known to this
+            // transpile). The trait name is emitted plain (not
+            // `crate::<module>::<Spec>`): the module's own `use` lines (e.g.
+            // `use crate::fmod::{Formatter};`) resolve it, matching how
+            // `Box<dyn Spec>` refs are emitted elsewhere.
+            let known_spec: Option<(AutoStr, Vec<&Fn>)> = match has_type {
+                Type::Spec(spec) => {
+                    let spec = spec.borrow();
+                    Some((
+                        spec.name.clone(),
+                        type_decl.methods.iter()
+                            .filter(|m| spec.methods.iter().any(|s| s.name == m.name))
+                            .collect(),
+                    ))
+                }
+                Type::User(has_decl) => {
+                    let spec_method_names: Vec<AutoStr> = self.spec_decls
+                        .get(has_decl.name.as_str())
+                        .map(|ms| ms.iter().map(|s| s.name.clone()).collect())
+                        .unwrap_or_default();
+                    if spec_method_names.is_empty() {
+                        None
+                    } else {
+                        Some((
+                            has_decl.name.clone(),
+                            type_decl.methods.iter()
+                                .filter(|m| spec_method_names.contains(&m.name))
+                                .collect(),
+                        ))
                     }
+                }
+                _ => None,
+            };
 
-                    // Insert spec method names into the cache so they get filtered
-                    // out of the `impl Type` block (generated below at line 9002).
-                    let method_names: Vec<SpecMethod> = spec_has_methods.iter()
-                        .map(|m| SpecMethod {
-                            name: m.name.clone(),
-                            params: m.params.clone(),
-                            ret: m.ret.clone(),
-                            body: None,
-                        })
-                        .collect();
-                    self.spec_decls.insert(has_decl.name.clone(), method_names);
-
-                    // Plan 373 G2: if any method is async (~Result lowered to
-                    // Future<Result<...>>), the trait uses #[async_trait] and the
-                    // impl block must carry it too.
-                    let has_async = spec_has_methods.iter().any(|m| {
-                        matches!(&m.ret, Type::Result(_)) ||
-                        matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
-                    });
-                    if has_async {
-                        write!(sink.body, "\n#[async_trait::async_trait]")?;
-                    }
-                    write!(sink.body, "\nimpl {}", trait_path)?;
-                    // Add generic parameters from the type declaration
-                    if !type_decl.generic_params.is_empty() {
-                        write!(sink.body, "<")?;
-                        for (i, param) in type_decl.generic_params.iter().enumerate() {
-                            if i > 0 { write!(sink.body, ", ")?; }
-                            match param {
-                                GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                                GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
-                            }
-                        }
-                        write!(sink.body, ">")?;
-                    }
-                    write!(sink.body, " for {}", type_decl.name)?;
-                    writeln!(sink.body, " {{")?;
-                    self.indent();
-
-                    for method in spec_has_methods {
-                        // Plan 373 G2: trait impl methods must not have `pub`.
-                        let saved_pub = self.inside_pub_type;
-                        let saved_trait = self.in_trait_impl;
-                        self.inside_pub_type = false;
-                        self.in_trait_impl = true;
-                        self.fn_decl(method, sink)?;
-                        self.inside_pub_type = saved_pub;
-                        self.in_trait_impl = saved_trait;
-                        sink.body.write(b"\n")?;
-                    }
-
-                    self.dedent();
-                    write!(sink.body, "}}\n")?;
+            if let Some((spec_name, spec_has_methods)) = known_spec {
+                if spec_has_methods.is_empty() {
                     continue;
                 }
+
+                // Insert spec method names into the cache so they get filtered
+                // out of the `impl Type` block (generated below).
+                let method_names: Vec<SpecMethod> = spec_has_methods.iter()
+                    .map(|m| SpecMethod {
+                        name: m.name.clone(),
+                        params: m.params.clone(),
+                        ret: m.ret.clone(),
+                        body: None,
+                    })
+                    .collect();
+                self.spec_decls.insert(spec_name.clone(), method_names);
+
+                // Plan 373 G2: if any method is async (~Result lowered to
+                // Future<Result<...>>), the trait uses #[async_trait] and the
+                // impl block must carry it too.
+                let has_async = spec_has_methods.iter().any(|m| {
+                    matches!(&m.ret, Type::Result(_)) ||
+                    matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+                });
+                if has_async {
+                    write!(sink.body, "\n#[async_trait::async_trait]")?;
+                }
+                write!(sink.body, "\nimpl {}", spec_name)?;
+                // Add generic parameters from the type declaration
+                if !type_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in type_decl.generic_params.iter().enumerate() {
+                        if i > 0 { write!(sink.body, ", ")?; }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+                write!(sink.body, " for {}", type_decl.name)?;
+                writeln!(sink.body, " {{")?;
+                self.indent();
+
+                for method in spec_has_methods {
+                    // Plan 373 G2: trait impl methods must not have `pub`.
+                    let saved_pub = self.inside_pub_type;
+                    let saved_trait = self.in_trait_impl;
+                    self.inside_pub_type = false;
+                    self.in_trait_impl = true;
+                    self.fn_decl(method, sink)?;
+                    self.inside_pub_type = saved_pub;
+                    self.in_trait_impl = saved_trait;
+                    sink.body.write(b"\n")?;
+                }
+
+                self.dedent();
+                write!(sink.body, "}}\n")?;
+                continue;
+            }
+
+            // Unknown specs keep the synthetic {Name}Trait path. Same-file
+            // specs parse as Type::Spec (handled above) and never reach here.
+            if let Type::User(has_decl) = has_type {
 
                 // Original path for unknown specs: synthetic {Name}Trait
                 // Build the impl signature with generic parameters
@@ -9478,10 +9516,22 @@ impl RustTrans {
                 }
             }
             for has_type in &type_decl.has {
-                if let Type::User(has_decl) = has_type {
-                    if let Some(methods) = self.spec_decls.get(&has_decl.name) {
-                        for m in methods { names.insert(m.name.clone()); }
+                match has_type {
+                    Type::User(has_decl) => {
+                        if let Some(methods) = self.spec_decls.get(&has_decl.name) {
+                            for m in methods { names.insert(m.name.clone()); }
+                        }
                     }
+                    // Plan 379: same-file specs parse as Type::Spec — their
+                    // implemented methods are also excluded from the inherent
+                    // `impl Type` block (they live in the trait impl instead).
+                    Type::Spec(spec) => {
+                        let spec_name = spec.borrow().name.clone();
+                        if let Some(methods) = self.spec_decls.get(&spec_name) {
+                            for m in methods { names.insert(m.name.clone()); }
+                        }
+                    }
+                    _ => {}
                 }
             }
             names
