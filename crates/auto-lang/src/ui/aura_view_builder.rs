@@ -2589,13 +2589,15 @@ impl<'a> AuraViewBuilder<'a> {
     /// Extract text content from child nodes (for elements like button whose
     /// label comes from inner `text` children rather than a primary prop).
     /// Walks children recursively, resolving each text element's "text"/literal
-    /// content with the given bindings, and joins them. Returns None if no text found.
-    /// Recurses into container elements (row/col/etc.) so that a button like
+    /// content with the given bindings, and joins them with newlines. Returns
+    /// None if no text found. Recurses into container elements (row/col/etc.)
+    /// so that a button like:
     ///   button { row { text note.title } text note.time }
-    /// yields "Welcome Just now", not just "Just now".
+    /// yields "Welcome\nJust now" (newline-separated), so the iced renderer
+    /// can render title and time on separate lines with different styling.
     fn extract_children_text(&self, children: &[AuraNode], bindings: &Bindings) -> Option<String> {
         let parts: Vec<String> = children.iter().filter_map(|c| match c {
-            AuraNode::Element { tag, props, children, .. }
+            AuraNode::Element { tag, props, .. }
                 if matches!(tag.as_str(), "text" | "label" | "h1" | "h2" | "h3" | "p" | "span") =>
             {
                 self.extract_string_with(props, "text", bindings)
@@ -2613,7 +2615,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
             _ => None,
         }).collect();
-        if parts.is_empty() { None } else { Some(parts.join(" ")) }
+        if parts.is_empty() { None } else { Some(parts.join("\n")) }
     }
 
     fn extract_string_with(

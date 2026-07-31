@@ -951,21 +951,53 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Button { label, onclick, style } => {
-                let mut text_widget = text(label.clone());
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
-                // Apply text styles to label
-                if let Some(ref is) = iced_style {
-                    if let Some(ref font_size) = is.font_size {
-                        text_widget = text_widget.size(font_size_to_f32(font_size));
+                // Plan 371: multi-line button labels (newline-separated from
+                // extract_children_text) are rendered as a column of text lines,
+                // so the iced button visually separates title (first line) from
+                // metadata (subsequent lines, e.g. timestamp). Subsequent lines
+                // get a smaller, muted style to match the Vue version.
+                let button_content: iced::Element<'static, M> = if label.contains('\n') {
+                    let lines: Vec<&str> = label.split('\n').collect();
+                    let mut col = iced::widget::Column::<M>::with_capacity(lines.len());
+                    for (i, line) in lines.iter().enumerate() {
+                        let mut tw = text(line.to_string());
+                        // Apply the button's own text styles to the first line (title).
+                        if i == 0 {
+                            if let Some(ref is) = iced_style {
+                                if let Some(ref font_size) = is.font_size {
+                                    tw = tw.size(font_size_to_f32(font_size));
+                                }
+                                if let Some(color) = is.text_color {
+                                    tw = tw.color(color);
+                                }
+                                if let Some(ref weight) = is.font_weight {
+                                    tw = tw.font(font_weight_to_iced(weight));
+                                }
+                            }
+                        } else {
+                            // Metadata lines: smaller (12px) + muted gray.
+                            tw = tw.size(12.0).color([0.5, 0.5, 0.5, 1.0]);
+                        }
+                        col = col.push(tw);
                     }
-                    if let Some(color) = is.text_color {
-                        text_widget = text_widget.color(color);
+                    col.into()
+                } else {
+                    let mut text_widget = text(label.clone());
+                    if let Some(ref is) = iced_style {
+                        if let Some(ref font_size) = is.font_size {
+                            text_widget = text_widget.size(font_size_to_f32(font_size));
+                        }
+                        if let Some(color) = is.text_color {
+                            text_widget = text_widget.color(color);
+                        }
+                        if let Some(ref weight) = is.font_weight {
+                            text_widget = text_widget.font(font_weight_to_iced(weight));
+                        }
                     }
-                    if let Some(ref weight) = is.font_weight {
-                        text_widget = text_widget.font(font_weight_to_iced(weight));
-                    }
-                }
+                    text_widget.into()
+                };
 
                 // Plan 309 续篇 II: in inspect-capture mode, render the button
                 // WITHOUT on_press so it doesn't capture the press — the
@@ -973,7 +1005,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // it. The button keeps its custom `move |_, _| bs` style below,
                 // so it still renders normally (status is ignored). Alt (capture
                 // off) restores the native onclick.
-                let mut btn = button(text_widget);
+                let mut btn = button(button_content);
                 if !inspect_capture_active() {
                     btn = btn.on_press(onclick);
                 }
