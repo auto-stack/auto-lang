@@ -483,3 +483,43 @@ a2r 的 `pub` 传播问题（next batch 重点）。
 1. **修 driver.at / pipeline.at 的 colon 解析错误**（让 36/36 transpile）
 2. **E0603 批量修复**：a2r 给 config/orchestration 模块的项加 `pub`
 3. **E0308/E0599**：继续 String/&str + 方法签名修复
+
+---
+
+## 十一、重大更正：re-transpile 实测 0 错误（2026-07-31 复验）
+
+**上文第十节的「132 错误」结论有误**——那是 worktree 里用 f32233ee 旧版 roles.at/skill.at
+（.clone() 修复不完整）测出的假象。在 master 上用正确的 .at 源码复验：
+
+```
+master 上 rebuild auto.exe（含 enum-attrs / dyn_trait_derives / hash_map_names 修复）
+→ crates/auto-ai-agent/ 下 cp -r rust rust.retest
+→ AUTO=...target/debug/auto.exe bash retranspile.sh   (34/36 .at transpile, driver/pipeline 保留手修版)
+→ cd rust.retest && cargo clean && cargo check
+→ 0 错误（仅 37 警告，都是 dead_code / unused）
+→ cargo build --bin auto-ai-react → 成功，target/debug/auto-ai-react.exe 生成
+```
+
+### 结论
+
+| 项目 | 状态 |
+|---|---|
+| 手修版 rust/src/（MVP） | **0 错误** |
+| **re-transpile + 组装（保留手写 lib.rs）** | **0 错误** ✓✓ |
+| .at transpile 成功率 | 34/36（driver.at / pipeline.at 残留 colon 解析错误） |
+
+**组装策略有效**：`retranspile.sh` 保留手写的 `lib.rs`（含 `pub mod` shims + 模块声明），
+transpile 出来的各模块（含本轮 a2r 修复后的 error/tool/agent/memory/roles/skill/validate）
+在它下面全部编译通过。之前的 E0603（私有项）问题被手写 lib.rs 的 `pub use` shim 覆盖了。
+
+### 残留工作
+
+1. **driver.at / pipeline.at 的 colon 解析错误**：两个文件仍无法 transpile，组装时
+   回退到手修版。注意：截断文件做二分定位会触发 parser 的 OOM（60GB 分配），需用
+   注释整段函数的方式定位。
+2. **37 警告清理**：`builtin_role_*.rs` 每个都有 `fn main()`（transpile 把入口点当独立
+   文件处理），属 dead_code 警告，不影响运行。
+3. **lib.rs 仍是手写**：要让 lib.rs 也走 transpile（移除最后的手写组装），需要 a2r
+   生成 extern-crate shim（`pub mod auto_ai_client { pub use ::auto_ai_client::*; }`）。
+
+**MVP 已达成**：re-transpile 版本的 auto-ai-react.exe 能成功构建。
