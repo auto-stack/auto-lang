@@ -367,11 +367,9 @@ ext PipelineDriver {
 // Free helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
+/// Current UNIX timestamp in seconds (bridged to a2r_std::time::now_sec).
 fn now_secs() uint {
-    let now = std::time::SystemTime::now()
-    let dur = now.duration_since(std::time::UNIX_EPOCH) ?? std::time::Duration::new(0, 0)
-    return dur.as_secs() as uint
+    return time.now_sec() as uint
 }
 
 /// The step input: the previous handoff's render, or (for step 0) the task.
