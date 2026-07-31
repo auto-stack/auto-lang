@@ -1,0 +1,34 @@
+widget App {
+    msg Msg { Clicked }
+
+    model {
+        var clicks int = 0
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "033 — slots (default + named)" { class: "text-xl font-bold" }
+
+            Panel(title: "Settings") {
+                // Named-slot targeting: → <template #header> in App.vue,
+                // rendered at Panel's <slot name="header" /> outlet.
+                slot(name: "header") {
+                    text "3 pending" { class: "text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full" }
+                }
+
+                // Default-slot children: rendered at Panel's <slot /> outlet.
+                text "Notifications, privacy and account preferences."
+                button f"clicked ${.clicks} times" {
+                    class: "px-2 py-1 bg-blue-600 text-white rounded text-sm w-fit",
+                    onclick: .Clicked
+                }
+            }
+        }
+    }
+
+    on {
+        .Clicked -> { .clicks = .clicks + 1 }
+    }
+}

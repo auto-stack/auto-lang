@@ -449,6 +449,7 @@ fn compile_at_file(
             style: None,
             ext_imports: Vec::new(),
             watch: Vec::new(),
+            expose: Vec::new(),
         };
         match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
             Ok(aura_widget) => {

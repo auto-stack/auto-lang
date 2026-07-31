@@ -2195,6 +2195,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         }
 ;
 
@@ -2254,6 +2255,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2292,6 +2294,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2403,6 +2406,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2465,6 +2469,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2909,6 +2914,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -2959,6 +2965,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3005,6 +3012,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3162,6 +3170,7 @@ widget TestCardVariant {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = JetGenerator::new();
@@ -3228,6 +3237,7 @@ fn test_text_with_flex_style() {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
     };
 
     let mut gen = JetGenerator::new();

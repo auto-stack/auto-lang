@@ -1211,6 +1211,10 @@ export default router
 
         // Phase 1: Collect sub-widget names from front_dir .at files (to avoid shadcn name collisions)
         let mut sub_widget_names: Vec<String> = Vec::new();
+        // Slot outlets declared by each sub-widget (name → outlet names,
+        // "" = default). Used to warn when a parent passes slot children a
+        // widget cannot render.
+        let mut sub_widget_slot_outlets: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
             for entry in fs::read_dir(&front_dir)
                 .map_err(|e| format!("Failed to read front directory: {}", e))?
@@ -1227,6 +1231,7 @@ export default router
                     // Quick-scan to collect widget names (lightweight parse)
                     if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                         for widget in &widgets {
+                            sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
                             sub_widget_names.push(widget.name.clone());
                         }
                     }
@@ -1246,6 +1251,11 @@ export default router
                     for (i, widget) in widgets.iter().enumerate() {
                         if let Some(ref routes) = widget.routes {
                             all_routes.extend(routes.routes.clone());
+                        }
+                        // Slots: warn when app.at passes (default or named)
+                        // slot children to a sub-widget with no matching outlet.
+                        for warning in widget.slot_children_warnings(&sub_widget_slot_outlets) {
+                            println!("{} {}", "Warning:".bright_yellow(), warning);
                         }
                         if i == 0 {
                             // First widget is the App root

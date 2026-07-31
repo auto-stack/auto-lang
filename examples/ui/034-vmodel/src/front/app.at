@@ -1,0 +1,67 @@
+use field: TextField
+
+widget App {
+    msg Msg {
+        NameChanged(str)
+        OpenDialog
+        OpenConfirm
+    }
+
+    model {
+        var name str = ""
+        var price_str str = "3.14"
+        var show bool = false
+        var confirm_open bool = false
+    }
+
+    computed {
+        // .to_float() → parseFloat (mirrors .to_int() → parseInt)
+        price => .price_str.to_float()
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "034 — v-model contracts" { class: "text-xl font-bold" }
+
+            // Custom widget as a v-model target (parent side is manual wiring:
+            // :modelValue down + @update:modelValue up via a quoted event key).
+            TextField(label: "Name", modelValue: .name) {
+                on "update:modelValue": .NameChanged
+            }
+            span f"Hello, ${.name} (price ${.price})"
+
+            // Builtin dialog: open: .show → <Dialog v-model:open="show">
+            // (was silently dropped before — extract_state_ref only matched
+            // hand-built bare Ident ASTs).
+            button "Open dialog" {
+                class: "px-2 py-1 bg-blue-600 text-white rounded text-sm w-fit",
+                onclick: .OpenDialog
+            }
+            dialog(open: .show) {
+                dialogcontent {
+                    dialogtitle(text: "v-model:open works")
+                    dialogdescription(text: "This dialog is bound to .show")
+                }
+            }
+
+            // Builtin alertdialog: same fix.
+            button "Open confirm" {
+                class: "px-2 py-1 bg-red-600 text-white rounded text-sm w-fit",
+                onclick: .OpenConfirm
+            }
+            alertdialog(open: .confirm_open) {
+                alertdialogcontent {
+                    alertdialogtitle(text: "Are you sure?")
+                }
+            }
+        }
+    }
+
+    on {
+        .NameChanged(v) -> { .name = v }
+        .OpenDialog -> { .show = true }
+        .OpenConfirm -> { .confirm_open = true }
+    }
+}

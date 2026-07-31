@@ -13,7 +13,7 @@
 //! 5. Runs npm install
 //! 6. Runs npx shadcn-vue add to add components
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -204,6 +204,10 @@ fn generate_workspace_project(
     let mut all_shadcn_components = HashSet::new();
     let mut all_routes: Vec<AuraRoute> = Vec::new();
     let mut sub_widget_names: Vec<String> = Vec::new();
+    // Slot outlets declared by each sub-widget (name → outlet names, "" =
+    // default). Used to warn when a parent passes slot children a widget
+    // cannot render.
+    let mut sub_widget_slot_outlets: HashMap<String, Vec<String>> = HashMap::new();
 
     // Phase 1: Scan child widget .at files in front/ directory (e.g. editor.at, sidebar.at)
     // These are sibling files of app.at that define child widgets used via `use` imports.
@@ -235,6 +239,7 @@ fn generate_workspace_project(
                         if let Some(ref routes) = widget.routes {
                             all_routes.extend(routes.routes.clone());
                         }
+                        sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
                         sub_widget_names.push(widget.name.clone());
                     }
                     // Add as component (goes into src/components/)
@@ -263,6 +268,11 @@ fn generate_workspace_project(
                 for widget in &widgets {
                     if let Some(ref routes) = widget.routes {
                         all_routes.extend(routes.routes.clone());
+                    }
+                    // Slots: warn when app.at passes (default or named) slot
+                    // children to a sub-widget with no matching outlet.
+                    for warning in widget.slot_children_warnings(&sub_widget_slot_outlets) {
+                        println!("{} {}", "  Warning:".bright_yellow(), warning);
                     }
                 }
                 // Get widget name from first widget (or use "App" as default)
@@ -301,6 +311,11 @@ fn generate_workspace_project(
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
+                            }
+                            // Slots: warn about slot children a sub-widget
+                            // cannot render.
+                            for warning in widget.slot_children_warnings(&sub_widget_slot_outlets) {
+                                println!("{} {}", "  Warning:".bright_yellow(), warning);
                             }
                         }
                         // Get widget name from first widget (or use file_stem as default)

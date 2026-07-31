@@ -10464,6 +10464,7 @@ impl<'a> Parser<'a> {
         let mut style = None;
         let mut ext_imports = Vec::new();
         let mut watch = Vec::new();
+        let mut expose = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -10503,9 +10504,12 @@ impl<'a> Parser<'a> {
                 "watch" => {
                     watch.extend(self.parse_watch_block_inner()?);
                 }
+                "expose" => {
+                    expose.extend(self.parse_expose_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', or 'routes' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', 'expose', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -10528,6 +10532,7 @@ impl<'a> Parser<'a> {
             style,
             ext_imports,
             watch,
+            expose,
         }))
     }
 
@@ -10743,6 +10748,61 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RBrace)?;
         Ok(watchers)
+    }
+
+    /// Parse a widget-level expose block (Vue backend `defineExpose`):
+    ///
+    /// ```auto
+    /// widget GraphView {
+    ///     expose {
+    ///         .fit, .graphEl
+    ///         .relayout
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Each entry is a dot-prefixed member name (comma-separated and/or one
+    /// per line): a model field, computed property, template ref
+    /// (`ref: "el"` in the view), a `use { fn: ... }` import, or an `on`
+    /// handler (`.Fit` exposes the generated `Fit` function). The Vue
+    /// backend emits `defineExpose({ ... })` in `<script setup>` so a parent
+    /// holding a template ref on this component can call the exposed
+    /// members; other backends ignore the block.
+    fn parse_expose_block_inner(&mut self) -> AutoResult<Vec<Name>> {
+        self.expect_ident("expose")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut names = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            if !self.is_kind(TokenKind::Dot) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected '.member' name in expose block, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            self.next(); // consume the dot
+            let name = self.cur.text.clone();
+            self.next();
+            names.push(name);
+
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(names)
     }
 
     /// Parse a widget-level native CSS block: `style { ...raw CSS... }`.
@@ -13087,6 +13147,37 @@ mod tests {
         assert!(widget.watch[1].immediate);
         assert!(!widget.watch[1].deep);
         assert!(widget.watch[2].deep);
+    }
+
+    #[test]
+    fn test_widget_expose_block() {
+        // expose { .a, .b  .c } — dot-prefixed member names, comma-separated
+        // and/or one per line.
+        let code = concat!(
+            "widget App {\n",
+            "  model { var q str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  expose {\n",
+            "    .fit, .graphEl\n",
+            "    .relayout\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        assert_eq!(widget.expose.len(), 3);
+        assert_eq!(widget.expose[0].as_str(), "fit");
+        assert_eq!(widget.expose[1].as_str(), "graphEl");
+        assert_eq!(widget.expose[2].as_str(), "relayout");
     }
 
     #[test]

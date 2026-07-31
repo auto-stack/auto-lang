@@ -111,6 +111,12 @@ pub struct AuraWidget {
     /// The Vue backend emits them as `watch(source, handler, opts)` calls
     /// in `<script setup>`; other backends ignore them.
     pub watchers: Vec<AuraWatch>,
+
+    /// Exposed member names from the widget-level `expose { ... }` block.
+    /// The Vue backend emits `defineExpose({ ... })` in `<script setup>` so
+    /// a parent holding a template ref on this component can call imperative
+    /// methods or read exposed refs; other backends ignore them.
+    pub exposes: Vec<String>,
 }
 
 /// A reactive watcher (widget-level `watch { ... }` entry).
@@ -201,6 +207,139 @@ impl AuraWidget {
             tick_interval: self.tick_interval,
             routes: &self.routes,
         }
+    }
+
+    /// Names of the slot outlets (`slot` elements) in this widget's view
+    /// tree; the default outlet is the empty string. Used by the build to
+    /// warn when a parent passes slot children the widget cannot render.
+    pub fn slot_outlet_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        collect_slot_outlets(&self.view_tree, &mut names);
+        names
+    }
+
+    /// Warnings for component instantiations in this widget's view tree
+    /// that pass children (default-slot content or `slot(name:)` templates)
+    /// to a sub-widget that declares no matching slot outlet.
+    /// `outlets` maps sub-widget name → its `slot_outlet_names()`.
+    /// Instantiations of widgets not present in `outlets` (unknown or
+    /// external components) are skipped — their slot surface is unknowable.
+    pub fn slot_children_warnings(
+        &self,
+        outlets: &HashMap<String, Vec<String>>,
+    ) -> Vec<String> {
+        let mut warnings = Vec::new();
+        collect_slot_children_warnings(&self.view_tree, outlets, &mut warnings);
+        warnings
+    }
+}
+
+/// Extract the slot name from a `slot` element's `name` prop
+/// (`""` = default slot when the prop is absent).
+fn slot_element_name(props: &HashMap<String, AuraPropValue>) -> String {
+    match props.get("name") {
+        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(s))) => s.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn collect_slot_outlets(node: &AuraNode, names: &mut Vec<String>) {
+    match node {
+        AuraNode::Element { tag, props, children, .. } => {
+            if tag == "slot" || tag == "Slot" {
+                let name = slot_element_name(props);
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+            for child in children {
+                collect_slot_outlets(child, names);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                collect_slot_outlets(child, names);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                collect_slot_outlets(child, names);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_slot_outlets(child, names);
+                }
+            }
+        }
+        AuraNode::Link { children, .. } => {
+            for child in children {
+                collect_slot_outlets(child, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_slot_children_warnings(
+    node: &AuraNode,
+    outlets: &HashMap<String, Vec<String>>,
+    warnings: &mut Vec<String>,
+) {
+    match node {
+        AuraNode::Element { tag, children, .. } => {
+            // A sub-widget instantiation with children: check each child
+            // against the target widget's declared slot outlets.
+            if let Some(target_outlets) = outlets.get(tag) {
+                let mut default_warned = false;
+                for child in children {
+                    if let AuraNode::Element { tag: ctag, props: cprops, .. } = child {
+                        if ctag == "slot" || ctag == "Slot" {
+                            let name = slot_element_name(cprops);
+                            if !target_outlets.contains(&name) {
+                                warnings.push(format!(
+                                    "slot(name: \"{}\") passed to <{}> but widget '{}' declares no '{}' slot outlet — content will not render",
+                                    name, tag, tag, name
+                                ));
+                            }
+                            continue;
+                        }
+                    }
+                    // Any non-slot child goes to the default outlet.
+                    if !default_warned && !target_outlets.contains(&String::new()) {
+                        warnings.push(format!(
+                            "children passed to <{}> but widget '{}' declares no default slot outlet — children will not render",
+                            tag, tag
+                        ));
+                        default_warned = true;
+                    }
+                }
+            }
+            for child in children {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_slot_children_warnings(child, outlets, warnings);
+                }
+            }
+        }
+        AuraNode::Link { children, .. } => {
+            for child in children {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -867,6 +1006,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         assert_eq!(widget.name, "Counter");
@@ -968,6 +1108,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         // logic 视图

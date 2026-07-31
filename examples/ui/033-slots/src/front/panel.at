@@ -1,0 +1,21 @@
+widget Panel(title: str) {
+    view {
+        col {
+            class: "w-80 border rounded-lg overflow-hidden bg-white shadow-sm",
+
+            // Named slot outlet: parent fills it with
+            // slot(name: "header") { ... } → <template #header>.
+            row {
+                class: "px-4 py-2 border-b bg-gray-50 flex items-center justify-between",
+                text .title { class: "text-sm font-semibold text-gray-800" }
+                slot(name: "header")
+            }
+
+            // Default slot outlet: plain children of <Panel> land here.
+            col {
+                class: "p-4 space-y-2",
+                slot
+            }
+        }
+    }
+}

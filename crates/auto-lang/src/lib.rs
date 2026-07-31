@@ -2525,6 +2525,7 @@ fn run_file_dynamic_ui_inner(
                                     style: None,
                                     ext_imports: Vec::new(),
                                     watch: Vec::new(),
+                                    expose: Vec::new(),
                                 });
                             }
                         }
@@ -2581,6 +2582,7 @@ fn run_file_dynamic_ui_inner(
                 style: None,
                 ext_imports: Vec::new(),
                 watch: Vec::new(),
+                expose: Vec::new(),
             };
             store_as_child_decls.push(fake_widget);
         }

@@ -1,0 +1,30 @@
+widget PanCanvas {
+    msg Msg { Fit, Reset }
+
+    model {
+        var zoom int = 30
+    }
+
+    view {
+        col {
+            ref: "boxEl",
+            class: "w-64 h-32 border rounded flex items-center justify-center bg-gray-50",
+            text f"zoom: ${.zoom}" { class: "text-sm text-gray-700" }
+        }
+    }
+
+    on {
+        // Imperative methods a parent can call through a template ref.
+        .Fit -> { .zoom = 100 }
+        .Reset -> { .zoom = 30 }
+    }
+
+    // defineExpose({ Fit, Reset, boxEl, zoom }) in <script setup>: the
+    // parent holding `ref: "canvasRef"` on <PanCanvas /> can call
+    // canvasRef.Fit() / canvasRef.Reset() and read canvasRef.zoom /
+    // canvasRef.boxEl (refs are unwrapped by Vue's expose proxy).
+    expose {
+        .Fit, .Reset
+        .boxEl, .zoom
+    }
+}

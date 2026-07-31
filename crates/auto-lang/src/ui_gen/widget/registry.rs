@@ -1635,8 +1635,11 @@ impl WidgetRegistry {
 
     fn register_overlay_widgets(&mut self) {
         // Dialog
+        // "modal" is the AURA-facing alias (view code writes `modal { ... }`);
+        // without it `modal` fell through to a plain <div> in Vue shadcn mode.
         let mut dialog = WidgetSpec::new("Dialog", WidgetCategory::Overlay)
-            .with_alias("dialog");
+            .with_alias("dialog")
+            .with_alias("modal");
         dialog.has_children = true;
         dialog.backends.insert("ark".to_string(), BackendMapping {
             component: "AlertDialog".to_string(),
