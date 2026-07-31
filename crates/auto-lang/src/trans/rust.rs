@@ -12751,7 +12751,8 @@ impl RustTrans {
         };
         for field in &fn_fields {
             // self.field(args) → (self.field)(args)  (avoid double-wrap)
-            let pat = format!(r"self\.{} \(", regex::escape(field));
+            // Plan 376V: also match without space (self.field(args) directly)
+            let pat = format!(r"self\.{}\s*\(", regex::escape(field));
             if let Some(re) = cached_regex(&pat) {
                 let fld = field.clone();
                 let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
