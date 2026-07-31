@@ -72,7 +72,7 @@ impl TokenBudget {
 /// 70% warning threshold (kept as a helper so new()/with_strategy() share it).
 fn warn_threshold(limit: u32) -> u32 {
     let scaled: f64 = (limit as f64) * 0.7;
-    return scaled as u32;
+    return (scaled as u32);
 }
 
 /// Action the pipeline should take after a budget check.
@@ -121,11 +121,19 @@ impl BudgetTracker {
         if self.per_step.contains_key(step) == false {
             self.per_step_names.push(step.to_string());
             self.per_step.insert(step.to_string(), total);
-        } else {
-            let prev: u32 = self.per_step.get(step).copied().unwrap_or(0);
-            self.per_step.insert(step.to_string(), prev + total);
+            
+
+
+            return;
         }
 
+
+        let mut prev: u32 = 0 as u32;
+        match self.per_step.get(step) {
+            Some(n) => prev = n.clone(),
+            None => {},
+        }
+        self.per_step.insert(step.to_string(), prev + total);
     }
     pub fn check(&self, step: &str) -> BudgetAction {
         let step_used = self.step_used(step);
@@ -156,8 +164,8 @@ impl BudgetTracker {
     }
     pub fn step_used(&self, step: &str) -> u32 {
         match self.per_step.get(step) {
-            Some(n) => return *n,
-            None => return 0,
+            Some(n) => return n.clone(),
+            None => return 0 as u32,
         }
     }
 }

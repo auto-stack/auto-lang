@@ -7,6 +7,7 @@ use a2r_std::*;
 
 use std::path::PathBuf;
 use std::fs;
+use dirs;
 use std::fs::DirEntry;
 use std::sync::Arc;
 use crate::ai_config::{ModelTier};
@@ -136,11 +137,11 @@ impl RoleRegistry {
 
 
         for name in builtin_names() {
-            load_one_builtin(name.as_str(), &mut roles, &mut names);
+            load_one_builtin(name.as_str(), roles.clone(), names);
         }
 
 
-        load_user_roles(&mut roles, &mut names);
+        load_user_roles(roles.clone(), names.clone());
 
         return RoleRegistry { roles: roles, names: names };
     }
@@ -148,24 +149,34 @@ impl RoleRegistry {
 
 
 
-        if let Some(detail) = self.roles.get(name) {
-            if detail.summary.is_builtin == false {
-                let src = serialize_at_role(detail.config.clone());
-                match load_role(&src) {
-                    Ok(_cfg) => {
-                        
+        if self.roles.contains_key(name) {
+            
 
 
 
-                        let role = config_role_new(detail.config.clone());
-                        return Some(Arc::new(Box::new(role) as Box<dyn Role>));
-                    },
-                    Err(_e) => {
-                        
+            match self.roles.get(name) {
+                Some(detail) => {
+                    if detail.summary.is_builtin == false {
+                        let src = serialize_at_role(detail.config.clone());
+                        match load_role(src.as_str()) {
+                            Ok(_cfg) => {
+                                
 
-                    },
-                }
-            }        }
+
+
+                                let role = config_role_new(detail.config.clone());
+                                return Some(Arc::new(Box::new(role)));
+                            },
+                            Err(_e) => {
+                                
+
+                            },
+                        }
+                    }
+                },
+                None => {},
+            }
+        }
 
         match load_builtin(name) {
             Some(b) => return Some(Arc::new(b)),
@@ -175,13 +186,20 @@ impl RoleRegistry {
     pub fn list(&self) -> Vec<RoleSummary> {
         let mut user_list: Vec<RoleSummary> = vec![];
         let mut builtin_list: Vec<RoleSummary> = vec![];
-        for name in &self.names {
-            if let Some(d) = self.roles.get(name) {
-                if d.summary.is_builtin {
-                    builtin_list.push(d.summary.clone());
-                } else {
-                    user_list.push(d.summary.clone());
-                }
+        for name in self.names.clone() {
+            
+
+
+            match self.roles.get(name.as_str()) {
+                Some(d) => {
+                    if d.summary.is_builtin {
+                        builtin_list.push(d.summary.clone())
+                    } else {
+                        user_list.push(d.summary.clone())
+                    }
+
+                },
+                None => {},
             }
         }
         user_list.sort_by_key(|s| s.name.clone());
@@ -196,8 +214,8 @@ impl RoleRegistry {
         return out;
     }
     pub fn get(&self, name: &str) -> Option<RoleDetail> {
-        if let Some(d) = self.roles.get(name) {
-            return Some(d.clone());
+        if self.roles.contains_key(name) {
+            return Some(self.roles.get(name).unwrap().clone());
         }
         return None;
     }
@@ -212,7 +230,7 @@ impl RoleRegistry {
         match roles_dir() {
             None => return Err(AgentError::Config("could not determine home directory for roles".to_string())),
             Some(dir) => {
-                match fs::create_dir_all(&dir) {
+                match fs::create_dir_all(dir) {
                     Err(e) => return Err(AgentError::Config(format!("failed to create roles dir {}: {}", dir.display(), e))),
                     Ok(_) => {},
                 }
@@ -222,7 +240,11 @@ impl RoleRegistry {
                 match soul_md {
                     Some(md) => {
                         let soul_path = dir.join(format!("{}.soul.md", name));
-                        if !a2r_std::fs::write(soul_path.to_str().unwrap(), md.as_str()) {
+                        
+
+
+                        let w = a2r_std::fs::write(soul_path.to_str().unwrap(), md.as_str());
+                        if w == false {
                             return Err(AgentError::Config(format!("failed to write {}", soul_path.display())));
                         }
                         out.soul_file = Some(format!("{}.soul.md", name));
@@ -234,11 +256,14 @@ impl RoleRegistry {
 
                 let at_path = dir.join(format!("{}.at", name));
                 let src = serialize_at_role(out);
-                if a2r_std::fs::write(at_path.to_str().unwrap(), src.as_str()) {
-                    return Ok(());
-                } else {
+                
+
+
+                let w = a2r_std::fs::write(at_path.to_str().unwrap(), src.as_str());
+                if w == false {
                     return Err(AgentError::Config(format!("failed to write {}", at_path.display())));
                 }
+                return Ok(());
             },
         }
     }
@@ -251,7 +276,7 @@ impl RoleRegistry {
             Some(at_path) => {
                 let existed = at_path.exists();
                 if existed {
-                    match fs::remove_file(&at_path) {
+                    match fs::remove_file(at_path) {
                         Err(e) => return Err(AgentError::Config(format!("failed to delete {}: {}", at_path.display(), e))),
                         Ok(_) => {},
                     }
@@ -294,18 +319,23 @@ impl RoleRegistry {
 /// deleted — returns an error.
 /// Load one built-in profession into the registry (step 1 of load()).
 /// Unknown names are silently skipped.
-fn load_one_builtin(name: &str, roles: &mut std::collections::HashMap<String, RoleDetail>, names: &mut Vec<String>) {
+fn load_one_builtin(name: &str, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
     match load_builtin(name) {
         Some(prof) => {
-            let pname = prof.name();
-            let ptier = prof.model_tier();
-            let patiers = prof.allowed_tiers();
-            let pskills = prof.skills();
-            let pbudget = prof.token_budget();
-            let psoul = prof.system_prompt();
-            let cfg = profession_to_config(prof);
-            let summary = RoleSummary { name: pname, description: "".to_string(), tier: ptier, allowed_tiers: patiers, skills: pskills, token_budget: pbudget, is_builtin: true };
-            let detail = RoleDetail { summary: summary, soul: psoul, soul_from_file: false, config: cfg };
+            
+
+
+
+
+            let prof_name = prof.name();
+            let prof_tier = prof.model_tier();
+            let prof_tiers = prof.allowed_tiers();
+            let prof_skills = prof.skills();
+            let prof_budget = prof.token_budget();
+            let prof_soul = prof.system_prompt();
+            let cfg = profession_to_config(prof.clone());
+            let summary = RoleSummary { name: prof_name.to_string(), description: "".to_string(), tier: prof_tier, allowed_tiers: prof_tiers, skills: prof_skills, token_budget: prof_budget, is_builtin: true };
+            let detail = RoleDetail { summary: summary, soul: prof_soul.to_string(), soul_from_file: false, config: cfg };
             roles.insert(name.to_string(), detail);
             names.push(name.to_string());
         },
@@ -315,21 +345,30 @@ fn load_one_builtin(name: &str, roles: &mut std::collections::HashMap<String, Ro
 
 /// Load all user .at roles from the roles directory (step 2 of load()).
 /// Missing/unreadable directory → no user roles (not fatal).
-fn load_user_roles(roles: &mut std::collections::HashMap<String, RoleDetail>, names: &mut Vec<String>) {
+fn load_user_roles(roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
     match roles_dir() {
-        Some(dir) => scan_roles_dir(dir.clone(), &mut *roles, &mut *names),
+        Some(dir) => scan_roles_dir(dir.clone(), roles.clone(), names),
         None => {},
     }
 }
 
 /// Iterate one roles directory, loading each *.at entry.
-fn scan_roles_dir(dir: PathBuf, roles: &mut std::collections::HashMap<String, RoleDetail>, names: &mut Vec<String>) {
+fn scan_roles_dir(dir: PathBuf, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
     match fs::read_dir(dir) {
         Ok(entries) => {
             for entry in entries {
+                
+
+
+
                 match entry {
-                    Ok(e) => handle_dir_entry(e, &mut *roles, &mut *names),
-                    Err(_) => {},
+                    Ok(e) => {
+                        let path = e.path();
+                        if is_at_file(path.clone()) {
+                            load_user_at_file(path.clone(), roles.clone(), names);
+                        }
+                    },
+                    Err(_e) => {},
                 }
             }
         },
@@ -337,14 +376,6 @@ fn scan_roles_dir(dir: PathBuf, roles: &mut std::collections::HashMap<String, Ro
             
 
         },
-    }
-}
-
-/// Handle one read_dir result: skip errors, load .at files.
-fn handle_dir_entry(entry: DirEntry, roles: &mut std::collections::HashMap<String, RoleDetail>, names: &mut Vec<String>) {
-    let path = entry.path();
-    if is_at_file(path.clone()) {
-        load_user_at_file(path.clone(), &mut *roles, &mut *names);
     }
 }
 
@@ -360,21 +391,26 @@ fn is_at_file(path: PathBuf) -> bool {
 /// Read + parse one user .at role file, inserting it into roles/names
 /// (overriding any same-named built-in). Parse/read failures are warned +
 /// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
-fn load_user_at_file(path: PathBuf, roles: &mut std::collections::HashMap<String, RoleDetail>, names: &mut Vec<String>) {
+fn load_user_at_file(path: PathBuf, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
+
+
+
     let content = a2r_std::fs::read_to_string(path.to_str().unwrap());
     if content.is_empty() {
+        
+
         return;
     }
-    match parse_at_role(&content) {
+    match parse_at_role(content.as_str()) {
         Err(_e) => {
-
+            
 
         },
         Ok(cfg) => {
-
+            
 
             let mut name: String = "".to_string();
-            match cfg.name.clone() {
+            match cfg.name {
                 Some(n) => name = n,
                 None => {
                     match path.file_stem() {
@@ -388,14 +424,18 @@ fn load_user_at_file(path: PathBuf, roles: &mut std::collections::HashMap<String
                     }
                 },
             }
-
+            
 
 
             let soul = resolve_soul(cfg.clone(), path.clone());
-            let summary = RoleSummary { name: name.to_string(), description: cfg.description.clone().unwrap_or("".to_string()).to_string(), tier: cfg.model_tier.unwrap_or(ModelTier::Mid), allowed_tiers: cfg.allowed_tiers.clone().unwrap_or_default(), skills: cfg.skills.clone().unwrap_or_default(), token_budget: cfg.token_budget, is_builtin: false };
+            
+
+
+
+            let summary = RoleSummary { name: name.to_string(), description: cfg.description.clone().unwrap_or("".to_string()).to_string(), tier: cfg.model_tier.clone().unwrap_or(ModelTier::Mid), allowed_tiers: cfg.allowed_tiers.clone().unwrap_or_default(), skills: cfg.skills.clone().unwrap_or_default(), token_budget: cfg.token_budget.clone(), is_builtin: false };
             let detail = RoleDetail { summary: summary, soul: soul.markdown.to_string(), soul_from_file: soul.from_file, config: cfg };
             if roles.contains_key(&name) == false {
-                names.push(name.clone());
+                names.push(name.to_string());
             }
             roles.insert(name.to_string(), detail);
         },
@@ -420,19 +460,21 @@ fn resolve_soul(cfg: RoleConfig, at_path: PathBuf) -> SoulResolve {
             match at_path.parent() {
                 Some(d) => {
                     let sidecar = d.join(rel);
-                    let md = a2r_std::fs::read_to_string(sidecar.to_str().unwrap());
-                    if md.is_empty() {
-                        return SoulResolve { markdown: cfg.system_prompt.unwrap_or("".to_string()).to_string(), from_file: false };
+                    match Ok(a2r_std::fs::read_to_string(sidecar.to_str().unwrap())) {
+                        Ok(md) => return SoulResolve { markdown: md.to_string(), from_file: true },
+                        Err(_e) => {
+                            
+
+                            return SoulResolve { markdown: cfg.system_prompt.unwrap_or("".to_string()).to_string(), from_file: false };
+                        },
                     }
-                    return SoulResolve { markdown: md, from_file: true };
                 },
                 None => {
                     let sidecar = PathBuf::from(rel);
-                    let md = a2r_std::fs::read_to_string(sidecar.to_str().unwrap());
-                    if md.is_empty() {
-                        return SoulResolve { markdown: cfg.system_prompt.unwrap_or("".to_string()).to_string(), from_file: false };
+                    match Ok(a2r_std::fs::read_to_string(sidecar.to_str().unwrap())) {
+                        Ok(md) => return SoulResolve { markdown: md.to_string(), from_file: true },
+                        Err(_e) => return SoulResolve { markdown: cfg.system_prompt.unwrap_or("".to_string()).to_string(), from_file: false },
                     }
-                    return SoulResolve { markdown: md, from_file: true };
                 },
             }
         },

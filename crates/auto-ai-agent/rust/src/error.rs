@@ -45,12 +45,6 @@ pub enum AgentError {
     Config(String),
 }
 
-impl From<ClientError> for AgentError {
-    fn from(e: ClientError) -> Self {
-        AgentError::Client(e)
-    }
-}
-
 
 impl AgentError {
     pub fn message(&self) -> String {

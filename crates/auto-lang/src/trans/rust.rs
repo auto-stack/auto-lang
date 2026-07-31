@@ -13084,18 +13084,51 @@ impl RustTrans {
     /// Plan 376 Pass 3: Fix `Some(ident)` where target is Option<String>.
     /// Adds `.to_string()` to the inner value.
     fn fix_some_str_to_string(content: &mut String) {
-        // Only add .to_string() for string-like idents, NOT for numeric vars.
-        // Skip: pure numeric identifiers, bool, keywords.
+        // Add .to_string() to `self.field = Some(ident)` ONLY when the payload
+        // ident is str-typed. The field is Option<String> in that case and
+        // Rust won't coerce `Some(&str)` → `Some(String)`.
+        //
+        // Plan 380 regression: the previous version added .to_string() to ANY
+        // bare ident, which broke `Some(budget)` (Option<u32> → E0308) and
+        // `Some(handler)` (Option<fn> → E0599 Display). Only str-typed idents
+        // (fn params / locals annotated &str or String) need the conversion.
+        let mut str_idents = std::collections::HashSet::new();
+        if let Some(re) = cached_regex(r"\b(\w+):\s*&str\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+        if let Some(re) = cached_regex(r"\b(\w+):\s*String\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+        if let Some(re) = cached_regex(r"let (?:mut )?(\w+):\s*(?:&str|String)\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+
         let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
                 let ident = caps.get(2).unwrap().as_str();
                 let suffix = caps.get(3).unwrap().as_str();
-                // Skip numeric/bool/keyword idents
-                if ident.parse::<f64>().is_ok()
-                    || ident == "true" || ident == "false"
-                    || ident == "None" || ident == "default" {
+                // Only convert when the payload is a known str-typed ident
+                if !str_idents.contains(ident) {
                     return format!("{}{}{}", prefix, ident, suffix);
                 }
                 format!("{}{}.to_string(){}", prefix, ident, suffix)

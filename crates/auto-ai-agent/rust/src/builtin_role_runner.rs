@@ -13,7 +13,7 @@ const SOUL: &str = "# Soul of the Runner\n\nYou carry out concrete directives by
 /// Auto port of builtin_roles/runner.rs (auto-ai v0.4.0).
 /// Soul text (inline in the Rust original — no separate .md file).
 /// The Runner: executes directives via tools and reports the outcome.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Runner {}
 
 impl Role for Runner {
