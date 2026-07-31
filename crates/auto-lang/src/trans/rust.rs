@@ -11297,6 +11297,7 @@ impl RustTrans {
         Self::fix_a2r_std_fs_result_patterns(&mut content);
         Self::fix_spec_trait_boxing(&mut content);
         Self::fix_pathbuf_as_str(&mut content);
+        Self::fix_tuple_index(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -12981,6 +12982,17 @@ impl RustTrans {
                 let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
                 let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
                 format!("{}{}{}", header, new_body, close)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: Convert tuple indexing pair[0]/pair[1] → pair.0/pair.1.
+    /// Auto uses [] for both list and tuple access, but Rust tuples need .N.
+    fn fix_tuple_index(content: &mut String) {
+        if let Some(re) = cached_regex(r"\bpair\[(\d+)\]") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("pair.{}", caps.get(1).unwrap().as_str())
             }).to_string();
             if new != *content { *content = new; }
         }
