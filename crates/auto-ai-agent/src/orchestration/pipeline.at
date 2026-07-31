@@ -587,15 +587,9 @@ fn log_budget_advisory(action BudgetAction) void {
 // Free helpers (bridge std::time; pure helpers)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
-use.rust std::time::SystemTime
-use.rust std::time::UNIX_EPOCH
-use.rust std::time::Duration
-
+/// Current UNIX timestamp in seconds (bridged to a2r_std::time::now_sec).
 fn now_secs() uint {
-    let now = SystemTime.now()
-    let dur = now.duration_since(std::time::UNIX_EPOCH) ?? std::time::Duration::new(0, 0)
-    return dur.as_secs() as uint
+    return time.now_sec() as uint
 }
 
 /// a - b, clamped at 0 (mirrors u64::saturating_sub).
