@@ -447,12 +447,34 @@ pub fn synthesize_widget_module(
     // Plan 340: build api_funcs metadata from imported Fn declarations that
     // carry #[api(method,path)] attrs. Used by Expr::Call to rewrite bare API
     // calls into HTTP requests when api_over_http is set.
+    //
+    // Plan 340 audit: only register a BARE-name alias when the name is unique
+    // across all imported #[api] fns. If two modules export the same bare name
+    // (e.g. db.create_note AND api.create_note), a bare call is ambiguous, so
+    // we skip the alias (last-write-wins would silently route to the wrong
+    // endpoint). This mirrors the import_scope bare_counts guard below.
     if api_over_http {
+        // Count how many imported #[api] fns define each bare name.
+        let mut bare_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if f.api_attrs.is_some() {
+                    if let Some(bare) = f.name.to_string().split('.').last() {
+                        *bare_counts.entry(bare.to_string()).or_default() += 1;
+                    }
+                }
+            }
+        }
         for stmt in &import_stmts {
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
                     let bare = f.name.to_string().split('.').last()
                         .unwrap_or(&f.name.to_string()).to_string();
+                    // Skip ambiguous bare names — caller must qualify them.
+                    if bare_counts.get(&bare).copied().unwrap_or(0) > 1 {
+                        continue;
+                    }
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
                     codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
@@ -945,12 +967,27 @@ pub fn synthesize_from_decl(
 
     // Plan 340: build api_funcs metadata from imported Fn declarations that
     // carry #[api(method,path)] attrs.
+    // Plan 340 audit: skip ambiguous bare names (see first synth site above).
     if api_over_http {
+        let mut bare_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for stmt in &import_stmts {
+            if let Stmt::Fn(f) = stmt {
+                if f.api_attrs.is_some() {
+                    if let Some(bare) = f.name.to_string().split('.').last() {
+                        *bare_counts.entry(bare.to_string()).or_default() += 1;
+                    }
+                }
+            }
+        }
         for stmt in &import_stmts {
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
                     let bare = f.name.to_string().split('.').last()
                         .unwrap_or(&f.name.to_string()).to_string();
+                    if bare_counts.get(&bare).copied().unwrap_or(0) > 1 {
+                        continue;
+                    }
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
                     codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {

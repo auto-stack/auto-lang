@@ -4039,12 +4039,8 @@ impl Codegen {
             let param_name = api.params.get(ai).cloned().unwrap_or_default();
             let placeholder = format!(":{}", param_name);
             if path.contains(&placeholder) {
-                // Splice: push base-path-before, arg-str, base-path-after, STR_CAT chain.
-                // We build the full URL via repeated STR_CAT. To keep it simple,
-                // we construct the URL at runtime: emit a sequence of LOAD_STR
-                // (literal segments) + arg str + STR_CAT.
-                // For now, defer URL construction to a helper that emits the
-                // concatenation chain.
+                // Splice the arg into the path at `:param`: emit a LOAD_STR +
+                // arg + STR_CAT chain via emit_url_with_param.
                 self.emit_url_with_param(&path, &placeholder, expr)?;
                 path = String::new(); // marker: URL already emitted
             } else {
@@ -4059,12 +4055,13 @@ impl Codegen {
 
         // 2. Determine the HTTP native name and whether a body is needed.
         let method = api.method.to_uppercase();
-        let needs_body = matches!(method.as_str(), "POST" | "PUT");
+        let needs_body = matches!(method.as_str(), "POST" | "PUT" | "PATCH");
         let http_native = match method.as_str() {
             "GET" => "auto.http.get_json",
             "POST" => "auto.http.post_json",
             "PUT" => "auto.http.put_json",
             "DELETE" => "auto.http.delete_json",
+            "PATCH" => "auto.http.patch_json",
             other => {
                 return Err(format!(
                     "emit_api_http_call: unsupported method '{}' for {}",
@@ -4176,9 +4173,9 @@ impl Codegen {
         // Stringify the arg: compile it, then to_string via str conversion.
         // For int args, use I32_TO_STR; for others, assume string-compatible.
         self.compile_expr(arg_expr)?;
-        // Best-effort stringification: try I32_TO_STR (harmless on strings as
-        // the value is already a string tag). For robustness, we rely on the
-        // arg being int or str — the common case for :id params.
+        // Stringify the arg (TO_STR handles int/bool/str/f32; object args would
+        // produce a debug string, so path params should be int/str — the common
+        // case for :id segments).
         self.emit(OpCode::TO_STR);
         self.emit(OpCode::STR_CAT); // before + arg
         if !after.is_empty() {

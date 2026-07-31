@@ -1133,10 +1133,10 @@ lazy_static::lazy_static! {
 /// `io.read_text_async(path: String) -> String`
 /// Async read file to string. Non-blocking (yield pattern from Plan 349 step7).
 pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Check if we have a pending request (re-entry after yield).
+    // Re-entry check BEFORE popping args. The engine retries this CALL_NAT
+    // after a yield (rewinds IP), so on re-entry the `path` arg was already
+    // popped on the first call. Popping again would eat the wrong stack value
+    // and underflow. (Same fix as Plan 340's HTTP shims.)
     if let Some(req_id) = task.waiting_http_request_id {
         let result = ASYNC_IO_RESULTS.lock()
             .ok()
@@ -1168,7 +1168,9 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
         return Ok(());
     }
 
-    // First call — spawn the read and yield.
+    // First call — pop the path, spawn the read and yield.
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     let path_for_thread = path.clone();
     std::thread::spawn(move || {
@@ -1190,11 +1192,9 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 /// `io.write_text_async(path: String, content: String) -> bool`
 /// Async write string to file. Non-blocking.
 pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let content: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+    // Re-entry check BEFORE popping args (see shim_io_read_text_async / Plan 340
+    // HTTP shims for rationale: the engine rewinds IP on yield, so args were
+    // already popped on the first call).
     if let Some(req_id) = task.waiting_http_request_id {
         let result = ASYNC_IO_RESULTS.lock()
             .ok()
@@ -1209,6 +1209,10 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         return Ok(());
     }
 
+    let content: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     let path_t = path.clone();
     let content_t = content.clone();
@@ -2158,6 +2162,14 @@ fn vm_value_to_json(
                 } else if let Some(list) = obj.as_any().downcast_ref::<ListData<String>>() {
                     let arr = list.elems.iter().map(|s| serde_json::json!(s)).collect();
                     Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<char>>() {
+                    // Plan 340 audit: char list → JSON array of 1-char strings.
+                    let arr = list.elems.iter().map(|c| serde_json::json!(c.to_string())).collect();
+                    Ok(serde_json::Value::Array(arr))
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<bool>>() {
+                    // Plan 340 audit: bool list → JSON array of booleans.
+                    let arr = list.elems.iter().map(|b| serde_json::json!(*b)).collect();
+                    Ok(serde_json::Value::Array(arr))
                 } else {
                     Ok(serde_json::Value::Null)
                 }
@@ -2194,6 +2206,13 @@ pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
             .map(|b| String::from_utf8_lossy(b).to_string())
             .unwrap_or_default();
         auto_val::Value::Str(auto_val::AutoStr::from(s.as_str()))
+    } else if auto_val::is_f32(nv) {
+        // Plan 340 audit: f32 (1-slot) → Float so it serializes as a number
+        // instead of being dropped to Nil. (f64 is 2-slot [bits, null-padding];
+        // it can't be handled here since we already pop_nv'd the single TOS.
+        // f64 top-level from_value args are rare — struct-wrapped doubles go
+        // through vm_value_to_json which handles Value::Double correctly.)
+        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
     } else {
         auto_val::Value::Nil
     };
@@ -5183,6 +5202,13 @@ fn simple_http_request(method: &str, url: &str, body: Option<&str>) -> i64 {
 /// These return the response body as a STRING (not a handle), so codegen can
 /// feed it directly into `auto.json.to_value`. Each runs `reqwest::blocking`
 /// in a dedicated OS thread (same pattern as `simple_http_request`).
+///
+/// Plan 340 audit fix: on failure (network error, thread panic), return a JSON
+/// error object `{"error":"...","status":0}` instead of the literal "null".
+/// The old "null" was indistinguishable from a real null response body and made
+/// split-mode failures (backend down, wrong port, 404) very hard to debug. The
+/// codegen path feeds this into `auto.json.to_value`, which parses it into a
+/// VM object with an `error` field the app can surface.
 fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
     let method = method.to_string();
     let url = url.to_string();
@@ -5193,17 +5219,33 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
             "POST" => client.post(&url),
             "PUT" => client.put(&url),
             "DELETE" => client.delete(&url),
+            "PATCH" => client.patch(&url),
             _ => client.get(&url),
         };
         if let Some(b) = body {
             builder = builder.header("Content-Type", "application/json").body(b);
         }
-        builder.send().map(|r| r.text().unwrap_or_default())
+        builder.send().map(|r| {
+            let status = r.status().as_u16();
+            // Non-2xx → wrap as error object so it isn't mistaken for data.
+            let text = r.text().unwrap_or_default();
+            if (200..300).contains(&status) {
+                text
+            } else {
+                format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status)
+            }
+        })
     }).join();
     match result {
         Ok(Ok(text)) => text,
-        _ => String::from("null"),
+        Ok(Err(e)) => format!(r#"{{"error":"{}","status":0}}"#, escape_json(&e.to_string())),
+        Err(_) => r#"{"error":"HTTP thread panicked","status":0}"#.to_string(),
     }
+}
+
+/// Minimal JSON string escaper for error messages embedded in JSON objects.
+fn escape_json(s: &str) -> String {
+    s.replace('\\', r"\\").replace('"', r#"\""#).replace('\n', r"\n")
 }
 
 /// `auto.http.get_json(url) -> String` — GET, return body as string.
@@ -5328,6 +5370,38 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
     let req_id = alloc_async_id();
     spawn_async_http("DELETE".into(), url, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
+}
+
+/// `auto.http.patch_json(url, body) -> String` — PATCH JSON, return body.
+///
+/// Plan 340 gap fix: PATCH was accepted by the AST/parser and used by real
+/// `#[api]` endpoints (e.g. 015-notes `toggle_pin`), but had no native and no
+/// codegen branch, so any PATCH `#[api]` call in split mode hard-failed at
+/// codegen. Mirrors shim_http_put_json (url + body).
+pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Re-entry check BEFORE popping args (see shim_http_get_json for rationale).
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(resp) = check_async_http_result(req_id) {
+            task.waiting_http_request_id = None;
+            return push_string_result(task, vm, resp);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let req_id = alloc_async_id();
+    spawn_async_http("PATCH".into(), url, Some(body), req_id);
     if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
         map.insert(req_id, None);
     }
@@ -6277,6 +6351,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.post_json", shim_http_post_json);
     natives.register_shim_by_name("auto.http.put_json", shim_http_put_json);
     natives.register_shim_by_name("auto.http.delete_json", shim_http_delete_json);
+    natives.register_shim_by_name("auto.http.patch_json", shim_http_patch_json);
 
     // Plan 341: 异步 SSE 流式接收 — 返回 iterator_id 供 for-in 消费。
     natives.register_shim_by_name("auto.http.sse_get_stream", shim_http_sse_get_stream);

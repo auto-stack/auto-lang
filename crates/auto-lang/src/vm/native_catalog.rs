@@ -965,6 +965,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.post_json", 3103, Void),
             ("auto.http.put_json", 3104, Void),
             ("auto.http.delete_json", 3105, Void),
+            ("auto.http.patch_json", 3107, Void),
             ("auto.http.sse_get_stream", 3106, Void),
 
             // === serde_json aliases ===
@@ -1735,6 +1736,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.post_json", 3103),
     ("auto.http.put_json", 3104),
     ("auto.http.delete_json", 3105),
+    ("auto.http.patch_json", 3107),
     // Plan 341: 异步 SSE 流式接收
     ("auto.http.sse_get_stream", 3106),
     ("http.sse_get_stream", 3106),
