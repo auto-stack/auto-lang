@@ -12950,7 +12950,9 @@ impl RustTrans {
     /// Plan 376 Pass 2b: Fix a2r_std::fs function return type mismatches.
     /// read_to_string returns String (not Result); wrap in Ok() so match works.
     fn fix_a2r_std_fs_result_patterns(content: &mut String) {
-        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\([^)]*\))\s*\{");
+        // Plan 376W: use non-greedy .*? to handle nested parens in args
+        // (e.g. path.to_str().unwrap() contains ')' which broke the old [^)]*).
+        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\(.*?\))\s*\{");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let call = caps.get(1).unwrap().as_str();
