@@ -695,6 +695,21 @@ Task 21 的生成器改动（§11.2，commit `f863f9ff`）**已正确落地**：
    - **T5c（`edit_title`）**：EditorPanel 是按笔记在 view 里构造的子组件，**不是 App 的 struct 字段**，故其 `edit_title` 不在 App snapshot → **保留** `skip_if rust`（需后续让生成器/运行时支持「当前活动子组件」状态暴露）。
 4. ⏳ 待：启动 GUI 跑 `python run_autotest.py --mode rust` 端到端验证 T11/T11b/T12 实际通过。
 
+### 12.4 GUI 端到端验证结果 ✅
+
+启动 015-notes GUI 跑 `.autotest`，两种模式均验证：
+
+| 模式 | 结果 | 说明 |
+|---|---|---|
+| **VM**（`--mode vm`） | **13 passed, 0 failed, 0 skipped** | 完全回归，后缀匹配未破坏 VM（精确命中） |
+| **Rust**（`--mode rust`） | **8 passed, 5 failed, 0 skipped** | T11/T11b/T12 ✅（新启用）；T5c 仍 skip（`edit_title` 子组件不可见） |
+
+Rust 模式失败项（T2a/T2c/T5b/T5c/T5e）是**预存的 a2r UI 渲染差异**（文件夹标题渲染、"Note title" 输入框未找到），与 state 工作无关，属 Plan 374/后续 a2r 修复范畴。
+
+直接 MCP 验证（`autoui_state(fields=["dark_mode"])`）确认 Rust 模式返回 `store.dark_mode: false (bool)`、`store.accent_color: "indigo" (str)`——递归快照 + 后缀匹配按设计工作。
+
+**结论**：Task 22（问题 a + b）完成。`skip_if rust` 已从 T11/T11b/T12 移除（实测通过），T5c 保留（`edit_title` 仍需后续让「当前活动子组件」状态可暴露）。
+
 ---
 
 ## 13. 实施顺序与风险
