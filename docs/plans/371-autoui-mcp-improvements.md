@@ -777,3 +777,123 @@ Rust 模式现在**完整可跑**：编辑/保存/取消/输入标题、文件�
 > ⚠️ 实施记录：Task 19 + 21 的代码改动曾因一次 `git stash` 操作与工作区既有 in-flight 改动冲突而丢失，已重新应用。此外，用户 IDE（ZCode）打开了部分文件，其缓冲区回写一度还原 agent 的编辑；最终通过原子化重应用 + 立即 build 锁定状态。
 >
 > **a2r 重生成结论**：原生 a2r 输出 015-notes 有 86 个预存错误（store-composable 缺陷，Plan 374 范畴），committed `main.rs` 是手工拼装版。Task 21 的生成器改动已正确落地，但**不手改生成的 main.rs**（会被覆盖、无意义）。`skip_if rust` 暂不移除。端到端 GUI 跑 `.autotest` 验证需在 IDE 不争用文件时进行。
+
+---
+
+## 14. 架构债务：Rust 模式组件状态模型（2026-07-31 会话复盘）
+
+本节是对 2026-07-31 会话 VM/Rust 修复工作的复盘，记录一个**反复出现、值得治本**的架构问题。
+
+### 14.1 问题表象："编辑框无法编辑"反复出现
+
+整个 Plan 371 后半段，反复出现同一类症状：
+- 点击 Edit / New，看不到编辑框
+- 输入框无法输入
+- 标题/正文不显示
+
+表面看这些都是 `if .editing == false`、`if .note.title == ""` 这类**状态判断错误**。但深入诊断后，根因**不是 if 逻辑**，而是**状态值从未改变**——`editing` 永远是初始值 `false`。
+
+### 14.2 根因：两种模式的状态模型根本不同
+
+`.at` 源码是为 VM 模型写的，Rust 模式从未实现与之等价的能力。
+
+**VM 模式（`dynamic.rs:748-764`）——单一持久 VM 堆：**
+
+```
+DynamicComponent 持有 VmBridge → VmBridge 持有持久 VM 堆
+├── App 的 state（含 editing/edit_title 等本属于 EditorPanel 的字段）
+├── 子组件 props（.note）
+└── 关键：子组件 handler 直接操作 ROOT state
+    （dynamic.rs:748 注释："child widget handlers operate on parent state
+     fields (editing, edit_title... defined in App's model)"）
+```
+
+子组件（如 EditorPanel）的 `model { var editing bool }` 在 VM 里**统一进 root 堆**，实例持续存在，状态天然持久。
+
+**Rust 模式（`00271d9a` 之前）——分离的临时结构体：**
+
+```rust
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);  // ← 每次消息都新建临时实例
+    __child.on(inner);                         // ← 状态改在临时实例上
+    // ← __child 丢弃！editing/edit_title 全部丢失
+}
+```
+
+这导致 EditorPanel 的 `editing` 字段：
+1. **点击 Edit** → 临时 `__child.editing = true` → 丢弃 → 下次 view 重建，`editing` 又是 `false` → 看不到编辑框
+2. **NewNote** → store 创建空 note → 但 EditorPanel.Init（设 `editing=true`）从未被转发 → 看不到编辑框
+3. **type_text** → 输入值未注入 handler 参数 → 输入无效
+
+### 14.3 本会话的修复：workaround，非治本
+
+`00271d9a` 的 **hoist+sync** 方案把子组件字段搬到父 struct，每次消息手动 clone 进出：
+
+```rust
+// 生成代码现状（workaround）
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);
+    __child.editing = self.editing.clone();      // sync in
+    __child.edit_title = self.edit_title.clone();
+    // ... 5 个字段
+    __child.on(inner);
+    self.editing = __child.editing.clone();       // sync out
+    // ... 5 个字段
+}
+```
+
+这能让 015-notes 跑通，但代价：
+- 父 struct 膨胀（App 现在持有 editing/edit_title/edit_body/tag_input/show_tag_input 五个本不属于它的字段）
+- 每个子组件都要手写一堆 sync 代码，新增字段易遗漏
+- `.at` 里 `EditorPanel.Init` 这种"组件生命周期"语义靠生成器特判转发（`9f77f94b`），脆弱
+
+### 14.4 问题来源权重
+
+| 因素 | 权重 | 说明 |
+|------|------|------|
+| **a2r 代码生成器缺陷** | ★★★★★ 主因 | 从未实现"子组件状态持久化"，`00271d9a` 才从头补 |
+| **`.at` 源码的隐式假设** | ★★★ | `EditorPanel.Init` 依赖"组件实例持续存在 + 被初始化"的 VM 语义，Rust 无此保证 |
+| **store 跨组件同步** | ★★ | 次要。store 本身工作正常，问题是"子组件如何访问 store 字段"在两模式不一致 |
+| **if 状态判断** | ★ | 纯症状。状态值正确了，if 自然正确 |
+
+### 14.5 治本建议（后续 Plan 范畴）
+
+**1. a2r 应实现"组件实例持久化"而非"状态 hoist+sync"**
+
+让 App 持有 `child_instances: HashMap<String, Box<dyn Component>>`，消息直接路由到持久实例。这和 VM 的 `VmBridge` 持有持久堆是等价的，且：
+- 父 struct 不膨胀
+- 不需要每子组件写 sync 代码
+- `EditorPanel.Init` 等生命周期自然触发，无需生成器特判
+
+**2. 明确"组件状态归属"的单一真相源**
+
+`.at` 语义层应文档化：`model { var editing }` 声明的状态，实际存储由运行时决定（VM 统一进 root 堆，Rust 持久实例持有）。两种运行时按同一语义工作，避免歧义。
+
+**3. 建立语义保真度测试**
+
+每个 `.at` 语义特性都有对应的 Rust 生成测试，**失败即报错而非 `skip_if rust` 跳过**。`skip_if rust` 掩盖了"从未实现"的真相。
+
+**4. 生成文件不进 git（已修复，`f7095351`）**
+
+避免"手改生成文件 → 重生成被覆盖 → 再手改"的循环。只改生成器 `ui_gen/rust.rs`。
+
+### 14.6 诊断流程改进
+
+**修复前先确认"回归还是从未实现"：**
+```bash
+git log -p -- '*.autotest' | grep -B2 "skip_if rust"
+```
+一直 `skip_if rust` 的场景 = 从未在 Rust 可用过 = 特性缺失，非回归。
+
+**"if 判断错误"时先查状态值，而非查 if 逻辑：**
+诊断顺序：**状态值（`autoui_state`）→ 状态写入点 → 写入是否生效 → 判断逻辑**。
+`if .editing == false` 永远走某分支，99% 是 `editing` 值从未改变，而非判断写错。
+
+**用 MCP 做语义级诊断，而非截图肉眼比对：**
+高效路径 = `autoui_state(fields=["editing"])` → 返回 false → 确认 editing 未被设置 → 查谁该设 editing → 根因定位。
+
+### 14.7 结论：把 Rust 模式补全后，新应用是否就不易出问题？
+
+**应用层会显著改善**——一旦 a2r 完整实现"子组件状态持久化"，遵循同样 `.at` 语义模式的新应用不会再出"编辑框无法编辑"这类问题，因为根源在生成器而非应用代码。
+
+**但生成器层需要治本**——如果只把 015-notes 调通而不改架构（hoist+sync → 持久化实例），换一个用了不同 `.at` 特性的应用，可能又暴露新的生成器缺口。关键不是"调通 015-notes"，而是"让 a2r 的组件状态模型与 VM 对齐 + 建立语义保真度测试"。这是后续独立 Plan 的范畴。
