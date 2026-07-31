@@ -1,0 +1,5 @@
+var x = 0
+x = x + 1
+print(x)
+print(2 + 3)
+print("abc".find("b"))

@@ -16,6 +16,8 @@ macro_rules! for_each_native {
             (2, NATIVE_PRINT_F32, shim_print_f32, "auto.print_f32"),
             (4, NATIVE_PRINT_F64, shim_print_f64, "auto.print_f64"),
             (3, NATIVE_PRINT_STR, shim_print_str, "auto.print_str"),
+            // Plan 378: u64/i64 print (pops 2 slots: [low, high])
+            (9, NATIVE_PRINT_U64, shim_print_u64, "auto.print_u64"),
             (2900, NATIVE_WRITE_STR, shim_write_str, "auto.write_str"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),
@@ -1413,6 +1415,38 @@ macro_rules! register_bigvm {
     };
     () => {};
 }
+
+// Plan 378: Build a flat `(name, NativeRetType)` table from the BIGVM catalog
+// WITHOUT deep macro recursion. `for_each_bigvm_native!($mac)` expands to
+// `$mac!(tuple1, tuple2, ...)`; this consumer matches the whole tuple list with
+// a single repetition pattern and emits a flat array literal. The ID-only
+// `NATIVE_ID_ENTRIES` table (and Plan 250's lazy `resolve_qualified`) discard
+// return types, so lazily-registered natives (e.g. `str.to_uint -> I64`) had no
+// return type available to codegen type inference. This table restores them.
+#[macro_export]
+macro_rules! native_ret_tag {
+    (Void) => { $crate::vm::native_registry::NativeRetType::Void };
+    (List) => { $crate::vm::native_registry::NativeRetType::List };
+    (Bool) => { $crate::vm::native_registry::NativeRetType::Bool };
+    (Int) => { $crate::vm::native_registry::NativeRetType::Int };
+    (I64) => { $crate::vm::native_registry::NativeRetType::I64 };
+    (String) => { $crate::vm::native_registry::NativeRetType::String };
+    (Float) => { $crate::vm::native_registry::NativeRetType::Float };
+    (Map) => { $crate::vm::native_registry::NativeRetType::Map };
+}
+
+#[macro_export]
+macro_rules! build_native_ret_entries {
+    ( $( ($n:expr, $i:expr, $t:ident) ),* $(,)? ) => {
+        &[ $( ($n, $crate::native_ret_tag!($t)) ),* ]
+    };
+}
+
+/// Plan 378: Flat `(name, NativeRetType)` table for all BIGVM catalog entries.
+/// Imported by `build_fn_return_types()` so codegen sees the return types of
+/// natives that are otherwise lazily ID-registered without a return type.
+pub static NATIVE_RET_ENTRIES: &[(&str, crate::vm::native_registry::NativeRetType)] =
+    crate::for_each_bigvm_native!(build_native_ret_entries);
 // Plan 250: Known native function names → fixed IDs.
 // Used by resolve_qualified() for lazy registration.
 // IDs must match NATIVE_* constants in for_each_native! (shim bindings).

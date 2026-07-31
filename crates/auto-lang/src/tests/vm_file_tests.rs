@@ -905,3 +905,14 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }
 #[test] #[ignore] fn test_24_generics_002_to_array() { test_vm("24_generics/002_to_array").unwrap(); }
 #[test] #[ignore] fn test_24_generics_003_filter() { test_vm("24_generics/003_filter").unwrap(); }
+
+// === 25_method_u64 (Plan 378: I64/U64 method-call return-type recognition) ===
+#[test] #[ignore] fn test_25_method_u64_001_to_uint_basic() { test_vm("25_method_u64/001_to_uint_basic").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_002_to_uint_double_promote() { test_vm("25_method_u64/002_to_uint_double_promote").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_003_let_u64_from_method() { test_vm("25_method_u64/003_let_u64_from_method").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_004_assign_u64() { test_vm("25_method_u64/004_assign_u64").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_005_two_methods_arith() { test_vm("25_method_u64/005_two_methods_arith").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_006_fstring_u64() { test_vm("25_method_u64/006_fstring_u64").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_007_other_i64_methods() { test_vm("25_method_u64/007_other_i64_methods").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_008_i32_unaffected() { test_vm("25_method_u64/008_i32_unaffected").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_009_large_value() { test_vm("25_method_u64/009_large_value").unwrap(); }

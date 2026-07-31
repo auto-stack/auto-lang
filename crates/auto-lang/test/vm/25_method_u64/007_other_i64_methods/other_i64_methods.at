@@ -1,0 +1,5 @@
+let s = "hello"
+print(s.len())
+let arr = [1, 2, 3]
+print(arr.len())
+print(s.len() + 10)

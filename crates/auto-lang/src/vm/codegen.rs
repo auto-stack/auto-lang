@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -417,7 +417,9 @@ impl Codegen {
         intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
 
         // Register return types for native functions (used for type inference in let bindings)
-        let _fn_return_types = Self::build_fn_return_types();
+        // Plan 378: actually use the built map (previously discarded as `_fn_return_types`,
+        // which left fn_return_types empty for the script-run path via Codegen::new()).
+        let fn_return_types = Self::build_fn_return_types();
 
         // Create global scope
         let locals = HashMap::new();
@@ -451,7 +453,7 @@ impl Codegen {
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
-            fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
+            fn_return_types, // Plan 087 Phase 3: function return types for .type (Plan 378: populated)
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
@@ -2094,6 +2096,18 @@ impl Codegen {
                     // pop high first → var_index+1, then pop low → var_index
                     self.emit_store_loc(var_index + 1);
                     self.emit_store_loc(var_index);
+                    // Plan 378: for an un-annotated binding (e.g. `let n = s.to_uint()`)
+                    // there is no declared type, so record a 2-slot type so later
+                    // loads/prints treat the variable as 2-slot.
+                    if stored_type.is_none()
+                        && matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint)
+                    {
+                        let inferred = match self.last_expr_type {
+                            ObjectType::Double => Type::Double,
+                            _ => Type::U64,
+                        };
+                        self.var_types.insert(name_str.clone(), inferred);
+                    }
                 } else {
                     self.emit_store_loc(var_index);
                     // If declared type was 2-slot but actual value is 1-slot (opaque handle),
@@ -5559,7 +5573,7 @@ impl Codegen {
 
                         // Plan 317: actor state field assignment (inside task
                         // hooks/handlers). DUP keeps the value as the assignment
-                        // expression's result, then STORE_STATE_FIELD persists it.
+                        // expression result, then STORE_STATE_FIELD persists it.
                         if let Some(&field_idx) = self.current_task_state_fields.get(&name_str) {
                             self.emit(OpCode::DUP);
                             self.emit(OpCode::STORE_STATE_FIELD);
@@ -5568,6 +5582,19 @@ impl Codegen {
                         // local lookup — otherwise top-level var would store to
                         // a script-wrapper local that fns can't see).
                         } else if self.global_vars.contains(&name_str) {
+                            // Plan 378: globals are stored as a single NanoValue
+                            // (1 slot) in vm.globals. A 2-slot RHS (u64/i64 from a
+                            // method call, or f64) would leave [low, high] on the
+                            // stack, and DUP/STORE_GLOBAL would capture the high
+                            // slot (0) — corrupting the global. Drop the high slot
+                            // first so the low slot is stored, matching the 1-slot
+                            // global representation. (Local 2-slot vars are
+                            // unaffected and keep full 64-bit range; only globals
+                            // are 1-slot by architecture.)
+                            if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
+                                self.emit(OpCode::POP); // discard high slot
+                                self.last_expr_type = ObjectType::Int; // global value is now 1-slot
+                            }
                             self.emit(OpCode::DUP);
                             self.emit_global_store(&name_str);
                         // Check if this is a captured variable (Plan 071)
@@ -5996,26 +6023,32 @@ impl Codegen {
                         }
                         Op::Eq => {
                             if is_double { self.emit(OpCode::EQ_D); }
+                            else if is_u64 { self.emit(OpCode::EQ_U64); }
                             else { self.emit(OpCode::EQ); }
                         }
                         Op::Neq => {
                             if is_double { self.emit(OpCode::NE_D); }
+                            else if is_u64 { self.emit(OpCode::NE_U64); }
                             else { self.emit(OpCode::NE); }
                         }
                         Op::Lt => {
                             if is_double { self.emit(OpCode::LT_D); }
+                            else if is_u64 { self.emit(OpCode::LT_U64); }
                             else { self.emit(OpCode::LT); }
                         }
                         Op::Le => {
                             if is_double { self.emit(OpCode::LE_D); }
+                            else if is_u64 { self.emit(OpCode::LE_U64); }
                             else { self.emit(OpCode::LE); }
                         }
                         Op::Gt => {
                             if is_double { self.emit(OpCode::GT_D); }
+                            else if is_u64 { self.emit(OpCode::GT_U64); }
                             else { self.emit(OpCode::GT); }
                         }
                         Op::Ge => {
                             if is_double { self.emit(OpCode::GE_D); }
+                            else if is_u64 { self.emit(OpCode::GE_U64); }
                             else { self.emit(OpCode::GE); }
                         }
                         Op::And => self.emit(OpCode::AND),
@@ -7472,7 +7505,10 @@ impl Codegen {
                     // be misinterpreted as a tagged string index).
                     let resolved_id = if id == NATIVE_PRINT_STR {
                         match self.last_expr_type {
-                            ObjectType::Int | ObjectType::Byte | ObjectType::Uint
+                            // Plan 378: u64/i64 occupy 2 slots; route to the
+                            // 2-slot print handler so the high slot is consumed.
+                            ObjectType::Uint => NATIVE_PRINT_U64,
+                            ObjectType::Int | ObjectType::Byte
                             | ObjectType::Bool | ObjectType::Char => NATIVE_PRINT_I32,
                             ObjectType::Float => NATIVE_PRINT_F32,
                             ObjectType::Double => NATIVE_PRINT_F64,
@@ -7530,7 +7566,11 @@ impl Codegen {
                                 Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
                                 Type::Byte => ObjectType::Byte,
                                 Type::Bool => ObjectType::Bool,
-                                Type::Int | Type::I64 => ObjectType::Int,
+                                // Plan 378: I64 occupies 2 slots on the stack
+                                // (same layout as U64), so map it to Uint for the
+                                // 2-slot print/load/store paths. Int stays 1-slot.
+                                Type::I64 => ObjectType::Uint,
+                                Type::Int => ObjectType::Int,
                                 _ => ObjectType::NestedObject,
                             };
                         } else {
@@ -9273,8 +9313,111 @@ impl Codegen {
                     .map(|t| matches!(t, Type::I64 | Type::U64 | Type::Int | Type::Float | Type::Uint | Type::USize))
                     .unwrap_or(false)
             }
+            // Plan 378: method call `recv.method()` returning an integer or
+            // float must be promoted to f64 before double arithmetic
+            // (e.g. `s.to_uint() + 1.5` needs U64_TO_F64 / I64_TO_F64).
+            Expr::Dot(receiver, method) => {
+                self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                    .map(|t| matches!(t,
+                        Type::I64 | Type::U64 | Type::Int | Type::Byte
+                        | Type::Uint | Type::USize | Type::Float))
+                    .unwrap_or(false)
+            }
+            Expr::Call(call) => {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                        .map(|t| matches!(t,
+                            Type::I64 | Type::U64 | Type::Int | Type::Byte
+                            | Type::Uint | Type::USize | Type::Float))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
+    }
+
+    /// Plan 378: Look up the return type of a `receiver.method()` call.
+    ///
+    /// Shared by the 64-bit detection helpers (`contains_u64`, `is_u64_expr`,
+    /// `needs_double_coercion`) so method calls returning I64/U64 (e.g.
+    /// `"42".to_uint()`) are recognised and given the correct 2-slot stack
+    /// treatment. The key fallback order mirrors the existing method-return
+    /// lookup at line ~1637-1642 and the qualifier forms populated by
+    /// `build_fn_return_types` / `enrich_fn_return_types_from_type_store`
+    /// (`{type}.{method}`, `{Type}.{method}`, `auto.{type}.{method}`, bare
+    /// `{method}`), plus the receiver-qualified `{varname}.{method}` form.
+    fn lookup_dot_method_type(&self, receiver: &Expr, method: &str) -> Option<&Type> {
+        // 1. Receiver-name-qualified: "s.to_uint" (matches when the call site
+        //    itself was registered, or TypeStore keyed on the variable name).
+        let recv_name = self.expr_to_name(receiver);
+        if recv_name != "Unknown" {
+            let key = format!("{}.{}", recv_name, method);
+            if let Some(t) = self.fn_return_types.get(&key) {
+                return Some(t);
+            }
+        }
+
+        // 2. Type-qualified: "str.to_uint", "Str.to_uint", "auto.str.to_uint".
+        //    Resolve the receiver's type name from var_types (for an Ident) or
+        //    fall back to infer_object_type for literals/chains.
+        let type_name = if let Expr::Ident(name) = receiver {
+            self.var_types
+                .get(name.as_ref())
+                .map(|t| self.type_name_from_type(t))
+        } else {
+            None
+        };
+        let type_name = type_name.or_else(|| {
+            // For literal receivers (e.g. "42".to_uint()) infer_object_type
+            // already maps ObjectType -> type name via its stdlib fallbacks.
+            let ot = self.infer_object_type(receiver);
+            match ot {
+                ObjectType::String => Some("str".to_string()),
+                ObjectType::Int => Some("int".to_string()),
+                ObjectType::Uint => Some("uint".to_string()),
+                ObjectType::Bool => Some("bool".to_string()),
+                ObjectType::Float => Some("float".to_string()),
+                ObjectType::Double => Some("double".to_string()),
+                ObjectType::Char => Some("char".to_string()),
+                ObjectType::Array => Some("List".to_string()),
+                _ => None,
+            }
+        });
+
+        if let Some(tn) = type_name {
+            // lowercase.type
+            let lower = format!("{}.{}", tn.to_lowercase(), method);
+            if let Some(t) = self.fn_return_types.get(&lower) {
+                return Some(t);
+            }
+            // TitleCase.type
+            let mut chars = tn.chars();
+            if let Some(first) = chars.next() {
+                let titled: String = first.to_uppercase().collect::<String>() + chars.as_str();
+                let title_key = format!("{}.{}", titled, method);
+                if let Some(t) = self.fn_return_types.get(&title_key) {
+                    return Some(t);
+                }
+            }
+            // auto.{type}.{method}
+            let qualified = format!("auto.{}.{}", tn.to_lowercase(), method);
+            if let Some(t) = self.fn_return_types.get(&qualified) {
+                return Some(t);
+            }
+        }
+
+        // 3. Bare method name: "to_uint"
+        self.fn_return_types.get(method)
+    }
+
+    /// Plan 378: Does `receiver.method()` return a 64-bit integer (I64/U64/USize/Uint)?
+    #[inline]
+    fn dot_method_returns_64(&self, receiver: &Expr, method: &str) -> bool {
+        self.lookup_dot_method_type(receiver, method)
+            .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
+            .unwrap_or(false)
     }
 
     // Check if expression is specifically u64 (vs i64) for choosing the right coercion opcode
@@ -9286,6 +9429,24 @@ impl Codegen {
                 .get(name.as_ref())
                 .map(|t| matches!(t, Type::U64))
                 .unwrap_or(false),
+            // Plan 378: method call `recv.method()` returning a 64-bit value.
+            // is_u64_expr is stricter than contains_u64 — it only treats the
+            // value as U64 (for emitting U64_TO_F64 vs I64_TO_F64).
+            Expr::Dot(receiver, method) => {
+                self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                    .map(|t| matches!(t, Type::U64))
+                    .unwrap_or(false)
+            }
+            Expr::Call(call) => {
+                // Method-call form: Expr::Call { name: Expr::Dot(recv, method), .. }
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                        .map(|t| matches!(t, Type::U64))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }
@@ -9314,11 +9475,25 @@ impl Codegen {
                 Type::U64 | Type::I64 | Type::USize | Type::Uint),
             Expr::Ident(name) => self.var_types.get(name.as_ref())
                 .map(|t| matches!(t, Type::U64 | Type::I64)).unwrap_or(false),
+            // Plan 378: bare field access (recv.field) where the field itself
+            // is 64-bit, or a method name without parens. For method calls we
+            // rely on the Expr::Call{Dot} arm below; here we recurse into the
+            // receiver so e.g. (a.to_u64()).field is still detected.
+            Expr::Dot(receiver, method) => {
+                if self.dot_method_returns_64(receiver.as_ref(), method.as_ref()) {
+                    return true;
+                }
+                self.contains_u64(receiver.as_ref())
+            }
             Expr::Call(call) => {
                 if let Expr::Ident(fn_name) = call.name.as_ref() {
                     self.fn_return_types.get(fn_name.as_ref())
                         .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
                         .unwrap_or(false)
+                } else if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    // Plan 378: method call `recv.method()` returning a 64-bit
+                    // value (e.g. "42".to_uint()).
+                    self.dot_method_returns_64(receiver.as_ref(), method.as_ref())
                 } else {
                     false
                 }
@@ -9355,6 +9530,34 @@ impl Codegen {
                     FStrPartType::Int
                 }
             }
+            // Plan 378: bare field access `obj.field` where the field is a
+            // 64-bit (u64/i64/f64) or string type. Without this arm, a u64
+            // field used directly in an f-string would be miscounted as 1 slot.
+            Expr::Dot(obj, field) => {
+                if let Expr::Ident(var_name) = obj.as_ref() {
+                    if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                        let type_name = match var_type {
+                            Type::User(td) => Some(td.name.to_string()),
+                            Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
+                            _ => None,
+                        };
+                        if let Some(tn) = type_name {
+                            if let Some(ct) = self.generic_registry.get_type(&tn) {
+                                if let Some(ft) = ct.field_type(field.as_ref()) {
+                                    return match ft {
+                                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
+                                        Type::Float => FStrPartType::Float32,
+                                        Type::Double => FStrPartType::Float64,
+                                        Type::U64 | Type::I64 | Type::Uint | Type::USize => FStrPartType::Uint64,
+                                        _ => FStrPartType::Int,
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                FStrPartType::Int
+            }
             Expr::Bina(lhs, _, rhs) => {
                 // Check if binary result is a u64 or f64 operation (2 slots)
                 if self.is_u64_operation(lhs, rhs) {
@@ -9380,6 +9583,17 @@ impl Codegen {
                         }
                     } else {
                         FStrPartType::Int
+                    }
+                } else if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    // Plan 378: method call `recv.method()` — return-type-aware slot
+                    // hint so 2-slot u64/i64 results (e.g. s.to_uint()) aren't
+                    // miscounted as 1 slot in BUILD_FSTR.
+                    match self.lookup_dot_method_type(receiver.as_ref(), method.as_ref()) {
+                        Some(Type::Double) => FStrPartType::Float64,
+                        Some(Type::U64 | Type::I64 | Type::USize | Type::Uint) => FStrPartType::Uint64,
+                        Some(Type::Float) => FStrPartType::Float32,
+                        Some(Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice) => FStrPartType::String,
+                        _ => FStrPartType::Int,
                     }
                 } else {
                     FStrPartType::Int
@@ -10922,6 +11136,39 @@ impl Codegen {
         }
         drop(registry);
 
+        // Plan 378: Import return types for lazily-registered natives. Plan 250's
+        // lazy resolve_qualified() registers IDs on first use but NOT return
+        // types, so the registry bulk-import above misses natives like
+        // `str.to_uint`. NATIVE_RET_ENTRIES is the full catalog's authoritative
+        // (name, ret) table; merging it here makes those return types visible to
+        // codegen type inference (contains_u64 / is_u64_expr / print routing).
+        //
+        // Void entries are intentionally SKIPPED. The catalog's Void tag is
+        // ambiguous: it is used both for genuinely void natives AND as a stale
+        // default for many #[rust_fn] FFI shims that actually return a value
+        // through a side channel (e.g. File.exists returns bool via the FFI
+        // bridge, not the native stack). Importing such Void tags would make
+        // codegen drop real return values (regression: test_18_ffi_001). We
+        // therefore only trust non-void tags and leave Void entries unset
+        // (unknown) — which exactly preserves the pre-Plan-378 lazy behaviour
+        // for those natives. Correcting the stale Void tags in the catalog is
+        // tracked as a separate cleanup (see plan 378 §10.4).
+        for (name, ret) in crate::vm::native_catalog::NATIVE_RET_ENTRIES {
+            let ty = match ret {
+                NativeRetType::Void => continue,
+                NativeRetType::Int => Type::Int,
+                NativeRetType::Float => Type::Float,
+                NativeRetType::Bool => Type::Bool,
+                NativeRetType::String => Type::StrOwned,
+                NativeRetType::I64 => Type::I64,
+                NativeRetType::List => Type::List(Box::new(Type::Unknown)),
+                NativeRetType::Map => Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
+            };
+            // Don't clobber entries already set (e.g. TypeStore-enriched I64 for
+            // str.split). Only insert if absent.
+            map.entry(name.to_string()).or_insert(ty);
+        }
+
         // 2. Intrinsics that aren't in the registry but codegen needs type info for
         map.insert("int.to_str".to_string(), Type::StrOwned);
         map.insert("int_str".to_string(), Type::StrOwned);
@@ -11396,7 +11643,7 @@ impl Codegen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Body, Branch, Expr, If, Stmt};
+    use crate::ast::{Body, Branch, Expr, If, Name, Stmt};
     use crate::vm::opcode::OpCode;
     use auto_val::Op;
 
@@ -11896,5 +12143,79 @@ mod tests {
 
         // Task should be registered
         assert!(codegen.types.contains_key("CounterTask"));
+    }
+
+    // ===== Plan 378: method-call (Expr::Dot) I64/U64 recognition =====
+
+    /// Helper: build a `recv.method()` Call expression.
+    fn dot_call(recv: Expr, method: &str) -> Expr {
+        use crate::ast::{Args, Call};
+        Expr::Call(Call {
+            name: Box::new(Expr::Dot(Box::new(recv), Name::from(method))),
+            args: Args::new(),
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        })
+    }
+
+    #[test]
+    fn test_plan378_contains_u64_recognizes_dot_method_call() {
+        // s.to_uint() should be recognised as containing a 64-bit value,
+        // because str.to_uint is registered as I64 in fn_return_types.
+        let mut codegen = Codegen::new();
+        // Register `s` as a string variable so the type-name fallback resolves
+        // str.to_uint (mirrors real codegen where `let s = "42"` records a
+        // string type for `s`).
+        codegen.var_types.insert("s".to_string(), Type::StrFixed(0));
+        let expr = dot_call(Expr::Ident(Name::from("s")), "to_uint");
+        assert!(
+            codegen.contains_u64(&expr),
+            "s.to_uint() should be detected as 64-bit (str.to_uint -> I64)"
+        );
+    }
+
+    #[test]
+    fn test_plan378_dot_method_returns_64_lookup() {
+        // Direct helper check: with `s` typed as a string, the type-name
+        // fallback should resolve str.to_uint -> I64.
+        let mut codegen = Codegen::new();
+        codegen.var_types.insert("s".to_string(), Type::StrFixed(0));
+        let recv = Expr::Ident(Name::from("s"));
+        let ty = codegen.lookup_dot_method_type(&recv, "to_uint");
+        assert!(
+            matches!(ty, Some(Type::I64)),
+            "lookup_dot_method_type(s, to_uint) should resolve to I64, got {:?}",
+            ty
+        );
+        assert!(codegen.dot_method_returns_64(&recv, "to_uint"));
+    }
+
+    #[test]
+    fn test_plan378_i32_method_not_treated_as_64bit() {
+        // Negative guard: str.find returns Int (1 slot) — must NOT be flagged 64-bit.
+        let mut codegen = Codegen::new();
+        codegen.var_types.insert("s".to_string(), Type::StrFixed(0));
+        let expr = dot_call(Expr::Ident(Name::from("s")), "find");
+        assert!(
+            !codegen.contains_u64(&expr),
+            "s.find() (Int) must not be misdetected as 64-bit"
+        );
+    }
+
+    #[test]
+    fn test_plan378_u64_comparison_opcode_selection() {
+        // "100".to_uint() > "45".to_uint() must emit GT_U64 (not plain GT).
+        // Uses string-literal receivers so no variable scope registration is
+        // needed; infer_object_type resolves the receiver type to "str".
+        let mut codegen = Codegen::new();
+        let lhs = dot_call(Expr::Str(Name::from("100")), "to_uint");
+        let rhs = dot_call(Expr::Str(Name::from("45")), "to_uint");
+        let expr = Expr::Bina(Box::new(lhs), Op::Gt, Box::new(rhs));
+        codegen.compile_expr(&expr).unwrap();
+        assert!(
+            codegen.code.contains(&(OpCode::GT_U64 as u8)),
+            "\"100\".to_uint() > \"45\".to_uint() should emit GT_U64"
+        );
     }
 }

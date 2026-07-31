@@ -1,0 +1,6 @@
+let s = "7"
+var x u64 = 0
+x = s.to_uint()
+print(x)
+x = x + s.to_uint()
+print(x)

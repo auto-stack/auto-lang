@@ -729,6 +729,17 @@ pub fn shim_print_f64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// Print a u64/i64 value (2 slots on stack: [low, high]).
+///
+/// Plan 378: u64/i64 occupy two i32 slots, so they need a dedicated print
+/// handler that pops both. Without it, `print(x)` for a u64 variable would
+/// only pop the high slot (0) and leak the low slot, printing "0".
+pub fn shim_print_u64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i64();
+    vm_print(vm, &val.to_string());
+    Ok(())
+}
+
 /// Format a RustStdlibObject for display.
 pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
     match obj.type_name.as_str() {
@@ -3778,10 +3789,14 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 /// Nanbox-aware shim for String.to_uint().
-/// The FFI macro shim returns i64 (2-slot), but the nanbox VM has no
-/// encode_i64 — the slot mismatch caused to_uint() to return 0.
-/// This override returns the value as i32 (truncated for values > 2^31,
-/// which is fine for typical script use: file sizes, line counts, etc.).
+///
+/// Returns a real 2-slot i64 (low/high), matching the native catalog
+/// registration (`str.to_uint` → I64) and the stdlib declaration
+/// (`fn to_uint(s str) i64`). Plan 073 Stage A added `push_i64` to the
+/// nanbox VM, so the earlier i32-truncation workaround (which corrupted
+/// `let x u64 = s.to_uint()` and `s.to_uint() + 1.5`) is obsolete.
+///
+/// Plan 378: restored the full i64 range and 2-slot stack representation.
 pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = task.ram.pop_nv();
@@ -3793,8 +3808,8 @@ pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         } else {
             String::new()
         };
-        let result = s.trim().parse::<i64>().unwrap_or(0) as i32;
-        task.ram.push_nv(auto_val::encode_i32(result));
+        let result = s.trim().parse::<i64>().unwrap_or(0);
+        task.ram.push_i64(result);
     }
     Ok(())
 }

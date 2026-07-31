@@ -1,0 +1,5 @@
+let a = "100"
+let b = "45"
+print(a.to_uint() + b.to_uint())
+print(a.to_uint() - b.to_uint())
+print(a.to_uint() > b.to_uint())

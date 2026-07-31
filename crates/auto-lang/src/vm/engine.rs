@@ -6740,6 +6740,38 @@ impl AutoVM {
                     task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 
+                // Plan 378: u64/i64 comparison (each pops 2+2 slots, pushes 1 bool)
+                OpCode::EQ_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a == b));
+                }
+                OpCode::NE_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a != b));
+                }
+                OpCode::LT_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a < b));
+                }
+                OpCode::GT_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a > b));
+                }
+                OpCode::LE_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a <= b));
+                }
+                OpCode::GE_U64 => {
+                    let b = task.ram.pop_i64();
+                    let a = task.ram.pop_i64();
+                    task.ram.push_nv(auto_val::encode_bool(a >= b));
+                }
+
                 // === Logical ===
                 OpCode::AND => {
                     let b = task.ram.pop_i32();

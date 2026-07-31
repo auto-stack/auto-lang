@@ -150,6 +150,14 @@ pub enum OpCode {
     LE_D = 0x5A,
     GE_D = 0x5B,
 
+    // Plan 378: u64/i64 comparison (each pops 2+2 slots, pushes 1 bool)
+    EQ_U64 = 0xBA,
+    NE_U64 = 0xBB,
+    LT_U64 = 0xBC,
+    GT_U64 = 0xBD,
+    LE_U64 = 0xBE,
+    GE_U64 = 0xBF,
+
     // === Control Flow ===
     JMP = 0x60,
     JMP_IF_Z = 0x61,
@@ -336,6 +344,8 @@ impl OpCode {
         0x4C, 0x4D, 0x4E, 0x4F,
         // Control flow
         0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B,
+        // Plan 378: u64/i64 comparison
+        0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
         // Jump
         0x60, 0x61, 0x62, 0x63, 0x64,
         // Objects/Strings
@@ -498,6 +508,12 @@ impl OpCode {
             Self::GT_D => "gt.d",
             Self::LE_D => "le.d",
             Self::GE_D => "ge.d",
+            Self::EQ_U64 => "eq.u64",
+            Self::NE_U64 => "ne.u64",
+            Self::LT_U64 => "lt.u64",
+            Self::GT_U64 => "gt.u64",
+            Self::LE_U64 => "le.u64",
+            Self::GE_U64 => "ge.u64",
             Self::JMP => "jmp",
             Self::JMP_IF_Z => "jmp.z",
             Self::JMP_IF_NZ => "jmp.nz",
@@ -687,6 +703,12 @@ impl OpCode {
             "gt.d" => Some(Self::GT_D),
             "le.d" => Some(Self::LE_D),
             "ge.d" => Some(Self::GE_D),
+            "eq.u64" => Some(Self::EQ_U64),
+            "ne.u64" => Some(Self::NE_U64),
+            "lt.u64" => Some(Self::LT_U64),
+            "gt.u64" => Some(Self::GT_U64),
+            "le.u64" => Some(Self::LE_U64),
+            "ge.u64" => Some(Self::GE_U64),
             "jmp" => Some(Self::JMP),
             "jmp.z" => Some(Self::JMP_IF_Z),
             "jmp.nz" => Some(Self::JMP_IF_NZ),
@@ -792,6 +814,8 @@ impl OpCode {
             | Self::SHL | Self::SHR | Self::EQ | Self::NE | Self::LT
             | Self::GT | Self::LE | Self::GE | Self::EQ_D | Self::NE_D
             | Self::LT_D | Self::GT_D | Self::LE_D | Self::GE_D
+            | Self::EQ_U64 | Self::NE_U64 | Self::LT_U64 | Self::GT_U64
+            | Self::LE_U64 | Self::GE_U64
             | Self::I32_TO_F32 | Self::I64_TO_F64 | Self::U64_TO_F64
             | Self::PROMOTE_F64 | Self::NULL_COALESCE
             | Self::TASK_ID | Self::SPAWN_GO | Self::REPLY | Self::HANDLE_MSG

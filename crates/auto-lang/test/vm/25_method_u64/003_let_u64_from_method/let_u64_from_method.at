@@ -1,0 +1,4 @@
+let s = "100"
+let x u64 = s.to_uint()
+print(x)
+print(x + 23)

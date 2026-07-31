@@ -1,0 +1,17 @@
+// Large values (> 2^31) exercise the full 64-bit path: a "low-slot only" hack
+// would truncate 5000000000 to 705032704 and 10000000000 to 1410065408.
+// These are LOCAL variables (inside fn) so the full 2-slot u64 representation
+// applies. (Module-level globals are 1-slot by VM architecture and would
+// truncate — that is tested separately / out of scope.)
+fn check() {
+    let s = "5000000000"
+    let n = s.to_uint()
+    print(n)
+    print(s.to_uint() * 2)
+    print(s.to_uint() + 5000000000)
+    let x u64 = s.to_uint()
+    print(x)
+    print(x + 1)
+}
+
+check()

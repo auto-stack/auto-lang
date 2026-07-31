@@ -1,0 +1,3 @@
+let s = "10"
+print(s.to_uint() + 1.5)
+print(s.to_uint() * 2.0)

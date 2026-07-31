@@ -62,6 +62,12 @@ pub struct AutovmReplSession {
     /// Previously Option<i32> lost the nanbox tag, so string results displayed
     /// as raw i32 payload (e.g., empty string as -7).
     last_result: Option<auto_val::NanoValue>,
+    /// Plan 378: full 64-bit value of the last result when it occupied two
+    /// stack slots (u64/i64 from to_uint(), or f64). `last_result` (a single
+    /// NanoValue) cannot represent a full i64 (nanbox reserves the high 16
+    /// bits for a type tag), so we keep the complete value here and let the
+    /// accessors prefer it. None for 1-slot results.
+    last_result_64: Option<i64>,
 
     /// Plan 300 Phase 2: Persistent Python FFI bridge for REPL.
     /// Lazily created on first `use.py`, persists across inputs.
@@ -110,6 +116,7 @@ impl AutovmReplSession {
             object_keys: Vec::new(),
             object_types: Vec::new(),
             last_result: None, // Plan 080: Initialize last_result
+            last_result_64: None, // Plan 378: 2-slot result value
             #[cfg(feature = "python")]
             py_bridge: None, // Plan 300 Phase 2: Lazy init on first use.py
         }
@@ -840,13 +847,41 @@ impl AutovmReplSession {
         if task.ram.sp > target_sp {
             // Save the result to last_result (Plan 080)
             // Plan 036 workaround-5: Use pop_nv() to preserve nanbox type tag.
-            let result = task.ram.pop_nv();
+            // Plan 378: 64-bit results (u64/i64 from to_uint(), f64) occupy
+            // TWO slots [low, high]. A single NanoValue cannot hold a full i64
+            // (nanbox reserves high 16 bits for the type tag), so for 2-slot
+            // results we: (1) pop both slots and re-push them to keep the stack
+            // balanced, (2) store the low slot as `last_result` (preserves the
+            // nanbox tag for type-aware display), and (3) store the COMPLETE
+            // 64-bit value in `last_result_64` so accessors can return the full
+            // value instead of a truncated low-32-bit one.
+            let is_two_slot = self
+                .codegen
+                .as_ref()
+                .map(|c| matches!(c.last_expr_type, crate::vm::codegen::ObjectType::Double | crate::vm::codegen::ObjectType::Uint))
+                .unwrap_or(false);
+            let (result, full_64) = if is_two_slot && task.ram.sp >= target_sp + 2 {
+                // Stack layout for a 2-slot value: [low, high] (high on top).
+                // pop_i64 reads high then low and reconstructs the full value.
+                let full = task.ram.pop_i64();
+                // Re-push the 2-slot value so callers that read the stack still
+                // see the complete result.
+                task.ram.push_i64(full);
+                // For last_result keep the low-slot NanoValue (carries the type
+                // tag for format_last_result's fallback path).
+                let low_nv = auto_val::encode_i32((full & 0xFFFFFFFF) as i32);
+                (low_nv, Some(full))
+            } else {
+                (task.ram.pop_nv(), None)
+            };
             self.last_result = Some(result);
-            vm_debug!("DEBUG: Saved result to last_result: {}", result);
+            self.last_result_64 = full_64;
+            vm_debug!("DEBUG: Saved result to last_result: {} (full_64={:?})", result, full_64);
         } else {
             // No result produced (e.g., let statement without expression)
             // Clear last_result to avoid printing stale value
             self.last_result = None;
+            self.last_result_64 = None;
         }
 
         // Reset stack pointer to target_sp (clear all temporary values)
@@ -1063,8 +1098,26 @@ impl AutovmReplSession {
     /// Returns the result from the previous REPL input, if any.
     /// Plan 036 workaround-5: Decodes NanoValue → i32 for backward compat.
     /// Prefer `format_last_result()` for type-aware display.
+    ///
+    /// Plan 378: for 2-slot results (u64/i64), the full 64-bit value is held
+    /// in `last_result_64`; this accessor returns its low 32 bits as i32 to
+    /// preserve the historical i32-shaped API. Use `get_last_result_i64()` for
+    /// the full value.
     pub fn get_last_result(&self) -> Option<i32> {
+        if let Some(full) = self.last_result_64 {
+            return Some(full as i32);
+        }
         self.last_result.map(|nv| auto_val::decode_i32(nv))
+    }
+
+    /// Plan 378: full 64-bit last result (for u64/i64), or None for 1-slot
+    /// results. Falls back to the i32 NanoValue widened to i64 when no 64-bit
+    /// value was captured.
+    pub fn get_last_result_i64(&self) -> Option<i64> {
+        if let Some(full) = self.last_result_64 {
+            return Some(full);
+        }
+        self.last_result.map(|nv| auto_val::decode_i32(nv) as i64)
     }
 
     /// Get the raw last result as NanoValue (Plan 036 workaround-5).
@@ -1079,6 +1132,20 @@ impl AutovmReplSession {
     /// instead of i32-range heuristics. Strings, bools, floats, lists, and
     /// heap objects are now correctly distinguished from plain integers.
     pub fn format_last_result(&self) -> Option<String> {
+        // Plan 378: if a full 64-bit value was captured, format it directly so
+        // large u64/i64 results are not truncated to the low 32 bits.
+        if let Some(full) = self.last_result_64 {
+            // Distinguish by the recorded last_expr_type: Double -> f64, else i64.
+            let is_double = self
+                .codegen
+                .as_ref()
+                .map(|c| matches!(c.last_expr_type, crate::vm::codegen::ObjectType::Double))
+                .unwrap_or(false);
+            if is_double {
+                return Some(format!("{}", f64::from_bits(full as u64)));
+            }
+            return Some(format!("{}", full));
+        }
         self.last_result.map(|nv| self.decode_nv_value(nv))
     }
 }
@@ -1164,6 +1231,26 @@ mod tests {
         eprintln!("[DEBUG to_uint test] last_result = {:?}", session.get_last_result());
         assert_eq!(session.get_last_result(), Some(42), "to_uint should return 42");
     }
+
+    #[test]
+    fn test_plan378_to_uint_large_value_not_truncated() {
+        // Plan 378: a u64 result > 2^31 must round-trip through the REPL
+        // last_result without being truncated to its low 32 bits (705032704).
+        // This guards against a "store only the low slot" regression.
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"5000000000\".to_uint()");
+        assert_eq!(
+            session.get_last_result_i64(),
+            Some(5_000_000_000),
+            "to_uint REPL result must keep full 64-bit value"
+        );
+        assert_eq!(
+            session.format_last_result().as_deref(),
+            Some("5000000000"),
+            "format_last_result must not truncate large u64"
+        );
+    }
+
 
     #[test]
     fn test_to_int_arithmetic() {

@@ -1,0 +1,5 @@
+let s = "42"
+let n = s.to_uint()
+print(n)
+print(s.to_uint() + 8)
+print(s.to_uint() - 2)

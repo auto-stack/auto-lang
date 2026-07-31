@@ -1,0 +1,3 @@
+let s = "2024"
+print(f"year: ${s.to_uint()}")
+print(f"next: ${s.to_uint() + 1}")
