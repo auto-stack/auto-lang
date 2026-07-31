@@ -74,6 +74,11 @@ pub struct RustGenerator {
     /// Child component names referenced in the current widget's view tree
     child_components: Vec<String>,
 
+    /// Plan 371 Task 22c: map of component name -> its own scalar state fields
+    /// (name, rust_type), collected across all widgets parsed in the same
+    /// compile unit, so a parent using a child can hoist+sync its state.
+    component_state_fields: std::collections::HashMap<String, Vec<(String, String)>>,
+
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
 
@@ -145,6 +150,7 @@ impl RustGenerator {
             needs_imports: true,
             indent: 0,
             child_components: Vec::new(),
+            component_state_fields: std::collections::HashMap::new(),
             loop_vars: Vec::new(),
             input_fields: std::collections::HashMap::new(),
             state_types: std::collections::HashMap::new(),
@@ -164,6 +170,17 @@ impl RustGenerator {
         STORE_NAMES.with(|sn| {
             sn.borrow_mut().insert(alias.to_string(), store_name.to_string());
         });
+    }
+
+    /// Plan 371 Task 22c: record a component's own scalar state fields so
+    /// parents that use this component can hoist+sync them.
+    pub fn register_component_state(
+        &mut self,
+        component_name: &str,
+        fields: Vec<(String, String)>,
+    ) {
+        self.component_state_fields
+            .insert(component_name.to_string(), fields);
     }
 
     /// Reset state for new widget
@@ -551,7 +568,16 @@ impl RustGenerator {
     fn generate_struct(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
-        code.push_str("#[derive(Debug)]\n");
+        // Plan 371 Task 22c: stores + components holding a store need Clone.
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == widget.name)
+        });
+        let has_store_field = STORE_NAMES.with(|sn| !sn.borrow().is_empty()) && !is_store_itself;
+        if is_store_itself || has_store_field {
+            code.push_str("#[derive(Clone, Debug)]\n");
+        } else {
+            code.push_str("#[derive(Debug)]\n");
+        }
         code.push_str(&format!("pub struct {} {{\n", widget.name));
 
         // Track this widget's own fields (for dedup with root state fields).
@@ -588,6 +614,18 @@ impl RustGenerator {
             let field_type = self.state_rust_type(state);
             code.push_str(&format!("    pub {}: {},\n", field_name, field_type));
             own_fields.insert(field_name.clone());
+        }
+
+        // Plan 371 Task 22c: hoist child components' own scalar state fields.
+        for child_name in &self.child_components {
+            if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                for (f, ty) in child_fields {
+                    if !own_fields.contains(f) {
+                        code.push_str(&format!("    pub {}: {},\n", f, ty));
+                        own_fields.insert(f.clone());
+                    }
+                }
+            }
         }
 
         // Plan 346: If this is a child widget (not App/root), add root state
@@ -698,6 +736,31 @@ impl RustGenerator {
         for state in &widget.state_vars {
             let init = self.ast_expr_to_rust(&state.initial);
             code.push_str(&format!("            {}: {},\n", state.name, init));
+        }
+
+        // Plan 371 Task 22c: initialize hoisted child-component state fields.
+        {
+            let own_names: std::collections::HashSet<String> = widget
+                .state_vars
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
+            for child_name in &self.child_components {
+                if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                    for (f, ty) in child_fields {
+                        if own_names.contains(f) {
+                            continue;
+                        }
+                        let default_val = match ty.as_str() {
+                            "bool" => "false".to_string(),
+                            "i32" | "u32" | "i64" | "u64" => "0".to_string(),
+                            "f32" | "f64" => "0.0".to_string(),
+                            _ => String::from("\"\".to_string()"),
+                        };
+                        code.push_str(&format!("            {}: {},\n", f, default_val));
+                    }
+                }
+            }
         }
 
         // Plan 346: Initialize root state fields (for child widgets) with defaults.
@@ -1031,7 +1094,7 @@ impl RustGenerator {
                 let _child_msg = format!("{}Msg", child_name);
                 // Find parent state vars that likely correspond to child fields
                 // (same name in parent state as in child component)
-                let sync_fields = self.find_sync_fields_for_child(widget);
+                let sync_fields = self.find_sync_fields_for_child(widget, child_name);
                 let constructor_args = self.find_constructor_args_for_child(widget, child_name);
 
                 code.push_str(&format!(
@@ -2337,13 +2400,21 @@ impl RustGenerator {
 
         // Find parent state vars that should be synced to child before rendering.
         // This ensures the child's view reflects the current parent state (e.g., editing=true).
-        let sync_fields: Vec<String> = self.state_types.keys()
+        let mut sync_fields: Vec<String> = self.state_types.keys()
             .filter(|name| {
                 let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
                 !ty.starts_with("Vec<") && !name.ends_with("_id") && **name != "notes" && **name != "search"
             })
             .cloned()
             .collect();
+        // Plan 371 Task 22c: also sync hoisted child-own state fields before .view().
+        if let Some(child_fields) = self.component_state_fields.get(tag) {
+            for (f, _ty) in child_fields {
+                if !sync_fields.iter().any(|e| e == f) {
+                    sync_fields.push(f.clone());
+                }
+            }
+        }
 
         if sync_fields.is_empty() {
             format!(
@@ -2363,14 +2434,27 @@ impl RustGenerator {
     /// Find parent state vars that should be synced to/from child component fields.
     /// Matches by name: if parent has state var "editing" and child component likely
     /// has a field "editing", they should be synced.
-    fn find_sync_fields_for_child(&self, widget: &AuraWidget) -> Vec<String> {
+    fn find_sync_fields_for_child(&self, widget: &AuraWidget, child_name: &str) -> Vec<String> {
         let mut fields = Vec::new();
         for state in &widget.state_vars {
             let name = &state.name;
-            // Plan 346: include ALL parent state fields for child sync. The
-            // child struct needs these fields so child handlers that reference
-            // parent state (via Plan 320 unified state in VM mode) can compile.
             fields.push(name.clone());
+        }
+        // Plan 371 Task 22c: sync the injected store composable field.
+        let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == widget.name)
+        });
+        if has_store && !is_store_itself && !fields.iter().any(|f| f == "store") {
+            fields.push("store".to_string());
+        }
+        // Plan 371 Task 22c: hoist+sync the child component's OWN scalar state fields.
+        if let Some(child_fields) = self.component_state_fields.get(child_name) {
+            for (f, _ty) in child_fields {
+                if !fields.iter().any(|e| e == f) {
+                    fields.push(f.clone());
+                }
+            }
         }
         fields
     }

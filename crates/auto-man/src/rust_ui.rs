@@ -102,6 +102,59 @@ fn collect_store_decls(at_files: &[std::path::PathBuf]) -> Vec<auto_lang::ast::u
     all_stores
 }
 
+/// Plan 371 Task 22c: scan ALL `.at` files for each component's own scalar
+/// state fields (name, rust_type), so a parent in one file can see a child's
+/// fields defined in another file.
+fn collect_component_state_fields(
+    at_files: &[std::path::PathBuf],
+) -> std::collections::HashMap<String, Vec<(String, String)>> {
+    let mut map: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                        let fields: Vec<(String, String)> = widget_decl
+                            .model
+                            .as_ref()
+                            .map(|m| {
+                                m.fields
+                                    .iter()
+                                    .filter_map(|v| {
+                                        let ty = match v.ty {
+                                            auto_lang::ast::Type::Bool => Some("bool"),
+                                            auto_lang::ast::Type::Int => Some("i32"),
+                                            auto_lang::ast::Type::Float
+                                            | auto_lang::ast::Type::Double => Some("f64"),
+                                            auto_lang::ast::Type::StrOwned
+                                            | auto_lang::ast::Type::StrFixed(_) => Some("String"),
+                                            _ => None,
+                                        };
+                                        let ty = ty.or_else(|| match &v.init {
+                                            auto_lang::ast::Expr::Bool(_) => Some("bool"),
+                                            auto_lang::ast::Expr::Int(_) => Some("i32"),
+                                            auto_lang::ast::Expr::Float(_, _)
+                                            | auto_lang::ast::Expr::Double(_, _) => Some("f64"),
+                                            auto_lang::ast::Expr::Str(_) => Some("String"),
+                                            _ => None,
+                                        });
+                                        ty.map(|t| (v.name.to_string(), t.to_string()))
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        map.insert(widget_decl.name.to_string(), fields);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
@@ -126,11 +179,13 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     if !all_stores.is_empty() {
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
+    // Plan 371 Task 22c: cross-file component state fields.
+    let component_fields = collect_component_state_fields(&at_files);
 
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path, &all_stores) {
+        match compile_at_file(at_path, &all_stores, &component_fields) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -220,6 +275,9 @@ pub fn generate_rust_ui(
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
 
+    // Plan 371 Task 22c: cross-file component state fields.
+    let component_fields = collect_component_state_fields(&at_files);
+
     // Compile each .at file and collect generated components
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
@@ -230,7 +288,7 @@ pub fn generate_rust_ui(
             .to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
-        match compile_at_file(at_path, &all_stores) {
+        match compile_at_file(at_path, &all_stores, &component_fields) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -341,6 +399,7 @@ fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
 fn compile_at_file(
     at_path: &Path,
     stores: &[auto_lang::ast::ui::StoreDecl],
+    component_fields: &std::collections::HashMap<String, Vec<(String, String)>>,
 ) -> AutoResult<(String, Vec<String>)> {
     let code = fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
@@ -402,6 +461,11 @@ fn compile_at_file(
             }
         }
     }
+    }
+
+    // Plan 371 Task 22c: register every component's own scalar state fields.
+    for (name, fields) in component_fields.iter() {
+        generator.register_component_state(name, fields.clone());
     }
 
     // Extract AURA widgets from AST
