@@ -5,6 +5,9 @@
 /// `ToolTrait`), and `~Result` methods become `async fn`.  No hand-edits needed
 /// after transpile.
 
+use wire: JsonValue
+use error: ToolError
+
 pub type EchoTool has Tool {
     pub fn name() str {
         return "echo"

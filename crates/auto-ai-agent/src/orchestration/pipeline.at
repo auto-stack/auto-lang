@@ -30,7 +30,6 @@
 /// tracing crate); their intent is documented in comments.
 
 use.rust std::collections::HashMap
-use.rust std::time
 
 use budget: BudgetAction, BudgetTracker, TokenBudget
 use flow: ExitRouting, FlowSpec, FlowStep, GateType
@@ -230,7 +229,7 @@ ext PipelineEngine {
                     f"Paused at '${step.id}'. Call resume() to continue."
                 )
             },
-            else -> {}
+            _ -> {}
         }
 
         if self.current_step >= self.flow.steps.len() {
@@ -245,7 +244,7 @@ ext PipelineEngine {
         if step.gate == GateType.Human {
             if self.gate_resolved_for_step != Some(step.id.clone()) {
                 self.status = PipelineStatus.WaitingForHuman(step.id.clone(), now)
-                self.pending_gate = Some(PendingGate(step_id: step.id.clone(), since: now))
+                self.pending_gate = Some(PendingGate(step.id.clone(), now))
                 return AdvanceResult.WaitForHuman(step.id)
             }
         }
@@ -258,7 +257,9 @@ ext PipelineEngine {
     /// Submit the result of an agent turn to continue the pipeline.
     pub mut fn submit_handoff(handoff HandoffDocument) AdvanceResult {
         let now = now_secs()
-        let h = handoff
+        // `var` (not `let`): h.token_usage.cumulative / .budget_remaining are
+        // assigned below — a `let h` binding isn't mutable (E0594).
+        var h = handoff
         let running = self.running_context()
         is running {
             Some(rc) -> {
@@ -270,18 +271,20 @@ ext PipelineEngine {
 
                 // Handoff target auto-correction (silently fill an empty
                 // target; log a correction when the caller named a wrong one).
-                correct_handoff_target(self, h, step_id, exit)
+                // Pass `step_id` (String) bare: a2r auto-borrows String args to
+                // free-fn &str params with ONE .as_str(); an explicit .as_str()
+                // here got doubled (str_as_str is unstable on &str).
+                correct_handoff_target(self.clone(), h.clone(), step_id, exit.clone())
 
                 // Budget tracking — update cumulative BEFORE recording so the
                 // stored handoff carries an accurate cumulative total.
                 self.cumulative_tokens = self.cumulative_tokens + h.token_usage.step_tokens
-                self.budget_tracker.record(role_id, h.token_usage.step_tokens, 0)
+                self.budget_tracker.record(role_id.as_str(), h.token_usage.step_tokens, 0)
                 h.token_usage.cumulative = self.cumulative_tokens
                 let limit = self.budget_tracker.run_budget.limit
                 h.token_usage.budget_remaining = saturating_sub(limit, self.cumulative_tokens)
 
-                let iteration = self.loop_count(step_id)
-                let iteration = self.loop_count(step_id)
+                let iteration = self.loop_count(step_id.as_str())
                 // Bind the record to a local first — constructing it directly
                 // inside .push(...) confuses the type checker (plan 013 gotcha).
                 let rec = StepRecord(
@@ -296,9 +299,9 @@ ext PipelineEngine {
 
                 // Budget check is advisory (Plan 008 recheck): a LimitReached
                 // signal logs a warning but does NOT halt the run.
-                log_budget_advisory(self.budget_tracker.check(role_id))
+                log_budget_advisory(self.budget_tracker.check(role_id.as_str()))
 
-                return self.advance_after_step(step_id, exit)
+                return self.advance_after_step(step_id.as_str(), exit)
             },
             None -> {
                 self.status = PipelineStatus.Failed("submit_handoff called but no step is running")
@@ -320,8 +323,8 @@ ext PipelineEngine {
                         return self.advance()
                     },
                     GateDecision.Reject(feedback) -> {
-                        self.push_gate_feedback(pending.step_id, feedback)
-                        self.gate_resolved_for_step = Some(pending.step_id)
+                        self.push_gate_feedback(pending.step_id.as_str(), feedback.as_str())
+                        self.gate_resolved_for_step = Some(pending.step_id.clone())
                         self.status = PipelineStatus.Idle
                         return self.advance()
                     }
@@ -336,7 +339,7 @@ ext PipelineEngine {
             PipelineStatus.Running(_sid, _rid, _t) -> {
                 self.status = PipelineStatus.Paused(self.current_step)
             },
-            else -> {}
+            _ -> {}
         }
     }
 
@@ -346,8 +349,8 @@ ext PipelineEngine {
         if paused == false {
             return None
         }
-        for step in self.flow.steps {
-            self.set_loop_counter(step.id, 0)
+        for step in self.flow.steps.clone() {
+            self.set_loop_counter(step.id.as_str(), 0)
         }
         if self.current_step < self.flow.steps.len() {
             let step = self.flow.steps[self.current_step]
@@ -367,8 +370,8 @@ ext PipelineEngine {
             return None
         }
         let step_id = self.flow.steps[self.current_step].id
-        self.set_loop_counter(step_id, 0)
-        self.remove_gate_feedback(step_id)
+        self.set_loop_counter(step_id.as_str(), 0)
+        self.remove_gate_feedback(step_id.as_str())
         self.gate_resolved_for_step = None
         self.status = PipelineStatus.Idle
         return Some(self.advance())
@@ -384,7 +387,7 @@ ext PipelineEngine {
 
     /// Id of the current step (None if past the end).
     pub fn current_step_id() ?str {
-        if self.current_step < self.flow.steps.len() {
+        if self.current_step < self.flow.steps.len() as uint {
             return Some(self.flow.steps[self.current_step].id)
         }
         return None
@@ -392,7 +395,10 @@ ext PipelineEngine {
 
     /// Feedback messages accumulated for a step (gate rejections, auto-notes).
     pub fn feedback_for(step_id str) List<str> {
-        return self.gate_feedback.get(step_id) ?? []
+        is self.gate_feedback.get(step_id) {
+            Some(v) -> return v.clone(),
+            None -> return []
+        }
     }
 }
 
@@ -404,7 +410,7 @@ ext PipelineEngine {
     fn running_context() ?RunningContext {
         is self.status {
             PipelineStatus.Running(sid, rid, started) -> {
-                let step = self.flow.steps[self.current_step]
+                let step = self.flow.steps[self.current_step].clone()
                 return Some(RunningContext(
                     step_id: sid,
                     role_id: rid,
@@ -412,7 +418,7 @@ ext PipelineEngine {
                     started_at: started
                 ))
             },
-            else -> return None
+            _ -> return None
         }
     }
 
@@ -452,8 +458,10 @@ ext PipelineEngine {
         var kept_names List<str> = []
         for name in self.gate_feedback_names.clone() {
             if name != step_id {
-                kept.set(name, self.gate_feedback.get(name) ?? [])
-                kept_names.push(name.clone())
+                // name is an owned String; map.get needs &str, so .as_str() the
+                // key (a bare get(name) failed: expected &str, found String).
+                kept.set(name.clone(), self.gate_feedback.get(name.as_str()) ?? [])
+                kept_names.push(name)
             }
         }
         self.gate_feedback = kept
@@ -463,7 +471,9 @@ ext PipelineEngine {
     /// Increment a loop counter, returning the new value.
     mut fn bump_loop_counter(step_id str) uint {
         let prev = self.loop_count(step_id)
-        let next = prev + 1
+        // `1u` (not bare `1`): a2r inferred `prev + 1` as i32, but
+        // set_loop_counter takes u32 and the fn returns u32.
+        let next = prev + 1u
         self.set_loop_counter(step_id, next)
         return next
     }
@@ -478,16 +488,16 @@ ext PipelineEngine {
                 return self.advance()
             },
             NextStep.Complete -> {
-                self.current_step = self.flow.steps.len()
+                self.current_step = self.flow.steps.len() as uint
                 self.status = PipelineStatus.Completed
                 return AdvanceResult.Completed
             },
             NextStep.Error(msg) -> {
-                self.status = PipelineStatus.Failed(msg)
+                self.status = PipelineStatus.Failed(msg.clone())
                 return AdvanceResult.Failed(msg)
             },
             NextStep.Pause(reason, resume_step_id) -> {
-                is self.flow.get_step_index(resume_step_id) {
+                is self.flow.get_step_index(resume_step_id.as_str()) {
                     Some(idx) -> self.current_step = idx,
                     None -> {}
                 }
@@ -503,7 +513,7 @@ ext PipelineEngine {
         is exit {
             ExitRouting.Next -> {
                 let next = self.current_step + 1
-                if next >= self.flow.steps.len() {
+                if next >= self.flow.steps.len() as uint {
                     return NextStep.Complete
                 }
                 return NextStep.Index(next)
@@ -516,7 +526,7 @@ ext PipelineEngine {
                         target_step_id
                     )
                 }
-                is self.flow.get_step_index(target_step_id) {
+                is self.flow.get_step_index(target_step_id.as_str()) {
                     Some(idx) -> return NextStep.Index(idx),
                     None -> return NextStep.Error(
                         f"Loop target '${target_step_id}' not found"
@@ -534,8 +544,8 @@ ext PipelineEngine {
 /// Apply handoff target auto-correction in place: silently fill an empty
 /// target, or record a feedback note + correct when the caller named a wrong
 /// target. (Split out of submit_handoff to keep that body shallow.)
-fn correct_handoff_target(eng PipelineEngine, h HandoffDocument, step_id str, exit ExitRouting) void {
-    let expected_role = expected_target_role(eng, exit)
+fn correct_handoff_target(mut eng PipelineEngine, mut h HandoffDocument, step_id str, exit ExitRouting) void {
+    let expected_role = expected_target_role(eng.clone(), exit.clone())
     is expected_role {
         Some(expected) -> {
             let cur = h.target
@@ -543,10 +553,10 @@ fn correct_handoff_target(eng PipelineEngine, h HandoffDocument, step_id str, ex
                 h.target = expected
             } else {
                 if cur != expected {
-                    eng.push_gate_feedback(
-                        step_id,
-                        f"[AUTO-CORRECTION] target '${cur}' corrected to '${expected}'."
-                    )
+                    // Bind the note first — push_gate_feedback takes &str and an
+                    // inline f-string arg was passed as String (expected &str).
+                    let note = f"[AUTO-CORRECTION] target '${cur}' corrected to '${expected}'."
+                    eng.push_gate_feedback(step_id, note.as_str())
                     h.target = expected
                 }
             }
@@ -566,7 +576,7 @@ fn log_budget_advisory(action BudgetAction) void {
         BudgetAction.Warning(_remaining) -> {
             // tracing::warn!(pipeline budget warning ...) — advisory
         },
-        else -> {}
+        _ -> {}
     }
 }
 
@@ -576,11 +586,9 @@ fn log_budget_advisory(action BudgetAction) void {
 // Free helpers (bridge std::time; pure helpers)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Current UNIX timestamp in seconds (bridged to std::time::SystemTime).
+/// Current UNIX timestamp in seconds (bridged to a2r_std::time::now_sec).
 fn now_secs() uint {
-    let now = time.SystemTime.now()
-    let dur = now.duration_since(time.UNIX_EPOCH)
-    return dur.as_secs()
+    return time.now_sec() as uint
 }
 
 /// a - b, clamped at 0 (mirrors u64::saturating_sub).
@@ -595,7 +603,7 @@ fn saturating_sub(a uint, b uint) uint {
 fn is_paused(status PipelineStatus) bool {
     is status {
         PipelineStatus.Paused(_at) -> return true,
-        else -> return false
+        _ -> return false
     }
 }
 
@@ -603,7 +611,7 @@ fn is_paused(status PipelineStatus) bool {
 fn is_failed(status PipelineStatus) bool {
     is status {
         PipelineStatus.Failed(_e) -> return true,
-        else -> return false
+        _ -> return false
     }
 }
 
@@ -619,8 +627,8 @@ fn expected_target_role(eng PipelineEngine, exit ExitRouting) ?str {
             return None
         },
         ExitRouting.Loop(target_step_id, _max) -> {
-            is eng.flow.get_step_index(target_step_id) {
-                Some(idx) -> return Some(eng.flow.steps[idx].role_id),
+            is eng.flow.get_step_index(target_step_id.as_str()) {
+                Some(idx) -> return Some(eng.flow.steps[idx].role_id.clone()),
                 None -> return None
             }
         }

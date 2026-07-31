@@ -6,7 +6,11 @@ use notes_store: NotesStore
 // Plan 367 P2-3: view fragment for note list items — eliminates 15x copy-paste.
 view fn NoteItem(note: Note, active: bool, indent: str) {
     button {
-        text note.title { style: "block truncate" }
+        row {
+            style: "items-center gap-1"
+            if note.pinned { text "📌" { style: "text-xs" } }
+            text note.title { style: "block truncate" }
+        }
         text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
         onclick: .SelectNote(i)
         style: if active {

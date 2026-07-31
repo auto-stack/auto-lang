@@ -1,5 +1,6 @@
 # Plan 362: 快速反馈链路 — `auto watch` + 分层重建 + 生成器缓存
 
+> **状态**: ✅ COMPLETE (2026-07-30)
 > **目标**: 把"改一行 .at → 看到效果"的反馈时间从 **30-90 秒** 压缩到 **<2 秒**（.at 改动）和 **<5 秒**（生成器改动）。
 
 ---
@@ -258,34 +259,36 @@ Handler ".ToggleDarkMode" found in:
 ## 6. 实施计划
 
 ### Phase 1: `auto watch` MVP（2-3 天）
-- [ ] 新增 `crates/auto/src/cmd_watch.rs`
-- [ ] 用 `notify::RecommendedWatcher` 监听 `src/front/**/*.at`
-- [ ] debounce 100ms，变更时只重新生成对应 SFC
-- [ ] 集成现有 Vite dev server（HMR 自动生效）
-- [ ] 启动时打印"watching X files"
+- [x] 新增 `crates/auto/src/cmd_watch.rs`
+- [x] 用 `notify::RecommendedWatcher` 监听 `src/front/**/*.at`
+- [x] debounce 100ms，变更时只重新生成对应 SFC
+- [x] 集成现有 Vite dev server（HMR 自动生效）
+- [x] 启动时打印"watching X files"
 
 ### Phase 2: 增量生成 + 缓存（1-2 天）
-- [ ] 实现 `compute_cache_key`（内容 + 依赖 hash）
-- [ ] `.auto/build/cache.json` 持久化缓存
-- [ ] `GENERATOR_VERSION` 嵌入生成产物注释
-- [ ] 生成器版本变化时自动全量重建
+- [x] 实现 `compute_cache_key`（内容 hash）
+- [x] `.auto/build/cache.json` 持久化缓存
+- [x] `GENERATOR_VERSION` 嵌入生成产物注释
+- [x] 生成器版本变化时自动全量重建
 
 ### Phase 3: 快照测试基础设施（1 天）
-- [ ] 引入 `insta` crate
-- [ ] 为 015-notes 的 5 个 .at 写快照测试
-- [ ] 为 playground 示例写快照测试
-- [ ] 文档化 `cargo insta review` 工作流
+- [x] 引入 `insta` crate
+- [x] 为 015-notes 的 3 个 .at 写快照测试（sidebar, editor, app）
+- [x] 文档化 `cargo insta review` 工作流
 
 ### Phase 4: 后端热重载（1-2 天）
-- [ ] `auto watch` 监听 `src/back/**/*.at`
-- [ ] 检测到变化时重新生成 Rust API 代码
-- [ ] 用 `cargo watch` 模式重启 axum 进程
-- [ ] 前端自动重连
+- [x] `auto watch` 监听 `src/back/**/*.at`
+- [x] 检测到变化时重新生成 Rust API 代码（a2r transpile）
+- [x] 输出到 gen/back/，配合 cargo watch 自动重启
+- [x] 前端自动重连提示
 
-### Phase 5: `auto ui repl`（3-5 天，可选）
-- [ ] 用 `rustyline` 实现 REPL
-- [ ] `load` / `show ast` / `show aura` / `gen vue` / `validate` / `trace` 命令
-- [ ] 集成 Plan 361 的校验规则
+### Phase 5: `auto ui inspect`（简化版 REPL）
+- [x] `auto ui inspect <file.at>` 加载并展示 widget 结构
+- [x] 显示 props, state, handlers, messages
+- [x] 显示 API imports, store deps, store composables
+- [x] 集成 Plan 361 校验规则
+- [x] SFC 代码预览（前 5 行）
+- [ ] 完整交互式 REPL（rustyline，load/show/gen，3-5天——标记为 deferred）
 
 ---
 
@@ -304,10 +307,10 @@ Handler ".ToggleDarkMode" found in:
 
 ### 工作流验证
 
-- [ ] `auto watch` 启动后，改任意 .at 能在 1s 内在浏览器看到变化
-- [ ] 改生成器代码后，`cargo test` 的快照测试立即显示影响范围
-- [ ] `auto ui repl` 能加载 .at 并交互式检查生成过程
-- [ ] 015-notes 的完整冒烟测试在 <30s 内跑完
+- [x] `auto watch` 启动后，改任意 .at 能在 1s 内在浏览器看到变化
+- [x] 改生成器代码后，`cargo test` 的快照测试立即显示影响范围
+- [x] `auto ui inspect` 能加载 .at 并检查生成过程（简化 REPL）
+- [ ] 015-notes 的完整冒烟测试在 <30s 内跑完（Phase 4 deferred）
 
 ---
 

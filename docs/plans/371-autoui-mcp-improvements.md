@@ -515,3 +515,568 @@ acceptance.atd 有 13 个场景（T1-T13），MCP 可执行的子集：
 
 - 在 acceptance.atd 的 D7 条目更新 Rust 平台状态：Rust ❌→✅（MCP 已支持）
 - 添加引用：指向 `.autotest` 文件作为桌面 MCP 执行声明
+
+---
+
+## 8. 实现审计（2026-07-31）
+
+对 Task 1-18 的实现情况做了逐项核查（证据见代码 `file:line`）。结论：**14/18 已完成**，1 个未实现，2 个存在 workaround。
+
+### 8.1 状态总览
+
+| Task | 内容 | 状态 | 备注 |
+|---|---|---|---|
+| 1-9 | action/inspect/wait 的 vnode_N 支持 + find/exists 工具 + events 合并 | ✅ 已完成 | VM 模式路径干净 |
+| **10** | 截图 + 视觉对比 | ❌ **未实现** | → Task 20 |
+| 11/13 | Rust 模式 MCP 启动 + subscription | ✅ 已完成 | 架构偏离但功能等价 |
+| **12** | Rust 模式 action 分发 | ⚠️ **workaround** | → Task 19 |
+| **14** | Rust 模式跨模式一致性 | ⚠️ 部分 | `autoui_state` 在 Rust 不可用 → Task 21 |
+| 15-18 | `.autotest` 格式 + Python adapter + acceptance.atd | ✅ 已完成 | 仅 VM 模式跑过全量验证 |
+
+### 8.2 关键遗留问题（workaround / 缺失）
+
+**问题 A（Task 12 workaround，最关键）**：Rust 模式 action 分发使用脆弱启发式，存在**静默失败**风险。链路：`execute_action_vnode` 的 Rust 分支从 VNode 标签取首词作为 event 名（`derive_event_name_from_label`），经 `__mcp_action|...` 字符串通道，iced 侧 `find_msg_by_event_name` 用 `format!("{:?}", onclick).contains(event)` 子串匹配。三个缺陷：子串误匹配、首词未必命中（静默失败）、输入值端到端断裂（`_input_value` 未用，`INPUT_TEXT` thread-local 从未被 MCP 设置）。
+
+**问题 B（Task 10 缺失）**：`autoui_screenshot`（`mcp_server.rs:1154`，`inputSchema.properties == {}`）未加 diff 能力。`run_autotest.py:52-93` 有个 post-hoc MD5 hash 存根（post-hoc、只存 hash、不影响退出码）。
+
+**问题 C（Task 14 部分）**：Rust 模式从不调用 `SharedState::update`，`shared.state` 恒空，`tool_state` 早退。4 个 state 场景标 `skip_if rust`（T5c/T11/T11b/T12）。
+
+### 8.3 后续补救计划（Task 19-21）
+
+- **Task 19（高）**：路径寻址精确分发，消除 heuristic + 修复输入值断裂。
+- **Task 20（中）**：Rust MCP 侧像素级截图 diff。
+- **Task 21（低）**：Rust 模式标量状态快照，去掉 `skip_if rust`。
+
+---
+
+## 9. Task 19: Rust 模式 action 路径寻址（消除 heuristic）✅ 已实施
+
+### 9.1 设计思路
+
+放弃「MCP 侧猜 event 名 → iced 侧 Debug 子串匹配」，改为「**MCP 侧只传路径，iced 侧沿 path 精确取 handler**」。目标 View 节点的 handler 是构造 View 时内联的强类型 `M`，沿 path 定位即拿到正确的 `M`。
+
+### 9.2 实施
+
+- `ActionMessage` 重构为自描述结构：`{ target: ActionTarget, action, value }`，新增 `enum ActionTarget { Event{widget,event}, Path{path:Vec<u16>} }`。VM 模式用 `Event`（向后兼容），Rust 模式用 `Path`（从 `vnode.path`）。
+- iced 侧 `devtools_subscription` 编码为 `__mcp_action_path|<a,b,c>|<action>|<value>`；`devtools_update` 新增该分支：解析 path → `find_view_by_path_generic(&view, &path)` → `extract_handler_from_view(node, action)` → 设置 `INPUT_TEXT`（**修复输入值断裂**）→ `w.inner.on(m)`。
+- 新增泛型 `find_view_by_path_generic<M>` + `extract_handler_from_view<M>`（renderer.rs），删除 `find_msg_by_event_name` + `extract_view_children`（renderer.rs）和 `derive_event_name_from_label`（mcp_server.rs）。
+- `vnode_converter.rs` 新增 `pub fn extract_children_ref`（引用版本，避免 clone）。
+
+### 9.3 改动文件
+
+`mcp_server.rs`、`iced/renderer.rs`、`vnode_converter.rs`。
+
+### 9.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅
+- `cargo build --bin auto` ✅
+- 015-notes rust workspace `cargo build` ✅
+- mcp_server tests_314：6 passed ✅
+- ⚠️ 待：VM 模式 `.autotest` 全量回归（需启动 GUI）；Rust 模式手动验证 Edit/type_text。
+
+---
+
+## 10. Task 20: 像素级截图 diff（Rust MCP 侧）✅ 已实施
+
+### 10.1 设计思路
+
+在 Rust MCP 侧用已依赖的 `image 0.25`（`ui-iced` 启用）做像素 diff，RGBA 缓冲区在 `renderer.rs` 已在内存中。
+
+### 10.2 实施
+
+- `tool_screenshot` 解析 `name`/`baseline`/`diff`/`threshold` 参数；schema 增加这些参数。
+- `ScreenshotRequest`/`ScreenshotOptions` 携带选项（纯数据，无 image 类型，可放在非 ui-iced-gated 模块）。
+- `renderer.rs` 新增 `process_screenshot`（命名/基线/diff 分发）+ `compare_pngs`（逐像素对比，差异超阈值返回 DIFFERS 并存红高亮 diff 图到 `tmp/<name>-diff.png`），删除冗余的 `save_screenshot_png`。
+- Python 适配器：`McpAdapter.after_scenario(sid)` 钩子在每场景末尾调 `autoui_screenshot(name=sid, baseline/diff)`；`run_suite` 返回 `(results, screenshot_results)`；`run_autotest.py` 重写为传参 + diff 结果纳入退出码，删除 post-hoc MD5 存根。
+
+### 10.3 改动文件
+
+`mcp_server.rs`、`iced/renderer.rs`、`tests/autotest/__init__.py`、`tests/run_autotest.py`。
+
+### 10.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅；`cargo build --bin auto` ✅
+- Python 文件 `import autotest` + `ast.parse` ✅
+- ⚠️ 待：启动 GUI 跑 `--screenshot-baseline` / `--screenshot-diff` 端到端。
+
+---
+
+## 11. Task 21: Rust 模式标量状态快照（去掉 skip_if rust）✅ 部分实施
+
+### 11.1 设计思路
+
+`Component` 是本地 trait（`component.rs:34`），加**带默认实现的 `state_snapshot()`**（blast radius 零）。a2r 生成器对**标量字段**生成 override。
+
+### 11.2 实施
+
+- `component.rs`：trait 加 `state_snapshot()` 默认方法（默认空，VM 模式不经过此路径）。
+- `ui/mod.rs`：re-export `auto_val`（供生成代码以 `auto_lang::ui::auto_val::Value` 引用）。
+- `rust.rs` 生成器：`generate_component_impl` 新增 `generate_state_snapshot`，仅对标量类型（String/i8..i64/u8..u64/isize/usize/f32/f64/bool）生成条目，跳过 Vec/serde_json::Value/嵌套组件；新增 `is_scalar_state_type`/`scalar_to_auto_value_expr` helpers + 2 个单元测试。
+- `mcp_server.rs`：`SharedState::set_state` setter。
+- `renderer.rs`：`view_element` 每帧 `set_state(self.inner.state_snapshot())`。
+
+### 11.3 改动文件
+
+`component.rs`、`ui/mod.rs`、`ui_gen/rust.rs`、`mcp_server.rs`、`iced/renderer.rs`。
+
+### 11.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅（默认方法，零回归）
+- 生成器单元测试：`test_state_snapshot_scalar_override`、`test_state_snapshot_no_scalars_no_override` ✅（25 passed in ui_gen::rust）
+- 015-notes rust workspace `cargo build` ✅（committed main.rs 是手工拼装版，未含 state_snapshot；见 §11.5）
+
+### 11.5 重生成受阻：a2r store-composable 预存缺陷
+
+Task 21 的生成器改动（§11.2，commit `f863f9ff`）**已正确落地**：当 a2r 正常输出时，`generate_component_impl` 会为标量字段生成 `state_snapshot` override。
+
+但尝试对 015-notes 重生成时发现：**原生 a2r 输出有 86 个预存错误**（`no field store`、`cannot find type StoreMsg` 等 store-composable 处理缺陷），生成的 `NotesStore` 只有 4 个字段（缺 `dark_mode`/`accent_color` 等）。committed 的 `main.rs` 是**手工拼装修复版**（commit `cd9205b9` "restore hand-assembled rust/src/ (0 errors)"），并非 a2r 直接产物。
+
+**关键决策（已纠正）**：**不修改生成的 `main.rs`**。生成文件会被下次重生成覆盖，手工改它没有意义。因此 015-notes 的 `main.rs` 当前**不含** `state_snapshot`——要让它有，必须先修复 a2r 的 store-composable 缺陷（属 Plan 374 范畴，超出 Plan 371），再重生成。
+
+> 历史教训：本轮曾误在手工版 `main.rs` 上注入 `state_snapshot`（commit `9f297b06`），已被回退——生成文件不该手改。正确的修复点永远是生成器本身。
+
+### 11.6 ⚠️ skip_if rust 暂不移除（依赖 a2r 修复 + 字段语义对齐）
+
+移除 `skip_if rust` 的前置条件尚未满足：
+
+1. **a2r store 缺陷未修**（§11.5）：重生成前 015-notes 的 Rust 组件没有 `state_snapshot`，Rust 模式 `autoui_state` 仍返回空。
+2. **字段语义差异**：即便 `state_snapshot` 生效，VM 与 Rust 模式的 state 形状不一致——
+
+| 场景 | 断言字段 | VM 模式（flat state） | Rust 模式（root App snapshot） |
+|---|---|---|---|
+| T11/T11b | `dark_mode` | ✅ 顶层 | ⚠️ 属于子组件 `store`（NotesStore），不在根 App snapshot |
+| T12 | `accent_color` | ✅ 顶层 | ⚠️ 同上 |
+| T5c | `edit_title` | ✅ 当前 EditorPanel 状态 | ❌ 属于子组件 EditorPanel |
+
+根因：VM 模式 `shared.state` 是**所有组件状态的扁平 map**（含当前 EditorPanel 的 `edit_title`、顶层 `dark_mode`），而 Rust 模式 `view_element` 只调根组件 `App::state_snapshot()`。子组件状态不在根快照里。
+
+**结论**：本轮**保留** `skip_if rust`。要让这些场景在 Rust 模式通过，需后续工作（按依赖顺序）：
+- (a) 修复 a2r 的 store-composable 缺陷（Plan 374），使重生成产出可编译的 `main.rs`（含 `state_snapshot`）；
+- (b) 让 Rust 模式 `SharedState.state` 像 VM 一样扁平聚合所有组件状态（`DevToolsWrapper` 递归收集子组件 `state_snapshot`），而非只读根组件。
+
+`autoui_state` 的 Rust 模式基础设施（trait 默认方法 + 生成器 override + `set_state` + `view_element` 推送）已就绪，待 (a)(b) 完成后即可生效。
+
+---
+
+## 12. Task 22：解锁 Rust 模式 state（问题 a + b）
+
+§11.6 列出两个前置问题。本节把它们拆成可执行的两个子任务，按依赖顺序实施。
+
+### 12.1 问题 a：a2r store-composable 缺陷 ✅ 已修复（Task 22a，commit `6dbf400f`）
+
+**现象**：对 015-notes 跑原生 a2r 重生成（`touch .at + auto run -r rust`），产出的 `main.rs` 有 **86 个编译错误**：`error[E0609]: no field 'store'`（×78）、`error[E0433]: cannot find type 'StoreMsg'`、`NotesStore` 只生成 4/9 字段。
+
+**根因（诊断后确认）**：**单一 bug** —— `regenerate_code_only`（增量重生成路径，`rust_ui.rs:81`）调用 `compile_at_file(at_path, &[])` 传了**空 store 列表**，导致 Plan 374 的 store-composable 机制全部跳过：不注册 store 名、不生成 `NotesStore` struct、不注入 `pub store: NotesStore` 字段、不发 `NotesStoreMsg` 枚举。而表达式重写器（纯语法，不看 store 注册表）仍把每个 `store.X` 改写成 `self.store.X` / `StoreMsg::X`，造成悬空引用。
+
+注意：`generate_rust_ui`（全量路径，`rust_ui.rs:182-196`）有 store 预扫描并正确传 `&all_stores`，所以全量重生成是对的；只有增量路径 `regenerate_code_only` 漏了。这也解释了为什么 committed 的 `main.rs`（手工拼装版 `cd9205b9`）是对的——它来自全量路径。
+
+**修复**：把 store 预扫描抽成共享 helper `collect_store_decls`（`rust_ui.rs`），`generate_rust_ui` 和 `regenerate_code_only` 都调它。增量路径现在传 `&all_stores`，与全量路径一致。
+
+**验证**：`touch app.at + auto run -r rust` 重生成 015-notes → `cargo build` **0 错误**。生成的 `NotesStore` 含全部 9 字段，App/EditorPanel/NavTree/NoteItem 都注入了 `pub store: NotesStore`，`NotesStoreMsg` 正常生成。**附带收益**：生成器自动带上 Task 21 的 `state_snapshot()` override（4 个组件），无需手改 main.rs。25 个生成器测试 + 2 个 state_snapshot 测试通过。
+
+### 12.2 问题 b：Rust 模式 state 不聚合子组件（Task 22b，依赖 22a ✅）
+
+**现象（22a 修复后实测确认）**：重生成后 `App::state_snapshot()` 只暴露 `search`（App 自身标量字段），`store: NotesStore` 字段未递归，故 `dark_mode`/`accent_color`/`active_folder` 等 store 字段在 Rust 模式 `autoui_state` 中不可见；`edit_title`（属于 EditorPanel 子组件）更不在根快照里。
+
+**根因**：VM 模式 `shared.state` 是 VM 堆里**所有组件实例状态的扁平 map**（renderer.rs 的 `read_all_state_materialized` 聚合）；Rust 模式 `view_element` 只调根组件 `App::state_snapshot()`，而生成器的 `generate_state_snapshot` 只处理**标量字段**，跳过了 `store`（`NotesStore` 类型，非标量）。
+
+**解决方案（Task 22b）—— 生成器侧递归**：在 `generate_state_snapshot`（`ui_gen/rust.rs`）中，对类型为**已注册组件**（store 或子组件）的字段，生成递归调用：`for (k, v) in self.<field>.state_snapshot() { m.insert(format!("<field>.{}", k), v); }`。生成器已知字段类型（`state_types`/`prop_types`）和组件名（`STORE_NAMES` + 子组件列表），可在 `is_scalar_state_type` 之外加一个「是组件类型」的判断分支。
+
+字段名对齐：展平后用 `<field>.<subfield>` 前缀（如 `store.dark_mode`）。`.autotest` 的 `state field="dark_mode"` 断言需相应支持前缀查询，或 MCP `autoui_state` 工具做前缀/子串匹配（见 22b 实施细节）。
+
+**验证目标**：Rust 模式 `autoui_state(fields=["store.dark_mode"])` 返回值；`store.accent_color`、`store.active_folder` 等可见。届时评估能否移除 `skip_if rust`（取决于 `.autotest` 断言是否对齐前缀）。
+
+### 12.3 实施顺序
+
+1. **Task 22a**（问题 a）：修 a2r store-composable 缺陷 → 015-notes 重生成 0 错误（含自动 `state_snapshot`）。✅ commit `6dbf400f`
+2. **Task 22b**（问题 b，依赖 22a）：生成器 `state_snapshot` 递归展开 store 字段（`store.` 前缀）+ `autoui_state` 字段查询支持路径后缀匹配。✅ commit `544e0731` + `3da51fa5`
+3. **skip_if rust 决策**：
+   - **T11/T11b（`dark_mode`）/ T12（`accent_color`）**：Rust 模式现可通过后缀匹配读到 `store.dark_mode`/`store.accent_color` → **已移除** `skip_if rust`。
+   - **T5c（`edit_title`）**：EditorPanel 是按笔记在 view 里构造的子组件，**不是 App 的 struct 字段**，故其 `edit_title` 不在 App snapshot → **保留** `skip_if rust`（需后续让生成器/运行时支持「当前活动子组件」状态暴露）。
+4. ⏳ 待：启动 GUI 跑 `python run_autotest.py --mode rust` 端到端验证 T11/T11b/T12 实际通过。
+
+### 12.4 GUI 端到端验证结果 ✅
+
+启动 015-notes GUI 跑 `.autotest`，两种模式均验证：
+
+| 模式 | 结果 | 说明 |
+|---|---|---|
+| **VM**（`--mode vm`） | **13 passed, 0 failed, 0 skipped** | 完全回归，后缀匹配未破坏 VM（精确命中） |
+| **Rust**（`--mode rust`） | **8 passed, 5 failed, 0 skipped** | T11/T11b/T12 ✅（新启用）；T5c 仍 skip（`edit_title` 子组件不可见） |
+
+Rust 模式失败项（T2a/T2c/T5b/T5c/T5e）是**预存的 a2r UI 渲染差异**（文件夹标题渲染、"Note title" 输入框未找到），与 state 工作无关，属 Plan 374/后续 a2r 修复范畴。
+
+直接 MCP 验证（`autoui_state(fields=["dark_mode"])`）确认 Rust 模式返回 `store.dark_mode: false (bool)`、`store.accent_color: "indigo" (str)`——递归快照 + 后缀匹配按设计工作。
+
+**结论**：Task 22（问题 a + b）完成。`skip_if rust` 已从 T11/T11b/T12 移除（实测通过），T5c 保留（`edit_title` 仍需后续让「当前活动子组件」状态可暴露）。
+
+### 12.5 问题 c：子组件实例状态不持久（Task 22c）✅ 已修复
+
+§12.4 后继续深挖 T5b/T5c/T5e + T2a/T2c 失败，发现一个**更深的 a2r 架构缺陷**——与 state 读取无关，而是子组件状态**写入即丢弃**。
+
+**现象**：路径寻址（Task 19）精确分发到 `AppMsg::EditorPanel(EditorPanelMsg::Edit)` 并调 `w.inner.on(m)`，但编辑模式始终不进入（Save 按钮不出现）。
+
+**根因（诊断确认）**：生成的 `App::on` 转发子组件消息时**新建一个临时子组件实例**、在其上调 `.on(inner)`、然后丢弃：
+
+```rust
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);  // 临时实例
+    __child.on(inner);   // Edit → __child.editing = true（丢失！）
+    self.search = __child.search;            // 只回拷 search
+}
+```
+
+EditorPanel 自身状态（`editing`/`edit_title`/...）和 NavTree 的 `store.active_folder` 变更都随临时实例丢弃。VM 模式无此问题（DynamicComponent 实例由 VM 持久化）。
+
+**解决方案（生成器侧，commit `00271d9a`）**：
+1. **跨文件扫描**（`collect_component_state_fields`）：记录每个组件自身标量状态字段（name + rust 类型），跨文件传入 `compile_at_file`。
+2. **struct 提升**（`generate_struct`）：把子组件自身标量字段提升到父组件 struct（App 获得 `editing`/`edit_title`/`edit_body`/`tag_input`/`show_tag_input`），构造器用类型合适的默认值初始化。
+3. **转发同步**（`find_sync_fields_for_child`）：转发时把 store 字段 + 子组件自身字段同步进临时实例、调 `.on()`、再同步回父组件——变更得以持久化。
+4. **视图同步**（`generate_child_component`）：view 构造子组件时，先把提升的字段同步进**新建的**子组件再 `.view()`，让渲染反映父组件持久化的编辑器状态。
+5. **Clone 派生**：store 结构体 + 持有 store 的组件派生 `Clone`（store 同步所需）。
+
+### 12.6 最终 GUI 验证：Rust 模式全绿 ✅
+
+| 模式 | 结果 | 说明 |
+|---|---|---|
+| **VM**（`--mode vm`） | **13 passed, 0 failed, 0 skipped** | 完全回归 |
+| **Rust**（`--mode rust`） | **13 passed, 0 failed, 0 skipped** | **全部通过**（含此前失败的 T2a/T2c/T5b/T5c/T5e） |
+
+Rust 模式现在**完整可跑**：编辑/保存/取消/输入标题、文件夹标签切换、暗黑模式、主题色全可用。`.autotest` 中已无 `skip_if rust`（T5c 也真实通过——见 §12.7）。
+
+### 12.7 问题 d：T5c edit_title 输入值流（Task 22d）✅ 已修复
+
+§12.5 的 hoist+sync 让 `edit_title` 字段在 App 可见（state_snapshot 能读到），但 T5c 仍失败——`type_text` 输入的文本值没流进 `edit_title`（一直是空字符串）。
+
+**根因（`ui_gen/rust.rs` 两处）**：
+1. `scan_input_fields` 只匹配 `Expr::Ident` 作为 `value` 绑定，但 `.edit_title` 解析为 `Expr::Dot(self, "edit_title")`——所以 EditorPanel 标题输入框从未注册进 `input_fields`，生成的 `EditTitle(t)` handler 用 `self.edit_title = t.to_string()`（静态空 on_change 参数）而非 `last_input_text()`。
+2. 即便注册了，输入注入路径只跳过 `self.X = self.X` 形式的冗余 body，不跳过 `self.edit_title = t.to_string()`——payload 赋值会在 `_text` 赋值后立即覆盖。
+
+**修复（commit `ebba8841`）**：
+- `scan_input_fields` 现在也匹配 `Expr::Dot(_, field)`。
+- 输入注入路径现在也跳过 `self.<field> = <payload>` / `.to_string()` / `.clone()` 形式的冗余 body。
+
+生成的 handler 变为：`let _text = last_input_text(); self.edit_title = _text;`（无 `t.to_string()` 覆盖）。
+
+**最终验证**：两模式均 **13 passed, 0 failed, 0 skipped**。`.autotest` 无任何 `skip_if`。Rust 模式与 VM 模式 MCP 行为完全一致。
+
+**Plan 371 Task 22（问题 a + b + c + d）全部完成。**
+
+> 实施记录更正：之前把生成器改动"丢失"归因于"并行 plan-376V 提交流"是**错误归因**——plan-376 在独立 worktree，不影响 master 工作区文件。真实原因更可能是 IDE（ZCode）缓冲区回写覆盖了未提交的工作区改动。教训：未提交的改动在多进程环境下脆弱，应尽早 commit。所有改动现已安全提交。
+
+---
+
+## 13. 实施顺序与风险
+
+1. **Task 19 先做**（最高优先级，修复静默失败 + 输入值断裂，纯重构不破坏 VM 模式）。✅
+2. **Task 21 次之**（基础设施已就绪：trait 默认方法 + 生成器 override + SharedState.set_state + view_element 推送）。✅（代码部分；015-notes 实际生效待 a2r store 修复 + 重生成，见 §11.5；skip_if rust 暂不移除，见 §11.6）
+3. **Task 20 最后**（独立功能，工作量集中在 renderer 截图改造）。✅
+
+每个 Task 完成后：单独 `cargo build` + 对应验证。
+
+> ⚠️ 实施记录：Task 19 + 21 的代码改动曾因一次 `git stash` 操作与工作区既有 in-flight 改动冲突而丢失，已重新应用。此外，用户 IDE（ZCode）打开了部分文件，其缓冲区回写一度还原 agent 的编辑；最终通过原子化重应用 + 立即 build 锁定状态。
+>
+> **a2r 重生成结论**：原生 a2r 输出 015-notes 有 86 个预存错误（store-composable 缺陷，Plan 374 范畴），committed `main.rs` 是手工拼装版。Task 21 的生成器改动已正确落地，但**不手改生成的 main.rs**（会被覆盖、无意义）。`skip_if rust` 暂不移除。端到端 GUI 跑 `.autotest` 验证需在 IDE 不争用文件时进行。
+
+---
+
+## 14. 架构债务：Rust 模式组件状态模型（2026-07-31 会话复盘）
+
+本节是对 2026-07-31 会话 VM/Rust 修复工作的复盘，记录一个**反复出现、值得治本**的架构问题。
+
+### 14.1 问题表象："编辑框无法编辑"反复出现
+
+整个 Plan 371 后半段，反复出现同一类症状：
+- 点击 Edit / New，看不到编辑框
+- 输入框无法输入
+- 标题/正文不显示
+
+表面看这些都是 `if .editing == false`、`if .note.title == ""` 这类**状态判断错误**。但深入诊断后，根因**不是 if 逻辑**，而是**状态值从未改变**——`editing` 永远是初始值 `false`。
+
+### 14.2 根因：两种模式的状态模型根本不同
+
+`.at` 源码是为 VM 模型写的，Rust 模式从未实现与之等价的能力。
+
+**VM 模式（`dynamic.rs:748-764`）——单一持久 VM 堆：**
+
+```
+DynamicComponent 持有 VmBridge → VmBridge 持有持久 VM 堆
+├── App 的 state（含 editing/edit_title 等本属于 EditorPanel 的字段）
+├── 子组件 props（.note）
+└── 关键：子组件 handler 直接操作 ROOT state
+    （dynamic.rs:748 注释："child widget handlers operate on parent state
+     fields (editing, edit_title... defined in App's model)"）
+```
+
+子组件（如 EditorPanel）的 `model { var editing bool }` 在 VM 里**统一进 root 堆**，实例持续存在，状态天然持久。
+
+**Rust 模式（`00271d9a` 之前）——分离的临时结构体：**
+
+```rust
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);  // ← 每次消息都新建临时实例
+    __child.on(inner);                         // ← 状态改在临时实例上
+    // ← __child 丢弃！editing/edit_title 全部丢失
+}
+```
+
+这导致 EditorPanel 的 `editing` 字段：
+1. **点击 Edit** → 临时 `__child.editing = true` → 丢弃 → 下次 view 重建，`editing` 又是 `false` → 看不到编辑框
+2. **NewNote** → store 创建空 note → 但 EditorPanel.Init（设 `editing=true`）从未被转发 → 看不到编辑框
+3. **type_text** → 输入值未注入 handler 参数 → 输入无效
+
+### 14.3 本会话的修复：workaround，非治本
+
+`00271d9a` 的 **hoist+sync** 方案把子组件字段搬到父 struct，每次消息手动 clone 进出：
+
+```rust
+// 生成代码现状（workaround）
+AppMsg::EditorPanel(inner) => {
+    let mut __child = EditorPanel::new(...);
+    __child.editing = self.editing.clone();      // sync in
+    __child.edit_title = self.edit_title.clone();
+    // ... 5 个字段
+    __child.on(inner);
+    self.editing = __child.editing.clone();       // sync out
+    // ... 5 个字段
+}
+```
+
+这能让 015-notes 跑通，但代价：
+- 父 struct 膨胀（App 现在持有 editing/edit_title/edit_body/tag_input/show_tag_input 五个本不属于它的字段）
+- 每个子组件都要手写一堆 sync 代码，新增字段易遗漏
+- `.at` 里 `EditorPanel.Init` 这种"组件生命周期"语义靠生成器特判转发（`9f77f94b`），脆弱
+
+### 14.4 问题来源权重
+
+| 因素 | 权重 | 说明 |
+|------|------|------|
+| **a2r 代码生成器缺陷** | ★★★★★ 主因 | 从未实现"子组件状态持久化"，`00271d9a` 才从头补 |
+| **`.at` 源码的隐式假设** | ★★★ | `EditorPanel.Init` 依赖"组件实例持续存在 + 被初始化"的 VM 语义，Rust 无此保证 |
+| **store 跨组件同步** | ★★ | 次要。store 本身工作正常，问题是"子组件如何访问 store 字段"在两模式不一致 |
+| **if 状态判断** | ★ | 纯症状。状态值正确了，if 自然正确 |
+
+### 14.5 治本建议（后续 Plan 范畴）
+
+**1. a2r 应实现"组件实例持久化"而非"状态 hoist+sync"**
+
+让 App 持有 `child_instances: HashMap<String, Box<dyn Component>>`，消息直接路由到持久实例。这和 VM 的 `VmBridge` 持有持久堆是等价的，且：
+- 父 struct 不膨胀
+- 不需要每子组件写 sync 代码
+- `EditorPanel.Init` 等生命周期自然触发，无需生成器特判
+
+**2. 明确"组件状态归属"的单一真相源**
+
+`.at` 语义层应文档化：`model { var editing }` 声明的状态，实际存储由运行时决定（VM 统一进 root 堆，Rust 持久实例持有）。两种运行时按同一语义工作，避免歧义。
+
+**3. 建立语义保真度测试**
+
+每个 `.at` 语义特性都有对应的 Rust 生成测试，**失败即报错而非 `skip_if rust` 跳过**。`skip_if rust` 掩盖了"从未实现"的真相。
+
+**4. 生成文件不进 git（已修复，`f7095351`）**
+
+避免"手改生成文件 → 重生成被覆盖 → 再手改"的循环。只改生成器 `ui_gen/rust.rs`。
+
+### 14.6 诊断流程改进
+
+**修复前先确认"回归还是从未实现"：**
+```bash
+git log -p -- '*.autotest' | grep -B2 "skip_if rust"
+```
+一直 `skip_if rust` 的场景 = 从未在 Rust 可用过 = 特性缺失，非回归。
+
+**"if 判断错误"时先查状态值，而非查 if 逻辑：**
+诊断顺序：**状态值（`autoui_state`）→ 状态写入点 → 写入是否生效 → 判断逻辑**。
+`if .editing == false` 永远走某分支，99% 是 `editing` 值从未改变，而非判断写错。
+
+**用 MCP 做语义级诊断，而非截图肉眼比对：**
+高效路径 = `autoui_state(fields=["editing"])` → 返回 false → 确认 editing 未被设置 → 查谁该设 editing → 根因定位。
+
+### 14.7 结论：把 Rust 模式补全后，新应用是否就不易出问题？
+
+**应用层会显著改善**——一旦 a2r 完整实现"子组件状态持久化"，遵循同样 `.at` 语义模式的新应用不会再出"编辑框无法编辑"这类问题，因为根源在生成器而非应用代码。
+
+**但生成器层需要治本**——如果只把 015-notes 调通而不改架构（hoist+sync → 持久化实例），换一个用了不同 `.at` 特性的应用，可能又暴露新的生成器缺口。关键不是"调通 015-notes"，而是"让 a2r 的组件状态模型与 VM 对齐 + 建立语义保真度测试"。这是后续独立 Plan 的范畴。
+
+---
+
+## 15. 治本方案：Rust 模式组件实例持久化（详细设计与实施计划）
+
+本节是 §14.5 治本建议的展开。基于 2026-07-31 对 VM（`dynamic.rs`/`vm_bridge.rs`/`handler_codegen.rs`）与 Rust（`rust.rs`/`rust_ui.rs`/`component.rs`）两侧的深度调研，给出可落地的设计与分阶段实施计划。
+
+### 15.1 两种模式的状态模型对比（调研结论）
+
+| 关注点 | VM 模式 | Rust 模式（现状） |
+|--------|---------|-------------------|
+| 状态存储 | **单一持久堆对象** `GenericInstanceData`（`state_obj_id`），root + 所有子组件 model 字段全拍平 | App struct 字段 + 子组件状态 hoist 上来 |
+| 子组件 model | 合并进 root 堆（`vm_bridge.rs:306-324`），无独立对象 | hoist 到父 struct（`rust.rs:619-629`） |
+| 子组件 props | render 时写入 root state（`ensure_child_state` `vm_bridge.rs:670-704`，不存在则新增字段） | 每次 `::new(prop)` 重新构造（18 处） |
+| handler 路由 | namespaced fn `handler_<Widget>_<Event>`，全操作 root state（`dynamic.rs:759`） | 临时构造 `__child` → `__child.on()` → clone 出 → 丢弃 |
+| 组件实例 | `DynamicComponent` 持久，`VmBridge` 持有持久堆 | **无持久实例**，`EditorPanel::new()` 在 on/view 各重建一次 |
+| Init 生命周期 | root 在事件循环前 `fire_init()`（`dynamic.rs:702-720`）；子组件无显式触发，靠 `ensure_child_state` 写默认值 | **特判 hack**：NewNote 时手工构造 `__ep` 调 `on(Init)`（`rust.rs:1093-1121`） |
+
+**关键洞察**：VM 的"单一持久堆"在 Rust 侧的**自然等价物是"父 struct 持有持久子组件实例字段"**，而非"子组件状态搬来搬去"。VM 把所有字段拍平到一个对象；Rust 把所有子组件作为持久字段存于父。两者都是"状态持久、handler 直接操作持久状态"，只是存储粒度不同。
+
+### 15.2 当前 workaround 的具体缺陷（代码证据）
+
+调研确认 `00271d9a` 的 hoist+sync 有三类问题：
+
+**① 父 struct 膨胀 + 同名隐式契约**（`main.rs:30-38`）：
+App 持有 `editing/edit_title/edit_body/tag_input/show_tag_input` 五个本属于 EditorPanel 的字段。sync 靠"父字段名 == 子字段名"同名匹配（`find_sync_fields_for_child` `rust.rs:2517-2540`），子组件新增字段若忘在父侧登记则静默丢失。
+
+**② 三处临时构造点，状态无记忆**（共 18 处 `EditorPanel::new`）：
+- on 通用转发（`rust.rs:1150-1218`）：`let mut __child = EditorPanel::new(...)` → sync in → `on()` → sync out → 丢弃
+- NewNote Init 特判（`rust.rs:1093-1121`）：硬编码假设子组件名含 "Editor"、构造参数是 `self.store.notes[active_id]`
+- view 渲染（`generate_child_component` `rust.rs:2499-2511`）：又一次 `EditorPanel::new` + sync in（只进不出）
+
+**③ 015-notes 专用特判 hack**：
+- NewNote Init 转发（`rust.rs:1093`：按名字模糊匹配 "Editor"）
+- note 回写（`rust.rs:1193-1204`：构造参数含 "note" 才回写 `notes[active_id]`）
+- 删除特判（`rust.rs:1208-1215`：检查 `note["deleted"]`）
+- view 路径与 on 路径 sync 字段集合**不一致**（view 用启发式过滤排除 `Vec<`/`_id`/`notes`/`search`，`rust.rs:2486`）
+
+### 15.3 目标架构：父持有持久子组件实例
+
+**核心改动**：父 struct 新增持久子组件字段，消灭所有临时构造。
+
+```rust
+// 目标生成代码（对比现状 main.rs:30-38）
+pub struct App {
+    pub search: String,
+    pub store: NotesStore,
+    // ✅ 持久子组件实例（替代 hoist 的 editing/edit_title/...）
+    pub editor_panel: EditorPanel,
+    pub nav_tree: NavTree,
+}
+```
+
+消息路由直接操作持久实例，无 clone 进出：
+```rust
+// 目标生成代码（对比现状 main.rs:137-164）
+AppMsg::EditorPanel(inner) => {
+    self.editor_panel.on(inner);           // 直接操作持久实例
+    // ✅ 删除：5 个 sync in + 5 个 sync out + note 回写 + 删除特判
+}
+```
+
+view 直接调持久实例的 view，无重建：
+```rust
+// 目标生成代码（对比现状 view 里 __editorpanel 块）
+self.editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
+```
+
+**关键问题：props 如何同步？** VM 在 render 时把 props 写入 root state（`ensure_child_state`）。Rust 等价物：**在每次 view 前，把当前 props 刷写到持久实例**（`.note` 字段）。这是唯一保留的 sync，但只针对 props（如 note），不针对子组件私有状态（editing 等）。
+
+### 15.4 三个必须解决的子问题
+
+#### 子问题 A：props 同步时机（VM 的 ensure_child_state 等价物）
+
+VM 的 `ensure_child_state`（`vm_bridge.rs:670-704`）在**每次 render** 时把父侧解析的 prop 值写入 root state。Rust 侧对应：**每次 view() 调用前，更新持久子组件实例的 prop 字段**。
+
+```rust
+// view 中，渲染子组件前
+self.editor_panel.note = self.store.notes[self.store.active_id as usize].clone();
+self.editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
+```
+
+生成器改动点：`generate_child_component`（`rust.rs:2462-2512`）从"构造临时实例 + sync 标量"改为"更新持久实例的 props + 调 view"。
+
+**为什么 props sync 不会丢子组件私有状态**：props（如 note）是父注入的只读数据，子组件私有状态（editing/edit_title）存在持久实例自身，view 前只刷 props 不动私有字段。
+
+#### 子问题 B：Init 生命周期（替代 NewNote 特判 hack）
+
+VM 仅 root 在事件循环前 `fire_init()`，子组件 Init 不显式触发——依赖 `ensure_child_state` 写默认值 + `.at` 语义。但 015-notes 的 EditorPanel.Init（空标题设 `editing=true`）在 VM 下如何生效？
+
+调研发现：**VM 下子组件 Init 实际上也未显式触发**（`dynamic.rs:716` 只调 root 的 Init）。015-notes 在 VM 可用，是因为 EditorPanel.Init 的逻辑（空 note → editing=true）被 **App 状态初始化 + render 时 ensure_child_state 写入默认 props** 间接满足。
+
+Rust 侧正确做法：**App 构造时初始化持久子组件实例，并在适当时机（构造 + store 数据变化后）触发子组件 Init**。替代 `rust.rs:1093-1121` 的特判：
+```rust
+// App::new 中初始化持久子组件
+self.editor_panel = EditorPanel::new(...);
+self.editor_panel.on(EditorPanelMsg::Init);  // 一次性生命周期
+// store 数据变化后（如 NewNote），更新 props 再触发 Init
+AppMsg::NewNote => {
+    self.store.on(NotesStoreMsg::NewNote);
+    self.editor_panel.note = self.store.notes[active_id].clone();
+    self.editor_panel.on(EditorPanelMsg::Init);  // 重置编辑状态
+}
+```
+
+#### 子问题 C：删除/note 回写特判的泛化
+
+现状 `rust.rs:1193-1215` 硬编码 `notes[active_id]` 回写 + `note["deleted"]` 删除检查。持久实例方案下，子组件直接操作自己的 `note` 字段；父组件需要感知"子组件修改了 note"时如何回写到 store。
+
+**方案**：子组件 Save/Changed 消息显式声明数据回写，而非靠构造参数名启发式猜测。生成器识别 `.at` 中子组件对 prop 的写操作（如 EditorPanel `.Save -> { .note.title = .edit_title; ... }`），生成对应的回写代码。这是现有 `find_sync_fields_for_child` 的正确泛化——按 props 而非按同名匹配。
+
+### 15.5 分阶段实施计划
+
+#### 阶段 0：安全网（先于改动）
+- **生成文件退出 git**（`f7095351` ✅ 已完成）——避免生成物 diff 干扰。
+- **建立语义保真度基线**：当前 `.autotest` 13 场景 VM/Rust 双跑（VM 13/0/0、Rust 13/0/0）作为回归基线。阶段 1-3 每步后必须保持双绿。
+- **固定一个可复现的 a2r 重生成命令**，每次改动后重生成 + 双跑测试。
+
+#### 阶段 1：持久子组件字段（核心，消灭临时构造）
+**目标**：父 struct 持有持久子组件实例字段，消灭 18 处 `::new` 临时构造。
+
+改动：
+1. `rust.rs` `generate_struct`（`568-685`）：新增逻辑——对每个 `child_components` 条目，生成 `pub <snake_name>: <ChildType>` 字段（替代 hoist 标量字段，`619-629` 逻辑转为持久实例字段）。
+2. `rust.rs` 构造函数生成（`generate_struct` 的 `new` 实现）：初始化 `self.<child> = <Child>::new(<初始 props>)`。
+3. `rust.rs` `generate_on_method` 通用转发（`1150-1218`）：从"构造临时 + sync in/out"改为 `self.<child>.on(inner)`。**删除 sync in/out 代码**（`1169-1185`）。
+4. `rust.rs` `generate_child_component`（`2462-2512`）：从"构造临时 + sync 标量"改为"`self.<child>.view().map_msg(...)`"。**删除 sync 块**（`2499-2511`）。
+
+**保留**：note 回写 + 删除特判（`1193-1215`）暂保留，阶段 3 泛化。
+**风险**：子组件构造参数（props）在 App::new 时可能无数据（store 未 Init）。缓解：构造时用默认值/占位，view 前 props sync（阶段 2）。
+
+#### 阶段 2：props 同步（消灭"看不到数据"类问题）
+**目标**：每次 view 前，把当前 props 刷写到持久子组件实例。
+
+改动：
+1. `rust.rs` `generate_child_component`：在 `.view()` 前生成 props 赋值代码（从父 state 解析 props → `self.<child>.<prop> = <value>`）。复用 `extract_child_constructor_args`（`2554-2599`）已有的 props 解析逻辑，改为"赋值"而非"构造参数"。
+2. `rust.rs` on 转发：子组件消息处理后，若 props 可能变化（如 SelectNote 改了 active_id），下一帧 view 前 props sync 自然生效——无需 on 内额外处理。
+
+**这取代了 VM `ensure_child_state` 的语义**：VM 每次 render 写 props 到 root；Rust 每次 view 前写 props 到持久实例。
+
+#### 阶段 3：生命周期与回写泛化（消灭特判 hack）
+**目标**：用通用机制替代 3 个 015-notes 专用 hack。
+
+改动：
+1. **Init 泛化**（替代 `rust.rs:1093-1121`）：App::new 构造每个持久子组件后触发 `on(Init)`；store 数据变化（NewNote 等）后更新 props 再触发 Init。生成器识别 `.at` 中哪些父消息会改变子组件 props（如 NewNote 改 active_id → EditorPanel 的 note 变），在那些 arm 末尾插入 props 更新 + Init。
+2. **note 回写泛化**（替代 `rust.rs:1193-1204`）：分析子组件 `.at` 的 handler，识别对 props 的写操作（`.note.title = ...`），生成"子组件消息后回写 props 到父 state/store"。这是 `find_sync_fields_for_child` 的 props 版本。
+3. **删除特判泛化**（替代 `rust.rs:1208-1215`）：`.at` 中若子组件 handler 设置了删除标记（`.note.deleted = true` 或专门的 DeleteNote 消息），生成器据此生成删除逻辑，而非硬编码检查 `note["deleted"]`。
+
+#### 阶段 4：语义保真度测试（防回归）
+**目标**：每个 `.at` 语义特性有对应 Rust 测试，失败即报错。
+
+改动：
+1. 审计 `.autotest` 的 `skip_if rust`（当前 015-notes 已全清，但其他示例可能有）。
+2. 新增覆盖子组件状态生命周期的测试场景：构造 → Init → 编辑 → Save → 回写 → 重建后状态保持。
+3. 长期目标：`.at` 语义特性矩阵（component model/store composable/lifecycle/props sync/conditional rendering/for loop），每个特性 VM+Rust 双跑。
+
+### 15.6 实施风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| 阶段 1 改动大（生成器核心路径） | 严格分步：先 struct 字段 → 再 on 转发 → 再 view 渲染，每步双跑测试 |
+| props sync 时机错导致脏读 | 遵循 VM 模型：只在 view 前 sync，on 内不 sync（子组件私有状态自带持久） |
+| 多 store 场景（现状 `STORE_NAMES` 固定别名 "store"，`rust_ui.rs:432`） | 当前 015-notes 单 store，阶段 1-3 不处理多 store；标记为已知限制 |
+| `component_state_fields` 跨文件预扫（`rust_ui.rs:108`）与新机制冲突 | 持久实例方案**复用**该 map（已知子组件标量字段清单），用于 Init 默认值；不删除 |
+| 持久实例 Clone 需求（iced view 返回 'static） | 子组件已 derive Clone（`00271d9a` 为 sync 引入），持久化后仍需保留 |
+
+### 15.7 验收标准
+
+阶段 1-3 完成后，015-notes 生成代码应满足：
+- [ ] `App` struct 无 hoist 标量字段（editing/edit_title 等消失，仅持久子组件字段）
+- [ ] `EditorPanel::new` 仅在 App::new 出现 1 次（构造持久实例），on/view 中 0 次
+- [ ] 无 NewNote Init 特判（`rust.rs:1093-1121` 删除）
+- [ ] 无 note 回写特判（`rust.rs:1193-1215` 删除，改通用 props 回写）
+- [ ] `.autotest` 13 场景 VM/Rust 双绿
+- [ ] **新应用验证**：用一个含多子组件 + 编辑状态的 `.at`（非 015-notes），a2r 生成后 Rust 模式开箱可用
+
+### 15.8 与现有代码的关系
+
+本方案**不改动 VM 模式任何代码**（VM 已正确）。改动集中在：
+- `crates/auto-lang/src/ui_gen/rust.rs`（生成器，主战场）
+- `crates/auto-man/src/rust_ui.rs`（编排层，可能微调 `collect_component_state_fields` 用途）
+- `crates/auto-lang/src/ui/component.rs`（Component trait **无需改**，持久实例方案不需要新 trait 方法——子组件作为普通字段持有）
+
+**不引入新依赖**。利用已有的 `component_state_fields` map、`child_components` 列表、`extract_child_constructor_args`。本质是把"临时构造 + 状态搬运"重构为"持久实例 + props 同步"，更贴近 VM 的"持久堆 + render 时 props 注入"语义。

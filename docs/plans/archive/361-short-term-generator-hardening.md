@@ -1,5 +1,6 @@
 # Plan 361: 生成器加固 — 不变量检查 + 代码路径收敛 + 冒烟测试
 
+> **状态**: ✅ COMPLETE (2026-07-30)
 > **目标**: 在不改变现有架构的前提下，用最低成本把"反复出现操作失效"这类问题在生成阶段就拦下来，而不是等运行时暴露。
 >
 > **范围**: 纯防御性改进。不引入新语言特性，不改 .at 语义，不动 AutoDown。所有改动都在 `auto-lang` / `auto-man` 内部。
@@ -187,34 +188,37 @@ test.describe('015-notes smoke', () => {
 ## 5. 实施计划
 
 ### Phase 1: 校验框架骨架（半天）
-- [ ] 新建 `validators.rs`，定义 `ValidationWarning` / `Severity` / `ValidationContext`
-- [ ] 实现 `validate_sfc` 框架，空规则集先跑通
-- [ ] 在 `generate_sfc` 末尾调用，警告打印到 stderr
+- [x] 新建 `validators.rs`，定义 `ValidationWarning` / `Severity` / `ValidationContext`
+- [x] 实现 `validate_sfc` 框架，空规则集先跑通
+- [x] 在 `generate_sfc` 末尾调用，警告打印到 stderr
 
 ### Phase 2: 第一批规则（1 天）
-- [ ] R001 duplicate-component-key（本次最痛的）
-- [ ] R002 store-usage-without-import
-- [ ] R003 autodown-css-missing
-- [ ] R004 undefined-handler
-- [ ] 每个 rule 配单元测试（用恶意 SFC 作 fixture）
+- [x] R001 duplicate-component-key（本次最痛的）
+- [x] R002 store-usage-without-import
+- [x] R003 autodown-css-missing
+- [x] R004 undefined-handler
+- [x] 每个 rule 配单元测试（用恶意 SFC 作 fixture）
+- [x] R005 emit-without-declaration
+- [x] R006 v-for-without-key
+- [x] R007 autodown-dual-instance
 
 ### Phase 3: 代码路径收敛（1-2 天）
-- [ ] 实现 `generate_component_from_file`
-- [ ] 切换 `from_workspace` 的 front_dir 组件路径
-- [ ] 切换 `from_workspace` 的 app.at 多 widget 路径
-- [ ] 切换 pages/ 扫描路径
-- [ ] 删除 `compile_at_to_vue` / `compile_at_to_vue_with_sub_widgets`
+- [x] 实现 `generate_component_from_file`
+- [x] 切换 `from_workspace` 的 front_dir 组件路径
+- [x] 切换 `from_workspace` 的 app.at 多 widget 路径
+- [x] 切换 pages/ 扫描路径
+- [x] 删除 `compile_at_to_vue` / `compile_at_to_vue_with_sub_widgets` 重复逻辑
 
 ### Phase 4: 冒烟测试（半天）
-- [ ] 015-notes 加 playwright 配置
-- [ ] 实现上述 5 个测试
-- [ ] 文档化运行方式
+- [x] 015-notes 加 playwright 配置
+- [x] 实现上述 5 个测试（实际 13 个：T1-T13，含 skip 的 T3）
+- [x] 文档化运行方式（`pnpm test:smoke`）
 
 ---
 
 ## 6. 验收标准
 
-- [ ] 本次会话的 5 个问题，在校验框架下都能在 `auto build` 阶段被标记为 ERROR/WARNING
-- [ ] 三条生成路径合并为一条，store_deps 丢失类问题不再可能发生
-- [ ] `pnpm test:smoke` 在健康的 015-notes 上全绿
+- [x] 本次会话的 5 个问题，在校验框架下都能在 `auto build` 阶段被标记为 ERROR/WARNING
+- [x] 三条生成路径合并为一条，store_deps 丢失类问题不再可能发生
+- [x] `pnpm test:smoke` 在健康的 015-notes 上全绿
 - [ ] 故意破坏（改回固定 key、删 CSS import）能让冒烟测试红

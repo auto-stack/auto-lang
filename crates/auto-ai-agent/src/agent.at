@@ -46,13 +46,18 @@
 
 use.rust std::sync::Arc
 use.rust std::sync::atomic::AtomicBool
+use.rust std::sync::atomic::Ordering
+use.rust std::future::Future
+use.rust std::pin::Pin
+use.rust async_trait
 
 use auto_ai_client: ClientError, CompletionRequest, CompletionResponse, Message
 use error: AgentError
 use memory: Memory
 use role_def: Role
-use tool: ToolRegistry, tool_to_definition
-use wire: ContentBlock, JsonValue
+use ai_config: ModelTier
+use tool: ToolRegistry, tool_to_definition, Tool
+use wire: ContentBlock, JsonValue, ToolDefinition
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants (Auto has no `pub const`; exposed via functions)
@@ -204,29 +209,29 @@ ext Agent {
 
     /// Inject project context (e.g. the contents of .musk.md or CLAUDE.md) into
     /// the system prompt. Prepended before the role's soul.
-    pub fn with_context(context str) Agent {
+    //
+    // NOTE: the original Rust `with_context(mut self) -> Self` consumes and
+    // returns self (builder). Agent holds `Box<dyn Role/Client>` (non-Clone), so
+    // a2r can't `return self.clone()`, and `return self` from `&mut self` won't
+    // move out. This port mutates in place and returns void. (No internal
+    // callers; the chainable form isn't expressible in Auto for non-Clone types.)
+    pub mut fn with_context(context str) void {
         let ctx = context.trim()
         if ctx.is_empty() == false {
             self.context_block = Some(context)
         }
-        return self
     }
 
     /// Register a tool the agent may call (takes a spec value).
-    pub mut fn register_shared(tool Arc<tool.Tool>) void {
+    pub mut fn register_shared(tool Arc<Tool>) void {
         self.tools.register_shared(tool)
     }
 
-    /// Borrow the shared tool registry (the workflow/driver share tools across
-    /// agents via this).
-    pub fn tools() ToolRegistry {
-        return self.tools
-    }
-
-    /// The Role this agent embodies.
-    pub fn role() Role {
-        return self.role
-    }
+    // NOTE: `tools()`, `role()`, `client()` accessors from the Rust original
+    // (returning &ToolRegistry / &dyn Role / &Arc<dyn Client>) are OMITTED here.
+    // Agent holds Box<dyn Role/Client> + a non-Clone ToolRegistry; returning
+    // owned copies isn't possible and Auto can't express `&self.field` returns,
+    // so a2r would emit a failing `self.X.clone()`. No internal callers exist.
 
     /// Snapshot of the current conversation memory (for session persistence).
     pub fn memory_messages() List<Message> {
@@ -236,11 +241,6 @@ ext Agent {
     /// Current conversation memory.
     pub fn history() List<Message> {
         return self.memory.messages()
-    }
-
-    /// Underlying transport.
-    pub fn client() Client {
-        return self.client
     }
 
     // ── ReAct loop (polling-style — see file header + handoff §D.3) ─────────
@@ -254,7 +254,7 @@ ext Agent {
     /// Run the ReAct loop against `task`, returning the agent's final answer.
     /// Non-streaming, non-cancellable (delegates to run_inner with cancel=None).
     pub fn run(task_msg str) ~Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg, None)
+        return self.run_inner(task_msg, None).await
     }
 
     /// Like run, but honors a cancellation flag at the turn boundaries. The
@@ -262,7 +262,7 @@ ext Agent {
     /// port drops the callback (events are collected internally — Stage 1 of
     /// the streaming roadmap; see 013-handoff §D).
     pub fn run_stream(task_msg str, cancel Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
-        return self.run_inner(task_msg, Some(cancel))
+        return self.run_inner(task_msg, Some(cancel)).await
     }
 
     /// Unified ReAct loop backing run + run_stream.
@@ -311,7 +311,7 @@ ext Agent {
 
             // Cancel checkpoint 2: after the LLM responded, before consuming.
             if is_cancelled(cancel) {
-                record_usage(result, resp)
+                result.total_tokens = record_usage(result, resp)
                 let ce = cancelled_event(result)
                 events.push(ce)
                 return Ok(result)
@@ -326,7 +326,7 @@ ext Agent {
                 },
                 None -> {}
             }
-            record_usage(result, resp)
+            result.total_tokens = record_usage(result, resp)
 
             if resp.wants_tool() {
                 // Cancel checkpoint 3: before recording/executing tool calls.
@@ -367,7 +367,7 @@ ext Agent {
                     // ToolStart: signal this tool is about to run.
                     let ts = StreamEvent.ToolStart(tc.name, tc.input)
                     events.push(ts)
-                    let outcome = exec_tool(self.tools, tc.name, tc.input)
+                    let outcome = self.tools.exec_or_msg(tc.name, tc.input).await
                     let rec = ToolCallRecord(
                         tool: tc.name, args: tc.input, result: outcome
                     )
@@ -423,7 +423,8 @@ ext Agent {
             temperature: Some(self.role.temperature()),
             system_prompt: Some(system_prompt),
             tools: tool_defs,
-            stream: false
+            stream: false,
+            preferred_provider: None
         )
     }
 }
@@ -436,7 +437,7 @@ fn is_cancelled(cancel ?Arc<AtomicBool>) bool {
         None -> return false,
         Some(c) -> {
             // Bridge to std::sync::atomic::AtomicBool::load (SeqCst).
-            let v = c.load()
+            let v = c.load(Ordering.SeqCst)
             return v
         }
     }
@@ -447,21 +448,25 @@ fn is_cancelled(cancel ?Arc<AtomicBool>) bool {
 /// no iteration API — plan 013 gotcha B5).
 fn bump_seen(seen Map<str, uint>, seen_names List<str>, key str) uint {
     var prev uint = 0
-    if seen.contains(key) {
-        prev = seen.get(key)
-    } else {
-        seen_names.push(key)
+    // seen.get(key) returns Option<&u32>; destructure + .clone() to get an owned
+    // u32 (a bare `prev = seen.get(key)` assigned Option<&u32> to u32).
+    is seen.get(key) {
+        Some(n) -> prev = n.clone(),
+        None -> seen_names.push(key.to_string())
     }
     let next = prev + 1
     seen.set(key, next)
     return next
 }
 
-/// Add a response's usage (if any) to the result's running token total.
-fn record_usage(result AgentResult, resp CompletionResponse) void {
+/// Compute the updated running token total after folding in a response's usage
+/// (if any). Returned so the caller assigns it back — a2r clones struct args at
+/// call sites, so mutating a `result` param in place wouldn't reach the caller,
+/// and the param binding isn't `mut` by default (E0594).
+fn record_usage(result AgentResult, resp CompletionResponse) uint {
     is resp.usage {
-        Some(u) -> result.total_tokens = result.total_tokens + u.total_tokens(),
-        None -> {}
+        Some(u) -> return result.total_tokens + u.total_tokens(),
+        None -> return result.total_tokens
     }
 }
 
@@ -479,16 +484,6 @@ fn clone_result(result AgentResult) AgentResult {
         tool_calls: result.tool_calls,
         total_tokens: result.total_tokens
     )
-}
-
-/// Execute a tool by name; on error, return a human-readable "[tool error: …]"
-/// string instead of propagating (mirrors Rust's `format!("[tool error: {}]")`
-/// fallback so the loop keeps going and the model sees the failure).
-fn exec_tool(tools ToolRegistry, name str, args JsonValue) str {
-    is tools.execute(name, args).await {
-        Ok(out) -> return out,
-        Err(e) -> return f"[tool error: ${e.message()}]"
-    }
 }
 
 /// Build the model id: a pinned id if set, else a "tier:<tier>" token.

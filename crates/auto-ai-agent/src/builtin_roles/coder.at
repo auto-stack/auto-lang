@@ -11,7 +11,7 @@ const SOUL = "Soul of the Coder"
 
 pub type Coder has Role {
     pub fn name() str { return "coder" }
-    pub fn system_prompt() str { return SOUL }
+    pub fn system_prompt() str { return SOUL.to_string() }
     pub fn model_tier() ModelTier { return ModelTier.Max }
     pub fn temperature() float { return 0.3 }
     pub fn max_turns() uint { return 40 }

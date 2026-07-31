@@ -19,7 +19,7 @@
 /// crate root. workflow's symbols are omitted (module not yet ported).
 
 use agent: Agent, AgentResult, Client, StreamEvent, ToolCallRecord
-use config: load_role, parse_at_role, parse_tier_field, serialize_at_role, ConfigRole, RoleConfig
+use config: load_role, parse_at_role, parse_tier_field, serialize_at_role, ConfigRole, RoleConfig, config_role_new, config_role_with_base
 use error: AgentError, ToolError
 use memory: Memory
 use role_def: Role

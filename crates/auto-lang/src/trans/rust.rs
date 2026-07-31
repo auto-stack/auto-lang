@@ -214,7 +214,13 @@ pub struct RustTrans {
     var_spec_map: HashMap<AutoStr, AutoStr>,
 
     // Whether to emit #![allow(...)] pragma at file top (for full files, not test fragments)
-    emit_allow_pragma: bool,
+    pub(crate) emit_allow_pragma: bool,
+
+    // Plan 376U: When true, top-level `use module: symbol` statements render as
+    // `pub use crate::module::{symbol};` (re-exports) instead of private `use`.
+    // Set for crate-root files (lib.at, */mod.at) whose `use` statements are
+    // public re-exports, not private imports.
+    pub(crate) is_crate_root: bool,
 
     // Merge mode: all modules compiled into single .rs file
     // When true: skip mod X; declarations, skip use crate::X::*; / use super::X::*;
@@ -292,6 +298,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            is_crate_root: false,
             merge_mode: false,
             const_names: HashSet::new(),
             module_types: HashMap::new(),
@@ -353,6 +360,7 @@ impl RustTrans {
             var_spec_map: HashMap::new(),
             fn_spec_param_indices: HashMap::new(),
             emit_allow_pragma: false,
+            is_crate_root: false,
             merge_mode: false,
             const_names: HashSet::new(),
             module_types: HashMap::new(),
@@ -3611,6 +3619,12 @@ impl RustTrans {
                             }
                             "now_secs" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec().to_string()")?;
+                                return Ok(());
+                            }
+                            "now_sec" => {
+                                // Plan 376U: bare numeric now_sec() (i32) for
+                                // timestamp math (no .to_string() — caller casts).
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec()")?;
                                 return Ok(());
                             }
                             "now_ms" => {
@@ -8552,7 +8566,11 @@ impl RustTrans {
 
     // Use statement
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
-        let pub_kw = if use_stmt.is_pub { "pub " } else { "" };
+        // Plan 376U: crate-root files (lib.at, */mod.at) use top-level `use X: sym`
+        // as public re-exports, so render `pub use` even when the source has no
+        // explicit `pub` prefix. (Mirrors Rust's `pub use` in lib.rs / mod.rs.)
+        let is_reexport = self.is_crate_root && !use_stmt.is_pub;
+        let pub_kw = if use_stmt.is_pub || is_reexport { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
                 // For dir children — pub mod X; already emitted, but also need
@@ -9820,7 +9838,18 @@ impl RustTrans {
             _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]",
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
-        writeln!(sink.body, "{}", derive_attrs)?;
+        // Plan 376: If the user supplied explicit attrs (e.g. `#[derive(Debug)]`),
+        // emit them verbatim instead of the auto-generated derive. Mirrors the
+        // TypeDecl (struct) handler. Needed when foreign payload types (e.g.
+        // `ClientError`) don't impl Clone/PartialEq, which the default derive
+        // requires — the user opts into the conservative `#[derive(Debug)]`.
+        if !enum_decl.attrs.is_empty() {
+            for attr in &enum_decl.attrs {
+                write!(sink.body, "#[{}]\n", attr)?;
+            }
+        } else {
+            writeln!(sink.body, "{}", derive_attrs)?;
+        }
 
         // Plan 163: Output pub prefix
         if enum_decl.is_pub {
@@ -11266,6 +11295,9 @@ impl RustTrans {
         Self::fix_option_get_field_access(&mut content);
         Self::fix_some_str_to_string(&mut content);
         Self::fix_a2r_std_fs_result_patterns(&mut content);
+        Self::fix_spec_trait_boxing(&mut content);
+        Self::fix_pathbuf_as_str(&mut content);
+        Self::fix_tuple_index(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -11346,6 +11378,9 @@ impl RustTrans {
             "routes", "data", "properties", "fields",
             "professions", "souls", "flows", "agents", "providers",
             "runs", "checkpoints", "project_locks",
+            // Plan 376: ToolRegistry.tools is HashMap<String, Arc<...>>;
+            // lookups are string-keyed, never integer-indexed.
+            "tools",
         ];
         let vec_field_names = [
             "tool_call_ids", "tool_call_names", "tool_call_args", "tool_call_started",
@@ -11353,13 +11388,21 @@ impl RustTrans {
         ];
 
         // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
+        // But ONLY when `var` is NOT a string type (String vars can't cast to usize)
         if let Some(re) = cached_regex(r"(self\.(\w+))\.get\((\w+)\)") {
             let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(1).unwrap().as_str();
                 let field = caps.get(2).unwrap().as_str();
                 let var = caps.get(3).unwrap().as_str();
                 if vec_field_names.contains(&field) {
-                    format!("{}[{} as usize]", full, var)
+                    // Check if var looks like a string (starts with a letter and isn't i/idx/n/index)
+                    let is_likely_index = var.starts_with('i') || var == "idx" || var == "index" || var == "n";
+                    if is_likely_index {
+                        format!("{}[{} as usize]", full, var)
+                    } else {
+                        // Keep .get() for string-keyed lookups
+                        format!("{}.get({})", full, var)
+                    }
                 } else {
                     format!("{}.get({})", full, var)
                 }
@@ -11705,7 +11748,9 @@ impl RustTrans {
 
     /// Fix derive macros on structs containing `Box<dyn Trait>` fields.
     /// `dyn Trait` doesn't implement Clone/PartialEq/Eq/PartialOrd/Ord,
-    /// so we remove those derives, keeping only Debug.
+    /// so we replace those derives with `#[derive(Debug)]` (which `dyn Trait`
+    /// does support). If the user explicitly supplied `#[derive(Debug)]`
+    /// already, leave it untouched (Plan 376: user override).
     fn fix_dyn_trait_derives(content: &mut String) {
         if let Some(re) = cached_regex(
             r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*Box<dyn)"
@@ -11713,8 +11758,46 @@ impl RustTrans {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(0).unwrap().as_str();
                 let derives = caps.get(2).unwrap().as_str();
-                // dyn Trait doesn't implement any standard derives — remove entirely
-                full.replace(&format!("#[derive({})]", derives), "#[allow(dead_code)]")
+                let derive_list: Vec<&str> = derives.split(',').map(|s| s.trim()).collect();
+                // Plan 376: respect a user-supplied derive that already omits the
+                // unsafe traits (e.g. just "Debug", or "Clone, Debug" when the
+                // dyn-Trait is wrapped in an Arc — which IS Clone). Only strip
+                // PartialEq/Eq/PartialOrd/Ord from the AUTO-generated derive.
+                // Plan 376V: Clone AND Debug are unsafe for Box<dyn Trait>:
+                //   - Box<T>: Clone requires T: Clone (dyn Trait never is)
+                //   - Box<dyn Trait>: Debug requires Trait: Debug (specs don't bound it)
+                // So when a struct has a bare Box<dyn> field, replace the whole
+                // derive with #[allow(dead_code)] (matches the hand-written version).
+                let unsafe_traits = ["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"];
+                let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
+                if !needs_fix {
+                    return full.to_string();
+                }
+                // If ALL derives are unsafe (typical for Box<dyn>), use allow(dead_code).
+                let any_safe = derive_list.iter().any(|d| !unsafe_traits.contains(d));
+                if !any_safe {
+                    return full.replace(
+                        &format!("#[derive({})]", derives),
+                        "#[allow(dead_code)]",
+                    );
+                }
+                // Keep only the safe traits (Clone, Debug, Copy, Default, ...).
+                let kept: Vec<&&str> = derive_list
+                    .iter()
+                    .filter(|d| !unsafe_traits.contains(d))
+                    .collect();
+                if kept.is_empty() {
+                    full.replace(
+                        &format!("#[derive({})]", derives),
+                        "#[derive(Debug)]",
+                    )
+                } else {
+                    let new_derives: Vec<&str> = kept.into_iter().copied().collect();
+                    full.replace(
+                        &format!("#[derive({})]", derives),
+                        &format!("#[derive({})]", new_derives.join(", ")),
+                    )
+                }
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -12669,7 +12752,8 @@ impl RustTrans {
         };
         for field in &fn_fields {
             // self.field(args) → (self.field)(args)  (avoid double-wrap)
-            let pat = format!(r"self\.{} \(", regex::escape(field));
+            // Plan 376V: also match without space (self.field(args) directly)
+            let pat = format!(r"self\.{}\s*\(", regex::escape(field));
             if let Some(re) = cached_regex(&pat) {
                 let fld = field.clone();
                 let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
@@ -12763,7 +12847,13 @@ impl RustTrans {
             ("ToolError", "use crate::error::ToolError;"),
             ("AgentError", "use crate::error::AgentError;"),
         ] {
-            if content.contains(type_name) && !content.contains(use_stmt) {
+            // Skip if already imported via `use crate::wire::JsonValue;` or
+            // via `use wire: ..., JsonValue, ...` (Auto import syntax).
+            let already_via_rust = content.contains(use_stmt);
+            let already_via_auto = content.contains(&format!(": {}", type_name))
+                || content.contains(&format!(", {}", type_name))
+                || content.contains(&format!("{} ,", type_name));
+            if content.contains(type_name) && !already_via_rust && !already_via_auto {
                 if let Some(pos) = content.find("use a2r_std::*;") {
                     content.insert_str(pos + "use a2r_std::*;".len(),
                         &format!("\n{}", use_stmt));
@@ -12827,12 +12917,20 @@ impl RustTrans {
     /// Plan 376 Pass 3: Fix `Some(ident)` where target is Option<String>.
     /// Adds `.to_string()` to the inner value.
     fn fix_some_str_to_string(content: &mut String) {
+        // Only add .to_string() for string-like idents, NOT for numeric vars.
+        // Skip: pure numeric identifiers, bool, keywords.
         let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
                 let ident = caps.get(2).unwrap().as_str();
                 let suffix = caps.get(3).unwrap().as_str();
+                // Skip numeric/bool/keyword idents
+                if ident.parse::<f64>().is_ok()
+                    || ident == "true" || ident == "false"
+                    || ident == "None" || ident == "default" {
+                    return format!("{}{}{}", prefix, ident, suffix);
+                }
                 format!("{}{}.to_string(){}", prefix, ident, suffix)
             }).to_string();
             if new != *content { *content = new; }
@@ -12852,11 +12950,64 @@ impl RustTrans {
     /// Plan 376 Pass 2b: Fix a2r_std::fs function return type mismatches.
     /// read_to_string returns String (not Result); wrap in Ok() so match works.
     fn fix_a2r_std_fs_result_patterns(content: &mut String) {
-        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\([^)]*\))\s*\{");
+        // Plan 376W: use non-greedy .*? to handle nested parens in args
+        // (e.g. path.to_str().unwrap() contains ')' which broke the old [^)]*).
+        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\(.*?\))\s*\{");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let call = caps.get(1).unwrap().as_str();
                 format!("match Ok({}) {{", call)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: Box spec-trait constructors in functions returning Box<dyn Trait>.
+    /// `Some(Assistant())` → `Some(Box::new(Assistant()))` when the enclosing
+    /// function returns Option<Box<dyn Role>> (or similar spec-trait). Auto's
+    /// `has Role` spec means a concrete `Assistant` value must be boxed to
+    /// satisfy `Box<dyn Role>`. Without this, `Some(Assistant {})` fails E0308
+    /// (expected Box<dyn Role>, found Assistant).
+    fn fix_spec_trait_boxing(content: &mut String) {
+        // Find functions returning Option<Box<dyn <Trait>>> and box their
+        // Some(Constructor()) returns. The signature pattern:
+        //   fn name(...) -> Option<Box<dyn Trait>> {
+        // Match the trait name so we only box inside the right functions.
+        if let Some(re) = cached_regex(
+            r"(?ms)(fn \w+\([^)]*\)[^{]*->\s*Option<Box<dyn (\w+)>>\s*\{)(.*?)(^\})",
+        ) {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let header = caps.get(1).unwrap().as_str();
+                let body = caps.get(3).unwrap().as_str();
+                let close = caps.get(4).unwrap().as_str();
+                // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
+                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
+                let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
+                format!("{}{}{}", header, new_body, close)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: Convert tuple indexing pair[0]/pair[1] → pair.0/pair.1.
+    /// Auto uses [] for both list and tuple access, but Rust tuples need .N.
+    fn fix_tuple_index(content: &mut String) {
+        if let Some(re) = cached_regex(r"\bpair\[(\d+)\]") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("pair.{}", caps.get(1).unwrap().as_str())
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: PathBuf has no .as_str() (unstable feature). a2r's auto-borrow
+    /// adds .as_str() when passing to &str params, but for PathBuf variables this
+    /// fails E0599. Convert <pathlike>.as_str() → <pathlike>.to_str().unwrap().
+    /// Pathlike heuristic: names ending in _path, or exactly path/dir/sidecar.
+    fn fix_pathbuf_as_str(content: &mut String) {
+        if let Some(re) = cached_regex(r"(\b\w*_path|\bpath|\bdir|\bsidecar)\.as_str\(\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("{}.to_str().unwrap()", caps.get(1).unwrap().as_str())
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -13494,6 +13645,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         },
                         doc: None,
                         is_pub: prefix.starts_with("pub"),
+                        attrs: Vec::new(),
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));
@@ -14110,6 +14262,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         },
                         doc: None,
                         is_pub: prefix.starts_with("pub"),
+                        attrs: Vec::new(),
                     };
                     store.register_enum_decl(enum_decl);
                     all_enum_names.insert(AutoStr::from(name));

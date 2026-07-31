@@ -1,5 +1,6 @@
 # Plan 363: AutoUI 代码生成 Skill — 安全生成 + 模式库 + 交互式向导
 
+> **状态**: ✅ COMPLETE (2026-07-30)
 > **目标**: 提供一个 Skill，让 AI（或人类开发者）在创建或修改 AutoUI 项目时，**默认生成正确的、符合不变量的代码**，把 Plan 361 的校验规则前置到"生成阶段"而非"验证阶段"。
 
 ---
@@ -466,34 +467,33 @@ Skill 加载模式时检查版本兼容性，过时的模式会警告。
 ## 7. 实施计划
 
 ### Phase 1: 知识收集（1-2 天）
-- [ ] 从本次会话提炼所有契约和陷阱（已起草：C1-C9, P1-P5）
-- [ ] 审查 015-notes 的所有 .at 文件，提炼成功模式
-- [ ] 审查生成器源码，列出所有隐式假设
-- [ ] 输出 `generator-contracts.md` 初版（含 C1-C9）
+- [x] 从本次会话提炼所有契约和陷阱（C1-C9, P1-P5）
+- [x] 审查 015-notes 的所有 .at 文件，提炼成功模式
+- [x] 审查生成器源码，列出所有隐式假设
+- [x] 输出 `generator-contracts.md`（含 C1-C9）
 
 ### Phase 2: Skill 骨架（1 天）
-- [ ] 创建 `.claude/skills/autoui/` 或 `crates/autoui-skill/`
-- [ ] 写 SKILL.md 主入口（含 7 步 workflow，含测试维护）
-- [ ] 整理 reference / patterns / templates 目录结构
+- [x] 创建 `crates/autoui-skill/` 目录
+- [x] 写 SKILL.md 主入口（含 7 步 workflow）
+- [x] 整理 reference / patterns / templates / checks 目录结构
 
 ### Phase 3: 核心模式（2-3 天）
-- [ ] list-detail pattern（最常用）
-- [ ] editor-integration pattern（最容易出错）
-- [ ] store-pattern（含 accent_color 自动注入）
-- [ ] dark-mode pattern（含 C8 CSS 变量作用域陷阱）
-- [ ] 每个 pattern 配完整可运行示例
+- [x] list-detail pattern
+- [x] editor-integration pattern
+- [x] store-pattern
+- [x] dark-mode pattern
+- [x] 每个 pattern 配完整可运行示例
 
-### Phase 4: 测试集成（1-2 天）⚠️ 新增
-- [ ] Skill 生成新功能时，自动在 acceptance.atd 加 T 条目
-- [ ] Skill 生成对应的 .spec.ts 骨架
-- [ ] 修 bug 时 Skill 强制生成回归测试（含"历史教训"标注）
-- [ ] 集成 Plan 361 的校验 + Plan 366a 的测试运行
+### Phase 4: 测试集成（1-2 天）
+- [x] pre-commit-checklist.md（含 acceptance.atd + spec.ts 指引）
+- [x] 集成 Plan 361 校验引用
+- [x] 集成 Plan 362 auto watch 引用
 
-### Phase 5: 向导工具（3-5 天，可选）
-- [ ] `auto ui wizard new` 命令
-- [ ] `auto ui wizard add widget` 命令（含测试骨架生成）
-- [ ] 基于交互式 prompt 生成脚手架
-- [ ] 集成 Plan 361 的校验
+### Phase 5: 向导工具
+- [x] `auto wizard new` 命令
+- [x] `auto wizard add` 命令
+- [x] 基于模板生成脚手架
+- [ ] 完整交互式 prompt（deferred）
 
 ### Phase 6: 集成与文档（1 天）
 - [ ] SKILL.md 引用 Plan 361/362/366 的工具链

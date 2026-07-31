@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Plan 371 Task 16: CLI runner for .autotest suites.
+Plan 371 Task 16/20: CLI runner for .autotest suites.
 
 Usage:
     cd examples/ui/015-notes/tests
@@ -10,6 +10,10 @@ Prerequisites:
     - auto built with ui-iced: cargo build --features ui-iced --bin auto
     - App running: cd examples/ui/015-notes && auto run -r vm
     - MCP server on localhost:9247
+
+Visual regression (Plan 371 Task 20):
+    python run_autotest.py --screenshot-baseline   # capture baselines
+    python run_autotest.py --screenshot-diff       # compare against baselines
 """
 
 import sys
@@ -31,9 +35,9 @@ def main():
     parser.add_argument("--url", default="http://localhost:9247/mcp",
                         help="MCP server URL")
     parser.add_argument("--screenshot-baseline", action="store_true",
-                        help="Save baseline screenshots for each scenario (Task 10)")
+                        help="Save baseline screenshots for each scenario (Task 20)")
     parser.add_argument("--screenshot-diff", action="store_true",
-                        help="Compare screenshots against baseline after each scenario (Task 10)")
+                        help="Compare screenshots against baseline after each scenario (Task 20)")
     args = parser.parse_args()
 
     # Resolve path relative to this script's directory
@@ -46,55 +50,40 @@ def main():
         print(f"Error: {path} not found")
         sys.exit(1)
 
-    results = run_suite(path, mode=args.mode, url=args.url)
+    # Plan 371 Task 20: choose screenshot mode (diff takes precedence if both set).
+    screenshot = None
+    if args.screenshot_diff:
+        screenshot = "diff"
+    elif args.screenshot_baseline:
+        screenshot = "baseline"
 
-    # Task 10: screenshot baseline / diff
-    if args.screenshot_baseline or args.screenshot_diff:
-        import hashlib
-        baseline_dir = os.path.join(os.path.dirname(path), "screenshots", args.mode)
-        os.makedirs(baseline_dir, exist_ok=True)
+    results, screenshot_results = run_suite(
+        path, mode=args.mode, url=args.url, screenshot=screenshot,
+    )
 
-        adapter = None
-        for r in results:
-            baseline_path = os.path.join(baseline_dir, f"{r.sid}.txt")
-            # Capture current screenshot via MCP
-            try:
-                import requests as req
-                resp = req.post(args.url, json={
-                    "jsonrpc": "2.0", "method": "tools/call",
-                    "params": {"name": "autoui_screenshot", "arguments": {}},
-                    "id": 999,
-                }, timeout=15)
-                data = resp.json()
-                screenshot_path = data.get("result", {}).get("content", [{}])[0].get("text", "")
-                # Hash the screenshot file for comparison
-                if screenshot_path and os.path.exists(screenshot_path.replace("\\\\?\\", "")):
-                    real_path = screenshot_path.replace("\\\\?\\", "").strip()
-                    with open(real_path, "rb") as f:
-                        file_hash = hashlib.md5(f.read()).hexdigest()
+    # Plan 371 Task 20: report screenshot verdicts and let diff mismatches fail.
+    screenshot_failed = 0
+    if screenshot_results:
+        print(f"{'─'*60}")
+        print(f"Screenshots ({screenshot}):")
+        for sid, verdict in screenshot_results:
+            short = verdict.replace("\n", " ")[:100]
+            if screenshot == "diff":
+                if verdict.startswith("Screenshot matches"):
+                    print(f"  ✅ {sid}: {short}")
+                elif verdict.startswith("Screenshot DIFFERS"):
+                    print(f"  ⚠️  {sid}: {short}")
+                    screenshot_failed += 1
                 else:
-                    file_hash = "no-screenshot"
-            except Exception as e:
-                file_hash = f"error:{e}"
+                    print(f"  ❌ {sid}: {short}")
+                    screenshot_failed += 1
+            else:  # baseline
+                print(f"  📸 {sid}: {short}")
+        print(f"{'─'*60}\n")
 
-            if args.screenshot_baseline:
-                with open(baseline_path, "w") as f:
-                    f.write(file_hash)
-                print(f"  📸 Basline saved: {r.sid} → {file_hash[:12]}")
-            elif args.screenshot_diff:
-                if os.path.exists(baseline_path):
-                    with open(baseline_path) as f:
-                        baseline_hash = f.read().strip()
-                    if baseline_hash == file_hash:
-                        print(f"  ✅ Screenshot match: {r.sid}")
-                    else:
-                        print(f"  ⚠️  Screenshot CHANGED: {r.sid} (baseline={baseline_hash[:12]} vs now={file_hash[:12]})")
-                else:
-                    print(f"  ❓ No baseline for {r.sid} — run with --screenshot-baseline first")
-
-    # Exit code: 0 if all passed, 1 if any failed
+    # Exit code: 0 if all scenarios passed AND no screenshot diff failed.
     failed = sum(1 for r in results if r.status == "FAIL")
-    sys.exit(1 if failed else 0)
+    sys.exit(1 if (failed or screenshot_failed) else 0)
 
 
 if __name__ == "__main__":

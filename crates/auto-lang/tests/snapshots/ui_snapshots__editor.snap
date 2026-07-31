@@ -1,0 +1,32 @@
+---
+source: crates/auto-lang/tests/ui_snapshots.rs
+expression: out
+---
+File: D:\autostack\auto-lang\crates\auto-lang\..\..\examples/ui/015-notes/src/front/editor.at
+Widget count: 1
+Widget: EditorPanel | props: 4 | state: 5 | handlers: 11 | messages: 1
+  prop: note (User(TypeDecl { name: "Note", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], attrs: [], doc: None, is_pub: false }))
+  prop: on_delete (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], attrs: [], doc: None, is_pub: false }))
+  prop: on_toggle_pin (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], attrs: [], doc: None, is_pub: false }))
+  prop: on_tags_changed (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], attrs: [], doc: None, is_pub: false }))
+  state: editing (Bool)
+  state: edit_title (StrSlice)
+  state: edit_body (StrSlice)
+  state: tag_input (StrSlice)
+  state: show_tag_input (Bool)
+  handler: .AddTag
+  handler: .Cancel
+  handler: .Delete
+  handler: .Edit
+  handler: .EditBody(md)
+  handler: .EditTagInput
+  handler: .EditTitle(t)
+  handler: .RemoveTag(t)
+  handler: .Save
+  handler: .ShowTagInput
+  handler: .TogglePin
+API imports: ["update_note", "delete_note", "toggle_pin", "update_tags"]
+Store deps: ["NotesStore"]
+Store composables: 0
+Validation warnings: 2
+SFC 'EditorPanel': 6413 bytes, has template: true, has script: true, has style: true

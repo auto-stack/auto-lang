@@ -97,6 +97,218 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
     Ok(code)
 }
 
+// ============================================================================
+// Plan 361 §3: generate_component_from_file — 统一生成入口
+// ============================================================================
+
+use std::collections::HashSet;
+
+/// Options for `generate_component_from_file`.
+///
+/// All fields are optional overrides. When `None`, the function auto-detects
+/// api_imports / store_deps / sub_widgets from the .at source.
+#[derive(Debug, Default, Clone)]
+pub struct ComponentGenOptions {
+    /// Known sub-widget names (avoids shadcn-vue name collisions).
+    pub sub_widgets: Option<Vec<String>>,
+    /// Override API imports. When `None`, auto-detected from `use back.api:`.
+    pub api_imports_override: Option<Vec<String>>,
+    /// Override store dependencies. When `None`, auto-detected from `use store:`.
+    pub store_deps_override: Option<Vec<String>>,
+    /// Root directory for API import validation (auto-man uses this).
+    pub root_dir_for_validation: Option<std::path::PathBuf>,
+}
+
+/// Result of generating a component from an .at file.
+#[derive(Debug, Default, Clone)]
+pub struct GeneratedComponent {
+    /// Vue SFC code for the first widget (used as App.vue).
+    pub vue_code: String,
+    /// All widget SFC codes (one per widget declaration).
+    pub all_widget_codes: Vec<(String, String)>, // (widget_name, code)
+    /// Store composable files (filename, code).
+    pub store_composables: Vec<(String, String)>,
+    /// Detected API imports from `use back.api:`.
+    pub detected_api_imports: Vec<String>,
+    /// Detected store dependencies from `use store:`.
+    pub detected_store_deps: Vec<String>,
+    /// All extracted AURA widgets.
+    pub widgets: Vec<crate::aura::AuraWidget>,
+    /// Validation warnings from the post-generation check.
+    pub validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning>,
+}
+
+/// Unified single-entry-point for "parse .at → extract imports/stores →
+/// register view fragments → extract widgets → generate SFC → validate".
+///
+/// This replaces the duplicated logic in:
+/// - `ui_build_shadcn_with_widgets` (lib.rs)
+/// - `ui_build_shadcn_with_sub_widgets` (lib.rs)
+/// - `compile_at_to_vue` (auto-man/vue.rs)
+/// - `compile_at_to_vue_with_sub_widgets` (auto-man/vue.rs)
+///
+/// All four callers should migrate to this function (Plan 361 §3).
+pub fn generate_component_from_file(
+    at_path: &std::path::Path,
+    opts: ComponentGenOptions,
+) -> Result<GeneratedComponent, String> {
+    use crate::session::CompilerSession;
+    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+    use crate::aura::extract_widget_from_decl;
+    use crate::aura::extract_store_from_decl;
+
+    let code = std::fs::read_to_string(at_path)
+        .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
+
+    // Parse with UI scenario
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(code.as_str());
+    parser = parser.with_session(session);
+    let ast = parser.parse()
+        .map_err(|e| format!("Parse error in {}: {:?}", at_path.display(), e))?;
+
+    // Auto-detect or use overrides
+    let api_imports = opts.api_imports_override.unwrap_or_else(|| {
+        extract_api_imports_from_ast(&ast)
+    });
+    let store_deps = opts.store_deps_override.unwrap_or_else(|| {
+        extract_store_imports_from_ast(&ast)
+    });
+    let sub_widgets = opts.sub_widgets.unwrap_or_default();
+
+    // Extract store declarations → generate composables
+    // Clear thread-local first to avoid cross-test contamination
+    crate::STORE_EXTRA_FILES.with(|cell| {
+        cell.borrow_mut().clear();
+    });
+    let mut store_composables: Vec<(String, String)> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+            let mut store = extract_store_from_decl(store_decl)
+                .map_err(|e| e.to_string())?;
+            store.api_imports = api_imports.clone();
+            let composable = VueGenerator::generate_store_composable(&store);
+            let filename = format!("stores/use{}Store.ts", store.name);
+            store_composables.push((filename, composable));
+            // Also stash via thread-local for callers that use STORE_EXTRA_FILES
+            crate::STORE_EXTRA_FILES.with(|cell| {
+                cell.borrow_mut().push((
+                    format!("stores/use{}Store.ts", store.name),
+                    VueGenerator::generate_store_composable(&store),
+                ));
+            });
+        }
+    }
+
+    // Register view fn fragments before widget extraction (Plan 367 P2-3)
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
+
+    // Extract widgets
+    let mut widgets: Vec<crate::aura::AuraWidget> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let mut aura_widget = extract_widget_from_decl(widget_decl)
+                .map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
+            widgets.push(aura_widget);
+        }
+    }
+
+    if widgets.is_empty() && store_composables.is_empty() {
+        return Err("No widget or store declarations found in input file".into());
+    }
+
+    // Generate SFC for each widget
+    let mut all_widget_codes: Vec<(String, String)> = Vec::new();
+    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+
+    for widget in &widgets {
+        let mut gen = VueGenerator::new()
+            .with_mode(VueMode::Shadcn)
+            .with_store_deps(store_deps.clone())
+            .with_sub_widgets(sub_widgets.clone());
+        if !api_imports.is_empty() {
+            gen = gen.with_project_api_functions(api_imports.clone());
+        }
+
+        let widget_code = gen.generate(widget)
+            .map_err(|e| format!("Failed to generate {}: {}", widget.name, e))?;
+        all_widget_codes.push((widget.name.clone(), widget_code));
+
+        // Collect validation warnings from this widget's generation
+        for w in &gen.last_validation_warnings {
+            all_validation_warnings.push(w.clone());
+        }
+    }
+
+    let vue_code = all_widget_codes
+        .first()
+        .map(|(_, code)| code.clone())
+        .unwrap_or_default();
+
+    Ok(GeneratedComponent {
+        vue_code,
+        all_widget_codes,
+        store_composables,
+        detected_api_imports: api_imports,
+        detected_store_deps: store_deps,
+        widgets,
+        validation_warnings: all_validation_warnings,
+    })
+}
+
+// Re-export helper functions from super (used by generate_component_from_file)
+fn extract_api_imports_from_ast(ast: &crate::ast::Code) -> Vec<String> {
+    let mut imports = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
+            if is_api_use_stmt(use_stmt) {
+                imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    imports
+}
+
+/// Check if a `use` statement targets `back.api` (same logic as lib.rs::is_api_use_stmt).
+fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
+    if use_stmt.paths.len() == 2
+        && use_stmt.paths[0].as_str() == "back"
+        && use_stmt.paths[1].as_str() == "api"
+    {
+        return true;
+    }
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "back.api" {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_store_imports_from_ast(ast: &crate::ast::Code) -> Vec<String> {
+    let mut deps = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::Use(use_stmt) = stmt {
+            let is_store = use_stmt.paths.len() == 1
+                && (use_stmt.paths[0].as_str() == "store"
+                    || use_stmt.paths[0].as_str().contains("store"))
+                || use_stmt.module_path.as_ref().map_or(false, |mp| {
+                    mp.display() == "store" || mp.display().contains("store")
+                });
+            if is_store {
+                deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    deps
+}
+
 #[cfg(test)]
 mod tests {
     use super::transpile_vue_aura;

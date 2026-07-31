@@ -170,19 +170,60 @@ pub struct SharedState {
 }
 
 /// Screenshot request stored in SharedState for the iced thread to pick up (Plan 285).
+///
+/// Plan 371 Task 20: optional visual-regression options. When `diff` is set,
+/// the iced thread compares the captured PNG against a baseline (looked up by
+/// `name` under `tests/screenshots/`) and returns a structured diff result
+/// instead of just the file path.
 pub struct ScreenshotRequest {
     pub reply_tx: std::sync::mpsc::Sender<Result<String, String>>,
+    /// Stable identifier for the screenshot (used as the baseline filename).
+    /// Empty → legacy timestamped behavior.
+    pub name: String,
+    /// If true, write the capture to `tests/screenshots/<name>.png` (overwrite).
+    pub baseline: bool,
+    /// If true, compare the capture against `tests/screenshots/<name>.png`.
+    pub diff: bool,
+    /// Allowed fraction of differing pixels (0.0–1.0). Above this → "DIFFERS".
+    pub threshold: f64,
+}
+
+impl Default for ScreenshotRequest {
+    fn default() -> Self {
+        Self {
+            reply_tx: std::sync::mpsc::channel().0,
+            name: String::new(),
+            baseline: false,
+            diff: false,
+            threshold: 0.01,
+        }
+    }
+}
+
+/// Plan 371 Task 20: parsed screenshot options passed from `tool_screenshot`
+/// to `SharedState::request_screenshot`. Pure data (no `image` types) so it
+/// can live in this non-ui-iced-gated module.
+pub struct ScreenshotOptions {
+    pub name: String,
+    pub baseline: bool,
+    pub diff: bool,
+    pub threshold: f64,
 }
 
 /// A message sent from MCP thread to iced event loop to simulate user actions.
-#[derive(Debug)]
+///
+/// Self-describing (Plan 371 Task 19): `target` selects the addressing mode.
+#[derive(Debug, Clone)]
 pub struct ActionMessage {
-    /// Widget name (e.g., "App")
-    pub widget: String,
-    /// Event name (e.g., "InputChanged", "AddTodo")
-    pub event: String,
-    /// Input text value (for type_text actions)
-    pub input_value: Option<String>,
+    pub target: ActionTarget,
+    pub action: UiActionType,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ActionTarget {
+    Event { widget: String, event: String },
+    Path { path: Vec<u16> },
 }
 
 impl SharedState {
@@ -254,15 +295,29 @@ impl SharedState {
 
     /// Request a screenshot capture. Returns a Receiver that will receive the
     /// file path once the iced thread processes the request (Plan 285).
-    pub fn request_screenshot(&mut self) -> std::sync::mpsc::Receiver<Result<String, String>> {
+    pub fn request_screenshot(
+        &mut self,
+        opts: ScreenshotOptions,
+    ) -> std::sync::mpsc::Receiver<Result<String, String>> {
         let (tx, rx) = std::sync::mpsc::channel();
-        self.screenshot_request = Some(ScreenshotRequest { reply_tx: tx });
+        self.screenshot_request = Some(ScreenshotRequest {
+            reply_tx: tx,
+            name: opts.name,
+            baseline: opts.baseline,
+            diff: opts.diff,
+            threshold: opts.threshold,
+        });
         rx
     }
 
     /// Take and clear the pending screenshot request (called by iced thread) (Plan 285).
     pub fn take_screenshot_request(&mut self) -> Option<ScreenshotRequest> {
         self.screenshot_request.take()
+    }
+
+    /// Replace the state map (Plan 371 Task 21). Used by rust mode.
+    pub fn set_state(&mut self, state: HashMap<String, auto_val::Value>) {
+        self.state = state;
     }
 
     /// Update the shared state with a new view tree and state values.
@@ -527,10 +582,30 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_screenshot",
             "title": "Take Screenshot",
-            "description": "Capture a PNG screenshot of the current UI window. Returns the file path of the saved image.\n\n## When to use\n- To visually verify layouts and colors\n- To debug visual rendering issues\n- To confirm UI changes look correct",
+            "description": "Capture a PNG screenshot of the current UI window, optionally saving a named baseline or comparing against one (Plan 371 Task 20).\n\n## Modes\n- Default: save a timestamped PNG to tmp/ and return its path.\n- baseline=true (requires 'name'): save to tests/screenshots/<name>.png (overwrite).\n- diff=true (requires 'name'): compare against tests/screenshots/<name>.png and return matches/DIFFERS with the diff percentage.",
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Baseline/screenshot identifier (e.g. '015-notes/initial'). Required when baseline or diff is true."
+                    },
+                    "baseline": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Save the capture as the baseline tests/screenshots/<name>.png (overwrites)"
+                    },
+                    "diff": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Compare the capture against the baseline tests/screenshots/<name>.png"
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "default": 0.01,
+                        "description": "Allowed fraction of differing pixels (0.0-1.0). Above this the diff reports DIFFERS."
+                    }
+                }
             },
             "annotations": {
                 "readOnlyHint": true,
@@ -1151,14 +1226,26 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
 
 // ── Tool: autoui_screenshot ──
 
-fn tool_screenshot(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_json::Value {
+fn tool_screenshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    // Plan 371 Task 20: parse visual-regression options.
+    let opts = ScreenshotOptions {
+        name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        baseline: args.get("baseline").and_then(|v| v.as_bool()).unwrap_or(false),
+        diff: args.get("diff").and_then(|v| v.as_bool()).unwrap_or(false),
+        threshold: args.get("threshold").and_then(|v| v.as_f64()).unwrap_or(0.01),
+    };
+    // diff/baseline require a name.
+    if (opts.baseline || opts.diff) && opts.name.is_empty() {
+        return error_result("'name' is required when 'baseline' or 'diff' is true");
+    }
+
     let rx = {
         let mut shared = shared.lock().unwrap();
-        shared.request_screenshot()
+        shared.request_screenshot(opts)
     };
 
     match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(Ok(path)) => text_result(format!("Screenshot saved to: {}", path)),
+        Ok(Ok(msg)) => text_result(msg),
         Ok(Err(e)) => error_result(format!("Screenshot failed: {}", e)),
         Err(_) => error_result("Screenshot timed out — iced thread may not be responding"),
     }
@@ -1183,7 +1270,16 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
 
     for (name, value) in &entries {
         if let Some(ref fields) = filter_fields {
-            if !fields.contains(name) {
+            // Match a field if it's requested exactly OR ends with the requested
+            // name as a path suffix (Plan 371 Task 22b). Rust mode exposes
+            // nested-component state with a prefix (e.g. `store.dark_mode`), so
+            // querying `dark_mode` should still surface it; VM mode has the
+            // bare name (`dark_mode`) and matches exactly.
+            let matches = fields.iter().any(|f| {
+                name.as_str() == f.as_str()
+                    || name.ends_with(&format!(".{}", f))
+            });
+            if !matches {
                 continue;
             }
         }
@@ -1389,17 +1485,23 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
     // Plan 371: F12 toggles DevTools directly (bypasses key_binding lookup).
     let msg = if key == "F12" {
         ActionMessage {
-            widget: String::new(),
-            event: "__toggle_debug".to_string(),
-            input_value: None,
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__toggle_debug".to_string(),
+            },
+            action: UiActionType::Press,
+            value: None,
         }
     } else {
         // Other keys: forward as a key_binding action message.
         let handler = format!("key_{}", key.to_lowercase());
         ActionMessage {
-            widget: widget_name,
-            event: handler,
-            input_value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+            target: ActionTarget::Event {
+                widget: widget_name,
+                event: handler,
+            },
+            action: UiActionType::Press,
+            value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
         }
     };
 
@@ -1584,9 +1686,12 @@ fn execute_action_on_shared(
     };
 
     let msg = ActionMessage {
-        widget: shared.widget_name.clone(),
-        event: handler.clone(),
-        input_value,
+        target: ActionTarget::Event {
+            widget: shared.widget_name.clone(),
+            event: handler.clone(),
+        },
+        action: action.clone(),
+        value: input_value,
     };
 
     // Send through the channel — iced subscription will pick it up
@@ -1744,31 +1849,34 @@ fn execute_action_vnode(
         _ => None,
     };
 
-    // Plan 371 Task 12: extract event name. For VM mode, the View tree
-    // carries DynamicMessage with explicit event names. For Rust mode
-    // (no shared.view), derive the event name from the VNode's label —
-    // the devtools_update handler matches by Debug-format substring.
-    let (widget, event) = if let Some(view) = shared.view.as_ref() {
-        // VM mode: extract from DynamicMessage
+    // Plan 371 Task 19: addressing mode depends on whether the typed View tree
+    // is available. VM mode carries a `View<DynamicMessage>` whose handlers are
+    // named (widget.event) — route by name. Rust mode has NO typed view in
+    // SharedState, so send the VNode `path` and let the iced side walk its own
+    // typed `View<C::Msg>` to the exact node and extract its handler (replacing
+    // the old Debug-substring heuristic that silently failed on many labels).
+    let msg = if let Some(view) = shared.view.as_ref() {
         let target_view = find_view_by_path(view, &vnode.path)
             .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
         let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
             .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
         let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
-        (widget, event_name)
+        ActionMessage {
+            target: ActionTarget::Event { widget, event: event_name.clone() },
+            action: action.clone(),
+            value: input_value.clone(),
+        }
     } else {
-        // Rust mode: derive event name from VNode label.
-        // For buttons: use the label as the event name (e.g. "+ New" → "NewNote").
-        // For inputs: use a generic "Changed" suffix.
-        let label = vnode_searchable_text(&vnode.props);
-        let event = derive_event_name_from_label(&label, &vnode_kind_str, action_name);
-        (shared.widget_name.clone(), event)
+        ActionMessage {
+            target: ActionTarget::Path { path: vnode.path.clone() },
+            action: action.clone(),
+            value: input_value.clone(),
+        }
     };
 
-    let msg = ActionMessage {
-        widget,
-        event: event.clone(),
-        input_value,
+    let handler_label = match &msg.target {
+        ActionTarget::Event { widget, event } => format!("{}.{}", widget, event),
+        ActionTarget::Path { path } => format!("<path {:?}>", path),
     };
     shared.send_action(msg)?;
 
@@ -1776,33 +1884,11 @@ fn execute_action_vnode(
         status: "ok".to_string(),
         element_id: AuraNodeId(0),
         action: action.to_string(),
-        handler: Some(format!(".{}", event)),
+        handler: Some(format!(".{}", handler_label)),
         state_changes: vec![],
     })
 }
 
-/// Plan 371: derive an event name from a VNode's label for Rust mode action dispatch.
-/// In Rust mode, the View tree uses strongly-typed C::Msg (not DynamicMessage),
-/// so we can't extract event names directly. Instead, we use the node's label
-/// to match against C::Msg's Debug format in devtools_update's find_msg_by_event_name.
-fn derive_event_name_from_label(label: &str, kind: &str, action_name: &str) -> String {
-    // In Rust mode, find_msg_by_event_name does a Debug-format substring
-    // match on C::Msg. The generated enum variants typically contain the
-    // meaningful words from the label (e.g. "New" matches AppMsg::NewNote).
-    // Skip common non-meaningful prefixes like "+", "×", "📌".
-    let clean: String = label
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == ' ')
-        .collect::<String>()
-        .trim()
-        .to_string();
-    if clean.is_empty() {
-        action_name.to_string()
-    } else {
-        // Use the first meaningful word.
-        clean.split_whitespace().next().unwrap_or(&clean).to_string()
-    }
-}
 
 
 /// Convert a JSON value to an Auto Value.

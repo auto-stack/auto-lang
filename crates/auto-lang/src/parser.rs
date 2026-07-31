@@ -4018,6 +4018,16 @@ impl<'a> Parser<'a> {
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
                     self.type_decl_stmt_with_annotation(ann.has_c, ann.has_pub)?
+                } else if self.is_kind(TokenKind::Enum) || self.is_kind(TokenKind::Tag) {
+                    // Plan 376: #[derive(...)] / #[serde(...)] before an enum/tag.
+                    // enum_stmt() picks up the attrs we just collected via raw_attrs.
+                    let mut stmt = self.enum_stmt()?;
+                    if let Stmt::EnumDecl(ref mut e) = stmt {
+                        if ann.has_pub {
+                            e.is_pub = true;
+                        }
+                    }
+                    stmt
                 } else if self.is_kind(TokenKind::Use) {
                     // Use statement with annotation
                     // Check if this is a C/Rust import (use.c or use.rust style with angle brackets)
@@ -4557,6 +4567,7 @@ impl<'a> Parser<'a> {
             kind,
             is_pub: false,
             doc: self.take_docs(),
+            attrs: std::mem::take(&mut self.raw_attrs),
         };
         self.register_enum_decl(&enum_decl, &generic_params);
         Ok(Stmt::EnumDecl(enum_decl))

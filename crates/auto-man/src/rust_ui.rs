@@ -77,6 +77,84 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
     (false, false)
 }
 
+/// Plan 374 / Plan 371 Task 22a: pre-scan `.at` files for `StoreDecl`s.
+///
+/// Shared by both `generate_rust_ui` (full regen) and `regenerate_code_only`
+/// (incremental regen). Previously the incremental path skipped this and
+/// passed an empty store list, starving the store-composable pipeline
+/// (struct/enum generation + `store.X` rewriting registration) and producing
+/// 86 errors on store-composable apps like 015-notes.
+fn collect_store_decls(at_files: &[std::path::PathBuf]) -> Vec<auto_lang::ast::ui::StoreDecl> {
+    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
+                        all_stores.push(store.clone());
+                    }
+                }
+            }
+        }
+    }
+    all_stores
+}
+
+/// Plan 371 Task 22c: scan ALL `.at` files for each component's own scalar
+/// state fields (name, rust_type), so a parent in one file can see a child's
+/// fields defined in another file.
+fn collect_component_state_fields(
+    at_files: &[std::path::PathBuf],
+) -> std::collections::HashMap<String, Vec<(String, String)>> {
+    let mut map: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    for at_path in at_files {
+        if let Ok(code) = std::fs::read_to_string(at_path) {
+            let session = CompilerSession::ui().with_backend("rust");
+            let mut parser = Parser::from(code.as_str()).with_session(session);
+            if let Ok(ast) = parser.parse() {
+                for stmt in &ast.stmts {
+                    if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                        let fields: Vec<(String, String)> = widget_decl
+                            .model
+                            .as_ref()
+                            .map(|m| {
+                                m.fields
+                                    .iter()
+                                    .filter_map(|v| {
+                                        let ty = match v.ty {
+                                            auto_lang::ast::Type::Bool => Some("bool"),
+                                            auto_lang::ast::Type::Int => Some("i32"),
+                                            auto_lang::ast::Type::Float
+                                            | auto_lang::ast::Type::Double => Some("f64"),
+                                            auto_lang::ast::Type::StrOwned
+                                            | auto_lang::ast::Type::StrFixed(_) => Some("String"),
+                                            _ => None,
+                                        };
+                                        let ty = ty.or_else(|| match &v.init {
+                                            auto_lang::ast::Expr::Bool(_) => Some("bool"),
+                                            auto_lang::ast::Expr::Int(_) => Some("i32"),
+                                            auto_lang::ast::Expr::Float(_, _)
+                                            | auto_lang::ast::Expr::Double(_, _) => Some("f64"),
+                                            auto_lang::ast::Expr::Str(_) => Some("String"),
+                                            _ => None,
+                                        });
+                                        ty.map(|t| (v.name.to_string(), t.to_string()))
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        map.insert(widget_decl.name.to_string(), fields);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
@@ -92,10 +170,22 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         "MyApp".to_string()
     };
 
+    // Plan 374 / Plan 371 Task 22a: pre-scan all .at files for StoreDecls,
+    // exactly like `generate_rust_ui` does. Previously this passed `&[]`,
+    // which starved `compile_at_file`'s store registration + struct/enum
+    // generation — producing 86 "no field `store`" / "cannot find type
+    // `StoreMsg`" errors on incremental regen of store-composable apps.
+    let all_stores = collect_store_decls(&at_files);
+    if !all_stores.is_empty() {
+        println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
+    }
+    // Plan 371 Task 22c: cross-file component state fields.
+    let component_fields = collect_component_state_fields(&at_files);
+
     let mut all_components = String::new();
     let mut all_api_imports: Vec<String> = Vec::new();
     for at_path in &at_files {
-        match compile_at_file(at_path, &[]) {
+        match compile_at_file(at_path, &all_stores, &component_fields) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -180,23 +270,13 @@ pub fn generate_rust_ui(
     };
 
     // Plan 374 Task 2-3: Pre-scan all .at files to collect StoreDecls.
-    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
-    for at_path in &at_files {
-        if let Ok(code) = std::fs::read_to_string(at_path) {
-            let session = CompilerSession::ui().with_backend("rust");
-            let mut parser = Parser::from(code.as_str()).with_session(session);
-            if let Ok(ast) = parser.parse() {
-                for stmt in &ast.stmts {
-                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
-                        all_stores.push(store.clone());
-                    }
-                }
-            }
-        }
-    }
+    let all_stores = collect_store_decls(&at_files);
     if !all_stores.is_empty() {
         println!("  {} {} store composable(s) found", "Found".bright_green(), all_stores.len());
     }
+
+    // Plan 371 Task 22c: cross-file component state fields.
+    let component_fields = collect_component_state_fields(&at_files);
 
     // Compile each .at file and collect generated components
     let mut all_components = String::new();
@@ -208,7 +288,7 @@ pub fn generate_rust_ui(
             .to_string_lossy();
         println!("  {} {}", "Parsing".bright_cyan(), file_name);
 
-        match compile_at_file(at_path, &all_stores) {
+        match compile_at_file(at_path, &all_stores, &component_fields) {
             Ok((code, api_imports)) => {
                 all_components.push_str(&code);
                 all_components.push('\n');
@@ -319,6 +399,7 @@ fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
 fn compile_at_file(
     at_path: &Path,
     stores: &[auto_lang::ast::ui::StoreDecl],
+    component_fields: &std::collections::HashMap<String, Vec<(String, String)>>,
 ) -> AutoResult<(String, Vec<String>)> {
     let code = fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
@@ -381,6 +462,11 @@ fn compile_at_file(
             }
         }
     }
+    }
+
+    // Plan 371 Task 22c: register every component's own scalar state fields.
+    for (name, fields) in component_fields.iter() {
+        generator.register_component_state(name, fields.clone());
     }
 
     // Extract AURA widgets from AST
@@ -686,6 +772,20 @@ fn auto_type_to_rust(ty: &str) -> String {
     }
 }
 
+/// Build the RHS expression that stores a merged-client parameter into a JSON
+/// object field. `[]str`/array params (`Vec<String>`) become a JSON array so
+/// the field keeps its array shape (e.g. Note.tags); scalars use Value::from.
+fn merged_param_to_value(ty: &str, param_name: &str) -> String {
+    if ty.starts_with("[]") {
+        format!(
+            "serde_json::Value::Array({}.iter().map(|s| serde_json::Value::from(s.clone())).collect())",
+            param_name
+        )
+    } else {
+        format!("serde_json::Value::from({}.clone())", param_name)
+    }
+}
+
 /// Generate heuristic stub functions when API module can't be parsed.
 fn generate_api_stubs(api_imports: &[String]) -> String {
     let mut code = String::new();
@@ -741,12 +841,30 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
         let fields: Vec<String> = api_type.fields.iter().map(|f| {
             let val = match f.ty.as_str() {
                 "int" | "i64" => format!("{}", i),
-                "bool" => "false".to_string(),
+                "bool" => match f.name.as_str() {
+                    // pinned: first note pinned so the "Pinned" tab isn't empty.
+                    "pinned" => if i == 0 { "true" } else { "false" }.to_string(),
+                    _ => "false".to_string(),
+                },
+                s if s.starts_with("[]") => {
+                    // Array field (e.g. tags) — emit a non-empty JSON array so
+                    // tag filters and renders have data to show.
+                    let sample = match f.name.as_str() {
+                        "tags" => match i { 0 => "intro", 1 => "home", _ => "work" },
+                        _ => "item",
+                    };
+                    format!("[\"{}\"]", sample)
+                }
                 _ => {
                     let sample = match f.name.as_str() {
                         "title" | "name" => match i { 0 => "Welcome", 1 => "Shopping List", _ => "Meeting Notes" },
                         "body" | "description" | "content" => match i { 0 => "This is your notes app. Click on any note to view it.", 1 => "Milk, Eggs, Bread, Cheese", _ => "Q3 roadmap discussion with the team" },
                         "time" | "date" | "created_at" => match i { 0 => "Just now", 1 => "2 hours ago", _ => "Yesterday" },
+                        // folder: spread the 3 seed notes across the categories
+                        // ("" / "personal" / "work") so each folder tab shows at
+                        // least one note. Without this all notes get a generic
+                        // value and folder-filtered lists render empty.
+                        "folder" | "category" => match i { 0 => "", 1 => "personal", _ => "work" },
                         _ => "Sample",
                     };
                     format!("\"{}\"", sample)
@@ -805,24 +923,32 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
             }
             "POST" => {
                 let body_fields: Vec<String> = body_params.iter()
-                    .map(|p| format!("\"{}\": serde_json::Value::from({}.clone())", p.name, p.name))
+                    .map(|p| format!("\"{}\": {}", p.name, merged_param_to_value(&p.ty, &p.name)))
                     .collect();
                 code.push_str(&format!(
                     "fn {}({}) -> Value {{\n    let mut data = API_DATA.lock().unwrap();\n    let id = {{ let mut next = API_NEXT_ID.lock().unwrap(); *next += 1; *next }};\n    let item = serde_json::json!({{\"id\": id, {}}});\n    data.push(item.clone());\n    item\n}}\n\n",
                     fn_name,
-                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
                     body_fields.join(", ")
                 ));
             }
             "PUT" => {
+                // PUT is fire-and-forget in the UI (callers don't use the
+                // return value), so return () — matching split mode's
+                // fire-and-forget PUT. Param types come from the declared type
+                // (e.g. []str → Vec<String>), and array params are stored as
+                // JSON arrays rather than a single Value::from(String).
                 let id_param = path_params.first().map(|p| p.name.as_str()).unwrap_or("id");
                 let body_fields: Vec<String> = body_params.iter()
-                    .map(|p| format!("item[\"{}\"] = serde_json::Value::from({}.clone())", p.name, p.name))
+                    .map(|p| {
+                        let rhs = merged_param_to_value(&p.ty, &p.name);
+                        format!("item[\"{}\"] = {}", p.name, rhs)
+                    })
                     .collect();
                 code.push_str(&format!(
-                    "fn {}({}: i32, {}) -> Option<Value> {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| n[\"id\"].as_i64() == Some({} as i64)) {{\n        {};\n        return Some(item.clone());\n    }}\n    None\n}}\n\n",
+                    "fn {}({}: i32, {}) {{\n    let mut data = API_DATA.lock().unwrap();\n    if let Some(item) = data.iter_mut().find(|n| n[\"id\"].as_i64() == Some({} as i64)) {{\n        {};\n    }}\n}}\n\n",
                     fn_name, id_param,
-                    body_params.iter().map(|p| format!("{}: String", p.name)).collect::<Vec<_>>().join(", "),
+                    body_params.iter().map(|p| format!("{}: {}", p.name, auto_type_to_rust(&p.ty))).collect::<Vec<_>>().join(", "),
                     id_param,
                     body_fields.join("; ")
                 ));
@@ -848,16 +974,16 @@ fn generate_http_utility_functions() -> String {
     r#"// Plan 349: File upload (multipart) + download utilities (a2r)
 
 fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
+    let url = url.to_string();
+    let file_path = file_path.to_string();
     std::thread::spawn(move || {
-        let form = reqwest::blocking::multipart::Form::new()
-            .file("file", file_path)
-            .map_err(|e| e.to_string())?;
-        let resp = reqwest::blocking::Client::new()
-            .post(url)
+        let form = match reqwest::blocking::multipart::Form::new()
+            .file("file", &file_path) { Ok(f) => f, Err(_) => return serde_json::Value::Null };
+        let resp = match reqwest::blocking::Client::new()
+            .post(&url)
             .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+            .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }
@@ -878,12 +1004,11 @@ fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Valu
         if let Ok(part) = reqwest::blocking::multipart::Part::file(&file_path) {
             form = form.part("file", part);
         }
-        let resp = reqwest::blocking::Client::new()
+        let resp = match reqwest::blocking::Client::new()
             .post(&url)
             .multipart(form)
-            .send()
-            .map_err(|e| e.to_string())?;
-        let text = resp.text().map_err(|e| e.to_string())?;
+            .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
+        let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
         serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
     }).join().unwrap_or(serde_json::Value::Null)
 }
@@ -1651,11 +1776,26 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // by the Iced renderer's load_image_bytes(). The cargo subprocess uses
     // --manifest-path instead of current_dir so it can find Cargo.toml, but
     // the final binary (profile-card.exe) inherits this CWD for asset resolution.
+    //
+    // IMPORTANT: resolve the manifest to an ABSOLUTE path BEFORE changing CWD.
+    // `rust_dir` is relative to the repo root (get_rust_workspace_dir returns
+    // "examples/rust-workspace"), so after set_current_dir(front_dir) the
+    // relative path no longer resolves and `cargo run --manifest-path` fails
+    // with "manifest path does not exist".
+    let cargo_toml = {
+        let rel = rust_dir.join("Cargo.toml");
+        // Prefer canonicalize (resolves symlinks/relative parts); fall back to
+        // anchoring the relative path to the pre-CWD-change current directory.
+        std::fs::canonicalize(&rel).unwrap_or_else(|_| {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            cwd.join(&rel)
+        })
+    };
+
     let front_dir = project_dir.join("src").join("front");
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 
-    let cargo_toml = rust_dir.join("Cargo.toml");
     let mut cmd = std::process::Command::new("cargo");
     cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
     for arg in &args {

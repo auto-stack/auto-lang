@@ -108,6 +108,10 @@ bun.lock
 # Auto-generated backend skeleton
 examples/**/rust/
 
+# Auto-generated rust-workspace output (a2r transpiled main.rs, etc.)
+# These are build artifacts regenerated from .at sources — never track them.
+examples/**/rust-workspace/
+
 # Temp screenshots
 helloworld_test.png
 

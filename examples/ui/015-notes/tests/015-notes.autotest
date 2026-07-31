@@ -41,7 +41,6 @@ scenario T5c "输入标题文字"
   when  click_button label="Edit"
   when  type_text input label="Note title" value="MCP Test Title"
   then  state field="edit_title" equals="MCP Test Title"
-  skip_if rust
 
 scenario T5d "Cancel 返回只读模式"
   when  click_button label="Cancel"
@@ -73,14 +72,11 @@ scenario T11 "Dark mode 切换"
   when  click_button label="Light"
   when  click_button label="Dark"
   then  state field="dark_mode" equals=true
-  skip_if rust
 
 scenario T11b "Light mode 切换回来"
   when  click_button label="Dark"
   when  click_button label="Light"
   then  state field="dark_mode" equals=false
-  skip_if rust
 
 scenario T12 "主题色 indigo 初始值"
   then  state field="accent_color" equals="indigo"
-  skip_if rust

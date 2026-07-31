@@ -45,22 +45,30 @@ ext Validator {
                 if output.contains(pattern) {
                     return Ok(None)
                 }
-                return Err(f"output must contain '${pattern}' (it doesn't)")
+                // Bind to a local before Err(...) — a2r boxes non-ident payloads
+                // (f-string / format!) inside Result-returning fns whose error
+                // type isn't a known enum; an ident payload is passed through.
+                let msg = f"output must contain '${pattern}' (it doesn't)".to_string()
+                return Err(msg)
             },
             Validator.OutputNotContains(pattern) -> {
                 if output.contains(pattern) == false {
                     return Ok(None)
                 }
-                return Err(f"output must NOT contain '${pattern}' (it does)")
+                let msg = f"output must NOT contain '${pattern}' (it does)".to_string()
+                return Err(msg)
             },
             Validator.OutputMinLength(min) -> {
-                if output.len() as uint >= min {
+                // min is bound behind &self (a &u32); .clone() yields an owned u32.
+                let m = min.clone()
+                if output.len() as uint >= m {
                     return Ok(None)
                 }
-                return Err(f"output is ${output.len()} chars, must be at least ${min}")
+                let msg = f"output is ${output.len() as uint} chars, must be at least ${m}".to_string()
+                return Err(msg)
             },
-            Validator.All(validators) -> return check_all(validators, output),
-            Validator.Any(validators) -> return check_any(validators, output)
+            Validator.All(validators) -> return check_all(validators.clone(), output).await,
+            Validator.Any(validators) -> return check_any(validators.clone(), output).await
         }
     }
 }
@@ -69,7 +77,7 @@ ext Validator {
 /// Returns the first failure message, or Ok if all pass.
 pub fn check_all(validators List<Validator>, output str) ~Result<None, str> {
     for v in validators {
-        is v.check(output) {
+        is v.check(output).await {
             Ok(_) -> {},
             Err(msg) -> return Err(msg)
         }
@@ -82,7 +90,7 @@ pub fn check_all(validators List<Validator>, output str) ~Result<None, str> {
 pub fn check_any(validators List<Validator>, output str) ~Result<None, str> {
     var failures uint = 0
     for v in validators {
-        is v.check(output) {
+        is v.check(output).await {
             Ok(_) -> return Ok(None),
             Err(_msg) -> failures = failures + 1
         }
@@ -92,5 +100,6 @@ pub fn check_any(validators List<Validator>, output str) ~Result<None, str> {
         // at least one passed (handled above); unreachable but kept for parity
         return Ok(None)
     }
-    return Err(f"none of ${total} validators passed")
+    let msg = f"none of ${total} validators passed".to_string()
+    return Err(msg)
 }

@@ -79,7 +79,7 @@ ext RoleConfig {
                     None -> r.system_prompt_append = Some(extra)
                 }
             },
-            None -> r.system_prompt_append = self.system_prompt_append
+            None -> r.system_prompt_append = self.system_prompt_append.clone()
         }
         // tools: replace; tools_append: extend.
         is self.tools {
@@ -88,7 +88,14 @@ ext RoleConfig {
         }
         is self.tools_append {
             Some(extra) -> {
-                var combined = r.tools ?? []
+                // Start from r.tools (if any), then extend. Built as an explicit
+                // List<str> so a2r types `combined` as Vec<String> (a `var` bound
+                // to an Option<Vec> via `??` was annotated Option<Vec<String>>).
+                var combined List<str> = []
+                is r.tools.clone() {
+                    Some(existing) -> combined = existing,
+                    None -> {}
+                }
                 for t in extra {
                     combined.push(t)
                 }
@@ -111,32 +118,38 @@ pub type ConfigRole has Role {
     base ?Role
 
     pub fn name() str {
-        return self.cfg.name ?? self.base_name()
+        return self.cfg.name.clone() ?? self.base_name()
     }
 
     pub fn system_prompt() str {
-        var prompt = self.cfg.system_prompt ?? self.base_prompt()
-        var append = self.cfg.system_prompt_append
-        is append {
+        // Resolve the base prompt, then append (if any). Uses explicit is-match
+        // rather than `??` so a2r types `prompt` as String (a `var` bound to an
+        // Option field via `??` was annotated Option<String>, breaking format!).
+        var prompt = self.base_prompt()
+        is self.cfg.system_prompt.clone() {
+            Some(p) -> prompt = p,
+            None -> {}
+        }
+        is self.cfg.system_prompt_append.clone() {
             Some(extra) -> return f"${prompt}\n${extra}",
             None -> return prompt
         }
     }
 
     pub fn model_tier() ModelTier {
-        return self.cfg.model_tier ?? self.base_tier()
+        return self.cfg.model_tier.clone() ?? self.base_tier()
     }
 
     pub fn model() str {
-        return self.cfg.model ?? self.base_model_str()
+        return self.cfg.model.clone() ?? self.base_model_str()
     }
 
     pub fn temperature() float {
-        return self.cfg.temperature ?? self.base_temp()
+        return self.cfg.temperature.clone() ?? self.base_temp()
     }
 
     pub fn max_turns() uint {
-        return self.cfg.max_turns ?? self.base_turns()
+        return self.cfg.max_turns.clone() ?? self.base_turns()
     }
 
     pub fn allowed_tools() List<str> {
@@ -144,7 +157,13 @@ pub type ConfigRole has Role {
     }
 
     pub fn memory_limit() ?uint {
-        return self.cfg.memory_limit ?? self.base_mem()
+        // `.or` semantics: cfg value wins, else default Some(20). Can't use `??`
+        // here because the default is itself an Option and the method returns
+        // Option<u32> (unwrap_or would collapse to u32).
+        is self.cfg.memory_limit.clone() {
+            Some(n) -> return Some(n),
+            None -> return Some(20)
+        }
     }
 
     pub fn skills() List<str> {
@@ -166,32 +185,35 @@ pub fn config_role_with_base(cfg RoleConfig, base Role) ConfigRole {
 
 ext ConfigRole {
     pub fn name() str {
-        return self.cfg.name ?? self.base_name()
+        return self.cfg.name.clone() ?? self.base_name()
     }
 
     pub fn system_prompt() str {
-        var prompt = self.cfg.system_prompt ?? self.base_prompt()
-        var append = self.cfg.system_prompt_append
-        is append {
+        var prompt = self.base_prompt()
+        is self.cfg.system_prompt.clone() {
+            Some(p) -> prompt = p,
+            None -> {}
+        }
+        is self.cfg.system_prompt_append.clone() {
             Some(extra) -> return f"${prompt}\n${extra}",
             None -> return prompt
         }
     }
 
     pub fn model_tier() ModelTier {
-        return self.cfg.model_tier ?? self.base_tier()
+        return self.cfg.model_tier.clone() ?? self.base_tier()
     }
 
     pub fn model() str {
-        return self.cfg.model ?? self.base_model_str()
+        return self.cfg.model.clone() ?? self.base_model_str()
     }
 
     pub fn temperature() float {
-        return self.cfg.temperature ?? self.base_temp()
+        return self.cfg.temperature.clone() ?? self.base_temp()
     }
 
     pub fn max_turns() uint {
-        return self.cfg.max_turns ?? self.base_turns()
+        return self.cfg.max_turns.clone() ?? self.base_turns()
     }
 
     pub fn allowed_tools() List<str> {
@@ -199,7 +221,10 @@ ext ConfigRole {
     }
 
     pub fn memory_limit() ?uint {
-        return self.cfg.memory_limit ?? self.base_mem()
+        is self.cfg.memory_limit.clone() {
+            Some(n) -> return Some(n),
+            None -> return Some(20)
+        }
     }
 
     pub fn skills() List<str> {
@@ -207,63 +232,42 @@ ext ConfigRole {
     }
 }
 
-// ─── ConfigRole fallback helpers (avoid nested is-pattern blocks) ──────────
+// ─── ConfigRole fallback helpers ────────────────────────────────────────────
+// These return the static defaults used when a RoleConfig field is None.
+// NOTE: the `base: Option<Box<dyn Role>>` field is non-Clone (a trait object),
+// and a2r renders `var base = self.base` as `self.base.clone()` — which fails to
+// compile. In practice `base` is always None (config_role_new sets base: None,
+// and config_role_with_base has no callers), so these helpers return the static
+// default directly, matching the original Rust ConfigRole (which has no base
+// field at all — base resolution happens at load_role time).
 
 ext ConfigRole {
     fn base_name() str {
-        var base = self.base
-        is base {
-            Some(b) -> return b.name(),
-            None -> return "unnamed"
-        }
+        return "unnamed"
     }
 
     fn base_prompt() str {
-        var base = self.base
-        is base {
-            Some(b) -> return b.system_prompt(),
-            None -> return ""
-        }
+        return ""
     }
 
     fn base_tier() ModelTier {
-        var base = self.base
-        is base {
-            Some(b) -> return b.model_tier(),
-            None -> return ModelTier.Mid
-        }
+        return ModelTier.Mid
     }
 
     fn base_model_str() str {
-        var base = self.base
-        is base {
-            Some(b) -> return b.model(),
-            None -> return ""
-        }
+        return ""
     }
 
     fn base_temp() float {
-        var base = self.base
-        is base {
-            Some(b) -> return b.temperature(),
-            None -> return 0.3
-        }
+        return 0.3
     }
 
     fn base_turns() uint {
-        var base = self.base
-        is base {
-            Some(b) -> return b.max_turns(),
-            None -> return 10
-        }
+        return 10
     }
 
     fn base_mem() ?uint {
-        var base = self.base
-        is base {
-            Some(b) -> return b.memory_limit(),
-            None -> return Some(20)
-        }
+        return Some(20)
     }
 }
 
@@ -318,7 +322,11 @@ pub fn load_role(content str) Result<RoleConfig, AgentError> {
             // Resolve inherit chain (one level — the base is a builtin).
             is cfg.inherit {
                 Some(name) -> {
-                    is builtin_roles.load_builtin(name) {
+                    // Use the imported (unqualified) name: a2r renders
+                    // `builtin_roles.load_builtin(...)` as `builtin_roles::...`,
+                    // but the `use builtin_roles: load_builtin` import only
+                    // brings the function into scope, not the module path.
+                    is load_builtin(name) {
                         Some(base_role) -> {
                             // Merge cfg over the base role's config-derived
                             // defaults. Since builtins aren't RoleConfigs,

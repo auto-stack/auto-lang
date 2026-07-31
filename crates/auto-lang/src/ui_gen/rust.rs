@@ -74,6 +74,11 @@ pub struct RustGenerator {
     /// Child component names referenced in the current widget's view tree
     child_components: Vec<String>,
 
+    /// Plan 371 Task 22c: map of component name -> its own scalar state fields
+    /// (name, rust_type), collected across all widgets parsed in the same
+    /// compile unit, so a parent using a child can hoist+sync its state.
+    component_state_fields: std::collections::HashMap<String, Vec<(String, String)>>,
+
     /// Loop variables in scope (for generating correct references)
     loop_vars: Vec<String>,
 
@@ -145,6 +150,7 @@ impl RustGenerator {
             needs_imports: true,
             indent: 0,
             child_components: Vec::new(),
+            component_state_fields: std::collections::HashMap::new(),
             loop_vars: Vec::new(),
             input_fields: std::collections::HashMap::new(),
             state_types: std::collections::HashMap::new(),
@@ -164,6 +170,17 @@ impl RustGenerator {
         STORE_NAMES.with(|sn| {
             sn.borrow_mut().insert(alias.to_string(), store_name.to_string());
         });
+    }
+
+    /// Plan 371 Task 22c: record a component's own scalar state fields so
+    /// parents that use this component can hoist+sync them.
+    pub fn register_component_state(
+        &mut self,
+        component_name: &str,
+        fields: Vec<(String, String)>,
+    ) {
+        self.component_state_fields
+            .insert(component_name.to_string(), fields);
     }
 
     /// Reset state for new widget
@@ -551,7 +568,16 @@ impl RustGenerator {
     fn generate_struct(&self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
-        code.push_str("#[derive(Debug)]\n");
+        // Plan 371 Task 22c: stores + components holding a store need Clone.
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == widget.name)
+        });
+        let has_store_field = STORE_NAMES.with(|sn| !sn.borrow().is_empty()) && !is_store_itself;
+        if is_store_itself || has_store_field {
+            code.push_str("#[derive(Clone, Debug)]\n");
+        } else {
+            code.push_str("#[derive(Debug)]\n");
+        }
         code.push_str(&format!("pub struct {} {{\n", widget.name));
 
         // Track this widget's own fields (for dedup with root state fields).
@@ -588,6 +614,18 @@ impl RustGenerator {
             let field_type = self.state_rust_type(state);
             code.push_str(&format!("    pub {}: {},\n", field_name, field_type));
             own_fields.insert(field_name.clone());
+        }
+
+        // Plan 371 Task 22c: hoist child components' own scalar state fields.
+        for child_name in &self.child_components {
+            if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                for (f, ty) in child_fields {
+                    if !own_fields.contains(f) {
+                        code.push_str(&format!("    pub {}: {},\n", f, ty));
+                        own_fields.insert(f.clone());
+                    }
+                }
+            }
         }
 
         // Plan 346: If this is a child widget (not App/root), add root state
@@ -700,6 +738,31 @@ impl RustGenerator {
             code.push_str(&format!("            {}: {},\n", state.name, init));
         }
 
+        // Plan 371 Task 22c: initialize hoisted child-component state fields.
+        {
+            let own_names: std::collections::HashSet<String> = widget
+                .state_vars
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
+            for child_name in &self.child_components {
+                if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                    for (f, ty) in child_fields {
+                        if own_names.contains(f) {
+                            continue;
+                        }
+                        let default_val = match ty.as_str() {
+                            "bool" => "false".to_string(),
+                            "i32" | "u32" | "i64" | "u64" => "0".to_string(),
+                            "f32" | "f64" => "0.0".to_string(),
+                            _ => String::from("\"\".to_string()"),
+                        };
+                        code.push_str(&format!("            {}: {},\n", f, default_val));
+                    }
+                }
+            }
+        }
+
         // Plan 346: Initialize root state fields (for child widgets) with defaults.
         if widget.name != "App" {
             let own_names: std::collections::HashSet<String> = widget.state_vars.iter()
@@ -796,8 +859,108 @@ impl RustGenerator {
             ));
         }
 
+        // Plan 371 Task 21: state_snapshot() override — emit only scalar fields
+        // (String/i32/i64/u32/u64/f32/f64/bool). Collections and nested components
+        // are skipped. Feeds the rust-mode MCP `autoui_state` tool via SharedState.
+        let snapshot = self.generate_state_snapshot(widget);
+        if !snapshot.is_empty() {
+            code.push('\n');
+            code.push_str(&snapshot);
+        }
+
         code.push_str("}\n");
 
+        code
+    }
+
+    /// Generate a `state_snapshot()` override covering the scalar fields of
+    /// this component (both props and state vars). Returns empty if there are
+    /// no scalar fields (then the trait default empty map is used).
+    fn generate_state_snapshot(&self, _widget: &AuraWidget) -> String {
+        let mut scalars: Vec<(String, String)> = Vec::new();
+        for prop in &_widget.props {
+            if let Some(ty) = self.prop_types.get(&prop.name) {
+                if is_scalar_state_type(ty) {
+                    scalars.push((prop.name.clone(), ty.clone()));
+                }
+            }
+        }
+        for state in &_widget.state_vars {
+            if let Some(ty) = self.state_types.get(&state.name) {
+                if is_scalar_state_type(ty) {
+                    scalars.push((state.name.clone(), ty.clone()));
+                }
+            }
+        }
+        // Plan 371 Task 22c: include hoisted child-component scalar state fields
+        // (e.g. App's editing/edit_title) so autoui_state can read them.
+        for child_name in &self.child_components {
+            if let Some(child_fields) = self.component_state_fields.get(child_name) {
+                for (f, ty) in child_fields {
+                    if is_scalar_state_type(ty) && !scalars.iter().any(|(n, _)| n == f) {
+                        scalars.push((f.clone(), ty.clone()));
+                    }
+                }
+            }
+        }
+
+        // Plan 371 Task 22b: collect component-typed fields whose state_snapshot
+        // we should recurse into (with a "<field>." prefix) so the rust-mode
+        // autoui_state tool can see child/store state. The store field is
+        // injected via STORE_NAMES (alias "store"); child components declared
+        // as struct fields show up in state_types/prop_types with a type that
+        // matches a registered component name.
+        let mut recurse_fields: Vec<String> = Vec::new();
+        // Store composable field (always named "store" per generate_struct).
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == _widget.name)
+        });
+        if !is_store_itself {
+            STORE_NAMES.with(|sn| {
+                if !sn.borrow().is_empty() && !scalars.iter().any(|(n, _)| n == "store") {
+                    recurse_fields.push("store".to_string());
+                }
+            });
+        }
+        // Child components stored as struct fields (type matches a known
+        // component — registered store or a child_components entry).
+        let known_components: std::collections::HashSet<String> = {
+            let mut s: std::collections::HashSet<String> = STORE_NAMES
+                .with(|sn| sn.borrow().values().cloned().collect());
+            for c in &self.child_components {
+                s.insert(c.clone());
+            }
+            s
+        };
+        for (name, ty) in self.state_types.iter().chain(self.prop_types.iter()) {
+            if known_components.contains(ty) && !recurse_fields.contains(name) && name != "store" {
+                recurse_fields.push(name.clone());
+            }
+        }
+
+        if scalars.is_empty() && recurse_fields.is_empty() {
+            return String::new();
+        }
+
+        let mut code = String::new();
+        code.push_str("    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value> {\n");
+        code.push_str("        let mut m = std::collections::HashMap::new();\n");
+        for (name, ty) in &scalars {
+            let expr = scalar_to_auto_value_expr("self", name, ty);
+            code.push_str(&format!(
+                "        m.insert({:?}.to_string(), {});\n",
+                name, expr
+            ));
+        }
+        // Recurse into component-typed fields, prefixing keys with "<field>.".
+        for field in &recurse_fields {
+            code.push_str(&format!(
+                "        for (k, v) in self.{}.state_snapshot() {{ m.insert(format!(\"{{}}.{{}}\", {:?}, k), v); }}\n",
+                field, field
+            ));
+        }
+        code.push_str("        m\n");
+        code.push_str("    }\n");
         code
     }
 
@@ -874,12 +1037,23 @@ impl RustGenerator {
                     }
 
                     // Skip redundant self-assignment body (e.g. `.email = .email`)
-                    // Check if the body is entirely composed of self-assignments for the bound fields
-                    let all_self_assign = field_names.iter().all(|f| {
-                        let self_assign = format!("self.{} = self.{}", f, f);
-                        body.trim() == self_assign
+                    // or body that assigns the bound field from the msg payload
+                    // (e.g. `.edit_title = t` / `.edit_title = t.to_string()`) —
+                    // we already set it from last_input_text() above, so the
+                    // payload binding would clobber it with the static empty arg.
+                    let payload_name = if has_payload {
+                        self.extract_payload_name(pattern)
+                    } else {
+                        String::new()
+                    };
+                    let body_redundant = field_names.iter().all(|f| {
+                        let b = body.trim();
+                        b == format!("self.{} = self.{}", f, f)
+                            || b == format!("self.{} = {}", f, payload_name)
+                            || b == format!("self.{} = {}.to_string()", f, payload_name)
+                            || b == format!("self.{} = {}.clone()", f, payload_name)
                     });
-                    if !all_self_assign && !body.trim().is_empty() {
+                    if !body_redundant && !body.trim().is_empty() {
                         code.push_str(&format!("                {}\n", body));
                     }
                 } else {
@@ -909,6 +1083,41 @@ impl RustGenerator {
                 // Close the running guard for Tick handler
                 if is_tick_guarded {
                     code.push_str("                }\n");
+                }
+
+                // Plan 371: After NewNote/NewNoteInFolder, the active note changes
+                // to a new empty note. In VM mode the component lifecycle auto-
+                // triggers EditorPanel.Init (which sets editing=true for empty
+                // titles). Rust mode has no such lifecycle, so simulate it:
+                // construct a temp EditorPanel, call on(Init), sync editing back.
+                if (variant_name == "NewNote" || variant_name == "NewNoteInFolder")
+                    && !self.child_components.is_empty()
+                {
+                    let editor = self.child_components.iter()
+                        .find(|c| c.contains("Editor") || c.contains("editor"))
+                        .cloned();
+                    if let Some(ed_name) = editor {
+                        let ed_msg = format!("{}Msg", ed_name);
+                        let sync: Vec<String> = self.component_state_fields.get(&ed_name)
+                            .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
+                            .unwrap_or_default();
+                        // Ensure the preceding body statement ends with ';'.
+                        code.push_str("                ;\n");
+                        code.push_str(&format!(
+                            "                {{ let mut __ep = {ed}::new(self.store.notes[self.store.active_id as usize].clone());\n",
+                            ed = ed_name
+                        ));
+                        code.push_str(&format!(
+                            "                __ep.on({msg}::Init);\n",
+                            msg = ed_msg
+                        ));
+                        for f in &sync {
+                            code.push_str(&format!(
+                                "                self.{} = __ep.{}.clone();\n", f, f
+                            ));
+                        }
+                        code.push_str("                }\n");
+                    }
                 }
 
                 code.push_str("            }\n");
@@ -942,7 +1151,7 @@ impl RustGenerator {
                 let _child_msg = format!("{}Msg", child_name);
                 // Find parent state vars that likely correspond to child fields
                 // (same name in parent state as in child component)
-                let sync_fields = self.find_sync_fields_for_child(widget);
+                let sync_fields = self.find_sync_fields_for_child(widget, child_name);
                 let constructor_args = self.find_constructor_args_for_child(widget, child_name);
 
                 code.push_str(&format!(
@@ -976,18 +1185,32 @@ impl RustGenerator {
                 }
 
                 // Sync the note data back if the child has a "note" prop
-                // and the parent has notes[active_id]
-                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                // and the parent has notes[active_id]. The notes array may be
+                // a direct state var OR accessed via the store composable.
+                // Only generate for children that actually receive a `note` prop
+                // (e.g., EditorPanel) to avoid "no field `note`" on children
+                // like NavTree that don't have one.
+                let child_has_note = constructor_args.contains("note");
+                let has_notes = self.state_types.contains_key("notes");
+                let has_store_notes = STORE_NAMES.with(|sn| !sn.borrow().is_empty())
+                    && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
+                let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
+                let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
+                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
                     code.push_str(&format!(
-                        "                if let Some(__n) = self.notes.get_mut(self.active_id as usize) {{\n                    *__n = __child.note.clone();\n                }}\n"
+                        "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = __child.note.clone();\n                }}\n",
+                        notes_prefix, active_prefix
                     ));
                 }
 
                 // Check if the child's note was marked as deleted via .note.deleted = true
                 // If so, remove the note at active_id from the parent's notes array
-                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
                     code.push_str(&format!(
-                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    self.notes.remove(self.active_id as usize);\n                    if self.active_id >= self.notes.len() as i32 && !self.notes.is_empty() {{\n                        self.active_id = self.notes.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n"
+                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    {}.remove({} as usize);\n                    if {} >= {}.len() as i32 && !{}.is_empty() {{\n                        {} = {}.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n",
+                        notes_prefix, active_prefix,
+                        active_prefix, notes_prefix, notes_prefix,
+                        active_prefix, notes_prefix
                     ));
                 }
 
@@ -1262,7 +1485,16 @@ impl RustGenerator {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
                 if tag == "input" || tag == "textarea" {
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                    // Resolve the `value` binding to a field name. Source uses
+                    // `.field` which parses to Expr::Dot(self, "field"); older
+                    // code only matched Expr::Ident, missing `.field` bindings
+                    // (Plan 371 T5c: edit_title input had no last_input_text injection).
+                    let value_field: Option<String> = match props.get("value") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(_, field))) => Some(field.to_string()),
+                        _ => None,
+                    };
+                    if let Some(name) = value_field {
                         for (event, handler) in events {
                             if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
                                 let variant = self.extract_variant_name(&handler.handler);
@@ -1336,9 +1568,14 @@ impl RustGenerator {
         if views.len() == 1 {
             views[0].clone()
         } else {
-            // Use row() for multi-child conditionals so siblings sit side-by-side.
-            // The parent col/row already controls the outer layout direction.
-            let mut builder = "View::row()".to_string();
+            // Use col() for multi-statement conditional bodies so siblings
+            // stack VERTICALLY (the common case — e.g. a section header row
+            // followed by a for-loop list, repeated per category). The parent
+            // col/row already controls the outer layout direction; an if-body
+            // with several children is almost always a vertical sequence.
+            // (Previously row() was used, which laid mixed row+for siblings out
+            // side-by-side, producing a diagonal/tilted arrangement.)
+            let mut builder = "View::col()".to_string();
             for v in views {
                 builder = format!("{}.child({})", builder, v);
             }
@@ -1346,7 +1583,78 @@ impl RustGenerator {
         }
     }
 
-    /// Generate view tree code
+    /// Collect a composite label expression for a button that has children.
+    ///
+    /// `View::Button` has no children field, so a button with child views
+    /// (e.g. `button "" { col { text .note.title; text .note.time } }`) would
+    /// render empty (the `.child()` calls are dropped at build). This folds
+    /// the button's TEXT-bearing children into a single `format!` label so the
+    /// content is visible.
+    ///
+    /// Recurses into col/row containers to reach their text children. Non-text
+    /// children (buttons, components, images) are skipped. Returns a Rust
+    /// expression evaluating to `String`, or `"\"\""` if no text children found.
+    fn collect_button_label(&self, children: &[AuraNode]) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for child in children {
+            self.collect_text_parts(child, &mut parts);
+        }
+        if parts.is_empty() {
+            return "\"\"".to_string();
+        }
+        if parts.len() == 1 {
+            return format!("format!(\"{{}}\", {})", parts[0]);
+        }
+        let fmt = parts.iter().map(|_| "{}").collect::<Vec<_>>().join("\\n");
+        format!("format!(\"{}\", {})", fmt, parts.join(", "))
+    }
+
+    /// Recursive helper for `collect_button_label`: push a Rust String
+    /// expression for each text-bearing node into `parts`.
+    fn collect_text_parts(&self, node: &AuraNode, parts: &mut Vec<String>) {
+        match node {
+            AuraNode::Text(content) => match content {
+                AuraTextContent::Literal(s) => {
+                    parts.push(format!("\"{}\".to_string()", s));
+                }
+                AuraTextContent::Interpolated { template, bindings } => {
+                    let mut fmt = template.clone();
+                    let mut args: Vec<String> = Vec::new();
+                    for name in bindings.iter() {
+                        if let Some(start) = fmt.find("${") {
+                            if let Some(end) = fmt[start..].find('}') {
+                                fmt.replace_range(start..=start + end, "{}");
+                            }
+                        }
+                        let stripped = name.trim_start_matches('.');
+                        args.push(format!("self.{}", stripped));
+                    }
+                    if args.is_empty() {
+                        parts.push(format!("\"{}\".to_string()", fmt));
+                    } else {
+                        parts.push(format!("format!(\"{}\", {})", fmt, args.join(", ")));
+                    }
+                }
+            },
+            AuraNode::Element { tag, props, children, .. } => {
+                if tag == "text" {
+                    if let Some(AuraPropValue::Expr(expr)) = props.get("text") {
+                        parts.push(self.ast_expr_to_rust(expr));
+                        return;
+                    }
+                    for c in children {
+                        self.collect_text_parts(c, parts);
+                    }
+                } else if tag == "col" || tag == "row" || tag == "column" {
+                    for c in children {
+                        self.collect_text_parts(c, parts);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
@@ -1369,6 +1677,30 @@ impl RustGenerator {
                         return format!("{}.build()", col);
                     }
                     return "View::Empty".to_string();
+                }
+
+                // Rich-content elements with no native iced mapping (e.g.
+                // autodown_editor { content: .note.body }) would otherwise fall
+                // through to an empty View::col(), hiding the content. Render
+                // their `content` prop as styled text so the data is visible.
+                if tag == "autodown_editor" || tag == "markdown" || tag == "editor" {
+                    if let Some(AuraPropValue::Expr(expr)) = props.get("content") {
+                        let content_expr = self.ast_expr_to_rust(expr);
+                        // text_styled takes content by value; clone self-field
+                        // references (e.g. self.edit_body) to avoid E0507 moves.
+                        let content_expr = if content_expr.starts_with("self.") {
+                            format!("{}.clone()", content_expr)
+                        } else {
+                            content_expr
+                        };
+                        let style_str = props.get("style").or_else(|| props.get("class"))
+                            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                            .unwrap_or_default();
+                        return format!(
+                            "View::col().style(\"{}\").child(View::text_styled({}, \"text-sm text-foreground whitespace-pre-wrap\")).build()",
+                            style_str, content_expr
+                        );
+                    }
                 }
 
                 // grid → View::grid() builder. iced has no native grid; the
@@ -1888,6 +2220,25 @@ impl RustGenerator {
                     }
 
                     format!("{}.build()", builder)
+                } else if tag == "button" {
+                    // Button with children. The View::Button model only has a
+                    // `label` (no children field), so `.child()` calls are
+                    // silently dropped at build time and the button renders
+                    // empty. Fold the button's text children into a single
+                    // composite label so the content is visible.
+                    let label_expr = self.collect_button_label(children);
+                    let mut builder = format!("View::button({})", label_expr);
+                    for (key, value) in props {
+                        if key == "text" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    for (event, handler) in events {
+                        builder = self.add_event_to_builder(&builder, event, handler);
+                    }
+                    if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                        builder = format!("{}.on_click(|_| ())", builder);
+                    }
+                    format!("{}.build()", builder)
                 } else {
                     // Element with children
                     let mut builder = builder_start;
@@ -2129,13 +2480,21 @@ impl RustGenerator {
 
         // Find parent state vars that should be synced to child before rendering.
         // This ensures the child's view reflects the current parent state (e.g., editing=true).
-        let sync_fields: Vec<String> = self.state_types.keys()
+        let mut sync_fields: Vec<String> = self.state_types.keys()
             .filter(|name| {
                 let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
                 !ty.starts_with("Vec<") && !name.ends_with("_id") && **name != "notes" && **name != "search"
             })
             .cloned()
             .collect();
+        // Plan 371 Task 22c: also sync hoisted child-own state fields before .view().
+        if let Some(child_fields) = self.component_state_fields.get(tag) {
+            for (f, _ty) in child_fields {
+                if !sync_fields.iter().any(|e| e == f) {
+                    sync_fields.push(f.clone());
+                }
+            }
+        }
 
         if sync_fields.is_empty() {
             format!(
@@ -2155,14 +2514,27 @@ impl RustGenerator {
     /// Find parent state vars that should be synced to/from child component fields.
     /// Matches by name: if parent has state var "editing" and child component likely
     /// has a field "editing", they should be synced.
-    fn find_sync_fields_for_child(&self, widget: &AuraWidget) -> Vec<String> {
+    fn find_sync_fields_for_child(&self, widget: &AuraWidget, child_name: &str) -> Vec<String> {
         let mut fields = Vec::new();
         for state in &widget.state_vars {
             let name = &state.name;
-            // Plan 346: include ALL parent state fields for child sync. The
-            // child struct needs these fields so child handlers that reference
-            // parent state (via Plan 320 unified state in VM mode) can compile.
             fields.push(name.clone());
+        }
+        // Plan 371 Task 22c: sync the injected store composable field.
+        let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+        let is_store_itself = STORE_NAMES.with(|sn| {
+            sn.borrow().values().any(|s| s.as_str() == widget.name)
+        });
+        if has_store && !is_store_itself && !fields.iter().any(|f| f == "store") {
+            fields.push("store".to_string());
+        }
+        // Plan 371 Task 22c: hoist+sync the child component's OWN scalar state fields.
+        if let Some(child_fields) = self.component_state_fields.get(child_name) {
+            for (f, _ty) in child_fields {
+                if !fields.iter().any(|e| e == f) {
+                    fields.push(f.clone());
+                }
+            }
         }
         fields
     }
@@ -2857,6 +3229,44 @@ impl RustGenerator {
             ".as_array().into_iter().flatten()"
         );
 
+        // Fix 2b: #[api] Vec<String> argument marshalling.
+        // update_tags(id, tags) expects `tags: Vec<String>` (both merged and
+        // split clients), but value_field_access emits the tags field as a single
+        // String (`.as_str().unwrap_or_default().to_string()`). Rewrite that
+        // specific argument into a Vec<String> built from the JSON array.
+        // We scan each update_tags(...) call and replace the String-marshalled
+        // tags arg, leaving other tags usages (iter/contains/push) untouched.
+        let needle = r#"["tags"].as_str().unwrap_or_default().to_string())"#;
+        let marshalled = r#"["tags"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect::<Vec<String>>()).unwrap_or_default())"#;
+        let mut search = 0;
+        while let Some(rel) = result[search..].find("update_tags(") {
+            let pos = search + rel;
+            // Find the matching close paren of this update_tags(...) call.
+            let bytes = result.as_bytes();
+            let mut depth = 0i32;
+            let mut end = pos;
+            for (j, &b) in bytes[pos..].iter().enumerate() {
+                match b {
+                    b'(' => depth += 1,
+                    b')' => { depth -= 1; if depth == 0 { end = pos + j; break; } }
+                    _ => {}
+                }
+            }
+            let call_end = end;
+            // Only the substring within this call is a candidate.
+            if result[pos..=call_end].contains(needle) {
+                let before = &result[..pos];
+                let this_call = &result[pos..=call_end];
+                let after = &result[call_end + 1..];
+                let new_call = this_call.replace(needle, marshalled);
+                let gained = new_call.len();
+                result = format!("{}{}{}", before, new_call, after);
+                search = pos + gained;
+            } else {
+                search = call_end + 1;
+            }
+        }
+
         // Fix 3: Value bool toggle assignment
         // Pattern: self.notes[idx]["field"].as_bool().unwrap_or(false) = !(self.notes[idx]["field"].as_bool().unwrap_or(false))
         // This can't be assigned to — replace with a json! assignment.
@@ -2900,10 +3310,13 @@ impl RustGenerator {
         // Fix 4: if X != None { ... }; — use .is_some() to avoid type issues
         result = result.replace(" != None {", ".is_some() {");
         result = result.replace(" == None {", ".is_none() {");
-        // E0317 fix: add `else { None }` for `if note.is_some() { ... };`
-        // This handles the MoveNote handler where the if is in expression position.
+        // E0317 fix: add `else {}` for `if note.is_some() { ... };`
+        // The if-body is an #[api] call (e.g. update_note) which returns () in
+        // both merged and split modes (PUT is fire-and-forget). An empty else
+        // branch returns (), matching the if-body. (Previously `else { None }`
+        // was injected, producing a `()` vs `Option<_>` mismatch.)
         if result.contains("if note.is_some() {") {
-            // Find the pattern and add else { None }
+            // Find the pattern and add else {}
             let pattern = "if note.is_some() {";
             let mut search_start = 0;
             while let Some(pos) = result[search_start..].find(pattern) {
@@ -2923,8 +3336,9 @@ impl RustGenerator {
                 // Check if there's already an else after brace_end
                 let after = &result[brace_end+1..];
                 if !after.trim_start().starts_with("else") {
-                    // Insert `else { None }`
-                    result.insert_str(brace_end + 1, " else { None }");
+                    // Insert `else {}` (unit-typed else branch matches the
+                    // statement-context if-body).
+                    result.insert_str(brace_end + 1, " else {}");
                 }
                 search_start = brace_end + 1;
             }
@@ -3099,6 +3513,11 @@ impl RustGenerator {
         // Bool fields: use .as_bool().unwrap_or(false)
         // Int fields: use .as_i64().unwrap_or(0) as i32
         // Default (string/array/object): use .as_str().unwrap_or_default().to_string()
+        // NOTE: array fields (e.g. tags) are intentionally handled as String here.
+        // Iteration/push/contains on them is rewritten by postprocess_handler_body
+        // (Fix 2 / __a push), and #[api] Vec<String> arguments are rewritten by
+        // the update_tags special-case in postprocess. Keeping this branch as
+        // String avoids breaking those rewrites.
         if field == "id" || field.ends_with("_id") || field == "idx" || field == "count" {
             format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
         } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
@@ -3840,6 +4259,36 @@ impl RustGenerator {
     }
 }
 
+/// Plan 371 Task 21: whether a rust field type is a scalar we can safely emit
+/// into `state_snapshot()`. Collections (`Vec<...>`, `serde_json::Value`) and
+/// nested components are excluded — their shape is not a clean scalar.
+fn is_scalar_state_type(ty: &str) -> bool {
+    matches!(
+        ty.trim(),
+        "String"
+            | "i8" | "i16" | "i32" | "i64" | "isize"
+            | "u8" | "u16" | "u32" | "u64" | "usize"
+            | "f32" | "f64"
+            | "bool"
+    )
+}
+
+/// Plan 371 Task 21: render the rust expression that converts `<receiver>.<field>`
+/// (of the given scalar rust type) into an `auto_val::Value`.
+fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
+    let val_expr = format!("{}.{}", receiver, field);
+    match ty.trim() {
+        "String" => format!("auto_lang::ui::auto_val::Value::str(&{})", val_expr),
+        "bool" => format!("auto_lang::ui::auto_val::Value::Bool({})", val_expr),
+        "i32" | "u32" => format!("auto_lang::ui::auto_val::Value::Int({})", val_expr),
+        "i8" | "i16" | "u8" | "u16" | "isize" | "usize" | "i64" | "u64" => {
+            format!("auto_lang::ui::auto_val::Value::Int({} as i32)", val_expr)
+        }
+        "f32" | "f64" => format!("auto_lang::ui::auto_val::Value::Float({} as f64)", val_expr),
+        _ => "auto_lang::ui::auto_val::Value::Nil".to_string(),
+    }
+}
+
 /// Extract field name from `Expr::Dot(Expr::Ident("self"), Name("field"))`.
 /// Returns `None` if the pattern doesn't match.
 fn extract_dot_self_field(expr: &crate::ast::Expr) -> Option<String> {
@@ -4134,6 +4583,196 @@ mod tests {
         assert_eq!(gen.auto_type_to_rust(&Type::Bool), "bool");
         assert_eq!(gen.auto_type_to_rust(&Type::StrFixed(0)), "String");
         assert_eq!(gen.auto_type_to_rust(&Type::Float), "f32");
+    }
+
+    /// Plan 371 Task 21: scalar state vars must emit a `state_snapshot()`
+    /// override mapping each scalar field to `auto_lang::ui::auto_val::Value`.
+    /// Non-scalar (Vec/serde_json::Value) fields must be skipped.
+    #[test]
+    fn test_state_snapshot_scalar_override() {
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: crate::ast::Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "title".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("x".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "editing".to_string(),
+                    type_info: Type::Bool,
+                    initial: crate::ast::Expr::Bool(false),
+                    decorators: vec![],
+                },
+                // Non-scalar: array literal -> Vec<serde_json::Value>, skipped.
+                AuraStateDef {
+                    name: "items".to_string(),
+                    type_info: Type::Unknown,
+                    initial: crate::ast::Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+            ],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Inc".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value>"),
+            "missing state_snapshot signature, got:\n{}",
+            code
+        );
+        assert!(code.contains(r#""count""#), "missing count: {}", code);
+        assert!(code.contains("Value::Int(self.count)"), "count not Int: {}", code);
+        assert!(code.contains(r#""title""#), "missing title: {}", code);
+        assert!(code.contains("Value::str(&self.title)"), "title not str: {}", code);
+        assert!(code.contains(r#""editing""#), "missing editing: {}", code);
+        assert!(code.contains("Value::Bool(self.editing)"), "editing not Bool: {}", code);
+        assert!(!code.contains(r#""items""#), "non-scalar items leaked: {}", code);
+    }
+
+    /// Plan 371 Task 21: no scalar fields -> no override (trait default).
+    #[test]
+    fn test_state_snapshot_no_scalars_no_override() {
+        let widget = AuraWidget {
+            name: "OnlyCollections".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::Unknown,
+                initial: crate::ast::Expr::Array(vec![]),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(!code.contains("fn state_snapshot"), "should not emit override: {}", code);
+    }
+
+    /// Plan 371 Task 22b: a component that has a registered store composable
+    /// must recurse into `self.store.state_snapshot()` with a `store.` prefix,
+    /// so child/store state is visible to the rust-mode autoui_state tool.
+    #[test]
+    fn test_state_snapshot_recurses_into_store() {
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "search".to_string(),
+                type_info: Type::StrFixed(0),
+                initial: crate::ast::Expr::Str("x".into()),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        // Register a store composable (as rust_ui.rs does before generating).
+        gen.register_store("store", "NotesStore");
+        let code = gen.generate(&widget).unwrap();
+
+        // The override recurses into the store field with a "store." prefix.
+        assert!(
+            code.contains("self.store.state_snapshot()"),
+            "missing store recursion: {}",
+            code
+        );
+        assert!(
+            code.contains(r#""store""#) && code.contains("format!("),
+            "missing store. prefix formatting: {}",
+            code
+        );
+        // The store struct itself should NOT recurse into a `store` field
+        // (avoid NotesStore { store: NotesStore } infinite recursion).
+        let store_widget = AuraWidget {
+            name: "NotesStore".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "dark_mode".to_string(),
+                type_info: Type::Bool,
+                initial: crate::ast::Expr::Bool(false),
+                decorators: vec![],
+            }],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+        let store_code = gen.generate(&store_widget).unwrap();
+        assert!(
+            !store_code.contains("self.store.state_snapshot()"),
+            "store struct must not recurse into itself: {}",
+            store_code
+        );
     }
 
     #[test]

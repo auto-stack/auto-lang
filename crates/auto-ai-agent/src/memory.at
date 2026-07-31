@@ -17,6 +17,9 @@ use wire: Message
 /// "Turns" are counted as user+assistant message pairs (a tool round-trip is
 /// two messages but counts as one turn). [Memory.trim] enforces the limit,
 /// always preserving leading system messages.
+// Explicit derive (no PartialEq): wire::Message is a foreign type that doesn't
+// impl PartialEq, so the auto `#[derive(Clone, Debug, PartialEq)]` fails (E0369).
+#[derive(Clone, Debug)]
 pub type Memory {
     messages List<Message>
     limit ?uint
@@ -30,10 +33,17 @@ ext Memory {
 
     /// Append a message built from role + plain text.
     pub mut fn add(role str, content str) void {
-        is role {
-            "assistant" -> self.add_message(Message.assistant(content)),
-            "system" -> self.add_message(Message.system(content)),
-            else -> self.add_message(Message.user(content))
+        // Use == comparisons (not `is role { "x" -> ... }`): a2r renders a str
+        // match as `role.as_str()`, which hits the unstable `str_as_str` feature
+        // when `role` is already `&str`.
+        if role == "assistant" {
+            self.add_message(Message.assistant(content))
+        } else {
+            if role == "system" {
+                self.add_message(Message.system(content))
+            } else {
+                self.add_message(Message.user(content))
+            }
         }
     }
 
@@ -41,7 +51,7 @@ ext Memory {
     /// blocks that aren't plain text).
     pub mut fn add_message(msg Message) void {
         self.messages.push(msg)
-        let _ = self.trim()
+        self.trim()
     }
 
     /// Pre-load a sequence of (role, content) turns from a prior conversation.
@@ -49,7 +59,8 @@ ext Memory {
     /// (Plan 008.)
     pub mut fn extend_pairs(pairs List<(str, str)>) void {
         for pair in pairs {
-            self.add(pair.0, pair.1)
+            // pair.0 / pair.1 are owned String; add() takes &str.
+            self.add(pair[0].as_str(), pair[1].as_str())
         }
     }
 
@@ -100,11 +111,18 @@ ext Memory {
         if self.limit.is_none() {
             return
         }
-        let limit = self.limit ?? 0
+        // Extract the limit as an owned u32. `let limit = self.limit ?? 0` was
+        // annotated by a2r as Option<u32> (the `??` didn't collapse the Option),
+        // breaking the later `limit == 0` and `(limit ?? 0) * 2u`.
+        var limit uint = 0
+        is self.limit.clone() {
+            Some(n) -> limit = n,
+            None -> {}
+        }
         if limit == 0 {
             // Keep only system messages.
             var kept List<Message> = []
-            for m in self.messages {
+            for m in self.messages.clone() {
                 if m.role == "system" {
                     kept.push(m)
                 }
@@ -113,7 +131,7 @@ ext Memory {
             return
         }
         // Count non-system messages; if over 2*limit, drop oldest unit(s).
-        let max_non_system = limit * 2
+        let max_non_system = limit * 2u
         for self.non_system_count() > max_non_system {
             // Find the start of the oldest non-system conversation unit.
             let start = self.first_non_system_index()

@@ -35,6 +35,7 @@ ext ToolError {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// The unified error type for the agent layer.
+#[derive(Debug)]
 pub enum AgentError {
     /// Propagated from the Layer-2 LLM client.
     Client(ClientError)

@@ -129,10 +129,18 @@ ext BudgetTracker {
         if self.per_step.contains(step) == false {
             self.per_step_names.push(step.to_string())
             self.per_step.set(step, total)
-        } else {
-            let prev = self.per_step.get(step) ?? 0
-            self.per_step.set(step, prev + total)
+            // `return` so .set() (→ HashMap::insert, returns Option) isn't the
+            // if-branch's tail expression — a void fn can't yield Option<u32>.
+            return
         }
+        // self.per_step.get(step) returns Option<&u32>; destructure + .clone()
+        // for an owned u32 (a bare `?? 0` was typed i32 and 0 wasn't &u32).
+        var prev uint = 0
+        is self.per_step.get(step) {
+            Some(n) -> prev = n.clone(),
+            None -> {}
+        }
+        self.per_step.set(step.to_string(), prev + total)
     }
 
     /// Check whether current spend triggers any budget action.

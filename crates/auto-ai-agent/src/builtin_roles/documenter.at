@@ -11,7 +11,7 @@ const SOUL = "Soul of the Documenter"
 
 pub type Documenter has Role {
     pub fn name() str { return "documenter" }
-    pub fn system_prompt() str { return SOUL }
+    pub fn system_prompt() str { return SOUL.to_string() }
     pub fn model_tier() ModelTier { return ModelTier.Pro }
     pub fn temperature() float { return 0.4 }
     pub fn max_turns() uint { return 40 }

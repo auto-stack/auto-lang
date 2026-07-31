@@ -9074,25 +9074,38 @@ export default {
           foreground: "hsl(var(--card-foreground))",
         },
       },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
-      keyframes: {
-        "accordion-down": {
-          from: { height: 0 },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: 0 },
-        },
-      },
-      animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-      },
+	      borderRadius: {
+	        lg: "var(--radius)",
+	        md: "calc(var(--radius) - 2px)",
+	        sm: "calc(var(--radius) - 4px)",
+	      },
+	      keyframes: {
+	        "accordion-down": {
+	          from: { height: 0 },
+	          to: { height: "var(--radix-accordion-content-height)" },
+	        },
+	        "accordion-up": {
+	          from: { height: "var(--radix-accordion-content-height)" },
+	          to: { height: 0 },
+	        },
+	        "collapsible-down": {
+	          from: { height: 0, opacity: 0 },
+	          to: { height: "var(--radix-collapsible-content-height)", opacity: 1 },
+	        },
+	        "collapsible-up": {
+	          from: { height: "var(--radix-collapsible-content-height)", opacity: 1 },
+	          to: { height: 0, opacity: 0 },
+	        },
+	      },
+	      animation: {
+	        "accordion-down": "accordion-down 0.2s ease-out",
+	        "accordion-up": "accordion-up 0.2s ease-out",
+	        "collapsible-down": "collapsible-down 0.2s ease-out",
+	        "collapsible-up": "collapsible-up 0.2s ease-out",
+	      },
+	      boxShadow: {
+	        "card": "var(--card-shadow)",
+	      },
     },
   },
   plugins: [require("tailwindcss-animate")],
@@ -9111,9 +9124,9 @@ export function cn(...inputs: ClassValue[]) {
 "#.to_string()
     }
 
-    /// Generate base CSS file with CSS variables
-    pub fn generate_base_css() -> String {
-        r#"@tailwind base;
+	    /// Generate base CSS file with CSS variables
+	    pub fn generate_base_css() -> String {
+	        r#"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -9139,14 +9152,17 @@ export function cn(...inputs: ClassValue[]) {
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* Plan 360: card shadows — deeper in dark mode */
+    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 222.2 47% 7%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 222.2 47% 9%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 222.2 47% 9%;
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
@@ -9161,6 +9177,16 @@ export function cn(...inputs: ClassValue[]) {
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* Plan 360: deeper shadows in dark mode for visual depth */
+    --card-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  }
+}
+
+/* Plan 360: custom card shadow utility */
+@layer utilities {
+  .shadow-card {
+    box-shadow: var(--card-shadow);
   }
 }
 
@@ -9170,6 +9196,8 @@ export function cn(...inputs: ClassValue[]) {
   }
   body {
     @apply bg-background text-foreground;
+    /* Plan 360: smooth dark mode transitions */
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 "#.to_string()

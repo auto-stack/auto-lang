@@ -38,14 +38,18 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 235-a2vue | a2vue Transpiler Gaps | Complete | ts_adapter fixes + storage/event/json/math/date/router builtins for comprehensive Vue generation |
 | 238 | Charts Replica | Complete | area/bar/line/donut chart registry with prop mapping for shadcn-vue charts |
 | 356 | Vue Generator OOM / Recursion Fix | Complete | Parser OOM (reserved-kw loop var) + ident.field iterable + soft-kw in conditions; full 015-notes sidebar regenerates |
+| 360 | 015-notes UI 现代化 + 主题色切换 | Planned | Cardification + 5-color accent theming with localStorage; 5 implementation phases, 8 acceptance criteria |
+| 361 | 生成器加固 — Validators + Path Convergence | Complete | Post-generation SFC validators (R001-R007), single-entry generate_component_from_file, 13 playwright smoke tests |
+| 363 | AutoUI Generation Skill | Planned | Pre-generation knowledge encoding (contracts+patterns), wizard CLI tool, test skeleton auto-generation |
+| 365 | AutoUI Pluggable Host Architecture | Planned | One app core (VTree), three hosts: dev (Windows), libcosmic (COSMIC), AutoOS (deferred); system port mocks for Windows |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356 (15 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356, 361 (16 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
-**Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181 (10 plans not yet started or early stage)
+**Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181, 360, 363, 365 (13 plans not yet started or early stage)
 
 ## Design
 
@@ -145,3 +149,7 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [235-a2vue-transpiler-gaps.md](../plans/old/235-a2vue-transpiler-gaps.md)
 - [238-shadcn-vue-charts-replica.md](../plans/old/238-shadcn-vue-charts-replica.md)
 - [356-vue-generator-oom-recursion-fix.md](../plans/old/356-vue-generator-oom-recursion-fix.md)
+- [360-notes-ui-redesign-and-accent-theming.md](../plans/360-notes-ui-redesign-and-accent-theming.md)
+- [361-short-term-generator-hardening.md](../plans/archive/361-short-term-generator-hardening.md)
+- [363-autoui-generation-skill.md](../plans/363-autoui-generation-skill.md)
+- [365-autoui-pluggable-host-architecture.md](../plans/365-autoui-pluggable-host-architecture.md)

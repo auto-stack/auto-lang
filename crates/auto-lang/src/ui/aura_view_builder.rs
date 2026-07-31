@@ -2588,8 +2588,13 @@ impl<'a> AuraViewBuilder<'a> {
     /// Extract a string property with loop variable bindings support.
     /// Extract text content from child nodes (for elements like button whose
     /// label comes from inner `text` children rather than a primary prop).
-    /// Walks children, resolving each text element's "text"/literal content
-    /// with the given bindings, and joins them. Returns None if no text found.
+    /// Walks children recursively, resolving each text element's "text"/literal
+    /// content with the given bindings, and joins them with newlines. Returns
+    /// None if no text found. Recurses into container elements (row/col/etc.)
+    /// so that a button like:
+    ///   button { row { text note.title } text note.time }
+    /// yields "Welcome\nJust now" (newline-separated), so the iced renderer
+    /// can render title and time on separate lines with different styling.
     fn extract_children_text(&self, children: &[AuraNode], bindings: &Bindings) -> Option<String> {
         let parts: Vec<String> = children.iter().filter_map(|c| match c {
             AuraNode::Element { tag, props, .. }
@@ -2598,13 +2603,19 @@ impl<'a> AuraViewBuilder<'a> {
                 self.extract_string_with(props, "text", bindings)
                     .or_else(|| self.extract_string_with(props, "label", bindings))
             }
+            AuraNode::Element { tag, children, .. }
+                if matches!(tag.as_str(), "row" | "col" | "column" | "container" | "scrollable" | "grid") =>
+            {
+                // Recurse into layout containers to find nested text.
+                self.extract_children_text(children, bindings)
+            }
             AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
             AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
                 Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
             }
             _ => None,
         }).collect();
-        if parts.is_empty() { None } else { Some(parts.join(" ")) }
+        if parts.is_empty() { None } else { Some(parts.join("\n")) }
     }
 
     fn extract_string_with(
