@@ -105,6 +105,13 @@ pub struct RustTrans {
     // the inner value is cloned, not the Box wrapper.
     bridge_pattern_bound_idents: HashSet<AutoStr>,
 
+    // Plan 380: identifiers bound from `Some(x)` / `Ok(x)` is-patterns whose
+    // scrutinee returns Option<Spec>/Result<Spec> (e.g. `is load_builtin(n) {
+    // Some(prof) }` binds `prof: Box<dyn Role>`). Auto-cloning such an ident
+    // at a call site is E0599 (`Box<dyn Trait>` has no Clone impl), so the
+    // call-site auto-clone skips these — the value is moved instead.
+    spec_bound_idents: HashSet<AutoStr>,
+
     // Plan 310 Phase 0.2: Cache for union type names (to rewrite construction
     // and field-access into safe accessor methods, since Rust union fields
     // require `unsafe`).
@@ -265,6 +272,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
+            spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -327,6 +335,7 @@ impl RustTrans {
             tag_types: HashSet::new(),
             local_struct_types: HashSet::new(),
             bridge_pattern_bound_idents: HashSet::new(),
+            spec_bound_idents: HashSet::new(),
             union_types: HashSet::new(),
             warnings: Vec::new(),
             escape_results: HashMap::new(),
@@ -382,6 +391,12 @@ impl RustTrans {
     /// Mutable access to the struct_fields cache
     pub fn struct_fields_mut(&mut self) -> &mut HashMap<AutoStr, Vec<AutoStr>> {
         &mut self.struct_fields
+    }
+
+    /// Mutable access to the fn_ret_types cache (for cross-module / sibling
+    /// pre-population from the CLI single-file path).
+    pub fn fn_ret_types_mut(&mut self) -> &mut HashMap<AutoStr, Type> {
+        &mut self.fn_ret_types
     }
 
     /// Mutable access to the spec_decls cache (plan 371 defect A: lets callers
@@ -4326,7 +4341,11 @@ impl RustTrans {
                         // Auto-borrow string args for pattern-matching methods
                         if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                write!(out, "&")?;
+                                // Plan 380: char/&str literals are already valid
+                                // Patterns — `&'"'` would be `&char` (E0277).
+                                let already_pattern = matches!(arg,
+                                    Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
+                                if !already_pattern { write!(out, "&")?; }
                                 self.arg(arg, out)?;
                                 if i < call.args.args.len() - 1 {
                                     write!(out, ", ")?;
@@ -4345,8 +4364,15 @@ impl RustTrans {
                             write!(out, " as i32")?;
                         }
                         // trim/trim_start/trim_end return &str, auto-convert to String
+                        // Plan 380: skip when the callee `trim` returns void
+                        // (e.g. Memory.trim() — `.to_string()` on `()` is E0599).
                         if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                            write!(out, ".to_string()")?;
+                            let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                                .map(|t| matches!(t, Type::Void))
+                                .unwrap_or(false);
+                            if !trim_ret_is_void {
+                                write!(out, ".to_string()")?;
+                            }
                         }
                         return Ok(());
                     }
@@ -4725,6 +4751,18 @@ impl RustTrans {
                     // For non-string types (e.g., Map), fall through to method remap
                 }
                 "ends_with" => {
+                    // Plan 380: char/&str literal args are valid str Patterns —
+                    // use the native `obj.ends_with(arg)` (a2r_std::str_ends_with
+                    // takes only &str — a char arg is E0308).
+                    if call.args.args.len() == 1
+                        && matches!(call.args.args[0],
+                            Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_))) {
+                        self.expr(object, out)?;
+                        write!(out, ".ends_with(")?;
+                        self.arg(&call.args.args[0], out)?;
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     // s.ends_with(suffix) -> a2r_std::str_ends_with(&s, &suffix) returns i32
                     self.a2r_std_used.set(true); write!(out, "a2r_std::str_ends_with(")?;
                     self.expr_as_str(object, out)?;
@@ -5490,7 +5528,9 @@ impl RustTrans {
                         // Note: local_var_types has StrSlice for ALL str vars (params AND locals),
                         // but only fn params declared as `str` are truly &str in Rust.
                         // Local vars of type str are String in Rust and still need &.
-                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_)))
+                        // Plan 380: char/&str literals are already valid Patterns —
+                        // `&'"'` would be `&char` (E0277).
+                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_) | Expr::Char(_)))
                             || if let Arg::Pos(Expr::Ident(name)) = arg {
                                 self.current_fn_str_params.contains(name)
                             } else { false };
@@ -5583,8 +5623,16 @@ impl RustTrans {
                     write!(out, " as i32)")?;
                 }
                 // trim/trim_start/trim_end return &str, auto-convert to String
+                // Plan 380: skip when the callee `trim` returns void (a struct
+                // method named trim, e.g. Memory.trim() — `.to_string()` on `()`
+                // is E0599).
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                    write!(out, ".to_string()")?;
+                    let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                        .map(|t| matches!(t, Type::Void))
+                        .unwrap_or(false);
+                    if !trim_ret_is_void {
+                        write!(out, ".to_string()")?;
+                    }
                 }
                 // split returns iterator in Rust, collect into Vec so .len()/.get() work.
                 // If the Auto source needs raw iterator semantics, it should use split() without
@@ -6456,7 +6504,13 @@ impl RustTrans {
             } else { false };
             let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
                 && !is_sb_param
-                && matches!(arg, Arg::Pos(Expr::Ident(_)));
+                && matches!(arg, Arg::Pos(Expr::Ident(_)))
+                // Plan 380: spec-bound idents (`Some(prof)` from an Option<Spec>
+                // scrutinee) are `Box<dyn Trait>` — no Clone impl (E0599).
+                // Pass them by value (move) instead.
+                && !(if let Arg::Pos(Expr::Ident(name)) = arg {
+                    self.spec_bound_idents.contains(name)
+                } else { false });
 
             // Auto-box when passing a value to a function that takes a spec param
             let is_spec_param = spec_flags.as_ref()
@@ -6495,9 +6549,22 @@ impl RustTrans {
                 // Box, yielding T. (Plan 013 B16.)
                 write!(out, "*(*{}).clone()", Self::rust_ident(name.as_str()))?;
             } else {
-                self.arg(arg, out)?;
-                if needs_clone {
-                    write!(out, ".clone()")?;
+                // Plan 380: when passing a trim*() call (which the expr handler
+                // renders with a trailing .to_string()) to a `&str` param, emit
+                // via expr_as_str so the suffix is stripped — trim() already
+                // returns &str (`clean_field_value(r.trim())` → E0308 String).
+                let trim_arg = if let Arg::Pos(expr) = arg {
+                    Self::is_trim_method_call(expr)
+                } else { false };
+                if is_str_param && trim_arg {
+                    if let Arg::Pos(expr) = arg {
+                        self.expr_as_str(expr, out)?;
+                    }
+                } else {
+                    self.arg(arg, out)?;
+                    if needs_clone {
+                        write!(out, ".clone()")?;
+                    }
                 }
             }
 
@@ -6514,7 +6581,16 @@ impl RustTrans {
                     .unwrap_or(false)
             } else { false };
             let arg_is_str_literal = matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
-            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal {
+            // Plan 380: only add .as_str() for plain String-typed locals or
+            // string-concat exprs. Method-call results (trim(), to_str().unwrap(),
+            // ...) and char literals must NOT get .as_str() — they're already
+            // &str or char (E0658 str_as_str / E0599 char.as_str).
+            let arg_is_ident = matches!(arg, Arg::Pos(Expr::Ident(_)));
+            let arg_is_concat = if let Arg::Pos(expr) = arg {
+                self.expr_contains_string(expr)
+            } else { false };
+            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
+                && (arg_is_ident || arg_is_concat) {
                 write!(out, ".as_str()")?;
             }
 
@@ -6850,6 +6926,9 @@ impl RustTrans {
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false,
             Expr::Int(_) | Expr::Float(_, _) => false,
+            // Plan 380: char literals are valid str Patterns — never .as_str()
+            // (char has no as_str — E0599).
+            Expr::Char(_) => false,
             // Plan 368 R-AREG: Dot access that returns &str
             Expr::Dot(_, field) => {
                 let f = field.as_str();
@@ -6880,18 +6959,25 @@ impl RustTrans {
         }
     }
 
+    /// True when `expr` is a call to a str-returning trim-like method
+    /// (trim/trim_start/trim_end/trim_matches) or an explicit .as_str().
+    fn is_trim_method_call(expr: &Expr) -> bool {
+        if let Expr::Call(call) = expr {
+            if let Expr::Dot(_, m) = call.name.as_ref() {
+                let f = m.as_str();
+                return f == "trim" || f == "trim_start" || f == "trim_end"
+                    || f == "trim_matches" || f == "as_str";
+            }
+        }
+        false
+    }
+
     /// Emit an expression with .as_str() appended if needed for &str parameter.
     fn expr_as_str(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         // Plan 368 R-AREG: For trim* methods, expr() appends .to_string() which
         // makes it String. But we need &str here, so render to a temp buffer,
         // strip the .to_string() suffix, and write the base (which is already &str).
-        let is_trim_method = if let Expr::Call(call) = expr {
-            if let Expr::Dot(_, m) = call.name.as_ref() {
-                let f = m.as_str();
-                f == "trim" || f == "trim_start" || f == "trim_end"
-                || f == "trim_matches" || f == "as_str"
-            } else { false }
-        } else { false };
+        let is_trim_method = Self::is_trim_method_call(expr);
         if is_trim_method {
             let mut buf: Vec<u8> = Vec::new();
             self.expr(expr, &mut buf)?;
@@ -7180,6 +7266,11 @@ impl RustTrans {
 
             Stmt::Is(is_stmt) => {
                 self.is_stmt(is_stmt, sink)?;
+                // Statement-position `is` is a `match` block; if its arms
+                // end in a value-bearing expression (e.g. map.insert(...)
+                // returning Option), the match's type isn't `()` → E0308.
+                // A trailing `;` discards the value, making it a unit stmt.
+                sink.body.write(b";")?;
                 Ok(true)
             }
 
@@ -8457,6 +8548,55 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Plan 380: true when an `is`-match scrutinee is a call whose `Some(x)`
+    /// binding is `&str` (strip_prefix / strip_suffix / to_str → Option<&str>).
+    /// Used to record bound vars as StrSlice so call-site auto-borrows don't
+    /// append `.as_str()` (E0658 str_as_str).
+    fn is_str_returning_scrutinee(target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            let m = match call.name.as_ref() {
+                Expr::Dot(_, method) => Some(method.as_str()),
+                Expr::Ident(n) => Some(n.as_str()),
+                _ => None,
+            };
+            matches!(m, Some("strip_prefix") | Some("strip_suffix") | Some("to_str"))
+        } else {
+            false
+        }
+    }
+
+    /// True when the is-scrutinee resolves to `Option<Spec>` / `Result<Spec>`
+    /// (or a bare `Spec`) — `Some(x)` then binds `x` to a `Box<dyn Trait>`,
+    /// which has no Clone impl (call-site auto-clone would be E0599).
+    fn is_spec_returning_scrutinee(&self, target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            let name = match call.name.as_ref() {
+                Expr::Ident(n) => Some(n.as_str().to_string()),
+                Expr::Dot(_, m) => Some(m.as_str().to_string()),
+                _ => None,
+            };
+            if let Some(n) = name {
+                return self.fn_ret_types.get(n.as_str()).map(|t| {
+                    match t {
+                        Type::Spec(_) => true,
+                        Type::Option(inner) | Type::Result(inner) => {
+                            matches!(inner.as_ref(), Type::Spec(_))
+                                // Plan 380: on the single-file CLI path a
+                                // cross-module spec can be typed `User(Role)`
+                                // (spec_decls knows it's a spec) rather than
+                                // `Spec(Role)`.
+                                || (if let Type::User(usr) = inner.as_ref() {
+                                    self.spec_decls.contains_key(&usr.name)
+                                } else { false })
+                        }
+                        _ => false,
+                    }
+                }).unwrap_or(false);
+            }
+        }
+        false
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"match ")?;
 
@@ -8473,9 +8613,23 @@ impl RustTrans {
         let is_self_field = Self::is_self_dot(&is_stmt.target);
 
         if has_str_pattern {
-            // Use match target.as_str() to allow &str patterns against String
+            // Use match target.as_str() to allow &str patterns against String —
+            // but NOT when the target is already `&str` (a str param / StrSlice
+            // local): `.as_str()` on `&str` is E0658 (str_as_str, unstable).
+            // e.g. `match name.as_str()` where `name: &str` (load_builtin).
             self.expr(&is_stmt.target, &mut sink.body)?;
-            sink.body.write(b".as_str()")?;
+            let target_is_str = match &is_stmt.target {
+                Expr::Ident(name) => {
+                    self.current_fn_str_params.contains(name)
+                        || self.local_var_types.get(name)
+                            .map(|t| matches!(t, Type::StrSlice))
+                            .unwrap_or(false)
+                }
+                _ => false,
+            };
+            if !target_is_str {
+                sink.body.write(b".as_str()")?;
+            }
         } else if is_self_field {
             // self.field needs .clone() to avoid move in &self methods
             self.expr(&is_stmt.target, &mut sink.body)?;
@@ -8497,6 +8651,21 @@ impl RustTrans {
                         // In match patterns, Some(ident) binds by value (Auto semantics)
                         if let Expr::Some(inner) = pat {
                             sink.body.write(b"Some(")?;
+                            // Plan 380: `Some(x)` binding from an &str-returning
+                            // scrutinee (strip_prefix / to_str / …) is `&str` —
+                            // record so call-site auto-borrow doesn't append
+                            // `.as_str()` (E0658 str_as_str).
+                            if let Expr::Ident(binding) = inner.as_ref() {
+                                if Self::is_str_returning_scrutinee(&is_stmt.target) {
+                                    self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                }
+                                // Plan 380: `Some(x)` from an Option<Spec>
+                                // scrutinee binds a Box<dyn Trait> — record so
+                                // call-site auto-clone skips it (E0599).
+                                if self.is_spec_returning_scrutinee(&is_stmt.target) {
+                                    self.spec_bound_idents.insert(binding.clone());
+                                }
+                            }
                             self.expr(inner, &mut sink.body)?;
                             sink.body.write(b")")?;
                         } else if let Expr::Call(call) = pat {
@@ -8532,6 +8701,20 @@ impl RustTrans {
                                     sink.body.write(b"Some(")?;
                                     if let Some(binding) = &oc.binding {
                                         sink.body.write(binding.as_bytes())?;
+                                        // Plan 380: a `Some(x)` binding from an
+                                        // &str-returning scrutinee (strip_prefix /
+                                        // to_str / …) is `&str` — record it so the
+                                        // call-site auto-borrow doesn't append
+                                        // `.as_str()` (E0658 str_as_str).
+                                        if Self::is_str_returning_scrutinee(&is_stmt.target) {
+                                            self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                        }
+                                        // Plan 380: Option<Spec> scrutinee → the
+                                        // binding is a Box<dyn Trait>; skip
+                                        // call-site auto-clone (E0599).
+                                        if self.is_spec_returning_scrutinee(&is_stmt.target) {
+                                            self.spec_bound_idents.insert(binding.clone());
+                                        }
                                     }
                                     sink.body.write(b")")?;
                                 }
@@ -10340,6 +10523,17 @@ impl RustTrans {
         // Cache spec methods for later use in impl Trait for Type
         self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
 
+        // Plan 380: async spec methods (~Result / Future) need #[async_trait]
+        // on the TRAIT declaration too — a bare `-> Future<...>` return type in
+        // a trait is E0782. Plan 373 G2 only annotated the impl blocks.
+        let has_async_method = spec_decl.methods.iter().any(|m| {
+            matches!(&m.ret, Type::Result(_)) ||
+            matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+        });
+        if has_async_method {
+            write!(sink.body, "#[async_trait::async_trait]\n")?;
+        }
+
         // Plan 163: Output pub prefix
         if spec_decl.is_pub {
             write!(sink.body, "pub ")?;
@@ -10369,7 +10563,16 @@ impl RustTrans {
         self.indent();
 
         for method in &spec_decl.methods {
+            // Plan 380: async spec methods emit `async fn` (mirrors fn_decl).
+            // With `#[async_trait]` (added above when any method is async), a
+            // bare `-> Future<...>` in the trait would be E0782 — async_trait
+            // rewrites `async fn -> Result<...>` into the boxed-Future form.
+            let method_is_async = matches!(&method.ret, Type::Result(_))
+                || matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
             self.print_indent(&mut sink.body)?;
+            if method_is_async {
+                write!(sink.body, "async ")?;
+            }
             write!(sink.body, "fn {}(&self", method.name)?;
 
             // Parameters (skip self which is already added as &self)
@@ -10385,7 +10588,18 @@ impl RustTrans {
             // Return type — use rust_return_type_name for correct str→String mapping
             // Plan 204 Phase 4: !T (Type::Result) → Result<T, String>
             if !matches!(method.ret, Type::Void) {
-                write!(sink.body, ") -> {}", self.rust_return_type_name(&method.ret))?;
+                let ret_str = if method_is_async {
+                    match &method.ret {
+                        // ~Result / Future<Result<...>> → Result<...> for `async fn`
+                        Type::GenericInstance(inst) if inst.base_name == "Future" => {
+                            self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                        }
+                        other => self.rust_return_type_name(other),
+                    }
+                } else {
+                    self.rust_return_type_name(&method.ret)
+                };
+                write!(sink.body, ") -> {}", ret_str)?;
             } else {
                 write!(sink.body, ")")?;
             }
@@ -11280,6 +11494,11 @@ impl RustTrans {
         // B16: Add `mut` to let bindings that are later reassigned
         Self::fix_mutable_bindings(&mut content);
 
+        // B16b: Add `mut` to fn params that are mutated in the body
+        // (a2r only handles `let` locals; Rust params default to immutable →
+        // E0596 for e.g. `fn f(seen: HashMap, names: Vec) { seen.insert(..); }`).
+        Self::fix_mutable_params(&mut content);
+
         // B17: Fix return None; in void functions → return;
         Self::fix_void_return_none(&mut content);
 
@@ -12101,6 +12320,143 @@ impl RustTrans {
         *content = new_lines.join("\n");
     }
 
+    /// B16b: Add `mut` to fn params that are mutated inside the body.
+    ///
+    /// a2r's `fix_mutable_bindings` only covers `let` locals; Rust fn params
+    /// are immutable bindings, so mutating a param (e.g. `seen.insert(..)`,
+    /// `names.push(..)`, `param.field = x`) is E0596. Detect mutated params
+    /// and prefix the declaration with `mut `.
+    fn fix_mutable_params(content: &mut String) {
+        let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear",
+            "extend", "truncate", "retain", "sort", "reverse", "dedup", "swap",
+            "splice", "drain", "append", "resize", "set", "update", "merge"];
+        let lines: Vec<&str> = content.lines().collect();
+        let mut result: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let sig = line.trim();
+            let is_sig = sig.starts_with("pub fn ") || sig.starts_with("pub async fn ")
+                || sig.starts_with("async fn ") || sig.starts_with("fn ")
+                || sig.starts_with("pub(crate) fn ") || sig.starts_with("unsafe fn ");
+            if !is_sig { continue; }
+
+            let open = match line.find('(') { Some(p) => p, None => continue };
+            // ')' that precedes the return arrow / body — params span
+            // (..) up to the first ')'; a2r emits one-line signatures so
+            // rfind(')') is safe unless an arrow type contains ')'. Prefer
+            // the first ')' that is followed (after whitespace) by "->" or "{".
+            let rest = &line[open + 1..];
+            let close = rest.find(')');
+            let close = match close { Some(c) => open + 1 + c, None => continue };
+
+            // Split params at depth-0 commas.
+            let params_str = &line[open + 1..close];
+            let mut params: Vec<&str> = Vec::new();
+            let mut depth = 0i32;
+            let mut cur_start = 0usize;
+            for (k, ch) in params_str.char_indices() {
+                match ch {
+                    '<' | '[' | '(' => depth += 1,
+                    '>' | ']' | ')' => depth -= 1,
+                    ',' if depth == 0 => {
+                        let p = params_str[cur_start..k].trim();
+                        if !p.is_empty() { params.push(p); }
+                        cur_start = k + 1;
+                    }
+                    _ => {}
+                }
+            }
+            let last_p = params_str[cur_start..].trim();
+            if !last_p.is_empty() { params.push(last_p); }
+
+            // Locate the end of the body via brace balance. i64 so lines with
+            // more `}` than `{` (block closes) can't underflow. Trait/impl
+            // method DECLARATIONS without a body (`fn name(&self) -> String;`)
+            // have no `{` — skip them entirely.
+            if !line.contains('{') { continue; }
+            let mut brace: i64 = line.bytes().filter(|b| *b == b'{').count() as i64
+                - line.bytes().filter(|b| *b == b'}').count() as i64;
+            let mut j = i;
+            while brace > 0 && j + 1 < lines.len() {
+                j += 1;
+                brace += lines[j].bytes().filter(|b| *b == b'{').count() as i64;
+                brace -= lines[j].bytes().filter(|b| *b == b'}').count() as i64;
+            }
+            // One-liner (`fn f(mut_me: Vec<String>) { mut_me.push(x); }`) has
+            // brace 0 → body is just the signature line; otherwise the lines
+            // between the sig and the balanced `}`.
+            let body = if j > i {
+                &lines[i + 1..=j.min(lines.len() - 1)]
+            } else {
+                &lines[i..=i]
+            };
+
+            // For each plain `name: Type` param, check for mutation in body.
+            let mut mutated: Vec<String> = Vec::new();
+            for p in params {
+                // Skip receiver forms (&self / &mut self / self) and bindings
+                // without a type annotation (e.g. `_`, `mut x`? a2r never
+                // emits `mut` on params, so only plain forms appear).
+                let name = match p.split_once(':') {
+                    Some((n, _)) => n.trim().to_string(),
+                    None => continue,
+                };
+                let name = name.trim_start_matches("&").trim_start_matches("mut ").trim().to_string();
+                if name.is_empty() || name == "self" { continue; }
+
+                let mut is_mut = false;
+                for bl in body {
+                    let fl = bl.trim();
+                    // name.push/insert/... (mutating method calls)
+                    for m in mut_methods {
+                        let pat = format!(r"\b{}\.{}\s*\(", name, m);
+                        if let Some(re) = cached_regex(&pat) {
+                            if re.is_match(fl) { is_mut = true; break; }
+                        }
+                    }
+                    if is_mut { break; }
+                    // name.field = ... (field assignment through the param)
+                    let field_assign = format!(r"\b{}\.\w+\s*=", name);
+                    if let Some(re) = cached_regex(&field_assign) {
+                        if re.is_match(fl) { is_mut = true; break; }
+                    }
+                    // name[idx] = ... (indexed assignment)
+                    let idx_assign = format!(r"\b{}\[[^\]]*\]\s*=", name);
+                    if let Some(re) = cached_regex(&idx_assign) {
+                        if re.is_match(fl) { is_mut = true; break; }
+                    }
+                    // name = ... (direct reassignment; exclude == and `let name`)
+                    let direct = format!(r"\b{}\s*=[^=]", name);
+                    if let Some(re) = cached_regex(&direct) {
+                        if re.is_match(fl) && !fl.starts_with("let ") {
+                            is_mut = true; break;
+                        }
+                    }
+                }
+                if is_mut { mutated.push(name); }
+            }
+
+            if mutated.is_empty() { continue; }
+            // Rewrite the params span: `name: Type` → `mut name: Type`.
+            let mut new_params = params_str.to_string();
+            for name in &mutated {
+                let marker = format!("{}:", name);
+                let marker_mut = format!("mut {}:", name);
+                if let Some(pos) = new_params.find(&marker) {
+                    // Only replace if not already `mut `-prefixed.
+                    let before = &new_params[..pos];
+                    if !before.ends_with("mut ") {
+                        new_params = new_params.replacen(&marker, &marker_mut, 1);
+                    }
+                }
+            }
+            result[i] = format!("{}{}{}", &line[..open + 1], new_params, &line[close..]);
+        }
+
+        let joined = result.join("\n");
+        if joined != *content { *content = joined; }
+    }
+
     /// Fix `return None;` in void (unit-return) functions → `return;`.
     /// Auto's `return` in void functions is parsed as `Return(Nil)` → transpiled as `return None;`
     /// but Rust void functions need plain `return;`.
@@ -12710,12 +13066,19 @@ impl RustTrans {
     /// that would split a char.)
     fn fix_substring_method(content: &mut String) {
         // `IDENT.substring(a, b)` — IDENT is a simple receiver (str value).
+        // Plan 380: add a leading `&` ONLY when the slice isn't chained —
+        // `let x = s[lo..hi]` would bind an unsized `str` (E0277), while
+        // `s[lo..hi].to_string()` works without `&` (and `&s[..].to_string()`
+        // would become `&String`, E0308).
         if let Some(re) = cached_regex(r"(\w+)\.substring\(([^,)]+),\s*([^)]+)\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let m0 = caps.get(0).unwrap();
+                let after_is_dot = content.as_bytes().get(m0.end()) == Some(&b'.');
                 let recv = caps.get(1).unwrap().as_str();
                 let lo = caps.get(2).unwrap().as_str().trim();
                 let hi = caps.get(3).unwrap().as_str().trim();
-                format!("&{}[{} as usize..{} as usize]", recv, lo, hi)
+                let inner = format!("{}[{} as usize..{} as usize]", recv, lo, hi);
+                if after_is_dot { inner } else { format!("&{}", inner) }
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -12967,18 +13330,51 @@ impl RustTrans {
     /// Plan 376 Pass 3: Fix `Some(ident)` where target is Option<String>.
     /// Adds `.to_string()` to the inner value.
     fn fix_some_str_to_string(content: &mut String) {
-        // Only add .to_string() for string-like idents, NOT for numeric vars.
-        // Skip: pure numeric identifiers, bool, keywords.
+        // Add .to_string() to `self.field = Some(ident)` ONLY when the payload
+        // ident is str-typed. The field is Option<String> in that case and
+        // Rust won't coerce `Some(&str)` → `Some(String)`.
+        //
+        // Plan 380 regression: the previous version added .to_string() to ANY
+        // bare ident, which broke `Some(budget)` (Option<u32> → E0308) and
+        // `Some(handler)` (Option<fn> → E0599 Display). Only str-typed idents
+        // (fn params / locals annotated &str or String) need the conversion.
+        let mut str_idents = std::collections::HashSet::new();
+        if let Some(re) = cached_regex(r"\b(\w+):\s*&str\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+        if let Some(re) = cached_regex(r"\b(\w+):\s*String\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+        if let Some(re) = cached_regex(r"let (?:mut )?(\w+):\s*(?:&str|String)\b") {
+            for line in content.lines() {
+                for caps in re.captures_iter(line) {
+                    if let Some(m) = caps.get(1) {
+                        str_idents.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+
         let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
                 let ident = caps.get(2).unwrap().as_str();
                 let suffix = caps.get(3).unwrap().as_str();
-                // Skip numeric/bool/keyword idents
-                if ident.parse::<f64>().is_ok()
-                    || ident == "true" || ident == "false"
-                    || ident == "None" || ident == "default" {
+                // Only convert when the payload is a known str-typed ident
+                if !str_idents.contains(ident) {
                     return format!("{}{}{}", prefix, ident, suffix);
                 }
                 format!("{}{}.to_string(){}", prefix, ident, suffix)
@@ -13006,7 +13402,11 @@ impl RustTrans {
         if let Some(re) = re {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let call = caps.get(1).unwrap().as_str();
-                format!("match Ok({}) {{", call)
+                // Plan 380: the bridged read_to_string returns String (not
+                // Result), so we fake a Result with Ok(...) for the match.
+                // Annotate the error type (the Err arm is dead) — bare
+                // `Ok(x)` can't infer E (E0282).
+                format!("match Ok::<String, std::io::Error>({}) {{", call)
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -13031,7 +13431,9 @@ impl RustTrans {
                 let body = caps.get(3).unwrap().as_str();
                 let close = caps.get(4).unwrap().as_str();
                 // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
-                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
+                // (escaped \) — the unescaped form panicked with "unopened
+                // group" and silently dropped the builtin_roles module).
+                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\}\)").unwrap();
                 let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
                 format!("{}{}{}", header, new_body, close)
             }).to_string();
@@ -13324,6 +13726,16 @@ impl Trans for RustTrans {
                     .collect();
                 if !fields.is_empty() {
                     self.struct_field_types.insert(td.name.clone(), fields);
+                }
+                // Plan 380: pre-register method return types so the trim-void
+                // check (and other ret-type lookups) work regardless of
+                // declaration order — e.g. `Memory.trim() void` must suppress
+                // the str-trim `.to_string()` suffix even when a call to it
+                // appears before its declaration (E0599 `()` Display).
+                for method in &td.methods {
+                    self.fn_ret_types.insert(method.name.clone(), method.ret.clone());
+                    let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
+                    self.fn_ret_types.insert(qualified, method.ret.clone());
                 }
             }
         }
@@ -13951,6 +14363,20 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
                         if !transpiler.fn_ret_types.contains_key(&qualified) {
                             transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                        }
+                    }
+                }
+                if let Stmt::SpecDecl(spec_decl) = stmt {
+                    // Plan 380: spec methods too (e.g. builtin_roles.load_builtin
+                    // returns ?Role) — needed for the spec-bound-ident detection
+                    // in is-scrutinees (Option<Spec> → Box<dyn Trait>).
+                    for method in &spec_decl.methods {
+                        let qualified: AutoStr = format!("{}.{}", spec_decl.name, method.name).into();
+                        if !transpiler.fn_ret_types.contains_key(&qualified) {
+                            transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                        }
+                        if !transpiler.fn_ret_types.contains_key(&method.name) {
+                            transpiler.fn_ret_types.insert(method.name.clone(), method.ret.clone());
                         }
                     }
                 }

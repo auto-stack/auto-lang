@@ -29,7 +29,10 @@ use ai_config
 pub fn validate_role_model(role Role) Result<None, AgentError> {
     is load_client_config() {
         Ok(cfg) -> {
-            is ai_config.validate_model_exists(cfg.as_ref(), role.model().as_str()) {
+            // Plan 380: the bridged fn takes &ClientConfig — `cfg.view` (Auto
+            // borrow → `&cfg`). Passing `cfg` by value is E0308; `.as_ref()`
+            // doesn't exist on the struct (E0599).
+            is ai_config.validate_model_exists(cfg.view, role.model().as_str()) {
                 Ok(_) -> return Ok(None),
                 Err(msg) -> return Err(AgentError.Config(msg))
             }

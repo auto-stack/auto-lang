@@ -14,7 +14,7 @@ const SOUL: &str = "# Soul of the Translator\n\nYou translate fuzzy human intent
 /// Auto port of builtin_roles/translator.rs (auto-ai v0.4.0).
 /// Soul text (inline in the Rust original).
 /// The Translator: maps natural-language requests to precise commands.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Translator {}
 
 impl Role for Translator {

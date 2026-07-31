@@ -34,6 +34,9 @@
 
 use.rust std::sync::Arc
 use.rust std::sync::atomic::AtomicBool
+// Plan 380 (A15): `time.now_sec()` needs the a2r_std::time module bridged in
+// (E0425 `time` otherwise).
+use.rust a2r_std::time
 
 use flow: FlowSpec
 use handoff: HandoffDocument, WorkProduct
@@ -41,12 +44,19 @@ use pipeline: AdvanceResult, GateDecision, PipelineEngine
 use budget: BudgetAction
 use agent: Agent, AgentResult, StreamEvent
 use error: AgentError
+// Plan 380: `extract_path(args JsonValue)` needs the bridged JsonValue type
+// (E0425 otherwise).
+use wire: JsonValue
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DriveOutcome (drive()'s internal continue/stop signal)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// What drive() should do after dispatching one advance() result.
+/// A23: AgentError (foreign type) doesn't impl Clone/PartialEq, so the default
+/// `#[derive(Clone, Debug, PartialEq)]` a2r would add fails — opt into the
+/// conservative `#[derive(Debug)]` via an explicit attr.
+#[derive(Debug)]
 enum DriveOutcome {
     /// Loop again (e.g. gate resolved).
     Continue
@@ -169,9 +179,13 @@ ext PipelineDriver {
     /// encountered during drive(), the handler is called with the step_id to
     /// decide Approve / Reject(feedback). If no handler is set, gates are
     /// auto-approved.
-    pub fn with_gate_handler(handler fn(str) GateDecision) PipelineDriver {
+    ///
+    /// Mutates in place and returns void: PipelineDriver owns a
+    /// Box<dyn AgentFactory> (not Clone), so the chainable
+    /// `return self.clone()` form isn't expressible in Auto. (No internal
+    /// callers; apps should call this before drive().)
+    pub mut fn with_gate_handler(handler fn(str) GateDecision) void {
         self.gate_handler = Some(handler)
-        return self.clone()
     }
 
     /// Run the pipeline to completion (or until a gate/pause/failure).
@@ -183,10 +197,12 @@ ext PipelineDriver {
         var last_handoff ?HandoffDocument = None
         loop {
             let result = self.engine.advance()
-            let outcome = self.dispatch(result, task_msg, last_handoff).await
+            // dispatch consumes result + last_handoff; clone both so the
+            // Continue arm can still read them for last_handoff_after().
+            let outcome = self.dispatch(result.clone(), task_msg, last_handoff.clone()).await
             is outcome {
                 DriveOutcome.Continue -> {
-                    last_handoff = self.last_handoff_after(result.clone(), last_handoff.clone())
+                    last_handoff = self.last_handoff_after(result, last_handoff)
                 },
                 DriveOutcome.Done -> return Ok(None),
                 DriveOutcome.Fail(e) -> return Err(e)
@@ -197,10 +213,15 @@ ext PipelineDriver {
     /// Dispatch one advance() result. Drives a step to completion (submitting
     /// its handoff) and returns whether drive() should continue, terminate ok,
     /// or terminate with an error.
-    fn dispatch(result AdvanceResult, task_msg str, last_handoff ?HandoffDocument) ~DriveOutcome {
+    /// `mut fn`: calls drive_step/handle_after_submit which mutate the engine.
+    mut fn dispatch(result AdvanceResult, task_msg str, last_handoff ?HandoffDocument) ~DriveOutcome {
         is result {
             AdvanceResult.ExecuteStep(step_id, role_id) -> {
-                return self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await
+                // drive_step returns Result; map to the continue/stop signal.
+                is self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
+                    Ok(_) -> return DriveOutcome.Continue,
+                    Err(e) -> return DriveOutcome.Fail(e)
+                }
             },
             AdvanceResult.Completed -> {
                 (self.on_event)(PipelineEvent.Completed)
@@ -249,12 +270,17 @@ ext PipelineDriver {
     /// Run one ExecuteStep: build the agent, stream it, build a handoff,
     /// submit it, and handle the engine's next result. Returns Ok(None) to
     /// continue the loop, or Err/Ok to terminate drive().
-    fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<None, AgentError> {
+    /// Run one step: build the agent, run it, submit the handoff.
+    /// `mut fn` because it calls `self.engine.submit_handoff` (a2r's
+    /// auto-mutation detection only sees field assignments / known mutators).
+    mut fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<None, AgentError> {
         let started = PipelineEvent.StepStarted(step_id, role_id)
         (self.on_event)(started)
 
-        // Build the agent for this step.
-        let agent_inst = is self.factory.build_agent(role_id, last_handoff) {
+        // Build the agent for this step. (clone: build_agent consumes the
+        // handoff, but we still need it for the step input + budget warning.)
+        // `var` (let mut): run_stream takes &mut self.
+        var agent_inst = is self.factory.build_agent(role_id, last_handoff.clone()) {
             Ok(a) -> a,
             Err(msg) -> return Err(AgentError.Config(msg))
         }
@@ -268,21 +294,24 @@ ext PipelineDriver {
 
         // Build the handoff from the result + the agent's text output.
         let content = agent_result.content()
-        let handoff_doc = self.build_handoff(role_id, agent_result, content)
+        let handoff_doc = self.build_handoff(role_id, agent_result, content.as_str())
         let completed = PipelineEvent.StepCompleted(step_id, handoff_doc.clone())
         (self.on_event)(completed)
-        last_handoff = Some(handoff_doc.clone())
 
+        // Surface budget warnings (attributed to the step that just ran)
+        // BEFORE the handoff moves into submit_handoff. Note: drive() tracks
+        // last_handoff separately via last_handoff_after(), so this param's
+        // value is not mutated here.
+        emit_budget_warning(self.engine, handoff_doc.from.as_str(), self.on_event)
         // Submit to the engine — it routes to the next step.
         let submitted = self.engine.submit_handoff(handoff_doc)
-        // Surface budget warnings.
-        emit_budget_warning(self.engine, last_handoff, self.on_event)
         return self.handle_after_submit(submitted).await
     }
 
     /// Resolve a gate, honoring the optional handler (else auto-approve).
     /// Errors when the engine reports a failure resolving the gate.
-    fn resolve_gate_auto(step_id str) ~Result<None, AgentError> {
+    /// `mut fn`: calls `self.engine.resolve_gate` (mutates the engine).
+    mut fn resolve_gate_auto(step_id str) ~Result<None, AgentError> {
         let decision = is self.gate_handler {
             Some(handler) -> handler(step_id.to_string()),
             None -> GateDecision.Approve
@@ -331,7 +360,8 @@ ext PipelineDriver {
 
     /// Handle the engine's result after submitting a handoff (the second half
     /// of the ExecuteStep branch). Terminates drive() on terminal results.
-    fn handle_after_submit(next_result AdvanceResult) ~Result<None, AgentError> {
+    /// `mut fn`: calls self.resolve_gate_auto (mutates the engine).
+    mut fn handle_after_submit(next_result AdvanceResult) ~Result<None, AgentError> {
         is next_result {
             AdvanceResult.Completed -> {
                 (self.on_event)(PipelineEvent.Completed)
@@ -381,11 +411,7 @@ fn build_step_input(task_msg str, last_handoff ?HandoffDocument) str {
 }
 
 /// If the engine's budget check reports a Warning, emit a BudgetWarning event.
-fn emit_budget_warning(engine PipelineEngine, last_handoff ?HandoffDocument, on_event fn(PipelineEvent)) void {
-    let role_for_budget = is last_handoff {
-        Some(h) -> h.from,
-        None -> ""
-    }
+fn emit_budget_warning(engine PipelineEngine, role_for_budget str, on_event fn(PipelineEvent)) void {
     let action = engine.budget_tracker.check(role_for_budget)
     is action {
         BudgetAction.Warning(remaining) -> on_event(PipelineEvent.BudgetWarning(remaining)),
@@ -400,7 +426,8 @@ fn truncate_chars(s str, max uint) str {
     if end <= max {
         return s
     }
-    return s.substring(0, max)
+    // .to_string() so the substring (a &str slice) matches the str return type.
+    return s.substring(0, max).to_string()
 }
 
 /// Extract the `path` field from a tool-call args JSON value, or "?" if absent.

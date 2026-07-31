@@ -3544,25 +3544,57 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     // in lexer.at when Pos is defined in pos.at) to use actual field names
     // instead of falling back to field0/field1/field2.
     if let Some(parent) = std::path::Path::new(path).parent() {
-        if let Ok(entries) = std::fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
-                    if entry_path == std::path::Path::new(path) { continue; }
-                    if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
-                        let mut sib_parser = Parser::from(sibling_code.as_str());
-                        sib_parser.set_dest(crate::parser::CompileDest::TransRust);
-                        sib_parser.skip_check = true;
-                        if let Ok(sib_ast) = sib_parser.parse() {
-                            for stmt in &sib_ast.stmts {
-                                match stmt {
-                                    crate::ast::Stmt::TypeDecl(td) => {
-                                        let field_names: Vec<auto_val::AutoStr> = td.members.iter()
-                                            .map(|m| m.name.clone()).collect();
-                                        if !field_names.is_empty()
-                                            && !trans.struct_fields().contains_key(&td.name)
+        // Plan 380: recurse into subdirectories too (e.g. builtin_roles/mod.at
+        // defines `load_builtin` used by src/roles.at) and pre-populate
+        // fn_ret_types so the spec-bound-ident / .await heuristics see
+        // cross-module return types on the single-file CLI path.
+        let mut at_files: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack: Vec<std::path::PathBuf> = vec![parent.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let ep = entry.path();
+                    if ep.is_dir() {
+                        stack.push(ep);
+                    } else if ep.extension().map(|e| e == "at").unwrap_or(false) {
+                        at_files.push(ep);
+                    }
+                }
+            }
+        }
+        for entry_path in at_files {
+            if entry_path == std::path::Path::new(path) { continue; }
+            if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
+                let mut sib_parser = Parser::from(sibling_code.as_str());
+                sib_parser.set_dest(crate::parser::CompileDest::TransRust);
+                sib_parser.skip_check = true;
+                if let Ok(sib_ast) = sib_parser.parse() {
+                    for stmt in &sib_ast.stmts {
+                        match stmt {
+                            crate::ast::Stmt::TypeDecl(td) => {
+                                let field_names: Vec<auto_val::AutoStr> = td.members.iter()
+                                    .map(|m| m.name.clone()).collect();
+                                if !field_names.is_empty()
+                                    && !trans.struct_fields().contains_key(&td.name)
                                         {
                                             trans.struct_fields_mut().insert(td.name.clone(), field_names);
+                                        }
+                                    }
+                                    // Plan 380: pre-populate fn_ret_types from
+                                    // sibling fns (unqualified + Type.method) so
+                                    // the spec-bound-ident / .await heuristics
+                                    // work on the single-file CLI path.
+                                    crate::ast::Stmt::Fn(fd) => {
+                                        let fname: auto_val::AutoStr = fd.name.clone();
+                                        if !trans.fn_ret_types_mut().contains_key(&fname) {
+                                            trans.fn_ret_types_mut().insert(fname, fd.ret.clone());
+                                        }
+                                        if let Some(p) = &fd.parent {
+                                            let qualified: auto_val::AutoStr =
+                                                format!("{}.{}", p, fd.name).into();
+                                            if !trans.fn_ret_types_mut().contains_key(&qualified) {
+                                                trans.fn_ret_types_mut().insert(qualified, fd.ret.clone());
+                                            }
                                         }
                                     }
                                     // Plan 371 (defect A): pre-populate spec names from
@@ -3584,13 +3616,11 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                                         trans.known_enum_names_mut().insert(ed.name.clone());
                                     }
                                     _ => {}
-                                }
                             }
                         }
                     }
                 }
             }
-        }
         // Plan 372 follow-up: also scan the grandparent directory (one level up)
         // to catch enums/specs defined in sibling directories (e.g. error.at in
         // src/ when transpiling orchestration/driver.at in src/orchestration/).
@@ -3617,7 +3647,6 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                                             }
                                         }
                                         _ => {}
-                                    }
                                 }
                             }
                         }
@@ -3625,6 +3654,7 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                 }
             }
         }
+    }
     }
 
     trans.trans(ast, &mut sink)?;

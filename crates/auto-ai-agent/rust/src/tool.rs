@@ -6,7 +6,9 @@ use a2r_std;
 use a2r_std::*;
 
 use std::sync::Arc;
-use async_trait::async_trait;
+use std::pin::Pin;
+use std::future::Future;
+use async_trait;
 use crate::wire::{ToolDefinition, JsonValue};
 use crate::error::{ToolError};
 #[async_trait::async_trait]
@@ -14,13 +16,15 @@ pub trait Tool {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn parameters(&self) -> JsonValue{
+
+
+
         return a2r_std::json::parse("{\"type\":\"object\",\"properties\":{}}");
-    }
-    async fn execute(&self, args: JsonValue) -> Result<String, ToolError>;
+    }    async fn execute(&self, args: JsonValue) -> Result<String, ToolError>;
 }
 
 
-pub fn tool_to_definition(tool: &Box<dyn Tool>) -> ToolDefinition {
+pub fn tool_to_definition(tool: Arc<Box<dyn Tool>>) -> ToolDefinition {
     return ToolDefinition::new(tool.name(), tool.description(), tool.parameters());
 }
 
@@ -55,7 +59,6 @@ pub fn tool_to_definition(tool: &Box<dyn Tool>) -> ToolDefinition {
 /// across agents / workflow steps. Carries a parallel `names List<str>` for
 /// iteration (Auto VM Map has no keys()/entries()).
 #[allow(dead_code)]
-#[derive(Clone)]
 pub struct ToolRegistry {
     pub tools: std::collections::HashMap<String, Arc<Box<dyn Tool>>>,
     pub names: Vec<String>,
@@ -68,36 +71,44 @@ impl ToolRegistry {
     pub fn register_shared(&mut self, tool: Arc<Box<dyn Tool>>) {
         let n = tool.name();
         if self.tools.contains_key(&n) == false {
-            self.names.push(n.clone());
+            self.names.push(n.to_string());
         }
         self.tools.insert(n, tool);
     }
     pub fn get(&self, name: &str) -> Option<Arc<Box<dyn Tool>>> {
-        return self.tools.get(name).cloned();
+
+
+
+        match self.tools.get(name) {
+            Some(t) => return Some(t.clone()),
+            None => return None,
+        };
     }
     pub fn names(&self) -> Vec<String> {
         return self.names.clone();
     }
     pub fn len(&self) -> u32 {
-        return self.names.len() as u32;
+        return ((self.names.len() as i32) as u32);
     }
     pub fn is_empty(&self) -> bool {
         return (self.names.len() as i32) == 0;
     }
     pub fn filter(&self, filter: Vec<String>) -> Vec<Arc<Box<dyn Tool>>> {
         let mut out: Vec<Arc<Box<dyn Tool>>> = vec![];
-        if filter.is_empty() {
-            for n in &self.names {
-                if let Some(t) = self.tools.get(n) {
-                    out.push(t.clone());
-                }
+        if (filter.len() as i32) == 0 {
+            for n in self.names.clone() {
+                match self.tools.get(n.as_str()) {
+                    Some(t) => out.push(t.clone()),
+                    None => {},
+                };
             }
             return out;
         }
-        for n in &filter {
-            if let Some(t) = self.tools.get(n) {
-                out.push(t.clone());
-            }
+        for n in filter {
+            match self.tools.get(n.as_str()) {
+                Some(t) => out.push(t.clone()),
+                None => {},
+            };
         }
         return out;
     }
@@ -105,6 +116,12 @@ impl ToolRegistry {
         match self.get(name) {
             Some(tool) => return tool.execute(args).await,
             None => return Err(ToolError::Exec(format!("tool not found: {}", name))),
-        }
+        };
+    }
+    pub async fn exec_or_msg(&self, name: &str, args: JsonValue) -> String {
+        match self.execute(name, args).await {
+            Ok(out) => return out,
+            Err(e) => return format!("[tool error: {}]", e.message()),
+        };
     }
 }
