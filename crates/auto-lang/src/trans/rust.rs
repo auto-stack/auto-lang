@@ -554,6 +554,15 @@ impl RustTrans {
                         "to_string" | "format" | "trim" | "replace"
                         | "to_lowercase" | "to_uppercase" | "read_to_string"
                         | "read_line" | "collect")
+                } else if let Expr::Dot(obj, m) = c.name.as_ref() {
+                    // Plan 381 (Layer 2): bridged `json.to_string(v)` /
+                    // `json.get_str(v, k)` return owned String — treat as
+                    // string-containing so the &str-param auto-borrow appends
+                    // .as_str() (E0308 `&str` vs `String` otherwise).
+                    if let Expr::Ident(o) = obj.as_ref() {
+                        o.as_str() == "json"
+                            && matches!(m.as_str(), "to_string" | "get_str" | "as_string")
+                    } else { false }
                 } else {
                     false
                 }
@@ -568,6 +577,50 @@ impl RustTrans {
                     || self.expr_contains_string(inner_rhs)
             }
             _ => false,
+        }
+    }
+
+    /// Plan 381 (Layer 2): true when the call is an enum-variant construction
+    /// (`Type.Variant(...)` where Type is a known enum). Such calls must not
+    /// get the unknown-callee fallback auto-borrow (.as_str() on owned String
+    /// payloads → E0308).
+    fn is_enum_variant_ctor(&self, call: &Call) -> bool {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(type_name) = obj.as_ref() {
+                if self.known_enum_names.contains(type_name) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Plan 381 (Layer 2): true when a `json.X(...)` call argument is a JSON
+    /// *Value*-producing expression (json.get/get_at/parse/get_str/get_u64) or
+    /// a variable previously assigned from one (tracked in json_value_vars).
+    /// Used by the json as_int/as_string/as_bool dispatch to pick the
+    /// `a2r_std::json::as_*(&Value)` variant instead of the `as_*_str(&str)`
+    /// one (the latter broke `json.as_int(json.get(v, "k"))` → E0308
+    /// Option<&str>).
+    fn json_arg_is_value(&self, arg: &Arg) -> bool {
+        if let Arg::Pos(expr) = arg {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Dot(obj, m) = call.name.as_ref() {
+                        if let Expr::Ident(o) = obj.as_ref() {
+                            if o.as_str() == "json" {
+                                return matches!(m.as_str(),
+                                    "get" | "get_at" | "parse" | "get_str" | "get_u64");
+                            }
+                        }
+                    }
+                    false
+                }
+                Expr::Ident(name) => self.json_value_vars.contains(name),
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 
@@ -1997,7 +2050,7 @@ impl RustTrans {
                             write!(out, " }}").map_err(Into::into)
                         } else {
                             // Tuple variant or unknown: Enum::Variant(a, b)
-                            let binding_str = tag_cover.bindings.iter()
+                                let binding_str = tag_cover.bindings.iter()
                                 .filter(|b| b.as_str() != "_")
                                 .map(|b| b.as_str())
                                 .collect::<Vec<_>>()
@@ -4999,7 +5052,12 @@ impl RustTrans {
                         if call.args.args.len() > 1 {
                             if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
                         }
-                        write!(out, ").to_string()")?;
+                        // Plan 381 (Layer 2): `json.get(v, k)` returns the
+                        // bridged Value — do NOT append .to_string() (that made
+                        // every get() a String, breaking json.len/get_at/
+                        // to_string/as_* chaining → E0308 &Value vs &String).
+                        // Use `json.get_str` for string extraction.
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("json", "get_str") => {
@@ -5013,9 +5071,21 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_string") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
+                        // Plan 381 (Layer 2): Value arg → as_string(&Value);
+                        // string arg → as_string_str(&str). The unconditional
+                        // _str variant broke `json.as_string(json.get(...))`
+                        // (E0308 Option<&str>).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_string(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_string_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                        }
                         return Ok(());
                     }
                     ("json", "to_string") => {
@@ -5103,15 +5173,33 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "as_int") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ") as i32")?;
+                        // Plan 381 (Layer 2): Value arg → as_int(&Value).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_int(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_int_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ") as i32")?;
+                        }
                         return Ok(());
                     }
                     ("json", "as_bool") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool_str(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
+                        // Plan 381 (Layer 2): Value arg → as_bool(&Value).
+                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
+                        self.a2r_std_used.set(true);
+                        if is_value {
+                            write!(out, "a2r_std::json::as_bool(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                            write!(out, ")")?;
+                        } else {
+                            write!(out, "a2r_std::json::as_bool_str(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                        }
                         return Ok(());
                     }
                     ("json", "is_valid") => {
@@ -5391,7 +5479,7 @@ impl RustTrans {
                     let has_struct_fields = self.enum_struct_variants.contains_key(&key);
                     let has_tuple_fields = self.enum_tuple_field_types.contains_key(&key);
                     if variant_is_upper || has_struct_fields || has_tuple_fields {
-                        let struct_fields = self.enum_struct_variants.get(&key).cloned();
+                            let struct_fields = self.enum_struct_variants.get(&key).cloned();
                         if let Some(ref mp) = mod_prefix {
                             if self.merge_mode || mp.as_str() == self.current_module_name {
                                 write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
@@ -5799,7 +5887,13 @@ impl RustTrans {
                                 }
                             }
                             // Auto-borrow for external crate type static methods
-                            if !is_str_param {
+                            // Plan 381 (Layer 2): skip for known ENUM types —
+                            // `OutputContentBlock.ToolUse(id, name, input)` is a
+                            // variant CONSTRUCTION (owned String payloads), not a
+                            // static method call; .as_str() on the payloads is
+                            // E0308 (`String` vs `&str`).
+                            let is_enum_ctor = self.known_enum_names.contains(type_name.as_str());
+                            if !is_str_param && !is_enum_ctor {
                                 if let Expr::Ident(name) = expr {
                                     if self.local_var_types.get(name)
                                         .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
@@ -5808,6 +5902,15 @@ impl RustTrans {
                                         write!(out, ".as_str()")?;
                                     }
                                 }
+                            }
+                            // Plan 381 (Layer 2): enum-ctor String payloads fed a
+                            // string literal need `.to_string()` (Text("") →
+                            // Text("".to_string()), E0308 `String` vs `&str`).
+                            if is_enum_ctor
+                                && matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                && !is_str_param
+                            {
+                                write!(out, ".to_string()")?;
                             }
                         } else {
                             self.arg(arg, out)?;
@@ -6427,7 +6530,14 @@ impl RustTrans {
             // `str` convention) and borrow the argument. This mirrors what the
             // same-module str-param path does above. String literals and
             // already-`&str` params are left untouched.
+            // Plan 381 (Layer 2): enum variant CONSTRUCTION
+            // (`OutputContentBlock.ToolUse(id, name, input)`) parses as a
+            // dotted call whose callee param types are unknown — the fallback
+            // below would append .as_str() to owned String payloads (E0308
+            // `String` vs `&str`). Skip the fallback for known enum ctors.
+            let is_enum_ctor = self.is_enum_variant_ctor(call);
             let needs_borrow_unknown_callee = str_flags.is_none()
+                && !is_enum_ctor
                 && !Self::is_string_literal_arg(arg)
                 && !self.is_str_slice_var(arg)
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
