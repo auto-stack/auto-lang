@@ -70,6 +70,28 @@
 - **2-slot u64/i64 全局变量的大值截断**：`vm.globals` 是 `DashMap<String, NanoValue>`，每个全局变量只能存单个 NanoValue（1 slot）。第二轮复审（§11）已修复**回归**（顶层 `var x u64` 方法赋值不再错乱，小值完全正确），但大值（> 2³¹）在全局层面仍会截断到低 32 位——这是架构限制（nanbox 高 16 位留作类型 tag，单个 NanoValue 无法表示完整 i64）。**local 变量不受影响，完整支持 64 位**（`test_25/009` 守护）。要让全局也支持完整 64 位，需改全局存储为堆对象或并行 2-slot 表（独立工程）。
 - **catalog 的过期 `Void` 标签**：`File.exists` 等 `#[rust_fn]` FFI shim 实际通过侧通道返回值，但 catalog 标 `Void`。第二轮已把「跳过 Void 导入」重新定位为**正确的防御性工程选择**（注释见 `build_fn_return_types`），而非治标——因为导入错误 Void 会丢真返回值，跳过则维持改动前行为。全面修正这些标签是独立的 catalog 数据清理工作。
 
+### 10.5 第三方验证发现的遗留（2026-07-31，auto-shell Plan 034 验证）
+
+auto-shell 侧（Plan 034）重新编译最新 auto-lang 主分支后实测验证，确认 **378 的 to_uint/len 修复完全有效**（`test_25/001..009` 加 `--features test-vm-files --ignored` 全过；auto-shell 里 `"42".to_uint()=42`、`lines.len()=3` 均正确）。但发现一个**378 范围外的新 native bug**:
+
+- **`str.lower()` 在 split/lines 产生的字符串上返回垃圾值**：`"a.RS".split(".")[1].lower()` 返回 `rs-2147483647`（auto-shell）/ `None`（VM 直接跑），而 `.upper()` 返回 `RS`（正确）。字面量/普通变量的 `.lower()` 正常。**根因假设**：split/lines 返回 heap-based 字符串，其内存表示与 const-pool 字符串不同，`str.lower()` 的 native shim 处理 heap string 时出错（`str.upper()` 不受影响，说明是 lower shim 特有问题）。
+- **已建 file-based 测试用例**：`test/vm/26_str_method_on_heap/001_lower_on_split/`（含 `.at` + `.expected.out` + `.wrong.out`），已在 `vm_file_tests.rs` 注册为 `test_26_str_method_on_heap_001_lower_on_split`。**当前该测试失败（红色）**，精确暴露此 bug。修复 str.lower() 的 heap string 处理后应转绿。
+- **影响**：auto-shell 的 filestats/loccount 等脚本对 split 出的扩展名调 `.lower()` 会出错（已在脚本侧暂时去掉 .lower() 绕过）。
+
+### 10.6 运行 file-based 测试的正确方式（重要）
+
+vm_file_tests 框架被 `#[cfg(feature = "test-vm-files")]` 门控（`tests.rs:59`，因每个用例 ~5-7s 较慢）。**默认 `cargo test` 不编译这些测试**，必须显式启用 feature:
+
+```bash
+# 跑全部 file-based VM 测试(含 25_method_u64 + 26_str_method_on_heap)
+cargo test -p auto-lang --lib --features test-vm-files -- --ignored
+
+# 只跑 378 相关
+cargo test -p auto-lang --lib --features test-vm-files "test_25_method_u64" -- --ignored
+```
+
+378 实施时若未加 `--features test-vm-files`，测试会显示 `running 0 tests`（误判为通过）。**验收 378 必须用上述带 feature 的命令**。
+
 ---
 
 ## 11. 第二轮复审修复（2026-07-31，针对自审发现的 4 个问题）

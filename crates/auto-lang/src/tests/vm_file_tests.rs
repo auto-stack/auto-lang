@@ -916,3 +916,8 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_25_method_u64_007_other_i64_methods() { test_vm("25_method_u64/007_other_i64_methods").unwrap(); }
 #[test] #[ignore] fn test_25_method_u64_008_i32_unaffected() { test_vm("25_method_u64/008_i32_unaffected").unwrap(); }
 #[test] #[ignore] fn test_25_method_u64_009_large_value() { test_vm("25_method_u64/009_large_value").unwrap(); }
+
+// === 26_str_method_on_heap (Plan 378 follow-up: str methods on heap strings) ===
+// str.lower() returns garbage (-2147483647) when called on a string produced
+// by split()/lines() (heap-based), while .upper() works. Literals are fine.
+#[test] #[ignore] fn test_26_str_method_on_heap_001_lower_on_split() { test_vm("26_str_method_on_heap/001_lower_on_split").unwrap(); }
