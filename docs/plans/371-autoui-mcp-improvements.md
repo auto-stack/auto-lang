@@ -662,50 +662,35 @@ Task 21 的生成器改动（§11.2，commit `f863f9ff`）**已正确落地**：
 
 §11.6 列出两个前置问题。本节把它们拆成可执行的两个子任务，按依赖顺序实施。
 
-### 13.1 问题 a：a2r store-composable 缺陷（86 个编译错误）
+### 12.1 问题 a：a2r store-composable 缺陷 ✅ 已修复（Task 22a，commit `6dbf400f`）
 
-**现象**：对 015-notes 跑原生 a2r 重生成（`touch .at + auto run -r rust`），产出的 `main.rs` 有 **86 个编译错误**：
+**现象**：对 015-notes 跑原生 a2r 重生成（`touch .at + auto run -r rust`），产出的 `main.rs` 有 **86 个编译错误**：`error[E0609]: no field 'store'`（×78）、`error[E0433]: cannot find type 'StoreMsg'`、`NotesStore` 只生成 4/9 字段。
 
-```
-error[E0609]: no field `store` on type `&mut App`         (×78)
-error[E0433]: cannot find type `StoreMsg` in this scope   (×N)
-error[E0609]: no field `dark_mode` / `accent_color` ...   (NotesStore 只生成 4/9 字段)
-```
+**根因（诊断后确认）**：**单一 bug** —— `regenerate_code_only`（增量重生成路径，`rust_ui.rs:81`）调用 `compile_at_file(at_path, &[])` 传了**空 store 列表**，导致 Plan 374 的 store-composable 机制全部跳过：不注册 store 名、不生成 `NotesStore` struct、不注入 `pub store: NotesStore` 字段、不发 `NotesStoreMsg` 枚举。而表达式重写器（纯语法，不看 store 注册表）仍把每个 `store.X` 改写成 `self.store.X` / `StoreMsg::X`，造成悬空引用。
 
-committed 的 `main.rs`（commit `cd9205b9`）是**手工拼装修复版**，绕过了这些缺陷；原生 a2r 直出不可用。
+注意：`generate_rust_ui`（全量路径，`rust_ui.rs:182-196`）有 store 预扫描并正确传 `&all_stores`，所以全量重生成是对的；只有增量路径 `regenerate_code_only` 漏了。这也解释了为什么 committed 的 `main.rs`（手工拼装版 `cd9205b9`）是对的——它来自全量路径。
 
-**根因**（待定位）：`.at` 源用 `use notes_store: NotesStore` 声明 store composable，并在 handler 里以 `store.Method()` / `.store.field` 访问。a2r 的 UI 生成管线（`auto-man/rust_ui.rs` → `aura/extract.rs` → `ui_gen/rust.rs`）对 `StoreDecl` 的处理不完整：
+**修复**：把 store 预扫描抽成共享 helper `collect_store_decls`（`rust_ui.rs`），`generate_rust_ui` 和 `regenerate_code_only` 都调它。增量路径现在传 `&all_stores`，与全量路径一致。
 
-1. **结构体字段缺失**：生成的 `NotesStore` 只有 4 个字段（`active_folder`/`active_id`/`active_tag`/`search`），丢了 `notes`/`sort_mode`/`loading`/`dark_mode`/`accent_color` —— store 的 state_vars 未被完整收集。
-2. **store 字段未注入**：使用 store 的组件（App/EditorPanel/NavTree/NoteItem）的 struct 里没有 `store: NotesStore` 字段，故 `self.store.X` 全部 `no field store`。
-3. **StoreMsg 未生成**：store 自己的消息枚举（`StoreMsg`/`NotesStoreMsg`）未发出来，handler 里的 `store.OnMethod()` 无法路由。
+**验证**：`touch app.at + auto run -r rust` 重生成 015-notes → `cargo build` **0 错误**。生成的 `NotesStore` 含全部 9 字段，App/EditorPanel/NavTree/NoteItem 都注入了 `pub store: NotesStore`，`NotesStoreMsg` 正常生成。**附带收益**：生成器自动带上 Task 21 的 `state_snapshot()` override（4 个组件），无需手改 main.rs。25 个生成器测试 + 2 个 state_snapshot 测试通过。
 
-**与 Plan 374 的关系**：Plan 374 的标题就是"a2r 支持 store composable + view fn fragment"。其 §1-3 已部分处理（生成器里有 `all_stores` 预扫描 + `StoreDecl` 收集），但 015-notes 仍 86 错说明覆盖不全。本 Task 22a 即在 Plan 374 基础上**补全** store 处理，使 015-notes 重生成达 0 错误。
+### 12.2 问题 b：Rust 模式 state 不聚合子组件（Task 22b，依赖 22a ✅）
 
-**解决方案（Task 22a）**：
-1. **诊断**：重生成 015-notes，按错误类型分类，定位 `rust_ui.rs`/`ui_gen/rust.rs` 中处理 `StoreDecl` 的具体缺口（字段收集、store 字段注入、StoreMsg 生成）。
-2. **修复生成器**：让 store 的 state_vars 完整进入其 struct；让引用 store 的组件 struct 自动加 `store: <StoreType>` 字段 + 构造器初始化；生成 store 的 Msg 枚举并把 `store.X()` 调用路由到 `self.store.on(<StoreMsg>::X)`。
-3. **验证**：重生成 015-notes → `cargo build` 0 错误；且生成器自动带上 Task 21 的 `state_snapshot` override（因 `state_types`/`prop_types` 现含 store 字段）。
-4. **不手改** `main.rs`：所有改动只在生成器（`crates/auto-man/src/rust_ui.rs`、`crates/auto-lang/src/ui_gen/rust.rs`、`aura/extract.rs`），产出由重生成获得。
+**现象（22a 修复后实测确认）**：重生成后 `App::state_snapshot()` 只暴露 `search`（App 自身标量字段），`store: NotesStore` 字段未递归，故 `dark_mode`/`accent_color`/`active_folder` 等 store 字段在 Rust 模式 `autoui_state` 中不可见；`edit_title`（属于 EditorPanel 子组件）更不在根快照里。
 
-### 13.2 问题 b：Rust 模式 state 不聚合子组件
+**根因**：VM 模式 `shared.state` 是 VM 堆里**所有组件实例状态的扁平 map**（renderer.rs 的 `read_all_state_materialized` 聚合）；Rust 模式 `view_element` 只调根组件 `App::state_snapshot()`，而生成器的 `generate_state_snapshot` 只处理**标量字段**，跳过了 `store`（`NotesStore` 类型，非标量）。
 
-**现象**：即便问题 a 修复、`main.rs` 带上 `state_snapshot`，Rust 模式 `autoui_state` 仍读不到子组件字段（`edit_title`/`dark_mode`/`accent_color`），因为 `view_element` 只调**根组件** `App::state_snapshot()`。
+**解决方案（Task 22b）—— 生成器侧递归**：在 `generate_state_snapshot`（`ui_gen/rust.rs`）中，对类型为**已注册组件**（store 或子组件）的字段，生成递归调用：`for (k, v) in self.<field>.state_snapshot() { m.insert(format!("<field>.{}", k), v); }`。生成器已知字段类型（`state_types`/`prop_types`）和组件名（`STORE_NAMES` + 子组件列表），可在 `is_scalar_state_type` 之外加一个「是组件类型」的判断分支。
 
-**根因**：VM 模式 `shared.state` 是 VM 堆里**所有组件实例状态的扁平 map**（renderer.rs:3348-3362 的 `read_all_state_materialized` 聚合）；Rust 模式没有等价的递归聚合 —— `DevToolsWrapper<C>` 只持有根组件 `C`，子组件（EditorPanel/NavTree/NotesStore）作为 `C` 的 struct 字段存在，`state_snapshot()` 默认不递归。
+字段名对齐：展平后用 `<field>.<subfield>` 前缀（如 `store.dark_mode`）。`.autotest` 的 `state field="dark_mode"` 断言需相应支持前缀查询，或 MCP `autoui_state` 工具做前缀/子串匹配（见 22b 实施细节）。
 
-**解决方案（Task 22b，依赖 22a）**：
-1. **生成器侧**：让组件的 `state_snapshot()` override 递归展开子组件字段。例如 App 的 override 里对 `store: NotesStore` 字段调 `self.store.state_snapshot()` 并以 `store.` 前缀合并（生成器已知字段类型，可在 `generate_state_snapshot` 里识别 `Component` 类型字段并递归）。
-2. **或运行时侧**：给 `Component` trait 加一个 `collect_state(&self, &mut HashMap, prefix)` 方法，`DevToolsWrapper` 递归调用。生成器 emit 递归实现。
-3. **字段名对齐**：确保展平后的字段名与 VM 模式一致（VM 的 `dark_mode` 在 Rust 展平为 `store.dark_mode` 还是 `dark_mode`？需对齐 `.autotest` 断言语义或 MCP 工具的查询）。
-
-**验证**：Rust 模式 `autoui_state(fields=["edit_title"])` 返回当前 EditorPanel 值；`autoui_state(fields=["dark_mode"])` 返回 store 值。届时可移除 `015-notes.autotest` 中 T5c/T11/T11b/T12 的 `skip_if rust`。
+**验证目标**：Rust 模式 `autoui_state(fields=["store.dark_mode"])` 返回值；`store.accent_color`、`store.active_folder` 等可见。届时评估能否移除 `skip_if rust`（取决于 `.autotest` 断言是否对齐前缀）。
 
 ### 12.3 实施顺序
 
-1. **Task 22a**（问题 a）：修 a2r store-composable 缺陷 → 015-notes 重生成 0 错误（含自动 `state_snapshot`）。
-2. **Task 22b**（问题 b，依赖 22a）：Rust 模式 state 递归聚合 → 子组件字段可见。
-3. 移除 `skip_if rust` + `.autotest --mode rust` 全绿。
+1. **Task 22a**（问题 a）：修 a2r store-composable 缺陷 → 015-notes 重生成 0 错误（含自动 `state_snapshot`）。✅
+2. **Task 22b**（问题 b，依赖 22a）：生成器 `state_snapshot` 递归展开子组件字段 → store/子组件字段可见。⏳
+3. 评估移除 `skip_if rust` + `.autotest --mode rust` 验证。
 
 ---
 
