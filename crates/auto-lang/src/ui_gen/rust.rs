@@ -1085,6 +1085,41 @@ impl RustGenerator {
                     code.push_str("                }\n");
                 }
 
+                // Plan 371: After NewNote/NewNoteInFolder, the active note changes
+                // to a new empty note. In VM mode the component lifecycle auto-
+                // triggers EditorPanel.Init (which sets editing=true for empty
+                // titles). Rust mode has no such lifecycle, so simulate it:
+                // construct a temp EditorPanel, call on(Init), sync editing back.
+                if (variant_name == "NewNote" || variant_name == "NewNoteInFolder")
+                    && !self.child_components.is_empty()
+                {
+                    let editor = self.child_components.iter()
+                        .find(|c| c.contains("Editor") || c.contains("editor"))
+                        .cloned();
+                    if let Some(ed_name) = editor {
+                        let ed_msg = format!("{}Msg", ed_name);
+                        let sync: Vec<String> = self.component_state_fields.get(&ed_name)
+                            .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
+                            .unwrap_or_default();
+                        // Ensure the preceding body statement ends with ';'.
+                        code.push_str("                ;\n");
+                        code.push_str(&format!(
+                            "                {{ let mut __ep = {ed}::new(self.store.notes[self.store.active_id as usize].clone());\n",
+                            ed = ed_name
+                        ));
+                        code.push_str(&format!(
+                            "                __ep.on({msg}::Init);\n",
+                            msg = ed_msg
+                        ));
+                        for f in &sync {
+                            code.push_str(&format!(
+                                "                self.{} = __ep.{}.clone();\n", f, f
+                            ));
+                        }
+                        code.push_str("                }\n");
+                    }
+                }
+
                 code.push_str("            }\n");
             }
 
@@ -1150,18 +1185,32 @@ impl RustGenerator {
                 }
 
                 // Sync the note data back if the child has a "note" prop
-                // and the parent has notes[active_id]
-                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                // and the parent has notes[active_id]. The notes array may be
+                // a direct state var OR accessed via the store composable.
+                // Only generate for children that actually receive a `note` prop
+                // (e.g., EditorPanel) to avoid "no field `note`" on children
+                // like NavTree that don't have one.
+                let child_has_note = constructor_args.contains("note");
+                let has_notes = self.state_types.contains_key("notes");
+                let has_store_notes = STORE_NAMES.with(|sn| !sn.borrow().is_empty())
+                    && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
+                let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
+                let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
+                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
                     code.push_str(&format!(
-                        "                if let Some(__n) = self.notes.get_mut(self.active_id as usize) {{\n                    *__n = __child.note.clone();\n                }}\n"
+                        "                if let Some(__n) = {}.get_mut({} as usize) {{\n                    *__n = __child.note.clone();\n                }}\n",
+                        notes_prefix, active_prefix
                     ));
                 }
 
                 // Check if the child's note was marked as deleted via .note.deleted = true
                 // If so, remove the note at active_id from the parent's notes array
-                if self.state_types.contains_key("notes") && self.state_types.contains_key("active_id") {
+                if child_has_note && !notes_prefix.is_empty() && !active_prefix.is_empty() {
                     code.push_str(&format!(
-                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    self.notes.remove(self.active_id as usize);\n                    if self.active_id >= self.notes.len() as i32 && !self.notes.is_empty() {{\n                        self.active_id = self.notes.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n"
+                        "                if __child.note[\"deleted\"].as_bool().unwrap_or(false) {{\n                    {}.remove({} as usize);\n                    if {} >= {}.len() as i32 && !{}.is_empty() {{\n                        {} = {}.len() as i32 - 1;\n                    }}\n                    self.editing = false;\n                }}\n",
+                        notes_prefix, active_prefix,
+                        active_prefix, notes_prefix, notes_prefix,
+                        active_prefix, notes_prefix
                     ));
                 }
 
