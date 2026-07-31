@@ -34,6 +34,9 @@
 
 use.rust std::sync::Arc
 use.rust std::sync::atomic::AtomicBool
+// Plan 380 (A15): `time.now_sec()` needs the a2r_std::time module bridged in
+// (E0425 `time` otherwise).
+use.rust a2r_std::time
 
 use flow: FlowSpec
 use handoff: HandoffDocument, WorkProduct
@@ -41,6 +44,9 @@ use pipeline: AdvanceResult, GateDecision, PipelineEngine
 use budget: BudgetAction
 use agent: Agent, AgentResult, StreamEvent
 use error: AgentError
+// Plan 380: `extract_path(args JsonValue)` needs the bridged JsonValue type
+// (E0425 otherwise).
+use wire: JsonValue
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DriveOutcome (drive()'s internal continue/stop signal)

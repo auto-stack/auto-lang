@@ -30,6 +30,9 @@
 /// tracing crate); their intent is documented in comments.
 
 use.rust std::collections::HashMap
+// Plan 380 (A15): `time.now_sec()` needs the a2r_std::time module bridged in,
+// otherwise the transpiled code can't resolve `time` (E0425).
+use.rust a2r_std::time
 
 use budget: BudgetAction, BudgetTracker, TokenBudget
 use flow: ExitRouting, FlowSpec, FlowStep, GateType

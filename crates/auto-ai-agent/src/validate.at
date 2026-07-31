@@ -29,7 +29,11 @@ use ai_config
 pub fn validate_role_model(role Role) Result<None, AgentError> {
     is load_client_config() {
         Ok(cfg) -> {
-            is ai_config.validate_model_exists(cfg.as_ref(), role.model().as_str()) {
+            // Plan 380: `cfg` is an owned ClientConfig; `.as_ref()` is a
+            // Rust-ism that leaked into the .at — the struct has no as_ref
+            // (E0599). The bridged fn takes &ClientConfig; a2r auto-borrows
+            // plain struct args, so pass `cfg` directly.
+            is ai_config.validate_model_exists(cfg, role.model().as_str()) {
                 Ok(_) -> return Ok(None),
                 Err(msg) -> return Err(AgentError.Config(msg))
             }

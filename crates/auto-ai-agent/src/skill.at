@@ -25,6 +25,9 @@
 
 use.rust std::path::PathBuf
 use.rust std::fs
+// Plan 380: `std::fs::read_dir` yields `DirEntry` — import the type explicitly
+// (E0425 in the transpiled code otherwise).
+use.rust std::fs::DirEntry
 use.rust std::sync::Arc
 use.rust serde_json
 use.rust serde_json::Value

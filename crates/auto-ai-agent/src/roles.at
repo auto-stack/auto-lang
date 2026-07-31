@@ -20,6 +20,12 @@
 
 use.rust std::path::PathBuf
 use.rust std::fs
+// Plan 380: `dirs.home_dir()` needs the crate bridged (E0423 otherwise —
+// transpiled `dirs.home_dir()` treats `dirs` as a value instead of a crate).
+use.rust dirs
+// Plan 380: `std::fs::read_dir` yields `DirEntry` — import the type explicitly
+// (E0425 in the transpiled code otherwise).
+use.rust std::fs::DirEntry
 use.rust std::sync::Arc
 
 use ai_config: ModelTier
@@ -187,21 +193,28 @@ ext RoleRegistry {
         //    the same name as a built-in. load_role resolves the inherit:
         //    chain internally so the override gets the built-in's prompt/etc.
         if self.roles.contains(name) {
-            let detail = self.roles.get(name).clone()
-            if detail.summary.is_builtin == false {
-                let src = serialize_at_role(detail.config.clone())
-                is load_role(src.as_str()) {
-                    Ok(_cfg) -> {
-                        // load_role re-parses the serialized .at to validate it;
-                        // build a live ConfigRole from the original config and
-                        // wrap it in an Arc (ConfigRole has Role).
-                        let role = config_role_new(detail.config.clone())
-                        return Some(Arc(Box(role)))
-                    },
-                    Err(_e) -> {
-                        // Parse failure: warn and fall through to built-in.
+            // Plan 380 (A4): map.get returns Option<&T> — `is`-destructure to
+            // get an owned-able value; `.clone()` on the Option doesn't collapse
+            // it (E0609 `summary` on Option<&RoleDetail> in transpiled code).
+            is self.roles.get(name) {
+                Some(detail) -> {
+                    if detail.summary.is_builtin == false {
+                        let src = serialize_at_role(detail.config.clone())
+                        is load_role(src.as_str()) {
+                            Ok(_cfg) -> {
+                                // load_role re-parses the serialized .at to validate it;
+                                // build a live ConfigRole from the original config and
+                                // wrap it in an Arc (ConfigRole has Role).
+                                let role = config_role_new(detail.config.clone())
+                                return Some(Arc(Box(role)))
+                            },
+                            Err(_e) -> {
+                                // Parse failure: warn and fall through to built-in.
+                            }
+                        }
                     }
-                }
+                },
+                None -> {}
             }
         }
         // 2. No user override → compiled built-in.
@@ -218,11 +231,17 @@ ext RoleRegistry {
         var user_list List<RoleSummary> = []
         var builtin_list List<RoleSummary> = []
         for name in self.names.clone() {
-            let d = self.roles.get(name)
-            if d.summary.is_builtin {
-                builtin_list.push(d.summary.clone())
-            } else {
-                user_list.push(d.summary.clone())
+            // Plan 380 (A4): map.get returns Option<&T> — `is`-destructure
+            // before field access (E0609 `summary` on Option<&RoleDetail>).
+            is self.roles.get(name) {
+                Some(d) -> {
+                    if d.summary.is_builtin {
+                        builtin_list.push(d.summary.clone())
+                    } else {
+                        user_list.push(d.summary.clone())
+                    }
+                },
+                None -> {}
             }
         }
         user_list.sort_by_key((s) => s.name.clone())

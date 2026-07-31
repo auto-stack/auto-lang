@@ -4326,7 +4326,11 @@ impl RustTrans {
                         // Auto-borrow string args for pattern-matching methods
                         if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with") {
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                write!(out, "&")?;
+                                // Plan 380: char/&str literals are already valid
+                                // Patterns — `&'"'` would be `&char` (E0277).
+                                let already_pattern = matches!(arg,
+                                    Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
+                                if !already_pattern { write!(out, "&")?; }
                                 self.arg(arg, out)?;
                                 if i < call.args.args.len() - 1 {
                                     write!(out, ", ")?;
@@ -5490,7 +5494,9 @@ impl RustTrans {
                         // Note: local_var_types has StrSlice for ALL str vars (params AND locals),
                         // but only fn params declared as `str` are truly &str in Rust.
                         // Local vars of type str are String in Rust and still need &.
-                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_)))
+                        // Plan 380: char/&str literals are already valid Patterns —
+                        // `&'"'` would be `&char` (E0277).
+                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_) | Expr::Char(_)))
                             || if let Arg::Pos(Expr::Ident(name)) = arg {
                                 self.current_fn_str_params.contains(name)
                             } else { false };
@@ -6514,7 +6520,16 @@ impl RustTrans {
                     .unwrap_or(false)
             } else { false };
             let arg_is_str_literal = matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
-            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal {
+            // Plan 380: only add .as_str() for plain String-typed locals or
+            // string-concat exprs. Method-call results (trim(), to_str().unwrap(),
+            // ...) and char literals must NOT get .as_str() — they're already
+            // &str or char (E0658 str_as_str / E0599 char.as_str).
+            let arg_is_ident = matches!(arg, Arg::Pos(Expr::Ident(_)));
+            let arg_is_concat = if let Arg::Pos(expr) = arg {
+                self.expr_contains_string(expr)
+            } else { false };
+            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
+                && (arg_is_ident || arg_is_concat) {
                 write!(out, ".as_str()")?;
             }
 
@@ -6850,6 +6865,9 @@ impl RustTrans {
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false,
             Expr::Int(_) | Expr::Float(_, _) => false,
+            // Plan 380: char literals are valid str Patterns — never .as_str()
+            // (char has no as_str — E0599).
+            Expr::Char(_) => false,
             // Plan 368 R-AREG: Dot access that returns &str
             Expr::Dot(_, field) => {
                 let f = field.as_str();
@@ -10340,6 +10358,17 @@ impl RustTrans {
         // Cache spec methods for later use in impl Trait for Type
         self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
 
+        // Plan 380: async spec methods (~Result / Future) need #[async_trait]
+        // on the TRAIT declaration too — a bare `-> Future<...>` return type in
+        // a trait is E0782. Plan 373 G2 only annotated the impl blocks.
+        let has_async_method = spec_decl.methods.iter().any(|m| {
+            matches!(&m.ret, Type::Result(_)) ||
+            matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+        });
+        if has_async_method {
+            write!(sink.body, "#[async_trait::async_trait]\n")?;
+        }
+
         // Plan 163: Output pub prefix
         if spec_decl.is_pub {
             write!(sink.body, "pub ")?;
@@ -10369,7 +10398,16 @@ impl RustTrans {
         self.indent();
 
         for method in &spec_decl.methods {
+            // Plan 380: async spec methods emit `async fn` (mirrors fn_decl).
+            // With `#[async_trait]` (added above when any method is async), a
+            // bare `-> Future<...>` in the trait would be E0782 — async_trait
+            // rewrites `async fn -> Result<...>` into the boxed-Future form.
+            let method_is_async = matches!(&method.ret, Type::Result(_))
+                || matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
             self.print_indent(&mut sink.body)?;
+            if method_is_async {
+                write!(sink.body, "async ")?;
+            }
             write!(sink.body, "fn {}(&self", method.name)?;
 
             // Parameters (skip self which is already added as &self)
@@ -10385,7 +10423,18 @@ impl RustTrans {
             // Return type — use rust_return_type_name for correct str→String mapping
             // Plan 204 Phase 4: !T (Type::Result) → Result<T, String>
             if !matches!(method.ret, Type::Void) {
-                write!(sink.body, ") -> {}", self.rust_return_type_name(&method.ret))?;
+                let ret_str = if method_is_async {
+                    match &method.ret {
+                        // ~Result / Future<Result<...>> → Result<...> for `async fn`
+                        Type::GenericInstance(inst) if inst.base_name == "Future" => {
+                            self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                        }
+                        other => self.rust_return_type_name(other),
+                    }
+                } else {
+                    self.rust_return_type_name(&method.ret)
+                };
+                write!(sink.body, ") -> {}", ret_str)?;
             } else {
                 write!(sink.body, ")")?;
             }
