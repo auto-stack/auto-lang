@@ -186,7 +186,7 @@ ext PipelineDriver {
             let outcome = self.dispatch(result, task_msg, last_handoff).await
             is outcome {
                 DriveOutcome.Continue -> {
-                    last_handoff = self.last_handoff_after(result, last_handoff)
+                    last_handoff = self.last_handoff_after(result.clone(), last_handoff.clone())
                 },
                 DriveOutcome.Done -> return Ok(None),
                 DriveOutcome.Fail(e) -> return Err(e)

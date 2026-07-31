@@ -173,7 +173,7 @@ ext RoleRegistry {
         }
 
         // 2. User roles from ~/.config/autoos/roles/*.at (override built-ins).
-        load_user_roles(roles, names)
+        load_user_roles(roles.clone(), names.clone())
 
         return RoleRegistry(roles: roles, names: names)
     }
