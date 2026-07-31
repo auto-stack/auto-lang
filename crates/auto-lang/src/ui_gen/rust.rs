@@ -4637,6 +4637,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = RustGenerator::new();
@@ -4685,6 +4686,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = RustGenerator::new();
@@ -4723,6 +4725,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
 
         let mut gen = RustGenerator::new();
@@ -4766,6 +4769,7 @@ mod tests {
             style_css: None,
             ext_imports: Vec::new(),
             watchers: Vec::new(),
+            exposes: Vec::new(),
         };
         let store_code = gen.generate(&store_widget).unwrap();
         assert!(
