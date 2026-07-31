@@ -11296,6 +11296,7 @@ impl RustTrans {
         Self::fix_some_str_to_string(&mut content);
         Self::fix_a2r_std_fs_result_patterns(&mut content);
         Self::fix_spec_trait_boxing(&mut content);
+        Self::fix_pathbuf_as_str(&mut content);
 
         if !content.ends_with('\n') {
             content.push('\n');
@@ -12966,6 +12967,19 @@ impl RustTrans {
                 let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\})").unwrap();
                 let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
                 format!("{}{}{}", header, new_body, close)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+    }
+
+    /// Plan 376V: PathBuf has no .as_str() (unstable feature). a2r's auto-borrow
+    /// adds .as_str() when passing to &str params, but for PathBuf variables this
+    /// fails E0599. Convert <pathlike>.as_str() → <pathlike>.to_str().unwrap().
+    /// Pathlike heuristic: names ending in _path, or exactly path/dir/sidecar.
+    fn fix_pathbuf_as_str(content: &mut String) {
+        if let Some(re) = cached_regex(r"(\b\w*_path|\bpath|\bdir|\bsidecar)\.as_str\(\)") {
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                format!("{}.to_str().unwrap()", caps.get(1).unwrap().as_str())
             }).to_string();
             if new != *content { *content = new; }
         }
