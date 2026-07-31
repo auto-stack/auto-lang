@@ -192,13 +192,13 @@ impl Agent {
     pub fn history(&self) -> Vec<Message> {
         return self.memory.messages();
     }
-    pub async fn run(&self, task_msg: &str) -> Result<AgentResult, AgentError> {
+    pub async fn run(&mut self, task_msg: &str) -> Result<AgentResult, AgentError> {
         return self.run_inner(task_msg, None).await;
     }
-    pub async fn run_stream(&self, task_msg: &str, cancel: Arc<AtomicBool>) -> Result<AgentResult, AgentError> {
+    pub async fn run_stream(&mut self, task_msg: &str, cancel: Arc<AtomicBool>) -> Result<AgentResult, AgentError> {
         return self.run_inner(task_msg, Some(cancel)).await;
     }
-    pub async fn run_inner(&self, task_msg: &str, cancel: Option<Arc<AtomicBool>>) -> Result<AgentResult, AgentError> {
+    pub async fn run_inner(&mut self, task_msg: &str, cancel: Option<Arc<AtomicBool>>) -> Result<AgentResult, AgentError> {
 
 
         let mut events: Vec<StreamEvent> = vec![];
@@ -231,7 +231,10 @@ impl Agent {
                 }            }
             
             let req = self.build_request();
-            let resp = self.client.complete(req).await?;
+            
+
+
+            let resp = match self.client.complete(req).await { Ok(r) => r, Err(e) => return Err(AgentError::Client(e)), };
             
 
             if is_cancelled(cancel.clone()) {
@@ -244,7 +247,9 @@ impl Agent {
 
             match resp.error {
                 Some(err) => {
-                    let ev = StreamEvent::Error(err);
+                    
+
+                    let ev = StreamEvent::Error(err.clone());
                     events.push(ev.clone());
                     return Err(AgentError::Config(err));
                 },
@@ -268,7 +273,9 @@ impl Agent {
                     let tb = ContentBlock::Text { text: resp.content };
                     blocks.push(tb.clone());
                 }                let mut tc_idx: u32 = 0 as u32;
-                for tc in resp.tool_calls {
+                
+
+                for tc in resp.tool_calls.clone() {
                     let ub = ContentBlock::ToolUse { id: tc.id, name: tc.name, input: tc.input };
                     blocks.push(ub.clone());
                     tc_idx = tc_idx + 1;
@@ -279,22 +286,25 @@ impl Agent {
                 }                
 
 
+
+
                 let mut keep_going: bool = true;
-                for tc in resp.tool_calls {
+                for tc in resp.tool_calls.clone() {
                     let key: String = format!("{}::{}", tc.name, tc.input);
-                    let count = bump_seen(seen.clone(), seen_names, key.as_str());
+                    let count = bump_seen(seen.clone(), seen_names.clone(), key.as_str());
                     if count >= loop_detect_threshold() {
                         let ev = StreamEvent::Error(format!("loop detected on '{}'", tc.name));
                         events.push(ev.clone());
                         return Err(AgentError::LoopDetected(tc.name));
                     }
                     
-                    let ts = StreamEvent::ToolStart(tc.name, tc.input);
+                    let ts = StreamEvent::ToolStart(tc.name.clone(), tc.input.clone());
                     events.push(ts.clone());
-                    let outcome = self.tools.exec_or_msg(tc.name, tc.input).await;
-                    let rec = ToolCallRecord { tool: tc.name.to_string(), args: tc.input, result: outcome.to_string() };
+                    
+                    let outcome = self.tools.exec_or_msg(tc.name.as_str(), tc.input.clone()).await;
+                    let rec = ToolCallRecord { tool: tc.name.clone().to_string(), args: tc.input.clone(), result: outcome.clone().to_string() };
                     result.tool_calls.push(rec.clone());
-                    let tev = StreamEvent::Tool(tc.name, tc.input, outcome);
+                    let tev = StreamEvent::Tool(tc.name, tc.input, outcome.clone());
                     events.push(tev.clone());
                     
 
@@ -306,8 +316,10 @@ impl Agent {
             } else {
                 
 
-                result.output = resp.content;
-                self.memory.add("assistant", resp.content);
+                result.output = resp.content.clone();
+                
+
+                self.memory.add("assistant", resp.content.as_str());
                 let done = StreamEvent::Done(clone_result(result.clone()));
                 events.push(done.clone());
                 return Ok(result);
@@ -333,7 +345,7 @@ impl Agent {
         let pinned = self.role.model();
         let model = build_model_id(pinned.as_str(), self.role.model_tier());
 
-        let system_prompt = build_system_prompt(self.context_block.clone(), self.role.system_prompt(), self.skills_block.clone());
+        let system_prompt = build_system_prompt(self.context_block.clone(), self.role.system_prompt().as_str(), self.skills_block.clone());
 
         return CompletionRequest { model: model, messages: self.memory.to_messages(), max_tokens: None, temperature: Some(self.role.temperature()), system_prompt: Some(system_prompt), tools: tool_defs, stream: false, preferred_provider: None };
     }
@@ -354,10 +366,12 @@ impl Agent {
 /// Current conversation memory.
 /// Run the ReAct loop against `task`, returning the agent's final answer.
 /// Non-streaming, non-cancellable (delegates to run_inner with cancel=None).
+/// `mut fn`: the loop mutates self.memory/tools.
 /// Like run, but honors a cancellation flag at the turn boundaries. The
 /// Rust original also takes an `on_event` callback; this polling-style
 /// port drops the callback (events are collected internally — Stage 1 of
 /// the streaming roadmap; see 013-handoff §D).
+/// `mut fn`: run_inner mutates self.memory/tools.
 /// Unified ReAct loop backing run + run_stream.
 /// 
 /// Each turn: build a request from memory + role, ask the model, execute
@@ -366,6 +380,7 @@ impl Agent {
 /// (LOOP_DETECT_THRESHOLD), or the hard safety cap (max_turns * 5) is hit.
 /// The Role's max_turns is a SOFT target — the agent may exceed it while
 /// still making progress; the hard cap is 5x the soft target.
+/// `mut fn`: mutates self.memory (add/add_message) + self.tools.
 /// Build the completion request for the current turn: system prompt from
 /// the Role, the role's tier/model, the full memory, and the tools the
 /// Role allows.
@@ -385,7 +400,7 @@ fn is_cancelled(cancel: Option<Arc<AtomicBool>>) -> bool {
 /// Increment the recurrence count for a (tool, args) key, returning the new
 /// count. Keeps the parallel `seen_names` key list in sync (Auto's VM Map has
 /// no iteration API — plan 013 gotcha B5).
-fn bump_seen(seen: std::collections::HashMap<String, u32>, seen_names: Vec<String>, key: &str) -> u32 {
+fn bump_seen(mut seen: std::collections::HashMap<String, u32>, mut seen_names: Vec<String>, key: &str) -> u32 {
     let mut prev: u32 = 0 as u32;
 
 

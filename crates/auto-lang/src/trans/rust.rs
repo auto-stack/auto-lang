@@ -11390,6 +11390,11 @@ impl RustTrans {
         // B16: Add `mut` to let bindings that are later reassigned
         Self::fix_mutable_bindings(&mut content);
 
+        // B16b: Add `mut` to fn params that are mutated in the body
+        // (a2r only handles `let` locals; Rust params default to immutable →
+        // E0596 for e.g. `fn f(seen: HashMap, names: Vec) { seen.insert(..); }`).
+        Self::fix_mutable_params(&mut content);
+
         // B17: Fix return None; in void functions → return;
         Self::fix_void_return_none(&mut content);
 
@@ -12209,6 +12214,132 @@ impl RustTrans {
             }
         }).collect();
         *content = new_lines.join("\n");
+    }
+
+    /// B16b: Add `mut` to fn params that are mutated inside the body.
+    ///
+    /// a2r's `fix_mutable_bindings` only covers `let` locals; Rust fn params
+    /// are immutable bindings, so mutating a param (e.g. `seen.insert(..)`,
+    /// `names.push(..)`, `param.field = x`) is E0596. Detect mutated params
+    /// and prefix the declaration with `mut `.
+    fn fix_mutable_params(content: &mut String) {
+        let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear",
+            "extend", "truncate", "retain", "sort", "reverse", "dedup", "swap",
+            "splice", "drain", "append", "resize", "set", "update", "merge"];
+        let lines: Vec<&str> = content.lines().collect();
+        let mut result: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let sig = line.trim();
+            let is_sig = sig.starts_with("pub fn ") || sig.starts_with("pub async fn ")
+                || sig.starts_with("async fn ") || sig.starts_with("fn ")
+                || sig.starts_with("pub(crate) fn ") || sig.starts_with("unsafe fn ");
+            if !is_sig { continue; }
+
+            let open = match line.find('(') { Some(p) => p, None => continue };
+            // ')' that precedes the return arrow / body — params span
+            // (..) up to the first ')'; a2r emits one-line signatures so
+            // rfind(')') is safe unless an arrow type contains ')'. Prefer
+            // the first ')' that is followed (after whitespace) by "->" or "{".
+            let rest = &line[open + 1..];
+            let close = rest.find(')');
+            let close = match close { Some(c) => open + 1 + c, None => continue };
+
+            // Split params at depth-0 commas.
+            let params_str = &line[open + 1..close];
+            let mut params: Vec<&str> = Vec::new();
+            let mut depth = 0i32;
+            let mut cur_start = 0usize;
+            for (k, ch) in params_str.char_indices() {
+                match ch {
+                    '<' | '[' | '(' => depth += 1,
+                    '>' | ']' | ')' => depth -= 1,
+                    ',' if depth == 0 => {
+                        let p = params_str[cur_start..k].trim();
+                        if !p.is_empty() { params.push(p); }
+                        cur_start = k + 1;
+                    }
+                    _ => {}
+                }
+            }
+            let last_p = params_str[cur_start..].trim();
+            if !last_p.is_empty() { params.push(last_p); }
+
+            // Locate the end of the body via brace balance.
+            let mut brace = line.bytes().filter(|b| *b == b'{').count()
+                - line.bytes().filter(|b| *b == b'}').count();
+            let mut j = i;
+            while brace > 0 && j + 1 < lines.len() {
+                j += 1;
+                brace += lines[j].bytes().filter(|b| *b == b'{').count();
+                brace -= lines[j].bytes().filter(|b| *b == b'}').count();
+            }
+            let body = &lines[i + 1..=j.min(lines.len() - 1)];
+
+            // For each plain `name: Type` param, check for mutation in body.
+            let mut mutated: Vec<String> = Vec::new();
+            for p in params {
+                // Skip receiver forms (&self / &mut self / self) and bindings
+                // without a type annotation (e.g. `_`, `mut x`? a2r never
+                // emits `mut` on params, so only plain forms appear).
+                let name = match p.split_once(':') {
+                    Some((n, _)) => n.trim().to_string(),
+                    None => continue,
+                };
+                let name = name.trim_start_matches("&").trim_start_matches("mut ").trim().to_string();
+                if name.is_empty() || name == "self" { continue; }
+
+                let mut is_mut = false;
+                for bl in body {
+                    let fl = bl.trim();
+                    // name.push/insert/... (mutating method calls)
+                    for m in mut_methods {
+                        let pat = format!(r"\b{}\.{}\s*\(", name, m);
+                        if let Some(re) = cached_regex(&pat) {
+                            if re.is_match(fl) { is_mut = true; break; }
+                        }
+                    }
+                    if is_mut { break; }
+                    // name.field = ... (field assignment through the param)
+                    let field_assign = format!(r"\b{}\.\w+\s*=", name);
+                    if let Some(re) = cached_regex(&field_assign) {
+                        if re.is_match(fl) { is_mut = true; break; }
+                    }
+                    // name[idx] = ... (indexed assignment)
+                    let idx_assign = format!(r"\b{}\[[^\]]*\]\s*=", name);
+                    if let Some(re) = cached_regex(&idx_assign) {
+                        if re.is_match(fl) { is_mut = true; break; }
+                    }
+                    // name = ... (direct reassignment; exclude == and `let name`)
+                    let direct = format!(r"\b{}\s*=[^=]", name);
+                    if let Some(re) = cached_regex(&direct) {
+                        if re.is_match(fl) && !fl.starts_with("let ") {
+                            is_mut = true; break;
+                        }
+                    }
+                }
+                if is_mut { mutated.push(name); }
+            }
+
+            if mutated.is_empty() { continue; }
+            // Rewrite the params span: `name: Type` → `mut name: Type`.
+            let mut new_params = params_str.to_string();
+            for name in &mutated {
+                let marker = format!("{}:", name);
+                let marker_mut = format!("mut {}:", name);
+                if let Some(pos) = new_params.find(&marker) {
+                    // Only replace if not already `mut `-prefixed.
+                    let before = &new_params[..pos];
+                    if !before.ends_with("mut ") {
+                        new_params = new_params.replacen(&marker, &marker_mut, 1);
+                    }
+                }
+            }
+            result[i] = format!("{}{}{}", &line[..open + 1], new_params, &line[close..]);
+        }
+
+        let joined = result.join("\n");
+        if joined != *content { *content = joined; }
     }
 
     /// Fix `return None;` in void (unit-return) functions → `return;`.

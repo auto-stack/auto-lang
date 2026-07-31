@@ -219,7 +219,7 @@ impl RoleRegistry {
         }
         return None;
     }
-    pub fn save(&self, name: &str, cfg: RoleConfig, soul_md: Option<String>) -> Result<(), AgentError> {
+    pub fn save(&self, mut name: &str, cfg: RoleConfig, soul_md: Option<String>) -> Result<(), AgentError> {
         if load_builtin(name).is_some() {
             return Err(AgentError::Config(format!("cannot overwrite built-in role '{}'; choose a different name or use inherit", name)));
         }
@@ -319,7 +319,7 @@ impl RoleRegistry {
 /// deleted — returns an error.
 /// Load one built-in profession into the registry (step 1 of load()).
 /// Unknown names are silently skipped.
-fn load_one_builtin(name: &str, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
+fn load_one_builtin(name: &str, mut roles: std::collections::HashMap<String, RoleDetail>, mut names: Vec<String>) {
     match load_builtin(name) {
         Some(prof) => {
             
@@ -391,7 +391,7 @@ fn is_at_file(path: PathBuf) -> bool {
 /// Read + parse one user .at role file, inserting it into roles/names
 /// (overriding any same-named built-in). Parse/read failures are warned +
 /// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
-fn load_user_at_file(path: PathBuf, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
+fn load_user_at_file(path: PathBuf, mut roles: std::collections::HashMap<String, RoleDetail>, mut names: Vec<String>) {
 
 
 

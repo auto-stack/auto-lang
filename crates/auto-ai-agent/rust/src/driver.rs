@@ -142,7 +142,7 @@ impl PipelineDriver {
     pub fn with_gate_handler(&mut self, handler: fn(String) -> GateDecision) {
         self.gate_handler = Some(handler);
     }
-    pub async fn drive(&mut self, task_msg: &str, on_event: fn(PipelineEvent) -> ()) -> Result<(), AgentError> {
+    pub async fn drive(&mut self, task_msg: &str, mut on_event: fn(PipelineEvent) -> ()) -> Result<(), AgentError> {
         self.on_event = on_event;
         let mut last_handoff: Option<HandoffDocument> = None;
         loop {
@@ -207,7 +207,8 @@ impl PipelineDriver {
 
 
 
-        let agent_inst = match self.factory.build_agent(role_id, last_handoff.clone()) { Ok(a) => a, Err(msg) => return Err(AgentError::Config(msg)), };
+
+        let mut agent_inst = match self.factory.build_agent(role_id, last_handoff.clone()) { Ok(a) => a, Err(msg) => return Err(AgentError::Config(msg)), };
 
 
         let input = build_step_input(task_msg, last_handoff.clone());

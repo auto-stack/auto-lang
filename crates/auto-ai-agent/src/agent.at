@@ -253,7 +253,8 @@ ext Agent {
 
     /// Run the ReAct loop against `task`, returning the agent's final answer.
     /// Non-streaming, non-cancellable (delegates to run_inner with cancel=None).
-    pub fn run(task_msg str) ~Result<AgentResult, AgentError> {
+    /// `mut fn`: the loop mutates self.memory/tools.
+    pub mut fn run(task_msg str) ~Result<AgentResult, AgentError> {
         return self.run_inner(task_msg, None).await
     }
 
@@ -261,7 +262,8 @@ ext Agent {
     /// Rust original also takes an `on_event` callback; this polling-style
     /// port drops the callback (events are collected internally — Stage 1 of
     /// the streaming roadmap; see 013-handoff §D).
-    pub fn run_stream(task_msg str, cancel Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
+    /// `mut fn`: run_inner mutates self.memory/tools.
+    pub mut fn run_stream(task_msg str, cancel Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
         return self.run_inner(task_msg, Some(cancel)).await
     }
 
@@ -273,7 +275,8 @@ ext Agent {
     /// (LOOP_DETECT_THRESHOLD), or the hard safety cap (max_turns * 5) is hit.
     /// The Role's max_turns is a SOFT target — the agent may exceed it while
     /// still making progress; the hard cap is 5x the soft target.
-    pub fn run_inner(task_msg str, cancel ?Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
+    /// `mut fn`: mutates self.memory (add/add_message) + self.tools.
+    pub mut fn run_inner(task_msg str, cancel ?Arc<AtomicBool>) ~Result<AgentResult, AgentError> {
         // Stage-1 event buffer (not surfaced yet; Stage 2 will turn this into a
         // queue the UI drains).
         var events List<StreamEvent> = []
@@ -307,7 +310,13 @@ ext Agent {
             }
 
             let req = self.build_request()
-            let resp = self.client.complete(req).await.?
+            // a2r can't `impl From<ClientError> for AgentError` (no `#[from]`
+            // emission), so the `?` on client.complete would fail E0277 —
+            // map the error explicitly to the Client variant.
+            let resp = is self.client.complete(req).await {
+                Ok(r) -> r,
+                Err(e) -> return Err(AgentError.Client(e))
+            }
 
             // Cancel checkpoint 2: after the LLM responded, before consuming.
             if is_cancelled(cancel) {
@@ -320,7 +329,8 @@ ext Agent {
             // Business-level error carried in a 200 response.
             is resp.error {
                 Some(err) -> {
-                    let ev = StreamEvent.Error(err)
+                    // clone: err is used again in the Config variant below.
+                    let ev = StreamEvent.Error(err.clone())
                     events.push(ev)
                     return Err(AgentError.Config(err))
                 },
@@ -344,7 +354,8 @@ ext Agent {
                     blocks.push(tb)
                 }
                 var tc_idx uint = 0
-                for tc in resp.tool_calls {
+                // clone: the tool-execution loop below re-reads resp.tool_calls.
+                for tc in resp.tool_calls.clone() {
                     let ub = ContentBlock.ToolUse(tc.id, tc.name, tc.input)
                     blocks.push(ub)
                     tc_idx = tc_idx + 1
@@ -355,24 +366,27 @@ ext Agent {
                 }
 
                 // Execute each tool call, record results, feed back to memory.
+                // (clone: the first loop moved resp.tool_calls; tc fields are
+                // shared across ToolStart/exec/record/event below.)
                 var keep_going = true
-                for tc in resp.tool_calls {
+                for tc in resp.tool_calls.clone() {
                     let key = f"${tc.name}::${tc.input}"
-                    let count = bump_seen(seen, seen_names, key)
+                    let count = bump_seen(seen, seen_names.clone(), key)
                     if count >= loop_detect_threshold() {
                         let ev = StreamEvent.Error(f"loop detected on '${tc.name}'")
                         events.push(ev)
                         return Err(AgentError.LoopDetected(tc.name))
                     }
                     // ToolStart: signal this tool is about to run.
-                    let ts = StreamEvent.ToolStart(tc.name, tc.input)
+                    let ts = StreamEvent.ToolStart(tc.name.clone(), tc.input.clone())
                     events.push(ts)
-                    let outcome = self.tools.exec_or_msg(tc.name, tc.input).await
+                    // exec_or_msg takes &str name — tc.name is String.
+                    let outcome = self.tools.exec_or_msg(tc.name.as_str(), tc.input.clone()).await
                     let rec = ToolCallRecord(
-                        tool: tc.name, args: tc.input, result: outcome
+                        tool: tc.name.clone(), args: tc.input.clone(), result: outcome.clone()
                     )
                     result.tool_calls.push(rec)
-                    let tev = StreamEvent.Tool(tc.name, tc.input, outcome)
+                    let tev = StreamEvent.Tool(tc.name, tc.input, outcome.clone())
                     events.push(tev)
                     // Truncate before storing so one big output can't blow the
                     // context window.
@@ -382,8 +396,9 @@ ext Agent {
                 // Loop continues: ask the model again with the tool results.
             } else {
                 // No tool calls → final answer.
-                result.output = resp.content
-                self.memory.add("assistant", resp.content)
+                result.output = resp.content.clone()
+                // memory.add takes &str content.
+                self.memory.add("assistant", resp.content.as_str())
                 let done = StreamEvent.Done(clone_result(result))
                 events.push(done)
                 return Ok(result)
@@ -413,7 +428,8 @@ ext Agent {
         let model = build_model_id(pinned, self.role.model_tier())
 
         let system_prompt = build_system_prompt(
-            self.context_block, self.role.system_prompt(), self.skills_block
+            // system_prompt() returns String but soul param is `str` (&str).
+            self.context_block, self.role.system_prompt().as_str(), self.skills_block
         )
 
         return CompletionRequest(

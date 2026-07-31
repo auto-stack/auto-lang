@@ -279,7 +279,8 @@ ext PipelineDriver {
 
         // Build the agent for this step. (clone: build_agent consumes the
         // handoff, but we still need it for the step input + budget warning.)
-        let agent_inst = is self.factory.build_agent(role_id, last_handoff.clone()) {
+        // `var` (let mut): run_stream takes &mut self.
+        var agent_inst = is self.factory.build_agent(role_id, last_handoff.clone()) {
             Ok(a) -> a,
             Err(msg) -> return Err(AgentError.Config(msg))
         }

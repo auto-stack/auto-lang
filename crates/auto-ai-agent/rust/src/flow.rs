@@ -99,11 +99,11 @@ impl FlowStep {
     pub fn new(id: &str, role_id: &str) -> FlowStep {
         return FlowStep { id: id.to_string(), role_id: role_id.to_string(), gate: GateType::Auto, max_turns: None, exit: ExitRouting::Next, token_budget: None };
     }
-    pub fn with_gate(&mut self, gate: GateType) -> FlowStep {
+    pub fn with_gate(&mut self, mut gate: GateType) -> FlowStep {
         self.gate = gate;
         return self.clone();
     }
-    pub fn with_exit(&mut self, exit: ExitRouting) -> FlowStep {
+    pub fn with_exit(&mut self, mut exit: ExitRouting) -> FlowStep {
         self.exit = exit;
         return self.clone();
     }
