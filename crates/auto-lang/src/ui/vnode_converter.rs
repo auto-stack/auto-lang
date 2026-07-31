@@ -426,6 +426,37 @@ where
         _ => Vec::new(),
     }
 }
+/// Plan 371 Task 19: borrowing variant of [`extract_children`] that returns
+/// references instead of cloning. Used by path-walk helpers (e.g. MCP action
+/// dispatch in rust mode) that only need to navigate the tree.
+///
+/// The child ordering MUST stay identical to `extract_children` so a `path`
+/// derived from a VNode (which mirrors `extract_children`) resolves to the
+/// same node here.
+pub fn extract_children_ref<M>(view: &View<M>) -> Vec<&View<M>>
+where
+    M: Clone + std::fmt::Debug,
+{
+    match view {
+        View::Column { children, .. } | View::Row { children, .. } => {
+            children.iter().collect()
+        }
+        View::Grid { cells, .. } => cells.iter().collect(),
+        View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
+        View::List { items, .. } => items.iter().collect(),
+        View::Table { headers, rows, .. } => {
+            let mut out: Vec<&View<M>> = headers.iter().collect();
+            for row in rows {
+                for cell in row {
+                    out.push(cell);
+                }
+            }
+            out
+        }
+        View::Tabs { contents, .. } => contents.iter().collect(),
+        _ => Vec::new(),
+    }
+}
 
 #[cfg(test)]
 mod tests {

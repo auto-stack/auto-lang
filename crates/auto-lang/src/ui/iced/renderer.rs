@@ -2060,13 +2060,16 @@ fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         if let Some(rx) = lock.as_mut() {
-            // Drain all pending actions (non-blocking)
+            // Drain all pending actions (non-blocking). VM mode uses Event
+            // addressing, which maps onto IcedMessage. Path mode is a no-op
+            // here (rust mode uses devtools_subscription/devtools_update).
             match rx.try_recv() {
-                Ok(action) => Some(IcedMessage {
-                    widget: action.widget,
-                    event: action.event,
-                    input_value: action.input_value,
-                }),
+                Ok(action) => match action.target {
+                    crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+                        Some(IcedMessage { widget, event, input_value: action.value })
+                    }
+                    crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+                },
                 Err(std::sync::mpsc::TryRecvError::Empty) => None,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
             }
@@ -2433,36 +2436,114 @@ struct DynamicState {
 pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 
 /// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
-fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, String> {
+/// Plan 371 Task 20: process a captured screenshot according to the requested
+/// mode. Returns a human-readable result string.
+///
+/// - Default (no name): save a timestamped PNG to `tmp/`, return its path.
+/// - `baseline=true`: save to `tests/screenshots/<name>.png` (overwrite).
+/// - `diff=true`: compare against `tests/screenshots/<name>.png`; return a
+///   `matches`/`DIFFERS` verdict with the diff percentage, and save a
+///   highlighted diff image to `tmp/<name>-diff.png` when they differ.
+fn process_screenshot(
+    screenshot: &iced::window::Screenshot,
+    name: &str,
+    baseline: bool,
+    diff: bool,
+    threshold: f64,
+) -> Result<String, String> {
     let width = screenshot.size.width;
     let height = screenshot.size.height;
-
-    // Build an RGBA image from raw bytes
     let img = image::RgbaImage::from_raw(width, height, screenshot.rgba.as_ref().to_vec())
         .ok_or_else(|| "Failed to create RGBA image from screenshot bytes".to_string())?;
 
-    // Ensure tmp/ directory exists
+    if baseline {
+        let dir = std::path::Path::new("tests/screenshots");
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Failed to create tests/screenshots: {}", e))?;
+        let path = dir.join(format!("{}.png", name));
+        img.save(&path)
+            .map_err(|e| format!("Failed to save baseline PNG: {}", e))?;
+        return Ok(format!("Baseline saved: {}", path.display()));
+    }
+
+    if diff {
+        let baseline_path = std::path::Path::new("tests/screenshots")
+            .join(format!("{}.png", name));
+        let baseline_img = image::open(&baseline_path)
+            .map_err(|e| format!("Failed to load baseline '{}': {}", baseline_path.display(), e))?
+            .to_rgba8();
+        return compare_pngs(&baseline_img, &img, name, threshold);
+    }
+
+    // Default: legacy timestamped capture.
     let tmp_dir = std::path::Path::new("tmp");
     std::fs::create_dir_all(tmp_dir)
         .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
-
-    // Generate unique filename using system time
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let filename = format!("autoui-screenshot-{}.png", timestamp);
-    let path = tmp_dir.join(&filename);
-
-    // Save as PNG
+    let path = tmp_dir.join(format!("autoui-screenshot-{}.png", timestamp));
     img.save(&path)
         .map_err(|e| format!("Failed to save PNG: {}", e))?;
+    let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    Ok(format!("Screenshot saved to: {}", abs_path.to_string_lossy()))
+}
 
-    // Return absolute path
-    let abs_path = std::fs::canonicalize(&path)
-        .unwrap_or_else(|_| path.clone());
-
-    Ok(abs_path.to_string_lossy().to_string())
+/// Plan 371 Task 20: per-pixel comparison of two RGBA images. Returns a
+/// verdict string and, when they differ beyond `threshold`, writes a
+/// highlighted diff image (changed pixels → red) to `tmp/<name>-diff.png`.
+fn compare_pngs(
+    baseline: &image::RgbaImage,
+    current: &image::RgbaImage,
+    name: &str,
+    threshold: f64,
+) -> Result<String, String> {
+    let (bw, bh) = baseline.dimensions();
+    let (cw, ch) = current.dimensions();
+    if (bw, bh) != (cw, ch) {
+        let pct = 100.0;
+        return Ok(format!(
+            "Screenshot DIFFERS from baseline '{}': size mismatch ({}x{} vs {}x{}, {:.1}%) — threshold {:.1}%",
+            name, bw, bh, cw, ch, pct, threshold * 100.0
+        ));
+    }
+    let total = (bw as usize) * (bh as usize);
+    let mut differing: usize = 0;
+    let mut diff_img = image::RgbaImage::new(bw, bh);
+    for y in 0..bh {
+        for x in 0..bw {
+            let b = baseline.get_pixel(x, y);
+            let c = current.get_pixel(x, y);
+            if b.0 != c.0 {
+                differing += 1;
+                // Mark changed pixel red, keep alpha.
+                diff_img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+            } else {
+                diff_img.put_pixel(x, y, *b);
+            }
+        }
+    }
+    let diff_frac = if total == 0 { 0.0 } else { differing as f64 / total as f64 };
+    let diff_pct = diff_frac * 100.0;
+    if diff_frac > threshold {
+        // Save the highlighted diff image.
+        let tmp_dir = std::path::Path::new("tmp");
+        std::fs::create_dir_all(tmp_dir)
+            .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
+        let diff_path = tmp_dir.join(format!("{}-diff.png", name));
+        diff_img.save(&diff_path)
+            .map_err(|e| format!("Failed to save diff PNG: {}", e))?;
+        Ok(format!(
+            "Screenshot DIFFERS from baseline '{}': {:.2}% pixels changed (threshold {:.2}%) | diff: {}",
+            name, diff_pct, threshold * 100.0, diff_path.display()
+        ))
+    } else {
+        Ok(format!(
+            "Screenshot matches baseline '{}' ({:.2}% pixels changed, threshold {:.2}%)",
+            name, diff_pct, threshold * 100.0
+        ))
+    }
 }
 
     let widget_name = component.widget_name().to_string();
@@ -2602,17 +2683,26 @@ fn save_screenshot_png(screenshot: &iced::window::Screenshot) -> Result<String, 
             return iced::Task::none();
         }
 
-        // Handle screenshot request from MCP thread (Plan 285)
+        // Handle screenshot request from MCP thread (Plan 285 / Task 20)
         if let Some(req) = state.screenshot_request.borrow_mut().take() {
             let reply_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(req.reply_tx)));
+            // Clone the optionals into the outer move closure; `name` is cloned
+            // again into the inner `then` (the outer closure is FnMut).
+            let name = req.name.clone();
+            let baseline = req.baseline;
+            let diff = req.diff;
+            let threshold = req.threshold;
             return iced::window::oldest()
                 .then(move |maybe_id: Option<iced::window::Id>| {
                     match maybe_id {
                         Some(id) => {
                             let tx = reply_tx.clone();
+                            let name = name.clone();
                             iced::window::screenshot(id)
                                 .then(move |ss: iced::window::Screenshot| {
-                                    let result = save_screenshot_png(&ss);
+                                    let result = process_screenshot(
+                                        &ss, &name, baseline, diff, threshold,
+                                    );
                                     let tx = tx.lock().unwrap().take().unwrap();
                                     let _ = tx.send(result);
                                     iced::Task::none()
@@ -6673,15 +6763,16 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             |_| None,
         );
 
-        // Plan 371 Task 11: sync VTree to MCP SharedState so MCP tools
-        // (snapshot/vtree/find/exists) work in rust mode.
+        // Plan 371 Task 11/21: sync VTree + scalar state to MCP SharedState.
         if let Some(ref mcp_shared) = *self.dt.mcp_shared.borrow() {
             let snap = crate::ui::mcp_server::StyledNodeSnapshot {
                 widget_name: self.dt.mcp_widget_name.clone(),
                 vtree: tree.clone(),
                 computed: std::collections::HashMap::new(),
             };
-            mcp_shared.lock().unwrap().set_styled_vtree(snap);
+            let mut mcp = mcp_shared.lock().unwrap();
+            mcp.set_styled_vtree(snap);
+            mcp.set_state(self.inner.state_snapshot());
         }
 
         *self.dt.live_vtree.borrow_mut() = Some(tree);
@@ -6728,18 +6819,38 @@ where
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(s) => {
-            // Plan 371 Task 12: handle MCP actions by finding the matching
-            // C::Msg in the View tree and dispatching it to inner.on().
-            if let Some(rest) = s.strip_prefix("__mcp_action|") {
-                let parts: Vec<&str> = rest.splitn(2, '|').collect();
-                let event_name = parts.get(0).unwrap_or(&"");
-                let input_value = parts.get(1).filter(|v| !v.is_empty());
-
-                // Search the View tree for a node with a matching event handler.
+            // Plan 371 Task 19: MCP action dispatch (rust mode).
+            //   __mcp_action_path|<a,b,c>|<action>|<value> — path mode, walk
+            //     the typed View<C::Msg> to the exact node and extract its
+            //     handler. Replaces the old Debug-substring heuristic.
+            //     Input text is forwarded via thread-local INPUT_TEXT (Plan 374).
+            //   __mcp_action|<widget>.<event>|<value> — event fallback (no-op in rust).
+            if let Some(rest) = s.strip_prefix("__mcp_action_path|") {
+                let mut parts = rest.splitn(3, '|');
+                let path_str = parts.next().unwrap_or("");
+                let action_str = parts.next().unwrap_or("press");
+                let value_str = parts.next().unwrap_or("");
+                let path: Vec<u16> = if path_str.is_empty() {
+                    Vec::new()
+                } else {
+                    path_str.split(',').filter_map(|n| n.parse::<u16>().ok()).collect()
+                };
                 let view = w.inner.view();
-                if let Some(msg) = find_msg_by_event_name::<C>(&view, event_name, input_value.copied()) {
-                    w.inner.on(msg);
+                if let Some(target) = find_view_by_path_generic(&view, &path) {
+                    if !value_str.is_empty() && matches!(action_str, "type_text" | "clear") {
+                        INPUT_TEXT.with(|t| *t.borrow_mut() = value_str.to_string());
+                    }
+                    if let Some(m) = extract_handler_from_view(target, action_str) {
+                        w.inner.on(m);
+                    }
                 }
+                return iced::Task::none();
+            }
+            if let Some(rest) = s.strip_prefix("__mcp_action|") {
+                let mut parts = rest.splitn(2, '|');
+                let _widget_event = parts.next().unwrap_or("");
+                let input_value = parts.next().filter(|v| !v.is_empty());
+                let _ = input_value;
                 return iced::Task::none();
             }
             apply_debug_event(&mut w.dt, &s);
@@ -6748,66 +6859,34 @@ where
     iced::Task::none()
 }
 
-/// Plan 371 Task 12: search a View<C::Msg> tree for a button/input/textarea
-/// whose handler matches the given event name, and return the C::Msg to dispatch.
-/// For buttons: matches by Debug formatting of the msg (e.g. "Edit" in AppMsg::Edit).
-/// For inputs: returns the msg with input_value encoded.
-fn find_msg_by_event_name<C: Component + 'static>(
-    view: &AbstractView<C::Msg>,
-    event_name: &str,
-    _input_value: Option<&str>,
-) -> Option<C::Msg>
-where
-    C::Msg: Clone + Debug + Send + 'static,
-{
-    // Walk the view tree looking for buttons/inputs whose handler matches.
-    fn walk<M: Clone + Debug>(
-        view: &AbstractView<M>,
-        event_name: &str,
-    ) -> Option<M> {
-        match view {
-            AbstractView::Button { onclick, .. } => {
-                let dbg = format!("{:?}", onclick);
-                if dbg.contains(event_name) {
-                    return Some(onclick.clone());
-                }
-            }
-            AbstractView::Input { on_change, .. } | AbstractView::Textarea { on_change, .. } => {
-                if let Some(msg) = on_change {
-                    let dbg = format!("{:?}", msg);
-                    if dbg.contains(event_name) {
-                        return Some(msg.clone());
-                    }
-                }
-            }
-            AbstractView::Checkbox { on_toggle, .. } => {
-                if let Some(msg) = on_toggle {
-                    let dbg = format!("{:?}", msg);
-                    if dbg.contains(event_name) {
-                        return Some(msg.clone());
-                    }
-                }
-            }
-            _ => {}
-        }
-        let children = extract_view_children(view);
-        for child in &children {
-            if let Some(msg) = walk(child, event_name) {
-                return Some(msg);
-            }
-        }
-        None
+/// Plan 371 Task 19: walk a typed `View<M>` tree by a child-index `path`
+/// (matching `VNode.path`) and return a reference to the exact node. Precise
+/// replacement for the old Debug-substring heuristic [`find_msg_by_event_name`].
+pub fn find_view_by_path_generic<'a, M: Clone + Debug>(
+    view: &'a AbstractView<M>,
+    path: &[u16],
+) -> Option<&'a AbstractView<M>> {
+    let mut current = view;
+    for &idx in path {
+        let children = crate::ui::vnode_converter::extract_children_ref(current);
+        current = children.get(idx as usize)?;
     }
-    walk(view, event_name)
+    Some(current)
 }
 
-/// Extract children from a View (mirrors vnode_converter's extract_children).
-fn extract_view_children<M: Clone + Debug>(view: &AbstractView<M>) -> Vec<AbstractView<M>> {
-    match view {
-        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => children.clone(),
-        AbstractView::Grid { cells, .. } => cells.clone(),
-        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => vec![(**child).clone()],
-        _ => Vec::new(),
+/// Plan 371 Task 19: extract the typed handler `M` from a View node by action.
+fn extract_handler_from_view<M: Clone + Debug>(
+    view: &AbstractView<M>,
+    action_str: &str,
+) -> Option<M> {
+    match (view, action_str) {
+        (AbstractView::Button { onclick, .. }, "press") => Some(onclick.clone()),
+        (AbstractView::Input { on_change, .. } | AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => {
+            on_change.clone()
+        }
+        (AbstractView::Checkbox { on_toggle, .. }, "toggle") => on_toggle.clone(),
+        (AbstractView::Radio { on_select, .. }, "press" | "select") => on_select.clone(),
+        _ => None,
     }
 }
 
@@ -6820,20 +6899,24 @@ where
     C::Msg: Send + 'static,
 {
     let inner = w.inner.subscription().map(WrapperMsg::Inner);
-    // Plan 371 Task 13: drain MCP actions into WrapperMsg::Debug events.
-    // The MCP thread sends ActionMessage { widget, event, input_value };
-    // we encode as "__mcp_action|event|input_value" for devtools_update
-    // to resolve against the inner component's View tree.
+    // Plan 371 Task 19: drain MCP actions into WrapperMsg::Debug events.
+    //   Event (VM):   __mcp_action|<widget>.<event>|<value>
+    //   Path (rust):  __mcp_action_path|<a,b,c>|<action>|<value>
     let mcp = iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         if let Some(rx) = lock.as_mut() {
             match rx.try_recv() {
                 Ok(action) => {
-                    // Encode: __mcp_action|<event>|<input_value_or_empty>
-                    let payload = match &action.input_value {
-                        Some(v) => format!("__mcp_action|{}|{}", action.event, v),
-                        None => format!("__mcp_action|{}|", action.event),
+                    let value_str = action.value.unwrap_or_default();
+                    let payload = match action.target {
+                        crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+                            format!("__mcp_action|{}.{}|{}", widget, event, value_str)
+                        }
+                        crate::ui::mcp_server::ActionTarget::Path { path } => {
+                            let path_str = path.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",");
+                            format!("__mcp_action_path|{}|{}|{}", path_str, action.action, value_str)
+                        }
                     };
                     Some(WrapperMsg::<C>::Debug(payload))
                 }

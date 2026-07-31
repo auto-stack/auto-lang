@@ -167,6 +167,11 @@ class McpAdapter:
         self.mode = mode          # "vm" or "rust"
         self.url = url
         self.req_id = 0
+        # Plan 371 Task 20: screenshot visual-regression options. When set,
+        # after each scenario we call autoui_screenshot with these options and
+        # collect a verdict into screenshot_results.
+        self.screenshot_mode = None   # None | "baseline" | "diff"
+        self.screenshot_results = []  # list of (sid, verdict_text)
 
     def _call(self, tool: str, **args) -> str:
         """Call an MCP tool and return the text result."""
@@ -182,6 +187,23 @@ class McpAdapter:
         content = data.get("result", {}).get("content", [])
         return content[0]["text"] if content else ""
 
+    def after_scenario(self, sid: str) -> None:
+        """Plan 371 Task 20: capture a per-scenario screenshot for visual
+        regression. Uses the stable `sid` as the baseline name so baselines
+        are reproducible across runs. Only acts when `screenshot_mode` is set.
+        """
+        if self.screenshot_mode is None:
+            return
+        name = f"{sid}"
+        try:
+            if self.screenshot_mode == "baseline":
+                verdict = self._call("autoui_screenshot", name=name, baseline=True)
+            else:  # "diff"
+                verdict = self._call("autoui_screenshot", name=name, diff=True)
+        except Exception as e:
+            verdict = f"error: {e}"
+        self.screenshot_results.append((sid, verdict))
+
     def run_suite(self, suite: Suite) -> list:
         """Execute all scenarios in a suite. Returns list of TestResult."""
         results = []
@@ -192,6 +214,9 @@ class McpAdapter:
                 continue
             result = self._run_scenario(sc)
             results.append(result)
+            # Plan 371 Task 20: per-scenario screenshot hook (runs even on
+            # PASS; skipped scenarios do not capture).
+            self.after_scenario(sc.sid)
         return results
 
     def _run_scenario(self, sc: Scenario) -> TestResult:
@@ -353,22 +378,27 @@ class McpAdapter:
 # ============================================================================
 
 def run_suite(autotest_path: str, mode: str = "vm",
-              url: str = "http://localhost:9247/mcp") -> list:
+              url: str = "http://localhost:9247/mcp",
+              screenshot: str = None) -> tuple:
     """Parse an .autotest file and execute all scenarios via MCP.
 
     Args:
         autotest_path: Path to the .autotest file.
         mode: "vm" or "rust" — controls skip_if behavior.
         url: MCP server URL.
+        screenshot: Plan 371 Task 20 — None | "baseline" | "diff". When set,
+            captures a per-scenario screenshot via autoui_screenshot.
 
     Returns:
-        List of TestResult objects.
+        (results, screenshot_results) — results is a list of TestResult;
+        screenshot_results is a list of (sid, verdict) (empty if no screenshot).
     """
     with open(autotest_path, encoding="utf-8") as f:
         text = f.read()
 
     suite = parse_autotest(text)
     adapter = McpAdapter(mode=mode, url=url)
+    adapter.screenshot_mode = screenshot
     results = adapter.run_suite(suite)
 
     # Print report
@@ -393,4 +423,4 @@ def run_suite(autotest_path: str, mode: str = "vm",
     print(f"\n{'─'*60}")
     print(f"Total: {passed} passed, {failed} failed, {skipped} skipped")
     print(f"{'─'*60}\n")
-    return results
+    return results, adapter.screenshot_results

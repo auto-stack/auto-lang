@@ -515,3 +515,125 @@ acceptance.atd 有 13 个场景（T1-T13），MCP 可执行的子集：
 
 - 在 acceptance.atd 的 D7 条目更新 Rust 平台状态：Rust ❌→✅（MCP 已支持）
 - 添加引用：指向 `.autotest` 文件作为桌面 MCP 执行声明
+
+---
+
+## 8. 实现审计（2026-07-31）
+
+对 Task 1-18 的实现情况做了逐项核查（证据见代码 `file:line`）。结论：**14/18 已完成**，1 个未实现，2 个存在 workaround。
+
+### 8.1 状态总览
+
+| Task | 内容 | 状态 | 备注 |
+|---|---|---|---|
+| 1-9 | action/inspect/wait 的 vnode_N 支持 + find/exists 工具 + events 合并 | ✅ 已完成 | VM 模式路径干净 |
+| **10** | 截图 + 视觉对比 | ❌ **未实现** | → Task 20 |
+| 11/13 | Rust 模式 MCP 启动 + subscription | ✅ 已完成 | 架构偏离但功能等价 |
+| **12** | Rust 模式 action 分发 | ⚠️ **workaround** | → Task 19 |
+| **14** | Rust 模式跨模式一致性 | ⚠️ 部分 | `autoui_state` 在 Rust 不可用 → Task 21 |
+| 15-18 | `.autotest` 格式 + Python adapter + acceptance.atd | ✅ 已完成 | 仅 VM 模式跑过全量验证 |
+
+### 8.2 关键遗留问题（workaround / 缺失）
+
+**问题 A（Task 12 workaround，最关键）**：Rust 模式 action 分发使用脆弱启发式，存在**静默失败**风险。链路：`execute_action_vnode` 的 Rust 分支从 VNode 标签取首词作为 event 名（`derive_event_name_from_label`），经 `__mcp_action|...` 字符串通道，iced 侧 `find_msg_by_event_name` 用 `format!("{:?}", onclick).contains(event)` 子串匹配。三个缺陷：子串误匹配、首词未必命中（静默失败）、输入值端到端断裂（`_input_value` 未用，`INPUT_TEXT` thread-local 从未被 MCP 设置）。
+
+**问题 B（Task 10 缺失）**：`autoui_screenshot`（`mcp_server.rs:1154`，`inputSchema.properties == {}`）未加 diff 能力。`run_autotest.py:52-93` 有个 post-hoc MD5 hash 存根（post-hoc、只存 hash、不影响退出码）。
+
+**问题 C（Task 14 部分）**：Rust 模式从不调用 `SharedState::update`，`shared.state` 恒空，`tool_state` 早退。4 个 state 场景标 `skip_if rust`（T5c/T11/T11b/T12）。
+
+### 8.3 后续补救计划（Task 19-21）
+
+- **Task 19（高）**：路径寻址精确分发，消除 heuristic + 修复输入值断裂。
+- **Task 20（中）**：Rust MCP 侧像素级截图 diff。
+- **Task 21（低）**：Rust 模式标量状态快照，去掉 `skip_if rust`。
+
+---
+
+## 9. Task 19: Rust 模式 action 路径寻址（消除 heuristic）✅ 已实施
+
+### 9.1 设计思路
+
+放弃「MCP 侧猜 event 名 → iced 侧 Debug 子串匹配」，改为「**MCP 侧只传路径，iced 侧沿 path 精确取 handler**」。目标 View 节点的 handler 是构造 View 时内联的强类型 `M`，沿 path 定位即拿到正确的 `M`。
+
+### 9.2 实施
+
+- `ActionMessage` 重构为自描述结构：`{ target: ActionTarget, action, value }`，新增 `enum ActionTarget { Event{widget,event}, Path{path:Vec<u16>} }`。VM 模式用 `Event`（向后兼容），Rust 模式用 `Path`（从 `vnode.path`）。
+- iced 侧 `devtools_subscription` 编码为 `__mcp_action_path|<a,b,c>|<action>|<value>`；`devtools_update` 新增该分支：解析 path → `find_view_by_path_generic(&view, &path)` → `extract_handler_from_view(node, action)` → 设置 `INPUT_TEXT`（**修复输入值断裂**）→ `w.inner.on(m)`。
+- 新增泛型 `find_view_by_path_generic<M>` + `extract_handler_from_view<M>`（renderer.rs），删除 `find_msg_by_event_name` + `extract_view_children`（renderer.rs）和 `derive_event_name_from_label`（mcp_server.rs）。
+- `vnode_converter.rs` 新增 `pub fn extract_children_ref`（引用版本，避免 clone）。
+
+### 9.3 改动文件
+
+`mcp_server.rs`、`iced/renderer.rs`、`vnode_converter.rs`。
+
+### 9.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅
+- `cargo build --bin auto` ✅
+- 015-notes rust workspace `cargo build` ✅
+- mcp_server tests_314：6 passed ✅
+- ⚠️ 待：VM 模式 `.autotest` 全量回归（需启动 GUI）；Rust 模式手动验证 Edit/type_text。
+
+---
+
+## 10. Task 20: 像素级截图 diff（Rust MCP 侧）✅ 已实施
+
+### 10.1 设计思路
+
+在 Rust MCP 侧用已依赖的 `image 0.25`（`ui-iced` 启用）做像素 diff，RGBA 缓冲区在 `renderer.rs` 已在内存中。
+
+### 10.2 实施
+
+- `tool_screenshot` 解析 `name`/`baseline`/`diff`/`threshold` 参数；schema 增加这些参数。
+- `ScreenshotRequest`/`ScreenshotOptions` 携带选项（纯数据，无 image 类型，可放在非 ui-iced-gated 模块）。
+- `renderer.rs` 新增 `process_screenshot`（命名/基线/diff 分发）+ `compare_pngs`（逐像素对比，差异超阈值返回 DIFFERS 并存红高亮 diff 图到 `tmp/<name>-diff.png`），删除冗余的 `save_screenshot_png`。
+- Python 适配器：`McpAdapter.after_scenario(sid)` 钩子在每场景末尾调 `autoui_screenshot(name=sid, baseline/diff)`；`run_suite` 返回 `(results, screenshot_results)`；`run_autotest.py` 重写为传参 + diff 结果纳入退出码，删除 post-hoc MD5 存根。
+
+### 10.3 改动文件
+
+`mcp_server.rs`、`iced/renderer.rs`、`tests/autotest/__init__.py`、`tests/run_autotest.py`。
+
+### 10.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅；`cargo build --bin auto` ✅
+- Python 文件 `import autotest` + `ast.parse` ✅
+- ⚠️ 待：启动 GUI 跑 `--screenshot-baseline` / `--screenshot-diff` 端到端。
+
+---
+
+## 11. Task 21: Rust 模式标量状态快照（去掉 skip_if rust）✅ 部分实施
+
+### 11.1 设计思路
+
+`Component` 是本地 trait（`component.rs:34`），加**带默认实现的 `state_snapshot()`**（blast radius 零）。a2r 生成器对**标量字段**生成 override。
+
+### 11.2 实施
+
+- `component.rs`：trait 加 `state_snapshot()` 默认方法（默认空，VM 模式不经过此路径）。
+- `ui/mod.rs`：re-export `auto_val`（供生成代码以 `auto_lang::ui::auto_val::Value` 引用）。
+- `rust.rs` 生成器：`generate_component_impl` 新增 `generate_state_snapshot`，仅对标量类型（String/i8..i64/u8..u64/isize/usize/f32/f64/bool）生成条目，跳过 Vec/serde_json::Value/嵌套组件；新增 `is_scalar_state_type`/`scalar_to_auto_value_expr` helpers + 2 个单元测试。
+- `mcp_server.rs`：`SharedState::set_state` setter。
+- `renderer.rs`：`view_element` 每帧 `set_state(self.inner.state_snapshot())`。
+
+### 11.3 改动文件
+
+`component.rs`、`ui/mod.rs`、`ui_gen/rust.rs`、`mcp_server.rs`、`iced/renderer.rs`。
+
+### 11.4 验证
+
+- `cargo build -p auto-lang --features ui-iced` ✅（默认方法，零回归）
+- 生成器单元测试：`test_state_snapshot_scalar_override`、`test_state_snapshot_no_scalars_no_override` ✅（25 passed in ui_gen::rust）
+- 015-notes rust workspace `cargo build` ✅（trait 默认方法，未重生成）
+- ⚠️ 待：重新生成 015-notes 后移除 `015-notes.autotest` 中 T5c/T11/T11b/T12 的 `skip_if rust`，并跑 `--mode rust`。
+
+---
+
+## 12. 实施顺序与风险
+
+1. **Task 19 先做**（最高优先级，修复静默失败 + 输入值断裂，纯重构不破坏 VM 模式）。✅
+2. **Task 21 次之**（依赖 Task 19 验证 Rust 模式 action 稳定后，再补 state；且要重新生成 a2r）。✅（代码部分；待重生成）
+3. **Task 20 最后**（独立功能，工作量集中在 renderer 截图改造）。✅
+
+每个 Task 完成后：单独 `cargo build` + 对应验证。
+
+> ⚠️ 实施记录：Task 19 + 21 的代码改动曾因一次 `git stash` 操作与工作区既有 in-flight 改动冲突而丢失，已重新应用。此外，用户 IDE（ZCode）打开了部分文件，其缓冲区回写一度还原 agent 的编辑；最终通过原子化重应用 + 立即 build 锁定状态。重生成 015-notes + 启动 GUI 跑 `.autotest` 端到端验证需在 IDE 不争用文件时进行。

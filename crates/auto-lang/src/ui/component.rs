@@ -51,4 +51,19 @@ pub trait Component: Sized + Debug {
     fn subscription(&self) -> iced::Subscription<Self::Msg> {
         iced::Subscription::none()
     }
+
+    /// Snapshot of this component's scalar state fields, keyed by field name.
+    ///
+    /// Used by the rust-mode MCP `autoui_state` tool (Plan 371 Task 21): in
+    /// rust mode there is no VM heap to read state from, so the DevTools layer
+    /// calls this each frame and pushes the result into `SharedState.state`.
+    ///
+    /// The default returns an empty map -- VM mode never reads this (it reads
+    /// state directly off the VM heap), so existing `impl Component for` sites
+    /// are unaffected. The a2r generator overrides this per-struct to emit the
+    /// scalar fields it knows about (`String`/`i32`/`bool`/`f64`/...), skipping
+    /// collections and nested components.
+    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_val::Value> {
+        std::collections::HashMap::new()
+    }
 }

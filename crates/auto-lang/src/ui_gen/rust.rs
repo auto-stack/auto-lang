@@ -796,8 +796,55 @@ impl RustGenerator {
             ));
         }
 
+        // Plan 371 Task 21: state_snapshot() override — emit only scalar fields
+        // (String/i32/i64/u32/u64/f32/f64/bool). Collections and nested components
+        // are skipped. Feeds the rust-mode MCP `autoui_state` tool via SharedState.
+        let snapshot = self.generate_state_snapshot(widget);
+        if !snapshot.is_empty() {
+            code.push('\n');
+            code.push_str(&snapshot);
+        }
+
         code.push_str("}\n");
 
+        code
+    }
+
+    /// Generate a `state_snapshot()` override covering the scalar fields of
+    /// this component (both props and state vars). Returns empty if there are
+    /// no scalar fields (then the trait default empty map is used).
+    fn generate_state_snapshot(&self, _widget: &AuraWidget) -> String {
+        let mut scalars: Vec<(String, String)> = Vec::new();
+        for prop in &_widget.props {
+            if let Some(ty) = self.prop_types.get(&prop.name) {
+                if is_scalar_state_type(ty) {
+                    scalars.push((prop.name.clone(), ty.clone()));
+                }
+            }
+        }
+        for state in &_widget.state_vars {
+            if let Some(ty) = self.state_types.get(&state.name) {
+                if is_scalar_state_type(ty) {
+                    scalars.push((state.name.clone(), ty.clone()));
+                }
+            }
+        }
+        if scalars.is_empty() {
+            return String::new();
+        }
+
+        let mut code = String::new();
+        code.push_str("    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value> {\n");
+        code.push_str("        let mut m = std::collections::HashMap::new();\n");
+        for (name, ty) in &scalars {
+            let expr = scalar_to_auto_value_expr("self", name, ty);
+            code.push_str(&format!(
+                "        m.insert({:?}.to_string(), {});\n",
+                name, expr
+            ));
+        }
+        code.push_str("        m\n");
+        code.push_str("    }\n");
         code
     }
 
@@ -4006,6 +4053,36 @@ impl RustGenerator {
     }
 }
 
+/// Plan 371 Task 21: whether a rust field type is a scalar we can safely emit
+/// into `state_snapshot()`. Collections (`Vec<...>`, `serde_json::Value`) and
+/// nested components are excluded — their shape is not a clean scalar.
+fn is_scalar_state_type(ty: &str) -> bool {
+    matches!(
+        ty.trim(),
+        "String"
+            | "i8" | "i16" | "i32" | "i64" | "isize"
+            | "u8" | "u16" | "u32" | "u64" | "usize"
+            | "f32" | "f64"
+            | "bool"
+    )
+}
+
+/// Plan 371 Task 21: render the rust expression that converts `<receiver>.<field>`
+/// (of the given scalar rust type) into an `auto_val::Value`.
+fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
+    let val_expr = format!("{}.{}", receiver, field);
+    match ty.trim() {
+        "String" => format!("auto_lang::ui::auto_val::Value::str(&{})", val_expr),
+        "bool" => format!("auto_lang::ui::auto_val::Value::Bool({})", val_expr),
+        "i32" | "u32" => format!("auto_lang::ui::auto_val::Value::Int({})", val_expr),
+        "i8" | "i16" | "u8" | "u16" | "isize" | "usize" | "i64" | "u64" => {
+            format!("auto_lang::ui::auto_val::Value::Int({} as i32)", val_expr)
+        }
+        "f32" | "f64" => format!("auto_lang::ui::auto_val::Value::Float({} as f64)", val_expr),
+        _ => "auto_lang::ui::auto_val::Value::Nil".to_string(),
+    }
+}
+
 /// Extract field name from `Expr::Dot(Expr::Ident("self"), Name("field"))`.
 /// Returns `None` if the pattern doesn't match.
 fn extract_dot_self_field(expr: &crate::ast::Expr) -> Option<String> {
@@ -4299,6 +4376,113 @@ mod tests {
         assert_eq!(gen.auto_type_to_rust(&Type::Bool), "bool");
         assert_eq!(gen.auto_type_to_rust(&Type::StrFixed(0)), "String");
         assert_eq!(gen.auto_type_to_rust(&Type::Float), "f32");
+    }
+
+    /// Plan 371 Task 21: scalar state vars must emit a `state_snapshot()`
+    /// override mapping each scalar field to `auto_lang::ui::auto_val::Value`.
+    /// Non-scalar (Vec/serde_json::Value) fields must be skipped.
+    #[test]
+    fn test_state_snapshot_scalar_override() {
+        let widget = AuraWidget {
+            name: "App".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: crate::ast::Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "title".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("x".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "editing".to_string(),
+                    type_info: Type::Bool,
+                    initial: crate::ast::Expr::Bool(false),
+                    decorators: vec![],
+                },
+                // Non-scalar: array literal -> Vec<serde_json::Value>, skipped.
+                AuraStateDef {
+                    name: "items".to_string(),
+                    type_info: Type::Unknown,
+                    initial: crate::ast::Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+            ],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Inc".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value>"),
+            "missing state_snapshot signature, got:\n{}",
+            code
+        );
+        assert!(code.contains(r#""count""#), "missing count: {}", code);
+        assert!(code.contains("Value::Int(self.count)"), "count not Int: {}", code);
+        assert!(code.contains(r#""title""#), "missing title: {}", code);
+        assert!(code.contains("Value::str(&self.title)"), "title not str: {}", code);
+        assert!(code.contains(r#""editing""#), "missing editing: {}", code);
+        assert!(code.contains("Value::Bool(self.editing)"), "editing not Bool: {}", code);
+        assert!(!code.contains(r#""items""#), "non-scalar items leaked: {}", code);
+    }
+
+    /// Plan 371 Task 21: no scalar fields -> no override (trait default).
+    #[test]
+    fn test_state_snapshot_no_scalars_no_override() {
+        let widget = AuraWidget {
+            name: "OnlyCollections".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::Unknown,
+                initial: crate::ast::Expr::Array(vec![]),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(!code.contains("fn state_snapshot"), "should not emit override: {}", code);
     }
 
     #[test]

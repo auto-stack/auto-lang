@@ -5,6 +5,11 @@
 //! to multiple backends (GPUI, Iced, Vue.js, etc.) through a unified
 //! Component trait and View system.
 
+// Re-export `auto_val` so generated rust-mode code (which only depends on
+// auto-lang) can name `auto_val::Value` in its `Component::state_snapshot`
+// override (Plan 371 Task 21). Accessed as `auto_lang::ui::auto_val::Value`.
+pub use auto_val;
+
 pub mod component;
 pub mod view;
 pub mod vnode;
