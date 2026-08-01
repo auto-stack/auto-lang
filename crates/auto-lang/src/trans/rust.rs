@@ -4446,8 +4446,11 @@ impl RustTrans {
                         "retain" => Some("retain"),
                         // Type conversion
                         "to_string" => Some("to_string"),
-                        // HashMap method remap: Auto .delete() → Rust .remove()
-                        "delete" => Some("remove"),
+                        // Plan 384 A9: `.delete()` is no longer unconditionally
+                        // remapped to `.remove()` — that breaks axum Router
+                        // `.delete(handler)`. Auto code that wants HashMap
+                        // removal should call `.remove()` explicitly.
+                        "delete" => Some("delete"),
                         _ => None,
                     };
 
@@ -5653,7 +5656,9 @@ impl RustTrans {
                 "retain" => Some("retain"),
                 // HashMap methods
                 "set" => Some("insert"),
-                "delete" => Some("remove"),
+                // Plan 384 A9: keep `.delete()` as-is (see note at the other
+                // match site) — axum Router `.delete()` must not become remove.
+                "delete" => Some("delete"),
                 // String methods that need special handling
                 "split" => Some("split"),
                 // Type conversion
@@ -6590,6 +6595,27 @@ impl RustTrans {
             let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
                 && !self.is_str_slice_var(arg);
 
+            // Plan 384 A3: reference-param borrow injection. When the callee's
+            // declared param type is `Type::Reference(T)` (e.g. extern_impl
+            // stubs declared via extern_sigs.at with `@T`), borrow a owned
+            // argument (`&arg`) so the call compiles against `&T` params.
+            // String literals, already-`&str` slice vars, and `self` are left
+            // untouched (they coerce or are already borrowed).
+            let needs_ref_borrow = param_types.as_ref()
+                .and_then(|pts| pts.get(i))
+                .map(|pt| matches!(pt, Type::Reference(_)))
+                .unwrap_or(false)
+                && !Self::is_string_literal_arg(arg)
+                && if let Arg::Pos(Expr::Ident(name)) = arg {
+                    // Borrow owned locals/params; skip str-slice vars (already &str)
+                    // and `self` (autoref) and already-clone suffixed.
+                    name.as_str() != "self"
+                        && !self.is_str_slice_var(arg)
+                } else if let Arg::Pos(expr) = arg {
+                    // Borrow struct-literal / method-call / field-access args
+                    !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_,_))
+                } else { false };
+
             // Plan 347: Fallback auto-borrow for cross-module / imported
             // function calls. When the callee's parameter types are not in the
             // local cache (`str_flags` is None — typical for functions imported
@@ -6703,6 +6729,10 @@ impl RustTrans {
             // Auto &mut for context-type params in merge mode
             if needs_mut_borrow {
                 write!(out, "&mut ")?;
+            }
+            // Plan 384 A3: borrow owned arg for `&T` reference params.
+            if needs_ref_borrow {
+                write!(out, "&")?;
             }
             // Plan 347: StringBuilder params take &mut at the call site.
             if is_sb_param {
@@ -9440,7 +9470,24 @@ impl RustTrans {
                 }
             }
             let has_enum_field = type_decl.members.iter().any(|m| type_contains_enum(&m.ty));
-            if has_float_field || has_map_field || has_enum_field {
+            // Plan 384 A5: detect `dyn Trait` fields (incl. inside Arc<dyn T> /
+            // Box<dyn T>). `dyn Trait` does not implement PartialEq/Eq/Ord, so
+            // structs containing such fields must derive only Clone, Debug.
+            fn type_contains_dyn(ty: &Type) -> bool {
+                match ty {
+                    Type::User(td) => td.name.starts_with("dyn "),
+                    Type::GenericInstance(inst) => {
+                        inst.args.iter().any(|arg| type_contains_dyn(arg))
+                    }
+                    Type::List(inner) | Type::Result(inner) | Type::Option(inner)
+                    | Type::Reference(inner) => type_contains_dyn(inner),
+                    _ => false,
+                }
+            }
+            let has_dyn_field = type_decl.members.iter().any(|m| type_contains_dyn(&m.ty));
+            if has_dyn_field {
+                writeln!(sink.body, "#[derive(Clone, Debug)]")?;
+            } else if has_float_field || has_map_field || has_enum_field {
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
             } else {
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
@@ -11085,6 +11132,47 @@ impl RustTrans {
             // imported from another module and not in tag_types yet).
             self.tag_types.insert((*type_name).into());
             self.known_enum_names.insert((*type_name).into());
+        }
+    }
+
+    /// Plan 384 A3: Load extern function signatures from a sidecar `.at` file
+    /// pointed to by the `A2R_EXTERN_SIGS` env var. The sidecar contains only
+    /// `fn` declarations (no bodies) — e.g. describing an `extern_impl.rs`
+    /// glue layer. We parse it and register each fn's param types (including
+    /// `@T` → `Type::Reference`) into `fn_param_types` / `fn_ret_types`, so
+    /// call sites can borrow owned args (`&arg`) against `&T` params. Errors
+    /// are non-fatal (best-effort): a bad sidecar is ignored with a warning.
+    fn load_extern_sigs(&mut self) {
+        let path = match std::env::var("A2R_EXTERN_SIGS") {
+            Ok(p) if !p.is_empty() => p,
+            _ => return,
+        };
+        let code = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[a2r] warning: A2R_EXTERN_SIGS read failed ({}): {}", path, e);
+                return;
+            }
+        };
+        let mut parser = crate::parser::Parser::from(code.as_str());
+        parser.set_dest(crate::parser::CompileDest::TransRust);
+        let ast = match parser.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("[a2r] warning: A2R_EXTERN_SIGS parse failed: {}", e);
+                return;
+            }
+        };
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                self.fn_param_types.insert(fn_decl.name.clone(), param_types.clone());
+                if let Some(parent) = &fn_decl.parent {
+                    let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
+                    self.fn_param_types.insert(qualified, param_types);
+                }
+                self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+            }
         }
     }
 
@@ -13935,6 +14023,14 @@ impl Trans for RustTrans {
         // uses struct variants. We register them here so construction sites emit
         // struct syntax `Type::Variant { field: val, ... }` instead of tuple.
         self.seed_known_struct_enum_variants();
+
+        // Plan 384 A3: Load extern function signatures from an optional sidecar
+        // .at file (env A2R_EXTERN_SIGS). The sidecar contains only `fn`
+        // declarations (no bodies) describing the glue-layer stubs (e.g.
+        // extern_impl.rs) so that call sites can do reference-aware injection
+        // (`&arg` for `@T` params). Loaded before any emission so all call
+        // sites benefit.
+        self.load_extern_sigs();
 
         // Plan 204 Phase 3: Pre-scan for !T / Result<T,E> return types to determine Err trait need
         for stmt in &ast.stmts {
