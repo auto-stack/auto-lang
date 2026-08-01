@@ -1,0 +1,10 @@
+// Plan 325: stdlib result.at 的 is_ok/is_err（跨模块 use auto.result）
+use auto.result
+fn main() {
+    let r = Result.Ok(42)
+    print(r.is_ok())
+    print(r.is_err())
+    let e = Result.Err("bad")
+    print(e.is_ok())
+    print(e.is_err())
+}

@@ -6677,7 +6677,12 @@ impl Codegen {
                                                         let enum_method = format!("{}.{}", enum_name, method.as_ref());
                                                         let is_enum_variant = self.generic_registry.has_template(&name)
                                                             || self.enum_values.contains_key(&name);
-                                                        if is_enum_variant && self.exports.contains_key(&enum_method) {
+                                                        // Plan 325: enum 变体类型的方法分发。本模块时
+                                                        // exports 含 enum_method；跨模块时方法在被 use 模块
+                                                        // 的 exports，本地查不到——但 linker 的 fallback
+                                                        // 解析能找到。故 is_enum_variant 为真即用 enum 名，
+                                                        // has_method 只作本模块快速确认（不阻塞跨模块）。
+                                                        if is_enum_variant {
                                                             enum_name.to_string()
                                                         } else {
                                                             short
@@ -6734,10 +6739,13 @@ impl Codegen {
                                                 // Special case: base_name was overridden to "List" for Array HOF methods
                                                 if base_name == "List" {
                                                     Some(format!("List.{}", method))
-                                                } else if self.exports.contains_key(&format!("{}.{}", base_name, method.as_ref())) {
+                                                } else if self.exports.contains_key(&format!("{}.{}", base_name, method.as_ref()))
+                                                    || self.is_enum_name(&base_name) {
                                                     // Plan 325: base_name 已是有效 enum 方法前缀（Type::User
-                                                    // 分支从 "MyResult.Ok" 提取出 "MyResult"），尊重它而非被
-                                                    // infer_type_from_var 的 rsplit 覆盖回 "Ok"。
+                                                    // 分支从 "MyResult.Ok" 提取出 "MyResult"）。本模块时 exports
+                                                    // 含方法；跨模块时方法在被 use 模块的 exports，本地查不到，
+                                                    // 但 base_name 是已知 enum 名即应构造 func_name，交 linker
+                                                    // fallback 解析。is_enum_name 避免对普通类型误判。
                                                     Some(format!("{}.{}", base_name, method.as_ref()))
                                                 } else {
                                                     if let Some(type_name) =
@@ -8073,8 +8081,16 @@ impl Codegen {
                             .map(|ty| {
                                 if let Type::User(td) = ty {
                                     // Option.Some/Option.None are synthetic types from enum destructuring,
-                                    // not real user-defined types — don't treat them as user type methods
-                                    !td.name.starts_with("Option.") && !td.name.starts_with("Result.")
+                                    // not real user-defined types — don't treat them as user type methods.
+                                    // Plan 325: 但 enum 变体类型（含 Result.Ok）若其 enum 名是已知 enum，
+                                    // 应走 CALL reloc 让 enum 方法被解析（跨模块经 linker fallback）。
+                                    // 此前 Result. 前缀被一刀切排除，导致 stdlib result.at 的方法走
+                                    // CALL_SPEC 运行时分发失败。
+                                    let is_enum_variant = td.name.contains('.')
+                                        && self.is_enum_name(td.name.split('.').next().unwrap_or(&td.name));
+                                    is_enum_variant || (
+                                        !td.name.starts_with("Option.") && !td.name.starts_with("Result.")
+                                    )
                                 } else {
                                     matches!(ty, Type::User(_))
                                 }
@@ -10196,6 +10212,18 @@ impl Codegen {
     /// 检查 exports（含编译期已注册的函数地址），与既有 CALL reloc 的符号源一致。
     fn is_defined_function(&self, name: &str) -> bool {
         self.exports.contains_key(name)
+    }
+
+    /// Plan 325: 判断 `name` 是否是已知 enum 类型名（本模块或跨模块）。
+    /// 用于跨模块 enum 方法分发：本地 exports 可能不含被 use 模块的 enum 方法，
+    /// 但只要 name 是已知 enum，就应构造 `EnumName.method` func_name 交 linker 解析。
+    fn is_enum_name(&self, name: &str) -> bool {
+        // 本模块：types 含该 enum，或 enum_values/generic_registry 有以它为前缀的变体
+        self.types.contains_key(name)
+            || self.enum_values.keys().any(|k| k.starts_with(&format!("{}.", name)))
+            || self.generic_registry.has_template(name)
+            // 跨模块：type_store（含 use 导入的 enum）注册了该 enum 声明
+            || self.type_store.read().map(|ts| ts.all_enum_decls().any(|(n, _)| n == name)).unwrap_or(false)
     }
 
     /// Plan 383: 返回函数 `name` 的参数个数（用于 CLOSURE 的 n_args 字段，

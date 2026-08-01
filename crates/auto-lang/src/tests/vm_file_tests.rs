@@ -935,3 +935,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_28_enum_methods_003_payload_method() { test_vm("28_enum_methods/003_payload_method").unwrap(); }
 #[test] #[ignore] fn test_28_enum_methods_004_wildcard() { test_vm("28_enum_methods/004_wildcard").unwrap(); }
 #[test] #[ignore] fn test_28_enum_methods_005_generic_enum_method() { test_vm("28_enum_methods/005_generic_enum_method").unwrap(); }
+#[test] #[ignore] fn test_28_enum_methods_006_stdlib_result() { test_vm("28_enum_methods/006_stdlib_result").unwrap(); }

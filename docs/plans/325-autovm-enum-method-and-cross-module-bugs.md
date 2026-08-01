@@ -335,10 +335,21 @@ crate::ast::Expr::Ident(name) if name.as_str() == "_" => {
 
 **测试**：`test/vm/28_enum_methods/005_generic_enum_method`——本模块泛型 enum `Bag<T,E>` 的 `is_hit()` 通过变量调用，全绿。
 
-#### 跨模块遗留（use 导入的 enum 方法）
+#### 跨模块遗留（use 导入的 enum 方法）— 已修复（2026-08-01）
 
-本模块泛型 enum 方法已工作，但 **`use auto.result` 导入的跨模块 enum 方法仍失败**（`CALL_SPEC: no function 'Result.Ok.is_ok'`）。根因：跨模块时 `Result.is_ok` 在 stdlib 模块的 exports，不在调用方本地 exports，上述 `exports.contains_key` 检查不命中 → func_name 走 fallback → 运行时 CALL_SPEC 分发用 receiver 类型标签 `Result.Ok` 查找失败。
+本模块泛型 enum 方法工作后，`use auto.result` 导入的跨模块 enum 方法仍失败（`CALL_SPEC: no function 'Result.Ok.is_ok'`）。**已于 2026-08-01 修复**。
 
-修复需要：跨模块 enum 方法经 CALL reloc + linker 解析（类似跨模块函数调用），或运行时 CALL_SPEC 分发回退到 enum 名查方法。这是模块系统层面的工程，独立于本计划的范围，建议另开计划。
+**根因**（两层）：
+1. **func_name 构造**：跨模块时 `Result.is_ok` 在 stdlib 模块的 exports，不在调用方本地 exports。`Type::User` 分支的 `exports.contains_key` 不命中 → func_name 走 fallback → 错构造成 `Ok.is_ok`。
+2. **CALL vs CALL_SPEC 分发**：`is_user_type_method` 判断（codegen.rs:8078）显式排除了 `Result.`/`Option.` 前缀（Plan 087 遗留），导致 enum 变体类型不走 CALL reloc → 落入 CALL_SPEC 运行时分发 → 用 receiver 类型标签 `Result.Ok` 查方法失败。
 
-**回归**：VM non-ignored 21=21 基线，零新增。
+**修复**（codegen.rs 三处）：
+1. `Type::User` 分支：`is_enum_variant` 为真即用 enum 名（去掉 `exports.contains_key` 检查，信任 linker fallback 解析跨模块方法）。
+2. func_name fallback：新增 `is_enum_name(name)` helper（查 types / enum_values / generic_registry / type_store 的 enum 声明），`base_name` 是已知 enum 名即构造 func_name。
+3. `is_user_type_method`：enum 变体类型（td.name 含 `.` 且 enum 名是已知 enum）允许走 CALL reloc，不再被 `Result.`/`Option.` 一刀切排除。
+
+**机制**：跨模块 enum 方法经 CALL reloc → linker 三级 fallback（精确 / `prefix#rest` / 去前缀）解析到 stdlib 模块的 exports。与跨模块普通函数调用同一机制。
+
+**测试**：`test/vm/28_enum_methods/006_stdlib_result`——`use auto.result` 的 `Result.Ok(42).is_ok()` = 1、`is_err` = 0、`Err.is_ok` = 0、`Err.is_err` = 1，全绿。
+
+**回归**：VM non-ignored 21=21 基线，零新增。001-005 既有测试仍绿。
