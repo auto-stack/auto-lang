@@ -1,0 +1,15 @@
+// Plan 335: List<int> 全 shim 覆盖（len/get/set/insert/pop/remove/contains）
+// struct List 受 Item.new() 构造 bug 阻塞（见 plan 335 §struct 构造遗留）。
+fn main() {
+    let items = List<int>.new([10, 20, 30])
+    print(items.len())
+    print(items.get(1))
+    items.set(0, 99)
+    print(items.get(0))
+    items.insert(1, 55)
+    print(items.len())
+    print(items.pop())
+    items.remove(0)
+    print(items.len())
+    print(items.contains(55))
+}

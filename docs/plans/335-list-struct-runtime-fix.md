@@ -1,5 +1,8 @@
 # Plan 335：List<T> 结构体元素运行时完整修复
 
+> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）。
+> Phase 1（read_state_as_vec 解引用 VmRef）+ Phase 2（to_array int 语义）尚未实施——015-notes vm 渲染需此二者。
+> struct List 端到端受 `Item.new()` 构造 bug 阻塞（独立发现，见 §struct 构造遗留）。
 > **For Claude:** 本计划源于 015-notes `--render=vm`：notes 列表渲染为空。已修根因①(`to_array` 未实现,commit `f21e7774`),但列表仍空——根因②是渲染层 `read_state_as_vec` 不解引用 `VmRef`。本计划做 List<T>(T=结构体/混合类型)的**完整运行时语义修复**,并扫查 VM 中其它同类缺口。
 
 ## 触发现状（015-notes vm+vm 合并模式）
@@ -149,3 +152,54 @@ fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
 3. `to_array` 对 int List 语义正确(Phase 2,取消 test 002 ignore)
 4. 016-calendar 回归正常(struct 字段访问、int List 渲染)
 5. `notes.len()` / `notes.filter()` 在 struct List 上行为正确(Phase 3 复核)
+
+---
+
+## 实施记录（2026-08-01，shim 双查修复）
+
+### 实测复核（文档 vs 现状）
+
+逐个实测 §"需复核"列的 7 个 shim，发现：
+- ✅ `shim_list_len`（1032）：**已修**（后续工作加了 ListData<Value> 分支）——`items.len()` = 2 正确。
+- ❌ `shim_list_get` / `set` / `insert` / `pop` / `remove` / `contains`：**仍坏**——只查 `ListData<i32>`，struct List（ListData<Value>）downcast 失败 → push 0 / 报 `Invalid list ID`。
+
+### 修复（native.rs）
+
+给 6 个 shim 都补了 `ListData<Value>` 分支（+ arrays DashMap fallback），对齐 `shim_list_len`/`shim_list_push` 已有的双查模式：
+
+| shim | 改动 |
+|------|------|
+| `shim_list_get` | 加 ListData<Value> 分支（push_value）+ arrays fallback |
+| `shim_list_set` | 加 ListData<Value> 分支（nv_to_value 解码元素）+ arrays fallback |
+| `shim_list_insert` | 同 set |
+| `shim_list_pop` | 加 ListData<Value> 分支（push_value 返回）+ arrays fallback（修正原 as_int 丢 VmRef） |
+| `shim_list_remove` | 同 pop |
+| `shim_list_contains` | 重写：去掉 get_list_i32_elements（对 heap id 报 Invalid list ID），改为 ListData<i32>/ListData<Value>/arrays 三查 + values_eq 按 VmRef.id 比较 |
+
+新增 3 个辅助：`push_value`（Value→栈）、`nv_to_value`（栈→Value）、`values_eq`（contains 比较，VmRef 按 id）。
+
+### 测试
+
+`test/vm/29_list_shims/001_int_list`：List<int> 的 len/get/set/insert/pop/remove/contains 全覆盖，输出 `3 20 99 4 30 2 1`，全绿。
+
+### struct 构造遗留（独立 bug，阻塞 struct List 端到端验证）
+
+修复 shim 后测 struct List，发现 `Item.new("a").name` = 0（字段丢失）。对照 `Item { name: "a" }.name` = "a"（字面量构造工作）。**根因在 `Item.new()` 构造路径**（CONSTRUCT_INSTANCE 把参数存进字段的逻辑有缺陷），非 List shim。
+
+- List<int> 全 shim 现工作（001 测试守护）
+- List<Struct> 的 shim 修复正确（能从 ListData<Value> 取 VmRef），但 VmRef 指向的 struct 对象字段本身是坏的（Item.new bug）
+- **修复 Item.new 构造后，struct List 端到端应自然工作**（shim 层已就绪）
+
+建议：Item.new 构造 bug 另开计划（或归入 Plan 333 的 `Undefined variable: self` 遗留，同属 struct 方法/构造族）。
+
+### 回归
+
+- 24_generics（3 测试）、28_enum_methods（6 测试）全绿
+- VM non-ignored 21=21 基线，零新增
+
+### Phase 1/2 仍未实施
+
+- Phase 1（`read_state_as_vec` 解引用 VmRef）：015-notes vm 渲染所需，未做
+- Phase 2（`to_array` int List 语义）：test 24/002 仍 ignored，未做
+
+这两个 Phase 需要 015-notes/016-calendar 端到端环境验证，本次未触及。

@@ -1127,13 +1127,22 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(elem);
             return Ok(());
         }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            if let Some(val) = list.pop() {
+                push_value(task, vm, &val);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
     }
 
     // Fallback: arrays DashMap (Vec<Value> from [...] literals)
     if let Some(arr_ref) = vm.arrays.get(&list_id) {
         let mut arr = arr_ref.write().unwrap();
         if let Some(val) = arr.pop() {
-            task.ram.push_i32(val.as_int());
+            push_value(task, vm, &val);
             return Ok(());
         }
     }
@@ -1234,6 +1243,54 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
     }
 }
 
+/// Plan 335: 把 ListData<Value> 里取出的 `Value` 推回 VM 栈（nanbox 编码）。
+/// 用于 get/pop/remove 等 struct List 元素访问的返回值。
+/// VmRef → encode_object；Str → 新增 string pool 条目；Int/Bool → i32。
+fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
+    match val {
+        auto_val::Value::Int(i) => task.ram.push_i32(*i),
+        auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+        auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
+        auto_val::Value::Str(s) => {
+            let mut strings = vm.strings.write().unwrap();
+            let str_idx = strings.len() as u32;
+            strings.push(s.as_bytes().to_vec());
+            drop(strings);
+            task.ram.push_str_idx(str_idx);
+        }
+        _ => task.ram.push_i32(0), // Nil 等兜底为 0
+    }
+}
+
+/// Plan 335: 栈上的 nanbox NanoValue 解码为 `Value`（set/insert/contains 等写入/比较用）。
+/// VmRef / Int / String / Bool / Nil 五类，与 shim_list_push 的编码一致。
+fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
+    if auto_val::is_i32(nv) {
+        Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_object(nv) {
+        Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+    } else if auto_val::is_string(nv) {
+        Value::Int(auto_val::decode_string(nv) as i32)
+    } else if auto_val::is_null(nv) {
+        Value::Nil
+    } else if auto_val::is_bool(nv) {
+        Value::Bool(auto_val::decode_bool(nv))
+    } else {
+        Value::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// Plan 335: 两个 Value 是否相等（用于 contains 等）。
+/// VmRef 按 id 比较（同一 struct 实例视为相等）；Int/Bool/Str 按值；跨类型不相等。
+fn values_eq(a: &auto_val::Value, b: &auto_val::Value) -> bool {
+    match (a, b) {
+        (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x == y,
+        (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x == y,
+        (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id == y.id,
+        _ => false,
+    }
+}
+
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
@@ -1253,6 +1310,25 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 }
                 return Ok(());
             }
+            // Plan 335: ListData<Value> (struct element lists like List<Note>)
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+                if let Some(val) = list.get(index) {
+                    push_value(task, vm, val);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+        }
+        // Fallback: arrays DashMap (Vec<Value>)
+        if let Some(arr_ref) = vm.arrays.get(&list_id) {
+            let arr = arr_ref.read().unwrap();
+            if let Some(val) = arr.get(index) {
+                push_value(task, vm, val);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
         }
         task.ram.push_i32(0);
         return Ok(());
@@ -1264,16 +1340,35 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
-    let elem = task.ram.pop_i32();
+
+    let elem_nv = task.ram.pop_nv();
+    let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.set(index, elem);
+            list.set(index, auto_val::decode_i32(elem_nv));
+            task.ram.push_i32(0);
+            return Ok(());
         }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.set(index, elem_val);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    }
+
+    // Fallback: arrays DashMap (Vec<Value>)
+    if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let mut arr = arr_ref.write().unwrap();
+        if index < arr.len() {
+            arr[index] = elem_val;
+        }
+        task.ram.push_i32(0);
+        return Ok(());
     }
 
     // Return success (0)
@@ -1288,7 +1383,8 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let elem = task.ram.pop_i32();
+    let elem_nv = task.ram.pop_nv();
+    let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
@@ -1296,7 +1392,13 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.insert(index, elem);
+            list.insert(index, auto_val::decode_i32(elem_nv));
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.insert(index, elem_val);
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -1306,7 +1408,9 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(arr_ref) = vm.arrays.get(&list_id) {
         let mut arr = arr_ref.write().unwrap();
         let pos = index.min(arr.len());
-        arr.insert(pos, Value::Int(elem));
+        arr.insert(pos, elem_val);
+        task.ram.push_i32(0);
+        return Ok(());
     }
 
     // Return success (0)
@@ -1333,6 +1437,13 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
                 return Ok(());
             }
         }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            if let Some(val) = list.remove(index) {
+                push_value(task, vm, &val);
+                return Ok(());
+            }
+        }
     }
 
     // Fallback: arrays DashMap (Vec<Value> from [...] literals)
@@ -1340,7 +1451,7 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         let mut arr = arr_ref.write().unwrap();
         if index < arr.len() {
             let val = arr.remove(index);
-            task.ram.push_i32(val.as_int());
+            push_value(task, vm, &val);
             return Ok(());
         }
     }
@@ -1638,10 +1749,29 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// List.contains(value) -> bool
 /// Stack: value (i32), list_id -> bool (1/0)
 pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let value = task.ram.pop_i32();
+    use crate::vm::types::ListData;
+
+    let elem_nv = task.ram.pop_nv();
+    let elem_val = nv_to_value(elem_nv);
     let list_id = task.ram.pop_i32() as u64;
-    let elements = get_list_i32_elements(vm, list_id)?;
-    let found = elements.iter().any(|&e| e == value);
+
+    // Plan 335: 统一在 ListData<i32> / ListData<Value> / vm.arrays 三种存储上查找。
+    // struct List 的元素是 VmRef —— 按 id 比较（同一 struct 实例视为相等）。
+    let found = if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            list.elems.iter().any(|&e| e == auto_val::decode_i32(elem_nv))
+        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            list.elems.iter().any(|v| values_eq(v, &elem_val))
+        } else {
+            false
+        }
+    } else if let Some(arr_ref) = vm.arrays.get(&list_id) {
+        let arr = arr_ref.read().unwrap();
+        arr.iter().any(|v| values_eq(v, &elem_val))
+    } else {
+        false
+    };
     task.ram.push_nv(auto_val::encode_bool(found));
     Ok(())
 }
