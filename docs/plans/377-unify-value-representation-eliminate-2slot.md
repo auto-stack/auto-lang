@@ -1,6 +1,10 @@
 # Plan 377：统一值表示 — 消除 2-slot，让所有值都是单槽 NanoValue
 
 > **状态**：✅ 阶段 0/1/2/3/4 全部完成。Plan 377 可关闭。
+> **复查修正（2026-08-01，二次复查发现并修复 BigInt 正确性缺陷）**：
+>   - **发现**：阶段 1+2 的 BigInt 堆兜底是「半成品」——virt_memory 的 push_i64/u64 溢出时**静默截断**（workaround，非 §4.3 设计的堆装箱），pop_i64/u64 遇 TAG_BIGINT **返回堆对象 ID 当数值**（严重 bug）。§8.4「2^48 边界值堆装箱正确」未真正达成。
+>   - **修复**：virt_memory push/pop 改快失败 panic（48 位内联路径无 VM 访问）；AutoVM 新增 heap-aware `push/pop_i64_vm`/`push/pop_u64_vm` 方法（溢出经 BigInt 堆装箱、pop 解引用 BIGINT）；所有产生/消费 64 位值的 engine opcode（CONST_I64/U64、_U64 算术比较、I64/U64_TO_F64/STR、TYPE_STR_TO_I64、BUILD_FSTR）+ native（shim_str_to_uint、c_ffi 11 处、timestamp）改用 heap-aware 方法。
+>   - **新增测试** `test_25/011_bigint_overflow`：2^48 边界值经 to_uint 解析 + 两 2^47 相加溢出到 2^48 + 大值比较，全部正确。**§8.4 现真正达成。**
 > **阶段 3（简化 print + 清理，2026-08-01）**：✅ 完成。
 >   - §3.3 删除 `RET_D` opcode（枚举/mnemonic/from_str/operand_size/VALID/disasm 全清，0xF2 标记 reserved）。
 >   - §3.1+§3.2 新增 `shim_print_unified`（单槽按 tag 解码任意类型）+ `NATIVE_PRINT_UNIFIED`(ID 10)；codegen `print()` 统一路由，取代按 ObjectType 分发。typed print native（I32/F32/F64/U64）暂保留为显式入口，完全删除移交 plan 389。
