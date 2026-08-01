@@ -9528,6 +9528,15 @@ impl<'a> Parser<'a> {
                     is_pub: false,
                 }))
             }
+            TokenKind::At => {
+                // Plan 384 A3: `@T` → Type::Reference(T) (Rust `&T`).
+                // Enables reference-aware call-site injection: when an extern
+                // function's param is declared `@T` (in extern_sigs.at), a2r
+                // borrows the argument (`&arg`) at the call site.
+                self.next(); // Consume '@'
+                let inner_type = self.parse_type()?;
+                Ok(Type::Reference(Box::new(inner_type)))
+            }
             TokenKind::Question => {
                 // Plan 120: Parse ?T as Type::Option(T)
                 self.next(); // Consume '?'
