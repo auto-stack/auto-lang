@@ -47,12 +47,15 @@ use crate::wire::{JsonValue};
 /// A23: AgentError (foreign type) doesn't impl Clone/PartialEq, so the default
 /// `#[derive(Clone, Debug, PartialEq)]` a2r would add fails — opt into the
 /// conservative `#[derive(Debug)]` via an explicit attr.
-/// Loop again (e.g. gate resolved).
+/// Loop again (e.g. gate resolved). Carries the handoff the step just
+/// produced (None for gate-only Continues), so drive() can seed the next
+/// step's input with it (plan 014: the old Continue carried nothing and a
+/// last_handoff_after() stub dropped every handoff).
 /// Terminate the run successfully (Completed / Paused).
 /// Terminate with an error.
 #[derive(Debug)]
 enum DriveOutcome {
-    Continue,
+    Continue(Option<HandoffDocument>),
     Done,
     Fail(AgentError),
 }
@@ -148,10 +151,18 @@ impl PipelineDriver {
         loop {
             let result = self.engine.advance();
             
-
-            let outcome = self.dispatch(result.clone(), task_msg, last_handoff.clone()).await;
+            let outcome = self.dispatch(result, task_msg, last_handoff).await;
             match outcome {
-                DriveOutcome::Continue => last_handoff = self.last_handoff_after(result, last_handoff),
+                DriveOutcome::Continue(h) => {
+                    
+
+
+
+                    match h {
+                        Some(doc) => last_handoff = Some(doc),
+                        None => {},
+                    };
+                },
                 DriveOutcome::Done => return Ok(()),
                 DriveOutcome::Fail(e) => return Err(e),
             };
@@ -162,8 +173,10 @@ impl PipelineDriver {
             AdvanceResult::ExecuteStep(step_id, role_id) => {
                 
 
+
+
                 match self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
-                    Ok(_) => return DriveOutcome::Continue,
+                    Ok(h) => return DriveOutcome::Continue(h),
                     Err(e) => return DriveOutcome::Fail(e),
                 };
             },
@@ -186,14 +199,11 @@ impl PipelineDriver {
                 (self.on_event)(ev);
                 let gr = self.resolve_gate_auto(step_id.as_str()).await;
                 match gr {
-                    Ok(_) => return DriveOutcome::Continue,
+                    Ok(_) => return DriveOutcome::Continue(None),
                     Err(e) => return DriveOutcome::Fail(e),
                 };
             },
         };
-    }
-    pub fn last_handoff_after(&self, result: AdvanceResult, last_handoff: Option<HandoffDocument>) -> Option<HandoffDocument> {
-        return last_handoff;
     }
     pub fn engine(&self) -> PipelineEngine {
         return self.engine.clone();
@@ -201,7 +211,7 @@ impl PipelineDriver {
     pub fn engine_mut(&self) -> PipelineEngine {
         return self.engine.clone();
     }
-    pub async fn drive_step(&mut self, task_msg: &str, step_id: &str, role_id: &str, last_handoff: Option<HandoffDocument>) -> Result<(), AgentError> {
+    pub async fn drive_step(&mut self, task_msg: &str, step_id: &str, role_id: &str, last_handoff: Option<HandoffDocument>) -> Result<HandoffDocument, AgentError> {
         let started = PipelineEvent::StepStarted(step_id.to_string(), role_id.to_string());
         (self.on_event)(started);
 
@@ -225,12 +235,14 @@ impl PipelineDriver {
 
 
 
-
-
         emit_budget_warning(self.engine.clone(), handoff_doc.from.as_str(), self.on_event.clone());
 
-        let submitted = self.engine.submit_handoff(handoff_doc);
-        return self.handle_after_submit(submitted).await;
+
+        let submitted = self.engine.submit_handoff(handoff_doc.clone());
+        match self.handle_after_submit(submitted).await {
+            Ok(_) => return Ok(handoff_doc),
+            Err(e) => return Err(e),
+        };
     }
     pub async fn resolve_gate_auto(&mut self, step_id: &str) -> Result<(), AgentError> {
         let decision = match self.gate_handler { Some(handler) => handler(step_id.to_string()), None => GateDecision::Approve, };
@@ -317,15 +329,15 @@ impl PipelineDriver {
 /// on_event receives pipeline events for the app to display/log. task is
 /// the user's original request, passed to the first agent.
 /// Dispatch one advance() result. Drives a step to completion (submitting
-/// its handoff) and returns whether drive() should continue, terminate ok,
-/// or terminate with an error.
+/// its handoff) and returns whether drive() should continue — carrying the
+/// step's handoff for the next iteration — terminate ok, or terminate with
+/// an error.
 /// `mut fn`: calls drive_step/handle_after_submit which mutate the engine.
-/// After a Continue outcome, update last_handoff for the next iteration.
 /// Access the underlying engine (for pause/resume/rerun).
 /// Run one ExecuteStep: build the agent, stream it, build a handoff,
-/// submit it, and handle the engine's next result. Returns Ok(()) to
-/// continue the loop, or Err/Ok to terminate drive().
-/// Run one step: build the agent, run it, submit the handoff.
+/// submit it, and handle the engine's next result. Returns the handoff it
+/// built (Ok) so drive() can feed the next step's input, or Err to
+/// terminate drive().
 /// `mut fn` because it calls `self.engine.submit_handoff` (a2r's
 /// auto-mutation detection only sees field assignments / known mutators).
 /// Resolve a gate, honoring the optional (handler)(else auto-approve).

@@ -152,7 +152,56 @@ impl RoleRegistry {
         }
 
 
-        load_user_roles(roles.clone(), names.clone());
+
+
+
+
+
+
+
+
+        match roles_dir() {
+            Some(dir) => {
+                match fs::read_dir(dir) {
+                    Ok(entries) => {
+                        for entry in entries {
+                            
+
+                            match entry {
+                                Ok(e) => {
+                                    let path = e.path();
+                                    if is_at_file(path.clone()) {
+                                        match load_user_at_file(path.clone()) {
+                                            Some(detail) => {
+                                                
+
+
+
+                                                let rname = detail.summary.name.clone();
+                                                if roles.contains_key(&rname.clone()) == false {
+                                                    names.push(rname.clone());
+                                                }
+                                                roles.insert(rname, detail);
+                                            },
+                                            None => {
+                                                
+
+                                            },
+                                        };
+                                    }
+                                },
+                                Err(_e) => {},
+                            };
+                        }
+                    },
+                    Err(_e) => {
+                        
+
+                    },
+                };
+            },
+            None => {},
+        };
 
         return RoleRegistry { roles: roles, names: names };
     }
@@ -360,45 +409,6 @@ fn load_one_builtin(name: &str) -> Option<RoleDetail> {
     };
 }
 
-/// Load all user .at roles from the roles directory (step 2 of load()).
-/// Missing/unreadable directory → no user roles (not fatal).
-fn load_user_roles(roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
-    match roles_dir() {
-        Some(dir) => scan_roles_dir(dir.clone(), roles.clone(), names),
-        None => {},
-    };
-}
-
-/// Iterate one roles directory, loading each *.at entry.
-fn scan_roles_dir(dir: PathBuf, roles: std::collections::HashMap<String, RoleDetail>, names: Vec<String>) {
-    match fs::read_dir(dir) {
-        Ok(entries) => {
-            for entry in entries {
-                
-
-
-
-                match entry {
-                    Ok(e) => {
-                        let path = e.path();
-                        if is_at_file(path.clone()) {
-                            
-
-
-                            load_user_at_file(path.clone(), roles.clone(), names.clone());
-                        }
-                    },
-                    Err(_e) => {},
-                };
-            }
-        },
-        Err(_e) => {
-            
-
-        },
-    };
-}
-
 /// True when path's extension is exactly "at".
 fn is_at_file(path: PathBuf) -> bool {
     let ext = path.extension();
@@ -408,24 +418,21 @@ fn is_at_file(path: PathBuf) -> bool {
     };
 }
 
-/// Read + parse one user .at role file, inserting it into roles/names
-/// (overriding any same-named built-in). Parse/read failures are warned +
-/// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
-fn load_user_at_file(path: PathBuf, mut roles: std::collections::HashMap<String, RoleDetail>, mut names: Vec<String>) {
-
+/// Read + parse one user .at role file, returning its RoleDetail (or None).
+/// Return-style (like load_one_builtin): a2r passes params by value, so a
+/// helper mutating the caller's `roles`/`names` maps can never reach the
+/// caller (plan 014 gap). Read/parse failures → None (warned + skipped).
+/// Kept as a helper rather than inlined into load(): the full parse nests
+/// ~10 levels deep inline, past a2r's parser recursion limit (~9).
+fn load_user_at_file(path: PathBuf) -> Option<RoleDetail> {
 
 
     let content = a2r_std::fs::read_to_string(path.to_str().unwrap());
     if content.is_empty() {
-        
-
-        return;
+        return None;
     }
     match parse_at_role(content.as_str()) {
-        Err(_e) => {
-            
-
-        },
+        Err(_e) => return None,
         Ok(cfg) => {
             
 
@@ -454,10 +461,7 @@ fn load_user_at_file(path: PathBuf, mut roles: std::collections::HashMap<String,
 
             let summary = RoleSummary { name: name.to_string(), description: cfg.description.clone().unwrap_or("".to_string()).to_string(), tier: cfg.model_tier.clone().unwrap_or(ModelTier::Mid), allowed_tiers: cfg.allowed_tiers.clone().unwrap_or_default(), skills: cfg.skills.clone().unwrap_or_default(), token_budget: cfg.token_budget.clone(), is_builtin: false };
             let detail = RoleDetail { summary: summary, soul: soul.markdown.to_string(), soul_from_file: soul.from_file, config: cfg };
-            if roles.contains_key(&name) == false {
-                names.push(name.to_string());
-            }
-            roles.insert(name.to_string(), detail);
+            return Some(detail);
         },
     };
 }
