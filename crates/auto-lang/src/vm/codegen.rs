@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -7596,22 +7596,12 @@ impl Codegen {
                         self.code.extend_from_slice(&method_idx.to_le_bytes());
                     }
 
-                    // Plan 178: Select correct print intrinsic based on argument type
-                    // print() defaults to NATIVE_PRINT_STR, but if the argument is
-                    // a numeric expression, use NATIVE_PRINT_I32 or NATIVE_PRINT_F32 instead.
-                    // This fixes negative integer printing (e.g., print(-1) would otherwise
-                    // be misinterpreted as a tagged string index).
+                    // Plan 377 §3.1: print() 统一路由到 NATIVE_PRINT_UNIFIED（单槽按 tag 解码）。
+                    // 取代 Plan 178/378 的按 ObjectType 分发（I32/F32/F64/U64）—— 单槽化后
+                    // 无需编译期推断类型选 print 入口，shim_print_unified 运行时按 tag 解码。
+                    // 注：显式的 print_i32()/print_f32() 等调用仍保留各自 id（走 else 分支）。
                     let resolved_id = if id == NATIVE_PRINT_STR {
-                        match self.last_expr_type {
-                            // Plan 378: u64/i64 occupy 2 slots; route to the
-                            // 2-slot print handler so the high slot is consumed.
-                            ObjectType::Uint => NATIVE_PRINT_U64,
-                            ObjectType::Int | ObjectType::Byte
-                            | ObjectType::Bool | ObjectType::Char => NATIVE_PRINT_I32,
-                            ObjectType::Float => NATIVE_PRINT_F32,
-                            ObjectType::Double => NATIVE_PRINT_F64,
-                            _ => id, // keep PRINT_STR for String, Void, etc.
-                        }
+                        NATIVE_PRINT_UNIFIED
                     } else {
                         id
                     };

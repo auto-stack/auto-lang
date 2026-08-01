@@ -18,6 +18,9 @@ macro_rules! for_each_native {
             (3, NATIVE_PRINT_STR, shim_print_str, "auto.print_str"),
             // Plan 378: u64/i64 print (pops 2 slots: [low, high])
             (9, NATIVE_PRINT_U64, shim_print_u64, "auto.print_u64"),
+            // Plan 377 §3.1: 统一 print（单槽，按 tag 解码任意类型）。
+            // codegen 的 print() 路由到此，取代按 ObjectType 分发到 I32/F32/F64/U64。
+            (10, NATIVE_PRINT_UNIFIED, shim_print_unified, "auto.print_unified"),
             (2900, NATIVE_WRITE_STR, shim_write_str, "auto.write_str"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),

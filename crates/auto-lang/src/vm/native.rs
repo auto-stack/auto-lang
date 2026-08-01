@@ -731,6 +731,110 @@ pub fn shim_print_u64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// Plan 377 §3.1: 统一 print —— 弹出单个 NanoValue，按 tag 解码打印任意类型。
+///
+/// 取代按类型路由的 5 个 print native（I32/F32/F64/U64/STR）的分裂：单槽化后
+/// 每个值都是单个 NanoValue，无需 codegen 在编译期推断 ObjectType 选 print 入口。
+/// 本函数把 i32/f32/f64/i64/u64/bigint/string/bool/null/object 的解码全部集中。
+///
+/// 格式约定（与既有 shim_print_i32/f32/f64/u64 保持一致，避免回归）：
+/// - bool sentinel（i32::MIN/-2147483648 = true → "1"，i32::MIN+1 = false → "0"）
+/// - null → "None"；object → format_rust_stdlib_obj 或 <obj:id>
+/// - 数值 → to_string()
+pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = task.ram.pop_nv();
+        let tag = auto_val::tag_of(nv);
+        // f64（非 nanboxed，直接位模式）
+        if !auto_val::is_nanboxed(nv) {
+            vm_print(vm, &auto_val::decode_f64(nv).to_string());
+            return Ok(());
+        }
+        match tag {
+            // TAG_STRING
+            t if t == 2 => {
+                let str_index = auto_val::decode_string(nv) as u16;
+                if let Some(bytes) = vm.get_string(str_index) {
+                    vm_print(vm, &String::from_utf8_lossy(&bytes));
+                } else {
+                    vm_print(vm, &format!("<invalid string index: {}>", str_index));
+                }
+            }
+            // TAG_BOOL（sentinel: i32::MIN = true, i32::MIN+1 = false）
+            t if t == 3 => {
+                vm_print(vm, if auto_val::decode_bool(nv) { "1" } else { "0" });
+            }
+            // TAG_NULL
+            t if t == 4 => {
+                vm_print(vm, "None");
+            }
+            // TAG_OBJECT
+            t if t == 5 => {
+                let handle = auto_val::decode_object(nv) as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
+                } else {
+                    vm_print(vm, &format!("<invalid object: {}>", handle));
+                }
+            }
+            // TAG_F32
+            t if t == 7 => {
+                vm_print(vm, &auto_val::decode_f32(nv).to_string());
+            }
+            // TAG_I64
+            t if t == 8 => {
+                vm_print(vm, &auto_val::decode_i64(nv).to_string());
+            }
+            // TAG_U64
+            t if t == 9 => {
+                vm_print(vm, &auto_val::decode_u64(nv).to_string());
+            }
+            // TAG_BIGINT（堆对象，需解引用 —— 与 convert.rs decode 一致）
+            t if t == 0xA => {
+                let id = auto_val::decode_bigint_handle(nv) as u64;
+                let printed = if let Some(obj) = vm.get_heap_object(id) {
+                    if let Some(guard) = obj.read().ok() {
+                        use crate::vm::heap_object::{downcast, BigIntData};
+                        if let Some(big) = downcast::<BigIntData>(&*guard) {
+                            if big.is_unsigned { big.as_u64().to_string() } else { big.as_i64().to_string() }
+                        } else { format!("<bigint:{}>", id) }
+                    } else { format!("<bigint:{}>", id) }
+                } else { format!("<invalid bigint: {}>", id) };
+                vm_print(vm, &printed);
+            }
+            // TAG_I32（含 bool sentinel 兜底 + 正数 heap handle 探测，兼容 shim_print_i32）
+            _ => {
+                let val = auto_val::decode_i32(nv);
+                if val == -2147483648 {
+                    vm_print(vm, "1");
+                } else if val == -2147483647 {
+                    vm_print(vm, "0");
+                } else if val > 0 {
+                    let handle = val as u64;
+                    if let Some(obj) = vm.get_heap_object(handle) {
+                        let guard = obj.read().unwrap();
+                        if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                            vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                        } else {
+                            vm_print(vm, &val.to_string());
+                        }
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Format a RustStdlibObject for display.
 pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
     match obj.type_name.as_str() {
