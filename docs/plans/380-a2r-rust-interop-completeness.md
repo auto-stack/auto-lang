@@ -1,6 +1,6 @@
 # Plan 380：a2r 对 Rust 互操作的三项补全（impl Trait 返回 / 元组结构体构造 / extractor 参数）
 
-> **Status**: P0/P1 已实施并合并 master（2026-08-01）；P2/P3/P4 记录待后续。
+> **Status**: P0/P1/P5 已实施并合并 master（2026-08-01）；P2/P3 记录待后续；P4 调研后确认非缺口。
 > **来源**: auto-musk Plan 014 —— 移植 axum 异步 Web 层（server.rs 2206 行）时，
 > 误判"a2r 缺 async 支持"。复核 a2r 测试用例 + 逐点验证后发现：a2r 的 async/trait/
 > 库调用支持相当完整，真正阻塞 server handler 全量移植的是 3 个具体转译缺陷。
@@ -188,6 +188,31 @@ conversation_stream 的 SSE 事件流**可通过 `~Stream<T>` + yield 移植**�
 除 settings_link（reqwest 外部 HTTP）外，其余 6 个（run/run_stream/chat_stream/
 conversation_stream/workflow_run/workflow_run_stream）在缺陷 D 修复后应可移植（用
 `~Stream<T>`+yield + 显式 .await + 具体返回类型）。
+
+### P5：async trait impl（GenericInstance 返回类型比对，已修复）
+
+**缺陷**：`trait_checker.rs` 的 `is_compatible` 用 `matches!` 枚举所有兼容类型对，但
+**没有 `GenericInstance` 分支**。两个 `Future<StrSlice>`（`~str` async 方法的返回类型）
+走不到任何匹配分支，`is_compatible = false`，报"Method has return type X but spec requires
+X"（两个 X 完全相同——荒谬）。
+
+这阻塞了 **async trait impl**：`spec Tool { fn execute() ~str }` + `type X as Tool
+{ fn execute() ~str { ... } }` 不工作。影响 auto-musk 的 tools.rs/spec_tools.rs/
+orch_tools.rs（9 个 `#[async_trait] impl Tool`）、relay/driver.rs（`impl AgentFactory`）等。
+
+**修复**：`is_compatible` 增加 `||` 短路——当 `method.ret` 和 `spec_method.ret` 都是
+`GenericInstance` 时，用 `unique_name()` 字符串比较（两个 `Future<str>` 都生成
+`"Future<str>"`，正确匹配）。trait_checker.rs +10 行。
+
+**验证**：`spec Tool { fn execute(input str) ~str }` + `type ReadFile as Tool
+{ fn execute() ~str { ... .await ... } }` → `trait Tool { async fn execute(...) ->
+String; }` + `impl Tool for ReadFile { async fn execute(...) { ... } }`。16 个
+trait_checker 测试无回归。
+
+**P5 解锁**：auto-musk 剩余 9 个 🔴 模块（main/lib/workflow/tool_context/tools/
+spec_tools/orch_tools/relay{driver,mod}）的 async trait 实现。它们的主体是
+`impl Tool for X { async fn execute() { ... } }` —— P5 后 spec + type as Trait
+的 async 方法可用。
 
 ## 3. 修复后的 server handler 移植形态（auto-musk 侧）
 
