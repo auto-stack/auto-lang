@@ -1,0 +1,11 @@
+// Child tab component for 035. Kept dumb (props in, nothing up) so the
+// example isolates the v-for :key contract.
+widget EditorTab(path: str, label: str) {
+    view {
+        col {
+            class: "px-3 py-2 border border-gray-200 rounded-t text-sm bg-white",
+            text .label { class: "font-medium text-gray-800" }
+            text .path { class: "text-xs text-gray-400" }
+        }
+    }
+}

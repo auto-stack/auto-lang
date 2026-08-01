@@ -1,0 +1,41 @@
+use tab: EditorTab
+
+widget App {
+    use {
+        // Hand-written TS: initial tab data (items deliberately have no `id`).
+        fn: initialTabs from "src/front/utils/tabs.ts"
+    }
+
+    msg Msg { Init }
+
+    model {
+        var tabs list = []
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "035 — v-for :key override" { class: "text-xl font-bold" }
+
+            // Tab strip: child components in a loop with an EXPLICIT key.
+            // `key: tab.path` emits :key="tab.path" and wins over the
+            // auto-generated reuse key — each tab keeps its own component
+            // instance even though TabInfo has no `id` field.
+            row {
+                class: "space-x-1 border-b border-gray-200",
+                for tab in .tabs {
+                    EditorTab(key: tab.path, path: tab.path, label: tab.label)
+                }
+            }
+
+            text "Each EditorTab above is keyed by tab.path — check the generated SFC for :key=\"tab.path\"." {
+                class: "text-sm text-gray-500"
+            }
+        }
+    }
+
+    on {
+        .Init -> { .tabs = initialTabs() }
+    }
+}

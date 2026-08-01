@@ -876,6 +876,11 @@ pub struct VueGenerator {
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
 
+    /// True when `current_loop_var` is the loop INDEX variable
+    /// (`for i, note in .notes` → current_loop_var = "i", an int).
+    /// Index vars are primitive ints, so the auto-:key must not emit `i?.id`.
+    current_loop_var_is_index: bool,
+
     /// Per-widget key counter — increments for every component usage in the template.
     /// Produces stable unique keys like 'AutoDownEditor-1', 'NavTree-2', etc. so that
     /// two components with the same name (e.g. in different v-if branches) don't collide.
@@ -1028,6 +1033,7 @@ impl VueGenerator {
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
             current_loop_var: None,
+            current_loop_var_is_index: false,
             widget_key_counter: 0,
             loop_param_handlers: HashMap::new(),
             needs_child_delete_handler: false,
@@ -1197,6 +1203,7 @@ impl VueGenerator {
         self.lucide_icons.clear();
         self.wrapper_classes.clear();
         self.current_loop_var = None;
+        self.current_loop_var_is_index = false;
         self.widget_key_counter = 0;
         self.loop_param_handlers.clear();
         self.needs_child_delete_handler = false;
@@ -2836,9 +2843,23 @@ impl VueGenerator {
                     //      are reused (not destroyed/recreated) when only props change
                     //      (prevents Tiptap unmount errors on note switch).
                     //   3. Inside a for-loop, items need per-item keys for correct diff.
+                    //
+                    // Explicit override: a `key:` prop on the instantiation
+                    // (e.g. `EditorTab(key: tab.path, ...)`) is emitted above as
+                    // `:key="tab.path"` and WINS — no auto-key is added (a second
+                    // :key would be a duplicate attribute).
+                    let has_explicit_key = props.contains_key("key");
                     self.widget_key_counter += 1;
-                    if let Some(ref loop_var) = self.current_loop_var {
-                        attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? {})\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                    if has_explicit_key {
+                        // explicit :key already emitted with the other props
+                    } else if let Some(ref loop_var) = self.current_loop_var {
+                        if self.current_loop_var_is_index {
+                            // Index var is a primitive int — `i?.id` is meaningless;
+                            // use the index itself as the per-item key.
+                            attrs.push(format!(":key=\"'{}-{}-' + {}\"", html_tag, self.widget_key_counter, loop_var));
+                        } else {
+                            attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? {})\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                        }
                     } else if let Some(ref expr) = first_prop_expr {
                         // Non-loop component: if the first prop looks like an object
                         // reference (contains '[' for index access, suggesting an array
@@ -3130,7 +3151,13 @@ impl VueGenerator {
                 let attr_str = if is_vue_component && !attr_str.contains(":key=") {
                     self.widget_key_counter += 1;
                     if let Some(ref loop_var) = self.current_loop_var {
-                        format!("{} :key=\"'{}-{}-' + ({}?.id ?? {})\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
+                        if self.current_loop_var_is_index {
+                            // Index var is a primitive int — `i?.id` is meaningless;
+                            // use the index itself as the per-item key.
+                            format!("{} :key=\"'{}-{}-' + {}\"", attr_str, html_tag, self.widget_key_counter, loop_var)
+                        } else {
+                            format!("{} :key=\"'{}-{}-' + ({}?.id ?? {})\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
+                        }
                     } else {
                         format!("{} :key=\"'{}-{}'\"", attr_str, html_tag, self.widget_key_counter)
                     }
@@ -3242,7 +3269,9 @@ impl VueGenerator {
                 // the INDEX variable (i) as the loop_var — handlers like
                 // SelectNote(i) pass the index, not the value.
                 let prev_loop_var = self.current_loop_var.clone();
+                let prev_loop_var_is_index = self.current_loop_var_is_index;
                 self.current_loop_var = Some(index.clone().unwrap_or_else(|| var.clone()));
+                self.current_loop_var_is_index = index.is_some();
 
                 // If body has a single Element or Component, put v-for directly on it
                 // to avoid <template> scoping issues with vue-tsc
@@ -3273,6 +3302,7 @@ impl VueGenerator {
 
                 if let Some(r) = result {
                     self.current_loop_var = prev_loop_var;
+                    self.current_loop_var_is_index = prev_loop_var_is_index;
                     return r;
                 }
 
@@ -3284,6 +3314,7 @@ impl VueGenerator {
                     body_html.push_str(&self.node_to_html(child, indent + 1)?);
                 }
                 self.current_loop_var = prev_loop_var;
+                self.current_loop_var_is_index = prev_loop_var_is_index;
                 Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
             }
 
@@ -12492,5 +12523,163 @@ widget App {
         outlets.insert("Panel".to_string(), with_outlets.slot_outlet_names());
         let warnings = app.slot_children_warnings(&outlets);
         assert!(warnings.is_empty(), "no warnings when outlets match:\n{:?}", warnings);
+    }
+
+    // ====================================================================
+    // v-for :key — explicit `key:` prop override + index-var fallback.
+    //
+    // Syntax: any node in a loop body may take a `key: <expr>` prop; it is
+    // emitted as `:key="<expr>"` and wins over the auto-generated reuse key.
+    // ====================================================================
+
+    /// Same as gen_sfc_from_widget_src, but registers sibling sub-widget
+    /// names (the production app-build path passes them via
+    /// with_sub_widgets; the known-sub-widget auto-:key logic only runs then).
+    fn gen_sfc_with_sub_widgets(src: &str, subs: &[&str]) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new()
+            .with_sub_widgets(subs.iter().map(|s| s.to_string()).collect());
+        gen.generate(&widget).expect("generate SFC")
+    }
+
+    /// Explicit `key:` on a sub-widget component instantiation in a loop
+    /// wins over the auto-key: exactly one :key, bound to the given expr.
+    #[test]
+    fn test_vfor_explicit_key_on_sub_widget() {
+        let sfc = gen_sfc_with_sub_widgets(r#"
+use tab: EditorTab
+
+widget App {
+    model { var tabs list = [] }
+    view {
+        col {
+            for tab in .tabs {
+                EditorTab(key: tab.path, path: tab.path)
+            }
+        }
+    }
+}
+"#, &["EditorTab"]);
+        assert!(
+            sfc.contains(r#":key="tab.path""#),
+            "explicit key emitted:\n{}",
+            sfc
+        );
+        assert_eq!(
+            sfc.matches(":key=").count(),
+            1,
+            "exactly one :key (no duplicate auto-key):\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("tab?.id"),
+            "no auto-key ?.id chain when explicit key given:\n{}",
+            sfc
+        );
+    }
+
+    /// Explicit `key:` on a plain element in a loop is emitted as :key.
+    #[test]
+    fn test_vfor_explicit_key_on_plain_element() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var names list = [] }
+    view {
+        col {
+            for name in .names {
+                span(key: name) { text "x" }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<span :key="name" v-for="name in names">"#),
+            "explicit key on plain element:\n{}",
+            sfc
+        );
+    }
+
+    /// Regression: without an explicit key, the auto-key heuristic is
+    /// unchanged (`'Tag-N-' + (item?.id ?? item)`).
+    #[test]
+    fn test_vfor_auto_key_unchanged_without_explicit_key() {
+        let sfc = gen_sfc_with_sub_widgets(r#"
+use tab: EditorTab
+
+widget App {
+    model { var tabs list = [] }
+    view {
+        col {
+            for tab in .tabs {
+                EditorTab(path: tab.path)
+            }
+        }
+    }
+}
+"#, &["EditorTab"]);
+        assert!(
+            sfc.contains(r#":key="'EditorTab-1-' + (tab?.id ?? tab)""#),
+            "auto-key heuristic unchanged:\n{}",
+            sfc
+        );
+    }
+
+    /// Indexed loop: the loop var is the primitive int index — the key must
+    /// use the index itself, never `i?.id`.
+    #[test]
+    fn test_vfor_indexed_loop_key_uses_index() {
+        // Sub-widget path (known sibling widget).
+        let sfc = gen_sfc_with_sub_widgets(r#"
+use tab: EditorTab
+
+widget App {
+    model { var tabs list = [] }
+    view {
+        col {
+            for i, tab in .tabs {
+                EditorTab(path: tab.path)
+            }
+        }
+    }
+}
+"#, &["EditorTab"]);
+        assert!(
+            sfc.contains(r#":key="'EditorTab-1-' + i""#),
+            "index var used as key:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("i?.id"), "no ?.id on primitive index:\n{}", sfc);
+
+        // Generic Vue-component path (Plan 360 fallback).
+        let sfc2 = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var tabs list = [] }
+    view {
+        col {
+            for i, tab in .tabs {
+                EditorTab(path: tab.path)
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc2.contains(r#":key="'EditorTab-1-' + i""#),
+            "index var used as key (generic path):\n{}",
+            sfc2
+        );
+        assert!(!sfc2.contains("i?.id"), "no ?.id on primitive index (generic path):\n{}", sfc2);
     }
 }
