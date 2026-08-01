@@ -877,21 +877,45 @@ impl RustGenerator {
         if force_self {
             let msg_name = self.current_msg_name();
             code.push_str(&format!("        }};\n"));
-            // L3: re-construct persistent children with real props.
+            // Run Init FIRST so data (e.g. store.notes from list_notes()) is
+            // loaded before persistent children are re-constructed with that
+            // data. Doing the re-construction before Init reads an empty store
+            // (e.g. EditorPanel::new(store.notes[0]) index-out-of-bounds),
+            // which panics in split/async-load modes where list_notes() yields
+            // instead of returning synchronously. Init handlers that only touch
+            // the store (not child components) are safe to run first.
+            if sync_init {
+                code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
+            }
+            // L3: re-construct persistent children with real props (now that
+            // Init has populated any data they depend on).
+            //
+            // Guard: if a constructor arg indexes a collection (e.g.
+            // `__self.store.notes[idx]`), wrap the re-construction in an
+            // `if !<collection>.is_empty() { ... }` guard. In split/async-load
+            // modes list_notes() yields instead of returning synchronously, so
+            // the collection is still empty right after Init returns — indexing
+            // it would panic. The guard leaves the child at its Default() until
+            // the view layer re-syncs it with loaded data.
             for child_name in &self.child_components {
                 if self.is_persistent_child(child_name) {
                     let field = Self::child_field_name(child_name);
                     let constructor_args = self.find_constructor_args_for_child(widget, child_name);
                     // Replace self. with __self. in constructor args (we're in __self context).
                     let args = constructor_args.replace("self.", "__self.");
-                    code.push_str(&format!(
-                        "        __self.{} = {}::new({});\n",
+                    let stmt = format!(
+                        "__self.{} = {}::new({});",
                         field, child_name, args
-                    ));
+                    );
+                    if let Some(collection) = first_indexed_collection(&args) {
+                        code.push_str(&format!(
+                            "        if !{}.is_empty() {{\n            {}\n        }}\n",
+                            collection, stmt
+                        ));
+                    } else {
+                        code.push_str(&format!("        {}\n", stmt));
+                    }
                 }
-            }
-            if sync_init {
-                code.push_str(&format!("        __self.on({}::Init);\n", msg_name));
             }
             code.push_str("        __self\n");
         } else {
@@ -4872,6 +4896,32 @@ fn tailwind_single_to_method(class: &str) -> String {
 
     // Unknown class -- skip silently
     String::new()
+}
+
+/// Extract the collection expression from the first `[...]` index access in
+/// `args`, if any. E.g. `__self.store.notes[__self.store.active_id as usize].clone()`
+/// → `Some("__self.store.notes")`. Used to guard persistent-child re-construction
+/// against empty collections in async-load modes.
+fn first_indexed_collection(args: &str) -> Option<String> {
+    let brack = args.find('[')?;
+    // Walk back from the `[` to find the collection expression: a run of
+    // identifier chars, `.`, and `_` (field/index path like __self.store.notes).
+    let bytes = args.as_bytes();
+    let mut start = brack;
+    while start > 0 {
+        let c = bytes[start - 1];
+        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    let collection = &args[start..brack];
+    if collection.is_empty() {
+        None
+    } else {
+        Some(collection.to_string())
+    }
 }
 
 // ============================================================================
