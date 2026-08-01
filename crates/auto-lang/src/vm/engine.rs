@@ -5759,39 +5759,7 @@ impl AutoVM {
                         task.current_fn_n_locals = frame.old_fn_n_locals;
                     }
                 }
-                // RET_D: Plan 377 后所有值单槽，RET_D 与 RET 语义一致。
-                // 保留为 RET 别名以兼容可能残留的旧字节码（codegen 已不再发射 RET_D）。
-                OpCode::RET_D => {
-                    let n_args = self.flash.read_u8(task.ip) as usize;
-                    task.ip += 1;
-
-                    if task.bp == 0 {
-                        return Ok(StepResult::Terminated);
-                    }
-
-                    // 单槽：弹出一个 NanoValue（与 RET 一致）
-                    let result_nv = task.ram.pop_nv();
-
-                    let old_bp = task.ram.read_i32(task.bp) as usize;
-                    let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
-
-                    task.current_closure_id = task.saved_closure_id;
-
-                    let new_sp = task.bp - n_args;
-
-                    {
-                        task.ram.write_nv(new_sp - 1, result_nv);
-                        task.ram.sp = new_sp;
-                    }
-
-                    task.bp = old_bp;
-                    task.ip = ret_ip;
-
-                    if let Some(frame) = task.call_stack.pop() {
-                        task.current_fn_n_args = frame.old_fn_n_args;
-                        task.current_fn_n_locals = frame.old_fn_n_locals;
-                    }
-                }
+                // Plan 377 §3.3: RET_D opcode 已删除（全值单槽化后恒用 RET）。
 
                 // === Closures (Plan 071: Direct Capture) ===
                 OpCode::CLOSURE => {

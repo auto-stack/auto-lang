@@ -38,8 +38,9 @@ pub enum OpCode {
     SLICE = 0x5C,          // Slice: (container, start, end) -> new_container, -1 = from start/end
     CREATE_TUPLE = 0x5D,   // Plan 200: Create tuple from elem_count -> tuple_id (heap object)
     GET_TUPLE_FIELD = 0x5E, // Plan 200: Get tuple field (tuple_id, field_index) -> value
-    PROMOTE_F64 = 0xF1, // Plan 073: Widen f32 to f64 (1 slot -> 2 slots)
-    RET_D = 0xF2,       // RET for 2-slot return values (f64, u64, i64): pops 2 slots, writes 2 slots
+    PROMOTE_F64 = 0xF1, // Plan 073: Widen f32 to f64 (now 1 slot -> 1 slot under Plan 377)
+    // Plan 377 §3.3: RET_D (0xF2) 已删除 —— 全值单槽化后恒用 RET。
+    // 0xF2 不再分配（保留空位以防旧调试符号引用）。bytecode 不持久化，无兼容风险。
 
     CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
     CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
@@ -381,7 +382,8 @@ impl OpCode {
         0xFB, // PUSH_NIL
         0xFC, // PUSH_BOOL
         // Debug/Misc
-        0xF0, 0xF1, 0xF2, 0xFE, 0xFF,
+        0xF0, 0xF1, 0xFE, 0xFF,
+        // 0xF2 was RET_D (deleted in Plan 377 §3.3) — unassigned, reserved.
         // Plan 010 (MS3-A): try/catch exception-table opcodes
         0xFD, // PUSH_HANDLER
         0x8F, // POP_HANDLER
@@ -423,7 +425,6 @@ impl OpCode {
             Self::CREATE_TUPLE => "create.tuple",
             Self::GET_TUPLE_FIELD => "get.tuple.field",
             Self::PROMOTE_F64 => "promote.f64",
-            Self::RET_D => "ret.d",
             Self::CREATE_RANGE => "create.range",
             Self::CREATE_RANGE_EQ => "create.range.eq",
             Self::BUILD_FSTR => "build.fstr",
@@ -618,7 +619,6 @@ impl OpCode {
             "create.tuple" => Some(Self::CREATE_TUPLE),
             "get.tuple.field" => Some(Self::GET_TUPLE_FIELD),
             "promote.f64" => Some(Self::PROMOTE_F64),
-            "ret.d" => Some(Self::RET_D),
             "create.range" => Some(Self::CREATE_RANGE),
             "create.range.eq" => Some(Self::CREATE_RANGE_EQ),
             "build.fstr" => Some(Self::BUILD_FSTR),
@@ -802,7 +802,7 @@ impl OpCode {
             // 0-byte operands (opcode only)
             Self::NOP | Self::POP | Self::DUP | Self::SWAP | Self::DROP
             | Self::CONST_0 | Self::CONST_1 | Self::HALT | Self::PRINT
-            | Self::RET_D | Self::YIELD_TASK | Self::YIELD_VAL | Self::CREATE_NONE
+            | Self::YIELD_TASK | Self::YIELD_VAL | Self::CREATE_NONE
             | Self::IS_SOME | Self::IS_OK | Self::UNWRAP_SOME | Self::UNWRAP_OK
             | Self::UNWRAP_ERR | Self::IS_NIL | Self::NEG | Self::NEG_F
             | Self::NEG_D | Self::NOT | Self::TO_STR | Self::STR_CAT
