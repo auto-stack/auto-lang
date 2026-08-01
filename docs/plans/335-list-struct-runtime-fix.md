@@ -1,8 +1,11 @@
 # Plan 335：List<T> 结构体元素运行时完整修复
 
-> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）→
-> **`type` 声明的结构体 List 端到端可用**（002 测试守护）。
-> Phase 1（read_state_as_vec 解引用 VmRef）+ Phase 2（to_array int 语义）尚未实施——015-notes vm 渲染需此二者。
+> **状态（2026-08-01）**：**核心修复全部完成**。
+> - shim 双查（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）✅
+> - Phase 1（read_state_as_vec 解引用 VmRef + vmref_to_vec）—— 已由后续工作实现 ✅
+> - Phase 2（to_array）—— shim 双查修复后 int List 端到端工作（identity 语义不完美但无功能影响）✅
+> - `type` 声明的结构体 List 端到端可用（空 List + push 路径，002 测试守护）✅
+> - **遗留**：`List<Note>.new([字面量])` 带初始元素构造坏（CREATE_OBJ 的 nanbox 编码问题，独立于本计划，见 §CREATE_OBJ 编码遗留）
 > **For Claude:** 本计划源于 015-notes `--render=vm`：notes 列表渲染为空。已修根因①(`to_array` 未实现,commit `f21e7774`),但列表仍空——根因②是渲染层 `read_state_as_vec` 不解引用 `VmRef`。本计划做 List<T>(T=结构体/混合类型)的**完整运行时语义修复**,并扫查 VM 中其它同类缺口。
 
 ## 触发现状（015-notes vm+vm 合并模式）
@@ -196,6 +199,38 @@ fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
 
 - 24_generics（3）、28_enum_methods（6）、29_list_shims（2：001 int + 002 type/struct）全绿
 - VM non-ignored 21=21 基线，零新增
+
+---
+
+## Phase 1/2 调研结论（2026-08-01）
+
+### Phase 1（read_state_as_vec 解引用 VmRef）—— 已由后续工作实现
+
+`vm_bridge.rs:424` 的 `read_state_as_vec` **已有 `Value::VmRef(r) => self.vmref_to_vec(r.id)` 分支**（line 436）。`vmref_to_vec`（line 467）完整实现了方案描述的三查：heap_objects 的 ListData<Value> + ListData<i32>，再 vm.arrays。且采用了方案建议的"先 heap 再 arrays"顺序，不依赖 id 段硬编码。**Phase 1 无需额外工作。**
+
+### Phase 2（to_array int List 语义）—— shim 双查修复后无功能问题
+
+`to_array` 在 engine.rs:5444 是 identity（receiver 原样返回）。对 int List（ListData<i32>），identity 返回 heap id（而非方案期望的 array_id）。但 shim 双查修复后，`get`/`len`/`pop` 等都能处理 heap id——实测 `List<int>.new([1,2,3]).to_array().len()` = 3，`.get(0)` = 1，**功能正确**。identity 的语义不完美（返回 heap id 而非 array_id）但不构成实际故障。**Phase 2 无需额外工作。**
+
+### test 24/002 现状
+
+`test_24_generics_002_to_array`（`#[ignore]` 标记但能跑过）：`List<Note>.new([字面量]).to_array()` 输出 "ok"，**通过**。
+
+---
+
+## CREATE_OBJ 编码遗留（独立 bug，超出本计划范围）
+
+调查 Phase 2 时发现 `List<Note>.new([Note{id:0, title:"a"}])`（带初始字面量元素的 struct List 构造）返回垃圾 len（7 而非 1）。
+
+**根因**：CREATE_OBJ（engine.rs:2091，`Note {...}` 字面量构造）用 `push_i32(obj_id)` 推对象 id（line 2185）——裸 int，无 object tag。CREATE_ARRAY（engine.rs:2188）收集数组元素时，`is_object(nv)` 检查对裸 int 返回 false → struct 对象 id 被当作 `Value::Int(4000000)` 存进 vm.arrays（应为 `Value::VmRef`）。shim_list_new 随后把这个"Int"存进 ListData<Value>，下游 len/get 行为错乱。
+
+**对照**：`Item.new()`（CONSTRUCT_INSTANCE/NEW_INSTANCE 路径，engine.rs:3272）也用 `push_i32`，但 `List<Item>.new([])` + `push(Item.new())` 工作正常（002 测试）——因为 shim_list_push 的 `is_object` 对该 id 段的 nanbox bit pattern 恰好识别为 object（id_gen 起始值差异）。两条对象构造路径（CREATE_OBJ vs NEW_INSTANCE）的 id 编码/识别不一致。
+
+**为何不在本计划修**：修复需统一 CREATE_OBJ/NEW_INSTANCE 的对象 id push 编码（push_i32 → encode_object），但这会连锁影响整个对象访问链路（GET_FIELD/GET_GENERIC_FIELD 等都 pop_i32 拿对象 id）。这是 nanbox 值表示的架构层问题，属于 Plan 377（统一值表示）的范畴，非 List 运行时修复。
+
+**建议**：归入 Plan 377（统一值表示 — 消除 2-slot）一并处理，或单开计划统一对象 id 的 push/pop 编码契约。
+
+**本计划范围内**：空 List + push 路径的 struct List 完全可用（002 测试守护）；带初始字面量元素的构造是 CREATE_OBJ 遗留，不影响 push/get/set 等已修 shim。
 
 ### 回归
 
