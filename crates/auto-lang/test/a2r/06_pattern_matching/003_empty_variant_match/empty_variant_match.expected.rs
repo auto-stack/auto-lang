@@ -36,5 +36,5 @@ fn main() {
         Coin::Penny => println!("Penny!"),
         Coin::Nickel => println!("Nickel!"),
         _ => println!("Other"),
-    }
+    };
 }

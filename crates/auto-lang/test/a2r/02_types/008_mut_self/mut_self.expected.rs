@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Counter {
-    count: i32,
+    pub count: i32,
 }
 
 impl Counter {

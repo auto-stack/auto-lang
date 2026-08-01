@@ -30,8 +30,8 @@ impl LaserCannon {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Starship {
-    core: WarpDrive,
-    weapon: LaserCannon,
+    pub core: WarpDrive,
+    pub weapon: LaserCannon,
 }
 
 impl Engine for Starship {

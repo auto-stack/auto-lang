@@ -3,7 +3,7 @@
 use walkdir;
 use std::fs;
 fn main() {
-    let mut total_size: u32 = 0;
+    let mut total_size: u32 = 0 as u32;
     for entry in walkdir::WalkDir::new("src") {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {

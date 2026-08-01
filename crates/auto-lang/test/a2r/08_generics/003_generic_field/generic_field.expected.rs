@@ -2,12 +2,12 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Box<T> {
-    value: T,
+    pub value: T,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Container {
-    data: Box<i32>,
+    pub data: Box<i32>,
 }
 
 fn main() {

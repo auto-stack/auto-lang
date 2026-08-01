@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq)]
 struct Config {
-    env: std::collections::HashMap<String, String>,
-    ports: Vec<i32>,
+    pub env: std::collections::HashMap<String, String>,
+    pub ports: Vec<i32>,
 }
 
 fn main() {

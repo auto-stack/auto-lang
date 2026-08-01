@@ -16,6 +16,6 @@ fn main() {
     match result {
         Ok(val) => println!("Success: {}", val),
         Err(e) => got_err = true,
-    }
+    };
     assert!(got_err == true);
 }

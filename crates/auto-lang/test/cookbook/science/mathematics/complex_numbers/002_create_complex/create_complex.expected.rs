@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq)]
 struct Complex {
-    real: f64,
-    imag: f64,
+    pub real: f64,
+    pub imag: f64,
 }
 
 fn main() {

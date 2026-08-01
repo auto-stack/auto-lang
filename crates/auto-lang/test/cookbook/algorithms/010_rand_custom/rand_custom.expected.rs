@@ -36,7 +36,7 @@ fn random_color() -> Color {
         0 => Color::Red,
         1 => Color::Green,
         _ => Color::Blue,
-    }
+    };
 }
 
 impl Color {
@@ -45,7 +45,7 @@ impl Color {
             Color::Red => "Red".to_string(),
             Color::Green => "Green".to_string(),
             Color::Blue => "Blue".to_string(),
-        }
+        };
     }
 }
 

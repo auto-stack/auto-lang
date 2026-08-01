@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Name {
-    value: String,
+    pub value: String,
 }
 
 impl From<String> for Name {

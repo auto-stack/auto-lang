@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Point {
-    x: i32,
-    y: i32,
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ fn main() {
 
     match p {
         Point { x, y } => println!("{}", x),
-    }
+    };
 
 
     let s = Shape::Rect(p);
@@ -29,8 +29,8 @@ fn main() {
         Shape::Rect(pt) => {
             match pt {
                 Point { x, y } => println!("{}", x),
-            }
+            };
         },
         Shape::None => println!("none"),
-    }
+    };
 }

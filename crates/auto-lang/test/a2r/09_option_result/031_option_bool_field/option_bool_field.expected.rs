@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
-    env: std::collections::HashMap<String, String>,
-    provider: Option<String>,
+    pub env: std::collections::HashMap<String, String>,
+    pub provider: Option<String>,
 }
 
 impl Settings {

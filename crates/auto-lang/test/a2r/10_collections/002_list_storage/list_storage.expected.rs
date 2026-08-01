@@ -9,19 +9,19 @@ trait Storage<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Heap<T> {
-    ptr: *mut T,
-    cap: u32,
+    pub ptr: *mut T,
+    pub cap: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct InlineInt64 {
-    buffer: Vec<i32>,
+    pub buffer: Vec<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct List<T, S> {
-    len: u32,
-    store: S,
+    pub len: u32,
+    pub store: S,
 }
 
 fn main() {

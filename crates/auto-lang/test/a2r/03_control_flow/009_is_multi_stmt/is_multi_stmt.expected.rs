@@ -10,5 +10,5 @@ fn main() {
             println!("{}", msg);
         },
         _ => println!("other"),
-    }
+    };
 }

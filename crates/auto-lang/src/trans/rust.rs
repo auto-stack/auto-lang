@@ -6816,8 +6816,11 @@ impl RustTrans {
     }
 
     /// Plan 373: Check if a type represents an async result (Future/~Result).
+    /// Plan 382 (A.1): `Type::Result` is produced ONLY by `!T` (Plan 204 —
+    /// SYNCHRONOUS `Result<T, Box<dyn Error>>`); async is `~T` → GenericInstance
+    /// ("Future"). Treating `!T` as async made sync functions async + inserted
+    /// `.await` (regression since d269a92d). Exclude Type::Result here.
     fn type_is_async(ty: &Type) -> bool {
-        matches!(ty, Type::Result(_)) ||
         matches!(ty, Type::Handle { .. }) ||
         matches!(ty, Type::GenericInstance(inst) if inst.base_name == "Future")
     }
@@ -8007,9 +8010,10 @@ impl RustTrans {
         // Auto-detect async: functions returning ~T (Future/Handle) are async in Rust
         // Also detect async main (has .await in body)
         // Plan 373 G2: ~Result methods → async fn (for trait impls with #[async_trait])
+        // Plan 382 (A.1): `Type::Result` = `!T` (SYNC Result<T, Box<dyn Error>>) —
+        // must NOT be async (Plan 204); `~Result` → GenericInstance("Future").
         let is_async_fn = is_main_with_await
             || matches!(fn_decl.ret, Type::Handle { .. })
-            || matches!(fn_decl.ret, Type::Result(_))
             || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
 
         // Plan 321: Detect generator functions (return ~Iter<T> or ~Stream<T>)
@@ -9625,8 +9629,8 @@ impl RustTrans {
                 // Plan 373 G2: if any method is async (~Result lowered to
                 // Future<Result<...>>), the trait uses #[async_trait] and the
                 // impl block must carry it too.
+                // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
                 let has_async = spec_has_methods.iter().any(|m| {
-                    matches!(&m.ret, Type::Result(_)) ||
                     matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
                 });
                 if has_async {
@@ -10739,8 +10743,8 @@ impl RustTrans {
         // Plan 380: async spec methods (~Result / Future) need #[async_trait]
         // on the TRAIT declaration too — a bare `-> Future<...>` return type in
         // a trait is E0782. Plan 373 G2 only annotated the impl blocks.
+        // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
         let has_async_method = spec_decl.methods.iter().any(|m| {
-            matches!(&m.ret, Type::Result(_)) ||
             matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
         });
         if has_async_method {
@@ -10780,8 +10784,8 @@ impl RustTrans {
             // With `#[async_trait]` (added above when any method is async), a
             // bare `-> Future<...>` in the trait would be E0782 — async_trait
             // rewrites `async fn -> Result<...>` into the boxed-Future form.
-            let method_is_async = matches!(&method.ret, Type::Result(_))
-                || matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+            // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
+            let method_is_async = matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
             self.print_indent(&mut sink.body)?;
             if method_is_async {
                 write!(sink.body, "async ")?;

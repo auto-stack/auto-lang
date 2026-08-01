@@ -7,6 +7,6 @@ impl Counter {
 }
 
 fn main() {
-    let c = Counter { field0: 10 };
+    let c = Counter(10);
     println!("{}", c.get_value());
 }

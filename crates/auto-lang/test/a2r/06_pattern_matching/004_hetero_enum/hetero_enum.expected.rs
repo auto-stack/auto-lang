@@ -15,5 +15,5 @@ fn main() {
         Atom::Int(i) => println!("Got Int: {}", i),
         Atom::Char(c) => println!("Got Char: {}", c),
         Atom::Float(f) => println!("Got Float: {}", f),
-    }
+    };
 }

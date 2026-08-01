@@ -2,11 +2,11 @@
 
 // a2r Standard Library (from crate)
 #[allow(unused_imports)]
-use auto_lang::a2r_std;
-use auto_lang::a2r_std::*;
+use a2r_std;
+use a2r_std::*;
 
 fn main() {
-    env.insert("AUTO_TEST_240".to_string(), "hello".to_string());
+    a2r_std::env::set("AUTO_TEST_240", "hello");
     let val = a2r_std::env::get_or("AUTO_TEST_240", "default");
     assert!(val == "hello");
 

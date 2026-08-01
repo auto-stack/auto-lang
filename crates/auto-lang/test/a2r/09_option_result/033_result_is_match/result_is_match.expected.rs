@@ -4,7 +4,7 @@ fn process(res: Result<i32, Box<dyn std::error::Error>>) -> i32 {
     match res {
         Ok(v) => v,
         Err(e) => -1,
-    }
+    };
 }
 
 fn main() {

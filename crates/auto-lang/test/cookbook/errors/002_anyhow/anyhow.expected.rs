@@ -5,5 +5,5 @@ fn main() {
     match result {
         Ok(val) => assert!(val == "hello"),
         Err(e) => assert!(false),
-    }
+    };
 }

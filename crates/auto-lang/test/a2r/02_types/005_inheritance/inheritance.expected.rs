@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Animal {
-    name: String,
+    pub name: String,
 }
 
 impl Animal {
@@ -13,8 +13,8 @@ impl Animal {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Dog {
-    name: String,
-    breed: String,
+    pub name: String,
+    pub breed: String,
 }
 
 impl Dog {
