@@ -164,7 +164,7 @@ impl std::error::Error for AgentError {}
 
 ---
 
-## 附录 A：a2r golden 套件 69 失败调研（2026-08-01，后续修复项）
+## 附录 A：a2r golden 套件 69 失败调研与修复（2026-08-01，✅ 已完成）
 
 > E0063 修复（AuraWidget `exposes`，见 `9b286848`）后 `--features test-trans`
 > 整库首次可编译运行，暴露 **69 个 a2r golden 失败**（220 通过）。
@@ -188,28 +188,30 @@ impl std::error::Error for AgentError {}
 **受影响测试（12）**：`09_option_result/002`、`034`，cookbook
 `algorithms/007,011`、`errors/001,004`、`file/005,006,007,009,011,012`。
 
-**修复方向**（新计划）：
-1. AST 区分：新增 `Type::Bang(T)`（同步），`!T` 解析到它；`is_async_fn`/
-   `type_is_async` 只匹配 `Type::Result`（届时仅剩 `~Result` 命中）。
-2. 或 Fn 增加 `is_async` 标志：`~` 前缀解析时置位，async 判定改查标志而非
-   返回类型。
-3. 修后这 12 个 golden 应恢复 sync 形态（对照现有 expected.rs 即为正确输出）。
+**修复**（已实施，`c6849779` 合并 `ac27914f`）：`~T` 解析为
+`GenericInstance("Future")`（parser Tilde 分支），`~Result` 由 Future 检查独立
+捕获 async——因此从 `is_async_fn` / `type_is_async` / spec async 判定（共 5 处）
+移除 `Type::Result(_)` 即可：同步 `!T` 恢复 sync（`fn` + 调用点 `?`），`~Result`
+不受影响（auto-ai 语料无 `!T`，全量重生成与提交版逐字节一致）。
 
-### A.2 过时 golden（57 个，合法演进）
+### A.2 过时 golden（57 个，合法演进）→ ✅ 已重生成
 
 | 子类 | 数量 | 演进内容 | 处理 |
 |---|---|---|---|
-| 结构体字段 `pub` | ~32 | 转译器现在给 struct 字段发射 `pub` | 重生成 |
-| 语句位 is-match 补 `;` | ~15 | Plan 380：`is` 语句臂以值表达式结尾时补 `;` | 重生成 |
-| 杂项 | ~10 | `HashMap.get(&"a")` 自动借用、`use a2r_std` 路径、`a2r_std::env::set` 桥接、shared var 临时变量、元组结构体 `Counter(10)`（bd4c475e）、`0 as u32` | 逐条审阅后重生成 |
+| 结构体字段 `pub` | ~32 | 转译器现在给 struct 字段发射 `pub` | 重生成 ✅ |
+| 语句位 is-match 补 `;` | ~15 | Plan 380：`is` 语句臂以值表达式结尾时补 `;` | 重生成 ✅ |
+| 杂项 | ~10 | `HashMap.get(&"a")` 自动借用、`use a2r_std` 路径、`a2r_std::env::set` 桥接、shared var 临时变量、元组结构体 `Counter(10)`（bd4c475e）、`0 as u32`、`char_at`→i32 码点语义（Plan 347，2026-07-23） | 逐条审阅后重生成 ✅ |
 
 **处理**：test runner 在断言失败时已写 `<case>.wrong.rs`（当前输出），
-逐条审阅确认合法后 `wrong.rs → expected.rs`。003_field_attrs 已按此修复（`9b286848`）。
+逐条审阅确认合法后 `wrong.rs → expected.rs`，共 **59 个**（含 12 个 async 测试中
+叠加了其它 stale 差异的 2 个）。003_field_attrs 已按此修复（`9b286848`）。
 
-### A.3 修复方案与验证
+### A.3 修复方案与验证 → ✅ 全部完成
 
-1. **先修 A.1**（转译器 bug，worktree 方式 + golden 回归，独立计划）
-2. **再批量重生成 A.2**（57 个，机械但需逐条审阅差异）
-3. 验证：`cargo test --features test-trans --lib a2r_tests` → 289 全绿
-   （当前 220 + 69 修复）
-4. 备注：该套件此前多年未跑（E0063 编译挡板 + 无 CI），建议纳入常规回归。
+1. **修 A.1**（`c6849779`）：`Type::Result` 从 5 处 async 判定移除 → 12 个测试
+   恢复 sync（对照各自 expected.rs 即为正确输出）。
+2. **重生成 A.2**（同提交）：59 个过时 golden 审阅后重生成。
+3. 验证：`cargo test --features test-trans --lib a2r_tests` → **289 通过 / 0 失败**
+   （原 220/69）；auto-ai-agent 全量 retranspile 输出与提交版逐字节一致。
+4. 备注：该套件此前多年未跑（E0063 编译挡板 + 无 CI），建议纳入常规回归
+   （后续计划）。
