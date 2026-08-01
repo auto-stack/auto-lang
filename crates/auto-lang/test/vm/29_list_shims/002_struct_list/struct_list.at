@@ -1,6 +1,7 @@
-// Plan 335: struct List 端到端（push/get/字段访问）。
-// 依赖 struct 作为 type 别名（Item.new 构造）+ List shim 双查（ListData<Value>）。
-struct Item { name str }
+// Plan 335: 结构体 List 端到端（push/get/字段访问/pop）。
+// Auto 用 `type` 声明结构体（struct 不是 Auto 关键字）。
+// 依赖 List shim 双查（ListData<Value>）+ type 声明的 .new() 构造。
+type Item { name str }
 fn main() {
     var items List<Item> = List<Item>.new([])
     items.push(Item.new("alpha"))

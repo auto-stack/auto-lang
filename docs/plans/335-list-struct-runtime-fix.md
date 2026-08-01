@@ -1,7 +1,7 @@
 # Plan 335：List<T> 结构体元素运行时完整修复
 
-> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）；
-> struct 构造 bug 已修（`struct` 作为 `type` 别名关键字）→ **struct List 端到端可用**（002 测试守护）。
+> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）→
+> **`type` 声明的结构体 List 端到端可用**（002 测试守护）。
 > Phase 1（read_state_as_vec 解引用 VmRef）+ Phase 2（to_array int 语义）尚未实施——015-notes vm 渲染需此二者。
 > **For Claude:** 本计划源于 015-notes `--render=vm`：notes 列表渲染为空。已修根因①(`to_array` 未实现,commit `f21e7774`),但列表仍空——根因②是渲染层 `read_state_as_vec` 不解引用 `VmRef`。本计划做 List<T>(T=结构体/混合类型)的**完整运行时语义修复**,并扫查 VM 中其它同类缺口。
 
@@ -182,25 +182,19 @@ fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
 
 `test/vm/29_list_shims/001_int_list`：List<int> 的 len/get/set/insert/pop/remove/contains 全覆盖，输出 `3 20 99 4 30 2 1`，全绿。
 
-### struct 构造遗留（独立 bug，阻塞 struct List 端到端验证）— 已修复（2026-08-01）
+### struct 构造遗留（独立 bug，阻塞 struct List 端到端验证）— 已澄清（2026-08-01）
 
-修复 shim 后测 struct List，发现 `Item.new("a").name` = 0（字段丢失）。对照 `Item { name: "a" }.name` = "a"（字面量构造工作）。
+修复 shim 后测 struct List，发现 `Item.new("a").name` = 0（字段丢失）。
 
-**根因**：`struct` **不是关键字**（token.rs 未注册），被词法化为普通 Ident。parser 的顶层 `TokenKind::Ident` 分支（parser.rs:4121）不认识 `struct`，走 `parse_node_or_call_stmt`（节点/调用语句）→ `struct Item {...}` 未产生 TypeDecl → `Item` 未注册为类型 → `Item.new()` 走 fallback 构造路径，字段丢失。
+**澄清**：这是**测试用例的语法错误**，不是 Auto 的 bug。Auto 用 `type` 声明结构体类型（tour / stdlib / 015-notes / auto-musk 全用 `type`），**`struct` 不是 Auto 关键字**（token.rs 未注册）。复现脚本误用 Rust 风格 `struct Item {...}`，被 parser 当普通 ident → 未注册为类型 → `.new()` 失败。
 
-对照 `type Item {...}`：`type` 是 `TokenKind::Type` 关键字，走 `type_decl_stmt`（正确注册 TypeDecl）。
+用合法的 `type Item {...}` 语法，`Item.new()` + 字段访问 + List 端到端**全部正常**——List shim 双查修复（本节上一段）本身正确有效，无需额外的 struct 别名支持。
 
-**修复**（parser.rs `TokenKind::Ident` 分支）：识别 `ident == "struct"`，转发到 `type_decl_stmt_with_annotation`（`struct` 作为 `type` 的别名关键字）。`type_decl_stmt_with_annotation` 内部 `next()` 会跳过当前 `struct` token，对齐其预期的"跳过 type 关键字"语义。
+> 曾一度误把 `struct` 当 `type` 别名加进 parser（commit a5a502b6），后纠正撤销——`struct` 不是 Auto 语法，不应赋予语义。002 测试改用 `type` 语法守护。
 
-**验证**：
-- `struct Item.new(1, "alpha")` 现返回 `1 alpha`（字段正确）
-- **struct List 端到端**：`List<Item>.new([])` + push + `get(0).name` 全工作（test/vm/29_list_shims/002_struct_list 守护）
+### 回归
 
-Plan 335 的 List shim 双查 + struct 别名协同，使 struct List 完整可用。
-
-### 回归（含 struct 修复）
-
-- 24_generics（3，type 声明）、28_enum_methods（6）、29_list_shims（2：int + struct）全绿
+- 24_generics（3）、28_enum_methods（6）、29_list_shims（2：001 int + 002 type/struct）全绿
 - VM non-ignored 21=21 基线，零新增
 
 ### 回归
