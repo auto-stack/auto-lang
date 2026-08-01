@@ -4125,8 +4125,14 @@ impl<'a> Parser<'a> {
                     self.parse_scene_decl()?
                 } else {
                     let ident = self.cur.text.to_string();
-                    // Plan 351: store decl handled directly (not yet in dialect table)
-                    if ident == "store" && self.is_ui_scenario() && !self.in_on_body {
+                    // Plan 335: `struct` 是 `type` 的别名关键字（struct Item {...} ≡
+                    // type Item {...}）。此前 struct 不是关键字，被当作普通 ident 走
+                    // parse_node_or_call_stmt → Item 未注册为 TypeDecl → Item.new()
+                    // 构造丢字段。这里识别 struct 并转发到 type 声明解析
+                    // （type_decl_stmt_with_annotation 内部 next() 会跳过当前 struct token）。
+                    if ident == "struct" {
+                        self.type_decl_stmt_with_annotation(false, false)?
+                    } else if ident == "store" && self.is_ui_scenario() && !self.in_on_body {
                         self.parse_store_decl()?
                     } else if let Some(stmt) = self.try_dialect_stmt(&ident)? {
                         stmt

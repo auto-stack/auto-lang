@@ -939,3 +939,4 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 
 // === 29_list_shims (Plan 335: List<T> 全 shim 双查修复) ===
 #[test] #[ignore] fn test_29_list_shims_001_int_list() { test_vm("29_list_shims/001_int_list").unwrap(); }
+#[test] #[ignore] fn test_29_list_shims_002_struct_list() { test_vm("29_list_shims/002_struct_list").unwrap(); }

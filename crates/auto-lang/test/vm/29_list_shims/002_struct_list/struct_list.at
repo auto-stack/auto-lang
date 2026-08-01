@@ -1,0 +1,14 @@
+// Plan 335: struct List 端到端（push/get/字段访问）。
+// 依赖 struct 作为 type 别名（Item.new 构造）+ List shim 双查（ListData<Value>）。
+struct Item { name str }
+fn main() {
+    var items List<Item> = List<Item>.new([])
+    items.push(Item.new("alpha"))
+    items.push(Item.new("beta"))
+    print(items.len())
+    print(items.get(0).name)
+    print(items.get(1).name)
+    let popped = items.pop()
+    print(popped.name)
+    print(items.len())
+}

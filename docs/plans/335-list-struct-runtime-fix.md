@@ -1,8 +1,8 @@
 # Plan 335：List<T> 结构体元素运行时完整修复
 
-> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）。
+> **状态（2026-08-01）**：shim 双查修复完成（get/set/insert/pop/remove/contains 加 ListData<Value> + arrays 分支）；
+> struct 构造 bug 已修（`struct` 作为 `type` 别名关键字）→ **struct List 端到端可用**（002 测试守护）。
 > Phase 1（read_state_as_vec 解引用 VmRef）+ Phase 2（to_array int 语义）尚未实施——015-notes vm 渲染需此二者。
-> struct List 端到端受 `Item.new()` 构造 bug 阻塞（独立发现，见 §struct 构造遗留）。
 > **For Claude:** 本计划源于 015-notes `--render=vm`：notes 列表渲染为空。已修根因①(`to_array` 未实现,commit `f21e7774`),但列表仍空——根因②是渲染层 `read_state_as_vec` 不解引用 `VmRef`。本计划做 List<T>(T=结构体/混合类型)的**完整运行时语义修复**,并扫查 VM 中其它同类缺口。
 
 ## 触发现状（015-notes vm+vm 合并模式）
@@ -182,15 +182,26 @@ fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
 
 `test/vm/29_list_shims/001_int_list`：List<int> 的 len/get/set/insert/pop/remove/contains 全覆盖，输出 `3 20 99 4 30 2 1`，全绿。
 
-### struct 构造遗留（独立 bug，阻塞 struct List 端到端验证）
+### struct 构造遗留（独立 bug，阻塞 struct List 端到端验证）— 已修复（2026-08-01）
 
-修复 shim 后测 struct List，发现 `Item.new("a").name` = 0（字段丢失）。对照 `Item { name: "a" }.name` = "a"（字面量构造工作）。**根因在 `Item.new()` 构造路径**（CONSTRUCT_INSTANCE 把参数存进字段的逻辑有缺陷），非 List shim。
+修复 shim 后测 struct List，发现 `Item.new("a").name` = 0（字段丢失）。对照 `Item { name: "a" }.name` = "a"（字面量构造工作）。
 
-- List<int> 全 shim 现工作（001 测试守护）
-- List<Struct> 的 shim 修复正确（能从 ListData<Value> 取 VmRef），但 VmRef 指向的 struct 对象字段本身是坏的（Item.new bug）
-- **修复 Item.new 构造后，struct List 端到端应自然工作**（shim 层已就绪）
+**根因**：`struct` **不是关键字**（token.rs 未注册），被词法化为普通 Ident。parser 的顶层 `TokenKind::Ident` 分支（parser.rs:4121）不认识 `struct`，走 `parse_node_or_call_stmt`（节点/调用语句）→ `struct Item {...}` 未产生 TypeDecl → `Item` 未注册为类型 → `Item.new()` 走 fallback 构造路径，字段丢失。
 
-建议：Item.new 构造 bug 另开计划（或归入 Plan 333 的 `Undefined variable: self` 遗留，同属 struct 方法/构造族）。
+对照 `type Item {...}`：`type` 是 `TokenKind::Type` 关键字，走 `type_decl_stmt`（正确注册 TypeDecl）。
+
+**修复**（parser.rs `TokenKind::Ident` 分支）：识别 `ident == "struct"`，转发到 `type_decl_stmt_with_annotation`（`struct` 作为 `type` 的别名关键字）。`type_decl_stmt_with_annotation` 内部 `next()` 会跳过当前 `struct` token，对齐其预期的"跳过 type 关键字"语义。
+
+**验证**：
+- `struct Item.new(1, "alpha")` 现返回 `1 alpha`（字段正确）
+- **struct List 端到端**：`List<Item>.new([])` + push + `get(0).name` 全工作（test/vm/29_list_shims/002_struct_list 守护）
+
+Plan 335 的 List shim 双查 + struct 别名协同，使 struct List 完整可用。
+
+### 回归（含 struct 修复）
+
+- 24_generics（3，type 声明）、28_enum_methods（6）、29_list_shims（2：int + struct）全绿
+- VM non-ignored 21=21 基线，零新增
 
 ### 回归
 
