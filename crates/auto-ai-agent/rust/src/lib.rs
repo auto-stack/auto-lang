@@ -29,6 +29,7 @@ pub mod wire {
 
 // ── hand-written glue ───────────────────────────────────────────────────────
 pub mod client_impl;
+pub mod echo_tool;
 
 // ── a2r-transpiled modules (FLAT at crate root) ─────────────────────────────
 pub mod agent;

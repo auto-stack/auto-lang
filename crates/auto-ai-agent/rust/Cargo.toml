@@ -22,9 +22,9 @@ path = "src/main.rs"
 # short same-repo sibling paths from rust/ (../auto-ai-agent → ../ = crates/).
 # These resolve identically in the main checkout and in a .worktrees/<name>/
 # checkout, since the sibling crates are co-located either way.
-a2r-std = { path = "../../a2r-std" }
-auto-atom = { path = "../../auto-atom" }
-auto-val = { path = "../../auto-val" }
+a2r-std = { path = "../../../auto-lang/crates/a2r-std" }
+auto-atom = { path = "../../../auto-lang/crates/auto-atom" }
+auto-val = { path = "../../../auto-lang/crates/auto-val" }
 
 # Real Rust crates (option A: HTTP layer is hand-written Rust, not Auto).
 # These live in the SIBLING auto-ai repo (D:/autostack/auto-ai). From the main
@@ -37,8 +37,8 @@ auto-val = { path = "../../auto-val" }
 # checkout. (The earlier `../../../../../../` form only worked inside `.worktrees/`
 # because the extra level happened to line the depth up — it broke the main
 # checkout, which is the canonical build location.)
-auto-ai-client = { path = "../../../../auto-ai/crates/auto-ai-client" }
-ai-config = { path = "../../../../auto-ai/crates/ai-config" }
+auto-ai-client = { path = "../../../auto-ai/crates/auto-ai-client" }
+ai-config = { path = "../../../auto-ai/crates/ai-config" }
 
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
