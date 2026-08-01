@@ -4645,6 +4645,27 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // Plan 382: variant attributes `#[from]` / `#[error("...")]`.
+            // Lexed as Hash + LSquare + ident (+ optional parenthesized args).
+            // Captured as raw strings (e.g. "from", "error(\"client: {0}\")") and
+            // attached to the EnumItem; next() auto-skips doc comments.
+            let mut variant_attrs: Vec<AutoStr> = Vec::new();
+            while self.is_kind(TokenKind::Hash) {
+                self.next(); // skip '#'
+                self.expect(TokenKind::LSquare)?;
+                let mut attr_str = String::new();
+                if self.is_kind(TokenKind::Ident) {
+                    attr_str.push_str(&self.cur.text);
+                    self.next(); // skip the attribute name
+                    if let Some(args) = self.collect_annotation_args() {
+                        attr_str.push_str(&args);
+                    }
+                }
+                self.expect(TokenKind::RSquare)?;
+                variant_attrs.push(attr_str.into());
+                self.skip_empty_lines();
+            }
+
             // Parse variant
             let item_name: AutoStr = self.cur.text.clone().into();
             self.next();
@@ -4673,6 +4694,7 @@ impl<'a> Parser<'a> {
                     payload_type: None,
                     payload_types: vec![],
                     fields,
+                    attrs: variant_attrs,
                 });
                 self.expect_eos(false)?;
                 self.skip_empty_lines();
@@ -4716,6 +4738,7 @@ impl<'a> Parser<'a> {
                 payload_type,
                 payload_types,
                 fields: vec![],
+                attrs: variant_attrs,
             });
             self.expect_eos(false)?;
             self.skip_empty_lines();
@@ -4753,6 +4776,7 @@ impl<'a> Parser<'a> {
                 payload_type: None,
                 payload_types: vec![],
                 fields: vec![],
+                attrs: vec![],
             };
             self.next();
             if self.is_kind(TokenKind::Asn) {
@@ -4797,6 +4821,7 @@ impl<'a> Parser<'a> {
                 payload_type: None,
                 payload_types: vec![],
                 fields: vec![],
+                attrs: vec![],
             });
             self.expect_eos(false)?;
             self.skip_empty_lines();

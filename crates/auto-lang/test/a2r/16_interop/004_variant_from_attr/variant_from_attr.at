@@ -1,0 +1,27 @@
+// Plan 382: enum variant `#[from]` attribute.
+// `#[from] Client(ClientError)` → `impl From<ClientError> for AgentError`
+// (makes `?` auto-convert), and an inherent `message()` method synthesizes
+// `std::fmt::Display` + `std::error::Error` (single source of format strings).
+
+type ForeignErr { code int }
+
+#[derive(Debug)]
+pub enum MyErr {
+    #[from]
+    Inner(ForeignErr)
+    Config(str)
+}
+
+ext MyErr {
+    /// Human-readable message.
+    pub fn message() str {
+        is self {
+            MyErr.Inner(e) -> return f"inner: ${e}",
+            MyErr.Config(m) -> return f"config: ${m}"
+        }
+    }
+}
+
+fn main() {
+    let x = 42
+}

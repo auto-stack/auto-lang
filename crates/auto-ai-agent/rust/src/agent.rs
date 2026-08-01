@@ -234,7 +234,7 @@ impl Agent {
             
 
 
-            let resp = match self.client.complete(req).await { Ok(r) => r, Err(e) => return Err(AgentError::Client(e)), };
+            let resp = self.client.complete(req).await?;
             
 
             if is_cancelled(cancel.clone()) {

@@ -10423,6 +10423,31 @@ impl RustTrans {
                 writeln!(sink.body, "}}")?;
                 sink.body.write(b"\n")?;
 
+                // Plan 382: variant `#[from]` attributes → From conversion impls.
+                // Makes `?` on Result<_, Payload> auto-convert to EnumName (the
+                // `?` operator only needs `From`, not thiserror). Only single-
+                // payload variants qualify (a From impl maps one value).
+                for item in &enum_decl.items {
+                    if !item.attrs.iter().any(|a| a.as_str() == "from") {
+                        continue;
+                    }
+                    let Some(payload) = &item.payload_type else { continue; };
+                    let pty = self.rust_type_name(payload);
+                    writeln!(sink.body, "impl From<{}> for {} {{", pty, enum_decl.name)?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "fn from(e: {}) -> Self {{", pty)?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "{}::{}(e)", enum_decl.name, item.name)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    writeln!(sink.body, "}}")?;
+                    self.dedent();
+                    writeln!(sink.body, "}}")?;
+                    sink.body.write(b"\n")?;
+                }
+
                 // For heterogeneous enums that are all unit variants (like SpecStatus with methods),
                 // generate Display and from_id similar to scalar enums
                 let all_unit = enum_decl.items.iter().all(|item| {
@@ -10650,6 +10675,31 @@ impl RustTrans {
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}\n")?;
+
+        // Plan 382: synthesize std::error::Error + Display for ENUM types with
+        // an inherent message() method (single source of truth — Display
+        // delegates to message(), so format strings live in one place).
+        // This makes transpiled error enums real `std::error::Error` values
+        // (interop with `?` chains / Box<dyn Error> / logging), matching the
+        // Rust reference's `#[derive(Error)]` without a thiserror dependency.
+        let has_message = ext.trait_name.is_none()
+            && ext.methods.iter().any(|m| m.name.as_str() == "message");
+        if has_message && self.known_enum_names.contains(ext.target.as_str()) {
+            writeln!(sink.body, "impl std::fmt::Display for {} {{", ext.target)?;
+            self.indent();
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+            self.indent();
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "write!(f, \"{{}}\", self.message())")?;
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "}}")?;
+            self.dedent();
+            writeln!(sink.body, "}}")?;
+            writeln!(sink.body, "impl std::error::Error for {} {{}}", ext.target)?;
+            sink.body.write(b"\n")?;
+        }
 
         Ok(())
     }

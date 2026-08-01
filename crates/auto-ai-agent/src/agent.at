@@ -310,13 +310,10 @@ ext Agent {
             }
 
             let req = self.build_request()
-            // a2r can't `impl From<ClientError> for AgentError` (no `#[from]`
-            // emission), so the `?` on client.complete would fail E0277 —
-            // map the error explicitly to the Client variant.
-            let resp = is self.client.complete(req).await {
-                Ok(r) -> r,
-                Err(e) -> return Err(AgentError.Client(e))
-            }
+            // Plan 382: `#[from]` on AgentError.Client emits
+            // `impl From<ClientError> for AgentError`, so `?` auto-converts
+            // (no more explicit Ok/Err mapping — E0277 was the pre-fix state).
+            let resp = self.client.complete(req).await.?
 
             // Cancel checkpoint 2: after the LLM responded, before consuming.
             if is_cancelled(cancel) {
