@@ -319,5 +319,26 @@ crate::ast::Expr::Ident(name) if name.as_str() == "_" => {
 
 - ✅ `is x { _ -> ... }` 不再报 `Undefined variable: _`，总匹配 arm 执行
 - ✅ enum 方法 `label()` 里 `Light.Red -> "red"; _ -> "other"` 协同工作（004 测试）
-- ⚠️ stdlib `result.at` 的 `is_ok`/`is_err` 仍报 `CALL_SPEC: no function 'Result.Ok.is_ok'`——这是泛型 enum + use 导入的方法分发问题，非 `_` 通配（独立后续项）
+- ✅ 本模块泛型 enum 方法通过变量调用：`Bag.Hit(42)` → `r.is_hit()` 工作（005 测试）
+- ⚠️ stdlib `result.at` 的 `is_ok`/`is_err`（`use auto.result`）仍报 `CALL_SPEC: no function 'Result.Ok.is_ok'`——见下方"跨模块遗留"
 - ✅ 回归：既有 `is` 匹配不受影响
+
+### 泛型 enum 变体类型的方法分发（2026-08-01 追加修复）
+
+`_` 通配修复后，`Result.Ok(42).is_ok()`（receiver 是变量）仍报 `Undefined symbol: Ok.is_ok`。
+
+**根因**：enum 变体值（如 `let r = MyResult.Ok(42)`）的 var_type 是 `User("MyResult.Ok")`（变体全名）。func_name 构造的 `Type::User(td)` 分支做 `td.name.rsplit('.').next()` 取最后段 → `"Ok"`，于是 func_name = `Ok.is_ok`（丢失了 enum 名 `MyResult`）。后续 fallback `infer_type_from_var` 同样 rsplit 回 `"Ok"`，且其 Option/Result 前缀特判（codegen.rs:11449）只认 `"Option."`/`"Result."`，其他 enum 不认。
+
+**修复**（codegen.rs 两处）：
+1. `Type::User(td)` 分支：若 td.name 含 `.`、是 enum 变体（generic_registry/enum_values 注册）、且去掉变体段后的 enum 名有已编译方法（`EnumName.method` 在 exports），用 enum 名作 base_name。
+2. func_name fallback（"No type args" 分支）：若 `base_name.method` 在 exports，优先用 base_name（不被 `infer_type_from_var` 的 rsplit 覆盖）。
+
+**测试**：`test/vm/28_enum_methods/005_generic_enum_method`——本模块泛型 enum `Bag<T,E>` 的 `is_hit()` 通过变量调用，全绿。
+
+#### 跨模块遗留（use 导入的 enum 方法）
+
+本模块泛型 enum 方法已工作，但 **`use auto.result` 导入的跨模块 enum 方法仍失败**（`CALL_SPEC: no function 'Result.Ok.is_ok'`）。根因：跨模块时 `Result.is_ok` 在 stdlib 模块的 exports，不在调用方本地 exports，上述 `exports.contains_key` 检查不命中 → func_name 走 fallback → 运行时 CALL_SPEC 分发用 receiver 类型标签 `Result.Ok` 查找失败。
+
+修复需要：跨模块 enum 方法经 CALL reloc + linker 解析（类似跨模块函数调用），或运行时 CALL_SPEC 分发回退到 enum 名查方法。这是模块系统层面的工程，独立于本计划的范围，建议另开计划。
+
+**回归**：VM non-ignored 21=21 基线，零新增。

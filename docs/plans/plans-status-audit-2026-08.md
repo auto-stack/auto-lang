@@ -130,7 +130,8 @@
 - ~~`322/318` generic constructor bug~~——✅ 实测已修（push+len=1）
 - ~~`325` 跨模块基础缺陷~~——✅ 缺陷 1/2/3 全修（缺陷 1 于 2026-08-01）
 - ~~`348` Task 20/21~~——✅ 实测已修（str 全局 len=5、位运算链 16909060）
-- **🆕 `is` 语句 `_` 通配 bug**——`is x { _ -> ... }` 报 `Undefined variable: _`（顶层函数 + enum 方法均受影响；阻塞 stdlib result.at 的 is_ok/is_err；独立于 325，建议另开计划）
+- ~~**🆕 `is` 语句 `_` 通配 bug**~~——✅ 已修（`is x { _ -> ... }` catch-all 现工作，325 §\_ 通配修复）。本模块泛型 enum 变体方法分发也已修（`Type::User("Enum.Variant")` → 回退 enum 名）。
+- **🆕 跨模块 enum 方法分发**——`use auto.result` 导入的 `Result.is_ok()` 仍报 `CALL_SPEC: no function 'Result.Ok.is_ok'`（跨模块时方法不在本地 exports）。需模块系统层面修复，独立后续项（见 plan 325 §跨模块遗留）。
 
 ### 4.2 强依赖链（动一处解锁一片）
 

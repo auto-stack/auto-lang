@@ -1,0 +1,17 @@
+// Plan 325: 本模块泛型 enum + 方法通过变量调用
+pub enum Bag<T, E> {
+    Hit T
+    Miss E
+    fn is_hit() bool {
+        is self {
+            Bag.Hit -> return true
+        }
+        return false
+    }
+}
+fn main() {
+    let r = Bag.Hit(42)
+    print(r.is_hit())
+    let e = Bag.Miss("nope")
+    print(e.is_hit())
+}

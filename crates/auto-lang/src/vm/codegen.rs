@@ -6666,8 +6666,26 @@ impl Codegen {
                                                 Type::User(td) => {
                                                     let name = td.name.to_string();
                                                     // Strip module prefix (e.g., "types.ToolRegistry" → "ToolRegistry")
-                                                    let short = name.rsplit('.').next().unwrap_or(&name);
-                                                    (short.to_string(), vec![])
+                                                    let short = name.rsplit('.').next().unwrap_or(&name).to_string();
+                                                    // Plan 325: enum 变体类型的实例方法分发。enum 变体值
+                                                    // （如 MyResult.Ok(42)）的 var_type 是 User("MyResult.Ok")，
+                                                    // rsplit 取到 "Ok" → func_name "Ok.is_ok" 找不到。若 td.name
+                                                    // 含 "." 且去掉最后段后的 enum 名有已编译方法（在 exports），
+                                                    // 用 enum 名作 base_name，使 MyResult.is_ok 被解析到。
+                                                    let enum_base = name.rsplit_once('.').map(|(en, _)| en);
+                                                    let base = if let Some(enum_name) = enum_base {
+                                                        let enum_method = format!("{}.{}", enum_name, method.as_ref());
+                                                        let is_enum_variant = self.generic_registry.has_template(&name)
+                                                            || self.enum_values.contains_key(&name);
+                                                        if is_enum_variant && self.exports.contains_key(&enum_method) {
+                                                            enum_name.to_string()
+                                                        } else {
+                                                            short
+                                                        }
+                                                    } else {
+                                                        short
+                                                    };
+                                                    (base, vec![])
                                                 }
                                                 other => {
                                                     // Extract name via infer_type_from_var logic for other types
@@ -6716,6 +6734,11 @@ impl Codegen {
                                                 // Special case: base_name was overridden to "List" for Array HOF methods
                                                 if base_name == "List" {
                                                     Some(format!("List.{}", method))
+                                                } else if self.exports.contains_key(&format!("{}.{}", base_name, method.as_ref())) {
+                                                    // Plan 325: base_name 已是有效 enum 方法前缀（Type::User
+                                                    // 分支从 "MyResult.Ok" 提取出 "MyResult"），尊重它而非被
+                                                    // infer_type_from_var 的 rsplit 覆盖回 "Ok"。
+                                                    Some(format!("{}.{}", base_name, method.as_ref()))
                                                 } else {
                                                     if let Some(type_name) =
                                                         self.infer_type_from_var(obj_name.as_ref())
