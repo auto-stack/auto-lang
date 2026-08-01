@@ -84,7 +84,17 @@ fn types_are_compatible(expected: &Type, found: &Type) -> bool {
         (Type::StrFixed(_), Type::StrFixed(_))
         | (Type::StrFixed(_), Type::StrOwned)
         | (Type::StrOwned, Type::StrFixed(_))
-        | (Type::StrOwned, Type::StrOwned) => true,
+        | (Type::StrOwned, Type::StrOwned)
+        // Plan 380 P1: string literals ("x") are StrSlice but assignable to
+        // StrOwned/StrFixed fields (codegen auto-inserts .to_string()). Without
+        // this, struct literals like StatusOk(status: "ok") inside a call arg
+        // (e.g. Json(StatusOk(status:"ok"))) fail field type check — the outer
+        // call suppresses the codegen .to_string() path that bare lets get.
+        | (Type::StrOwned, Type::StrSlice)
+        | (Type::StrSlice, Type::StrOwned)
+        | (Type::StrFixed(_), Type::StrSlice)
+        | (Type::StrSlice, Type::StrFixed(_))
+        | (Type::StrSlice, Type::StrSlice) => true,
         (Type::Bool, Type::Bool) => true,
         (Type::Char, Type::Char) => true,
         (Type::Array(a), Type::Array(b)) => {
