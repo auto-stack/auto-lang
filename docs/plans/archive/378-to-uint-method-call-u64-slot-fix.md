@@ -3,6 +3,7 @@
 > **For Claude:** `"42".to_uint()` 返回垃圾值（如 `42-2147483647`），根因是 codegen 的 64-bit 检测函数 `contains_u64`/`is_u64_expr` 只识别 `Expr::Ident`（函数名调用），**不识别 `Expr::Dot`（方法调用）**。于是 `s.to_uint()` 被当作 I32（1 slot），而 native 实际返回 I64（2 slot），栈对齐错乱。本计划给这两个函数补 `Expr::Dot` 分支，并配覆盖全部 4 类影响场景的 file-based 测试。
 
 > **Status**: ✅ 已完成（2026-07-31）— 见 §10「实施记录（根因扩展 + 全量 u64 基础设施修复）」
+> **遗留清算**: ✅ §10.5 `str.lower()` heap string 回归已于 2026-08-01 修复（见 §10.5.1）——实际根因是 engine.rs inline str 分发表漏了 `upper/lower/to_upper/to_lowercase` 别名，非 heap string 表示问题。本计划现可干净归档。
 > **继任计划**: **Plan 377（统一值表示 — 消除 2-slot）** — 本计划的 2-slot 补丁是更大架构缺陷（f64/i64/u64 占 2 槽）的下游症状。Plan 377 将从根本上消除 2-slot（让所有值单槽），届时本计划的多数补丁会被取代/删除。详见 `docs/plans/377-unify-value-representation-eliminate-2slot.md`。
 > **来源**: auto-shell Plan 034 附录 B Bug 1（2026-07-23 发现，2026-07-31 复核确认根因与行号）
 > **影响仓库**: `auto-lang`（`crates/auto-lang/src/vm/codegen.rs`）
@@ -77,6 +78,15 @@ auto-shell 侧（Plan 034）重新编译最新 auto-lang 主分支后实测验�
 - **`str.lower()` 在 split/lines 产生的字符串上返回垃圾值**：`"a.RS".split(".")[1].lower()` 返回 `rs-2147483647`（auto-shell）/ `None`（VM 直接跑），而 `.upper()` 返回 `RS`（正确）。字面量/普通变量的 `.lower()` 正常。**根因假设**：split/lines 返回 heap-based 字符串，其内存表示与 const-pool 字符串不同，`str.lower()` 的 native shim 处理 heap string 时出错（`str.upper()` 不受影响，说明是 lower shim 特有问题）。
 - **已建 file-based 测试用例**：`test/vm/26_str_method_on_heap/001_lower_on_split/`（含 `.at` + `.expected.out` + `.wrong.out`），已在 `vm_file_tests.rs` 注册为 `test_26_str_method_on_heap_001_lower_on_split`。**当前该测试失败（红色）**，精确暴露此 bug。修复 str.lower() 的 heap string 处理后应转绿。
 - **影响**：auto-shell 的 filestats/loccount 等脚本对 split 出的扩展名调 `.lower()` 会出错（已在脚本侧暂时去掉 .lower() 绕过）。
+
+#### 10.5.1 修复（2026-08-01，根因修正 + 转绿）
+
+实际根因与原假设不同——**不是 heap string 表示问题**，而是 `engine.rs` 的 CALL_SPEC inline str 方法分发表**漏了方法名别名**：
+
+- **根因**：`engine.rs` CALL_SPEC 分发里 `type_name == "str"` 的 match 表（约 line 5030-5202）原本只有 `"to_uppercase" | "to_lower" | "to_lowercase"` 一个 arm 处理大小写，**漏了裸 `"upper"`/`"lower"` 和 `"to_upper"`/`"to_lowercase"`**。当 receiver 是 `Expr::Index`（如 `parts[1]`、`lines[0]`）时，codegen 推不出 receiver 类型 → `is_native` 判否 → 走 CALL_SPEC inline 分发 → 方法名 `"lower"` 不匹配任何 arm → 落入 `_ => { push_nv(encode_null()) }` → 返回 `None`。而字面量 `"HELLO".lower()` 的 receiver 是 `Expr::Str`，codegen 能推出 ObjectType::String → `str.lower` resolve 到 native id 1512 成功 → `is_native` 判真 → 走 CALL_NAT 路径（不经 inline 分发）→ 正常。
+- **修复**（`engine.rs` line ~5045）：把单个大小写 arm 拆成两个，补全全部别名——`"upper" | "to_upper" | "to_uppercase" => s.to_uppercase()` 与 `"lower" | "to_lower" | "to_lowercase" => s.to_lowercase()`。同时修正原代码 `if method_name == "to_uppercase"` 的判定（补别名后旧判定会误把 `upper`/`to_upper` 当成小写）。
+- **测试**：`test_26_str_method_on_heap_001_lower_on_split` 转绿（✅）；新增 `test_26_str_method_on_heap_002_lower_literal`（字面量守护，覆盖 CALL_NAT 路径）。`test_18_ffi_025_str_case` 仍通过。
+- **回归**：non-ignored 单测 21 FAILED = master 基线 21 FAILED（逐数对比零差异，既有失败均为 dstr/ffi 等 str 无关项）；str 相关 ignored 测试的失败集与 master 完全一致（`test_18_ffi_007/009/010/030/031` 等均为既有失败），唯一变化是 `test_26_001` 由红转绿。**零新增回归。**
 
 ### 10.6 运行 file-based 测试的正确方式（重要）
 

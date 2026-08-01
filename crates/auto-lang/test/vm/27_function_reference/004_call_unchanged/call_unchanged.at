@@ -1,0 +1,7 @@
+// Plan 383 回归守护：命名函数的直接调用行为完全不变。
+// double(5) 是 Expr::Call（调用），不是函数引用（值位置）。
+fn double(x int) int { return x * 2 }
+fn main() {
+    print(double(5))
+    print(double(7))
+}

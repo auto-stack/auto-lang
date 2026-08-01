@@ -1745,9 +1745,22 @@ impl Codegen {
                                 }
                                 // Plan 202: Propagate type from source variable (e.g., let s = item)
                                 Expr::Ident(src_name) => {
-                                    self.var_types.get(src_name.as_str())
-                                        .cloned()
-                                        .unwrap_or_else(|| store.ty.clone())
+                                    // Plan 383: 若 src_name 是已定义函数（函数引用赋值，
+                                    // 如 `let f = double`），推断 Type::Fn，使后续 `f()`
+                                    // 能被 is_closure_call（codegen.rs:7255）识别走 CALL_CLOSURE。
+                                    if self.is_defined_function(src_name.as_str()) {
+                                        let params = self.fn_params.get(src_name.as_ref())
+                                            .map(|p| p.iter().map(|pi| pi.ty.clone()).collect())
+                                            .unwrap_or_default();
+                                        let ret = self.fn_return_types.get(src_name.as_ref())
+                                            .cloned()
+                                            .unwrap_or(Type::Unknown);
+                                        Type::Fn(params, Box::new(ret))
+                                    } else {
+                                        self.var_types.get(src_name.as_str())
+                                            .cloned()
+                                            .unwrap_or_else(|| store.ty.clone())
+                                    }
                                 }
                                 _ => store.ty.clone(),
                         };
@@ -5076,6 +5089,25 @@ impl Codegen {
                             self.code.push(0); // arg_count = 0
                             // py-FFI auto return marshals to string pool by default
                             self.last_expr_type = ObjectType::String;
+                        } else if self.is_defined_function(&name_str) {
+                            // Plan 383: 命名函数引用 —— 裸函数名在值位置（非调用
+                            // `name(...)`）当作函数引用。对标 Rust/Python 隐式函数引用：
+                            // 函数项在值位置自动成为可调用值。复用 CLOSURE 运行时
+                            // （零捕获 closure = 函数引用），使 `f()` 走既有 CALL_CLOSURE。
+                            // 分支置于所有变量/枚举/导入查找失败之后，故同名变量永远优先。
+                            let n_args = self.function_param_count(&name_str);
+                            self.emit(OpCode::CLOSURE);
+                            let func_addr_offset = self.code.len() as u32;
+                            self.code.extend_from_slice(&(0u32).to_le_bytes()); // func_addr 占位，reloc 填充
+                            self.code.push(0); // capture_count = 0（函数引用不捕获环境）
+                            self.code.push(n_args as u8); // n_args（CALL_CLOSURE 用）
+                            self.relocs.push(crate::vm::loader::RelocEntry {
+                                offset: func_addr_offset,
+                                symbol_name: name_str.clone(),
+                                reloc_type: crate::vm::loader::RelocType::FuncCall,
+                                source_pos: None,
+                            });
+                            self.last_expr_type = ObjectType::NestedObject;
                         } else {
                             return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                         }
@@ -10035,6 +10067,20 @@ impl Codegen {
             "heapless" | "simplelog" | "tracing" | "flate2" | "tar" | "toml" |
             "reqwest" | "once_cell" | "parking_lot" | "dashmap" | "indexmap"
         )
+    }
+
+    /// Plan 383: 判断 `name` 是否是已定义的（顶层或方法）函数。
+    /// 用于裸函数名在值位置（非调用）的函数引用解析。
+    /// 检查 exports（含编译期已注册的函数地址），与既有 CALL reloc 的符号源一致。
+    fn is_defined_function(&self, name: &str) -> bool {
+        self.exports.contains_key(name)
+    }
+
+    /// Plan 383: 返回函数 `name` 的参数个数（用于 CLOSURE 的 n_args 字段，
+    /// 使 CALL_CLOSURE 能正确设置 current_fn_n_args）。
+    /// 优先查 fn_params；查不到（script-run 路径 fn_params 可能为空）回退 0。
+    fn function_param_count(&self, name: &str) -> usize {
+        self.fn_params.get(name).map(|p| p.len()).unwrap_or(0)
     }
 
     /// by looking up its return type in fn_return_types.

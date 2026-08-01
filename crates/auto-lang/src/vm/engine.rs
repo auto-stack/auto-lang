@@ -5042,13 +5042,28 @@ impl AutoVM {
                                 let handle = self.insert_heap_object(obj) as i32;
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(handle)); }
                             }
-                            "to_uppercase" | "to_lower" | "to_lowercase" => {
+                            // Plan 378 §10.5: 补全所有大小写别名。原表只有
+                            // to_uppercase/to_lower/to_lowercase，漏了裸 upper/lower 和
+                            // to_upper/to_lowercase，导致 split()/lines() 等数组元素
+                            // (Expr::Index receiver，走 CALL_SPEC inline 分发) 上调用
+                            // .lower()/.upper() 落入 _ => push null，返回 None。
+                            "upper" | "to_upper" | "to_uppercase" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
                                 let s = self.strings.read().unwrap()
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
-                                let result = if method_name == "to_uppercase" { s.to_uppercase() } else { s.to_lowercase() };
+                                let result = s.to_uppercase();
+                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                            }
+                            "lower" | "to_lower" | "to_lowercase" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let result = s.to_lowercase();
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
                             }

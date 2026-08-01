@@ -921,3 +921,10 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 // str.lower() returns garbage (-2147483647) when called on a string produced
 // by split()/lines() (heap-based), while .upper() works. Literals are fine.
 #[test] #[ignore] fn test_26_str_method_on_heap_001_lower_on_split() { test_vm("26_str_method_on_heap/001_lower_on_split").unwrap(); }
+// Plan 378 §10.5: 字面量 .lower()/.upper() 守护（CALL_NAT 路径，不走 inline 分发）
+#[test] #[ignore] fn test_26_str_method_on_heap_002_lower_literal() { test_vm("26_str_method_on_heap/002_lower_literal").unwrap(); }
+
+// === 27_function_reference (Plan 383: 命名函数引用作为值) ===
+#[test] #[ignore] fn test_27_function_reference_001_basic_ref() { test_vm("27_function_reference/001_basic_ref").unwrap(); }
+#[test] #[ignore] fn test_27_function_reference_002_pass_as_arg() { test_vm("27_function_reference/002_pass_as_arg").unwrap(); }
+#[test] #[ignore] fn test_27_function_reference_004_call_unchanged() { test_vm("27_function_reference/004_call_unchanged").unwrap(); }

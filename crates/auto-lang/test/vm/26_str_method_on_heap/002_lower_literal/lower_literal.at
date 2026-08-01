@@ -1,0 +1,3 @@
+print("HELLO".lower())
+print("World".lower())
+print("hello".upper())

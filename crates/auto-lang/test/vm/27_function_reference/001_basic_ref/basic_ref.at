@@ -1,0 +1,8 @@
+// Plan 383: 命名函数引用作为值 — 最小用例。
+// `let f = double` 把命名函数作为值（函数引用），`f(5)` 通过引用调用。
+fn double(x int) int { return x * 2 }
+fn main() {
+    let f = double
+    print(f(5))
+    print(f(10))
+}

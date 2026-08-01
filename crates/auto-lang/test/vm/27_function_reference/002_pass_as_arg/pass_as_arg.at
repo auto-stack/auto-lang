@@ -1,0 +1,7 @@
+// Plan 383: 函数引用作为实参传递 + 在被调用方内部调用。
+// apply 接收一个函数引用 f 和一个 int，返回 f(x)。
+fn double(x int) int { return x * 2 }
+fn apply(f fn(int)int, x int) int { return f(x) }
+fn main() {
+    print(apply(double, 21))
+}
