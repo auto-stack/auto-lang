@@ -3,8 +3,8 @@
 use clap::Parser;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Args {
-    name: String,
-    count: i32,
+    pub name: String,
+    pub count: i32,
 }
 
 fn main() {

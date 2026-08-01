@@ -36,7 +36,7 @@ fn random_pet() -> Pet {
         0 => Pet::Dog,
         1 => Pet::Cat,
         _ => Pet::Bird,
-    }
+    };
 }
 
 fn main() {

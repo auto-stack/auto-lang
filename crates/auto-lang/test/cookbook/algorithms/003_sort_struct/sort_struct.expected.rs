@@ -3,8 +3,8 @@
 use std::vec::Vec;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Person {
-    name: String,
-    age: u32,
+    pub name: String,
+    pub age: u32,
 }
 
 fn main() {

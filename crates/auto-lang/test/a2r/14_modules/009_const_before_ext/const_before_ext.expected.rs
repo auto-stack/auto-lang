@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
-    env: std::collections::HashMap<String, String>,
+    pub env: std::collections::HashMap<String, String>,
 }
 
 impl Settings {

@@ -7,7 +7,7 @@ trait Comparable<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ScoreCmp {
-    score: i32,
+    pub score: i32,
 }
 
 impl Comparable<i32> for ScoreCmp {

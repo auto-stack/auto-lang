@@ -7,5 +7,5 @@ fn main() {
     match x {
         0 => println!("X is ZERO"),
         _ => println!("X is Large"),
-    }
+    };
 }

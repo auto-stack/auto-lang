@@ -4,6 +4,6 @@ pub fn check(x: i32) -> String {
     match x {
         0 => return "zero".to_string(),
         1 => return "one".to_string(),
-    }
+    };
     return "other".to_string();
 }

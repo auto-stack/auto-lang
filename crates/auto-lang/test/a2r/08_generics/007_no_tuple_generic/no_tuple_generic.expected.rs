@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Message {
-    role: String,
-    content: String,
+    pub role: String,
+    pub content: String,
 }
 
 pub fn load() -> Result<Vec<Message>, String> {

@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Engine {
-    hp: i32,
+    pub hp: i32,
 }
 
 trait EngineTrait {
@@ -10,7 +10,7 @@ trait EngineTrait {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Car {
-    hp: i32,
+    pub hp: i32,
 }
 
 impl EngineTrait for Car {

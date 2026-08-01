@@ -20,7 +20,7 @@ fn handle(msg: Message) -> i32 {
             println!("{}", text);
             return (text.len() as i32);
         },
-    }
+    };
 }
 
 fn main() {

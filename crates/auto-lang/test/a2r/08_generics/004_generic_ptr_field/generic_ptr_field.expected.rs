@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct MyStruct<T> {
-    value: *mut T,
+    pub value: *mut T,
 }
 
 fn main() {

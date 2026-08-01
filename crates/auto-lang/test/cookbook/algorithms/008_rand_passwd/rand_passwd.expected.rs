@@ -8,7 +8,7 @@ fn main() {
     let mut password: String = "".to_string();
     for _ in 0..16 {
         let idx = rng.gen_range(0..(charset.len() as i32));
-        password = format!("{}{}", password, charset.chars().nth(idx as usize).unwrap_or('\0'));
+        password = format!("{}{}", password, charset.chars().nth((idx) as usize).unwrap_or('\0') as i32);
     }
     assert!((password.len() as i32) == 16);
 }

@@ -7,5 +7,5 @@ fn main() {
         Ordering::Less => println!("less"),
         Ordering::Equal => println!("equal"),
         Ordering::Greater => println!("greater"),
-    }
+    };
 }

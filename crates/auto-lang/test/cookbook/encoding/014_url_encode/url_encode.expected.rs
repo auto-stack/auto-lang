@@ -3,6 +3,6 @@
 use urlencoding::encode;
 fn main() {
     let input: String = "hello world! foo=bar&baz=qux".to_string();
-    let encoded = encode(input);
+    let encoded = encode(input.as_str());
     assert!(encoded.contains("hello"));
 }

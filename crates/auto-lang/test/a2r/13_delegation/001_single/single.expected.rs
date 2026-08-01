@@ -16,7 +16,7 @@ impl WarpDrive {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Starship {
-    core: WarpDrive,
+    pub core: WarpDrive,
 }
 
 impl Engine for Starship {

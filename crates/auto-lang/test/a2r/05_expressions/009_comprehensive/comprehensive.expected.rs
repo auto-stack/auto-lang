@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Math {
-    value: i32,
+    pub value: i32,
 }
 
 impl Math {
@@ -25,7 +25,7 @@ fn main() {
     match sq {
         25 => println!("Square is 25"),
         _ => println!("Square is not 25"),
-    }
+    };
 
     let arr: Vec<i32> = vec![1, 2, 3];
     println!("Array: {:?}", arr);

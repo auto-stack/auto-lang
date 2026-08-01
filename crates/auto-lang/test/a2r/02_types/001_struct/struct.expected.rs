@@ -2,15 +2,15 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Point {
-    x: i32,
-    y: i32,
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct Circle {
-    radius: f64,
-    border: u32,
-    center: Point,
+    pub radius: f64,
+    pub border: u32,
+    pub center: Point,
 }
 
 fn main() {

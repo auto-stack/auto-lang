@@ -2,8 +2,8 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Tree {
-    value: i32,
-    children: Vec<Tree>,
+    pub value: i32,
+    pub children: Vec<Tree>,
 }
 
 fn main() {

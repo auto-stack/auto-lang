@@ -8,7 +8,7 @@ static COUNTER: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
 static APP_NAME: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("AutoLang"));
 
 fn main() {
-    *COUNTER.lock().unwrap() += 1;
-    say(APP_NAME.lock().unwrap());
-    say(COUNTER.lock().unwrap());
+    { let __a2r_gv = 1; *COUNTER.lock().unwrap() += __a2r_gv; };
+    say(*APP_NAME.lock().unwrap());
+    say(*COUNTER.lock().unwrap());
 }

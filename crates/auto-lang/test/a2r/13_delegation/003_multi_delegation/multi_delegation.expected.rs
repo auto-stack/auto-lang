@@ -20,7 +20,7 @@ impl Calculator for MathEngine {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Computer {
-    engine: MathEngine,
+    pub engine: MathEngine,
 }
 
 impl Calculator for Computer {

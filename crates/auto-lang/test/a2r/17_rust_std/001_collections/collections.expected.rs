@@ -5,7 +5,7 @@ fn main() {
     let mut scores: HashMap<String, i32> = HashMap::new();
     scores.insert("alice".to_string(), 100);
     scores.insert("bob".to_string(), 95);
-    let alice_score = scores.get("alice");
+    let alice_score = scores.get(&"alice");
 
     let mut visited: HashSet<String> = HashSet::new();
     visited.insert("home".to_string());

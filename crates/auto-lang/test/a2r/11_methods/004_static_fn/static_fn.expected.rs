@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Foo {
-    value: i32,
+    pub value: i32,
 }
 
 impl Foo {
