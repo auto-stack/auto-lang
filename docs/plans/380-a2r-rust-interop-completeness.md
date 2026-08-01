@@ -263,3 +263,129 @@ fn build_router() Router {
 
 实施顺序：P0/P1 已完成 → auto-musk server handler 已移植 → P4（后续 auto-lang 计划）
 → auto-musk 剩余 🔴 模块。
+
+---
+
+## 6. 语言特性缺口（长期路线图：Auto 支持"任何"Rust 代码）
+
+auto-musk Plan 014 移植 18 个模块后，仅剩 4 个模块因以下语言特性缺口保留手写。
+这些**不是 a2r bug**，是 Auto 语言尚未实现的特性。长期目标是 Auto 支持"任何"Rust 代码。
+
+### 缺口 G1：编译期文件嵌入 `include_str!`
+
+**影响模块**：auto-musk workflow.rs（`include_str!("../workflows/feature-dev.at")`）
+
+**Rust 原文**：
+```rust
+pub const FEATURE_DEV_AT: &str = include_str!("../workflows/feature-dev.at");
+```
+编译期把文件内容嵌入为 `&'static str`。Rust 用 `include_str!`/`include_bytes!` 宏。
+
+**Auto 需要什么**：一个编译期文件嵌入语法。
+**设想的 Auto 写法**：
+```auto
+include "../workflows/feature-dev.at" as FEATURE_DEV_AT
+```
+或用 const 函数：
+```auto
+const FEATURE_DEV_AT = include_str("../workflows/feature-dev.at")
+```
+a2r 转译时生成 `include_str!("../workflows/feature-dev.at")`。
+
+**难度**：低（一个新语法 + a2r 映射到 `include_str!`）
+
+### 缺口 G2：模块系统（`pub use` / `pub mod` / type alias）
+
+**影响模块**：auto-musk relay/mod.rs（`pub use auto_ai_agent::orchestration::{...}`）
+
+**Rust 原文**：
+```rust
+pub use auto_ai_agent::orchestration::{AdvanceResult, FlowSpec, FlowStep, ...};
+pub mod api;
+pub mod driver;
+pub use flows::{builtin_flows, get_builtin_flow};
+pub type RelayMode = PipelineMode;
+```
+Rust 的模块系统：re-export（`pub use`）、模块声明（`pub mod`）、类型别名（`type`）。
+
+**Auto 需要什么**：
+```auto
+pub reexport auto_ai_agent::orchestration::{AdvanceResult, FlowSpec, FlowStep}
+pub mod api
+pub mod driver
+alias RelayMode = PipelineMode
+```
+a2r 转译时生成对应的 `pub use`/`pub mod`/`type`。
+
+**难度**：高（模块系统是语言级架构特性，需设计 Auto 的模块/可见性/命名空间体系）
+**备注**：这是 Auto 语言的长期路线图项，非单个计划可完成。
+
+### 缺口 G3：过程宏 derive（`#[derive(Parser)]`）
+
+**影响模块**：auto-musk main.rs（clap CLI 解析）
+
+**Rust 原文**：
+```rust
+#[derive(Parser)]
+#[command(name = "musk", about = "AI coding assistant")]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    Run { #[arg(long)] task: String },
+    Serve { #[arg(long, default_value = "127.0.0.1:8080")] addr: String },
+}
+```
+Rust 用 clap 的 `#[derive(Parser)]` + `#[command(...)]` + `#[arg(...)]` 属性，
+由过程宏在编译期生成 CLI 解析代码。
+
+**Auto 需要什么**：两种路径——
+**(a) 过程宏 derive 透传**：a2r 把 `#[derive(Parser)]` + 属性原样输出到 Rust，
+依赖 Rust 编译器调用 clap_derue 宏。Auto 侧只需保留这些属性。
+```auto
+#[derive(Parser)]
+#[command(name = "musk")]
+type Cli {
+    #[command(subcommand)]
+    cmd Cmd
+}
+```
+**(b) Auto 原生 CLI 语法**（更优雅，但工作量大）：
+```auto
+cli musk "AI coding assistant" {
+    run --task "task to run"
+    serve --addr "127.0.0.1:8080"
+}
+```
+a2r 生成 clap 代码或直接生成手写的 `std::env::args` 解析。
+
+**难度**：中（路径 a 只需 derive 属性透传，已有 serde derive 透传先例；路径 b 需新语法）
+**优先**：路径 a（derive 透传）是增量改进，工作量小。
+
+### 缺口 G4：上游类型的 builder 方法链（Agent 构造）
+
+**影响模块**：auto-musk lib.rs（`build_agent_from_mode`/`build_agent_with_context`）
+
+**Rust 原文**：
+```rust
+let all_tools: Vec<(&str, Arc<dyn Tool>)> = vec![
+    ("read_file", Arc::new(ReadFile)),
+    ("write_file", Arc::new(WriteFile)),
+];
+let agent = Agent::new(client, &role)
+    .with_tools(&all_tools)
+    .with_context_file(context_file);
+```
+上游 `Agent` 类型的 builder 方法链 + `Vec<(&str, Arc<dyn Tool>)>` 元组数组。
+
+**Auto 现状**：`Agent.new().with_tools().with_context_file()` builder 链在
+relay/flows.rs 已验证（FlowSpec 同模式）可转译。`Vec<(&str, Arc<dyn Tool>)>`
+元组数组需 tuple 支持（a2r 对 tuple 参数有限制 a2r-7）。
+
+**Auto 需要什么**：tuple 数组字面量 `[("read_file", tool1), ("write_file", tool2)]`
+的完整支持（目前 tuple 字段访问和 List<(A,B)> 已验证可用，但元组字面量数组需测试）。
+
+**难度**：低中（builder 链已验证；tuple 数组需测试 + 可能小幅修复）
