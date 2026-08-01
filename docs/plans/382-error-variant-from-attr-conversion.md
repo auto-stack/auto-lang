@@ -161,3 +161,55 @@ impl std::error::Error for AgentError {}
 - 注：`cargo test --features test-trans` 当前因 master 预存在的 E0063
   （`ui/vm_bridge.rs` 测试里 `AuraWidget` 缺 `exposes` 字段）无法整库编译运行，
   与本次改动无关，golden 通过"自包含文件 transpile_rust 输出 == expected.rs"保证。
+
+---
+
+## 附录 A：a2r golden 套件 69 失败调研（2026-08-01，后续修复项）
+
+> E0063 修复（AuraWidget `exposes`，见 `9b286848`）后 `--features test-trans`
+> 整库首次可编译运行，暴露 **69 个 a2r golden 失败**（220 通过）。
+> 全部失败在本次调研中分类完毕：**12 个是真转译器 bug，57 个是过时 golden**
+> （expected.rs 未随转译器演进再生成）。无一与 Plan 382 的 `#[from]`/
+> Display/Error 特性相关。
+
+### A.1 真 bug（12 个）：`!T` 同步 Result 被 async 化 ⚠️
+
+**症状**：`fn safe_divide(a int, b int) !int`（Plan 204 定义 `!T` = **同步**
+`Result<T, Box<dyn Error>>`，调用用 `.?`）被转译成 `async fn` + 调用点自动加
+`.await` → `main` 变 `async fn main()`（无运行时则不可运行）。
+
+**根因**：parser.rs:9538 `!T` 解析为 `Type::Result(Box::new(T))`，与 `~Result`
+（async）共用同一 AST 形态；而 `is_async_fn`（rust.rs:8012）与 `type_is_async`
+对 `Type::Result(_)` 一律判 async。该判定是 `d269a92d`（plan-013 G2+G3 时代）
+为 `~Result` 方法加的，**误伤同步 `!T`**。长期潜伏未被发现：auto-ai 语料不用
+`!T`（用 `Result<A,B>` 同步 / `~Result` 异步），且 golden 套件一直被 E0063
+挡着跑不起来。
+
+**受影响测试（12）**：`09_option_result/002`、`034`，cookbook
+`algorithms/007,011`、`errors/001,004`、`file/005,006,007,009,011,012`。
+
+**修复方向**（新计划）：
+1. AST 区分：新增 `Type::Bang(T)`（同步），`!T` 解析到它；`is_async_fn`/
+   `type_is_async` 只匹配 `Type::Result`（届时仅剩 `~Result` 命中）。
+2. 或 Fn 增加 `is_async` 标志：`~` 前缀解析时置位，async 判定改查标志而非
+   返回类型。
+3. 修后这 12 个 golden 应恢复 sync 形态（对照现有 expected.rs 即为正确输出）。
+
+### A.2 过时 golden（57 个，合法演进）
+
+| 子类 | 数量 | 演进内容 | 处理 |
+|---|---|---|---|
+| 结构体字段 `pub` | ~32 | 转译器现在给 struct 字段发射 `pub` | 重生成 |
+| 语句位 is-match 补 `;` | ~15 | Plan 380：`is` 语句臂以值表达式结尾时补 `;` | 重生成 |
+| 杂项 | ~10 | `HashMap.get(&"a")` 自动借用、`use a2r_std` 路径、`a2r_std::env::set` 桥接、shared var 临时变量、元组结构体 `Counter(10)`（bd4c475e）、`0 as u32` | 逐条审阅后重生成 |
+
+**处理**：test runner 在断言失败时已写 `<case>.wrong.rs`（当前输出），
+逐条审阅确认合法后 `wrong.rs → expected.rs`。003_field_attrs 已按此修复（`9b286848`）。
+
+### A.3 修复方案与验证
+
+1. **先修 A.1**（转译器 bug，worktree 方式 + golden 回归，独立计划）
+2. **再批量重生成 A.2**（57 个，机械但需逐条审阅差异）
+3. 验证：`cargo test --features test-trans --lib a2r_tests` → 289 全绿
+   （当前 220 + 69 修复）
+4. 备注：该套件此前多年未跑（E0063 编译挡板 + 无 CI），建议纳入常规回归。
