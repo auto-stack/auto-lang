@@ -1,0 +1,11 @@
+pub enum Color {
+    Red
+    Green
+    fn name() str {
+        return "called-ok"
+    }
+}
+pub fn main() {
+    print(Color.Red.name())
+    print(Color.Green.name())
+}

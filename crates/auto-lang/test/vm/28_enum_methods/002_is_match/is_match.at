@@ -1,0 +1,15 @@
+// enum 实例方法 + is self 匹配
+pub enum Light {
+    Red
+    Green
+    fn is_red() bool {
+        is self {
+            Light.Red -> return true
+        }
+        return false
+    }
+}
+pub fn main() {
+    print(Light.Red.is_red())
+    print(Light.Green.is_red())
+}

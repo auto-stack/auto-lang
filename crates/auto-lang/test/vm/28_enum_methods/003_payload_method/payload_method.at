@@ -1,0 +1,15 @@
+// 带 payload 的 enum 变体的方法
+pub enum Reg {
+    Yes(int)
+    No
+    fn is_yes() bool {
+        is self {
+            Reg.Yes -> return true
+        }
+        return false
+    }
+}
+pub fn main() {
+    print(Reg.Yes(42).is_yes())
+    print(Reg.No.is_yes())
+}
