@@ -694,46 +694,37 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 377: 全值单槽化。f64/f32 各占 1 槽，弹出单个 NanoValue 按 tag 分派。
     {
-        // f64 occupies 2 slots (value at sp-2, marker at sp-1).
-        // Check sp-2 for f64 bits, then sp-1 for f32.
-        if task.ram.sp >= 2 {
-            let nv = task.ram.raw_nv[task.ram.sp - 2];
-            if auto_val::is_f64(nv) {
-                task.ram.sp -= 2; // consume both slots
-                let val = f64::from_bits(nv);
-                vm_print(vm, &val.to_string());
-                return Ok(());
-            }
+        let nv = task.ram.pop_nv();
+        if auto_val::is_f64(nv) {
+            // f64（非 nanboxed，直接位模式）
+            let val = f64::from_bits(nv);
+            vm_print(vm, &val.to_string());
+            return Ok(());
         }
-        if task.ram.sp >= 1 {
-            let nv = task.ram.raw_nv[task.ram.sp - 1];
-            if auto_val::is_f32(nv) {
-                task.ram.sp -= 1;
-                let val = auto_val::decode_f32(nv);
-                vm_print(vm, &val.to_string());
-                return Ok(());
-            }
+        if auto_val::is_f32(nv) {
+            let val = auto_val::decode_f32(nv);
+            vm_print(vm, &val.to_string());
+            return Ok(());
         }
+        // 兜底：i32 的位模式当 f32 解（兼容旧路径）
+        let val_bits = auto_val::decode_i32(nv) as u32;
+        let val = f32::from_bits(val_bits);
+        vm_print(vm, &val.to_string());
     }
-    let val_bits = task.ram.pop_i32() as u32;
-    let val = f32::from_bits(val_bits);
-    vm_print(vm, &val.to_string());
     Ok(())
 }
 
-/// Print an f64 value (2 slots on stack).
+/// Print an f64 value. Plan 377: 单槽（pop_f64 现在弹 1 个 NanoValue）。
 pub fn shim_print_f64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_f64();
     vm_print(vm, &val.to_string());
     Ok(())
 }
 
-/// Print a u64/i64 value (2 slots on stack: [low, high]).
-///
-/// Plan 378: u64/i64 occupy two i32 slots, so they need a dedicated print
-/// handler that pops both. Without it, `print(x)` for a u64 variable would
-/// only pop the high slot (0) and leak the low slot, printing "0".
+/// Print a u64/i64 value.
+/// Plan 377: 单槽化后 pop_i64 弹单个 NanoValue（TAG_I64/U64/BIGINT）。
 pub fn shim_print_u64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i64();
     vm_print(vm, &val.to_string());

@@ -916,6 +916,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_25_method_u64_007_other_i64_methods() { test_vm("25_method_u64/007_other_i64_methods").unwrap(); }
 #[test] #[ignore] fn test_25_method_u64_008_i32_unaffected() { test_vm("25_method_u64/008_i32_unaffected").unwrap(); }
 #[test] #[ignore] fn test_25_method_u64_009_large_value() { test_vm("25_method_u64/009_large_value").unwrap(); }
+#[test] #[ignore] fn test_25_method_u64_010_global_u64_large() { test_vm("25_method_u64/010_global_u64_large").unwrap(); }
 
 // === 26_str_method_on_heap (Plan 378 follow-up: str methods on heap strings) ===
 // str.lower() returns garbage (-2147483647) when called on a string produced

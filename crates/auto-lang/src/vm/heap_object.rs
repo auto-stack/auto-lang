@@ -108,6 +108,10 @@ pub enum TypeTag {
     /// Double-ended queue for FIFO/LIFO operations
     VecDeque,
 
+    // Plan 377: BigInt —— 超过 48 位范围的 i64/u64 堆装箱兜底
+    /// Big integer (>2^48) heap-boxed value (full 64-bit i64/u64)
+    BigInt,
+
     // Generic instances (Plan 087)
     /// User-defined generic instance (e.g., Pair<int, string>)
     /// Stores mono_name for identification
@@ -146,6 +150,7 @@ impl TypeTag {
             TypeTag::Bytes => "Bytes".into(),
             TypeTag::StringBuilder => "StringBuilder".into(),
             TypeTag::VecDeque => "VecDeque".into(),
+            TypeTag::BigInt => "BigInt".into(),
             TypeTag::GenericInstance(name) => format!("<{}>", name).into(),
             TypeTag::SpecializedPair(name) => format!("[Specialized:{}]", name).into(),
             TypeTag::CustomType => "CustomType".into(),
@@ -195,6 +200,46 @@ impl std::fmt::Display for TypeTag {
 /// ```
 pub fn is_type(obj: &dyn HeapObject, tag: TypeTag) -> bool {
     obj.type_tag() == tag
+}
+
+// ============================================================================
+// Plan 377: BigInt —— 超过 48 位范围的 i64/u64 堆装箱兜底
+//
+// NaN-box 单槽 payload 只有 48 位，超过 2^48 的 i64/u64（如 u64::MAX）无法内联，
+// 改存为堆对象（TAG_BIGINT handle）。算术/print/FFI 路径在检测到 BIGINT tag 时
+// 解引用堆对象读取完整 64 位值。现实场景（§2.6 验证）极少触发，但保证语义完整。
+// ============================================================================
+
+/// 堆装箱的 64 位整数（i64 或 u64，由 `is_unsigned` 区分）。
+#[derive(Debug, Clone, Copy)]
+pub struct BigIntData {
+    /// 完整 64 位值（按 is_unsigned 决定如何解释）
+    pub bits: u64,
+    /// true = u64（无符号），false = i64（有符号）
+    pub is_unsigned: bool,
+}
+
+impl BigIntData {
+    pub fn from_i64(v: i64) -> Self {
+        Self { bits: v as u64, is_unsigned: false }
+    }
+    pub fn from_u64(v: u64) -> Self {
+        Self { bits: v, is_unsigned: true }
+    }
+    /// 按存储符号读回 i64
+    pub fn as_i64(&self) -> i64 {
+        if self.is_unsigned { self.bits as i64 } else { self.bits as i64 }
+    }
+    /// 按存储符号读回 u64
+    pub fn as_u64(&self) -> u64 {
+        self.bits
+    }
+}
+
+impl HeapObject for BigIntData {
+    fn type_tag(&self) -> TypeTag { TypeTag::BigInt }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }
 
 /// Helper function to downcast a HeapObject to a concrete type
@@ -647,5 +692,35 @@ mod tests {
         assert!(write_result.is_some());
         write_result.unwrap().elems.push(7);
         assert_eq!(list2.elems, vec![4, 5, 6, 7]);
+    }
+
+    // Plan 377: BigInt 堆装箱单元测试
+    #[test]
+    fn test_bigint_data_roundtrip_i64() {
+        // 边界值：48 位内联范围外的大数
+        let vals = [1i64 << 47, -(1i64 << 47) - 1, i64::MAX, i64::MIN, 0x_FFFF_FFFF_FFFF_FFFFu64 as i64];
+        for v in vals {
+            let big = BigIntData::from_i64(v);
+            assert_eq!(big.as_i64(), v, "i64 {} round-trip", v);
+            assert_eq!(big.type_tag(), TypeTag::BigInt);
+        }
+    }
+
+    #[test]
+    fn test_bigint_data_roundtrip_u64() {
+        let vals = [1u64 << 48, u64::MAX, (1u64 << 63) + 1, 0x_FFFF_FFFF_0000_0000u64];
+        for v in vals {
+            let big = BigIntData::from_u64(v);
+            assert_eq!(big.as_u64(), v, "u64 {} round-trip", v);
+        }
+    }
+
+    #[test]
+    fn test_bigint_downcast() {
+        let big = BigIntData::from_u64(u64::MAX);
+        let obj: &dyn HeapObject = &big;
+        assert!(is_type(obj, TypeTag::BigInt));
+        let recovered = downcast::<BigIntData>(obj).unwrap();
+        assert_eq!(recovered.as_u64(), u64::MAX);
     }
 }

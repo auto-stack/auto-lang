@@ -847,32 +847,17 @@ impl AutovmReplSession {
         if task.ram.sp > target_sp {
             // Save the result to last_result (Plan 080)
             // Plan 036 workaround-5: Use pop_nv() to preserve nanbox type tag.
-            // Plan 378: 64-bit results (u64/i64 from to_uint(), f64) occupy
-            // TWO slots [low, high]. A single NanoValue cannot hold a full i64
-            // (nanbox reserves high 16 bits for the type tag), so for 2-slot
-            // results we: (1) pop both slots and re-push them to keep the stack
-            // balanced, (2) store the low slot as `last_result` (preserves the
-            // nanbox tag for type-aware display), and (3) store the COMPLETE
-            // 64-bit value in `last_result_64` so accessors can return the full
-            // value instead of a truncated low-32-bit one.
-            let is_two_slot = self
-                .codegen
-                .as_ref()
-                .map(|c| matches!(c.last_expr_type, crate::vm::codegen::ObjectType::Double | crate::vm::codegen::ObjectType::Uint))
-                .unwrap_or(false);
-            let (result, full_64) = if is_two_slot && task.ram.sp >= target_sp + 2 {
-                // Stack layout for a 2-slot value: [low, high] (high on top).
-                // pop_i64 reads high then low and reconstructs the full value.
-                let full = task.ram.pop_i64();
-                // Re-push the 2-slot value so callers that read the stack still
-                // see the complete result.
-                task.ram.push_i64(full);
-                // For last_result keep the low-slot NanoValue (carries the type
-                // tag for format_last_result's fallback path).
-                let low_nv = auto_val::encode_i32((full & 0xFFFFFFFF) as i32);
-                (low_nv, Some(full))
-            } else {
-                (task.ram.pop_nv(), None)
+            // Plan 377: 全值单槽化后，每个结果恒为单个 NanoValue（含 i64/u64/f64），
+            // 无需 Plan 378 的 2-slot 拼接。直接 pop_nv 存为 last_result。
+            let result = task.ram.pop_nv();
+            // last_result_64 仅在结果是 64 位整数（I64/U64/BIGINT）时填充，
+            // 供访问器返回完整 64 位值；f64/string/bool/object 等保持 None，
+            // 让 format_last_result 走 decode_nv_value 路径正确格式化。
+            let full_64 = match auto_val::tag_of(result) {
+                t if t == 8 => Some(auto_val::decode_i64(result)),
+                t if t == 9 => Some(auto_val::decode_u64(result) as i64),
+                t if t == 0xA => Some(auto_val::decode_bigint_handle(result) as i64),
+                _ => None,
             };
             self.last_result = Some(result);
             self.last_result_64 = full_64;

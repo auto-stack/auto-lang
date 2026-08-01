@@ -1,9 +1,18 @@
 # Plan 377：统一值表示 — 消除 2-slot，让所有值都是单槽 NanoValue
 
-> **状态**：🔄 分阶段实施中（阶段 0 完成，阶段 1 待续）
-> **阶段 0（2026-08-01）**：✅ 完成。`auto-val/nano_value.rs` 新增 `TAG_I64/U64/BIGINT`（0x8/0x9/0xA）、`try_encode_i64/decode_i64/try_encode_u64/decode_u64`、`PAYLOAD48_MASK`（48 位 payload）。6 个单元测试覆盖 48 位 round-trip、边界（±2⁴⁷）、溢出 None、类型不冲突。BigInt 堆对象（0.3）暂缓（现实场景不触发溢出，待阶段 2 需要时补）。
-> **阶段 1（f64 单槽化）**：⚠️ 撤回。push_f64/pop_f64 单槽 + pop_arith_operand 改 is_f64 检测已实施，但 codegen 侧的 2-slot 逻辑（store/load/RET_D/assign 的 Double 分支）深度交织——改其中一处（如 Double 不走 RET_D）会让 main 函数的字节码布局错乱，破坏基础 print。codegen 的 2-slot 逻辑分散在 ~15 处（§2.5 清单），需**一次性同步改完 + 逐处验证**，不能增量。后续作为专项推进。
-> **来源**：plan 378（`to_uint()` 栈错位）复审 + 用户关于"Auto 多数值类型 vs JS 单 f64"的架构讨论
+> **状态**：✅ 阶段 0/1/2 完成（专项会话一次性切换）。阶段 3-4 待续。
+> **阶段 0（2026-08-01）**：✅ 完成。`auto-val/nano_value.rs` 新增 `TAG_I64/U64/BIGINT`（0x8/0x9/0xA）、`try_encode_i64/decode_i64/try_encode_u64/decode_u64`、`PAYLOAD48_MASK`（48 位 payload）。6 个单元测试覆盖 48 位 round-trip、边界（±2⁴⁷）、溢出 None、类型不冲突。
+> **阶段 1+2（2026-08-01，专项会话）**：✅ 完成 — 一次性 codegen 切换 + 全量回归。
+>   - `virt_memory.rs`：`push_f64/pop_f64/push_i64/pop_i64/push_u64/pop_u64/pop_arith_operand` 全改单槽；`pop_i64/pop_u64` 统一处理 I64/U64/BIGINT/i32 任意 tag（标签对称，避免 push i64 / pop u64 截断）。
+>   - `engine.rs`：`RET_D` 退化为 `RET` 别名（单槽）；`TYPE_CAST_U64` 改单 `push_u64`；`PROMOTE_F64` 注释更新；`CONST_F64/I64/U64` 经 helper 自动单槽。
+>   - `codegen.rs`：删除 `add_var` 的 2-slot 预留 + `__name_high`、store/assign 的 high/low 双操作、`ret_is_two_slot`（恒 RET）、global POP-high hack（plan 378 遗留）、`body_is_two_slot` 双 nil marker、`Expr::Ident` load 的 `LOAD_LOC(var+1)`；新增 global 类型追踪（`var_types` 记录 global 的 U64/Double，使 print 路由正确）。
+>   - `native.rs`：`shim_print_f32` 重写为单槽 tag 分派（删 sp-2 探测）；`shim_print_f64/u64` 注释更新。
+>   - `convert.rs`（FFI）：取消 i64/u64/f64 的 i32/f32 截断（plan 368 workaround 过时），改原生单槽 push；>2^48 经 BigInt 堆装箱。
+>   - `autovm_persistent.rs`：`last_result` 捕获改单槽 pop_nv；`last_result_64` 仅在 I64/U64/BIGINT 时填充（避免 string/bool 误格式化）。
+>   - `heap_object.rs`：新增 `BigIntData`（impl HeapObject, TypeTag::BigInt）+ 3 单元测试；`convert.rs` 新增 `encode_i64/u64_with_heap`、`decode_i64/u64_full`（>2^48 堆兜底，完整 64 位范围）。
+>   - **验收**：新增 `25_method_u64/010_global_u64_large`（plan 378 遗留：顶层 global u64 大值不再截断，§8.2 达标）。全量回归 3507 测试：251 fail（基线 256，净减 5），**0 真实新增回归**（唯一 "新增" `conformance_020_enum_match` 为既有并行测试干扰导致的 flake，单独运行稳定通过）；**修复 7 个既有失败**（3 ffi_tests convertible + 3 conformance + 1 cookbook）。
+> **阶段 1（旧记录）**：⚠️ 曾撤回——因 codegen 2-slot 逻辑分散 ~15 处不能增量。本次专项会话验证了"一次性切换"可行（关键：发现 engine 的 LOAD/STORE_LOCAL 本就是单槽，2-slot 是纯 codegen 编译期概念）。
+> **遗留**：阶段 3（统一 PRINT_UNIFIED、删 RET_D opcode、清理 contains_u64/expr_type_hint）+ 阶段 4（benchmark、plan 378 文档更新）待续。opcode 合并（ADD/ADD_D/ADD_U64 → 单一 ADD）属 plan 389 非目标。
 > **来源**：plan 378（`to_uint()` 栈错位）复审 + 用户关于"Auto 多数值类型 vs JS 单 f64"的架构讨论
 > **影响仓库**：`auto-lang`（`crates/auto-val`、`crates/auto-lang/src/vm`）
 > **风险**：高 — 触动整个 VM 值表示层；但**通过分阶段 + 每阶段全量回归**可控

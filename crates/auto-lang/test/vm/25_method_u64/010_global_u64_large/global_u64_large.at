@@ -1,0 +1,9 @@
+// Plan 377 §8.2 验收：顶层 global u64 大值不再截断（解决 plan 378 遗留）。
+// 在 2-slot 时代，module-level global 是 1-slot NanoValue，但栈是 2-slot，
+// 导致 "5e9".to_uint() 存入 global 时高位被 POP 丢弃 → 截断。
+// 单槽化后 global 与栈一致，5e9 完整存取。
+var x u64 = "5000000000".to_uint()
+print(x)
+var y u64 = "10000000000".to_uint()
+print(y)
+print(y - x)

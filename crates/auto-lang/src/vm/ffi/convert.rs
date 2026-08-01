@@ -52,17 +52,15 @@ impl VMConvertible for i32 {
 }
 
 impl VMConvertible for i64 {
-    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
-        Ok(task.ram.pop_i64())
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // Plan 377: 单槽。TAG_BIGINT 时解引用堆对象读完整 64 位。
+        let nv = task.ram.pop_nv();
+        Ok(decode_i64_full(vm, nv))
     }
 
-    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        // Plan 368: FFI return values must occupy exactly 1 slot to match
-        // the 1-slot calling convention used by CALL_NAT + codegen store/load.
-        // i64's push_i64 pushes 2 slots (low+high), but the caller reads only
-        // the top slot (high=0), causing Json.as_int("42") → 0.
-        // Truncate to i32 (Auto's int type is 32-bit) and push single slot.
-        task.ram.push_i32(*self as i32);
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        // Plan 377: 单槽。48 位内联；>2^47 堆装箱（保留完整 64 位范围）。
+        task.ram.push_nv(encode_i64_with_heap(vm, *self));
         Ok(())
     }
 }
@@ -79,13 +77,15 @@ impl VMConvertible for u32 {
 }
 
 impl VMConvertible for u64 {
-    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
-        Ok(task.ram.pop_u64())
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // Plan 377: 单槽。TAG_BIGINT 时解引用堆对象读完整 64 位。
+        let nv = task.ram.pop_nv();
+        Ok(decode_u64_full(vm, nv))
     }
 
-    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        // Plan 368: truncate to i32 for 1-slot FFI return (see i64 impl above)
-        task.ram.push_i32(*self as i32);
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        // Plan 377: 单槽。48 位内联；>2^48 堆装箱（保留完整 64 位范围）。
+        task.ram.push_nv(encode_u64_with_heap(vm, *self));
         Ok(())
     }
 }
@@ -103,29 +103,18 @@ impl VMConvertible for f32 {
 
 impl VMConvertible for f64 {
     fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
-        {
-            // f64 occupies 2 slots (value at sp-2, marker at sp-1).
-            // f32 occupies 1 slot. Codegen may push f32 when FFI expects f64.
-            if task.ram.sp >= 2 {
-                let nv = task.ram.raw_nv[task.ram.sp - 2];
-                if auto_val::is_f64(nv) {
-                    return Ok(task.ram.pop_f64());
-                }
-            }
-            if task.ram.sp >= 1 {
-                let nv = task.ram.raw_nv[task.ram.sp - 1];
-                if auto_val::is_f32(nv) {
-                    task.ram.sp -= 1;
-                    return Ok(auto_val::decode_f32(nv) as f64);
-                }
-            }
+        // Plan 377: 单槽。兼容 codegen 推 f32（FFI 期望 f64）的情况 —— 提升 f32→f64。
+        let nv = task.ram.peek_nv(0);
+        if auto_val::is_f32(nv) {
+            task.ram.sp -= 1;
+            return Ok(auto_val::decode_f32(nv) as f64);
         }
         Ok(task.ram.pop_f64())
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
-        // Plan 368: truncate to f32 for 1-slot FFI return (see i64 impl above)
-        task.ram.push_f32(*self as f32);
+        // Plan 377: 全值单槽化后 f64 原生单槽（不再截断为 f32）。
+        task.ram.push_f64(*self);
         Ok(())
     }
 }
@@ -455,3 +444,77 @@ impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible for 
         Ok(())
     }
 }
+
+// ============================================================================
+// Plan 377: BigInt 堆装箱辅助函数（>2^48 的 i64/u64 完整范围兜底）
+// ============================================================================
+
+use auto_val::{NanoValue, try_encode_i64, try_encode_u64, decode_i64, decode_u64,
+    decode_i32, encode_bigint, is_bigint, decode_bigint_handle, tag_of};
+use crate::vm::heap_object::{BigIntData, downcast};
+
+/// 将 i64 编码为单槽 NanoValue：48 位内联，否则堆装箱（TAG_BIGINT handle）。
+pub fn encode_i64_with_heap(vm: &AutoVM, val: i64) -> NanoValue {
+    if let Some(nv) = try_encode_i64(val) {
+        nv
+    } else {
+        let id = vm.insert_heap_object(BigIntData::from_i64(val));
+        encode_bigint(id as u32)
+    }
+}
+
+/// 将 u64 编码为单槽 NanoValue：48 位内联，否则堆装箱（TAG_BIGINT handle）。
+pub fn encode_u64_with_heap(vm: &AutoVM, val: u64) -> NanoValue {
+    if let Some(nv) = try_encode_u64(val) {
+        nv
+    } else {
+        let id = vm.insert_heap_object(BigIntData::from_u64(val));
+        encode_bigint(id as u32)
+    }
+}
+
+/// 解码 NanoValue 为 i64：TAG_I64/U64/BIGINT/i32 全支持。
+/// BIGINT 时解引用堆对象读完整 64 位值。
+pub fn decode_i64_full(vm: &AutoVM, nv: NanoValue) -> i64 {
+    match tag_of(nv) {
+        t if t == 8 => decode_i64(nv),       // TAG_I64
+        t if t == 9 => decode_u64(nv) as i64, // TAG_U64
+        t if t == 0xA => {                    // TAG_BIGINT
+            let id = decode_bigint_handle(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(id) {
+                if let Some(guard) = obj.read().ok() {
+                    if let Some(big) = downcast::<BigIntData>(&*guard) {
+                        return big.as_i64();
+                    }
+                }
+            }
+            0
+        }
+        _ => decode_i32(nv) as i64,           // 兼容 i32
+    }
+}
+
+/// 解码 NanoValue 为 u64：TAG_U64/I64/BIGINT/i32 全支持。
+/// BIGINT 时解引用堆对象读完整 64 位值。
+pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
+    match tag_of(nv) {
+        t if t == 9 => decode_u64(nv),        // TAG_U64
+        t if t == 8 => decode_i64(nv) as u64, // TAG_I64
+        t if t == 0xA => {                    // TAG_BIGINT
+            let id = decode_bigint_handle(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(id) {
+                if let Some(guard) = obj.read().ok() {
+                    if let Some(big) = downcast::<BigIntData>(&*guard) {
+                        return big.as_u64();
+                    }
+                }
+            }
+            0
+        }
+        _ => decode_i32(nv) as u32 as u64,    // 兼容 i32
+    }
+}
+
+/// 判定 NanoValue 是否为 BIGINT（供算术 opcode 慢路径检测用）。
+#[allow(dead_code)]
+pub fn nv_is_bigint(nv: NanoValue) -> bool { is_bigint(nv) }

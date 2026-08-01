@@ -1399,22 +1399,18 @@ impl Codegen {
                 // Restore max_locals
                 self.max_locals = old_max_locals;
 
-                // 7. Emit RET (or RET_D for 2-slot return types) at end of body
+                // 7. Emit RET at end of body.
+                // Plan 377: 全值单槽化后恒用 RET（f64/u64/i64 返回值亦单槽，无需 RET_D）。
                 let n_args = fn_decl.params.len() as u8;
-                let ret_is_two_slot = matches!(self.current_fn_ret_type,
-                    Type::Double | Type::U64 | Type::I64 | Type::USize);
-                if ret_is_two_slot {
-                    if matches!(self.current_fn_ret_type, Type::Double)
-                        && !matches!(self.last_expr_type, ObjectType::Double)
-                        && matches!(self.last_expr_type, ObjectType::Float) {
-                        self.emit(OpCode::PROMOTE_F64);
-                    }
-                    self.emit(OpCode::RET_D);
-                    self.code.push(n_args);
-                } else {
-                    self.emit(OpCode::RET);
-                    self.code.push(n_args);
+                // 若函数声明返回 f64 但 body 末尾是 f32，仍需 PROMOTE_F64 提升编码
+                if matches!(self.current_fn_ret_type, Type::Double)
+                    && !matches!(self.last_expr_type, ObjectType::Double)
+                    && matches!(self.last_expr_type, ObjectType::Float)
+                {
+                    self.emit(OpCode::PROMOTE_F64);
                 }
+                self.emit(OpCode::RET);
+                self.code.push(n_args);
 
                 // 8. Pop function scope
                 self.pop_scope();
@@ -1483,11 +1479,16 @@ impl Codegen {
                     // same name as a global is a local shadow, not a global store.
                     self.compile_expr(&store.expr)?;
                     self.emit_global_store(&name_str);
-                    // Also pop the stored value if this is a statement context
-                    // (Store as stmt discards the value; STORE_GLOBAL already
-                    // consumed it, but compile_expr left it — actually
-                    // emit_global_store emits DUP-free STORE_GLOBAL that pops).
-                    // STORE_GLOBAL pops 1 (the value), so nothing left. Good.
+                    // Plan 377: 记录 global 的类型到 var_types，使后续 LOAD_GLOBAL 的
+                    // `Expr::Ident` 路径能设对 last_expr_type（U64/Double → PRINT_U64/F64）。
+                    // 否则全局 u64/f64 变量在 print 时会被当作 Int 路由到 PRINT_I32 而截断。
+                    if !matches!(store.ty, Type::Unknown) {
+                        self.var_types.insert(name_str.clone(), store.ty.clone());
+                    } else if matches!(self.last_expr_type, ObjectType::Double) {
+                        self.var_types.insert(name_str.clone(), Type::Double);
+                    } else if matches!(self.last_expr_type, ObjectType::Uint) {
+                        self.var_types.insert(name_str.clone(), Type::U64);
+                    }
                     return Ok(());
                 }
                 let scope = self
@@ -2097,37 +2098,19 @@ impl Codegen {
                     self.add_var(&store.name)
                 };
 
-                // Store the value into the local variable
+                // Plan 377: 全值单槽化 —— 恒为单槽 STORE_LOC。
                 let stored_type = self.var_types.get(&name_str).cloned();
-                let is_two_slot = matches!(stored_type, Some(Type::U64 | Type::I64 | Type::Double))
-                    || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
-                // Don't use 2-slot when actual value is an opaque handle (NestedObject)
-                let is_two_slot = is_two_slot
-                    && !matches!(self.last_expr_type, ObjectType::NestedObject | ObjectType::Void);
-                if is_two_slot {
-                    // u64/i64 on stack: [low, high] (high on top)
-                    // pop high first → var_index+1, then pop low → var_index
-                    self.emit_store_loc(var_index + 1);
-                    self.emit_store_loc(var_index);
-                    // Plan 378: for an un-annotated binding (e.g. `let n = s.to_uint()`)
-                    // there is no declared type, so record a 2-slot type so later
-                    // loads/prints treat the variable as 2-slot.
-                    if stored_type.is_none()
-                        && matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint)
-                    {
-                        let inferred = match self.last_expr_type {
-                            ObjectType::Double => Type::Double,
-                            _ => Type::U64,
-                        };
-                        self.var_types.insert(name_str.clone(), inferred);
-                    }
-                } else {
-                    self.emit_store_loc(var_index);
-                    // If declared type was 2-slot but actual value is 1-slot (opaque handle),
-                    // update var_types so subsequent loads also use 1-slot
-                    if matches!(stored_type, Some(Type::U64 | Type::I64 | Type::Double)) {
-                        self.var_types.insert(name_str.clone(), Type::Int);
-                    }
+                self.emit_store_loc(var_index);
+                // Plan 378 遗留：为未标注 binding（如 `let n = s.to_uint()`）推断类型，
+                // 供后续 print 路由 / opcode 选择使用（单槽时代仅影响类型，不影响 slot）。
+                if stored_type.is_none()
+                    && matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint)
+                {
+                    let inferred = match self.last_expr_type {
+                        ObjectType::Double => Type::Double,
+                        _ => Type::U64,
+                    };
+                    self.var_types.insert(name_str.clone(), inferred);
                 }
 
                 // Plan 080: DON'T load the value back to stack
@@ -2137,24 +2120,15 @@ impl Codegen {
             Stmt::Return(expr) => {
                 self.compile_expr(expr)?;
                 let n_args = self.current_fn_n_args as u8;
-                let ret_is_two_slot = matches!(self.current_fn_ret_type,
-                    Type::Double | Type::U64 | Type::I64 | Type::USize);
-                if ret_is_two_slot {
-                    // Promote 1-slot value to 2-slot if needed
-                    if matches!(self.current_fn_ret_type, Type::Double) {
-                        if !matches!(self.last_expr_type, ObjectType::Double) {
-                            if matches!(self.last_expr_type, ObjectType::Float) {
-                                self.emit(OpCode::PROMOTE_F64);
-                            }
-                            // For other types (int, etc.), I64_TO_F64 will be used by the caller
-                        }
-                    }
-                    self.emit(OpCode::RET_D);
-                    self.code.push(n_args);
-                } else {
-                    self.emit(OpCode::RET);
-                    self.code.push(n_args);
+                // Plan 377: 全值单槽化后恒用 RET。f32→f64 仍需 PROMOTE_F64 编码提升。
+                if matches!(self.current_fn_ret_type, Type::Double)
+                    && !matches!(self.last_expr_type, ObjectType::Double)
+                    && matches!(self.last_expr_type, ObjectType::Float)
+                {
+                    self.emit(OpCode::PROMOTE_F64);
                 }
+                self.emit(OpCode::RET);
+                self.code.push(n_args);
             }
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
             // reply expr -> compile expr, then send to oneshot channel
@@ -5034,11 +5008,10 @@ impl Codegen {
                     vm_debug!("DEBUG: Variable {} is captured", name_str);
                     self.emit_load_captured(&name_str);
                 } else if let Some(var_index) = self.lookup_var(&name_str) {
-                    // Variable found in local scope - load it
+                    // Variable found in local scope - load it.
+                    // Plan 377: 全值单槽化 —— u64/i64/Double 变量亦只占 1 槽，
+                    // 不再 emit 第二个 LOAD_LOC(var_index+1)。
                     self.emit_load_loc(var_index);
-                    if matches!(self.var_types.get(&name_str), Some(Type::U64 | Type::I64 | Type::Double)) {
-                        self.emit_load_loc(var_index + 1);
-                    }
                 } else if self.global_vars.contains(&name_str) {
                     // Plan 317: module-level global variable.
                     self.emit_global_load(&name_str);
@@ -5655,19 +5628,8 @@ impl Codegen {
                         // local lookup — otherwise top-level var would store to
                         // a script-wrapper local that fns can't see).
                         } else if self.global_vars.contains(&name_str) {
-                            // Plan 378: globals are stored as a single NanoValue
-                            // (1 slot) in vm.globals. A 2-slot RHS (u64/i64 from a
-                            // method call, or f64) would leave [low, high] on the
-                            // stack, and DUP/STORE_GLOBAL would capture the high
-                            // slot (0) — corrupting the global. Drop the high slot
-                            // first so the low slot is stored, matching the 1-slot
-                            // global representation. (Local 2-slot vars are
-                            // unaffected and keep full 64-bit range; only globals
-                            // are 1-slot by architecture.)
-                            if matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint) {
-                                self.emit(OpCode::POP); // discard high slot
-                                self.last_expr_type = ObjectType::Int; // global value is now 1-slot
-                            }
+                            // Plan 377: globals 与栈一致地单槽化。RHS 现在是单槽 NanoValue，
+                            // 无需 Plan 378 的 POP-high hack（globals 已能存完整 64 位值）。
                             self.emit(OpCode::DUP);
                             self.emit_global_store(&name_str);
                         // Check if this is a captured variable (Plan 071)
@@ -5684,21 +5646,9 @@ impl Codegen {
                                     ));
                                 }
                             }
-                            // Store value to variable
-                            let asn_is_two_slot = matches!(asn_stored_type, Some(Type::U64 | Type::I64 | Type::Double))
-                                || matches!(self.last_expr_type, ObjectType::Double | ObjectType::Uint);
-                            if asn_is_two_slot {
-                                // u64/i64 on stack: [low, high] (high on top)
-                                // Store high→var_index+1, then low→var_index
-                                self.emit_store_loc(var_index + 1);
-                                self.emit_store_loc(var_index);
-                                // Reload for expression result
-                                self.emit_load_loc(var_index);
-                                self.emit_load_loc(var_index + 1);
-                            } else {
-                                self.emit(OpCode::DUP); // Keep value for expression result
-                                self.emit_store_loc(var_index);
-                            }
+                            // Plan 377: 全值单槽化 —— 恒为 DUP + 单 STORE_LOC。
+                            self.emit(OpCode::DUP); // Keep value for expression result
+                            self.emit_store_loc(var_index);
                         } else if self.global_vars.contains(&name_str) {
                             // Plan 317: module-level global variable assignment.
                             self.emit(OpCode::DUP);
@@ -8281,8 +8231,8 @@ impl Codegen {
             }
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
+                // Plan 377: 全值单槽化后，每个分支恒留 1 个栈槽。
                 let mut jumps_to_end = Vec::new();
-                let mut body_is_two_slot = false;
 
                 for branch in &if_expr.branches {
                     // Compile condition
@@ -8299,24 +8249,6 @@ impl Codegen {
                     let body_block = Stmt::Block(branch.body.clone());
                     self.compile_stmt(&body_block)?;
 
-                    // Check if body left a 2-slot result by inspecting the last statement
-                    // (reassignment of u64/f64/double vars leaves 2 slots from reload)
-                    if let Some(last_stmt) = branch.body.stmts.last() {
-                        if let Stmt::Expr(expr) = last_stmt {
-                            if let Expr::Bina(lhs, op, _) = expr {
-                                if *op == Op::Asn {
-                                    if let Expr::Ident(name) = lhs.as_ref() {
-                                        if let Some(ty) = self.var_types.get(name.as_str()) {
-                                            if matches!(ty, Type::U64 | Type::I64 | Type::Double) {
-                                                body_is_two_slot = true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     // Jump to end
                     self.emit(OpCode::JMP);
                     let jump_to_end = self.emit_placeholder_i16();
@@ -8332,17 +8264,9 @@ impl Codegen {
                     let else_block = Stmt::Block(else_body.clone());
                     self.compile_stmt(&else_block)?;
                 } else {
-                    // No else branch - push nil marker(s) to match body stack height
-                    if body_is_two_slot {
-                        // Body leaves 2 slots, push 2 nil markers
-                        self.emit(OpCode::CONST_I32);
-                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
-                        self.emit(OpCode::CONST_I32);
-                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
-                    } else {
-                        self.emit(OpCode::CONST_I32);
-                        self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
-                    }
+                    // No else branch - push a single nil marker to match body stack height (1 slot)
+                    self.emit(OpCode::CONST_I32);
+                    self.code.extend_from_slice(&(i32::MIN + 1).to_le_bytes());
                 }
 
                 // Patch all jumps to end
@@ -8352,9 +8276,6 @@ impl Codegen {
 
                 // Plan 118 Phase 7: If expression produces a value
                 self.last_expr_type = ObjectType::Int; // default
-                if body_is_two_slot {
-                    self.last_expr_type = ObjectType::Double; // 2-slot result
-                }
             }
             Expr::Closure(closure) => {
                 // Plan 071: Compile closure with captured environment
@@ -10422,31 +10343,23 @@ impl Codegen {
 
     /// Add variable to current scope and return its index
     fn add_var(&mut self, name: &str) -> usize {
-        // Calculate next available slot offset (accounts for 2-slot variables)
+        // Plan 377: 全值单槽化后，每个局部变量恒占 1 个栈槽（u64/i64/f64 亦然）。
+        // 不再为 64 位变量预留 `__name_high` 第二槽。
         let mut next_offset: usize = 0;
         for scope in &self.scope_stack {
-            for (var_name, &existing_index) in scope {
-                let sc = if matches!(self.var_types.get(var_name), Some(Type::U64 | Type::I64 | Type::Double)) { 2 } else { 1 };
-                next_offset = next_offset.max(existing_index + sc);
+            for (_var_name, &existing_index) in scope {
+                next_offset = next_offset.max(existing_index + 1);
             }
         }
 
-        // Check if this variable is u64/i64 (occupies two slots)
-        let is_64bit = matches!(self.var_types.get(name), Some(Type::U64 | Type::I64 | Type::Double));
-        let slot_count = if is_64bit { 2 } else { 1 };
-
         // Update max_locals to reflect the high-water mark of variables (including parameters)
-        self.max_locals = self.max_locals.max(next_offset + slot_count);
+        self.max_locals = self.max_locals.max(next_offset + 1);
 
         let scope = self
             .scope_stack
             .last_mut()
             .expect("Scope stack should never be empty");
         scope.insert(name.to_string(), next_offset);
-        // Reserve the second slot for u64/i64 variables
-        if is_64bit {
-            scope.insert(format!("__{}_high", name), next_offset + 1);
-        }
         next_offset
     }
 

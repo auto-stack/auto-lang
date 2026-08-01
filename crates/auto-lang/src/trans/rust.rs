@@ -3119,6 +3119,38 @@ impl RustTrans {
             }
         }
 
+        // Plan 013 G6: generic typed-JSON decode.
+        // `json.decode[T](text)` parses `[T]` as an index expression (Auto has no
+        // turbofish syntax), so `call.name` is `Expr::Index(json.decode_callee, T_ident)`.
+        // This bypasses the normal `("json","decode")` dispatch (which only sees
+        // Bina/Dot callees). Intercept it here, before any other call handling, and
+        // emit `serde_json::from_str::<T>(&text)`.
+        if let Expr::Index(callee, ty_arg) = call.name.as_ref() {
+            // callee should be `json.decode` in one of two AST forms.
+            let is_json_decode = match callee.as_ref() {
+                Expr::Bina(obj, op, rhs) if matches!(op, Op::Dot) => {
+                    matches!(obj.as_ref(), Expr::Ident(n) if n == "json")
+                        && matches!(rhs.as_ref(), Expr::Ident(m) if m == "decode")
+                }
+                Expr::Dot(obj, field) => {
+                    matches!(obj.as_ref(), Expr::Ident(n) if n == "json")
+                        && field == "decode"
+                }
+                _ => false,
+            };
+            if is_json_decode {
+                if let Expr::Ident(ty_name) = ty_arg.as_ref() {
+                    self.a2r_std_used.set(true);
+                    write!(out, "serde_json::from_str::<{}>(", ty_name)?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr_as_str(a, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(());
+                }
+            }
+        }
+
         // Special case for print / write function
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "print" {
@@ -3413,6 +3445,52 @@ impl RustTrans {
                             }
                         }
                         write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                        return Ok(());
+                    }
+                    ("http", "request") => {
+                        // http.request(method, url) → a2r_std::http::request(method, url)
+                        // (Plan 013 G6: returns a RequestBuilder for chained .header/.body/.timeout/.send.)
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::request(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("http", "post_stream_with_headers") => {
+                        // http.post_stream_with_headers(url, body, headers) → a2r_std::http::post_stream_with_headers(...)
+                        // (Plan 013 G6: returns an HTTPStream for SSE.)
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::post_stream_with_headers(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("json", "encode") | ("Json", "encode") => {
+                        // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
+                        // (Plan 013 G6: typed serialization for transpiled client.)
+                        self.a2r_std_used.set(true); write!(out, "serde_json::to_string(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ").unwrap_or_default()")?;
+                        return Ok(());
+                    }
+                    ("str", "from_bytes") => {
+                        // str.from_bytes(bytes) → a2r_std::str::from_bytes(bytes)
+                        // (Plan 013 G6: UTF-8 lossy decode of an HTTP body.)
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::str::from_bytes(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     _ => {}
@@ -3785,6 +3863,14 @@ impl RustTrans {
                                 write!(out, ".to_string()")?;
                                 return Ok(());
                             }
+                            "from_bytes" => {
+                                // str.from_bytes(bytes) -> a2r_std::str::from_bytes(bytes)
+                                // (Plan 013 G6: UTF-8 lossy decode of an HTTP body.)
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::str::from_bytes(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
                             _ => {}
                         },
                         "Json" => match method.as_str() {
@@ -3892,6 +3978,15 @@ impl RustTrans {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "encode" => {
+                                // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
+                                // (Plan 013 G6: typed serialization for transpiled client. The value
+                                // is any Serialize — e.g. CompletionRequest.)
+                                self.a2r_std_used.set(true); write!(out, "serde_json::to_string(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                write!(out, ").unwrap_or_default()")?;
                                 return Ok(());
                             }
                             "get" => {
@@ -4075,6 +4170,36 @@ impl RustTrans {
                                     }
                                 }
                                 write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                return Ok(());
+                            }
+                            "request" => {
+                                // http.request(method, url) → a2r_std::http::request(method, url)
+                                // (Plan 013 G6: returns a RequestBuilder for chained .header/.body/.timeout/.send.)
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::request(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "post_stream_with_headers" => {
+                                // http.post_stream_with_headers(url, body, headers) → a2r_std::http::post_stream_with_headers(...)
+                                // (Plan 013 G6: returns an HTTPStream for SSE.)
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::post_stream_with_headers(")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 { write!(out, ", ")?; }
+                                    if let Arg::Pos(expr) = arg {
+                                        self.expr_as_str(expr, out)?;
+                                    } else {
+                                        self.arg(arg, out)?;
+                                    }
+                                }
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             _ => {}

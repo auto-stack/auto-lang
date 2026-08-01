@@ -2648,13 +2648,12 @@ impl AutoVM {
                     task.last_result_type = ResultType::Int;
                 }
                 OpCode::TYPE_CAST_U64 => {
+                    // Plan 377: 单槽 u64 —— zero-extend i32 to u64（单 NanoValue）
                     let v = task.ram.pop_i32();
-                    // Zero-extend i32 to u64 (two slots: low, high)
-                    task.ram.push_i32(v);   // low 32 bits
-                    task.ram.push_i32(0);   // high 32 bits = 0
+                    task.ram.push_u64(v as u32 as u64);
                 }
                 OpCode::PROMOTE_F64 => {
-                    // Widen f32 (4 bytes, 1 slot) to f64 (8 bytes, 2 slots)
+                    // Plan 377: f32 与 f64 现在都是单槽，widen 仅是编码转换
                     let val_f32 = task.ram.pop_f32();
                     task.ram.push_f64(val_f32 as f64);
                 }
@@ -5760,7 +5759,8 @@ impl AutoVM {
                         task.current_fn_n_locals = frame.old_fn_n_locals;
                     }
                 }
-                // RET_D: Return with 2-slot value (f64, u64, i64)
+                // RET_D: Plan 377 后所有值单槽，RET_D 与 RET 语义一致。
+                // 保留为 RET 别名以兼容可能残留的旧字节码（codegen 已不再发射 RET_D）。
                 OpCode::RET_D => {
                     let n_args = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
@@ -5769,9 +5769,8 @@ impl AutoVM {
                         return Ok(StepResult::Terminated);
                     }
 
-                    // Pop 2 slots: high (top) then low
-                    let result_high = task.ram.pop_i32();
-                    let result_low = task.ram.pop_i32();
+                    // 单槽：弹出一个 NanoValue（与 RET 一致）
+                    let result_nv = task.ram.pop_nv();
 
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
@@ -5780,16 +5779,18 @@ impl AutoVM {
 
                     let new_sp = task.bp - n_args;
 
-                    // Restore frame, then write 2-slot result.
-                    // Must write at new_sp-1/new_sp (replacing ret_addr/old_bp slots)
-                    // rather than pushing after new_sp, to avoid leaving ret_addr on stack.
-                    // This mirrors how 1-slot RET writes at new_sp-1.
-                    task.ram.write_i32(new_sp - 1, result_low);
-                    task.ram.write_i32(new_sp, result_high);
+                    {
+                        task.ram.write_nv(new_sp - 1, result_nv);
+                        task.ram.sp = new_sp;
+                    }
 
                     task.bp = old_bp;
                     task.ip = ret_ip;
-                    task.ram.sp = new_sp + 1;
+
+                    if let Some(frame) = task.call_stack.pop() {
+                        task.current_fn_n_args = frame.old_fn_n_args;
+                        task.current_fn_n_locals = frame.old_fn_n_locals;
+                    }
                 }
 
                 // === Closures (Plan 071: Direct Capture) ===

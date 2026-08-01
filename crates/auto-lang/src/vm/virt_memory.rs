@@ -299,28 +299,15 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: Double (f64) support
+    // Plan 377: f64 单槽化 —— 单个 NanoValue 装得下完整 f64（encode_f64 直接位模式）。
     #[inline(always)]
     pub fn push_f64(&mut self, val: f64) {
-        if self.sp + 1 >= self.raw_nv.len() {
-            let new_size = ((self.raw_nv.len() * 2).max(256)).max(self.sp + 2);
-            self.raw_nv.resize(new_size, 0);
-        }
-        // Slot 1: raw f64 bits
-        self.raw_nv[self.sp] = val.to_bits();
-        self.sp += 1;
-        // Slot 2: padding (encode_null as marker, matches codegen's 2-slot expectation)
-        self.raw_nv[self.sp] = auto_val::encode_null();
-        self.sp += 1;
+        self.push_nv(auto_val::encode_f64(val));
     }
 
     #[inline(always)]
     pub fn pop_f64(&mut self) -> f64 {
-        if self.sp < 2 { panic!("Stack Underflow"); }
-        // Slot 2: padding marker (discard)
-        self.sp -= 1;
-        // Slot 1: raw f64 bits
-        self.sp -= 1;
-        f64::from_bits(self.raw_nv[self.sp])
+        auto_val::decode_f64(self.pop_nv())
     }
 
     // Plan 073 Stage A: Unsigned integer support
@@ -335,35 +322,63 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: 64-bit integer support
+    // Plan 377: i64 单槽化（48 位 payload 内联编码，>2^47 由 engine 层 BigInt 堆装箱兜底）。
+    // 注意：本函数仅负责内联编码——若值超出 48 位范围，将截断到 48 位（现实场景不触发，
+    // 见 plan 377 §2.6；真正的 >2^48 装箱在 engine/native 层用 encode_i64_with_heap 处理）。
     #[inline(always)]
     pub fn push_i64(&mut self, val: i64) {
-        let low = (val & 0xFFFFFFFF) as i32;
-        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
-        self.push_i32(low);
-        self.push_i32(high);
+        match auto_val::try_encode_i64(val) {
+            Some(nv) => self.push_nv(nv),
+            None => {
+                // 溢出 48 位范围：截断（应有调用侧 BigInt 装箱兜底；此处防御性处理）
+                let truncated = val & ((1i64 << 48) - 1);
+                let sign_extended = (truncated << 16) >> 16; // 符号扩展低 48 位
+                self.push_nv(auto_val::try_encode_i64(sign_extended)
+                    .unwrap_or(auto_val::encode_i32(0)));
+            }
+        }
     }
 
     #[inline(always)]
     pub fn pop_i64(&mut self) -> i64 {
-        let high = self.pop_i32() as i64;
-        let low = self.pop_i32() as i64;
-        (high << 32) | (low & 0xFFFFFFFF)
+        // Plan 377: 弹出 64 位有符号整数。i64 与 u64 编码对称（仅 tag 不同），
+        // 此处统一处理 I64/U64/BIGINT/i32 任意 tag，避免 push/pop 标签不一致导致的截断。
+        let nv = self.pop_nv();
+        match auto_val::tag_of(nv) {
+            t if t == 8 => auto_val::decode_i64(nv),      // TAG_I64
+            t if t == 9 => auto_val::decode_u64(nv) as i64, // TAG_U64（按有符号读）
+            t if t == 0xA => {
+                // TAG_BIGINT —— 堆对象需 engine 层解码，此处回退到 payload（不应频繁发生）
+                auto_val::decode_bigint_handle(nv) as i64
+            }
+            _ => auto_val::decode_i32(nv) as i64,         // 兼容 i32 操作数
+        }
     }
 
     // Plan 073 Stage A: u64 support
+    // Plan 377: u64 单槽化（48 位 payload 内联编码，>2^48 由 engine 层 BigInt 堆装箱兜底）。
     #[inline(always)]
     pub fn push_u64(&mut self, val: u64) {
-        let low = (val & 0xFFFFFFFF) as i32;
-        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
-        self.push_i32(low);
-        self.push_i32(high);
+        match auto_val::try_encode_u64(val) {
+            Some(nv) => self.push_nv(nv),
+            None => {
+                // 溢出 48 位范围：截断到低 48 位（应有调用侧 BigInt 装箱兜底）
+                self.push_nv(auto_val::try_encode_u64(val & ((1u64 << 48) - 1))
+                    .unwrap_or(auto_val::encode_i32(0)));
+            }
+        }
     }
 
     #[inline(always)]
     pub fn pop_u64(&mut self) -> u64 {
-        let high = self.pop_u32() as u64;
-        let low = self.pop_u32() as u64;
-        (high << 32) | low
+        // Plan 377: 弹出 64 位无符号整数。统一处理 I64/U64/BIGINT/i32 任意 tag。
+        let nv = self.pop_nv();
+        match auto_val::tag_of(nv) {
+            t if t == 9 => auto_val::decode_u64(nv),      // TAG_U64
+            t if t == 8 => auto_val::decode_i64(nv) as u64, // TAG_I64（按无符号读）
+            t if t == 0xA => auto_val::decode_bigint_handle(nv) as u64, // TAG_BIGINT
+            _ => auto_val::decode_i32(nv) as u32 as u64,  // 兼容 i32 操作数
+        }
     }
 
     pub fn read_i32(&self, addr: usize) -> i32 { decode_i32(self.raw_nv[addr]) }
@@ -408,33 +423,16 @@ impl VirtualRAM {
 
     /// Pop a typed arithmetic operand from the stack.
     ///
-    /// f64 values occupy 2 slots (raw bits + null padding), while all other
-    /// types occupy 1 slot. This helper inspects the top-of-stack to decide
-    /// which pop method to use, returning both the raw NanoValue (or f64 bits)
-    /// and a type tag so the caller can dispatch correctly.
-    ///
-    /// Returns `(bits, is_f64)`:
-    /// - If the TOS is the null-padding marker of an f64 pair, pops 2 slots
-    ///   and returns `(raw_f64_bits, true)`.
-    /// - Otherwise pops 1 slot and returns `(nanboxed_value, false)`.
+    /// Plan 377: 全值单槽化后，每个操作数恒占 1 个栈槽。本 helper 弹出单个
+    /// NanoValue，按是否为 f64（非 nanboxed）返回 `(bits, is_f64)`，供多态
+    /// 算术 opcode（ADD/SUB/MUL/DIV/NEG）分派：
+    /// - f64 → `(raw_f64_bits, true)`，调用方用 `f64::from_bits` 解码。
+    /// - 其它（i32/f32/string/bool/object/i64/u64/bigint）→ `(nanboxed_value, false)`。
     #[inline(always)]
     pub fn pop_arith_operand(&mut self) -> (u64, bool) {
-        // Check if TOS is the null-padding of a 2-slot f64.
-        // The padding is always encode_null(), and the slot below it is the
-        // raw f64 bits (which is never nanboxed since normal f64 != NaN).
-        let tos = self.peek_nv(0);
-        if auto_val::is_null(tos) {
-            // Check slot below: if it's a raw f64 (not nanboxed), this is an f64 pair
-            let below = self.peek_nv(1);
-            if !auto_val::is_nanboxed(below) {
-                // This is an f64 — use pop_f64 which correctly handles 2 slots
-                let val = self.pop_f64();
-                return (val.to_bits(), true);
-            }
-        }
-        // Single-slot value (i32, f32, string, bool, object, etc.)
         let nv = self.pop_nv();
-        (nv, false)
+        let is_f64 = !auto_val::is_nanboxed(nv);
+        (nv, is_f64)
     }
 
     /// Write a raw NanoValue at an address (preserves type tag).

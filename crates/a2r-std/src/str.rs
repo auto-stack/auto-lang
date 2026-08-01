@@ -83,3 +83,9 @@ pub fn str_to_lower(s: &str) -> String {
 pub fn str_to_upper(s: &str) -> String {
     s.to_uppercase()
 }
+
+/// Decode a byte slice to a UTF-8 string (lossy). Mirrors Auto's
+/// `str.from_bytes(bytes)`. Used by the transpiled client to read HTTP bodies.
+pub fn from_bytes(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
