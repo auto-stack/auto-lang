@@ -9476,6 +9476,33 @@ impl<'a> Parser<'a> {
     /// this out of parse_type so the suffix-`?` loop can wrap any base type.
     fn parse_type_base(&mut self) -> AutoResult<Type> {
         match self.cur.kind {
+            // Plan 380 P1 (defect D): `dyn Trait` — allows Arc<dyn Client> /
+            // Box<dyn Trait> field types (the `dyn` keyword inside generic
+            // args). Represented as a User type whose name is "dyn Trait", which
+            // the transpiler renders verbatim (see rust.rs Type::User dyn-prefix
+            // guard).
+            TokenKind::Ident if self.cur.text.as_str() == "dyn" => {
+                self.next(); // consume 'dyn'
+                let trait_type = self.parse_type()?;
+                // Use the trait's display name (e.g. "Client")
+                let trait_name = trait_type.unique_name().to_string();
+                let dyn_name = format!("dyn {}", trait_name);
+                Ok(Type::User(TypeDecl {
+                    name: dyn_name.into(),
+                    kind: crate::ast::TypeDeclKind::UserType,
+                    parent: None,
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    spec_impls: Vec::new(),
+                    generic_params: Vec::new(),
+                    members: Vec::new(),
+                    delegations: Vec::new(),
+                    methods: Vec::new(),
+                    attrs: Vec::new(),
+                    doc: None,
+                    is_pub: false,
+                }))
+            }
             TokenKind::Question => {
                 // Plan 120: Parse ?T as Type::Option(T)
                 self.next(); // Consume '?'

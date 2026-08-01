@@ -1000,7 +1000,11 @@ impl RustTrans {
                 // / was declared later. Without this, `role Role` (Role a spec)
                 // emits bare `Role` (E0782). Mirrors what Type::Spec does (below).
                 let name = usr.name.to_string();
-                if self.spec_decls.contains_key(name.as_str()) {
+                // Plan 380 P1 (defect D): "dyn Trait" (from parse_type_base dyn
+                // branch) — render verbatim, do NOT qualify (no crate:: prefix).
+                if name.starts_with("dyn ") {
+                    name
+                } else if self.spec_decls.contains_key(name.as_str()) {
                     format!("Box<dyn {}>", name)
                 } else {
                     self.qualify_type_name(&name)
