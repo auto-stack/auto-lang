@@ -189,7 +189,53 @@ ext RoleRegistry {
         }
 
         // 2. User roles from ~/.config/autoos/roles/*.at (override built-ins).
-        load_user_roles(roles.clone(), names.clone())
+        // The scan loop is inlined from Rust's load() (roles.rs 106-161) and
+        // accumulates DIRECTLY into this registry — a2r passes params by
+        // value, so a void helper mutating `roles`/`names` could never reach
+        // the caller (the user roles silently never loaded — plan 014 gap).
+        // The per-file parse lives in load_user_at_file(), which RETURNS the
+        // detail (return-style, like load_one_builtin) — both because of the
+        // by-value param rule and because a fully-inlined parse here would
+        // nest ~10 levels deep, past a2r's parser recursion limit (~9).
+        is roles_dir() {
+            Some(dir) -> {
+                is fs.read_dir(dir) {
+                    Ok(entries) -> {
+                        for entry in entries {
+                            // Plan 380: ReadDir yields io::Result<DirEntry> —
+                            // destructure before use (E0599 on Result).
+                            is entry {
+                                Ok(e) -> {
+                                    let path = e.path()
+                                    if is_at_file(path) {
+                                        is load_user_at_file(path) {
+                                            Some(detail) -> {
+                                                // Name already resolved inside
+                                                // load_user_at_file (cfg.name or
+                                                // file stem).
+                                                let rname = detail.summary.name.clone()
+                                                if roles.contains(rname.clone()) == false {
+                                                    names.push(rname.clone())
+                                                }
+                                                roles.set(rname, detail)
+                                            },
+                                            None -> {
+                                                // read/parse failed — skip
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(_e) -> {}
+                            }
+                        }
+                    },
+                    Err(_e) -> {
+                        // directory missing/unreadable: no user roles
+                    }
+                }
+            },
+            None -> {}
+        }
 
         return RoleRegistry(roles: roles, names: names)
     }
@@ -372,7 +418,8 @@ ext RoleRegistry {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// load() helpers (mutate the passed-in registry maps; never fatal)
+// load() helpers — return-style only (a2r passes params by value, so a helper
+// mutating the caller's registry maps can never work — plan 014 gap)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Load one built-in profession into the registry (step 1 of load()).
@@ -415,43 +462,6 @@ fn load_one_builtin(name str) ?RoleDetail {
     }
 }
 
-/// Load all user .at roles from the roles directory (step 2 of load()).
-/// Missing/unreadable directory → no user roles (not fatal).
-fn load_user_roles(roles Map<str, RoleDetail>, names List<str>) void {
-    is roles_dir() {
-        Some(dir) -> scan_roles_dir(dir, roles, names),
-        None -> {}
-    }
-}
-
-/// Iterate one roles directory, loading each *.at entry.
-fn scan_roles_dir(dir PathBuf, roles Map<str, RoleDetail>, names List<str>) void {
-    is fs.read_dir(dir) {
-        Ok(entries) -> {
-            for entry in entries {
-                // Plan 380: ReadDir yields io::Result<DirEntry> — destructure
-                // before use (E0599 on Result otherwise). handle_dir_entry was
-                // inlined: a2r auto-clones struct args (DirEntry isn't Clone,
-                // E0599), and the by-value `roles`/`names` params can't mutate.
-                is entry {
-                    Ok(e) -> {
-                        let path = e.path()
-                        if is_at_file(path) {
-                            // clone: `names` is reused across loop iterations
-                            // (a2r auto-clones struct/map args, not lists).
-                            load_user_at_file(path, roles, names.clone())
-                        }
-                    },
-                    Err(_e) -> {}
-                }
-            }
-        },
-        Err(_e) -> {
-            // directory missing/unreadable: no user roles
-        }
-    }
-}
-
 /// True when path's extension is exactly "at".
 fn is_at_file(path PathBuf) bool {
     let ext = path.extension()
@@ -461,73 +471,65 @@ fn is_at_file(path PathBuf) bool {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// User-role loading (one file — mutates the passed-in registry maps)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Read + parse one user .at role file, inserting it into roles/names
-/// (overriding any same-named built-in). Parse/read failures are warned +
-/// skipped — never fatal. (Mirrors the inline body of Rust's load() loop.)
-fn load_user_at_file(path PathBuf, roles Map<str, RoleDetail>, names List<str>) void {
+/// Read + parse one user .at role file, returning its RoleDetail (or None).
+/// Return-style (like load_one_builtin): a2r passes params by value, so a
+/// helper mutating the caller's `roles`/`names` maps can never reach the
+/// caller (plan 014 gap). Read/parse failures → None (warned + skipped).
+/// Kept as a helper rather than inlined into load(): the full parse nests
+/// ~10 levels deep inline, past a2r's parser recursion limit (~9).
+fn load_user_at_file(path PathBuf) ?RoleDetail {
     // Plan 380: a2r_std::fs::read_to_string returns String directly (empty on
-    // error) — matching it with `is … { Ok/Err }` made a2r wrap it in Ok
-    // (E0282). Read directly and skip on empty.
+    // error) — read and skip on empty.
     let content = fs.read_to_string(path)
     if content.is_empty() {
-        // role: failed to read <path> — skip
-        return
+        return None
     }
     is parse_at_role(content.as_str()) {
-                Err(_e) -> {
-                    // role: failed to parse <path> — skip
-                },
-                Ok(cfg) -> {
-                    // Name: cfg.name if set, else the file stem, else "unnamed".
-                    var name str = ""
-                    is cfg.name.clone() {
-                        // .clone(): destructuring cfg.name by value would
-                        // partially move cfg (E0382 — cfg is used below for
-                        // resolve_soul/RoleSummary/RoleDetail).
-                        Some(n) -> name = n,
-                        None -> {
-                            is path.file_stem() {
-                                Some(stem) -> {
-                                    is stem.to_str() {
-                                        Some(s) -> name = s.to_string(),
-                                        None -> name = "unnamed"
-                                    }
-                                },
+        Err(_e) -> return None,
+        Ok(cfg) -> {
+            // Name: cfg.name if set, else the file stem, else "unnamed".
+            var name str = ""
+            is cfg.name.clone() {
+                // .clone(): destructuring cfg.name by value would partially
+                // move cfg (E0382 — cfg is used below for resolve_soul /
+                // RoleSummary / RoleDetail).
+                Some(n) -> name = n,
+                None -> {
+                    is path.file_stem() {
+                        Some(stem) -> {
+                            is stem.to_str() {
+                                Some(s) -> name = s.to_string(),
                                 None -> name = "unnamed"
                             }
-                        }
+                        },
+                        None -> name = "unnamed"
                     }
-                    // Resolve the Soul: sidecar file if present, else inline
-                    // system_prompt.
-                    let soul = resolve_soul(cfg, path)
-                    // Plan 380: `?? ` on cfg fields moves them out of cfg (the
-                    // transpiled unwrap_or consumes the field), then `config: cfg`
-                    // below partially-moves → E0382. `.clone()` each field.
-                    let summary = RoleSummary(
-                        name: name,
-                        description: cfg.description.clone() ?? "",
-                        tier: cfg.model_tier.clone() ?? ModelTier.Mid,
-                        allowed_tiers: cfg.allowed_tiers.clone() ?? [],
-                        skills: cfg.skills.clone() ?? [],
-                        token_budget: cfg.token_budget.clone(),
-                        is_builtin: false
-                    )
-                    let detail = RoleDetail(
-                        summary: summary,
-                        soul: soul.markdown,
-                        soul_from_file: soul.from_file,
-                        config: cfg
-                    )
-                    if roles.contains(name) == false {
-                        names.push(name.to_string())
-                    }
-                    roles.set(name, detail)
                 }
             }
+            // Resolve the Soul: sidecar file if present, else inline
+            // system_prompt.
+            let soul = resolve_soul(cfg, path)
+            // Plan 380: `?? ` on cfg fields moves them out of cfg (the
+            // transpiled unwrap_or consumes the field), then `config: cfg`
+            // below partially-moves → E0382. `.clone()` each field.
+            let summary = RoleSummary(
+                name: name,
+                description: cfg.description.clone() ?? "",
+                tier: cfg.model_tier.clone() ?? ModelTier.Mid,
+                allowed_tiers: cfg.allowed_tiers.clone() ?? [],
+                skills: cfg.skills.clone() ?? [],
+                token_budget: cfg.token_budget.clone(),
+                is_builtin: false
+            )
+            let detail = RoleDetail(
+                summary: summary,
+                soul: soul.markdown,
+                soul_from_file: soul.from_file,
+                config: cfg
+            )
+            return Some(detail)
+        }
+    }
 }
 
 /// The result of resolving a role's Soul markdown.

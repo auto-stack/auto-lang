@@ -58,8 +58,11 @@ use wire: JsonValue
 /// conservative `#[derive(Debug)]` via an explicit attr.
 #[derive(Debug)]
 enum DriveOutcome {
-    /// Loop again (e.g. gate resolved).
-    Continue
+    /// Loop again (e.g. gate resolved). Carries the handoff the step just
+    /// produced (None for gate-only Continues), so drive() can seed the next
+    /// step's input with it (plan 014: the old Continue carried nothing and a
+    /// last_handoff_after() stub dropped every handoff).
+    Continue(?HandoffDocument)
     /// Terminate the run successfully (Completed / Paused).
     Done
     /// Terminate with an error.
@@ -197,12 +200,17 @@ ext PipelineDriver {
         var last_handoff ?HandoffDocument = None
         loop {
             let result = self.engine.advance()
-            // dispatch consumes result + last_handoff; clone both so the
-            // Continue arm can still read them for last_handoff_after().
-            let outcome = self.dispatch(result.clone(), task_msg, last_handoff.clone()).await
+            // dispatch consumes result + last_handoff (a2r passes by value).
+            let outcome = self.dispatch(result, task_msg, last_handoff).await
             is outcome {
-                DriveOutcome.Continue -> {
-                    last_handoff = self.last_handoff_after(result, last_handoff)
+                DriveOutcome.Continue(h) -> {
+                    // Carry the step's handoff forward so the NEXT step's input
+                    // renders it (mirrors Rust's `last_handoff = Some(handoff)`
+                    // after build_handoff). Gate-only Continues carry None.
+                    is h {
+                        Some(doc) -> last_handoff = Some(doc),
+                        None -> {}
+                    }
                 },
                 DriveOutcome.Done -> return Ok(None),
                 DriveOutcome.Fail(e) -> return Err(e)
@@ -211,15 +219,18 @@ ext PipelineDriver {
     }
 
     /// Dispatch one advance() result. Drives a step to completion (submitting
-    /// its handoff) and returns whether drive() should continue, terminate ok,
-    /// or terminate with an error.
+    /// its handoff) and returns whether drive() should continue — carrying the
+    /// step's handoff for the next iteration — terminate ok, or terminate with
+    /// an error.
     /// `mut fn`: calls drive_step/handle_after_submit which mutate the engine.
     mut fn dispatch(result AdvanceResult, task_msg str, last_handoff ?HandoffDocument) ~DriveOutcome {
         is result {
             AdvanceResult.ExecuteStep(step_id, role_id) -> {
-                // drive_step returns Result; map to the continue/stop signal.
+                // drive_step returns the handoff it built; drive() carries it
+                // to the next step (the old last_handoff_after stub dropped it
+                // — plan 014 gap).
                 is self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
-                    Ok(_) -> return DriveOutcome.Continue,
+                    Ok(h) -> return DriveOutcome.Continue(h),
                     Err(e) -> return DriveOutcome.Fail(e)
                 }
             },
@@ -242,16 +253,11 @@ ext PipelineDriver {
                 (self.on_event)(ev)
                 let gr = self.resolve_gate_auto(step_id.as_str()).await
                 is gr {
-                    Ok(_) -> return DriveOutcome.Continue,
+                    Ok(_) -> return DriveOutcome.Continue(None),
                     Err(e) -> return DriveOutcome.Fail(e)
                 }
             }
         }
-    }
-
-    /// After a Continue outcome, update last_handoff for the next iteration.
-    fn last_handoff_after(result AdvanceResult, last_handoff ?HandoffDocument) ?HandoffDocument {
-        return last_handoff
     }
 
     /// Access the underlying engine (for pause/resume/rerun).
@@ -268,12 +274,12 @@ ext PipelineDriver {
 
 ext PipelineDriver {
     /// Run one ExecuteStep: build the agent, stream it, build a handoff,
-    /// submit it, and handle the engine's next result. Returns Ok(None) to
-    /// continue the loop, or Err/Ok to terminate drive().
-    /// Run one step: build the agent, run it, submit the handoff.
+    /// submit it, and handle the engine's next result. Returns the handoff it
+    /// built (Ok) so drive() can feed the next step's input, or Err to
+    /// terminate drive().
     /// `mut fn` because it calls `self.engine.submit_handoff` (a2r's
     /// auto-mutation detection only sees field assignments / known mutators).
-    mut fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<None, AgentError> {
+    mut fn drive_step(task_msg str, step_id str, role_id str, last_handoff ?HandoffDocument) ~Result<HandoffDocument, AgentError> {
         let started = PipelineEvent.StepStarted(step_id, role_id)
         (self.on_event)(started)
 
@@ -299,13 +305,15 @@ ext PipelineDriver {
         (self.on_event)(completed)
 
         // Surface budget warnings (attributed to the step that just ran)
-        // BEFORE the handoff moves into submit_handoff. Note: drive() tracks
-        // last_handoff separately via last_handoff_after(), so this param's
-        // value is not mutated here.
+        // BEFORE the handoff moves into submit_handoff.
         emit_budget_warning(self.engine, handoff_doc.from.as_str(), self.on_event)
-        // Submit to the engine — it routes to the next step.
-        let submitted = self.engine.submit_handoff(handoff_doc)
-        return self.handle_after_submit(submitted).await
+        // Submit to the engine — it routes to the next step. Clone: the same
+        // handoff is returned below so drive() seeds the next step's input.
+        let submitted = self.engine.submit_handoff(handoff_doc.clone())
+        is self.handle_after_submit(submitted).await {
+            Ok(_) -> return Ok(handoff_doc),
+            Err(e) -> return Err(e)
+        }
     }
 
     /// Resolve a gate, honoring the optional handler (else auto-approve).
