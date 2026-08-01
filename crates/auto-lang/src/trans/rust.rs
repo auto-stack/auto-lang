@@ -7112,6 +7112,28 @@ impl RustTrans {
         args: &Args,
         out: &mut impl Write,
     ) -> AutoResult<()> {
+        // Plan 380 P0: tuple-struct / newtype positional construction.
+        // When ALL args are positional (Arg::Pos) AND the type has no known
+        // named fields (external/newtype types like axum::Json, Option::Some,
+        // Result::Ok), emit positional construction `Type(a, b, ...)` instead
+        // of the named-field form `Type { field0: a, ... }` (which fails to
+        // compile — E0560 — because tuple structs have no named fields).
+        let has_named_field = args.args.iter().any(|a| matches!(a, Arg::Name(_) | Arg::Pair(_, _)));
+        let known_fields = self.struct_fields.get(type_name.as_str()).is_some();
+        if !has_named_field && !known_fields {
+            write!(out, "{}(", type_name)?;
+            for (i, arg) in args.args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                if let Arg::Pos(expr) = arg {
+                    self.expr(expr, out)?;
+                }
+            }
+            write!(out, ")")?;
+            return Ok(());
+        }
+
         // Generate struct initialization: Type { field1: value1, field2: value2 }
         if args.args.is_empty() {
             // Empty struct: Type {}
