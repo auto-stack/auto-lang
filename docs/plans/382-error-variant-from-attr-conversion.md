@@ -172,7 +172,7 @@ impl std::error::Error for AgentError {}
 > （expected.rs 未随转译器演进再生成）。无一与 Plan 382 的 `#[from]`/
 > Display/Error 特性相关。
 
-### A.1 真 bug（12 个）：`!T` 同步 Result 被 async 化 ⚠️
+### A.1 真 bug（12 个）：`!T` 同步 Result 被 async 化 → ✅ 已修复
 
 **症状**：`fn safe_divide(a int, b int) !int`（Plan 204 定义 `!T` = **同步**
 `Result<T, Box<dyn Error>>`，调用用 `.?`）被转译成 `async fn` + 调用点自动加
