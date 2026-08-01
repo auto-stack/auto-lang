@@ -3557,8 +3557,8 @@ impl AutoVM {
 
                     // Pop value (below instance_id)
                     let value = {
-                        // f64 occupies 2 slots (raw bits + null padding), must use
-                        // pop_arith_operand to avoid popping only the padding marker.
+                        // Plan 377: 全值单槽。pop_arith_operand 弹单个 NanoValue 并
+                        // 标识是否 f64（非 nanboxed），无需 2-slot padding 处理。
                         let (bits, is_f64) = task.ram.pop_arith_operand();
                         if is_f64 {
                             Value::Double(f64::from_bits(bits))
@@ -4640,7 +4640,7 @@ impl AutoVM {
                     task.ram.push_f64(-a);
                 }
 
-                // 64-bit integer arithmetic (u64 stored as two i32 slots)
+                // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot)
                 OpCode::ADD_U64 => {
                     let b = task.ram.pop_u64();
                     let a = task.ram.pop_u64();
@@ -6692,7 +6692,7 @@ impl AutoVM {
                     }
                 }
 
-                // f64 comparison opcodes (each pops 2+2 slots, pushes 1 bool)
+                // f64 comparison opcodes (Plan 377: each pops 1+1 slot, pushes 1 bool)
                 OpCode::EQ_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
@@ -6724,7 +6724,7 @@ impl AutoVM {
                     task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 
-                // Plan 378: u64/i64 comparison (each pops 2+2 slots, pushes 1 bool)
+                // Plan 378/377: u64/i64 comparison (each pops 1+1 slot, pushes 1 bool)
                 OpCode::EQ_U64 => {
                     let b = task.ram.pop_i64();
                     let a = task.ram.pop_i64();

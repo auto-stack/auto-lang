@@ -114,7 +114,7 @@ pub enum OpCode {
     DIV_D = 0x3E,     // f64 / f64 -> f64
     NEG_D = 0x3F,     // -f64 -> f64
 
-    // 64-bit integer arithmetic (u64 stored as two i32 slots: low, high)
+    // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot, TAG_U64/I64 nanbox)
     MOD_U64 = 0xEF,     // u64 % u64 -> u64
 
     // Plan 117: Type coercion for mixed arithmetic
@@ -122,7 +122,7 @@ pub enum OpCode {
     I64_TO_F64 = 0x47,  // Convert i64 to f64
     U64_TO_F64 = 0x4B,  // Convert u64 to f64 (unsigned, avoids sign extension)
 
-    // 64-bit integer arithmetic (u64 stored as two i32 slots: low, high)
+    // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot, TAG_U64/I64 nanbox)
     ADD_U64 = 0x4C,     // u64 + u64 -> u64 (wrapping)
     SUB_U64 = 0x4D,     // u64 - u64 -> u64 (wrapping)
     MUL_U64 = 0x4E,     // u64 * u64 -> u64 (wrapping)
@@ -143,7 +143,7 @@ pub enum OpCode {
     LE = 0x54,
     GE = 0x55,
 
-    // f64 comparison (each pops 2+2 slots, pushes 1 bool)
+    // f64 comparison (Plan 377: each pops 1+1 slot, pushes 1 bool)
     EQ_D = 0x56,
     NE_D = 0x57,
     LT_D = 0x58,
@@ -151,7 +151,7 @@ pub enum OpCode {
     LE_D = 0x5A,
     GE_D = 0x5B,
 
-    // Plan 378: u64/i64 comparison (each pops 2+2 slots, pushes 1 bool)
+    // Plan 378/377: u64/i64 comparison (each pops 1+1 slot, pushes 1 bool)
     EQ_U64 = 0xBA,
     NE_U64 = 0xBB,
     LT_U64 = 0xBC,

@@ -1,6 +1,11 @@
 # Plan 377：统一值表示 — 消除 2-slot，让所有值都是单槽 NanoValue
 
-> **状态**：✅ 阶段 0/1/2 + §4.3(性能)/§4.4(文档) 完成。阶段 3（print/opcode 清理）待续。
+> **状态**：✅ 阶段 0/1/2/3/4 全部完成。Plan 377 可关闭。
+> **阶段 3（简化 print + 清理，2026-08-01）**：✅ 完成。
+>   - §3.3 删除 `RET_D` opcode（枚举/mnemonic/from_str/operand_size/VALID/disasm 全清，0xF2 标记 reserved）。
+>   - §3.1+§3.2 新增 `shim_print_unified`（单槽按 tag 解码任意类型）+ `NATIVE_PRINT_UNIFIED`(ID 10)；codegen `print()` 统一路由，取代按 ObjectType 分发。typed print native（I32/F32/F64/U64）暂保留为显式入口，完全删除移交 plan 389。
+>   - §3.4 注释清理：无真正可删的 slot 函数（`contains_u64`/`expr_type_hint`/`needs_double_coercion` 等仍用于类型推断/opcode 选择/f-string 格式化，非纯 slot 计数；按 §6「建议保留」+ §9 移交 plan 389）。更新了 opcode/engine 里过时的「2+2 slots / two i32 slots」注释。
+> **§8 验收**：1-7 全部达标（见各阶段记录）。
 > **§4.3 性能验收（2026-08-01，release 模式）**：✅ 单槽不劣化，反而更快。
 >   - f64 push/pop 微基准（2M iters × 5 rounds 取最小）：2-slot 基线 **0.437 ns/op** → 单槽 **0.393 ns/op**（**快 ~10%**，因单槽少一次内存写 + 少一次 sp 自增）。
 >   - i64/u64 push/pop：单槽 **0.39 ns/op**（与 f64 持平）。
