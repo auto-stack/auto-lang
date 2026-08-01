@@ -1,0 +1,18 @@
+// Plan 325: is 语句的 _ 通配符（catch-all）
+pub enum Light {
+    Red
+    Green
+    Blue
+    fn label() str {
+        is self {
+            Light.Red -> return "red"
+            _ -> return "other"
+        }
+        return "?"
+    }
+}
+fn main() {
+    print(Light.Red.label())
+    print(Light.Green.label())
+    print(Light.Blue.label())
+}

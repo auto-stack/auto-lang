@@ -928,3 +928,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_27_function_reference_001_basic_ref() { test_vm("27_function_reference/001_basic_ref").unwrap(); }
 #[test] #[ignore] fn test_27_function_reference_002_pass_as_arg() { test_vm("27_function_reference/002_pass_as_arg").unwrap(); }
 #[test] #[ignore] fn test_27_function_reference_004_call_unchanged() { test_vm("27_function_reference/004_call_unchanged").unwrap(); }
+
+// === 28_enum_methods (Plan 325 缺陷 1: enum 实例方法) ===
+#[test] #[ignore] fn test_28_enum_methods_001_basic() { test_vm("28_enum_methods/001_basic").unwrap(); }
+#[test] #[ignore] fn test_28_enum_methods_002_is_match() { test_vm("28_enum_methods/002_is_match").unwrap(); }
+#[test] #[ignore] fn test_28_enum_methods_003_payload_method() { test_vm("28_enum_methods/003_payload_method").unwrap(); }
+#[test] #[ignore] fn test_28_enum_methods_004_wildcard() { test_vm("28_enum_methods/004_wildcard").unwrap(); }

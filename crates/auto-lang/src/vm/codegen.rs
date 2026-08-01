@@ -2327,6 +2327,36 @@ impl Codegen {
                         self.generic_registry.register_or_update_template(template);
                     }
                 }
+
+                // Plan 325 缺陷 1: 编译 enum 实例方法为独立函数（仿 TypeDecl methods，
+                // codegen.rs:2181）。parser 把 enum 方法存进 EnumKind::Heterogeneous { methods }，
+                // 但 codegen 此前从未提取编译 —— 导致 Color.Red.name() / Result.is_ok() 等
+                // enum 实例方法调用时无目标，静默返回 None 或 CALL_SPEC 报错。
+                // 方法名 mangle 为 EnumName.method，实例方法注入 self（enum 值）作首参。
+                if let crate::ast::EnumKind::Heterogeneous { methods, .. } = &enum_decl.kind {
+                    for method in methods {
+                        let mangled_name = format!("{}.{}", enum_name, method.name);
+                        let mut method_fn = method.clone();
+                        method_fn.name = crate::ast::Name::from(mangled_name.as_str());
+                        method_fn.parent = Some(crate::ast::Name::from(enum_name.as_str()));
+                        // 实例方法（非 static）注入 self 作首参 —— 持有 enum 值
+                        // （scalar 变体是 i32 discriminant，带 payload 变体是 heap 对象 id）。
+                        // 方法体内通过 `is self {...}` 匹配变体（既有 is 机制按值工作）。
+                        if !method.is_static {
+                            let has_self = method_fn.params.first()
+                                .map(|p| p.name.to_string() == "self").unwrap_or(false);
+                            if !has_self {
+                                method_fn.params.insert(0, crate::ast::Param {
+                                    name: crate::ast::Name::from("self"),
+                                    ty: Type::Unknown, // enum 值类型（运行时 i32 或对象 id）
+                                    default: None,
+                                    mode: crate::ast::ParamMode::View,
+                                });
+                            }
+                        }
+                        self.compile_stmt(&Stmt::Fn(method_fn))?;
+                    }
+                }
             }
             Stmt::SpecDecl(_spec_decl) => {
                 // Plan 073 Phase 8.6: Spec declaration support
@@ -3457,6 +3487,20 @@ impl Codegen {
                                     }
                                 }
                                 _ => {
+                                    // Plan 325: 通配符 `_` —— 总匹配（catch-all），不比较直接执行 body。
+                                    // `_` 被词法化为 Ident("_")，无专门通配 token；裸 `_` arm（不包裹在
+                                    // Some/Ok 里）此前被当变量引用 → Undefined variable: _。
+                                    // 多 pattern 里混 `_` 罕见且语义含糊，只处理单 pattern 的纯 `_`。
+                                    let is_wildcard = patterns.len() == 1
+                                        && matches!(&patterns[0], crate::ast::Expr::Ident(n) if n.as_str() == "_");
+                                    if is_wildcard {
+                                        // 总匹配：直接编译 body，跳到 is 末尾（仿 ElseBranch）
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+                                        continue; // 跳过下方 EQ 比较 + 默认 body 编译
+                                    }
                                     // Standard equality comparison for patterns
                                     if patterns.len() == 1 {
                                         self.emit_load_loc(target_var);
@@ -6738,7 +6782,50 @@ impl Codegen {
                                 // Complex expression (e.g., arr[0].push, foo().method, self.field.method)
                                 // Or literal expressions (e.g., 1.str(), "hello".upper())
                                 // Plan 118 Phase 4: Handle literal method calls
-                                let inferred_type = self.infer_object_type(obj.as_ref());
+                                // Plan 325 缺陷 1: enum 变体方法调用（Color.Red.name()）。
+                                // receiver 是 Dot(Ident(EnumName), variant)，enum 变体的
+                                // 运行时值是 i32 discriminant，infer_object_type 推不出 enum
+                                // 类型名。特判：若 receiver 形如 EnumName.Variant 且 EnumName
+                                // 有已编译的方法，func_name 用 EnumName.method（命中下方 exports
+                                // 解析）。否则 fall through 到常规类型推断。
+                                let enum_method_name = (|| -> Option<String> {
+                                    // 提取 receiver 的 enum 名：Color.Red（Dot）或 Reg.Yes(42)（Call{Dot}）
+                                    let enum_name_str: Option<String> = match obj.as_ref() {
+                                        Expr::Dot(enum_obj, _) => {
+                                            if let Expr::Ident(enum_name) = enum_obj.as_ref() {
+                                                Some(enum_name.to_string())
+                                            } else { None }
+                                        }
+                                        Expr::Call(inner) => {
+                                            if let Expr::Dot(enum_obj, _) = inner.name.as_ref() {
+                                                if let Expr::Ident(enum_name) = enum_obj.as_ref() {
+                                                    Some(enum_name.to_string())
+                                                } else { None }
+                                            } else { None }
+                                        }
+                                        _ => None,
+                                    };
+                                    if let Some(enum_name_str) = enum_name_str {
+                                        // enum 存在性：scalar 变体在 enum_values，enum 类型在 type_store，
+                                        // 带 payload 变体在 generic_registry。三者任一命中即可。
+                                        let prefix = format!("{}.", enum_name_str);
+                                        let has_enum = self.enum_values.keys()
+                                            .any(|k| k.starts_with(&prefix))
+                                            || self.types.contains_key(&enum_name_str)
+                                            || self.generic_registry.has_template(&enum_name_str);
+                                        let has_method = self.exports.contains_key(
+                                            &format!("{}.{}", enum_name_str, method.as_ref())
+                                        );
+                                        if has_enum && has_method {
+                                            return Some(format!("{}.{}", enum_name_str, method.as_ref()));
+                                        }
+                                    }
+                                    None
+                                })();
+                                if let Some(em) = enum_method_name {
+                                    Some(em)
+                                } else {
+                                    let inferred_type = self.infer_object_type(obj.as_ref());
 
                                 // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
                                 if inferred_type == ObjectType::Array && method.as_str() == "len" && call.args.args.is_empty() {
@@ -6797,6 +6884,7 @@ impl Codegen {
                                 } else {
                                     Some(format!("Unknown_{}", method))
                                 }
+                                } // 闭合 Plan 325 enum_method_name 的 else
                             }
                         }
                     }
@@ -8869,6 +8957,17 @@ impl Codegen {
                                     }
                                 }
                                 _ => {
+                                    // Plan 325: 通配符 `_` —— 总匹配（catch-all）。
+                                    let is_wildcard = patterns.len() == 1
+                                        && matches!(&patterns[0], crate::ast::Expr::Ident(n) if n.as_str() == "_");
+                                    if is_wildcard {
+                                        // 总匹配：body 值留栈，跳到 is 末尾（表达式上下文）
+                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                        self.emit(OpCode::JMP);
+                                        let jump_to_end = self.emit_placeholder_i16();
+                                        end_jumps.push(jump_to_end);
+                                        continue;
+                                    }
                                     if patterns.len() == 1 {
                                         self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;

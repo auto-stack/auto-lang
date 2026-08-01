@@ -41,13 +41,16 @@
 
 ### 2.1 🔥 高优先级阻塞项（红色失败 / 卡下游）
 
+> **2026-08-01 实测复核**：原列的多数"阻断项"已在 6 周间由后续工作修复。
+> 325 缺陷 2/3（跨模块字符串/print）、322（generic constructor）、348 Task 20/21（str 全局/位运算链）
+> **实测均已修复**。325 缺陷 1（enum 实例方法）于 2026-08-01 修复（见下表）。
+> 下表为**实测后**的真实剩余阻塞项。
+
 | Plan | 主题 | 关键未完成 |
 |---|---|---|
 | **317** | VM 异步调度统一 | Phase 4（HTTP 异步 server 接入）待评审；Phase 2 `~{}.await` 取值缺陷推迟；Phase 1/3 各有 3-4 项已知遗留 |
-| **322 → 318** | List\<Struct\> 渲染 | **核心 generic constructor bug 未修**（`List<Item>.new` 误创建类型）→ 015-notes VM 列表渲染阻塞点；`test_list_struct_push_then_len` 仍 ❌ |
 | **333** | VM UI CompileSession 接入 | 核心达成，但子组件 `EditorPanel` `.Delete/.Edit/.Save` 报 `Undefined variable: self`（遗留） |
 | **335** | List 运行时根因②修复 | `read_state_as_vec` 不解引用 `VmRef`；多个 shim（pop/get/set/insert/len/contains）的 `heap_objects/arrays` 双查**待复核**；`shim_list_len` 可能返回错误长度 |
-| **348** | parity workaround bug 修复 | 17 bug 已修，但 **Task 20（模块级 const/var str 全局损坏，高优先级）+ Task 21（位运算链 sha2 mk32，高优先级）** 未补全 |
 | **358** | 生成器缺陷 D1-D10 | 仅 4/10 修复；**D9（autodown_editor 卡住生成器）阻塞 354 阶段 C** |
 | **372** | a2r 3 系统性缺陷 | A/B/C 已修，但**单文件 transpile 路径不过 Phase 1.5 预注册**，跨模块 spec 仍解析为裸 `Type::User`（建议补出路 2） |
 
@@ -120,9 +123,14 @@
 
 ### 4.1 最该立即处理的红色/阻断项
 
-- **`322/318` generic constructor bug**——阻塞 015-notes VM 列表渲染
-- **`325` 跨模块基础缺陷**——自评"阻断性，阻塞所有后端 Auto 代码"
-- **`348` Task 20/21**——高优先级，影响 base64/regex/sha2 workaround 移除
+> **2026-08-01 实测复核**：原列的 322/325/348 三项**均已修复**（实测验证）。
+> 325 缺陷 1（enum 实例方法）于 2026-08-01 修复（test/vm/28_enum_methods/ 三个测试守护）。
+> 修复 325 时暴露一个**新的独立 bug**（见下）。
+
+- ~~`322/318` generic constructor bug~~——✅ 实测已修（push+len=1）
+- ~~`325` 跨模块基础缺陷~~——✅ 缺陷 1/2/3 全修（缺陷 1 于 2026-08-01）
+- ~~`348` Task 20/21~~——✅ 实测已修（str 全局 len=5、位运算链 16909060）
+- **🆕 `is` 语句 `_` 通配 bug**——`is x { _ -> ... }` 报 `Undefined variable: _`（顶层函数 + enum 方法均受影响；阻塞 stdlib result.at 的 is_ok/is_err；独立于 325，建议另开计划）
 
 ### 4.2 强依赖链（动一处解锁一片）
 
