@@ -75,6 +75,32 @@ fn test_a2r_expect_error(case: &str, error_substring: &str) {
     );
 }
 
+/// Plan 383: 命名函数引用作为实参传递时，a2r 应输出干净的 `handler` 而非
+/// `handler.clone()`（Rust 的 fn 指针类型实现 Copy，无需 clone）。
+/// 这是 axum `.route("/", handler)` 模式能正确转译的保障。
+#[test]
+fn test_a2r_function_reference_no_clone() {
+    let src = "\
+fn handler() str { return \"ok\" }
+fn apply(f fn()str) str { return f() }
+fn main() {
+    let s = apply(handler)
+    print(s)
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        code.contains("apply(handler)"),
+        "expected clean function reference `apply(handler)`, got:\n{}", code
+    );
+    assert!(
+        !code.contains("handler.clone()"),
+        "function reference should not be cloned, got:\n{}", code
+    );
+}
+
+
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
 #[test] fn test_01_basics_002_sqrt() { test_a2r("01_basics/002_sqrt").unwrap(); }

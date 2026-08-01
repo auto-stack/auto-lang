@@ -1,6 +1,7 @@
 # Plan 382：枚举变体 `#[from]` 属性 — a2r 原生错误转换生成（G2 非 workaround 方案）
 
-> **Status**: 设计已定稿，未实施（2026-08-01）。
+> **Status**: 已实施并合并 master（2026-08-01，worktree `plan-382-error-from-attr`，
+> 提交 `9a5a0f73`，合并 `5198299b`）；全量 retranspile + cargo check 0 错误。
 > **来源**: auto-ai Plan 014 遗留语义缺口 G2 —— `AgentError::Client(#[from])` 在 a2r
 > 转译下无 `#[from]` 发射，`?` 无法把 `ClientError` 自动转成 `AgentError`（E0277），
 > agent.at 用显式 `is Ok/Err` 映射规避。
@@ -139,3 +140,24 @@ impl std::error::Error for AgentError {}
 3. rust.rs：message() → Display + Error 合成（补齐 B 的语义）
 4. error.at / agent.at 落地 + workaround 删除
 5. 验证（3.4）→ worktree 合回 master（沿用 plan-380/381 worktree 流程）
+
+---
+
+## 实施记录（2026-08-01，已合并）
+
+- parser.rs `parse_enum_body`：变体名前接受 `#[ident]`（可带括号参数），存入
+  `EnumItem.attrs`（新增字段，4 处构造点补齐）。
+- rust.rs `enum_decl`：`#[from]` + 单载荷变体 → `impl From<Payload> for Enum`
+  （`?` 只需 From，不依赖 thiserror）。
+- rust.rs `ext_decl`：已知枚举的 inherent `message()` → 合成
+  `impl Display`（委托 message()）+ `impl std::error::Error`；影响 ToolError /
+  AgentError / ClientError / ConfigError 4 个错误类型（与参考版 thiserror 对齐）。
+- error.at：`AgentError.Client(ClientError)` / `Tool(ToolError)` 加 `#[from]`；
+  agent.at 删除显式 `is Ok/Err` 映射，恢复 `.await.?`（E0277 消失）。
+- golden：`test/a2r/16_interop/004_variant_from_attr`（.at + .expected.rs，
+  test entry `test_16_interop_004_variant_from_attr`）。
+- 验证：全量 retranspile → cargo check **0 错误**；生成 diff 仅 agent.rs + error.rs
+  （其余逐字节不变）。
+- 注：`cargo test --features test-trans` 当前因 master 预存在的 E0063
+  （`ui/vm_bridge.rs` 测试里 `AuraWidget` 缺 `exposes` 字段）无法整库编译运行，
+  与本次改动无关，golden 通过"自包含文件 transpile_rust 输出 == expected.rs"保证。

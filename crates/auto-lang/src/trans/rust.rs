@@ -166,6 +166,11 @@ pub struct RustTrans {
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
 
+    // Plan 383: Top-level function names — used to recognize a bare function
+    // name used as a value (function reference, e.g. `apply(handler)`) so the
+    // auto-borrow layer emits a clean `handler` instead of `handler.clone()`.
+    function_names: HashSet<AutoStr>,
+
     // Plan 167: Multi-file mode — local module names for mod declarations
     local_modules: HashSet<String>,
     // Multi-file mode: set of sibling module names (same directory)
@@ -283,6 +288,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            function_names: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
             dir_children: HashSet::new(),
@@ -346,6 +352,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            function_names: HashSet::new(),
             local_modules: HashSet::new(),
             sibling_modules: HashSet::new(),
             dir_children: HashSet::new(),
@@ -708,6 +715,16 @@ impl RustTrans {
         if is_copy {
             self.expr(inner, out)?;
             return Ok(());
+        }
+
+        // Plan 383: 命名函数引用（如 axum `.route("/", handler)`）在 Rust 里是
+        // `fn` 函数项/函数指针，自动实现 Copy。既不需要借用也不需要 clone ——
+        // 直接输出裸 ident。对标 VM 路径的函数引用分支（codegen.rs:5079）。
+        if let Expr::Ident(name) | Expr::Ref(name) = inner {
+            if self.function_names.contains(name) {
+                self.expr(inner, out)?;
+                return Ok(());
+            }
         }
 
         let tier = match binding_name {
@@ -1295,6 +1312,9 @@ impl RustTrans {
             | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
             | Type::Void
             | Type::Slice(_) | Type::Array(_) | Type::List(_)
+            // Plan 383: Rust 的 fn 指针类型实现 Copy —— 函数引用按值传递，
+            // 不需要 .clone()。让 apply(handler) 输出干净的 handler。
+            | Type::Fn(_, _)
         )
     }
 
@@ -14007,6 +14027,10 @@ impl Trans for RustTrans {
                         // Record dep name so crate.func() → crate::func()
                         // Use separate set to avoid blocking use.rust import generation
                         self.dep_crates.insert(dep.name.clone());
+                    }
+                    Stmt::Fn(fn_decl) => {
+                        // Plan 383: 收集顶层函数名，供 emit_borrow 识别函数引用。
+                        self.function_names.insert(fn_decl.name.clone());
                     }
                     _ => {}
                 }
