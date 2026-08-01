@@ -1,7 +1,7 @@
 # Plan 345: Gap 金丝雀测试 —— 逐差距 TDD 实现 AutoUI 平台特性
 
 > **类型**:完整计划(实施)
-> **状态**:设计待确认,实施未开始
+> **状态**:✅ 已完成（N1 / K2·N4 / N2 / N3 / OOM / this.n 全部闭环；K1 延后单列、K3 DROPPED 归 AutoDown）— 见 §Phase 6 末
 > **日期**:2026-06-30
 > **战略文档**:[Design 16](../design/16-app-generation-and-ai-authoring.md)、[025 差距枚举](../design/16-appendix-025-gap-enumeration.md)
 > **前置**:025-notes-extended(SPEC + 已知差距)、差距枚举(本文依据)
