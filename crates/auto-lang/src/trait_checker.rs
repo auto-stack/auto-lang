@@ -60,7 +60,7 @@ impl TraitChecker {
                     let is_compatible = matches!(
                         (&method.ret, &spec_method.ret),
                             // Exact match for same types
-                        (Type::Void, Type::Void)
+                            (Type::Void, Type::Void)
                             | (Type::Int, Type::Int)
                             | (Type::Uint, Type::Uint)
                             | (Type::Float, Type::Float)
@@ -86,7 +86,15 @@ impl TraitChecker {
                             | (Type::StrFixed(_), Type::Unknown)
                             | (Type::StrSlice, Type::Unknown)
                             | (Type::StrOwned, Type::Unknown)
-                    );
+                    ) || {
+                        // Plan 380 P5: GenericInstance return types (e.g. Future<T> from ~T async
+                        // methods, List<T>, Map<K,V>). The matches! above can't handle them because
+                        // GenericInstance has no PartialEq. Compare by unique_name() — two
+                        // Future<StrSlice> both produce "Future<str>" so they match.
+                        matches!(&method.ret, Type::GenericInstance(_))
+                            && matches!(&spec_method.ret, Type::GenericInstance(_))
+                            && method.ret.unique_name() == spec_method.ret.unique_name()
+                    };
 
                     if !is_compatible {
                         errors.push(
