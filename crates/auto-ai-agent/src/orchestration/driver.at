@@ -201,7 +201,9 @@ ext PipelineDriver {
         loop {
             let result = self.engine.advance()
             // dispatch consumes result + last_handoff (a2r passes by value).
-            let outcome = self.dispatch(result, task_msg, last_handoff).await
+            // clone: last_handoff is reused across loop iterations (moving it
+            // would be E0382 on the second iteration).
+            let outcome = self.dispatch(result, task_msg, last_handoff.clone()).await
             is outcome {
                 DriveOutcome.Continue(h) -> {
                     // Carry the step's handoff forward so the NEXT step's input
@@ -228,9 +230,10 @@ ext PipelineDriver {
             AdvanceResult.ExecuteStep(step_id, role_id) -> {
                 // drive_step returns the handoff it built; drive() carries it
                 // to the next step (the old last_handoff_after stub dropped it
-                // — plan 014 gap).
+                // — plan 014 gap). Continue's payload is Option<HandoffDocument>
+                // (None = gate-only continue), so wrap the step's handoff.
                 is self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
-                    Ok(h) -> return DriveOutcome.Continue(h),
+                    Ok(h) -> return DriveOutcome.Continue(Some(h)),
                     Err(e) -> return DriveOutcome.Fail(e)
                 }
             },

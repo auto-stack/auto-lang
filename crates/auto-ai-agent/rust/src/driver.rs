@@ -151,7 +151,9 @@ impl PipelineDriver {
         loop {
             let result = self.engine.advance();
             
-            let outcome = self.dispatch(result, task_msg, last_handoff).await;
+
+
+            let outcome = self.dispatch(result, task_msg, last_handoff.clone()).await;
             match outcome {
                 DriveOutcome::Continue(h) => {
                     
@@ -175,8 +177,9 @@ impl PipelineDriver {
 
 
 
+
                 match self.drive_step(task_msg, step_id.as_str(), role_id.as_str(), last_handoff).await {
-                    Ok(h) => return DriveOutcome::Continue(h),
+                    Ok(h) => return DriveOutcome::Continue(Some(h)),
                     Err(e) => return DriveOutcome::Fail(e),
                 };
             },
