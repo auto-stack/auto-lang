@@ -9162,15 +9162,15 @@ impl RustTrans {
                             });
 
                         if use_stmt.is_wildcard {
-                            write!(out, "use {}::*;", full_path)?;
+                            write!(out, "{}use {}::*;", pub_kw, full_path)?;
                         } else if let Some(wc) = companion_wildcard {
-                            write!(out, "use {};", wc)?;
+                            write!(out, "{}use {};", pub_kw, wc)?;
                             // Track the wildcard path so companion loop doesn't re-emit it
                             self.uses.insert(wc.to_string().into());
                         } else if !use_stmt.items.is_empty() {
-                            write!(out, "use {}::{{{}}};", full_path, use_stmt.items.join(", "))?;
+                            write!(out, "{}use {}::{{{}}};", pub_kw, full_path, use_stmt.items.join(", "))?;
                         } else {
-                            write!(out, "use {};", full_path)?;
+                            write!(out, "{}use {};", pub_kw, full_path)?;
                         }
                         self.uses.insert(full_path.to_string().into());
                         // Also track individual items so type resolution can find them
