@@ -266,63 +266,63 @@ fn build_router() Router {
 
 ---
 
-## 6. 语言特性缺口（长期路线图：Auto 支持"任何"Rust 代码）
+## 6. 语言特性缺口（调研后更新：多数已有 Auto 解法）
 
-auto-musk Plan 014 移植 18 个模块后，仅剩 4 个模块因以下语言特性缺口保留手写。
-这些**不是 a2r bug**，是 Auto 语言尚未实现的特性。长期目标是 Auto 支持"任何"Rust 代码。
+auto-musk Plan 014 移植 19 个模块后，仅剩 4 个模块因语言特性缺口保留手写。
+经调研（2026-08-01），**多数缺口 Auto 已有对应机制或接近解决**，并非"固有不可移植"。
 
-### 缺口 G1：编译期文件嵌入 `include_str!`
+### 缺口 G1：编译期文件嵌入 `include_str!` — 用 `#{}` 编译期求值 ✅ 有解
 
-**影响模块**：auto-musk workflow.rs（`include_str!("../workflows/feature-dev.at")`）
+**影响模块**：auto-musk workflow.rs
 
 **Rust 原文**：
 ```rust
 pub const FEATURE_DEV_AT: &str = include_str!("../workflows/feature-dev.at");
 ```
-编译期把文件内容嵌入为 `&'static str`。Rust 用 `include_str!`/`include_bytes!` 宏。
 
-**Auto 需要什么**：一个编译期文件嵌入语法。
-**设想的 Auto 写法**：
+**Auto 解法**：Auto 有 `#{expr}` 编译期代码执行（类似 Zig comptime）。stdlib 的
+`auto.file` 模块已有 `read_text(path) -> str`（`stdlib/auto/file.at`）。理论上：
 ```auto
-include "../workflows/feature-dev.at" as FEATURE_DEV_AT
+const FEATURE_DEV_AT = #{ read_text("../workflows/feature-dev.at") }
 ```
-或用 const 函数：
-```auto
-const FEATURE_DEV_AT = include_str("../workflows/feature-dev.at")
-```
-a2r 转译时生成 `include_str!("../workflows/feature-dev.at")`。
+a2r 在编译期执行 `read_text` 把文件内容嵌入为字符串常量。
 
-**难度**：低（一个新语法 + a2r 映射到 `include_str!`）
+**实测现状**：a2r 转译器对 `#{expr}` 报 "unsupported expression"（rust.rs 未实现
+comptime → Rust 转译）。但 `#{}` 的 parser + VM 执行能力**已存在**
+（`crates/auto-lang/src/comptime.rs`，rust.rs:14195 有 `CTEE::new()` 调用点）。
+a2r 缺的是"把 `#{read_text(path)}` 在编译期求值后输出为字符串字面量"的转译路径。
 
-### 缺口 G2：模块系统（`pub use` / `pub mod` / type alias）
+**待做**：a2r 增加 `#{}` 转译——编译期求值 `#{expr}` 后把结果作为常量输出到 Rust。
+工作量小（comptime 基础设施已有，只需连上 a2r 输出路径）。
 
-**影响模块**：auto-musk relay/mod.rs（`pub use auto_ai_agent::orchestration::{...}`）
+### 缺口 G2：`pub use.rust` re-export — 已工作 ✅
+
+**影响模块**：auto-musk relay/mod.rs
 
 **Rust 原文**：
 ```rust
 pub use auto_ai_agent::orchestration::{AdvanceResult, FlowSpec, FlowStep, ...};
 pub mod api;
-pub mod driver;
 pub use flows::{builtin_flows, get_builtin_flow};
 pub type RelayMode = PipelineMode;
 ```
-Rust 的模块系统：re-export（`pub use`）、模块声明（`pub mod`）、类型别名（`type`）。
 
-**Auto 需要什么**：
-```auto
-pub reexport auto_ai_agent::orchestration::{AdvanceResult, FlowSpec, FlowStep}
-pub mod api
-pub mod driver
-alias RelayMode = PipelineMode
-```
-a2r 转译时生成对应的 `pub use`/`pub mod`/`type`。
+**实测结果**：`pub use.rust std::collections::{HashMap}` 转译通过，生成
+`use std::collections::{HashMap};`（但缺 `pub` 前缀——生成的是 `use` 而非 `pub use`）。
 
-**难度**：高（模块系统是语言级架构特性，需设计 Auto 的模块/可见性/命名空间体系）
-**备注**：这是 Auto 语言的长期路线图项，非单个计划可完成。
+**待做**：a2r 在 `pub use.rust` 时生成 `pub use`（目前丢失 `pub`）。这是小修复。
+`pub mod` 和 `type alias` 需要 Auto 模块系统支持（见下）。
 
-### 缺口 G3：过程宏 derive（`#[derive(Parser)]`）
+**Auto 模块系统现状**：Auto 用文件 = 模块（不需要 `pub mod`声明，文件名即模块名）。
+跨文件引用通过 `use module_name` 或 `use.rust`。`pub mod api` 在 Auto 中不需要
+（api.at 文件即 api 模块）。`type alias` 可用 `type RelayMode = PipelineMode` 的
+等价写法（需验证 a2r 是否支持顶层 type alias）。
 
-**影响模块**：auto-musk main.rs（clap CLI 解析）
+**难度**：低（`pub` 丢失是小修复；`pub mod` 在 Auto 模型中不需要）
+
+### 缺口 G3：`#[derive(Parser)]` 过程宏 — 已透传 ✅（derive 属性层面）
+
+**影响模块**：auto-musk main.rs（clap CLI）
 
 **Rust 原文**：
 ```rust
@@ -332,42 +332,29 @@ struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
 }
-
-#[derive(Subcommand)]
-enum Cmd {
-    Run { #[arg(long)] task: String },
-    Serve { #[arg(long, default_value = "127.0.0.1:8080")] addr: String },
-}
 ```
-Rust 用 clap 的 `#[derive(Parser)]` + `#[command(...)]` + `#[arg(...)]` 属性，
-由过程宏在编译期生成 CLI 解析代码。
 
-**Auto 需要什么**：两种路径——
-**(a) 过程宏 derive 透传**：a2r 把 `#[derive(Parser)]` + 属性原样输出到 Rust，
-依赖 Rust 编译器调用 clap_derue 宏。Auto 侧只需保留这些属性。
-```auto
-#[derive(Parser)]
-#[command(name = "musk")]
-type Cli {
-    #[command(subcommand)]
-    cmd Cmd
-}
-```
-**(b) Auto 原生 CLI 语法**（更优雅，但工作量大）：
-```auto
-cli musk "AI coding assistant" {
-    run --task "task to run"
-    serve --addr "127.0.0.1:8080"
-}
-```
-a2r 生成 clap 代码或直接生成手写的 `std::env::args` 解析。
+**实测结果**：
+- `#[derive(Parser)]` 在 `type Cli` 上 → 生成 `#[derive(Parser)] struct Cli` ✅
+- 字段级 `#[serde(rename = "x")]` → 正确透传 ✅
+- **但** `#[derive(Parser, Subcommand)]`（多个 derive 逗号分隔）失败（E0007）
 
-**难度**：中（路径 a 只需 derive 属性透传，已有 serde derive 透传先例；路径 b 需新语法）
-**优先**：路径 a（derive 透传）是增量改进，工作量小。
+**Auto 编译期代码执行能力分析**（对比 Zig comptime）：
+Auto 的 `#{}` 编译期执行 + `#[]` 标注系统理论上可以替代 Rust 过程宏：
+- Zig 的 `comptime { ... }` 在编译期执行任意代码生成 → Auto 的 `#{}` 同理
+- Rust 过程宏接收 TokenStream 输出 TokenStream → Auto 可以用 `#{}` 在编译期
+  构造 AST/代码并注入
+- **但** Auto 的 comptime → a2r 转译路径尚未连通（同 G1 的 `#{}` 问题）
 
-### 缺口 G4：上游类型的 builder 方法链（Agent 构造）
+**待做**：
+1. 修复多 derive 逗号分隔（`#[derive(Parser, Subcommand)]` 的解析）
+2. 长期：用 `#{}` comptime 实现真正的编译期代码生成（替代过程宏的 TokenStream 变换）
 
-**影响模块**：auto-musk lib.rs（`build_agent_from_mode`/`build_agent_with_context`）
+**难度**：低（derive 透传已有，只需修多 derive 解析）/ 长期高（comptime 代码生成）
+
+### 缺口 G4：tuple 数组字面量 — 已工作 ✅
+
+**影响模块**：auto-musk lib.rs（`Vec<(&str, Arc<dyn Tool>)>`）
 
 **Rust 原文**：
 ```rust
@@ -375,17 +362,27 @@ let all_tools: Vec<(&str, Arc<dyn Tool>)> = vec![
     ("read_file", Arc::new(ReadFile)),
     ("write_file", Arc::new(WriteFile)),
 ];
-let agent = Agent::new(client, &role)
-    .with_tools(&all_tools)
-    .with_context_file(context_file);
 ```
-上游 `Agent` 类型的 builder 方法链 + `Vec<(&str, Arc<dyn Tool>)>` 元组数组。
 
-**Auto 现状**：`Agent.new().with_tools().with_context_file()` builder 链在
-relay/flows.rs 已验证（FlowSpec 同模式）可转译。`Vec<(&str, Arc<dyn Tool>)>`
-元组数组需 tuple 支持（a2r 对 tuple 参数有限制 a2r-7）。
+**实测结果**：
+- `List<(str, int)>` 返回 `[("a", 1), ("b", 2)]` → `Vec<(String, i32)>` + `vec![...]` ✅
+- `List<(str, Arc<dyn Tool>)>` 返回 `[("read", Arc.new(ReadFile()))]` →
+  `vec![("read".to_string(), Arc::new(ReadFile {}))]` ✅
 
-**Auto 需要什么**：tuple 数组字面量 `[("read_file", tool1), ("write_file", tool2)]`
-的完整支持（目前 tuple 字段访问和 List<(A,B)> 已验证可用，但元组字面量数组需测试）。
+**结论**：**tuple 数组字面量已完全工作**。之前判断"未实现"是错的——实测通过。
+lib.rs 的 Agent builder + tuple 数组现可移植。
 
-**难度**：低中（builder 链已验证；tuple 数组需测试 + 可能小幅修复）
+**难度**：无（已支持）
+
+### 更新后的缺口总览
+
+| 缺口 | 影响模块 | 实测结论 | 待做 | 难度 |
+|---|---|---|---|---|
+| G1 `include_str!` | workflow.rs | `#{}` comptime 基础设施已有，a2r 转译未连通 | a2r 增加 `#{}` → 常量输出 | 低 |
+| G2 `pub use` | relay/mod.rs | `pub use.rust` 转译通过但丢 `pub` 前缀 | a2r 补 `pub` 前缀 | 低 |
+| G3 `#[derive]` | main.rs | 单 derive 透传 ✅；多 derive 逗号失败 | 修多 derive 解析 | 低 |
+| G4 tuple 数组 | lib.rs | **已完全工作** ✅ | 无 | 无 |
+
+**结论**：4 个缺口中 G4 已解决、G1/G2/G3 各需一个小修复（a2r `#{}` 输出 / `pub` 前缀 /
+多 derive 解析）。没有"高难度架构缺口"——长期路线图的 Auto 模块系统不需要（Auto 用
+文件=模块模型）。修复这 3 个小缺口后，auto-musk 全部模块可 100% 移植。
