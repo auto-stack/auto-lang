@@ -1,6 +1,6 @@
 # Plan 380：a2r 对 Rust 互操作的三项补全（impl Trait 返回 / 元组结构体构造 / extractor 参数）
 
-> **Status**: 📐 方案设计完成，待实施（2026-08-01）
+> **Status**: P0/P1 已实施并合并 master（2026-08-01）；P2/P3/P4 记录待后续。
 > **来源**: auto-musk Plan 014 —— 移植 axum 异步 Web 层（server.rs 2206 行）时，
 > 误判"a2r 缺 async 支持"。复核 a2r 测试用例 + 逐点验证后发现：a2r 的 async/trait/
 > 库调用支持相当完整，真正阻塞 server handler 全量移植的是 3 个具体转译缺陷。
@@ -144,6 +144,45 @@ P1 补的是"直接写 `Arc<dyn>`/`Box<dyn>` 引用外部 Rust trait"的能力�
 （具体返回类型 / extractor 作整体参数）。修复它们的语法扩展工作量大、ROI 低，
 本计划仅记录，留给后续按需推进。
 
+### P4：SSE 流 + `async_stream!` 宏 + async trait 方法调用（auto-musk 🔴 handler 的真正阻塞）
+
+auto-musk server.rs 全量移植后（P0/P1 完成，45/52 handler 已移植），剩余 **7 个 🔴
+handler** 经分析确认阻塞在这三项 a2r 能力缺口（与 async 本身无关 —— async fn/await 已支持）：
+
+**缺口 1：`async_stream::stream!` 宏**
+- 模式：`Body::from_stream(async_stream::stream! { while let Some(ev) = rx.recv().await { yield json!(...) } })`
+- 用于 run_stream/chat_stream/workflow_run_stream 的 SSE 事件流构造。
+- a2r 现状：不支持 `async_stream::stream!` 宏（也不支持任意自定义宏调用生成）。
+- 绕开难度：**高**。stream! 宏是 SSE 流的事实标准写法，手写等价的 `Stream` trait 实现
+  非常冗长。建议 a2r 增加对 `async_stream::stream!` 的识别 + 透传（类似 `#[rs]` 但在
+  表达式位置），或提供一个 Auto 原生的异步生成器语法（Auto 已有 `~Iter<T>`/yield，
+  见 `21_generators` 测试 —— 可桥接到 `async_stream`）。
+
+**缺口 2：axum `Sse` + `Body::from_stream` + `tokio_stream::BroadcastStream`**
+- 模式：`Sse::new(BroadcastStream::new(rx)).keep_alive(...)`
+- 用于 conversation_stream（广播已生成事件到 SSE）。
+- a2r 现状：`Sse`/`Body::from_stream` 涉及 `impl Stream` trait bound + 闭包，a2r 对
+  `impl Trait` 返回（缺陷 B）和复杂 trait bound 支持不足。
+- 绕开难度：中。这部分 handler 可保留手写（数量少）。
+
+**缺口 3：async trait 方法调用（`Arc<dyn Client>` 的 async 方法）**
+- 模式：`agent.run(task).await` / `agent.run_stream(task, cb).await` / `wf.run(...).await`
+  —— 其中 `agent` 是 `Agent`（上游 auto_ai_agent 类型），`agent.run` 是 async 方法。
+- 用于 run/run_stream/workflow_run/chat_stream（核心 agent 执行）。
+- a2r 现状：async 方法调用（`obj.async_method().await`）的接收者是上游 trait object 时，
+  a2r 无法知道该方法返回 Future（Plan 373 的自动 .await 插入依赖返回类型缓存，对上游
+  类型方法无效）。
+- 绕开难度：中。可在 .at 侧显式写 `.await`（已支持），但需上游类型的方法签名可见。
+
+**结论**：P4 的三项缺口是 auto-musk 剩余 7 个 🔴 handler 的真正阻塞。其中**缺口 1
+（async_stream! 宏）影响最大**（4 个流式 handler 都用它）。建议作为后续 auto-lang 计划
+（如 Plan 381+）重点：优先探索 Auto 的 `~Iter<T>`/yield 生成器到 `async_stream` 的桥接
+（已有 `21_generators` 测试基础），这可能一次性解锁 4 个 SSE handler。
+
+P4 的其它模块（main/lib/workflow/tool_context/tools/spec_tools/orch_tools/relay driver/mod）
+经 auto-musk Plan 014 评估，确认**无可移植的纯数据**（全是 async trait 实现/上游桥接/
+全局状态），它们的移植完全取决于 P4 三项缺口。
+
 ## 3. 修复后的 server handler 移植形态（auto-musk 侧）
 
 修复 P0 后，auto-musk 的 axum handler 可这样移植（示例）：
@@ -184,8 +223,12 @@ fn build_router() Router {
 
 本计划是 Plan 014 的**上游依赖**：
 - Plan 379（已合并）解除 route 保留字 → server 路由表可移植
-- **Plan 380 P0**（本计划）修复元组结构体构造 → server handler 返回值可移植
-- 两者完成后，auto-musk server.rs 的路由表 + handler 主体可全量移植到 Auto
-- auto-musk Plan 014 的 a2r-20/21 限制可随之降级/移除
+- **Plan 380 P0**（已合并）修复元组结构体构造 → server handler 返回值可移植
+- **Plan 380 P1**（已合并）str 字面量兼容 → `Json(DTO(field:"x"))` 嵌套构造可移植
+- 三者完成后，auto-musk server.rs 的 **45/52 handler 已全量移植**（Plan 014 `8c69c46`）
+- **Plan 380 P4**（本节新增，待实施）是剩余 7 个 🔴 handler 的上游阻塞：
+  async_stream! 宏 / SSE 流 / async trait 方法调用。P4 落地后 server.rs 可 100% 移植，
+  且 main/lib/tools 等 9 个 🔴 模块也可推进。
 
-实施顺序：先 Plan 380 P0（本 worktree），合并后回 auto-musk 全量移植 server handler。
+实施顺序：P0/P1 已完成 → auto-musk server handler 已移植 → P4（后续 auto-lang 计划）
+→ auto-musk 剩余 🔴 模块。
