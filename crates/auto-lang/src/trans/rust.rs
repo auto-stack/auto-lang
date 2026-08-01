@@ -1490,18 +1490,26 @@ impl RustTrans {
                 // add .to_string() to convert &str -> String
                 if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                     if let Some(ref ret) = self.current_fn_ret_type {
-                        if let Type::Result(inner) = ret {
-                            if matches!(inner.as_ref(), Type::StrSlice | Type::StrOwned | Type::StrFixed(_)) {
-                                write!(out, ".to_string()")?;
-                            }
-                        } else if let Type::GenericInstance(inst) = ret {
-                            if inst.base_name == "Result" {
-                                if let Some(inner) = inst.args.first() {
-                                    if matches!(inner, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)) {
-                                        write!(out, ".to_string()")?;
+                        // Plan 384: helper — does this return type (possibly
+                        // wrapped in Future/async) boil down to Result<String,...>?
+                        fn ret_is_result_string(ty: &Type) -> bool {
+                            match ty {
+                                Type::Result(inner) => matches!(inner.as_ref(),
+                                    Type::StrSlice | Type::StrOwned | Type::StrFixed(_)),
+                                Type::GenericInstance(inst) => {
+                                    if inst.base_name == "Result" {
+                                        inst.args.first().map(|i| matches!(i,
+                                            Type::StrSlice | Type::StrOwned | Type::StrFixed(_))).unwrap_or(false)
+                                    } else {
+                                        // Future<Result<String,_>> / other wrapper: recurse into first arg
+                                        inst.args.first().map(ret_is_result_string).unwrap_or(false)
                                     }
                                 }
+                                _ => false,
                             }
+                        }
+                        if ret_is_result_string(ret) {
+                            write!(out, ".to_string()")?;
                         }
                     }
                 }
@@ -12869,10 +12877,13 @@ impl RustTrans {
         for line in &lines {
             let trimmed = line.trim();
 
-            // Track function declarations without return type (void)
+            // Track function declarations without return type (void).
+            // Plan 384: `-> ()` (explicit unit) is also void.
+            let is_void_ret = !trimmed.contains("->")
+                || trimmed.contains("-> ()") || trimmed.contains("->()");
             if (trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ")
                 || trimmed.starts_with("pub async fn ") || trimmed.starts_with("async fn "))
-                && !trimmed.contains("->")
+                && is_void_ret
             {
                 in_void_fn = true;
                 fn_brace_depth = brace_depth;
