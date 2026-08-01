@@ -10049,7 +10049,18 @@ impl RustTrans {
                     {
                         self.print_indent(&mut sink.body)?;
 
+                        // Plan 380 P6: detect async method (~T → Future<T> ret).
+                        // trait impl methods need `async fn` + unwrapped return type,
+                        // matching the trait declaration (fn_decl does this, but this
+                        // path generates the signature manually — it was hardcoded to
+                        // `fn` without async, producing `fn execute() -> Future<T>`
+                        // while the trait declares `async fn execute() -> T`).
+                        let method_is_async = matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+
                         // Method signature
+                        if method_is_async {
+                            write!(sink.body, "async ")?;
+                        }
                         write!(sink.body, "fn {}(&self", method.name)?;
 
                         // Parameters
@@ -10062,9 +10073,19 @@ impl RustTrans {
                             )?;
                         }
 
-                        // Return type
+                        // Return type — unwrap Future<T> → T for async fn
                         if !matches!(method.ret, Type::Void) {
-                            write!(sink.body, ") -> {}", self.rust_return_type_name(&method.ret))?;
+                            let ret_str = if method_is_async {
+                                match &method.ret {
+                                    Type::GenericInstance(inst) if inst.base_name == "Future" => {
+                                        self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                                    }
+                                    other => self.rust_return_type_name(other),
+                                }
+                            } else {
+                                self.rust_return_type_name(&method.ret)
+                            };
+                            write!(sink.body, ") -> {}", ret_str)?;
                         } else {
                             write!(sink.body, ")")?;
                         }
