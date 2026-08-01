@@ -1,0 +1,17 @@
+// Plan 377 §7/§8.4: 2^48 边界值 BigInt 堆装箱 round-trip + 算术。
+// 281474976710656 = 2^48（刚好超出 48 位内联范围，触发 BigInt 堆装箱）。
+// 验证：to_uint 解析大数 → print 正确（经 BigInt 堆装箱，非截断）。
+fn check() {
+    // 2^48 = 281474976710656，超出 u64 单槽 48 位内联范围
+    let s = "281474976710656"
+    let n = s.to_uint()
+    print(n)
+    // 两个接近 2^47 的值相加，结果 >= 2^48 → 触发 BigInt 堆装箱
+    let a = "140737488355328".to_uint()
+    let b = "140737488355328".to_uint()
+    print(a + b)
+    // 大值比较
+    print(a == b)
+    print(n > a)
+}
+check()

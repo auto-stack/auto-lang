@@ -41,6 +41,8 @@ pub mod websocket;   // Plan 350: WebSocket client
 pub mod c_ffi;
 
 pub use convert::VMConvertible;
+// Plan 377 §4.3: heap-aware 64-bit encode/decode（>2^48 BigInt 堆装箱兜底）
+pub use convert::{encode_i64_with_heap, encode_u64_with_heap, decode_i64_full, decode_u64_full};
 pub use error::FFIError;
 pub use stdlib::register_stdlib_ffi;
 pub use c_ffi::CFfiRuntime;

@@ -322,61 +322,70 @@ impl VirtualRAM {
     }
 
     // Plan 073 Stage A: 64-bit integer support
-    // Plan 377: i64 单槽化（48 位 payload 内联编码，>2^47 由 engine 层 BigInt 堆装箱兜底）。
-    // 注意：本函数仅负责内联编码——若值超出 48 位范围，将截断到 48 位（现实场景不触发，
-    // 见 plan 377 §2.6；真正的 >2^48 装箱在 engine/native 层用 encode_i64_with_heap 处理）。
+    // Plan 377: i64 单槽化（48 位 payload 内联编码）。>2^47 的值无法内联，本函数
+    // 会 panic —— 调用方（engine opcode / native）应改用 AutoVM::push_i64_vm
+    // （heap-aware 版本，溢出时 BigInt 堆装箱，见 plan 377 §4.3）。
+    // 现实场景全部 < 2^47（见 §2.6），故此 panic 不会被普通程序触发。
     #[inline(always)]
     pub fn push_i64(&mut self, val: i64) {
         match auto_val::try_encode_i64(val) {
             Some(nv) => self.push_nv(nv),
-            None => {
-                // 溢出 48 位范围：截断（应有调用侧 BigInt 装箱兜底；此处防御性处理）
-                let truncated = val & ((1i64 << 48) - 1);
-                let sign_extended = (truncated << 16) >> 16; // 符号扩展低 48 位
-                self.push_nv(auto_val::try_encode_i64(sign_extended)
-                    .unwrap_or(auto_val::encode_i32(0)));
-            }
+            None => panic!(
+                "push_i64({}) 超出 48 位内联范围（[-2^47, 2^47)），本层无法堆装箱；\
+                 engine/native 调用方应改用 AutoVM::push_i64_vm（heap-aware）", val
+            ),
         }
     }
 
     #[inline(always)]
     pub fn pop_i64(&mut self) -> i64 {
         // Plan 377: 弹出 64 位有符号整数。i64 与 u64 编码对称（仅 tag 不同），
-        // 此处统一处理 I64/U64/BIGINT/i32 任意 tag，避免 push/pop 标签不一致导致的截断。
+        // 此处统一处理 I64/U64/i32 任意 tag，避免 push/pop 标签不一致导致的截断。
+        // 注意：TAG_BIGINT（>2^48 堆装箱值）无法在此解引用（本层无 VM 访问），
+        // 遇到时 panic —— 调用方（engine opcode / native）应改用 AutoVM::pop_i64_vm
+        // （heap-aware 版本，见 plan 377 §4.3）。
         let nv = self.pop_nv();
         match auto_val::tag_of(nv) {
             t if t == 8 => auto_val::decode_i64(nv),      // TAG_I64
             t if t == 9 => auto_val::decode_u64(nv) as i64, // TAG_U64（按有符号读）
-            t if t == 0xA => {
-                // TAG_BIGINT —— 堆对象需 engine 层解码，此处回退到 payload（不应频繁发生）
-                auto_val::decode_bigint_handle(nv) as i64
-            }
+            t if t == 0xA => panic!(
+                "pop_i64 遇到 TAG_BIGINT（>2^48 堆装箱值），本层无法解引用；\
+                 engine/native 调用方应改用 AutoVM::pop_i64_vm（heap-aware）"
+            ),
             _ => auto_val::decode_i32(nv) as i64,         // 兼容 i32 操作数
         }
     }
 
     // Plan 073 Stage A: u64 support
-    // Plan 377: u64 单槽化（48 位 payload 内联编码，>2^48 由 engine 层 BigInt 堆装箱兜底）。
+    // Plan 377: u64 单槽化（48 位 payload 内联编码）。>=2^48 的值无法内联，本函数
+    // 会 panic —— 调用方（engine opcode / native）应改用 AutoVM::push_u64_vm
+    // （heap-aware 版本，溢出时 BigInt 堆装箱，见 plan 377 §4.3）。
+    // 现实场景全部 < 2^48（见 §2.6），故此 panic 不会被普通程序触发。
     #[inline(always)]
     pub fn push_u64(&mut self, val: u64) {
         match auto_val::try_encode_u64(val) {
             Some(nv) => self.push_nv(nv),
-            None => {
-                // 溢出 48 位范围：截断到低 48 位（应有调用侧 BigInt 装箱兜底）
-                self.push_nv(auto_val::try_encode_u64(val & ((1u64 << 48) - 1))
-                    .unwrap_or(auto_val::encode_i32(0)));
-            }
+            None => panic!(
+                "push_u64({}) 超出 48 位内联范围（[0, 2^48)），本层无法堆装箱；\
+                 engine/native 调用方应改用 AutoVM::push_u64_vm（heap-aware）", val
+            ),
         }
     }
 
     #[inline(always)]
     pub fn pop_u64(&mut self) -> u64 {
-        // Plan 377: 弹出 64 位无符号整数。统一处理 I64/U64/BIGINT/i32 任意 tag。
+        // Plan 377: 弹出 64 位无符号整数。统一处理 I64/U64/i32 任意 tag。
+        // 注意：TAG_BIGINT（>2^48 堆装箱值）无法在此解引用（本层无 VM 访问），
+        // 遇到时 panic —— 调用方（engine opcode / native）应改用 AutoVM::pop_u64_vm
+        // （heap-aware 版本，见 plan 377 §4.3）。
         let nv = self.pop_nv();
         match auto_val::tag_of(nv) {
             t if t == 9 => auto_val::decode_u64(nv),      // TAG_U64
             t if t == 8 => auto_val::decode_i64(nv) as u64, // TAG_I64（按无符号读）
-            t if t == 0xA => auto_val::decode_bigint_handle(nv) as u64, // TAG_BIGINT
+            t if t == 0xA => panic!(
+                "pop_u64 遇到 TAG_BIGINT（>2^48 堆装箱值），本层无法解引用；\
+                 engine/native 调用方应改用 AutoVM::pop_u64_vm（heap-aware）"
+            ),
             _ => auto_val::decode_i32(nv) as u32 as u64,  // 兼容 i32 操作数
         }
     }

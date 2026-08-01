@@ -734,6 +734,39 @@ impl AutoVM {
         self.heap_objects.remove(&id).map(|(_, v)| v)
     }
 
+    // ===== Plan 377 §4.3: heap-aware 64-bit push/pop =====
+    //
+    // virt_memory 的 push_i64/u64/pop_i64/u64 只处理 48 位内联编码（无 VM 访问），
+    // 溢出或 BIGINT 会 panic。以下方法在 AutoVM 层（有 heap_objects 访问）提供完整
+    // 64 位范围支持：push 溢出时 BigInt 堆装箱，pop 遇 BIGINT 时解引用堆对象。
+    // engine opcode / native 调用方应使用这些方法替代 task.ram.push/pop_i64/u64。
+
+    /// 压入 i64：48 位内联，否则 BigInt 堆装箱（完整 64 位范围）。
+    #[inline(always)]
+    pub fn push_i64_vm(&self, task: &mut AutoTask, val: i64) {
+        task.ram.push_nv(crate::vm::ffi::encode_i64_with_heap(self, val));
+    }
+
+    /// 压入 u64：48 位内联，否则 BigInt 堆装箱（完整 64 位范围）。
+    #[inline(always)]
+    pub fn push_u64_vm(&self, task: &mut AutoTask, val: u64) {
+        task.ram.push_nv(crate::vm::ffi::encode_u64_with_heap(self, val));
+    }
+
+    /// 弹出 i64：TAG_I64/U64 内联解码，TAG_BIGINT 解引用堆对象（完整 64 位范围）。
+    #[inline(always)]
+    pub fn pop_i64_vm(&self, task: &mut AutoTask) -> i64 {
+        let nv = task.ram.pop_nv();
+        crate::vm::ffi::decode_i64_full(self, nv)
+    }
+
+    /// 弹出 u64：TAG_U64/I64 内联解码，TAG_BIGINT 解引用堆对象（完整 64 位范围）。
+    #[inline(always)]
+    pub fn pop_u64_vm(&self, task: &mut AutoTask) -> u64 {
+        let nv = task.ram.pop_nv();
+        crate::vm::ffi::decode_u64_full(self, nv)
+    }
+
     /// Get the number of heap objects in the registry
     pub fn heap_object_count(&self) -> usize {
         self.heap_objects.len()
@@ -1877,16 +1910,16 @@ impl AutoVM {
                     task.ram.push_f64(val);
                 }
                 OpCode::CONST_I64 => {
-                    // Plan 073: 64-bit integer constant
+                    // Plan 073: 64-bit integer constant (Plan 377: heap-aware for >2^47)
                     let val = self.flash.read_i64(task.ip);
                     task.ip += 8;
-                    task.ram.push_i64(val);
+                    self.push_i64_vm(task, val);
                 }
                 OpCode::CONST_U64 => {
-                    // Plan 073: 64-bit unsigned integer constant
+                    // Plan 073: 64-bit unsigned integer constant (Plan 377: heap-aware for >=2^48)
                     let val = self.flash.read_u64(task.ip);
                     task.ip += 8;
-                    task.ram.push_u64(val);
+                    self.push_u64_vm(task, val);
                 }
                 OpCode::CONST_0 => {
                     task.ram.push_i32(0);
@@ -2337,7 +2370,7 @@ impl AutoVM {
                                 format!("{}", val)
                             }
                             4 => {
-                                let val = task.ram.pop_u64();
+                                let val = self.pop_u64_vm(task);
                                 format!("{}", val)
                             }
                             1 => {
@@ -2841,7 +2874,7 @@ impl AutoVM {
                 }
                 // Plan 193: i64 -> String
                 OpCode::TYPE_I64_TO_STR => {
-                    let val = task.ram.pop_i64();
+                    let val = self.pop_i64_vm(task);
                     let string_value = format!("{}", val);
                     let mut strings = self.strings.write().unwrap();
                     let str_idx = strings.len();
@@ -2851,7 +2884,7 @@ impl AutoVM {
                 }
                 // Plan 193: u64 -> String (hex)
                 OpCode::TYPE_U64_TO_STR => {
-                    let val = task.ram.pop_u64();
+                    let val = self.pop_u64_vm(task);
                     let string_value = format!("{:08x}", val);
                     let mut strings = self.strings.write().unwrap();
                     let str_idx = strings.len();
@@ -2893,10 +2926,10 @@ impl AutoVM {
                                 .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
                                 .unwrap_or(0i64);
                             drop(strings);
-                            task.ram.push_i64(parsed);
+                            self.push_i64_vm(task, parsed);
                         }
                         StackTag::Int(v) => {
-                            task.ram.push_i64(v as i64);
+                            self.push_i64_vm(task, v as i64);
                         }
                     }
                 }
@@ -4640,37 +4673,37 @@ impl AutoVM {
                     task.ram.push_f64(-a);
                 }
 
-                // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot)
+                // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
                 OpCode::ADD_U64 => {
-                    let b = task.ram.pop_u64();
-                    let a = task.ram.pop_u64();
-                    task.ram.push_u64(a.wrapping_add(b));
+                    let b = self.pop_u64_vm(task);
+                    let a = self.pop_u64_vm(task);
+                    self.push_u64_vm(task, a.wrapping_add(b));
                 }
                 OpCode::SUB_U64 => {
-                    let b = task.ram.pop_u64();
-                    let a = task.ram.pop_u64();
-                    task.ram.push_u64(a.wrapping_sub(b));
+                    let b = self.pop_u64_vm(task);
+                    let a = self.pop_u64_vm(task);
+                    self.push_u64_vm(task, a.wrapping_sub(b));
                 }
                 OpCode::MUL_U64 => {
-                    let b = task.ram.pop_u64();
-                    let a = task.ram.pop_u64();
-                    task.ram.push_u64(a.wrapping_mul(b));
+                    let b = self.pop_u64_vm(task);
+                    let a = self.pop_u64_vm(task);
+                    self.push_u64_vm(task, a.wrapping_mul(b));
                 }
                 OpCode::DIV_U64 => {
-                    let b = task.ram.pop_u64();
-                    let a = task.ram.pop_u64();
+                    let b = self.pop_u64_vm(task);
+                    let a = self.pop_u64_vm(task);
                     if b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    task.ram.push_u64(a / b);
+                    self.push_u64_vm(task, a / b);
                 }
                 OpCode::MOD_U64 => {
-                    let b = task.ram.pop_u64();
-                    let a = task.ram.pop_u64();
+                    let b = self.pop_u64_vm(task);
+                    let a = self.pop_u64_vm(task);
                     if b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    task.ram.push_u64(a % b);
+                    self.push_u64_vm(task, a % b);
                 }
 
                 // Plan 117: Type coercion for mixed arithmetic
@@ -4680,12 +4713,12 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::I64_TO_F64 => {
-                    let val = task.ram.pop_i64();
+                    let val = self.pop_i64_vm(task);
                     task.ram.push_f64(val as f64);
                     task.last_result_type = ResultType::Float;
                 }
                 OpCode::U64_TO_F64 => {
-                    let val = task.ram.pop_u64();
+                    let val = self.pop_u64_vm(task);
                     task.ram.push_f64(val as f64);
                     task.last_result_type = ResultType::Float;
                 }
@@ -6726,33 +6759,33 @@ impl AutoVM {
 
                 // Plan 378/377: u64/i64 comparison (each pops 1+1 slot, pushes 1 bool)
                 OpCode::EQ_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a == b));
                 }
                 OpCode::NE_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a != b));
                 }
                 OpCode::LT_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a < b));
                 }
                 OpCode::GT_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a > b));
                 }
                 OpCode::LE_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a <= b));
                 }
                 OpCode::GE_U64 => {
-                    let b = task.ram.pop_i64();
-                    let a = task.ram.pop_i64();
+                    let b = self.pop_i64_vm(task);
+                    let a = self.pop_i64_vm(task);
                     task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 

@@ -4034,7 +4034,8 @@ pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
             String::new()
         };
         let result = s.trim().parse::<i64>().unwrap_or(0);
-        task.ram.push_i64(result);
+        // Plan 377: heap-aware push —— >2^47 经 BigInt 堆装箱（完整 64 位范围）。
+        vm.push_i64_vm(task, result);
     }
     Ok(())
 }
@@ -5587,11 +5588,11 @@ pub fn shim_chrono_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
             if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
                 let ts = dt.lock().unwrap().and_utc().timestamp();
-                // Push as i32 if fits, otherwise as f64 for numeric comparison
+                // Push as i32 if fits, otherwise heap-aware i64 (Plan 377: >2^47 经 BigInt)
                 if ts >= i32::MIN as i64 && ts <= i32::MAX as i64 {
                     task.ram.push_i32(ts as i32);
                 } else {
-                    task.ram.push_i64(ts);
+                    vm.push_i64_vm(task, ts);
                 }
                 return Ok(());
             }

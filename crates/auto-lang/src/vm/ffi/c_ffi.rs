@@ -221,7 +221,7 @@ fn create_c_shim(
                 ([], CTypeDesc::Long) | ([], CTypeDesc::Size) => {
                     let f: fn() -> i64 = std::mem::transmute(fp);
                     let r = f();
-                    task.ram.push_i64(r);
+                    _vm.push_i64_vm(task, r);
                     return Ok(());
                 }
                 // --- double fn() ---
@@ -235,7 +235,7 @@ fn create_c_shim(
                 ([], CTypeDesc::Ptr) => {
                     let f: fn() -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let r = f();
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
 
@@ -257,7 +257,7 @@ fn create_c_shim(
                 ([CTypeDesc::CStr], CTypeDesc::Size) => {
                     let f: fn(*const std::ffi::c_char) -> usize = std::mem::transmute(fp);
                     let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- int fn(const char*) ---
@@ -279,7 +279,7 @@ fn create_c_shim(
                     let f: fn(*const std::ffi::c_char) -> *mut std::ffi::c_void =
                         std::mem::transmute(fp);
                     let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- int fn(const char*, const char*) ---
@@ -301,7 +301,7 @@ fn create_c_shim(
                         args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
                         args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
                     );
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- double fn(double, double) ---
@@ -319,7 +319,7 @@ fn create_c_shim(
                     let f: fn(usize) -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let sz = args_i64.get(0).copied().unwrap_or(0) as usize;
                     let r = f(sz);
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- void fn(ptr) ---
@@ -366,7 +366,7 @@ fn create_c_shim(
                         args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
                         args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
                     );
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- ptr fn(ptr_mut, int, ptr)  fgets ---
@@ -378,7 +378,7 @@ fn create_c_shim(
                         args_i32.get(0).copied().unwrap_or(0),
                         args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
                     );
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- ptr fn(ptr_mut, int, size_t)  memset ---
@@ -390,7 +390,7 @@ fn create_c_shim(
                         args_i32.get(0).copied().unwrap_or(0),
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- ptr fn(ptr_mut, ptr, size_t)  memcpy ---
@@ -402,7 +402,7 @@ fn create_c_shim(
                         args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_void,
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
-                    task.ram.push_i64(r as i64);
+                    _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- int fn(const char*, const char*, size_t)  strncmp ---
@@ -421,7 +421,7 @@ fn create_c_shim(
                 ([CTypeDesc::PtrMut], CTypeDesc::Long) => {
                     let f: fn(*mut std::ffi::c_void) -> i64 = std::mem::transmute(fp);
                     let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
-                    task.ram.push_i64(r);
+                    _vm.push_i64_vm(task, r);
                     return Ok(());
                 }
                 // --- double fn(double, double)  difftime ---
