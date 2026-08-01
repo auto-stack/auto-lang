@@ -134,3 +134,7 @@ test_temp.txt
 __pycache__/
 *.pyc
 .worktree/
+
+# Local junctions for cross-repo path deps (worktree-only)
+auto-ai/
+auto-lang/

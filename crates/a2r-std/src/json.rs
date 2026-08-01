@@ -23,6 +23,13 @@ pub fn parse(s: &str) -> Value {
     serde_json::from_str(s).unwrap_or(Value::Null)
 }
 
+/// Parse a JSON string, returning None on failure (Plan 013 G6).
+/// Mirrors Auto's `json.parse(s) -> ?JsonValue` (Option) semantics, used by the
+/// transpiled client's `is json.parse(...) { Some(v) => ... None => ... }`.
+pub fn parse_opt(s: &str) -> Option<Value> {
+    serde_json::from_str(s).ok()
+}
+
 pub fn is_valid(s: &str) -> bool {
     serde_json::from_str::<Value>(s).is_ok()
 }

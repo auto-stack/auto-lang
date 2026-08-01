@@ -15,6 +15,7 @@ pub mod list;
 pub mod hashmap;
 pub mod http;
 pub mod string_builder;
+pub mod process;
 
 // Re-export commonly used types
 pub use list::List;
