@@ -7118,9 +7118,14 @@ impl RustTrans {
         // Result::Ok), emit positional construction `Type(a, b, ...)` instead
         // of the named-field form `Type { field0: a, ... }` (which fails to
         // compile — E0560 — because tuple structs have no named fields).
+        // Plan 014: skip when args is EMPTY — a bare `Type()` for a unit /
+        // empty-member struct must stay `Type {}` (E0423 otherwise). bd4c475e
+        // broke this: `Assistant()` (empty members, not in struct_fields) got
+        // `Assistant()`, which also broke fix_spec_trait_boxing's
+        // `Some(X {})` regex, so builtin_roles regeneration failed to compile.
         let has_named_field = args.args.iter().any(|a| matches!(a, Arg::Name(_) | Arg::Pair(_, _)));
         let known_fields = self.struct_fields.get(type_name.as_str()).is_some();
-        if !has_named_field && !known_fields {
+        if !has_named_field && !known_fields && !args.args.is_empty() {
             write!(out, "{}(", type_name)?;
             for (i, arg) in args.args.iter().enumerate() {
                 if i > 0 {
