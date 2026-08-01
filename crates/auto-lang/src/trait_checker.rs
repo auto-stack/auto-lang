@@ -87,13 +87,14 @@ impl TraitChecker {
                             | (Type::StrSlice, Type::Unknown)
                             | (Type::StrOwned, Type::Unknown)
                     ) || {
-                        // Plan 380 P5: GenericInstance return types (e.g. Future<T> from ~T async
-                        // methods, List<T>, Map<K,V>). The matches! above can't handle them because
-                        // GenericInstance has no PartialEq. Compare by unique_name() — two
-                        // Future<StrSlice> both produce "Future<str>" so they match.
-                        matches!(&method.ret, Type::GenericInstance(_))
-                            && matches!(&spec_method.ret, Type::GenericInstance(_))
-                            && method.ret.unique_name() == spec_method.ret.unique_name()
+                        // Plan 380 P5/P5b: fallback for types not covered by the matches!
+                        // enumeration above — GenericInstance (Future<T>, List<T>), User
+                        // (external types like serde_json::Value), Spec, Enum, Tag, etc.
+                        // These Type variants don't implement PartialEq, so two identical
+                        // types compare as unequal. Use unique_name() string comparison as
+                        // a universal fallback: two Future<str> both produce "Future<str>",
+                        // two Value both produce "Value", etc.
+                        method.ret.unique_name() == spec_method.ret.unique_name()
                     };
 
                     if !is_compatible {
