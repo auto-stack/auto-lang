@@ -1,6 +1,13 @@
 # Plan 377：统一值表示 — 消除 2-slot，让所有值都是单槽 NanoValue
 
-> **状态**：✅ 阶段 0/1/2 完成（专项会话一次性切换）。阶段 3-4 待续。
+> **状态**：✅ 阶段 0/1/2 + §4.3(性能)/§4.4(文档) 完成。阶段 3（print/opcode 清理）待续。
+> **§4.3 性能验收（2026-08-01，release 模式）**：✅ 单槽不劣化，反而更快。
+>   - f64 push/pop 微基准（2M iters × 5 rounds 取最小）：2-slot 基线 **0.437 ns/op** → 单槽 **0.393 ns/op**（**快 ~10%**，因单槽少一次内存写 + 少一次 sp 自增）。
+>   - i64/u64 push/pop：单槽 **0.39 ns/op**（与 f64 持平）。
+>   - plan 073 Phase 9.1 综合基准：AutoVM vs Evaluator 平均加速 **6.76x**（健康，无回退）。
+>   - BigInt 堆装箱（u64::MAX round-trip）：110 ns/op（罕见路径，可接受）。
+>   - 新增 `tests/plan377_bench.rs`（4 个 `#[ignore]` 微基准，`--nocapture --ignored` 运行）。
+> **§4.4 文档（2026-08-01）**：✅ 完成。plan 378 归档文档已加「Plan 377 清算」表，逐项标注补丁去留（R1/R8/R9/§11.1/§10.4 已删/解决，类型推断辅助函数保留移交 plan 389）。
 > **阶段 0（2026-08-01）**：✅ 完成。`auto-val/nano_value.rs` 新增 `TAG_I64/U64/BIGINT`（0x8/0x9/0xA）、`try_encode_i64/decode_i64/try_encode_u64/decode_u64`、`PAYLOAD48_MASK`（48 位 payload）。6 个单元测试覆盖 48 位 round-trip、边界（±2⁴⁷）、溢出 None、类型不冲突。
 > **阶段 1+2（2026-08-01，专项会话）**：✅ 完成 — 一次性 codegen 切换 + 全量回归。
 >   - `virt_memory.rs`：`push_f64/pop_f64/push_i64/pop_i64/push_u64/pop_u64/pop_arith_operand` 全改单槽；`pop_i64/pop_u64` 统一处理 I64/U64/BIGINT/i32 任意 tag（标签对称，避免 push i64 / pop u64 截断）。

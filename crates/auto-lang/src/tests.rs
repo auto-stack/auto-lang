@@ -10,6 +10,8 @@ mod atom_tests;
 mod unified_api_tests;
 // Plan 073 Phase 9.1: Performance benchmarking
 mod perf_benchmark_tests;
+#[path = "tests/plan377_bench.rs"]
+mod plan377_bench; // Plan 377 §4.3: 单槽化性能验收
 // config_tests removed - Plan 091 (deprecated Interpreter dependency)
 mod const_generic_integration_tests; // Plan 052: Const generic integration tests
 mod const_generic_tests; // Plan 052: Const generic parameter tests

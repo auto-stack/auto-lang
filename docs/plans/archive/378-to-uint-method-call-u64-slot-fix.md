@@ -4,7 +4,25 @@
 
 > **Status**: ✅ 已完成（2026-07-31）— 见 §10「实施记录（根因扩展 + 全量 u64 基础设施修复）」
 > **遗留清算**: ✅ §10.5 `str.lower()` heap string 回归已于 2026-08-01 修复（见 §10.5.1）——实际根因是 engine.rs inline str 分发表漏了 `upper/lower/to_upper/to_lowercase` 别名，非 heap string 表示问题。本计划现可干净归档。
-> **继任计划**: **Plan 377（统一值表示 — 消除 2-slot）** — 本计划的 2-slot 补丁是更大架构缺陷（f64/i64/u64 占 2 槽）的下游症状。Plan 377 将从根本上消除 2-slot（让所有值单槽），届时本计划的多数补丁会被取代/删除。详见 `docs/plans/377-unify-value-representation-eliminate-2slot.md`。
+> **继任计划**: **Plan 377（统一值表示 — 消除 2-slot）** — 本计划的 2-slot 补丁是更大架构缺陷（f64/i64/u64 占 2 槽）的下游症状。Plan 377 已于 2026-08-01 完成阶段 1+2（全值单槽化），从根本上消除 2-slot。详见 `docs/plans/377-unify-value-representation-eliminate-2slot.md`。
+>
+> **Plan 377 清算（2026-08-01，本计划补丁的去留）**：Plan 377 完成单槽化后，本计划 §10.2 的多数 2-slot 补丁已被**取代/删除**，§10.4 的「全局 u64 大值截断」遗留已**解决**。逐项状态：
+>
+> | 本计划补丁（§10.2） | Plan 377 后状态 |
+> |---------------------|----------------|
+> | `shim_str_to_uint_nv` 推 2-slot i64（R1） | ✅ **改为单槽** `push_i64`（48 位内联 + BigInt 堆兜底） |
+> | `lookup_dot_method_type`/`dot_method_returns_64` | ⚠️ **保留**（仍用于类型推断 / opcode 选择，非 slot 计算） |
+> | `contains_u64`/`is_u64_expr` 的 Dot 分支 | ⚠️ **保留**（仍被 9 处调用选 `_U64` opcode；slot 语义退化为常量） |
+> | `needs_double_coercion` 的 Dot 分支（R6） | ⚠️ **保留**（只看类型，不再算 slot） |
+> | `expr_type_hint` 的 Dot 分支（R7） | ⚠️ **保留**（仍被 f-string BUILD_FSTR 调用；slot 语义退化为常量） |
+> | store 路径 2-slot 推断（R8） | ✅ **删除**（恒单 `emit_store_loc`，仅保留类型推断供 print 路由） |
+> | `NATIVE_PRINT_U64` + print 路由（R4） | ⚠️ **保留**（print 内部已单槽；统一为 `PRINT_UNIFIED` 属 plan 377 阶段 3 / plan 389） |
+> | u64 比较 opcode `EQ_U64` 等（R5） | ⚠️ **保留**（单槽版，执行体改 `pop_i64` 单槽） |
+> | global POP-high hack（§11.1） | ✅ **删除**（global 现与栈一致单槽，RHS 单槽无需 hack） |
+> | REPL `last_result` 2-slot 捕获（R9） | ✅ **删除**（改为单槽 `pop_nv`；`last_result_64` 字段保留兼容访问器） |
+> | §10.4 全局 u64 大值截断遗留 | ✅ **解决**（新增 `test_25/010_global_u64_large` 守护：`var x u64 = "5e9".to_uint()` = 5000000000） |
+>
+> **小结**：正确性相关的 2-slot 补丁（R1/R8/R9/§11.1/§10.4）已全部删除/解决；保留的是「类型推断用于 opcode/print 选择」的辅助函数（slot 语义已退化为常量，无 2-slot 含义），它们的进一步清理统一移交 plan 389（opcode 合并）。
 > **来源**: auto-shell Plan 034 附录 B Bug 1（2026-07-23 发现，2026-07-31 复核确认根因与行号）
 > **影响仓库**: `auto-lang`（`crates/auto-lang/src/vm/codegen.rs`）
 > **风险**: 中高 — 触动 codegen 类型推断，影响所有返回 I64/U64 的方法调用在算术/赋值/f-string 中的栈布局
