@@ -1,6 +1,9 @@
 # Plan 377：统一值表示 — 消除 2-slot，让所有值都是单槽 NanoValue
 
-> **状态**：⏳ 待实施（架构重构计划，源自 plan 378 复审发现的根因）
+> **状态**：🔄 分阶段实施中（阶段 0 完成，阶段 1 待续）
+> **阶段 0（2026-08-01）**：✅ 完成。`auto-val/nano_value.rs` 新增 `TAG_I64/U64/BIGINT`（0x8/0x9/0xA）、`try_encode_i64/decode_i64/try_encode_u64/decode_u64`、`PAYLOAD48_MASK`（48 位 payload）。6 个单元测试覆盖 48 位 round-trip、边界（±2⁴⁷）、溢出 None、类型不冲突。BigInt 堆对象（0.3）暂缓（现实场景不触发溢出，待阶段 2 需要时补）。
+> **阶段 1（f64 单槽化）**：⚠️ 撤回。push_f64/pop_f64 单槽 + pop_arith_operand 改 is_f64 检测已实施，但 codegen 侧的 2-slot 逻辑（store/load/RET_D/assign 的 Double 分支）深度交织——改其中一处（如 Double 不走 RET_D）会让 main 函数的字节码布局错乱，破坏基础 print。codegen 的 2-slot 逻辑分散在 ~15 处（§2.5 清单），需**一次性同步改完 + 逐处验证**，不能增量。后续作为专项推进。
+> **来源**：plan 378（`to_uint()` 栈错位）复审 + 用户关于"Auto 多数值类型 vs JS 单 f64"的架构讨论
 > **来源**：plan 378（`to_uint()` 栈错位）复审 + 用户关于"Auto 多数值类型 vs JS 单 f64"的架构讨论
 > **影响仓库**：`auto-lang`（`crates/auto-val`、`crates/auto-lang/src/vm`）
 > **风险**：高 — 触动整个 VM 值表示层；但**通过分阶段 + 每阶段全量回归**可控
