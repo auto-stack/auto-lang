@@ -315,7 +315,9 @@ impl SharedState {
         self.screenshot_request.take()
     }
 
-    /// Replace the state map (Plan 371 Task 21). Used by rust mode.
+    /// Replace the state map (Plan 371 Task 21). Used by rust mode, where the
+    /// DevTools layer pushes a `Component::state_snapshot()` each frame (there
+    /// is no VM heap to read from). VM mode uses [`SharedState::update`].
     pub fn set_state(&mut self, state: HashMap<String, auto_val::Value>) {
         self.state = state;
     }
@@ -1856,6 +1858,7 @@ fn execute_action_vnode(
     // typed `View<C::Msg>` to the exact node and extract its handler (replacing
     // the old Debug-substring heuristic that silently failed on many labels).
     let msg = if let Some(view) = shared.view.as_ref() {
+        // VM mode: extract named handler from the DynamicMessage.
         let target_view = find_view_by_path(view, &vnode.path)
             .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
         let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
@@ -1867,6 +1870,7 @@ fn execute_action_vnode(
             value: input_value.clone(),
         }
     } else {
+        // Rust mode: address by VNode path — the iced side resolves it exactly.
         ActionMessage {
             target: ActionTarget::Path { path: vnode.path.clone() },
             action: action.clone(),
@@ -1874,6 +1878,7 @@ fn execute_action_vnode(
         }
     };
 
+    // Build a human-readable handler label for the result report.
     let handler_label = match &msg.target {
         ActionTarget::Event { widget, event } => format!("{}.{}", widget, event),
         ActionTarget::Path { path } => format!("<path {:?}>", path),

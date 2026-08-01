@@ -6795,7 +6795,10 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             |_| None,
         );
 
-        // Plan 371 Task 11/21: sync VTree + scalar state to MCP SharedState.
+        // Plan 371 Task 11/21: sync VTree + scalar state to MCP SharedState so
+        // MCP tools (snapshot/vtree/find/exists/state) work in rust mode. The
+        // state snapshot comes from `Component::state_snapshot()` (default
+        // empty; the a2r generator overrides it for scalar fields).
         if let Some(ref mcp_shared) = *self.dt.mcp_shared.borrow() {
             let snap = crate::ui::mcp_server::StyledNodeSnapshot {
                 widget_name: self.dt.mcp_widget_name.clone(),
@@ -6851,17 +6854,28 @@ where
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(s) => {
-            // Plan 371 Task 19: MCP action dispatch (rust mode).
-            //   __mcp_action_path|<a,b,c>|<action>|<value> — path mode, walk
-            //     the typed View<C::Msg> to the exact node and extract its
-            //     handler. Replaces the old Debug-substring heuristic.
-            //     Input text is forwarded via thread-local INPUT_TEXT (Plan 374).
-            //   __mcp_action|<widget>.<event>|<value> — event fallback (no-op in rust).
+            // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
+            // modes, both resolved against the inner component's typed View tree:
+            //
+            //   __mcp_action_path|<a,b,c>|<action>|<value>
+            //       Path mode — walk the View<C::Msg> by child-index sequence to
+            //       the exact node and extract its typed handler. This replaces
+            //       the old Debug-substring heuristic (find_msg_by_event_name)
+            //       that silently failed on labels whose first word did not
+            //       substring-match an enum variant. Input text is forwarded via
+            //       the thread-local INPUT_TEXT (Plan 374), which the generated
+            //       `on()` reads via last_input_text().
+            //
+            //   __mcp_action|<widget>.<event>|<value>
+            //       Event mode fallback — rarely used in rust mode (VM mode
+            //       routes through a different subscription). Kept for parity.
             if let Some(rest) = s.strip_prefix("__mcp_action_path|") {
+                // path|action|value  (path may be empty for the root node)
                 let mut parts = rest.splitn(3, '|');
                 let path_str = parts.next().unwrap_or("");
                 let action_str = parts.next().unwrap_or("press");
                 let value_str = parts.next().unwrap_or("");
+
                 let path: Vec<u16> = if path_str.is_empty() {
                     Vec::new()
                 } else {
@@ -6879,9 +6893,15 @@ where
                 return iced::Task::none();
             }
             if let Some(rest) = s.strip_prefix("__mcp_action|") {
+                // Event fallback: <widget>.<event>|<value>
                 let mut parts = rest.splitn(2, '|');
                 let _widget_event = parts.next().unwrap_or("");
                 let input_value = parts.next().filter(|v| !v.is_empty());
+
+                // Best-effort: no typed handler to extract in event mode from the
+                // rust tree — this branch mainly serves as a no-op safety net.
+                // (VM mode dispatches actions via a separate subscription that
+                // converts ActionMessage -> IcedMessage directly.)
                 let _ = input_value;
                 return iced::Task::none();
             }
@@ -6892,8 +6912,9 @@ where
 }
 
 /// Plan 371 Task 19: walk a typed `View<M>` tree by a child-index `path`
-/// (matching `VNode.path`) and return a reference to the exact node. Precise
-/// replacement for the old Debug-substring heuristic [`find_msg_by_event_name`].
+/// (matching `VNode.path`, which is derived from `extract_children`) and return
+/// a reference to the exact node. This is the precise-addressing replacement
+/// for the old Debug-substring heuristic [`find_msg_by_event_name`] (removed).
 pub fn find_view_by_path_generic<'a, M: Clone + Debug>(
     view: &'a AbstractView<M>,
     path: &[u16],
@@ -6906,7 +6927,15 @@ pub fn find_view_by_path_generic<'a, M: Clone + Debug>(
     Some(current)
 }
 
-/// Plan 371 Task 19: extract the typed handler `M` from a View node by action.
+/// Plan 371 Task 19: extract the typed handler `M` from a View node, selected
+/// by `action_str` (press/type_text/toggle/clear/...). Mirrors the widget->field
+/// mapping the renderer uses when building iced widgets:
+/// - `Button.on_click`          -> press
+/// - `Input/Textarea.on_change` -> type_text / clear
+/// - `Checkbox.on_toggle`       -> toggle
+/// Returns `None` if the node has no handler for the requested action (e.g. a
+/// layout node, or an input without an on_change binding) -- the caller then
+/// silently drops the action (same observable behavior as a no-op click).
 fn extract_handler_from_view<M: Clone + Debug>(
     view: &AbstractView<M>,
     action_str: &str,
@@ -6932,8 +6961,13 @@ where
 {
     let inner = w.inner.subscription().map(WrapperMsg::Inner);
     // Plan 371 Task 19: drain MCP actions into WrapperMsg::Debug events.
-    //   Event (VM):   __mcp_action|<widget>.<event>|<value>
-    //   Path (rust):  __mcp_action_path|<a,b,c>|<action>|<value>
+    // Two addressing modes, encoded as distinct prefixes so devtools_update
+    // can dispatch without string ambiguity:
+    //   Event (VM mode):   __mcp_action|<widget>.<event>|<value>
+    //   Path  (rust mode): __mcp_action_path|<a,b,c>|<action>|<value>
+    // Path mode carries the VNode child-index sequence; devtools_update walks
+    // the typed View<C::Msg> to the exact node and extracts its handler,
+    // replacing the old Debug-substring heuristic.
     let mcp = iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
