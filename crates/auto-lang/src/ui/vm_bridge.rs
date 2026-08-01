@@ -1044,6 +1044,7 @@ mod tests {
             style_css: None,
             ext_imports: vec![],
             watchers: vec![],
+            exposes: vec![],
         }
     }
 
