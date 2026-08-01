@@ -3037,6 +3037,48 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 380 G1: compile-time expression (hash-brace comptime).
+            // For a2r, we evaluate the inner expression at transpile time.
+            // Supported: read_text("file") and string/int literals.
+            Expr::Comptime(hb) => {
+                let inner = &hb.expr;
+                // Try to evaluate: read_text("path") → read file contents
+                if let Expr::Call(call) = inner {
+                    if let Expr::Ident(name) = call.name.as_ref() {
+                        let fname = name.to_string();
+                        if fname == "read_text" || fname == "read_to_string" || fname == "include_str" {
+                            if let Some(arg) = call.args.args.first() {
+                                let arg_expr = arg.get_expr();
+                                if let Expr::Str(path) = arg_expr {
+                                    let content = std::fs::read_to_string(path.as_str())
+                                        .unwrap_or_else(|e| {
+                                            eprintln!("[a2r warning] #{{read_text(\"{}\")}} failed: {}, embedding empty string", path, e);
+                                            String::new()
+                                        });
+                                    // Escape for Rust string literal
+                                    write!(out, "\"{}\"", content.replace('\\', "\\\\").replace('"', "\\\""))?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+                // Fallback: try literal expressions
+                match inner {
+                    Expr::Str(s) => {
+                        let escaped = s.as_str().replace('\\', "\\\\").replace('"', "\\\"");
+                        write!(out, "\"{}\"", escaped)?;
+                        Ok(())
+                    }
+                    Expr::Int(i) => { write!(out, "{}", i)?; Ok(()) }
+                    Expr::Bool(b) => { write!(out, "{}", b)?; Ok(()) }
+                    _ => Err(format!(
+                        "Rust Transpiler: #{{}} comptime expression not supported for a2r (only read_text(\"file\") and literals). Got: {}",
+                        inner
+                    ).into()),
+                }
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
         }
     }
