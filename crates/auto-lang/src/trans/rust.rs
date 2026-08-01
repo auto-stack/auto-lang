@@ -2971,6 +2971,8 @@ impl RustTrans {
 
             // Plan 321: yield expression — in a2r mode, generators use
             // async-stream crate's stream! macro. yield expr → yield expr;
+            // Note: the trailing ';' is added by the statement emitter, so we
+            // do NOT add it here (doing so produces `yield expr;;` double-semi).
             Expr::Yield(expr) => {
                 write!(out, "yield ")?;
                 self.expr(expr, out)?;

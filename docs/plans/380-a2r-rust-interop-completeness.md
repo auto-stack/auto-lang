@@ -144,44 +144,50 @@ P1 补的是"直接写 `Arc<dyn>`/`Box<dyn>` 引用外部 Rust trait"的能力�
 （具体返回类型 / extractor 作整体参数）。修复它们的语法扩展工作量大、ROI 低，
 本计划仅记录，留给后续按需推进。
 
-### P4：SSE 流 + `async_stream!` 宏 + async trait 方法调用（auto-musk 🔴 handler 的真正阻塞）
+### P4：SSE 流 + async trait 方法调用（auto-musk 🔴 handler 的剩余阻塞）
 
-auto-musk server.rs 全量移植后（P0/P1 完成，45/52 handler 已移植），剩余 **7 个 🔴
-handler** 经分析确认阻塞在这三项 a2r 能力缺口（与 async 本身无关 —— async fn/await 已支持）：
+> **重要纠偏（2026-08-01 复核）**：初版 P4 判断"a2r 不支持 async_stream! 宏"是**错误的**。
+> 复核 a2r 源码（`trans/rust.rs` Plan 321）+ 实测后确认：a2r **已原生支持** async_stream
+> 桥接、Sse 构造、Event builder。P4 的真实状态如下。
 
-**缺口 1：`async_stream::stream!` 宏**
-- 模式：`Body::from_stream(async_stream::stream! { while let Some(ev) = rx.recv().await { yield json!(...) } })`
-- 用于 run_stream/chat_stream/workflow_run_stream 的 SSE 事件流构造。
-- a2r 现状：不支持 `async_stream::stream!` 宏（也不支持任意自定义宏调用生成）。
-- 绕开难度：**高**。stream! 宏是 SSE 流的事实标准写法，手写等价的 `Stream` trait 实现
-  非常冗长。建议 a2r 增加对 `async_stream::stream!` 的识别 + 透传（类似 `#[rs]` 但在
-  表达式位置），或提供一个 Auto 原生的异步生成器语法（Auto 已有 `~Iter<T>`/yield，
-  见 `21_generators` 测试 —— 可桥接到 `async_stream`）。
+**✅ 缺口 1（async_stream! 宏）：已支持（Plan 321，非缺口）**
 
-**缺口 2：axum `Sse` + `Body::from_stream` + `tokio_stream::BroadcastStream`**
-- 模式：`Sse::new(BroadcastStream::new(rx)).keep_alive(...)`
-- 用于 conversation_stream（广播已生成事件到 SSE）。
-- a2r 现状：`Sse`/`Body::from_stream` 涉及 `impl Stream` trait bound + 闭包，a2r 对
-  `impl Trait` 返回（缺陷 B）和复杂 trait bound 支持不足。
-- 绕开难度：中。这部分 handler 可保留手写（数量少）。
+a2r 的 `~Stream<T>` 返回类型 + `yield expr` 语法**已生成 `async_stream::stream!` 宏**：
+- `fn gen() ~Stream<Event>` → `fn gen() -> impl futures::Stream<Item = Event> { async_stream::stream! { ... } }`
+- `yield event` → `yield event;`（语句发射器自动加分号，无需特殊处理）
+- 已验证：`~Stream<Result<Event, Infallible>>` + `yield Ok(event)` 转译正确。
 
-**缺口 3：async trait 方法调用（`Arc<dyn Client>` 的 async 方法）**
-- 模式：`agent.run(task).await` / `agent.run_stream(task, cb).await` / `wf.run(...).await`
-  —— 其中 `agent` 是 `Agent`（上游 auto_ai_agent 类型），`agent.run` 是 async 方法。
-- 用于 run/run_stream/workflow_run/chat_stream（核心 agent 执行）。
-- a2r 现状：async 方法调用（`obj.async_method().await`）的接收者是上游 trait object 时，
-  a2r 无法知道该方法返回 Future（Plan 373 的自动 .await 插入依赖返回类型缓存，对上游
-  类型方法无效）。
-- 绕开难度：中。可在 .at 侧显式写 `.await`（已支持），但需上游类型的方法签名可见。
+初版误判源于未查 Plan 321 实现。auto-musk 的 run_stream/chat_stream/workflow_run_stream/
+conversation_stream 的 SSE 事件流**可通过 `~Stream<T>` + yield 移植**，无需手写。
 
-**结论**：P4 的三项缺口是 auto-musk 剩余 7 个 🔴 handler 的真正阻塞。其中**缺口 1
-（async_stream! 宏）影响最大**（4 个流式 handler 都用它）。建议作为后续 auto-lang 计划
-（如 Plan 381+）重点：优先探索 Auto 的 `~Iter<T>`/yield 生成器到 `async_stream` 的桥接
-（已有 `21_generators` 测试基础），这可能一次性解锁 4 个 SSE handler。
+**✅ 缺口 2（axum Sse + Event builder）：基本支持（非核心缺口）**
 
-P4 的其它模块（main/lib/workflow/tool_context/tools/spec_tools/orch_tools/relay driver/mod）
-经 auto-musk Plan 014 评估，确认**无可移植的纯数据**（全是 async trait 实现/上游桥接/
-全局状态），它们的移植完全取决于 P4 三项缺口。
+实测 `Sse.new(stream).keep_alive(ka)`、`Event.default().event("x").json_data(v)` builder
+链均正确转译。`~Response` 返回类型（`resp.into_response()`）可用。
+
+剩余的是 axum SSE 的**类型标注复杂度**（`Sse<impl Stream<Item = Result<Event, E>>>` 的
+泛型签名需精确标注；async_stream 的 Item 类型推断偶尔需 turbofish）。这是移植时的**写法
+调整**，不是 a2r 能力缺口 —— 在 .at 里给出精确的 `~Stream<Result<Event, Infallible>>`
+返回类型即可。
+
+**🔶 缺口 3（async trait 方法调用）：部分可绕开**
+
+- `agent.run(task).await` 等：a2r 支持 `.await`（表达式位置），可在 .at 侧显式写。
+  Plan 373 的自动 .await 插入对上游 auto_ai_agent 类型方法可能无效，但**显式 .await 总可用**。
+- 真正的阻塞是 `Arc<dyn Client>`（缺陷 D，泛型参数 `dyn` 不解析）—— AppState 字段类型。
+  已记录为缺陷 D（P1 待修）。在 P1 落地前，AppState 相关的 handler（run/chat_stream 等）
+  保留手写。
+
+**P4 结论（纠正后）**：a2r 的 async_stream/SSE 支持比初版判断的完善得多。auto-musk 剩余
+🔴 handler 的阻塞实际收敛为：
+1. **缺陷 D**（`Arc<dyn T>` 字段，P1）—— 影响 AppState 相关 handler
+2. **缺陷 B**（`impl IntoResponse` 返回，P2）—— 可绕开（具体返回类型）
+3. **上游类型可见性**（agent.run 等方法签名）—— 在 .at 侧显式 .await 可绕开
+
+**async_stream 桥接不是缺口**（Plan 321 已实现）。建议 auto-musk 侧重新评估 🔴 handler：
+除 settings_link（reqwest 外部 HTTP）外，其余 6 个（run/run_stream/chat_stream/
+conversation_stream/workflow_run/workflow_run_stream）在缺陷 D 修复后应可移植（用
+`~Stream<T>`+yield + 显式 .await + 具体返回类型）。
 
 ## 3. 修复后的 server handler 移植形态（auto-musk 侧）
 
