@@ -2,11 +2,11 @@
 //!
 //! Provides synchronous HTTP POST functions with thread-local status tracking,
 //! used by the transpiled agent runtime to call LLM APIs.
+//! Also provides streaming HTTP (HTTPStream) for SSE/chunk-by-chunk reading
+//! (plan 013 G6: lets the Auto .at client's complete_stream link under a2r).
 
 use std::cell::Cell;
 use std::io::Read;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
 
 thread_local! {
     static LAST_STATUS: Cell<u32> = Cell::new(0);
@@ -33,35 +33,6 @@ pub fn post_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
         .set("x-api-key", api_key)
         .set("anthropic-version", "2023-06-01")
         .send_string(body);
-
-    match result {
-        Ok(response) => {
-            let status = response.status();
-            let body_text = response.into_string().unwrap_or_default();
-            set_last_status(status as u32);
-            (status as u32, body_text)
-        }
-        Err(ureq::Error::Status(code, response)) => {
-            let body_text = response.into_string().unwrap_or_default();
-            set_last_status(code as u32);
-            (code as u32, body_text)
-        }
-        Err(ureq::Error::Transport(e)) => {
-            let msg = format!("transport error: {}", e);
-            set_last_status(0);
-            (0, msg)
-        }
-    }
-}
-
-/// Synchronous HTTP GET.
-///
-/// Returns `(status_code, response_body)`.
-/// On connection or request failure, returns `(0, error_message)`.
-pub fn get_sync(url: &str) -> (u32, String) {
-    let result = ureq::get(url)
-        .set("Accept", "*/*")
-        .call();
 
     match result {
         Ok(response) => {
@@ -115,255 +86,71 @@ pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     }
 }
 
-// =============================================================================
-// Plan 013 G6: request-builder + streaming HTTP (for transpiled auto-ai-client)
-//
-// Auto's `http.request(method, url)` returns a `RequestBuilder` whose chained
-// `.header(k,v)` / `.body(s)` / `.timeout(ms)` / `.send()` calls must resolve in
-// transpiled Rust. Likewise `http.post_stream_with_headers(url, body, headers)`
-// returns an `HTTPStream` with `.next()` / `.is_done()` / `.close()`.
-//
-// These mirror the VM-side stdlib (auto-lang/stdlib/auto/http.at) contract so
-// the same .at source runs both in the VM and via a2r→Rust.
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════
+// Streaming HTTP (plan 013 G6)
+// ═══════════════════════════════════════════════════════════════════════════
 
-/// A fluent HTTP request builder (the Rust realization of Auto's
-/// `http.request(method, url)` → `.header/.body/.timeout/.send` chain).
-pub struct RequestBuilder {
-    method: String,
-    url: String,
-    headers: Vec<(String, String)>,
-    body: Option<String>,
-    timeout_ms: Option<u64>,
-}
-
-/// Build a new request (entry point; mirrors `http.request(method, url)`).
-pub fn request(method: &str, url: &str) -> RequestBuilder {
-    RequestBuilder {
-        method: method.to_string(),
-        url: url.to_string(),
-        headers: Vec::new(),
-        body: None,
-        timeout_ms: None,
-    }
-}
-
-impl RequestBuilder {
-    /// Add a header. Mirrors `RequestBuilder.header(self, key, value)`.
-    pub fn header(mut self, key: &str, value: &str) -> RequestBuilder {
-        self.headers.push((key.to_string(), value.to_string()));
-        self
-    }
-
-    /// Set the body. Mirrors `RequestBuilder.body(self, body)`.
-    pub fn body(mut self, body: &str) -> RequestBuilder {
-        self.body = Some(body.to_string());
-        self
-    }
-
-    /// Set a timeout in milliseconds. Mirrors `RequestBuilder.timeout(self, ms)`.
-    pub fn timeout(mut self, ms: u32) -> RequestBuilder {
-        self.timeout_ms = Some(ms as u64);
-        self
-    }
-
-    /// Send the request. Mirrors `RequestBuilder.send(self) -> Response`.
-    pub fn send(self) -> Response {
-        let method = self.method.clone();
-        let url = self.url.clone();
-        let headers = self.headers.clone();
-        let body = self.body.clone();
-        let timeout_ms = self.timeout_ms;
-
-        let result = std::thread::spawn(move || -> Result<(u32, Vec<u8>), String> {
-            let mut req = match method.as_str() {
-                "GET" => ureq::get(&url),
-                "POST" => ureq::post(&url),
-                "PUT" => ureq::put(&url),
-                "DELETE" => ureq::delete(&url),
-                _ => ureq::request(method.as_str(), &url),
-            };
-            for (k, v) in &headers {
-                req = req.set(k, v);
-            }
-            if let Some(ms) = timeout_ms {
-                req = req.timeout(std::time::Duration::from_millis(ms));
-            }
-            let send_result = match &body {
-                Some(b) => req.send_string(b),
-                None => req.call(),
-            };
-            match send_result {
-                Ok(response) => {
-                    let status = response.status() as u32;
-                    let mut buf = Vec::new();
-                    response.into_reader()
-                        .read_to_end(&mut buf)
-                        .unwrap_or(0);
-                    Ok((status, buf))
-                }
-                Err(ureq::Error::Status(code, response)) => {
-                    let status = code as u32;
-                    let mut buf = Vec::new();
-                    response.into_reader()
-                        .read_to_end(&mut buf)
-                        .unwrap_or(0);
-                    Ok((status, buf))
-                }
-                Err(ureq::Error::Transport(e)) => Err(e.to_string()),
-            }
-        })
-        .join()
-        .unwrap_or_else(|_| Err("thread panicked".to_string()));
-
-        match result {
-            Ok((status, body)) => {
-                set_last_status(status);
-                Response { status, body }
-            }
-            Err(_e) => {
-                set_last_status(0);
-                Response { status: 0, body: Vec::new() }
-            }
-        }
-    }
-}
-
-/// An HTTP response. Mirrors Auto's `http.Response`.
-pub struct Response {
-    status: u32,
-    body: Vec<u8>,
-}
-
-impl Response {
-    /// The HTTP status code. Mirrors `Response.status_code(self) -> int`.
-    pub fn status_code(&self) -> u32 {
-        self.status
-    }
-
-    /// The response body as bytes. Mirrors `Response.body_bytes(self) -> []byte`.
-    pub fn body_bytes(&self) -> Vec<u8> {
-        self.body.clone()
-    }
-
-    /// Look up a response header. Mirrors `Response.header_get(self, key)`.
-    /// (Not tracked for the builder path; returns "".)
-    pub fn header_get(&self, _key: &str) -> String {
-        String::new()
-    }
-}
-
-/// A streaming HTTP response. Mirrors Auto's `http.HTTPStream`.
+/// A streaming HTTP response reader. Mirrors the AutoVM stdlib's HTTPStream
+/// type (stdlib/auto/http.at:225-244). Used by the transpiled auto-ai-client
+/// `.at` source's `complete_stream` to read SSE chunks.
 ///
-/// A background thread reads the response body in chunks and feeds them over a
-/// channel; `next()` pulls one chunk, `is_done()` reports end-of-stream.
-/// (Synthetic markers deliver the status code and end-of-stream signal over the
-/// same channel so the call sites compiled from `.at` need no extra plumbing.)
+/// NOTE: this is **synchronous blocking I/O** (std::io::Read via ureq). In an
+/// async (tokio) context, callers must wrap the read loop in
+/// `tokio::task::spawn_blocking` to avoid stalling the runtime.
 pub struct HTTPStream {
-    rx: Arc<Mutex<mpsc::Receiver<String>>>,
-    done: Arc<Mutex<bool>>,
+    reader: Box<dyn Read + Send>,
+    done: bool,
 }
 
-/// Create a streaming POST request with custom headers.
-/// `headers` is a single string of newline-separated `"Key: Value"` lines
-/// (mirrors Auto's `post_stream_with_headers(url, body, headers)`).
+/// Send a streaming POST request. Returns an `HTTPStream` that can be read
+/// chunk by chunk via `next()`.
+///
+/// `headers` is a newline-separated string of "Key: Value" pairs (matching the
+/// AutoVM stdlib's convention, e.g. "Content-Type: application/json\nX-App-Name: foo").
 pub fn post_stream_with_headers(url: &str, body: &str, headers: &str) -> HTTPStream {
-    let (tx, rx) = mpsc::channel::<String>();
-    let rx = Arc::new(Mutex::new(rx));
-    let done = Arc::new(Mutex::new(false));
-
-    let url = url.to_string();
-    let body = body.to_string();
-    let parsed_headers: Vec<(String, String)> = headers
-        .split('\n')
-        .filter_map(|line| {
-            let line = line.trim();
-            let idx = line.find(':')?;
-            let (k, v) = line.split_at(idx);
-            Some((k.trim().to_string(), v[1..].trim().to_string()))
-        })
-        .collect();
-
-    let done_clone = Arc::clone(&done);
-    std::thread::spawn(move || {
-        let mut req = ureq::post(&url);
-        for (k, v) in &parsed_headers {
-            req = req.set(k, v);
+    let mut req = ureq::post(url);
+    req = req.set("Content-Type", "application/json");
+    for line in headers.lines() {
+        let line = line.trim();
+        if let Some((k, v)) = line.split_once(": ") {
+            req = req.set(k, v.trim());
         }
-        let result = req.send_string(&body);
-        match result {
-            Ok(response) => {
-                let _ = tx.send(format!("__status__:{}", response.status()));
-                drain_body(&tx, response.into_reader());
-            }
-            Err(ureq::Error::Status(code, response)) => {
-                let _ = tx.send(format!("__status__:{code}"));
-                drain_body(&tx, response.into_reader());
-            }
-            Err(ureq::Error::Transport(_e)) => {
-                let _ = tx.send("__status__:0".to_string());
+    }
+    match req.send_string(body) {
+        Ok(resp) => {
+            let status = resp.status();
+            set_last_status(status as u32);
+            if status >= 200 && status < 300 {
+                HTTPStream { reader: resp.into_reader(), done: false }
+            } else {
+                HTTPStream { reader: Box::new(std::io::empty()), done: true }
             }
         }
-        let _ = tx.send("__done__".to_string());
-        let mut d = done_clone.lock().unwrap();
-        *d = true;
-    });
-
-    HTTPStream { rx, done }
-}
-
-/// Read a response body reader to EOF, sending 8 KiB text chunks on `tx`.
-fn drain_body(tx: &mpsc::Sender<String>, mut reader: impl Read) {
-    let mut buf = [0u8; 8192];
-    loop {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
-                if tx.send(chunk).is_err() {
-                    break;
-                }
-            }
-            Err(_) => break,
+        Err(ureq::Error::Status(code, _)) => {
+            set_last_status(code as u32);
+            HTTPStream { reader: Box::new(std::io::empty()), done: true }
+        }
+        Err(ureq::Error::Transport(_)) => {
+            set_last_status(0);
+            HTTPStream { reader: Box::new(std::io::empty()), done: true }
         }
     }
 }
 
 impl HTTPStream {
-    /// Read the next chunk from the stream. Returns "" when the stream is
-    /// exhausted (or the synthetic "__done__" marker is reached). Mirrors
-    /// `HTTPStream.next(self) -> str`.
+    /// Read the next chunk. Returns empty string when done or on error.
     pub fn next(&mut self) -> String {
-        let rx = self.rx.lock().unwrap();
-        match rx.recv() {
-            Ok(chunk) => {
-                if chunk == "__done__" {
-                    return String::new();
-                }
-                // Swallow the leading status marker; callers consume body chunks.
-                if chunk.starts_with("__status__:") {
-                    drop(rx);
-                    return self.next();
-                }
-                chunk
-            }
-            Err(_) => String::new(),
+        if self.done { return String::new(); }
+        let mut buf = [0u8; 4096];
+        match self.reader.read(&mut buf) {
+            Ok(0) | Err(_) => { self.done = true; String::new() }
+            Ok(n) => String::from_utf8_lossy(&buf[..n]).to_string(),
         }
     }
 
-    /// 1 if the stream is finished, 0 if more chunks may arrive. Mirrors
-    /// `HTTPStream.is_done(self) -> int`.
-    pub fn is_done(&self) -> u32 {
-        let d = self.done.lock().unwrap();
-        if *d {
-            1
-        } else {
-            0
-        }
-    }
+    /// Returns 1 if done, 0 otherwise (mirrors AutoVM int convention).
+    pub fn is_done(&self) -> i32 { if self.done { 1 } else { 0 } }
 
-    /// Close/release the stream. Mirrors `HTTPStream.close(self)`. The
-    /// background thread exits when the receiver is dropped; this is a no-op
-    /// placeholder that lets transpiled `.close()` calls compile.
-    pub fn close(&self) {}
+    /// Close the stream.
+    pub fn close(&mut self) { self.done = true; }
 }
