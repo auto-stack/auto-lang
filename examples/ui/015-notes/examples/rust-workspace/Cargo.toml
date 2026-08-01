@@ -1,7 +1,6 @@
 [workspace]
 members = [
-    "015-notes",
-    "015-notes-back"
+    "015-notes"
 ]
 resolver = "2"
 
