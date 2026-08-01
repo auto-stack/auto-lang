@@ -281,6 +281,7 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_16_interop_001_async_fn() { test_a2r("16_interop/001_async_fn").unwrap(); }
 #[test] fn test_16_interop_002_tokio_main() { test_a2r("16_interop/002_tokio_main").unwrap(); }
 #[test] fn test_16_interop_003_field_attrs() { test_a2r("16_interop/003_field_attrs").unwrap(); }
+#[test] fn test_16_interop_004_variant_from_attr() { test_a2r("16_interop/004_variant_from_attr").unwrap(); }
 
 // === 18_rust_std ===
 #[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }

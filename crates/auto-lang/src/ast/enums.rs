@@ -82,6 +82,10 @@ pub struct EnumItem {
     /// Example: `Api { status uint, message str }` has fields [EnumField("status", uint), EnumField("message", str)]
     /// When non-empty, `payload_type` and `payload_types` should be empty.
     pub fields: Vec<EnumField>,
+    /// Plan 382: variant-level attributes (`#[from]`, `#[error("...")]`, ...).
+    /// Example: `#[from] Client(ClientError)` → attrs = ["from"].
+    /// The Rust transpiler uses `from` to emit `impl From<Payload> for Enum`.
+    pub attrs: Vec<AutoStr>,
 }
 
 impl EnumItem {

@@ -38,8 +38,10 @@ ext ToolError {
 #[derive(Debug)]
 pub enum AgentError {
     /// Propagated from the Layer-2 LLM client.
+    #[from]
     Client(ClientError)
     /// Propagated from a tool invocation.
+    #[from]
     Tool(ToolError)
     /// A requested tool was not registered.
     ToolNotFound(str)

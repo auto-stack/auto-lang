@@ -26,6 +26,13 @@ impl ToolError {
         };
     }
 }
+impl std::fmt::Display for ToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+impl std::error::Error for ToolError {}
+
 
 /// Human-readable message (mirrors Rust's Display impl).
 /// The unified error type for the agent layer.
@@ -45,6 +52,18 @@ pub enum AgentError {
     Config(String),
 }
 
+impl From<ClientError> for AgentError {
+    fn from(e: ClientError) -> Self {
+        AgentError::Client(e)
+    }
+}
+
+impl From<ToolError> for AgentError {
+    fn from(e: ToolError) -> Self {
+        AgentError::Tool(e)
+    }
+}
+
 
 impl AgentError {
     pub fn message(&self) -> String {
@@ -58,3 +77,9 @@ impl AgentError {
         };
     }
 }
+impl std::fmt::Display for AgentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+impl std::error::Error for AgentError {}
