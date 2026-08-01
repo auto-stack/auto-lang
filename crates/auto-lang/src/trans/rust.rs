@@ -10023,7 +10023,17 @@ impl RustTrans {
                     continue; // Skip empty impl blocks
                 }
 
+                // Plan 380 P7: if any matched method is async (~T → Future),
+                // the impl block needs #[async_trait] (same as trait decl).
+                let has_async = matched_methods.iter().any(|m| {
+                    matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
+                });
+
                 sink.body.write(b"\n")?;
+
+                if has_async {
+                    write!(sink.body, "#[async_trait::async_trait]\n")?;
+                }
 
                 // Build impl signature with generic parameters
                 write!(sink.body, "impl {}", spec_decl.name)?;
