@@ -1634,7 +1634,14 @@ impl RustTrans {
                                 // or is a known module from use.rust imports)
                                 let is_type_name = if let Expr::Ident(lhs_name) = lhs.as_ref() {
                                     let name = lhs_name.as_str();
-                                    name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                    // Plan 384 S2: a known local variable / param / `self`
+                                    // is a value, NOT a type/module — even if its name happens
+                                    // to match a `use` path leaf (e.g. local `sse` vs module
+                                    // `axum::response::sse`). Short-circuit before the uses check.
+                                    let is_local = name == "self"
+                                        || self.local_var_types.contains_key(name);
+                                    !is_local && (
+                                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                                         || matches!(name,
                                             "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
                                             | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
@@ -1646,6 +1653,7 @@ impl RustTrans {
                                                 || u_str.ends_with(&format!("::{}", name))
                                         })
                                         || self.module_types.contains_key(name) // Plan 264: known module name
+                                    )
                                 } else {
                                     false
                                 };
@@ -3501,6 +3509,15 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    ("process", "spawn") => {
+                        // process.spawn(args) → a2r_std::process::spawn(args)
+                        // (Plan 013 G6: detached spawn for daemon bootstrap. `args` is a
+                        // Vec<String> whose [0] element is the program path.)
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::process::spawn(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     _ => {}
                 }
             }
@@ -5085,9 +5102,15 @@ impl RustTrans {
                     return Ok(());
                 }
                 "find" => {
-                    // s.find(needle, start_pos?) -> a2r_std::str_find(&s, &needle, start_pos)
+                    // s.find(needle)        -> a2r_std::str_find(&s, &needle)
+                    // s.find(needle, start) -> a2r_std::str_find_from(&s, &needle, start)
                     // Auto's .find() is only for strings; always intercept.
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_find(")?;
+                    self.a2r_std_used.set(true);
+                    if call.args.args.len() >= 2 {
+                        write!(out, "a2r_std::str_find_from(")?;
+                    } else {
+                        write!(out, "a2r_std::str_find(")?;
+                    }
                     self.expr_as_str(object, out)?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         write!(out, ", ")?;
@@ -5102,10 +5125,6 @@ impl RustTrans {
                             // start_pos: i32, no conversion
                             self.arg(arg, out)?;
                         }
-                    }
-                    // Default start_pos = 0 if not provided
-                    if call.args.args.len() < 2 {
-                        write!(out, ", 0")?;
                     }
                     write!(out, ")")?;
                     return Ok(());
