@@ -6155,13 +6155,20 @@ impl RustTrans {
             let obj_is_type_chain = match object.as_ref() {
                 Expr::Ident(id) => {
                     let name = id.as_str();
-                    Self::auto_type_to_rust(name).is_some()
-                        || self.uses.iter().any(|u| {
-                            let u_str = u.as_str();
-                            u_str == name || u_str.ends_with(&format!("::{}", name))
-                        })
-                        || self.dep_crates.contains(id)
-                        || self.module_types.contains_key(name) // Plan 264
+                    // Plan 384 S2: a known local variable / param / `self` is a
+                    // value, not a type/module — short-circuit even if its name
+                    // matches a use.rust path leaf (e.g. local `sse` vs module
+                    // `axum::response::sse`).
+                    let is_local = name == "self" || self.local_var_types.contains_key(name);
+                    !is_local && (
+                        Self::auto_type_to_rust(name).is_some()
+                            || self.uses.iter().any(|u| {
+                                let u_str = u.as_str();
+                                u_str == name || u_str.ends_with(&format!("::{}", name))
+                            })
+                            || self.dep_crates.contains(id)
+                            || self.module_types.contains_key(name) // Plan 264
+                    )
                 }
                 Expr::Dot(il, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {
