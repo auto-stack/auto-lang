@@ -1,6 +1,6 @@
 # Plan 384：a2r 引用注入 / 类型推断 / derive 精确化（auto-musk Plan 015 治本）
 
-> **Status**: 计划已制定，待实施。
+> **Status**: ✅ Completed（阶段一+阶段二全部交付，2026-08-03）。全量转译合并编译 0 错误。
 > **来源**: auto-musk Plan 015 —— 合并编译 153→0 错误。0 错误是用「产物 .rs 手改」绕开的，
 > 重新转译会重现。本计划在 a2r 层治本，目标是「全量重新转译 + nativeize + cargo check
 > 无需产物手改即可 0 错误」。
@@ -286,3 +286,25 @@ cd ../../.. && cargo check
 | A9 方法映射 | `trans/rust.rs: 4449-4450; 5656` |
 | A8 skip_self | `trans/rust.rs: spec_decl 10866; fn_decl(skip) 8108` |
 | A10 nativeize | `auto-musk/.../nativeize.pl: 135-137` |
+
+### 阶段二结果（2026-08-02）
+
+✅ **完成**。全量重新转译（新版 a2r + extern_sigs + nativeize 后处理）达成 **0 错误**，
+无需任何产物 .rs 手改。
+
+实施：
+- **a2r S2**（rust.rs:6155）：is_type_name 加 local_var_types 短路，局部变量
+  sse 不再误判为模块 → sse.keep_alive 正确（清 4 个 E0433）。已合并 master。
+- **extern_impl**：mpsc/broadcast stub 改 Value 不透明 + sse_event helper +
+  chats stub 返回 SessionResp + step_err/relay_submit_error 收 Result +
+  delete-path/broadcast_recv 取引用 + event_map 收 Option<Value>
+- **.at**：server_stream.at（4 流函数签名 Result<Event,Infallible> + yield Ok
+  + sse_event helper + rx Value 类型 + on_event Option<Value> + 删 Duration）；
+  lib.at（agent var + c.clone + load_role is 匹配）；workflow.at（const str +
+  parse_at_workflow is 匹配）；server.at（Router<AppState>）；relay_driver.at
+  （role_id.to_string）；relay_flows.at（ExitRouting 结构体变体）；server_serve.at
+  （match wildcard + step_err）
+- **nativeize.pl**：const 类型修正（String→&str）+ 删 schema fn main +
+  void-fn return None→return + impl Stream lifetime + conv_event_stream owned id +
+  ExitRouting 结构体变体 + OwnedRole impl Role 注入
+- **gen_extern_sigs.js**：sse_event 返回 Event 后处理

@@ -138,3 +138,4 @@ __pycache__/
 # Local junctions for cross-repo path deps (worktree-only)
 auto-ai/
 auto-lang/
+node_modules
