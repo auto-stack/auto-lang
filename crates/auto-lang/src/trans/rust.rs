@@ -1269,7 +1269,14 @@ impl RustTrans {
             }
             // Recurse into generic instances to handle Future<String> etc.
             Type::GenericInstance(inst) => {
-                let args: Vec<String> = inst.args.iter().map(|t| self.rust_return_type_name(t)).collect();
+                // Rust forbids `impl Trait` nested inside generic args
+                // (e.g. `Result<impl Trait, E>` is illegal — `impl Trait` is
+                // only valid at the top level of a return type). So inner type
+                // args use `rust_type_name` (str→String preserved, no `impl`
+                // prefix) rather than `rust_return_type_name`. This stops
+                // `Result<Node, E>` (Node via `use.rust auto_atom::*`) from
+                // becoming `Result<impl Node, E>`.
+                let args: Vec<String> = inst.args.iter().map(|t| self.rust_type_name(t)).collect();
                 let base = if let Some(ref source) = inst.source {
                     source.short_name().to_string()
                 } else {
