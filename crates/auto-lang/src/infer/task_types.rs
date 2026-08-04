@@ -118,6 +118,7 @@ impl TaskTypeChecker {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: vec![],
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 })
@@ -136,6 +137,7 @@ impl TaskTypeChecker {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: vec![],
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 })
@@ -262,6 +264,7 @@ impl TaskTypeChecker {
                 delegations: Vec::new(),
                 methods: Vec::new(),
                 attrs: vec![],
+                impl_attrs: vec![],
                 doc: None,
                 is_pub: false,
             }),
@@ -293,6 +296,7 @@ impl TaskTypeChecker {
                 delegations: Vec::new(),
                 methods: Vec::new(),
                 attrs: vec![],
+                impl_attrs: vec![],
                 doc: None,
                 is_pub: false,
             }),

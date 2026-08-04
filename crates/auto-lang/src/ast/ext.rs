@@ -72,6 +72,11 @@ pub struct Ext {
 
     /// Whether this ext is defined in the same module as the target type
     pub is_same_module: bool,
+
+    /// Plan 364 W1: pass-through attribute macros for the impl block —
+    /// `#[zbus.interface(...)]`, `#[allow(...)]`, etc. Emitted verbatim
+    /// before `impl ... {`.
+    pub attrs: Vec<AutoStr>,
 }
 
 impl Ext {
@@ -86,6 +91,7 @@ impl Ext {
             methods,
             module_path: AutoStr::from(""),
             is_same_module: false,
+            attrs: Vec::new(),
         }
     }
 
@@ -106,6 +112,7 @@ impl Ext {
             methods,
             module_path,
             is_same_module,
+            attrs: Vec::new(),
         }
     }
 
@@ -124,6 +131,7 @@ impl Ext {
             methods,
             module_path: AutoStr::from(""),
             is_same_module: false,
+            attrs: Vec::new(),
         }
     }
 }

@@ -656,6 +656,7 @@ pub struct TypeDecl {
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
     pub attrs: Vec<AutoStr>,       // Plan 159 Phase 6B-2: derive/serde attribute passthrough
+    pub impl_attrs: Vec<AutoStr>,  // Plan 364 W1: dotted macro attrs (#[zbus.interface]) → before `impl Type {`
     pub doc: Option<AutoStr>,      /// Doc comment lines (///)
     pub is_pub: bool,              // Plan 163: true for #[pub] types
 }
@@ -684,6 +685,7 @@ impl TypeDecl {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             doc: None,
             is_pub: false,
         }

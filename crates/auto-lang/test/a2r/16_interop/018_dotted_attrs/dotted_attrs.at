@@ -1,0 +1,24 @@
+// Plan 364 W1/W2: dotted 属性宏路径 (#[zbus.interface] → #[zbus::interface])
+// 与 fn 级属性输出 (#[tokio.main])
+
+// 测试1：W1 — dotted 属性宏在 impl 块上（COSMIC zbus 模式）
+#[zbus.interface(name = "com.system76.CosmicSession")]
+impl CosmicSession {
+    fn ping() str {
+        return "pong"
+    }
+}
+
+// 测试2：W1 — dotted 属性宏在 type 上 → 输出到该类型的方法 impl 块
+#[zbus.interface(name = "com.system76.CosmicSession2")]
+type CosmicSession2 {
+    fn state() str {
+        return "idle"
+    }
+}
+
+// 测试3：W2 — fn 级 dotted 属性
+#[tokio.main]
+fn main() {
+    return
+}

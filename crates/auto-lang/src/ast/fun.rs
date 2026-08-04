@@ -33,6 +33,11 @@ pub struct Fn {
     /// Plan 312: #[api(method, path)] annotation — makes the function an HTTP
     /// endpoint when run via AutoVM. None for non-api functions.
     pub api_attrs: Option<ApiAttrs>,
+    /// Plan 364 W2: pass-through attributes on the fn — `#[tokio.main]`,
+    /// `#[allow(...)]`, dotted macro paths, etc. Emitted verbatim before `fn`.
+    /// Excludes `#[api]` (parsed into `api_attrs`) and `#[with(...)]`
+    /// (parsed into `type_params` constraints).
+    pub attrs: Vec<AutoStr>,
 }
 
 /// Plan 312: HTTP API endpoint attributes parsed from `#[api(method = "GET", path = "/api/notes/:id")]`.
@@ -63,6 +68,7 @@ impl Default for Fn {
             doc: None,
             span: None,
             api_attrs: None,
+            attrs: Vec::new(),
         }
     }
 }
@@ -129,6 +135,7 @@ impl Fn {
             doc: None,
             span: None,
             api_attrs: None,
+            attrs: Vec::new(),
         }
     }
 
@@ -157,6 +164,7 @@ impl Fn {
             doc: None,
             span: None,
             api_attrs: None,
+            attrs: Vec::new(),
         }
     }
 }

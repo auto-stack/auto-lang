@@ -407,6 +407,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         });
@@ -422,6 +423,7 @@ mod tests {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         });

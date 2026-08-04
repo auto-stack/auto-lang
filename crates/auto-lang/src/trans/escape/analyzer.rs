@@ -740,6 +740,7 @@ mod tests {
             doc: None,
             span: None,
             api_attrs: None,
+            attrs: Vec::new(),
         };
         let map = EscapeAnalyzer::analyze_fn(&func);
         assert!(map.is_empty());

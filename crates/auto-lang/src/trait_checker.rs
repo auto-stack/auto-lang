@@ -277,6 +277,7 @@ mod tests {
             delegations: Vec::new(),
             methods,
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         }
@@ -310,6 +311,7 @@ mod tests {
             doc: None,
             is_pub: false,
             api_attrs: None,
+            attrs: Vec::new(),
         }
     }
 
@@ -447,6 +449,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };
@@ -508,6 +511,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)],
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };
@@ -564,6 +568,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![create_fn("get", vec![], Type::Int)], // Missing 'set'
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };
@@ -604,6 +609,7 @@ mod tests {
             delegations: Vec::new(),
             methods: vec![],
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };

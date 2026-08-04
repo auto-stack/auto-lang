@@ -228,6 +228,7 @@ impl TypeStore {
                 delegations: Vec::new(),
                 methods: ext.methods.clone(),
                 attrs: vec![],
+                impl_attrs: vec![],
                 doc: None,
                 is_pub: false,
             };
@@ -268,6 +269,7 @@ impl TypeStore {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };
@@ -605,6 +607,7 @@ mod tests {
             methods: vec![],
             delegations: vec![],
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };
@@ -691,6 +694,7 @@ mod tests {
             methods: vec![],
             delegations: vec![],
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         };

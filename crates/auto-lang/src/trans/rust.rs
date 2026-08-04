@@ -8398,6 +8398,10 @@ impl RustTrans {
             None
         };
 
+        // Plan 364 W2: fn-level pass-through attrs (#[tokio.main], #[allow(...)], dotted macros)
+        for attr in &fn_decl.attrs {
+            write!(sink.body, "#[{}]\n", attr)?;
+        }
         if is_async_fn {
             write!(sink.body, "async ")?;
         }
@@ -10395,6 +10399,10 @@ impl RustTrans {
 
         if !own_methods.is_empty() {
             sink.body.write(b"\n")?;
+            // Plan 364 W1: impl-level attribute macros (#[zbus::interface]) before `impl Type {`
+            for attr in &type_decl.impl_attrs {
+                write!(sink.body, "#[{}]\n", attr)?;
+            }
             write!(sink.body, "impl {}", type_decl.name)?;
 
             // Add generic parameters if present
@@ -11195,6 +11203,10 @@ impl RustTrans {
 
     // Ext block (type extension) - transpiles to impl block
     fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
+        // Plan 364 W1: impl-level attribute macros (#[zbus::interface]) before `impl`
+        for attr in &ext.attrs {
+            write!(sink.body, "#[{}]\n", attr)?;
+        }
         // Plan 164: Support "ext Type for Trait" → impl Trait for Type
         // Plan 6B-2.7: Support generic args on trait: ext Type for From<String> → impl From<String> for Type
         match &ext.trait_name {
@@ -11959,6 +11971,7 @@ impl RustTrans {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: Vec::new(),
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 });

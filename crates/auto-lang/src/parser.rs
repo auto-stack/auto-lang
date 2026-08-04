@@ -224,6 +224,11 @@ pub struct Parser<'a> {
     pub session: crate::session::CompilerSession,
     /// Plan 159 Phase 6B-2: Collected raw attribute strings for derive/serde passthrough
     raw_attrs: Vec<AutoStr>,
+    /// Plan 364 W1: Dotted attribute-macro paths (`#[zbus.interface]` →
+    /// `#[zbus::interface]`) collected for the following decl's **impl block**
+    /// (fn-level `#[tokio.main]` included). Separate from `raw_attrs` so
+    /// struct-level derives and impl-level macros don't mix.
+    impl_attrs: Vec<AutoStr>,
     /// Plan 306 Phase 3: Script-level GDScript annotations (`tool`, `icon(...)`)
     /// collected from top-level `#[tool]`/`#[icon]`; drained into Code.file_attrs.
     file_attrs: Vec<AutoStr>,
@@ -283,6 +288,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(), // Plan 364 W1
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
@@ -348,6 +354,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(), // Plan 364 W1
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
@@ -396,6 +403,7 @@ impl<'a> Parser<'a> {
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
             raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(), // Plan 364 W1
             file_attrs: Vec::new(), // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
@@ -761,6 +769,7 @@ impl<'a> Parser<'a> {
                         methods: vec![],
                         delegations: vec![],
                         attrs: vec![],
+                        impl_attrs: vec![],
                         doc: None,
                         is_pub: false,
                     };
@@ -824,6 +833,7 @@ impl<'a> Parser<'a> {
                     methods: vec![],
                     delegations: vec![],
                     attrs: vec![],
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 };
@@ -996,6 +1006,7 @@ impl<'a> Parser<'a> {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: vec![],
+            impl_attrs: vec![],
             doc: None,
             is_pub: false,
         }))
@@ -1504,6 +1515,10 @@ impl<'a> Parser<'a> {
                         // Add the ext method
                         merged_decl.methods.push(ext_method);
                     }
+
+                    // Plan 364 W1: ext's impl-level macro attrs move onto the merged
+                    // type's impl block (e.g. `#[zbus.interface] impl CosmicSession`).
+                    merged_decl.impl_attrs.extend(ext.attrs.iter().cloned());
 
                     stmts[decl_idx] = Stmt::TypeDecl(merged_decl);
                     // Mark this Ext as merged
@@ -4094,6 +4109,10 @@ impl<'a> Parser<'a> {
                     // For now, we just treat any annotation before task as single
                     // TODO: Parse specific annotation types
                     self.parse_task_with_attrs(vec![TaskAttr::Single])?
+                } else if self.is_kind(TokenKind::Ext) || self.is_kind(TokenKind::Impl) {
+                    // Plan 364 W1: annotated `ext`/`impl` block — dotted macro
+                    // paths (`#[zbus.interface]`) pass through to the impl block.
+                    self.parse_ext_stmt()?
                 } else {
                     return Err(SyntaxError::Generic {
                         message: "Expected 'fn', 'type', 'use', 'let', 'var', or 'task' after annotation"
@@ -4224,6 +4243,11 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_ext_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `ext` or `impl` keyword
+
+        // Plan 364 W1: impl-level macro attrs from the annotation dispatch
+        // (`#[zbus.interface(...)] ext Foo { ... }`). Taken BEFORE the method
+        // loop so methods' own fn-level annotations don't steal them.
+        let ext_attrs = std::mem::take(&mut self.impl_attrs);
 
         // Plan 059: Parse optional generic parameters for impl blocks
         // e.g., impl<T, S> ListIter<T, S> { ... }
@@ -4483,6 +4507,8 @@ impl<'a> Parser<'a> {
             methods,
             module_path,
             is_same_module,
+            // Plan 364 W1: impl-level attribute macros (`#[zbus.interface]`) from annotations
+            attrs: ext_attrs,
         };
         Ok(Stmt::Ext(ext))
     }
@@ -4571,7 +4597,14 @@ impl<'a> Parser<'a> {
             kind,
             is_pub: false,
             doc: self.take_docs(),
-            attrs: std::mem::take(&mut self.raw_attrs),
+            // Plan 364 W1: consume any leftover impl-level dotted macros so they
+            // don't leak to the next decl. Enums render them before the enum decl
+            // (imperfect placement; enums rarely carry impl macros).
+            attrs: {
+                let mut a = std::mem::take(&mut self.raw_attrs);
+                a.append(&mut self.impl_attrs);
+                a
+            },
         };
         self.register_enum_decl(&enum_decl, &generic_params);
         Ok(Stmt::EnumDecl(enum_decl))
@@ -6976,6 +7009,42 @@ impl<'a> Parser<'a> {
     /// Plan 061: Added support for #[with(T as Spec)] generic constraints
     /// Plan 083: Added support for #[rs] (Rust transpiler)
     /// Plan 260: Added support for #[test], refactored to struct
+    /// Plan 364 W1: does the current `ident` start a dotted annotation path
+    /// (`ident . ident`)? Lookahead without consuming (restore via push_token,
+    /// same idiom as is_fn_annotation).
+    fn is_annotation_dotted_path(&mut self) -> bool {
+        if self.cur.kind != TokenKind::Ident {
+            return false;
+        }
+        let mut tokens = Vec::new();
+        tokens.push(self.cur.clone()); // first ident
+        self.next();
+        if self.cur.kind != TokenKind::Dot {
+            tokens.push(self.cur.clone()); // non-dot token (already read from stream)
+            for t in tokens.into_iter().rev() {
+                self.lexer.push_token(t);
+            }
+            self.next();
+            return false;
+        }
+        tokens.push(self.cur.clone()); // '.'
+        self.next();
+        if self.cur.kind != TokenKind::Ident {
+            tokens.push(self.cur.clone());
+            for t in tokens.into_iter().rev() {
+                self.lexer.push_token(t);
+            }
+            self.next();
+            return false;
+        }
+        tokens.push(self.cur.clone()); // segment ident
+        for t in tokens.into_iter().rev() {
+            self.lexer.push_token(t);
+        }
+        self.next();
+        true
+    }
+
     fn parse_fn_annotations(&mut self) -> AutoResult<FnAnnotations> {
         let mut ann = FnAnnotations::default();
 
@@ -6988,6 +7057,37 @@ impl<'a> Parser<'a> {
 
                 while self.is_kind(TokenKind::Ident) {
                     let annot = self.cur.text.clone();
+
+                    // Plan 364 W1: dotted annotation path — `#[zbus.interface]`.
+                    // Any `a.b.c` name is an attribute-macro path: collect it
+                    // verbatim (`.` → `::`), attach `(...)` args, and pass
+                    // through unconditionally. Single unknown idents still error.
+                    if self.is_annotation_dotted_path() {
+                        self.next(); // skip first ident
+                        let mut path = annot.to_string();
+                        while self.is_kind(TokenKind::Dot) {
+                            self.next(); // skip '.'
+                            let seg = self.cur.text.clone();
+                            self.next(); // skip segment
+                            path.push_str("::");
+                            path.push_str(&seg);
+                        }
+                        if let Some(args) = self.collect_annotation_args() {
+                            path.push_str(&args);
+                        }
+                        self.impl_attrs.push(path.into());
+                        // Check for ] or ,
+                        if self.is_kind(TokenKind::RSquare) {
+                            self.next(); // skip ]
+                            break;
+                        }
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            continue;
+                        }
+                        continue;
+                    }
+
                     match annot.as_str() {
                         "c" => ann.has_c = true,
                         "vm" => ann.has_vm = true,
@@ -7647,6 +7747,9 @@ impl<'a> Parser<'a> {
         // Plan 312: Set api_attrs from pending #[api] annotation
         fn_expr.api_attrs = self.pending_api_attrs.take();
 
+        // Plan 364 W2: fn-level pass-through attrs (`#[tokio.main]`, dotted macros)
+        fn_expr.attrs = std::mem::take(&mut self.impl_attrs);
+
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name.clone()
@@ -8027,6 +8130,7 @@ impl<'a> Parser<'a> {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: vec![],
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 };
@@ -8134,6 +8238,7 @@ impl<'a> Parser<'a> {
             delegations: Vec::new(),
             methods: Vec::new(),
             attrs: std::mem::take(&mut self.raw_attrs), // Plan 159 Phase 6B-2: collect derive/serde attrs
+            impl_attrs: std::mem::take(&mut self.impl_attrs), // Plan 364 W1: dotted macro attrs → impl 块
             doc: None,
             is_pub: false, // Plan 163: default private
         };
@@ -9071,6 +9176,7 @@ impl<'a> Parser<'a> {
                         delegations: Vec::new(),
                         methods: Vec::new(),
                         attrs: vec![],
+                        impl_attrs: vec![],
                         doc: None,
                         is_pub: false,
                     }));
@@ -9189,6 +9295,7 @@ impl<'a> Parser<'a> {
                         delegations: Vec::new(),
                         methods: Vec::new(),
                         attrs: vec![],
+                        impl_attrs: vec![],
                         doc: None,
                         is_pub: false,
                     }));
@@ -9552,6 +9659,7 @@ impl<'a> Parser<'a> {
                     delegations: Vec::new(),
                     methods: Vec::new(),
                     attrs: Vec::new(),
+                    impl_attrs: vec![],
                     doc: None,
                     is_pub: false,
                 }))
