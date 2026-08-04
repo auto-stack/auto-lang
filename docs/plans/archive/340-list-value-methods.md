@@ -1,5 +1,6 @@
 # Plan 340：List\<T\> 运行时完整方法支持 — filter/map/remove 等
 
+> **状态**: ✅ 已完成并归档（2026-08-04）。7 个 HOF shim（map/filter/for_each/find/any/all/reduce）新增 `ListData<Value>` fallback 路径；新增 `get_list_elements_as_value` + `create_list_from_value` 辅助函数。测试 `test_25/012_list_hof_value` 覆盖 filter/find/any/all/map/reduce 对 struct 列表（List\<Note\>）的端到端验证，全过。回归 category 25 (12/12) + vm_tests (14/0) + plan320_tests (7/0) 零新增失败。注：forEach 的闭包副作用（外部变量修改）受 VM 闭包捕获语义限制，非本计划范围。
 > **For Claude:** 当前 List\<T\>（struct 元素类型，即 `ListData<Value>`）的许多方法仅支持 `ListData<i32>`（int 元素类型）。015-notes 通过 for-in 遍历绕过（delete_note、update_note），但 `filter`/`map`/`remove`/`foreach`/`find`/`contains`/`get` 等原生 shim 只处理 i32。本计划统一所有 List 方法对 `ListData<Value>` 的支持。
 
 ## 1. 问题

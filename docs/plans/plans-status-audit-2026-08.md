@@ -64,7 +64,7 @@
 | **311** | rust 模式 DevTools MVP | ✅ 已完成并归档（2026-08-04）。F12 + debug/ 目录 + P2-A/B 全实现。详见 `archive/311-*.md` |
 | **323** | 016-calendar 完整 app | ✅ 已完成并归档（2026-08-04）。app.at + calendar_util.at 完整。详见 `archive/323-*.md` |
 | **327** | 015-notes VM 渲染 | ✅ 已完成并归档（2026-08-04）。run_vm_ui + 递归 import；015 VM 测试 9/9 全绿。详见 `archive/327-*.md` |
-| **340** | List 方法对 `ListData<Value>` 支持 | push/len 已修；filter/map/get/find/contains + 辅助函数待实现 |
+| **340** | List 方法对 `ListData<Value>` 支持 | ✅ 已完成并归档（2026-08-04）。7 个 HOF shim（map/filter/find/any/all/reduce/for_each）支持 ListData<Value>；测试 012 全过。详见 `archive/340-*.md` |
 | **347** | 8 库 Rust 复刻 | 7 库 257 测试已验证；**reqwest（Task 29-31）疑似未完成**；最终报告全 TBD；checkbox 全未回填 |
 | **349** | HTTP Roadmap | VM 侧 done；**a2r 适配 8 步全未做**（TLS/multipart/download/WebSocket 异步等） |
 | **350** | WebSocket | ✅ 已完成并归档（2026-08-04）。ws.connect/send/on_message 全注册 + websocket.rs 实现。详见 `archive/350-*.md` |

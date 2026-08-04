@@ -1,0 +1,44 @@
+// Plan 340: List HOF 方法对 struct 元素（ListData<Value>）的支持。
+// filter/map/find/any/all/reduce 在 struct 列表上的端到端验证。
+// 注：forEach 的闭包副作用（如外部变量修改）受 VM 闭包捕获语义限制，
+// 此处不测 forEach，只测有返回值的 HOF。
+type Note {
+    id int
+    title str
+    pinned bool
+}
+
+fn check() {
+    var notes List<Note> = List<Note>.new([
+        Note { id: 1, title: "hello", pinned: true },
+        Note { id: 2, title: "world", pinned: false },
+        Note { id: 3, title: "auto", pinned: true },
+    ])
+
+    // filter: 只保留 pinned 的笔记
+    var pinned = notes.filter((n Note) => n.pinned)
+    print(pinned.len())
+
+    // find: 找 title == "world" 的笔记
+    var found = notes.find((n Note) => n.title == "world")
+    print(found.id)
+    print(found.title)
+
+    // any: 是否有 id == 3
+    print(notes.any((n Note) => n.id == 3))
+
+    // all: 是否全部 id > 0
+    print(notes.all((n Note) => n.id > 0))
+
+    // map: 提取所有 id（返回 int 列表）
+    var ids = notes.map((n Note) => n.id)
+    print(ids.len())
+    print(ids.get(0))
+    print(ids.get(2))
+
+    // reduce: 统计所有 id 之和
+    var sum = notes.reduce(0, (acc int, n Note) => acc + n.id)
+    print(sum)
+}
+
+check()

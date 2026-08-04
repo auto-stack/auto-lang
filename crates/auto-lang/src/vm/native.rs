@@ -1631,6 +1631,38 @@ fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
     new_id
 }
 
+/// Plan 340: 从任意 ListData<T> 获取 Vec<Value>（i32 自动转 Value::Int）。
+/// 查 heap_objects 的 ListData<Value> 和 ListData<i32>，再查 vm.arrays。
+/// 用于 HOF shim（map/filter/find 等）的 Value fallback 路径。
+fn get_list_elements_as_value(vm: &AutoVM, list_id: u64) -> Result<Vec<auto_val::Value>, VMError> {
+    use crate::vm::types::ListData;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            return Ok(list.elems.clone());
+        }
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            return Ok(list.elems.iter().map(|i| auto_val::Value::Int(*i)).collect());
+        }
+    }
+
+    if let Some(array_ref) = vm.arrays.get(&list_id) {
+        let guard = array_ref.read().unwrap();
+        return Ok(guard.iter().cloned().collect());
+    }
+
+    Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
+}
+
+/// Plan 340: 从 Vec<Value> 创建新列表，返回 array ID（存入 vm.arrays）。
+fn create_list_from_value(vm: &AutoVM, elems: Vec<auto_val::Value>) -> u64 {
+    use std::sync::atomic::Ordering;
+    let new_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
+    vm.arrays.insert(new_id, Arc::new(RwLock::new(elems)));
+    new_id
+}
+
 /// Helper: check if a VM value is truthy (handles both conventions)
 /// True values: 1, i32::MIN (-2147483648), or any non-zero/non-false value
 /// False values: 0, i32::MIN+1 (-2147483647)
@@ -1652,16 +1684,29 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    let mut results = Vec::with_capacity(elements.len());
-
-    for elem in elements {
-        task.ram.push_i32(elem);
-        vm.call_closure(task, closure_id, 1)?;
-        results.push(task.ram.pop_i32());
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut results = Vec::with_capacity(elements.len());
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            results.push(task.ram.pop_i32());
+        }
+        let new_id = create_list_from_i32(vm, results);
+        task.ram.push_i32(new_id as i32);
+        return Ok(());
     }
 
-    let new_id = create_list_from_i32(vm, results);
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut results: Vec<auto_val::Value> = Vec::with_capacity(elements.len());
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let ret_nv = task.ram.pop_nv();
+        results.push(nv_to_value(ret_nv));
+    }
+    let new_id = create_list_from_value(vm, results);
     task.ram.push_i32(new_id as i32);
     Ok(())
 }
@@ -1672,19 +1717,34 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    let mut results = Vec::new();
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut results = Vec::new();
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let predicate = task.ram.pop_i32();
+            if vm_is_truthy(predicate) {
+                results.push(elem);
+            }
+        }
+        let new_id = create_list_from_i32(vm, results);
+        task.ram.push_i32(new_id as i32);
+        return Ok(());
+    }
 
-    for elem in elements {
-        task.ram.push_i32(elem);
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut results: Vec<auto_val::Value> = Vec::new();
+    for elem in &elements {
+        push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
         let predicate = task.ram.pop_i32();
         if vm_is_truthy(predicate) {
-            results.push(elem);
+            results.push(elem.clone());
         }
     }
-
-    let new_id = create_list_from_i32(vm, results);
+    let new_id = create_list_from_value(vm, results);
     task.ram.push_i32(new_id as i32);
     Ok(())
 }
@@ -1695,11 +1755,23 @@ pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    for elem in elements {
-        task.ram.push_i32(elem);
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            task.ram.pop_i32(); // Discard result
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        task.ram.pop_i32(); // Discard result
+        task.ram.pop_nv(); // Discard result
     }
     task.ram.push_i32(0);
     Ok(())
@@ -1711,13 +1783,29 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    for elem in elements {
-        task.ram.push_i32(elem);
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let found = task.ram.pop_i32();
+            if vm_is_truthy(found) {
+                task.ram.push_i32(elem);
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(-1); // None
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
         let found = task.ram.pop_i32();
         if vm_is_truthy(found) {
-            task.ram.push_i32(elem);
+            push_value(task, vm, elem);
             return Ok(());
         }
     }
@@ -1731,9 +1819,25 @@ pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    for elem in elements {
-        task.ram.push_i32(elem);
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let result = task.ram.pop_i32();
+            if vm_is_truthy(result) {
+                task.ram.push_nv(auto_val::encode_bool(true));
+                return Ok(());
+            }
+        }
+        task.ram.push_nv(auto_val::encode_bool(false));
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
         if vm_is_truthy(result) {
@@ -1751,9 +1855,25 @@ pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let closure_id = task.ram.pop_i32() as u32;
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    for elem in elements {
-        task.ram.push_i32(elem);
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let result = task.ram.pop_i32();
+            if !vm_is_truthy(result) {
+                task.ram.push_nv(auto_val::encode_bool(false));
+                return Ok(());
+            }
+        }
+        task.ram.push_nv(auto_val::encode_bool(true));
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
         let result = task.ram.pop_i32();
         if !vm_is_truthy(result) {
@@ -1772,17 +1892,30 @@ pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let init_val = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
-    let elements = get_list_i32_elements(vm, list_id)?;
-    let mut acc = init_val;
-
-    for elem in elements {
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut acc = init_val;
+        for elem in elements {
+            task.ram.push_i32(acc);
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 2)?;
+            acc = task.ram.pop_i32();
+        }
         task.ram.push_i32(acc);
-        task.ram.push_i32(elem);
-        vm.call_closure(task, closure_id, 2)?;
-        acc = task.ram.pop_i32();
+        return Ok(());
     }
 
-    task.ram.push_i32(acc);
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut acc = auto_val::Value::Int(init_val);
+    for elem in &elements {
+        push_value(task, vm, &acc);
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 2)?;
+        let ret_nv = task.ram.pop_nv();
+        acc = nv_to_value(ret_nv);
+    }
+    push_value(task, vm, &acc);
     Ok(())
 }
 
