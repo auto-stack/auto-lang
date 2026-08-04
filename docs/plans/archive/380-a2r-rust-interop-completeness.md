@@ -1,6 +1,7 @@
 # Plan 380：a2r 对 Rust 互操作的三项补全（impl Trait 返回 / 元组结构体构造 / extractor 参数）
 
-> **Status**: P0/P1/P2/P5 完成；P3（extractor 参数解构 `Path(id)`）待实施——用户确认要加支持（axum 高频模式）；P4 确认非缺口。
+> **Status**: ✅ P0/P1/P2/**P3**/P5 完成；P4 确认非缺口。P3（extractor 参数解构 `Path(id)`）已实施并合并（`c849c516`）。
+> **注**: P3 曾先被误判为"Auto 语言设计差异不支持参数位置解构"（见 `d213c995` 归档），后用户确认要加支持（axum 高频模式），于 `94abd296` 恢复实施。
 > **来源**: auto-musk Plan 014 —— 移植 axum 异步 Web 层（server.rs 2206 行）时，
 > 误判"a2r 缺 async 支持"。复核 a2r 测试用例 + 逐点验证后发现：a2r 的 async/trait/
 > 库调用支持相当完整，真正阻塞 server handler 全量移植的是 3 个具体转译缺陷。
@@ -55,13 +56,18 @@ Json(Item_result)  →  Json { field0: Item_result }   // E0560: Json<T> 无 fie
 auto-musk server.rs 大部分 handler 可改具体返回类型；少数多态返回的需保留手写或引入枚举。
 **是否必须修**：**非必须**（可绕开），但修复后更忠实。优先级低。
 
-### 缺陷 C：extractor 参数**解构** `Path(id)` 不被解析（"unexpected token"）
+### 缺陷 C：extractor 参数**解构** `Path(id)` 不被解析（"unexpected token"）✅ 已修复（P3）
 
 **现象**：`fn h(Path(id) ~Path<str>)` 参数位置的 `Path(id)` 解构模式失败。
 **可绕开性**：**高**——用 `fn h(p Path<str>)`（extractor 作整体参数类型），
 函数体内 `p.0` 或 `p.into_inner()` 取值。axum 的 extractor 都支持"不解构直接接收"。
 **是否必须修**：**非必须**（可绕开）。修复需扩展参数语法的解构模式，工作量大。
 **优先级**：低。
+
+**实施（P3，`c849c516`）**：`Param` 新增 `destructure: Option<DestructureParam>`
+（wrapper_type + inner_name）；parser 在参数位置识别 `TypeName(inner_name)` 解构
+模式，函数体作用域注册 inner_name；a2r 输出 `fn h(Path(id): Path<String>)`。
+golden：`16_interop/016_extractor_destructure`（单解构/混合/多解构/普通参数回归）。
 
 ### 缺陷 D：类型参数位置的 `dyn` 不支持（`Arc<dyn Trait>` 字段）
 
@@ -82,11 +88,11 @@ auto-musk server.rs 大部分 handler 可改具体返回类型；少数多态返
 |---|---|---|---|
 | **P0** | A（元组结构体构造）| 小 | axum `Json(v)` 返回 + Option/Result 包装；解锁绝大多数 server handler |
 | **P1** | D（`Arc<dyn T>` 字段）| 小 | AppState 的 `Arc<dyn Client>` 共享 trait object 字段 |
-| P2 | B（impl Trait 返回）| 中 | 多态返回 handler（非必须，可绕开）|
-| P3 | C（extractor 解构）| 大 | 解构写法（非必须，可绕开）|
+| **P2** | B（impl Trait 返回）| 中 | 多态返回 handler（非必须，可绕开）|
+| **P3** ✅ | C（extractor 解构）| 大 | 解构写法（用户确认要支持，axum 高频模式）|
 
-**建议**：只实施 P0 + P1（小工作量，解锁 server.rs handler 主体），P2/P3 记录但暂不做
-（都可绕开，ROI 低）。
+**实施记录**：P0/P1/P2/P3/P5 已全部实施（P0 `a2r-20`、P1 `005_dyn_field`、P2 `13745fbf`、
+P3 `c849c516` + golden `016_extractor_destructure`、P5 `trait_checker` GenericInstance 比对）。
 
 ### P0：修复元组结构体构造（缺陷 A）
 
@@ -138,11 +144,11 @@ struct AppState { pub client: Arc<dyn Client> }
 **注**：已有的 `spec T` 做字段类型 → `Box<dyn T>` 路径继续保留（对自定义 trait 友好）；
 P1 补的是"直接写 `Arc<dyn>`/`Box<dyn>` 引用外部 Rust trait"的能力。
 
-### P2/P3：记录但不实施
+### P2/P3：已实施（原"记录但不实施"结论被推翻）
 
-缺陷 B（impl Trait 返回）和 C（extractor 解构）都有 100% 可绕开的等价写法
-（具体返回类型 / extractor 作整体参数）。修复它们的语法扩展工作量大、ROI 低，
-本计划仅记录，留给后续按需推进。
+缺陷 B（impl Trait 返回）和 C（extractor 解构）原本判断"有 100% 可绕开的等价写法、
+ROI 低、仅记录"，后续均按需推进并落地：P2（`~SpecName` → `impl SpecName`，
+`13745fbf`）；P3（extractor 参数位置解构 `Path(id)`，用户确认要加，`c849c516`）。
 
 ### P4：SSE 流 + async trait 方法调用（auto-musk 🔴 handler 的剩余阻塞）
 
