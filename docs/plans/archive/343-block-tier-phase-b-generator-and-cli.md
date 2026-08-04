@@ -1,7 +1,7 @@
 # Plan 343: Block 层 Phase B — `auto block` CLI(agent-driven 生成)+ 静态 acceptance check
 
 > **类型**:完整计划(实施)
-> **状态**:设计待确认,实施未开始
+> **状态**: ✅ 已完成并归档（2026-08-04）。实测确认全部实现：cmd_block.rs 的 BlockAction::List/Show/Add/Check 四个命令全部实现（auto block list/show/add/check）。文档下方「设计待确认」系历史残留。
 > **日期**:2026-06-26(2026-06-26 按"agent-driven"架构重定范围)
 > **战略文档**:[docs/design/17-blocks-first-class.md](../design/17-blocks-first-class.md)(Skill 模型,§2.3/§2.4/§9)
 > **前置**:[Plan 342](342-block-tier-phase-a-package-foundation.md)(block 包格式 + `BlockRegistry` + 首批包)

@@ -1,7 +1,7 @@
 # Plan 342: Block 层 Phase A — block 包格式 + BlockRegistry + blocks-gallery 骨架
 
 > **类型**:完整计划(实施)
-> **状态**:设计待确认,实施未开始
+> **状态**: ✅ 已完成并归档（2026-08-04）。实测确认全部实现：BlockRegistry（ui_gen/block/registry.rs）+ blocks/ 目录（form/login、data-display/note-list、editor/note-editor，含 spec.md + gotchas.md + reference .at）+ blocks-gallery 骨架。文档下方「设计待确认」系历史残留。
 > **日期**:2026-06-26
 > **战略文档**:[docs/design/17-blocks-first-class.md](../design/17-blocks-first-class.md)(Skill 模型:spec + 参考实现集 + gotchas)
 > **关联**:widget 层(Plan 331/336/337,提供 block 编排的调色板)、Plan 338(M1 的 note-list 页 = 一个 Data-display block 实例)

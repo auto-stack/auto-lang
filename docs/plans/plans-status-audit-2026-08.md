@@ -99,8 +99,8 @@
 | **337** | gallery↔widgets 同步层 | "设计待确认"，依赖 331+336 |
 | **338** | 015-notes M1 基准 | 已重定范围到 `025-notes-extended`；~~routing blocked（依赖 351）~~ → 351 已完成，路由可推进 |
 | **339** | VM Symbol 命名空间系统 | 6 Phase 设计未实现（335 部分依赖本计划） |
-| **342** | Block 层 Phase A（包基础） | "设计待确认"，5 Phase 全未勾 |
-| **343** | Block 层 Phase B（CLI） | "设计待确认"，依赖 342 |
+| **342** | Block 层 Phase A（包基础） | ✅ 已完成并归档（2026-08-04）。BlockRegistry + blocks/ 目录（form/login、data-display/note-list、editor/note-editor）+ blocks-gallery。详见 `archive/342-*.md` |
+| **343** | Block 层 Phase B（CLI） | ✅ 已完成并归档（2026-08-04）。cmd_block.rs 的 List/Show/Add/Check 全实现。详见 `archive/343-*.md` |
 | **346** | Web Framework 差距调研 | 调研文档，20 项差距待后续 Plan 实施 |
 | **351** | SharedStore（Rung-4 共享状态） | ✅ **已完成并归档**（2026-08-04）。`store` 声明 + composable 单例 codegen + `use store:` 消费 + `routes {}` 路由全部实现；金丝雀 `k1-shared-store-routing` GREEN；013-todo/015-notes 在用。详见 `archive/351-*.md` |
 | **352** | 中间件/Session/SSR/OpenAPI | ✅ 已完成并归档（2026-08-04）。四项全实现（MIDDLEWARE_CHAIN + cookie/session + render_template SSR + shim_openapi_generate）。详见 `archive/352-*.md` |
@@ -140,7 +140,7 @@
 - `364` W1-W3 → 解锁 `365` W3 → 整个 COSMIC 桌面复刻
 - ~~`358` D1+D9 → 解锁 `354` 阶段 C（AutoDown 编辑器）~~ ——✅ 358 已完成（2026-08-04），354 阶段 C 阻塞解除
 - `331` → `336` → `337`（Vue 组件库整条链）
-- `342` → `343`（Block 层整条链）
+- ~~`342` → `343`（Block 层整条链）~~ ——✅ 已完成（2026-08-04），BlockRegistry + blocks/ + auto block CLI 全落地
 
 ### 4.3 可立即归档的
 
