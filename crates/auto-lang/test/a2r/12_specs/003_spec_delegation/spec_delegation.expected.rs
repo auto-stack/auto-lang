@@ -31,7 +31,7 @@ fn main() {
 
 
     let arr: Vec<Box<dyn Flyer>> = vec![Box::new(b1), Box::new(b2)];
-    for b in arr {
+    for b in &arr {
         b.fly();
     }
 }

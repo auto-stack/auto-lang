@@ -3,7 +3,7 @@
 fn main() {
     let v: Vec<i32> = vec![1, 2, 3, 4, 5];
     let mut sum: i32 = 0;
-    for x in v {
+    for x in &v {
         sum += x * 2;
     }
     assert!(sum == 30);

@@ -7,7 +7,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn default() -> Settings {
+    pub fn default() -> impl Settings {
         return Settings { env: {}, provider: None };
     }
 }

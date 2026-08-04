@@ -8,7 +8,7 @@ fn main() {
     dirs.push("test/".to_string());
     let count = (dirs.len() as i32);
     assert!(count == 3);
-    for d in dirs {
+    for d in &dirs {
         assert!((d.len() as i32) > 0);
     }
 }

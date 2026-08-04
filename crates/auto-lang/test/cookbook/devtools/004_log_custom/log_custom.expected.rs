@@ -9,7 +9,7 @@ use log::Record;
 struct SimpleLogger {}
 
 impl SimpleLogger {
-    fn new() -> SimpleLogger {
+    fn new() -> impl SimpleLogger {
         SimpleLogger {}
     }
     fn enabled(&self, metadata: Metadata) -> bool {

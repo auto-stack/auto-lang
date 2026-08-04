@@ -23,7 +23,7 @@ impl MyErr {
         match self {
             MyErr::Inner(e) => return format!("inner: {}", e),
             MyErr::Config(m) => return format!("config: {}", m),
-        };
+        }
     }
 }
 impl std::fmt::Display for MyErr {

@@ -3,7 +3,7 @@
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entries = fs::read_dir(".")?;
-    for entry in entries {
+    for entry in &entries {
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_str().unwrap().to_lowercase();

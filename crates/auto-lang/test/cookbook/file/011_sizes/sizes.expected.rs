@@ -4,7 +4,7 @@ use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total: i32 = 0;
     let entries = fs::read_dir(".")?;
-    for entry in entries {
+    for entry in &entries {
         let entry = entry?;
         let meta = entry.metadata()?;
         total = total + (meta.len() as i32);

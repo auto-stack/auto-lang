@@ -6,7 +6,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn default() -> Settings {
+    pub fn default() -> impl Settings {
         return Settings { env: {} };
     }
     pub fn inject_env(settings: Settings) {

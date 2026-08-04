@@ -4,12 +4,12 @@ use url::Url;
 fn main() {
     let url = Url::parse("https://example.com/rust?name=hello&age=20").unwrap();
 
-    let query = url::query();
+    let query = url.query();
     println!("Query string: {}", query);
 
-    let query = url::query();
+    let query = url.query();
     let mut pair_count: i32 = 0;
-    for pair in url::query_pairs() {
+    for pair in url.query_pairs() {
         pair_count += 1;
     }
     assert!(pair_count == 2);

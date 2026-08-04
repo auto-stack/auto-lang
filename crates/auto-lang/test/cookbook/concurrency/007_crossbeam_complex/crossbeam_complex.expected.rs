@@ -3,7 +3,7 @@
 fn main() {
     let messages: Vec<String> = vec!["hello".to_string(), "world".to_string()];
     let mut msg_count: i32 = 0;
-    for msg in messages {
+    for msg in &messages {
         msg_count += 1;
         if msg == "world" {
             break;

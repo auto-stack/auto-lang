@@ -12,6 +12,6 @@ impl ToolError {
         match self {
             ToolError::ExecutionFailed(msg) => return msg,
             ToolError::InvalidInput(msg) => return msg,
-        };
+        }
     }
 }

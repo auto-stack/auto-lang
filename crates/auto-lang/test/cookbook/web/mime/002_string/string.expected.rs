@@ -4,6 +4,6 @@ use mime::Mime;
 fn main() {
     let mime = "text/html".parse().unwrap();
     println!("MIME: {}", mime);
-    let is_text: bool = mime::type_() == mime.TEXT;
+    let is_text: bool = mime.type_() == mime.TEXT;
     assert!(is_text == true);
 }

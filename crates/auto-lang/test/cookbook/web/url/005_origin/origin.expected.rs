@@ -3,8 +3,8 @@
 use url::Url;
 fn main() {
     let url = Url::parse("https://user:pass@example.com:8080/path?query=1#frag").unwrap();
-    let scheme = url::scheme();
-    let host = url::host_str();
+    let scheme = url.scheme();
+    let host = url.host_str();
     assert!(scheme == "https");
     assert!(host == "example.com");
 }

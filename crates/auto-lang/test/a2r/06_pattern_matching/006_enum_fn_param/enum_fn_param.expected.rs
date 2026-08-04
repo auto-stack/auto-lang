@@ -11,5 +11,5 @@ pub fn handle(err: ToolError) -> String {
     match err {
         ToolError::ExecutionFailed(msg) => return msg,
         ToolError::InvalidInput(msg) => return msg,
-    };
+    }
 }

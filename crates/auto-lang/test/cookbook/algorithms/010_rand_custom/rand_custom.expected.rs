@@ -29,14 +29,14 @@ impl Color {
     }
 }
 
-fn random_color() -> Color {
+fn random_color() -> impl Color {
     let mut rng = rand::thread_rng();
     let n = rng.gen_range(0..3);
     match n {
         0 => Color::Red,
         1 => Color::Green,
         _ => Color::Blue,
-    };
+    }
 }
 
 impl Color {
@@ -45,7 +45,7 @@ impl Color {
             Color::Red => "Red".to_string(),
             Color::Green => "Green".to_string(),
             Color::Blue => "Blue".to_string(),
-        };
+        }
     }
 }
 

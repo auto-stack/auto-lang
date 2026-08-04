@@ -6,7 +6,7 @@ struct Foo {
 }
 
 impl Foo {
-    fn new(v: i32) -> Foo {
+    fn new(v: i32) -> impl Foo {
         return Foo { value: v };
     }
     fn get_value(&self) -> i32 {

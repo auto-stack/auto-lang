@@ -6,7 +6,7 @@ struct Counter {
 }
 
 impl Counter {
-    fn new() -> Counter {
+    fn new() -> impl Counter {
         return Counter { count: 0 };
     }
     fn increment(&mut self) {

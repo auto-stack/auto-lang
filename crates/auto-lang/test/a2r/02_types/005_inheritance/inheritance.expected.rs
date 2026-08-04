@@ -28,8 +28,8 @@ impl Dog {
 
 fn main() {
     let mut dog = Dog {};
-    dog.name = "Buddy";
-    dog.breed = "Labrador";
+    dog.name = "Buddy".to_string();
+    dog.breed = "Labrador".to_string();
 
     dog.speak();
     dog.bark();

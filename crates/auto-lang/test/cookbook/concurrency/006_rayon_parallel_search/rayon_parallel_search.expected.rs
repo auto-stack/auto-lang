@@ -4,7 +4,7 @@ fn main() {
     let v: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let target: i32 = 7;
     let mut found: bool = false;
-    for x in v {
+    for x in &v {
         if x == target {
             found = true
         }

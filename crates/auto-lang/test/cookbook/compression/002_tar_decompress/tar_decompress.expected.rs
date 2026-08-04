@@ -8,7 +8,7 @@ fn main() {
     assert!((entries.len() as i32) == 3);
 
     let mut count: i32 = 0;
-    for entry in entries {
+    for entry in &entries {
         count = count + 1;
     }
     assert!(count == 3);

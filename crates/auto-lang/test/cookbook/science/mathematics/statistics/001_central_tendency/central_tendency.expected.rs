@@ -6,7 +6,7 @@ fn mean(data: &[i32]) -> Option<f64> {
         return None;
     }
     let mut sum: i32 = 0;
-    for val in data {
+    for val in &data {
         sum += val;
     }
     Some((sum as f64) / (count as f64))
@@ -17,7 +17,7 @@ fn main() {
 
 
     let mut sum: i32 = 0;
-    for val in data {
+    for val in &data {
         sum += val;
     }
     let count = (data.len() as i32);

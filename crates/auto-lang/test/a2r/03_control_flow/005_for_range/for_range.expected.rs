@@ -6,7 +6,7 @@ fn main() {
     }
 
     let arr: Vec<i32> = vec![1, 2, 3];
-    for n in arr {
+    for n in &arr {
         println!("{}", n);
     }
 }
