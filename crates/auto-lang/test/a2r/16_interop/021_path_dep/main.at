@@ -1,0 +1,15 @@
+// Plan 364 W7: local path dependencies in generated Cargo.toml.
+// `dep foo(path: "...")` should render as `foo = { path = "..." }` in
+// Cargo.toml, and `dep bar(version: "1", features: ["a"])` as a structured
+// version+features spec. Bare `dep baz` still works as wildcard.
+
+dep auto_cosmic_dbus(path: "../../crates/auto-cosmic-dbus")
+dep serde(version: "1", features: ["derive"])
+dep log
+
+use.rust serde
+use.rust log
+
+fn main() {
+    log.info("hello")
+}

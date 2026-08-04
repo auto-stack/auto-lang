@@ -352,6 +352,35 @@ fn test_14_modules_005_multi_file() {
 // run on a dedicated 16 MB thread (see test_a2r_deep).
 #[test] fn test_16_interop_020_async_block_stmts() { test_a2r_deep("16_interop/020_async_block_stmts"); }
 
+// Plan 364 W7: local path deps → structured Cargo.toml [dependencies] lines.
+// Uses transpile_rust_project (multi-file entry) to exercise Cargo.toml gen.
+#[test]
+fn test_16_interop_021_path_dep() {
+    use crate::trans::rust::transpile_rust_project;
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let entry = d.join("test/a2r/16_interop/021_path_dep/main.at");
+    let result = transpile_rust_project(entry.to_str().unwrap()).unwrap();
+
+    let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"].0);
+
+    // path dep → `auto_cosmic_dbus = { path = "..." }`
+    assert!(
+        cargo_toml.contains("auto_cosmic_dbus = { path = "),
+        "path dep should render as `{{ path = .. }}`, got:\n{}", cargo_toml
+    );
+    // version+features dep → `serde = { version = "1", features = ["derive"] }`
+    assert!(
+        cargo_toml.contains("serde = { version = \"1\", features = [\"derive\"] }"),
+        "version+features dep should render structured, got:\n{}", cargo_toml
+    );
+    // bare dep → `log = "*"`
+    assert!(
+        cargo_toml.contains("log = \"*\""),
+        "bare dep should render as wildcard, got:\n{}", cargo_toml
+    );
+}
+
 // === 18_rust_std ===
 #[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }
 #[test] fn test_18_rust_std_002_fs() { test_a2r("17_rust_std/002_fs").unwrap(); }

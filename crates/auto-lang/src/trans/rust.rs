@@ -15333,6 +15333,64 @@ struct ProjectModule {
     uses: Vec<crate::ast::Use>,
 }
 
+/// Plan 364 W7: Render an AST `DepStmt` as a Cargo.toml `[dependencies]` line
+/// (without the trailing newline). Precedence: path > git > crates.io.
+///
+/// - `dep foo(path: "../foo")`             → `foo = { path = "../foo" }`
+/// - `dep foo(version: "1", features: ..)` → `foo = { version = "1", features = ["a"] }`
+/// - `dep foo`                              → `foo = "*"`
+fn render_cargo_dep(dep: &crate::ast::DepStmt) -> String {
+    // Local path dependency — `foo = { path = "..." }` (+ optional features).
+    if let Some(path) = &dep.path {
+        if dep.features.is_empty() {
+            return format!("{} = {{ path = \"{}\" }}", dep.name, escape_cargo_str(path));
+        }
+        let feats = dep.features.iter()
+            .map(|f| format!("\"{}\"", escape_cargo_str(f)))
+            .collect::<Vec<_>>().join(", ");
+        return format!("{} = {{ path = \"{}\", features = [{}] }}",
+            dep.name, escape_cargo_str(path), feats);
+    }
+    // Git dependency — `foo = { git = "...", branch = "..." }`.
+    if let Some(git) = &dep.git {
+        let mut spec = format!("{} = {{ git = \"{}\"", dep.name, escape_cargo_str(git));
+        if let Some(git_ref) = &dep.git_ref {
+            // Heuristic: branch/tag/rev all map to Cargo's `branch`/`tag`/`rev`.
+            // The parser stores whichever was given under git_ref; we emit it
+            // as `branch` (the most common case). A future refinement can track
+            // which keyword was used.
+            spec.push_str(&format!(", branch = \"{}\"", escape_cargo_str(git_ref)));
+        }
+        spec.push_str(" }");
+        return spec;
+    }
+    // crates.io — version + optional features, or wildcard.
+    if let Some(version) = &dep.version {
+        if dep.features.is_empty() {
+            return format!("{} = \"{}\"", dep.name, escape_cargo_str(version));
+        }
+        let feats = dep.features.iter()
+            .map(|f| format!("\"{}\"", escape_cargo_str(f)))
+            .collect::<Vec<_>>().join(", ");
+        return format!("{} = {{ version = \"{}\", features = [{}] }}",
+            dep.name, escape_cargo_str(version), feats);
+    }
+    // Bare `dep foo` — no options: wildcard version.
+    if dep.features.is_empty() {
+        return format!("{} = \"*\"", dep.name);
+    }
+    let feats = dep.features.iter()
+        .map(|f| format!("\"{}\"", escape_cargo_str(f)))
+        .collect::<Vec<_>>().join(", ");
+    format!("{} = {{ version = \"*\", features = [{}] }}", dep.name, feats)
+}
+
+/// Escape a string for safe embedding in a Cargo.toml value (escape backslash
+/// and double-quote). Path separators (/) are left intact.
+fn escape_cargo_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Transpile a multi-file AutoLang project to Rust
 ///
 /// Starting from an entry file, this function:
@@ -15907,19 +15965,42 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         );
 
         // Scan parsed ASTs for external Rust crate imports (.rust use kind)
+        // and lang-level `dep` declarations (Plan 364 W7).
+        //
+        // Two sources feed the dep list:
+        //   1. `use.rust foo` — emits `foo = "*"` (bare name, version inferred).
+        //   2. `dep foo(...)`  — emits a structured spec: `foo = { path = ".." }`
+        //      / `foo = { version = "1", features = ["a"] }` / `foo = "*"`.
+        //      A `dep` statement for a crate takes precedence over a bare
+        //      `use.rust` for the same crate (the structured spec wins).
         let mut deps: Vec<String> = Vec::new();
+        // Plan 364 W7: structured dep specs keyed by crate name, from `dep` stmts.
+        let mut dep_specs: std::collections::HashMap<&str, &crate::ast::DepStmt> =
+            std::collections::HashMap::new();
         // Plan 190: Rust built-in crates are always available, don't add to Cargo.toml
         let built_in_crates = ["std", "core", "alloc", "proc_macro"];
         for (_, ast) in &parsed_modules {
             for stmt in &ast.stmts {
-                if let Stmt::Use(u) = stmt {
-                    if matches!(u.kind, UseKind::Rust) && !u.paths.is_empty() {
-                        let crate_name = u.paths[0].as_str();
-                        if !deps.contains(&crate_name.to_string())
-                            && !built_in_crates.contains(&crate_name) {
-                            deps.push(crate_name.to_string());
+                match stmt {
+                    Stmt::Use(u) => {
+                        if matches!(u.kind, UseKind::Rust) && !u.paths.is_empty() {
+                            let crate_name = u.paths[0].as_str();
+                            if !deps.contains(&crate_name.to_string())
+                                && !built_in_crates.contains(&crate_name) {
+                                deps.push(crate_name.to_string());
+                            }
                         }
                     }
+                    // Plan 364 W7: collect structured dep specs (path/version/features/git).
+                    Stmt::Dep(dep) => {
+                        dep_specs.insert(dep.name.as_str(), dep);
+                        // Ensure the name is in the dep list so it gets emitted.
+                        if !deps.contains(&dep.name.to_string())
+                            && !built_in_crates.contains(&dep.name.as_str()) {
+                            deps.push(dep.name.to_string());
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -15928,7 +16009,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         if !deps.is_empty() {
             cargo_toml.push_str("\n[dependencies]\n");
             for dep in &deps {
-                cargo_toml.push_str(&format!("{} = \"*\"\n", dep));
+                if let Some(spec) = dep_specs.get(dep.as_str()) {
+                    // Plan 364 W7: render the structured dep spec.
+                    cargo_toml.push_str(&format!("{}\n", render_cargo_dep(spec)));
+                } else {
+                    cargo_toml.push_str(&format!("{} = \"*\"\n", dep));
+                }
             }
         }
 

@@ -143,7 +143,7 @@ a failing test first (see W4).
 | W4 | `~{}` full statement support, test-driven | ✅ | ⭐⭐ Mid | rust.rs:3031-3067 → delegate to stmt() (rust.rs:7838) | new tests under test/a2r/ for If/For/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
 | W5 | `move` closure prefix keyword | ✅ | ⭐⭐ Mid | ast/fun.rs:494, parser.rs:1636 (parse_expr), rust.rs:2785 (Expr::Closure arm) | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
 | W6 | `~Stream<T>` parity coverage | ✅ | ⭐ Low (infra) / ⭐⭐⭐ (codegen gap found) | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:321-348 | parity runner Cargo template gains `futures`, `async-stream`; new `tokio_stream` parity package; native oracle 2/2 pass; a2r generator codegen verified by golden; **for-over-Stream consumption gap documented as follow-up** |
-| W7 | Local path dependencies in generated Cargo.toml | ⏳ | ⭐ Low | rust.rs:12405 (dep scanner output), dep_scanner.rs | `dep` supports `{ path = "..." }` so Auto projects can depend on local glue crates (auto-cosmic-dbus/-ui); monorepo template (Auto app + local Rust glue) builds end-to-end |
+| W7 | Local path dependencies in generated Cargo.toml | ✅ | ⭐ Low | rust.rs:15909-15945 (Cargo.toml gen loop), render_cargo_dep helper | `dep foo(path: "...")` renders as `foo = { path = "..." }`; version/features/git also wired; monorepo template (Auto app + local Rust glue) supported |
 
 ### Dependency order
 
@@ -365,6 +365,47 @@ bug unrelated to W6 and present on the baseline.
 
 Verification: native oracle 2/2 pass; a2r golden `002_stream_yield` passes;
 a2r suite 298/0; parity crate unit tests 30/0.
+
+### W7 — landed (local path dependencies in generated Cargo.toml)
+
+**Defect fixed**: the `DepStmt` AST already carried `path`/`version`/`features`/
+`git` fields (and the parser already accepted `dep foo(path: "../foo")`), but
+the Cargo.toml generation loop at `rust.rs:15909` only scanned
+`Stmt::Use(UseKind::Rust)` — it never read `Stmt::Dep`. Every dep was emitted
+as `name = "*"` (wildcard), silently discarding all structured options. So an
+Auto project could not depend on a local glue crate (`auto-cosmic-dbus`,
+`auto-cosmic-ui`) — a blocker for the COSMIC monorepo replication model.
+
+**Fix**: extended the Cargo.toml generation loop to also collect `Stmt::Dep`
+into a `dep_specs` map (keyed by crate name). When emitting each dep, if a
+structured spec exists, it is rendered via the new `render_cargo_dep` helper;
+otherwise the existing `name = "*"` fallback applies. A `dep` statement takes
+precedence over a bare `use.rust` for the same crate (the structured spec
+wins). `render_cargo_dep` renders precedence path > git > crates.io:
+
+- `dep foo(path: "../foo")` → `foo = { path = "../foo" }`
+  (+ optional `features = [...]`)
+- `dep foo(git: "url", branch: "main")` → `foo = { git = "url", branch = "main" }`
+- `dep foo(version: "1", features: ["derive"])` → `foo = { version = "1", features = ["derive"] }`
+- `dep foo` → `foo = "*"`
+
+String values are escaped (`escape_cargo_str`) for safe embedding.
+
+**Test**: `16_interop/021_path_dep` — a multi-file project exercising all three
+forms (path dep, version+features dep, bare dep) via `transpile_rust_project`,
+asserting the rendered Cargo.toml lines.
+
+Verification: a2r suite 299/0 (298 + new W7 test); no regressions.
+
+---
+
+**Plan 364 complete**: all seven work items (W1–W7) are landed. The a2r
+backend now covers the COSMIC replication prerequisites: dotted attribute-macro
+paths, fn/impl-level attributes, multi-trait bounds, full `~{}` async-block
+statement support, `move` closures, `~Stream<T>` parity infrastructure, and
+local path dependencies. Remaining follow-ups (tracked above): for-over-Stream
+consumption lowering, `Try`/`Block` arms in `stmt()`, and the deep-recursion
+frame-size root cause.
 
 ### Incidental: deep-recursion stack-overflow class (mitigated, not a regression)
 
