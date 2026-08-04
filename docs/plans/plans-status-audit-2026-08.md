@@ -52,7 +52,7 @@
 | **333** | VM UI CompileSession 接入 | 核心达成，但子组件 `EditorPanel` `.Delete/.Edit/.Save` 报 `Undefined variable: self`（遗留） |
 | **335** | List 运行时根因②修复 | `read_state_as_vec` 不解引用 `VmRef`；多个 shim（pop/get/set/insert/len/contains）的 `heap_objects/arrays` 双查**待复核**；`shim_list_len` 可能返回错误长度 |
 | **358** | 生成器缺陷 D1-D10 | ✅ **已完成并归档**（2026-08-04）。全部 10 个缺陷已修复（含 D1 OOM、D9 autodown_editor）；354 阶段 C 阻塞已解除。详见 `archive/358-*.md` |
-| **372** | a2r 3 系统性缺陷 | A/B/C 已修，但**单文件 transpile 路径不过 Phase 1.5 预注册**，跨模块 spec 仍解析为裸 `Type::User`（建议补出路 2） |
+| **372** | a2r 3 系统性缺陷 | ✅ 已完成并归档（2026-08-04）。A/B/C 全修；目标对象已迁回 auto-ai 仓库，a2r 改进已沉淀。详见 `archive/372-*.md` |
 
 ### 2.2 一般部分完成
 
@@ -108,7 +108,7 @@
 | **364** | a2r COSMIC 就绪 | **W1-W7 全 pending**；阻塞 365 W3（整个 COSMIC 复刻） |
 | **365** | AutoUI 可插拔 Host | W1-W4 pending，W5 deferred（依赖 364 W1-W3） |
 | **366** | 跨平台 UI 测试 DSL | "设计阶段暂不实现"；366a 5 项验收未勾（1-2 天可落地） |
-| **374** | a2r store/viewfn parity | 4 Task 全未实施（Rust 模式 015-notes 功能 parity） |
+| **374** | a2r store/viewfn parity | ✅ 已完成并归档（2026-08-04）。view fn fragment + store composable 全部实现（rust_ui.rs collect_store_decls + ui_gen/rust.rs register_store + parser ViewFragmentDecl）。详见 `archive/374-*.md` |
 
 > **377**（统一值表示消除 2-slot）已于 2026-08-01 完成并归档至 `archive/377-*.md`（详见 §1）。
 

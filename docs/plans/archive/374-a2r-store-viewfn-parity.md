@@ -1,5 +1,6 @@
 # Plan 374: a2r 支持 store composable + view fn fragment — Rust 模式 015-notes Parity
 
+> **状态**: ✅ 已完成并归档（2026-08-04）。实测确认全部 4 个 Task 已实现：view fn fragment（parser `ViewFragmentDecl` + `parse_view_fragment_decl_body` + rust.rs `tag_to_view_fn`/`View::{fn}` 生成）、store composable（`rust_ui.rs` `collect_store_decls` 预扫描 + `ui_gen/rust.rs` `register_store`/`STORE_NAMES` thread-local + store 字段持久化）、store 导入处理、aura/extract 复杂表达式+参数名支持。
 > **目标**: 让 a2r 转译器支持 `store` composable 和 `view fn` fragment，使 `auto run -r rust` 生成的 015-notes 达到与 VM 模式一致的功能 parity。
 >
 > **核心挑战**: a2r 的 UI 生成管线（`auto-man/rust_ui.rs` → `aura/extract.rs` → `ui_gen/rust.rs`）完全跳过了 `StoreDecl` 和 `ViewFragmentDecl`，导致 store 字段（dark_mode/accent_color/active_folder 等）和 view fn 片段（NoteRow/NoteItem）在生成的 Rust 代码中缺失。

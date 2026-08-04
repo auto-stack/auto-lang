@@ -1,6 +1,6 @@
 # Plan 372: a2r → Rust 正确性修复（解锁 Auto 版 auto-ai-agent 跑通）
 
-> **状态**：部分实施（2026-07-25，分支 `plan-013/react-runnable`）
+> **状态**：✅ 已完成并归档（2026-08-04）。3 个系统性缺陷（A spec 跨模块解析 / B Option 方法 / C i+1 auto-borrow）全部已修已验证。目标对象 `crates/auto-ai-agent/rust/` 已由 plan-015 迁回 auto-ai 仓库；a2r 改进（Phase 1.5 预注册、sibling 扫描、`rust_type_name` Type::User 守卫、json::as_string_opt）作为通用基础设施留存。剩余的 B1 类细节问题由 373/376 处理（已归档）。
 > **来源**：plan-013（auto-ai 移植）阶段 6 的真实阻断——组装好的 rust/ crate
 > 有 ~344 个 cargo 错误，经最小复现 + 源码追踪，定位到 **3 个系统性 a2r 缺陷**。
 > **目标**：修好这 3 个 a2r 根因，让 `crates/auto-ai-agent/rust/` 通过
