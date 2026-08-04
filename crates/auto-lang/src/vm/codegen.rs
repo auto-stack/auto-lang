@@ -11021,10 +11021,17 @@ impl Codegen {
         self.code.push(free_vars.len() as u8); // capture_count
         self.code.push(closure.params.len() as u8); // n_args (for CALL_CLOSURE)
 
-        // Emit variable name indices for each captured variable
+        // Emit variable name indices + slot offsets for each captured variable
+        // Plan 385: slot_offset lets LOAD/STORE_CAPTURED directly access the
+        // creator's stack frame (by-reference capture instead of value copy).
         for var_name in &free_vars {
             let var_idx = self.add_string(var_name);
             self.code.extend_from_slice(&var_idx.to_le_bytes());
+            // Plan 385: emit the variable's local slot offset (relative to bp+1)
+            let slot_offset = self.lookup_var(var_name)
+                .map(|idx| idx as u16)
+                .unwrap_or(0xFFFF); // 0xFFFF = no slot (fallback to env)
+            self.code.extend_from_slice(&slot_offset.to_le_bytes());
         }
 
         // Step 3.5: Emit JMP to skip closure body during normal execution

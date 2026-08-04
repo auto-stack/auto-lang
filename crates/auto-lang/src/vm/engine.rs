@@ -176,6 +176,10 @@ pub struct Closure {
     pub func_addr: u32,              // Bytecode address
     pub env: HashMap<String, Value>, // Direct captured values (no upvalues!)
     pub n_args: usize,               // Number of parameters (for CALL_CLOSURE to set current_fn_n_args)
+    /// Plan 385: 捕获变量的原始栈位置 (creator_bp, slot_offset)。
+    /// LOAD/STORE_CAPTURED 通过此映射直接读写创建者的栈帧（by-reference 捕获）。
+    /// 若为空（旧字节码兼容），fallback 到 env（by-value）。
+    pub capture_slots: HashMap<String, (usize, usize)>,
 }
 
 #[derive(Debug)]
@@ -5809,9 +5813,15 @@ impl AutoVM {
 
                     // Pop captured values from stack and build environment
                     let mut env = HashMap::new();
+                    let mut capture_slots = HashMap::new();
+                    let creator_bp = task.bp; // Plan 385: 记录创建者的 bp
                     for _i in 0..capture_count {
                         // Read variable name from string table (stored in reverse order)
                         let var_name_idx = self.flash.read_u16(task.ip) as usize;
+                        task.ip += 2;
+
+                        // Plan 385: Read slot offset (u16) — 0xFFFF means "no slot" (兼容旧字节码)
+                        let slot_offset = self.flash.read_u16(task.ip) as usize;
                         task.ip += 2;
 
                         // Pop value from stack (values pushed in order, popped in reverse)
@@ -5828,12 +5838,16 @@ impl AutoVM {
                             )));
                         };
                         drop(strings);
-                        env.insert(var_name_str, Value::Int(value));
+                        env.insert(var_name_str.clone(), Value::Int(value));
+                        // Plan 385: 记录原始栈位置用于 by-reference 捕获
+                        if slot_offset != 0xFFFF {
+                            capture_slots.insert(var_name_str, (creator_bp, slot_offset));
+                        }
                     }
 
                     // Create closure
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
-                    let closure = Closure { func_addr, env, n_args };
+                    let closure = Closure { func_addr, env, n_args, capture_slots };
 
                     vm_debug!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
 
@@ -5891,6 +5905,13 @@ impl AutoVM {
                     drop(strings);
 
                     if let Some(closure) = self.closures.get(&closure_id) {
+                        // Plan 385: 优先通过 capture_slots 读原始栈位置（by-reference）
+                        if let Some(&(creator_bp, slot_offset)) = closure.capture_slots.get(var_name.as_str()) {
+                            let nv = task.ram.read_nv(creator_bp + 1 + slot_offset);
+                            task.ram.push_nv(nv);
+                            return Ok(StepResult::Continue);
+                        }
+                        // Fallback: 从 env 读值副本（by-value，兼容旧字节码）
                         if let Some(value) = closure.env.get(var_name.as_str()) {
                             // Push value to stack
                             match value {
@@ -5918,7 +5939,7 @@ impl AutoVM {
                     let var_name_idx = self.flash.read_u16(task.ip) as usize;
                     task.ip += 2;
 
-                    let value = task.ram.pop_i32();
+                    let value_nv = task.ram.pop_nv();
 
                     // Use current_closure_id instead of popping from stack
                     let closure_id = task.current_closure_id.ok_or_else(|| {
@@ -5939,6 +5960,17 @@ impl AutoVM {
                     };
                     drop(strings);
 
+                    // Plan 385: 优先通过 capture_slots 写原始栈位置（by-reference）
+                    let has_slot = self.closures.get(&closure_id)
+                        .map(|c| c.capture_slots.get(&var_name).copied())
+                        .unwrap_or(None);
+                    if let Some((creator_bp, slot_offset)) = has_slot {
+                        task.ram.write_nv(creator_bp + 1 + slot_offset, value_nv);
+                        return Ok(StepResult::Continue);
+                    }
+
+                    // Fallback: 写 closure.env（by-value，兼容旧字节码）
+                    let value = auto_val::decode_i32(value_nv);
                     if let Some(mut closure) = self.closures.get_mut(&closure_id) {
                         closure.env.insert(var_name, Value::Int(value));
                     } else {
@@ -6261,6 +6293,7 @@ impl AutoVM {
                                             func_addr: body_offset as u32,
                                             env: captures,
                                             n_args: 0,
+                                            capture_slots: HashMap::new(),
                                         },
                                     );
                                     if let Some(task_guard) = self.tasks.get(&new_task_id) {
@@ -7228,6 +7261,7 @@ impl AutoVM {
                 func_addr: body_offset,
                 env: captures,
                 n_args: 0,
+                capture_slots: HashMap::new(),
             },
         );
         Some(closure_id)

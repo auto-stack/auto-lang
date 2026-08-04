@@ -1,0 +1,30 @@
+// Plan 385: 闭包 by-reference 捕获验证
+fn check() {
+    // 测试1：闭包修改外部变量
+    var x int = 10
+    var f = () => {
+        x = x + 5
+    }
+    f()
+    print(x)
+
+    // 测试2：多次调用闭包累积
+    var counter int = 0
+    var inc = () => {
+        counter = counter + 1
+    }
+    inc()
+    inc()
+    inc()
+    print(counter)
+
+    // 测试3：闭包读取外部变量（确认读也正确）
+    var base int = 100
+    var get_base = () => {
+        return base
+    }
+    print(get_base())
+    base = 200
+    print(get_base())
+}
+check()
