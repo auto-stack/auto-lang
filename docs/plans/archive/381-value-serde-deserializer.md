@@ -1,6 +1,6 @@
 # Plan 381：`Value` 支持 serde `Deserialize` —— 配置子集的 Deserializer 适配器
 
-> **Status**: Phase A + B 已实施(`serde` feature、`ValueDeserializer`、`Node::deserialize`;160 单测通过,含 15 个 de 测试)。Phase C(本文档定稿 + 332 依赖标注 + 模块 doctest)完成中。
+> **Status**: ✅ 已完成并归档（2026-08-04）。Phase A（ValueDeserializer 标量+Obj+Array+MapIter+SeqIter）+ Phase B（Node::deserialize 便捷入口）+ Phase C（doctest + 文档）全部完成。582 行 de.rs，15 个 de 测试 + 160+25 全量测试通过。复审无 workaround。v1 限制（Node kids 不支持）记入 KNOWN-DEBT-AND-RISKS。
 > **类型**: 完整计划(设计 + 实施)
 > **日期**: 2026-08-04
 > **影响**: `crates/auto-val`(新增 `serde` feature + `ValueDeserializer`)
