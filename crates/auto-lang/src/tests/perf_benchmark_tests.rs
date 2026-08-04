@@ -161,7 +161,16 @@ fn main() -> int {
 }
 "#;
 
-    let result = run_benchmark("nested_loops_10x10x10", source);
+    // Plan 364 Phase 8 F3: 3-level nesting × large parser/codegen frames
+    // overflows the 2 MB libtest worker thread (run_with_mode runs inline
+    // on the caller thread; VM execution itself is iterative). Wrap in a
+    // 16 MB dedicated thread — same pattern as test_cookbook_deep/test_a2r_deep.
+    let result = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| run_benchmark("nested_loops_10x10x10", source))
+        .expect("failed to spawn benchmark thread")
+        .join()
+        .expect("benchmark thread panicked");
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);

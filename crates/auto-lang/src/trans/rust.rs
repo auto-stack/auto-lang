@@ -7283,6 +7283,66 @@ impl RustTrans {
         matches!(ty, Type::GenericInstance(inst) if inst.base_name == "Future")
     }
 
+    /// Plan 364 Phase 8 F1: Does this for-loop iterable produce a `~Stream<T>`
+    /// (i.e. `impl futures::Stream`)? If so, the `for` loop must be rewritten to
+    /// `while let Some(x) = stream.next().await` because `impl Stream` does not
+    /// implement `IntoIterator`. Only bare-name function calls are checked
+    /// (qualified method-call streams are rare and can be added later).
+    fn iterable_is_stream(&self, range: &Expr) -> bool {
+        if let Expr::Call(call) = range {
+            if let Expr::Ident(fname) = call.name.as_ref() {
+                if let Some(ret) = self.fn_ret_types.get(fname.as_str()) {
+                    return matches!(ret,
+                        Type::GenericInstance(inst) if inst.base_name == "Stream");
+                }
+            }
+        }
+        false
+    }
+
+    /// Plan 364 Phase 8 F1: Recursively scan a statement list for any for-loop
+    /// whose iterable is a `~Stream<T>` generator call. Such loops get rewritten
+    /// to `while let Some(x) = s.next().await`, injecting an `.await` that the
+    /// static `has_await_refs` cannot see. Used to force `main` to be async.
+    fn body_has_stream_for(&self, stmts: &[&Stmt]) -> bool {
+        for stmt in stmts {
+            match stmt {
+                Stmt::For(for_stmt) => {
+                    if self.iterable_is_stream(&for_stmt.range) {
+                        return true;
+                    }
+                    // Recurse into the for-loop body.
+                    let refs: Vec<&Stmt> = for_stmt.body.stmts.iter().collect();
+                    if self.body_has_stream_for(&refs) {
+                        return true;
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    for branch in &if_stmt.branches {
+                        let refs: Vec<&Stmt> = branch.body.stmts.iter().collect();
+                        if self.body_has_stream_for(&refs) {
+                            return true;
+                        }
+                    }
+                    if let Some(else_body) = &if_stmt.else_ {
+                        let refs: Vec<&Stmt> = else_body.stmts.iter().collect();
+                        if self.body_has_stream_for(&refs) {
+                            return true;
+                        }
+                    }
+                }
+                Stmt::Block(body) => {
+                    let refs: Vec<&Stmt> = body.stmts.iter().collect();
+                    if self.body_has_stream_for(&refs) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     /// Plan 373: Resolve the return type of `object.method()` and check if it
     /// needs `.await`. Looks up `fn_ret_types` by qualified key ("Type.method")
     /// or bare method name.
@@ -7889,6 +7949,27 @@ impl RustTrans {
                 Ok(true)
             }
 
+            // Plan 364 Phase 8 F2: Stmt::Block — a bare `{ ... }` block.
+            // Previously hit `_ => Err(...)`. Emit a Rust block and recurse
+            // into the inner statements via the same stmt() entry, mirroring
+            // emit_loop_body's delegation pattern.
+            Stmt::Block(body) => {
+                sink.body.write(b"{\n")?;
+                self.indent();
+                for inner in &body.stmts {
+                    self.print_indent(&mut sink.body)?;
+                    self.stmt(inner, sink)?;
+                    if matches!(inner, Stmt::Expr(_)) {
+                        sink.body.write(b";")?;
+                    }
+                    sink.body.write(b"\n")?;
+                }
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}")?;
+                Ok(true)
+            }
+
             Stmt::Store(store) => {
                 self.store(store, &mut sink.body)?;
                 sink.body.write(b";")?;
@@ -8470,10 +8551,12 @@ impl RustTrans {
             self.print_indent(&mut sink.body)?;
         }
 
-        // Plan 163: #[tokio::main] for async main
+        // Plan 163: #[tokio::main] for async main.
+        // Plan 364 Phase 8 F1: also trigger for for-over-Stream (injects .next().await).
+        let main_refs: Vec<&Stmt> = fn_decl.body.stmts.iter().collect();
         let is_main_with_await = !is_method
             && fn_decl.name.as_ref() == "main"
-            && Self::has_await(&fn_decl.body.stmts);
+            && (Self::has_await(&fn_decl.body.stmts) || self.body_has_stream_for(&main_refs));
         if is_main_with_await {
             if is_method {
                 // already indented
@@ -8860,6 +8943,32 @@ impl RustTrans {
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
         match &for_stmt.iter {
             Iter::Named(name) => {
+                // Plan 364 Phase 8 F1: if the iterable is a ~Stream<T> generator
+                // call, emit `while let Some(x) = s.next().await` instead of a
+                // `for` loop — `impl futures::Stream` does not implement
+                // `IntoIterator`, so a plain `for` won't compile.
+                if self.iterable_is_stream(&for_stmt.range) {
+                    // let mut __s = <range>;
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "let mut __s = ")?;
+                    self.expr(&for_stmt.range, &mut sink.body)?;
+                    sink.body.write(b";\n")?;
+                    // tokio::pin!(__s);
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"tokio::pin!(__s);\n")?;
+                    // while let Some(<name>) = __s.next().await { ... }
+                    // Fully-qualified futures::StreamExt::next avoids needing a
+                    // `use futures::StreamExt;` import in the generated file.
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "while let Some({}) = futures::StreamExt::next(&mut __s).await {{\n", name)?;
+                    self.indent();
+                    self.emit_loop_body(&for_stmt.body, sink)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                    return Ok(());
+                }
+
                 sink.body.write(b"for ")?;
                 sink.body.write(name.as_bytes())?;
                 sink.body.write(b" in ")?;
@@ -9018,6 +9127,21 @@ impl RustTrans {
     fn for_stmt_inline(&mut self, for_stmt: &For, out: &mut impl Write) -> AutoResult<()> {
         match &for_stmt.iter {
             Iter::Named(name) => {
+                // Plan 364 Phase 8 F1: for-over-Stream in inline (closure) context.
+                if self.iterable_is_stream(&for_stmt.range) {
+                    write!(out, "{{ let mut __s = ")?;
+                    self.expr(&for_stmt.range, out)?;
+                    write!(out, "; tokio::pin!(__s); while let Some({}) = futures::StreamExt::next(&mut __s).await {{", name)?;
+                    for stmt in &for_stmt.body.stmts {
+                        match stmt {
+                            Stmt::Expr(expr) => { self.expr(expr, out)?; write!(out, "; ")?; }
+                            Stmt::Store(store) => { self.store(store, out)?; write!(out, "; ")?; }
+                            _ => {}
+                        }
+                    }
+                    write!(out, "}} }}")?;
+                    return Ok(());
+                }
                 write!(out, "for {} in ", name)?;
                 if let Expr::Range(range) = &for_stmt.range {
                     self.expr(&range.start, out)?;
@@ -12061,6 +12185,14 @@ impl RustTrans {
                         }
                     }
                 }
+                // Plan 364 Phase 8 F1: recurse into for-loop bodies (previously
+                // fell into `_ => {}`, so an .await inside a for-loop didn't
+                // trigger #[tokio::main] async fn main).
+                Stmt::For(for_stmt) => {
+                    if Self::has_await(&for_stmt.body.stmts) {
+                        return true;
+                    }
+                }
                 _ => {}
             }
         }
@@ -12104,6 +12236,13 @@ impl RustTrans {
                         if Self::has_await_refs(&refs) {
                             return true;
                         }
+                    }
+                }
+                // Plan 364 Phase 8 F1: recurse into for-loop bodies.
+                Stmt::For(for_stmt) => {
+                    let refs: Vec<&Stmt> = for_stmt.body.stmts.iter().collect();
+                    if Self::has_await_refs(&refs) {
+                        return true;
                     }
                 }
                 _ => {}
@@ -15195,11 +15334,13 @@ impl Trans for RustTrans {
                 }
             }
 
-            // Plan 163: Check for async (await) and generate #[tokio::main] if needed
-            // Collect references for has_await check
+            // Plan 163: Check for async (await) and generate #[tokio::main] if needed.
+            // Plan 364 Phase 8 F1: also treat for-over-Stream as async, since the
+            // rewrite injects `.next().await` (the static has_await_refs can't see it
+            // because the .await is injected at transpile time, not present in the AST).
             let is_async = {
                 let refs: Vec<&Stmt> = main.iter().map(|(s, _)| s).collect();
-                Self::has_await_refs(&refs)
+                Self::has_await_refs(&refs) || self.body_has_stream_for(&refs)
             };
             if is_async {
                 sink.body.write(b"#[tokio::main]\n")?;

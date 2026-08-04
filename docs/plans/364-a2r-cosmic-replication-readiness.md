@@ -451,3 +451,78 @@ transpiler's per-frame size on the recursive hot path (fn_decl / type_decl /
 stmt / Pratt expression lowering), not to keep raising test-thread stacks.
 Tracked here as the long-term direction; the test-thread mitigation is the
 pragmatic interim.
+
+---
+
+## Phase 8: Follow-up fixes
+
+Addresses the issues recorded during W1–W7. Three fixed now (F1–F3); two
+deferred to long-term tracking (F4, Try lowering).
+
+### F1 — for-over-Stream consumption lowering ✅ (the main deliverable)
+
+**Defect**: `for x in stream_fn() { ... }` emitted a Rust `for` loop, but
+`impl futures::Stream` does not implement `IntoIterator` → the generated code
+did not compile. The bug was baked into golden `21_generators/002_stream_yield`
+which was never run through rustc.
+
+**Fix** (`rust.rs`):
+- New helper `iterable_is_stream(&self, range)`: returns true when `range` is
+  an `Expr::Call` to a function whose return type resolves (via the
+  `fn_ret_types` cache) to `GenericInstance { base_name: "Stream" }`.
+  `~Iter<T>` returns `impl Iterator` (which *does* implement `IntoIterator`),
+  so plain `for` stays correct there — only `~Stream<T>` triggers the rewrite.
+- `for_stmt` + `for_stmt_inline`: when `iterable_is_stream`, emit
+  `let mut __s = <range>; tokio::pin!(__s); while let Some(x) =
+  futures::StreamExt::next(&mut __s).await { <body> }`. Fully-qualified
+  `futures::StreamExt::next` avoids needing a `use futures::StreamExt;`
+  import in the generated file.
+- `has_await` / `has_await_refs`: added `Stmt::For` arms (previously fell into
+  `_ => {}`, so an `.await` *inside* a for-loop body didn't trigger
+  `#[tokio::main] async fn main()` — a pre-existing bug independent of Stream).
+- `body_has_stream_for(&self, ...)`: since the for-over-Stream `.await` is
+  injected at transpile time (not present in the AST), the static
+  `has_await_refs` can't see it. This `&self` method recursively scans for
+  for-over-Stream patterns and feeds both the auto-main generator and the
+  explicit `fn main()` async detection, ensuring `main` becomes async when it
+  consumes a stream.
+
+**Verification**: golden `002_stream_yield` updated to the corrected output;
+compile-test (temp crate + `cargo build`) confirms the generated code compiles
+and links. a2r suite 299/0.
+
+### F2 — `Stmt::Block` arm in `stmt()` ✅
+
+**Defect**: `stmt()` (`rust.rs:7848`) had no `Stmt::Block` arm — it hit
+`_ => Err`. A bare `{ ... }` block (legitimate in Auto) was unsupported.
+
+**Fix**: added a `Stmt::Block(body)` arm that emits `{ <inner stmts> }`,
+delegating each inner statement to `self.stmt()` (mirroring `emit_loop_body`).
+
+**Not done (deferred)**: `Stmt::Try`. Auto's `try/catch` is a *runtime catch*
+model (VM uses PUSH_HANDLER/POP_HANDLER frames) that catches any runtime
+error — it does not map cleanly to Rust's `Result`/`?`. A faithful lowering
+(try→block returning `Result`, catch→`match Err`) is a substantial feature.
+Also `has_error_propagate` (`rust.rs:12081`) has no `Stmt::Try` arm — part of
+the same deferred feature.
+
+### F3 — `benchmark_nested_loops` overflow ✅
+
+**Defect**: `perf_benchmark_tests::benchmark_nested_loops` (3-level nesting)
+overflowed the 2 MB libtest worker thread. Root cause: nesting depth × large
+parser/codegen frames on `run_with_mode` (which runs inline on the caller
+thread). VM execution itself is iterative.
+
+**Fix**: wrapped the test body in a 16 MB dedicated thread (same pattern as
+`test_cookbook_deep`/`test_a2r_deep`).
+
+### F4 — frame-size root cause (deferred)
+
+The transpiler/parser hot path (`expr()` `rust.rs:1486`, `parse_stmt_inner`
+`parser.rs:3958`, `expr_pratt` `parser.rs:1668`) has diffuse frame bloat — no
+single offender, but mutual recursion across expr/stmt/body/fn_decl/for_stmt.
+Iterativizing (explicit worklist) is a major refactor (~40 fields of implicit
+state to reify). Partial mitigations (box large cloned subtrees, split giant
+match arms into sub-methods) are possible but not a quick win. Left as the
+documented long-term direction; the large-stack-thread mitigation remains the
+pragmatic interim.

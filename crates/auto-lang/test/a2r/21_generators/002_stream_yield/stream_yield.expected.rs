@@ -8,9 +8,12 @@ fn counter(start: i32, count: i32) -> impl futures::Stream<Item = i32> { async_s
     }
 } } }
 
-pub fn main() {
+#[tokio::main]
+pub async fn main() {
     let mut sum: i32 = 0;
-    for n in counter(10, 3) {
+        let mut __s = counter(10, 3);
+    tokio::pin!(__s);
+    while let Some(n) = futures::StreamExt::next(&mut __s).await {
         sum = sum + n;
     }
     println!("{}", sum);
