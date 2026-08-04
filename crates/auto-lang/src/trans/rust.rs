@@ -1824,7 +1824,11 @@ impl RustTrans {
                         // When assigning &str literal to a variable, add .to_string()
                         // In Auto, all str variables are String in Rust, so this is always correct
                         if matches!(op, Op::Asn) && matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
-                            if let Expr::Ident(_) = lhs.as_ref() {
+                            // Plan 016 Phase A A4 cat 5f: also cover self.field
+                            // assignment (Expr::Dot), e.g. self.buf = "" →
+                            // self.buf = "".to_string(). Previously only bare idents
+                            // got the coercion, so self.field = "" stayed &str.
+                            if matches!(lhs.as_ref(), Expr::Ident(_) | Expr::Dot(_, _)) {
                                 write!(out, ".to_string()")?;
                             }
                         }
@@ -4540,8 +4544,11 @@ impl RustTrans {
                         "find" => {
                             // s.find(needle, start_pos?) -> a2r_std::str_find(s, needle, start_pos?)
                             // Returns i32 (-1 if not found), matching Auto semantics
+                            // Plan 016 Phase A A4 cat 7: borrow lhs (e.g. self.buf)
+                            // via as_str to avoid moving a &mut self field (E0507).
+                            // str_find accepts AsRef<str> so &str/&String both work.
                             self.a2r_std_used.set(true); write!(out, "a2r_std::str_find(")?;
-                            self.expr(lhs, out)?;
+                            self.expr_as_str(lhs, out)?;
                             for arg in &call.args.args {
                                 write!(out, ", ")?;
                                 self.arg(arg, out)?;
@@ -5611,6 +5618,33 @@ impl RustTrans {
                         write!(out, "std::collections::HashMap::new()")?;
                         return Ok(());
                     }
+                    // Plan 016 Phase A A4 cat 1: time builtin Dot-path dispatch
+                    // (mirrors the Bina-path arms). Without this, `time.now_ms()`
+                    // emits literally → E0423 "found module time".
+                    ("time", "now_ms") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::time::now_ms()")?;
+                        return Ok(());
+                    }
+                    ("time", "sleep_ms") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::time::sleep_ms(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, " as u64)")?;
+                        return Ok(());
+                    }
+                    ("time", "now_sec") | ("time", "now_secs") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::time::now_sec()")?;
+                        return Ok(());
+                    }
+                    ("time", "now") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::time::now()")?;
+                        return Ok(());
+                    }
                     _ => {} // fall through to remap table
                 }
                 } // if !is_local_var
@@ -5865,7 +5899,10 @@ impl RustTrans {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         let is_owned_string_arg = if let Arg::Pos(e) = arg {
                             match e {
-                                Expr::Str(_) | Expr::CStr(_) => true,
+                                // Plan 016 Phase A A4 cat 3: string literals are
+                                // already &'static str — Value::get accepts them
+                                // directly. Adding & makes &&str (E0277 trait bound).
+                                Expr::Str(_) | Expr::CStr(_) => false,
                                 Expr::Ident(name) => {
                                     // Owned String local, but NOT a str param
                                     // (params declared `str` are &str in Rust).
