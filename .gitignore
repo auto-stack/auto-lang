@@ -135,7 +135,9 @@ __pycache__/
 *.pyc
 .worktree/
 
-# Local junctions for cross-repo path deps (worktree-only)
-auto-ai/
-auto-lang/
+# Local junctions for cross-repo path deps (worktree-only, at repo root)
+# Root-anchored: unanchored `auto-lang/` would also match crates/auto-lang/
+# and silently drop new tracked test fixtures under it.
+/auto-ai/
+/auto-lang/
 node_modules
