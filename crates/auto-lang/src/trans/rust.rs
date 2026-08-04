@@ -1217,6 +1217,27 @@ impl RustTrans {
         name.to_string()
     }
 
+    /// Is `name` an imported concrete type (not a trait)? Used by
+    /// [`rust_return_type_name`] to suppress the `impl` prefix for enums /
+    /// structs / aliases that reach this file via `use X: Name` (Auto) or
+    /// `use X::{Y}` (Rust) imports. Mirrors the brace-expansion fuzzy match
+    /// already used for type qualification (see call sites of `self.uses`).
+    ///
+    /// A bare `IntoResponse` referenced without any import (Plan 380 P2 golden
+    /// `015_impl_trait_return`) is intentionally NOT matched — it has no
+    /// `self.uses` entry, so the `impl` prefix is preserved for real traits.
+    fn is_imported_concrete_type(&self, name: &str) -> bool {
+        self.uses.iter().any(|u| {
+            let s = u.as_str();
+            s == name
+                || s.ends_with(&format!("::{}", name))
+                // brace expansion: "error::{AgentError, ToolError}" contains name
+                || s.contains(&format!("{{{}}}", name))
+                || s.contains(&format!("{}, ", name))
+                || s.contains(&format!(", {}", name))
+        })
+    }
+
     /// Plan 204 Phase 1B: Return type mapping for function return positions.
     /// Auto `str` (parsed as `StrSlice`) should produce Rust `String` in return
     /// position, while parameters keep `&str` for borrowed semantics.
@@ -1272,7 +1293,12 @@ impl RustTrans {
                         | "Rc" | "Cell" | "RefCell" | "Mutex"
                     );
                     let is_pascal = base.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-                    if is_pascal && !is_concrete {
+                    // Plan 018: mirror the Type::User guard — local or imported
+                    // concrete types are never traits, even when bare + PascalCase.
+                    if (is_pascal && !is_concrete)
+                        && !self.local_struct_types.contains(base.as_str())
+                        && !self.is_imported_concrete_type(base.as_str())
+                    {
                         return format!("impl {}", base);
                     }
                 }
@@ -1304,7 +1330,16 @@ impl RustTrans {
                 // trait — skip the `impl` prefix (Option<AgentMode> must stay
                 // `Option<AgentMode>`, and `-> AgentMode` must not be `-> impl
                 // AgentMode`).
-                if self.local_struct_types.contains(name.as_str()) {
+                //
+                // Plan 018: also skip `impl` for types that reach this file via
+                // imports (`use auto_ai_client: ClientError`, `use error: AgentError`,
+                // `use.rust std::path::PathBuf`, …) — they are concrete enums/structs/
+                // aliases, not traits. `None` is Auto's unit type (→ Rust `()`),
+                // also never a trait despite its uppercase initial.
+                if self.local_struct_types.contains(name.as_str())
+                    || self.is_imported_concrete_type(name.as_str())
+                    || name == "None"
+                {
                     self.rust_type_name(ty)
                 } else if is_pascal && !is_concrete {
                     format!("impl {}", name)
@@ -14463,7 +14498,22 @@ impl RustTrans {
         ] {
             // Skip if already imported via `use crate::wire::JsonValue;` or
             // via `use wire: ..., JsonValue, ...` (Auto import syntax).
-            let already_via_rust = content.contains(use_stmt);
+            //
+            // Plan 018: the normal `use error: AgentError` translation emits the
+            // brace form `use crate::error::{AgentError};`, which a plain
+            // `contains(use_stmt)` (no braces) misses — causing a duplicate
+            // injection and E0252. Derive and also check the brace form.
+            let brace_form = use_stmt
+                .strip_suffix(";")
+                .map(|s| {
+                    if let Some(pos) = s.rfind("::") {
+                        format!("{}::{{{}}};", &s[..pos], &s[pos + 2..])
+                    } else {
+                        s.to_string()
+                    }
+                })
+                .unwrap_or_else(|| use_stmt.to_string());
+            let already_via_rust = content.contains(use_stmt) || content.contains(&brace_form);
             let already_via_auto = content.contains(&format!(": {}", type_name))
                 || content.contains(&format!(", {}", type_name))
                 || content.contains(&format!("{} ,", type_name));
