@@ -137,9 +137,9 @@ a failing test first (see W4).
 
 | # | Item | Status | Difficulty | Files | Acceptance |
 |---|------|--------|-----------|-------|------------|
-| W1 | Dotted pass-through annotations (`#[zbus.interface]` → `#[zbus::interface]`) | ⏳ | ⭐ Low | parser.rs:6785-6894 | `#[zbus.interface(...)]` on impl parses and round-trips; single unknown ident still errors |
-| W2 | `Fn.attrs` field + function-level attribute output | ⏳ | ⭐ Low | ast/fun.rs:17-36, rust.rs:7060 area | `#[tokio.main]` / arbitrary attrs on fn emit to Rust |
-| W3 | Multi-bound `#[with(T as A + B)]` + struct/trait/impl-level bound output | ⏳ | ⭐⭐ Low-Mid | ast/types.rs:370, parser.rs:6967-6972/7042, rust.rs:7124-7126 + 8351/8502/8521/8610/8688/9420 | bounds emit at all 6 sites; `T: A + B`; spec-as-constraint bypasses the `Box<dyn>` special case (rust.rs:836) |
+| W1 | Dotted pass-through annotations (`#[zbus.interface]` → `#[zbus::interface]`) | ✅ | ⭐ Low | parser.rs:6785-6894 | `#[zbus.interface(...)]` on impl parses and round-trips; single unknown ident still errors |
+| W2 | `Fn.attrs` field + function-level attribute output | ✅ | ⭐ Low | ast/fun.rs:17-36, rust.rs:7060 area | `#[tokio.main]` / arbitrary attrs on fn emit to Rust |
+| W3 | Multi-bound `#[with(T as A + B)]` + struct/trait/impl-level bound output | ✅ | ⭐⭐ Low-Mid | ast/types.rs:370, parser.rs:7288-7329/7643-7655, rust.rs:957-963 + 13 output sites | bounds emit at all sites; `T: A + B`; spec-as-constraint bypasses the `Box<dyn>` special case (`rust_bound_name`, rust.rs:957) |
 | W4 | `~{}` full statement support, test-driven | ⏳ | ⭐⭐ Mid | rust.rs:2657-2693 → delegate to stmt() (rust.rs:6514) | new tests under test/a2r/ for If/For/Try/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
 | W5 | `move` closure prefix keyword | ⏳ | ⭐⭐ Mid | ast/fun.rs:472, parser.rs (closure syntax), rust.rs:2412/2320, vm/codegen.rs | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
 | W6 | `~Stream<T>` parity coverage | ⏳ | ⭐ Low | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:229-252 | parity runner Cargo template gains `futures`, `async-stream`, tokio `sync` feature; 3-way (VM-skip / a2r / native) tests pass |
@@ -169,3 +169,100 @@ and cosmic-session.
 - VM true concurrency (DIV-CONC-1/2)
 - cosmic-comp (stays upstream Rust; replication is component-level replacement
   validated against the real compositor)
+
+---
+
+## Progress log
+
+### W1 + W2 — landed (commit `9b905dd0`)
+
+- **W1 (D1)**: dotted annotation path parsing (`#[zbus.interface]` →
+  `#[zbus::interface]`). New `is_annotation_dotted_path` lookahead in the
+  parser (with a streaming-token rewind fix); dotted annotations enter a
+  separate `impl_attrs` bucket so they don't merge into struct-level
+  `derive`. New fields `TypeDecl.impl_attrs` / `Ext.attrs` / `Fn.attrs` and
+  render sites: ext/impl block → `#[attr]` prefixed before `impl`;
+  type's own methods → before `impl Type {`; `merge_ext_blocks` folds ext
+  annotations into the target type's impl block. Annotation dispatch gained
+  Ext/Impl branches (previously "Expected ... after annotation").
+- **W2**: fn-level attribute output — `#[tokio.main]` → `#[tokio::main]`
+  prefixed before `fn`. `Fn.attrs` field added (with `new`/`with_ret_name`/
+  `Default` defaults); `fn_decl` renders `#[attr]` before `fn`.
+- Golden: `16_interop/018_dotted_attrs` covers impl-block / type-method / fn
+  three states. Verification: a2r suite 292 passed; remaining lib failures
+  are the pre-existing baseline (17 dstr + 1 route).
+
+### W3 — landed (commit `e01f0f84`, folded into the Plan-018 C8 const work)
+
+W3 (multi-bound `#[with(T as A + B)]`) was implemented alongside the C8 const
+keyword work rather than as a standalone Plan-364 commit. This is the reason
+the C8 commit widened the transpiler hot path enough to push the deep-recursion
+cookbook tests over the libtest stack budget (see the next section). All four
+pieces are in place and verified:
+
+- **AST** (`ast/types.rs:370`): `TypeParam.constraint` is `Vec<Type>` (not the
+  single-`Option` the original plan assumed); `Display` joins with ` + `.
+- **Parser** (`parser.rs:7288` `parse_with_params`): after `as`, parses
+  `Type (+ Type)*` (7318-7326). Repeated `#[with(T as A, T as B)]` aggregates
+  into the same param's constraint Vec via the same-name merge at
+  `parser.rs:7643-7655` (`extend`, not overwrite).
+- **Spec-as-constraint bypass** (`rust.rs:957` `rust_bound_name`): a bound
+  type renders its bare name — `Type::Spec` → `spec.name`, `Type::User` →
+  qualified name — so `#[with(T as Greeter)]` emits `T: Greeter`, never
+  `T: Box<dyn Greeter>`. This is the D2 "spec-as-constraint bypasses the
+  `Box<dyn>` special case" acceptance criterion.
+- **Output sites**: 13 emit sites in `rust.rs` (8441 fn-level + struct/trait/
+  impl/where-clause sites at 9967/10194/10251/10282/10383/10510/10652/10683/
+  11066/11327/11411/11523) — well beyond the 6 the plan named. Each renders
+  `T: A + B` by iterating the constraint Vec with ` + ` separators.
+- **Golden**: `16_interop/019_multi_bound` covers fn-level multi-bound, the
+  `#[with(T as A, T as B)]` aggregation, type-level (`struct Pair<K: Debug>`),
+  and spec-as-constraint (`T: Greeter`). Test passes.
+
+Verification: `cargo test -p auto-lang --lib --features test-trans
+test_16_interop_019_multi_bound` → ok.
+
+### Incidental: deep-recursion stack-overflow class (mitigated, not a regression)
+
+During W1/W2 + Plan-018 C8 landing, several cookbook a2r tests that drive deep
+recursion in the transpiler's hot path (type inference / chained-method /
+iterator / nested-index lowering) began overflowing the **2 MB libtest worker
+thread stack** on Windows debug (`STATUS_STACK_OVERFLOW`, 0xc00000fd). This is
+a stack-budget issue, not a functional regression — the cases transpile
+correctly under a larger stack.
+
+Affected cases (all confirmed failing identically on the clean `master`
+baseline):
+
+- `test_cookbook_file_003_recursive_size` — newly overflowed after C8/W1/W2
+  widened the hot-path frames (this was the trigger for the investigation).
+- `test_cookbook_science_mathematics_linear_algebra_001_add_matrices` — same
+  class; previously latent.
+- `test_cookbook_science_mathematics_linear_algebra_002_multiply_matrices` —
+  already had an ad-hoc inline 4 MB-thread wrapper; now unified.
+
+**Why `build.rs`'s `/STACK:64M` does not help here**: that linker flag governs
+the `auto.exe` main thread (and the test binary's main thread), which fixed
+the large-`.at`-file parse overflow (Plan 018 `specs.at`, ~1100 lines). It
+does **not** govern the per-test worker threads that libtest spawns — those
+default to 2 MB and are controlled by `RUST_MIN_STACK` / explicit
+`thread::Builder::stack_size`. The two stack budgets are independent.
+
+**Mitigation**: added `test_cookbook_deep(case)` in `a2r_tests.rs` — spawns a
+dedicated 16 MB thread, runs the transpile, propagates the result. Routed the
+three deep cases through it (and removed the ad-hoc inline wrapper on 002).
+Verification: a2r suite now runs to completion with zero stack overflows;
+292 pass / 3 fail, where the 3 failures (`rand_custom` 006/010,
+`log_custom` 004) are pre-existing golden mismatches on the baseline,
+unrelated to this work.
+
+**Known, deliberately out of scope here**: `perf_benchmark_tests::
+benchmark_nested_loops` overflows via the *evaluator/VM* execution path (not
+the a2r transpiler), so it is a separate stack-budget problem from the a2r
+ones mitigated above. It is left for a VM-stack follow-up.
+
+**Root-cause follow-up (deferred)**: the durable fix is to shrink the
+transpiler's per-frame size on the recursive hot path (fn_decl / type_decl /
+stmt / Pratt expression lowering), not to keep raising test-thread stacks.
+Tracked here as the long-term direction; the test-thread mitigation is the
+pragmatic interim.

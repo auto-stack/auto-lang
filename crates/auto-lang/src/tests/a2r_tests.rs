@@ -47,6 +47,27 @@ fn test_cookbook(case: &str) -> AutoResult<()> {
     test_a2r_with_base("cookbook", case)
 }
 
+/// Run a cookbook case on a dedicated large-stack thread.
+///
+/// Some cookbook inputs (e.g. `file/003_recursive_size`) drive deep recursion
+/// in the transpiler's hot path (type inference / chained-method / iterator
+/// lowering). The default libtest worker thread stack (2 MB on Windows) is
+/// too small once C8 const + dotted-attr code widened those frames, causing a
+/// stable `STATUS_STACK_OVERFLOW` (0xc00000fd). This is a stack-budget issue,
+/// not a functional regression — the case transpiles correctly under a larger
+/// stack. `build.rs`'s `/STACK` flag only governs the `auto.exe` main thread
+/// and the test binary's main thread, **not** the per-test worker threads that
+/// libtest spawns, so it does not help here. Spawning an explicit thread with
+/// a 16 MB stack sidesteps the harness worker limit cleanly.
+fn test_cookbook_deep(case: &str) {
+    let case = case.to_string();
+    let child = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || test_cookbook(&case))
+        .expect("failed to spawn deep-stack test thread");
+    child.join().expect("deep-stack test thread panicked").unwrap();
+}
+
 /// Plan 310 Phase 4: Test that transpilation FAILS with an error (for cases
 /// like direct self-reference that must be rejected). Asserts the error
 /// message contains the given substring.
@@ -536,7 +557,9 @@ fn get_line(src: &str, offset: usize) -> String {
 
 // -- cookbook/file (B-tier, walkdir) --
 #[test] fn test_cookbook_file_002_find_files() { test_cookbook("file/002_find_files").unwrap(); }
-#[test] fn test_cookbook_file_003_recursive_size() { test_cookbook("file/003_recursive_size").unwrap(); }
+// Deep-recursion case: transpiler hot path overflows the 2 MB libtest worker
+// stack — run on a dedicated 16 MB thread (see test_cookbook_deep).
+#[test] fn test_cookbook_file_003_recursive_size() { test_cookbook_deep("file/003_recursive_size"); }
 #[test] fn test_cookbook_file_004_modified() { test_cookbook("file/004_modified").unwrap(); }
 
 // -- cookbook/science/mathematics/complex_numbers (B-tier, num) --
@@ -743,16 +766,11 @@ fn test_312_codegen_collects_api_routes() {
 #[test] fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() { test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap(); }
 
 // -- cookbook/science/mathematics/linear_algebra --
-#[test] fn test_cookbook_science_mathematics_linear_algebra_001_add_matrices() { test_cookbook("science/mathematics/linear_algebra/001_add_matrices").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_002_multiply_matrices() {
-    // Nested array indexing c[i][j] triggers deep Pratt parser recursion on Windows debug
-    std::thread::Builder::new()
-        .stack_size(4 * 1024 * 1024)
-        .spawn(|| { test_cookbook("science/mathematics/linear_algebra/002_multiply_matrices").unwrap(); })
-        .unwrap()
-        .join()
-        .unwrap();
-}
+// Deep-recursion cases: nested array indexing c[i][j] drives deep Pratt parser
+// recursion on Windows debug; 001 also overflows since C8/W1/W2 widened frames.
+// Run both on a dedicated 16 MB thread (see test_cookbook_deep).
+#[test] fn test_cookbook_science_mathematics_linear_algebra_001_add_matrices() { test_cookbook_deep("science/mathematics/linear_algebra/001_add_matrices"); }
+#[test] fn test_cookbook_science_mathematics_linear_algebra_002_multiply_matrices() { test_cookbook_deep("science/mathematics/linear_algebra/002_multiply_matrices"); }
 #[test] fn test_cookbook_science_mathematics_linear_algebra_003_multiply_svm() { test_cookbook("science/mathematics/linear_algebra/003_multiply_svm").unwrap(); }
 #[test] fn test_cookbook_science_mathematics_linear_algebra_004_vector_comparison() { test_cookbook("science/mathematics/linear_algebra/004_vector_comparison").unwrap(); }
 #[test] fn test_cookbook_science_mathematics_linear_algebra_005_vector_norm() { test_cookbook("science/mathematics/linear_algebra/005_vector_norm").unwrap(); }
