@@ -1,5 +1,6 @@
 # Plan 333：CompileSession 迁移 — 让 VM/Rust 模式都能跑 015-notes
 
+> **状态**: ✅ 已完成并归档（2026-08-04）。核心目标（VM 模式端到端运行 015-notes）已达成：Phase 1（collect_module_imports 接入共享 CompileSession + type_store 预解析）+ Phase 2（链接器前缀回退）已完成，015 VM 行为测试 9/9 全绿，0 link failures。Phase 4 的清理项（移除 is_back_module hack、注释更新）属可选优化，不影响功能。子组件 prop 赋值 `Undefined variable: self` 是独立的既有能力缺口（非本计划范围）。
 > **For Claude:** 本计划是 Plan 327（015-notes vm render）的延续与收口。前置已合并：点分路径(323)、collect_module_imports 递归(327-1.1)、state-field 方法接收者重写(`37e50d42`)、SelectNote 参数名(`d4eccb53`)、sibling 模块解析+Store/Use 收集(`a2b226b3`)。本计划处理**最后一层阻断**：`back/db.at` 在 collect 路径解析失败（"undefined variable: Note"），根因是该路径未做依赖预解析。目标：VM 模式与 Rust 模式都能端到端运行 015-notes。
 
 ## 背景与定位
