@@ -71,7 +71,7 @@
 | **354** | 015-notes 真实化 | 后端 schema/store/标签/搜索 done；~~布局重构 + AutoDown 编辑器依赖 358 D9~~ → 358 D9 已修复，AutoDown 编辑器已在 editor.at 使用；剩余布局/block 体系可推进 |
 | **357** | 015-notes v4 UX | v1-v3 done；**v4 三项待做**（Tag 编辑独立、导航栏 tag 动态化、Pin 改 hover 图标） |
 | **359** | "Auto 作 Rust 脚本层"发布 | 庞大计划；Phase E 前置部分 fixed，**主体 Phase A/B/C/D + DoD V1-V7 全未勾** |
-| **369** | Python parity suite | P0-P5 done（69/69）；**P6（Task 23-28，6 个新库 os/re/json/configparser/hashlib/sys）未开始** |
+| **369** | Python parity suite | ✅ 已完成并归档（2026-08-04）。P0-P6 全部 11 个库（math/random/datetime/struct/uuid + os/re/json/configparser/hashlib/sys）均有 parity 测试。详见 `archive/369-*.md` |
 | **373** | a2r B1 papercuts | MVP 达成（0 errors + cargo run 通）；re-transpile 可重现性已由 376 达成 |
 | **376** | a2r 类型流分析 | ✅ MVP 达成并归档（2026-08-04）。re-transpile 0 错误已验证（§13）；目标对象 auto-ai-agent 已由 plan-015 迁回 auto-ai 仓库，a2r 类型流改进（struct_field_types/fn_ret_types/fix_borrowing/post_process 链）作为通用基础设施留存。详见 `archive/376-*.md` |
 
