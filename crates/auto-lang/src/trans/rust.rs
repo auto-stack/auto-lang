@@ -1549,7 +1549,9 @@ impl RustTrans {
                     // (`Err(e) => return Err(e)`) in a Result<_, Concrete> fn —
                     // the ident already holds the concrete error, no Box.
                     self.expr(e, out)?;
-                } else if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                } else if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)) {
+                    // Plan 016 Phase A: f-string (format!()) also returns String,
+                    // so .into() works for Result<_, String> without Box::new.
                     self.expr(e, out)?;
                     write!(out, ".into()")?;
                 } else {
@@ -6319,6 +6321,22 @@ impl RustTrans {
                                 }
                             }
                         }
+                        // Plan 016 Phase A A5: auto-borrow for HashMap.get() —
+                        // the key arg needs & when it's a String ident. HashMap
+                        // get accepts &Q where K: Borrow<Q>, so borrowing is
+                        // always safe (covers owned String, for-loop vars whose
+                        // type a2r didn't record, etc.). Only skip when the
+                        // ident is a known &str slice (already a reference).
+                        if i == 0 && method_name.as_str() == "get" {
+                            if let Expr::Ident(name) = expr {
+                                let is_str_slice = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                    .unwrap_or(false);
+                                if !is_str_slice {
+                                    write!(out, "&")?;
+                                }
+                            }
+                        }
                         self.expr(expr, out)?;
                         // For .get(): auto-borrow handling done via is_str_param below.
                         // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
@@ -8301,7 +8319,33 @@ impl RustTrans {
             // Plan 373: also auto-detect self-mutation (self.field = ... or
             // self.field.push/insert/...) when source doesn't explicitly say mut fn.
             let needs_mut = fn_decl.is_mut || Self::method_mutates_self(&fn_decl.body.stmts);
-            if needs_mut {
+            // Plan 016 Phase A A4: builder pattern detection. A `mut fn` that
+            // returns the enclosing type and ends with `return self` is a
+            // consuming-self builder (rust-ref style: `fn(self) -> Self`).
+            // Emit `mut self` so `return self` compiles (returns owned self,
+            // enabling chaining `.with_x(...).with_y(...)`). Without this, the
+            // method gets `&mut self` and `return self` returns the borrow →
+            // E0308 "expected Self, found &mut Self".
+            let is_builder = needs_mut && {
+                let ret_is_parent = fn_decl.parent.as_ref().map(|p| p.to_string())
+                    .map(|parent_name| {
+                        // ret is the enclosing type (User named like the parent,
+                        // or the implicit Self).
+                        match &fn_decl.ret {
+                            Type::User(td) => td.name.as_str() == parent_name,
+                            _ => false,
+                        }
+                    })
+                    .unwrap_or(false);
+                let ends_with_return_self = fn_decl.body.stmts.iter().last().map(|s| {
+                    matches!(s, Stmt::Return(expr)
+                        if matches!(expr.as_ref(), Expr::Ident(name) if name.as_str() == "self"))
+                }).unwrap_or(false);
+                ret_is_parent && ends_with_return_self
+            };
+            if is_builder {
+                write!(sink.body, "mut self")?;
+            } else if needs_mut {
                 write!(sink.body, "&mut self")?;
             } else {
                 write!(sink.body, "&self")?;
@@ -9647,6 +9691,11 @@ impl RustTrans {
             if has_dyn_field {
                 writeln!(sink.body, "#[derive(Clone, Debug)]")?;
             } else if has_float_field || has_map_field || has_enum_field {
+                // Structs containing enum fields are conservatively downgraded
+                // to PartialEq here; fix_non_ord_derives (post-pass) refines:
+                // it restores Eq/Ord when the enum is actually Ord-safe (e.g.
+                // fieldless ModelTier), and propagates non-Ord-ness from enums
+                // containing JsonValue/dyn to their containing structs.
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq)]")?;
             } else {
                 writeln!(sink.body, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")?;
@@ -13782,8 +13831,9 @@ impl RustTrans {
         // and its field/variant lines up to the closing brace.
         let non_ord_markers = [
             "JsonValue", "serde_json::Value", "Value", "HashMap", "BTreeMap",
-            "Box<dyn", "Message", "ModelTier", "ClientError", "ToolError",
+            "Box<dyn", "Message", "ClientError", "ToolError",
             "HandoffDocument", "AgentError", "AgentResult", "ToolCallRecord",
+            // Plan 016 Phase A A6: ModelTier removed — it IS Ord (fieldless enum).
         ];
         // (?s) dotall: capture derive + whole body up to matching closing brace.
         // We approximate the body as everything up to the first "\n}\n" at column 0.
@@ -13809,6 +13859,56 @@ impl RustTrans {
                 let name = caps.get(5).unwrap().as_str();
                 format!("#[derive(Clone, Debug, PartialEq)]\n{}{} {} {{{}\n}}",
                         pub_kw, kind_kw, name, body)
+            }).to_string();
+            if new != *content { *content = new; }
+        }
+
+        // Plan 016 Phase A A6 (upgrade pass): structs that were conservatively
+        // downgraded to PartialEq (because they have an enum field — see
+        // has_enum_field in type_decl) but whose body contains NO non-Ord
+        // marker can safely UPGRADE to the full derive set. This restores
+        // Eq/Ord for structs like ModelDefinition { tier: ModelTier } where
+        // ModelTier is a fieldless (Ord-safe) enum. Only structs (not enums):
+        // enums derive Eq/Ord via payload_is_eq_safe in enum_decl, and a
+        // PartialEq enum was deliberately downgraded because its payload is
+        // genuinely non-Ord (e.g. ContentBlock carries JsonValue).
+        // We also propagate non-Ord-ness: collect names of types whose body
+        // contains a base marker, then treat those names as markers too, so a
+        // struct containing a non-Ord enum (e.g. Message { content: Vec<ContentBlock> })
+        // is NOT upgraded.
+        let upgrade_re_str = r"(?s)(#\[derive\(Clone, Debug, PartialEq\)\]\n)(pub )?struct (\w+) \{(.*?)\n\}";
+        if let Some(re) = cached_regex(upgrade_re_str) {
+            // First pass: collect derived markers (type names whose own body
+            // contains a base non_ord marker — these are non-Ord enums/structs
+            // that should block upgrade of anything referencing them).
+            let mut derived_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let collect_re_str = r"(?s)(?:enum|struct) (\w+) \{(.*?)\n\}";
+            if let Some(collect_re) = cached_regex(collect_re_str) {
+                for caps in collect_re.captures_iter(content.as_str()) {
+                    let name = caps.get(1).unwrap().as_str();
+                    let body = caps.get(2).unwrap().as_str();
+                    if non_ord_markers.iter().any(|m| body.contains(m)) {
+                        derived_markers.insert(name.to_string());
+                    }
+                }
+            }
+            let all_markers: Vec<String> = non_ord_markers.iter()
+                .map(|s| s.to_string())
+                .chain(derived_markers.iter().cloned())
+                .collect();
+
+            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
+                let body = caps.get(4).unwrap().as_str();
+                // If body references any non-Ord marker (base or derived),
+                // keep the conservative PartialEq.
+                if all_markers.iter().any(|m| body.contains(m.as_str())) {
+                    return caps.get(0).unwrap().as_str().to_string();
+                }
+                // Safe to upgrade: no non-Ord payload detected.
+                let pub_kw = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let name = caps.get(3).unwrap().as_str();
+                format!("#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]\n{}struct {} {{{}\n}}",
+                        pub_kw, name, body)
             }).to_string();
             if new != *content { *content = new; }
         }
@@ -13912,54 +14012,77 @@ impl RustTrans {
     /// Adds `.to_string()` to the inner value.
     fn fix_some_str_to_string(content: &mut String) {
         // Add .to_string() to `self.field = Some(ident)` ONLY when the payload
-        // ident is str-typed. The field is Option<String> in that case and
-        // Rust won't coerce `Some(&str)` → `Some(String)`.
+        // ident is str-typed IN THE SAME FUNCTION. The field is Option<String>
+        // in that case and Rust won't coerce `Some(&str)` → `Some(String)`.
         //
-        // Plan 380 regression: the previous version added .to_string() to ANY
-        // bare ident, which broke `Some(budget)` (Option<u32> → E0308) and
-        // `Some(handler)` (Option<fn> → E0599 Display). Only str-typed idents
-        // (fn params / locals annotated &str or String) need the conversion.
-        let mut str_idents = std::collections::HashSet::new();
-        if let Some(re) = cached_regex(r"\b(\w+):\s*&str\b") {
-            for line in content.lines() {
-                for caps in re.captures_iter(line) {
-                    if let Some(m) = caps.get(1) {
-                        str_idents.insert(m.as_str().to_string());
-                    }
-                }
-            }
-        }
-        if let Some(re) = cached_regex(r"\b(\w+):\s*String\b") {
-            for line in content.lines() {
-                for caps in re.captures_iter(line) {
-                    if let Some(m) = caps.get(1) {
-                        str_idents.insert(m.as_str().to_string());
-                    }
-                }
-            }
-        }
-        if let Some(re) = cached_regex(r"let (?:mut )?(\w+):\s*(?:&str|String)\b") {
-            for line in content.lines() {
-                for caps in re.captures_iter(line) {
-                    if let Some(m) = caps.get(1) {
-                        str_idents.insert(m.as_str().to_string());
-                    }
-                }
-            }
-        }
-
+        // Plan 016 Phase A A7a: the str-ident set must be FUNCTION-SCOPED, not
+        // file-global. A file-global set caused cross-function name collisions
+        // (e.g. `fn text(t: &str)` poisoned `Some(t)` in an unrelated
+        // `fn with_temperature(t: f64)`, inserting a bogus `.to_string()` on a
+        // float → E0308 Option<f64> vs Option<String>). We split the content
+        // into function chunks and process each independently.
         let re = cached_regex(r"(self\.\w+\s*=\s*Some\()(\w+)(\))");
         if let Some(re) = re {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let prefix = caps.get(1).unwrap().as_str();
-                let ident = caps.get(2).unwrap().as_str();
-                let suffix = caps.get(3).unwrap().as_str();
-                // Only convert when the payload is a known str-typed ident
-                if !str_idents.contains(ident) {
-                    return format!("{}{}{}", prefix, ident, suffix);
+            // Split into function chunks. A function starts at a line matching
+            // `fn ` (at any indent) and ends right before the next such line or
+            // EOF. We keep the boundaries so reconstruction is byte-faithful.
+            let lines: Vec<&str> = content.lines().collect();
+            let mut chunk_starts: Vec<usize> = Vec::new();
+            for (i, line) in lines.iter().enumerate() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("pub fn ")
+                    || trimmed.starts_with("fn ")
+                    || trimmed.starts_with("pub async fn ")
+                    || trimmed.starts_with("async fn ")
+                {
+                    chunk_starts.push(i);
                 }
-                format!("{}{}.to_string(){}", prefix, ident, suffix)
-            }).to_string();
+            }
+            chunk_starts.push(lines.len()); // sentinel end
+
+            let mut out_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+            for c in 0..chunk_starts.len() - 1 {
+                let start = chunk_starts[c];
+                let end = chunk_starts[c + 1];
+                let chunk = &lines[start..end];
+
+                // Collect str-typed idents WITHIN this function chunk only.
+                let mut str_idents = std::collections::HashSet::new();
+                let patterns = [
+                    r"\b(\w+):\s*&str\b",
+                    r"\b(\w+):\s*String\b",
+                    r"let (?:mut )?(\w+):\s*(?:&str|String)\b",
+                ];
+                for pat in &patterns {
+                    if let Some(pr) = cached_regex(pat) {
+                        for cl in chunk {
+                            for caps in pr.captures_iter(cl) {
+                                if let Some(m) = caps.get(1) {
+                                    str_idents.insert(m.as_str().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Apply the Some(ident) → Some(ident.to_string()) rewrite in-chunk.
+                for (i, cl) in chunk.iter().enumerate() {
+                    if !cl.contains("= Some(") {
+                        continue;
+                    }
+                    let rewritten = re.replace(cl, |caps: &regex::Captures| {
+                        let prefix = caps.get(1).unwrap().as_str();
+                        let ident = caps.get(2).unwrap().as_str();
+                        let suffix = caps.get(3).unwrap().as_str();
+                        if !str_idents.contains(ident) {
+                            return format!("{}{}{}", prefix, ident, suffix);
+                        }
+                        format!("{}{}.to_string(){}", prefix, ident, suffix)
+                    });
+                    out_lines[start + i] = rewritten.to_string();
+                }
+            }
+            let new = out_lines.join("\n") + "\n";
             if new != *content { *content = new; }
         }
         let re2 = cached_regex(r#"(self\.\w+\s*=\s*Some\()("(?:[^"\\]|\\.)*")(\))"#);
