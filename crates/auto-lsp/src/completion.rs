@@ -35,7 +35,7 @@ fn complete_impl(
         return keyword_completions();
     };
 
-    let before_cursor = &line[..position.character.min(line.len() as u32) as usize];
+    let before_cursor = crate::position::slice_line_before_char(line, position.character);
 
     // If explicitly triggered by '.', force field access mode
     // and pass the trigger info to the var extraction function

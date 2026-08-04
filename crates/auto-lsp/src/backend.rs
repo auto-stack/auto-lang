@@ -431,7 +431,7 @@ impl LanguageServer for Backend {
             Some(l) => l,
             None => return Ok(None),
         };
-        let word = match get_word_at_position(line, position.character as usize) {
+        let word = match get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character)) {
             Some(w) => w,
             None => return Ok(None),
         };
@@ -621,7 +621,7 @@ impl LanguageServer for Backend {
             Some(l) => l,
             None => return Ok(None),
         };
-        let word = match get_word_at_position(line, position.character as usize) {
+        let word = match get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character)) {
             Some(w) => w,
             None => return Ok(None),
         };
@@ -965,9 +965,8 @@ fn position_to_offset(content: &str, position: &Position) -> usize {
 
     // Add characters in the target line up to the target character
     if let Some(line) = lines.get(position.line as usize) {
-        let chars: Vec<char> = line.chars().collect();
-        let char_offset = position.character.min(chars.len() as u32) as usize;
-        offset += chars[..char_offset].iter().collect::<String>().len();
+        let char_offset = crate::position::utf16_to_byte_offset(&line, position.character);
+        offset += char_offset;
     }
 
     offset

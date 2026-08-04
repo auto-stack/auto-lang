@@ -20,7 +20,7 @@ fn hover_workspace_impl(
 ) -> Option<Hover> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let word = get_word_at_position(line, position.character as usize)?;
+    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
 
     // Try workspace TypeStore first (includes imported symbols)
     if let Ok(store) = ws_state.type_store.read() {
@@ -96,7 +96,7 @@ fn hover_impl(content: &str, position: Position, _uri: &str) -> Option<Hover> {
     let line = lines.get(position.line as usize)?;
 
     // Get the word at the cursor position
-    let word = get_word_at_position(line, position.character as usize)?;
+    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
 
     // First, check if it's a user-defined type or function in the current file
     if let Some(docs) = get_user_defined_docs(content, &word) {
@@ -110,7 +110,7 @@ fn hover_impl(content: &str, position: Position, _uri: &str) -> Option<Hover> {
     }
 
     // Check if it's a method or field access (e.g., p.x or p.square())
-    if let Some(var_name) = get_variable_before_dot(line, position.character as usize) {
+    if let Some(var_name) = get_variable_before_dot(line, crate::position::utf16_to_byte_offset(line, position.character)) {
         // Try to infer the type of the variable using the parser's type information
         let type_name = infer_variable_type_from_parser_with_scope(content, position, &var_name)
             .or_else(|| infer_variable_type_heuristic(content, &var_name));

@@ -4,7 +4,7 @@ use tower_lsp_server::ls_types::*;
 pub fn get_signature_help(content: &str, position: Position) -> Option<SignatureHelp> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let before_cursor = &line[..position.character.min(line.len() as u32) as usize];
+    let before_cursor = crate::position::slice_line_before_char(line, position.character);
 
     // Find the function name before the last unmatched '('
     let (func_name, active_param) = extract_function_call(before_cursor)?;
@@ -27,7 +27,7 @@ pub fn get_signature_help_workspace(
 ) -> Option<SignatureHelp> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let before_cursor = &line[..position.character.min(line.len() as u32) as usize];
+    let before_cursor = crate::position::slice_line_before_char(line, position.character);
 
     let (func_name, active_param) = extract_function_call(before_cursor)?;
 

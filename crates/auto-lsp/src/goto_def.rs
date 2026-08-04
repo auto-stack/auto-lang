@@ -15,7 +15,8 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     let line = lines.get(position.line as usize)?;
 
     // Get the word at the cursor position
-    let word = get_word_at_position(line, position.character as usize)?;
+    let char_offset = crate::position::utf16_to_byte_offset(line, position.character);
+    let word = get_word_at_position(line, char_offset)?;
 
     // Parse the code to get AST and inference context
     let mut parser = auto_lang::Parser::from(content);
@@ -27,7 +28,7 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     }
 
     // If not found, check if this is a member/field access (e.g., p.x or p.square())
-    if let Some(var_name) = get_variable_before_dot(line, position.character as usize) {
+    if let Some(var_name) = get_variable_before_dot(line, crate::position::utf16_to_byte_offset(line, position.character)) {
         // Try to infer the type of the variable using the parser's type information
         let type_name = infer_variable_type_from_parser(&parser.infer_ctx, &var_name)
             .or_else(|| {
@@ -140,7 +141,7 @@ pub fn find_definition_workspace(
 ) -> Option<GotoDefinitionResponse> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let word = get_word_at_position(line, position.character as usize)?;
+    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
 
     let db = &ws_state.db;
 

@@ -7,5 +7,6 @@ pub mod goto_def;
 pub mod workspace;
 pub mod signature_help;
 pub mod inlay_hints;
+pub mod position;
 
 pub use backend::Backend;
