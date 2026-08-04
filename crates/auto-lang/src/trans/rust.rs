@@ -1251,7 +1251,7 @@ impl RustTrans {
             // PascalCase name (not a known concrete type), treat as trait:
             // ~IntoResponse → impl IntoResponse (via Future unwrap in caller).
             Type::User(usr) => {
-                let name = usr.borrow().name.to_string();
+                let name = usr.name.to_string();
                 if self.spec_decls.contains_key(name.as_str()) {
                     return format!("impl {}", name);
                 }
