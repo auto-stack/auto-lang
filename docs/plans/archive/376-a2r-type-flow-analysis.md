@@ -1,9 +1,8 @@
 # Plan 376: a2r 类型流分析（让 re-transpile 达到 0 错误）
 
-> **状态**：🔄 实施中（方案 A-F + G unify + H .at 修复已完成；剩余 225 个已分类）
+> **状态**：✅ MVP 达成并归档（2026-08-04）。原始目标（auto-ai-agent re-transpile 0 错误）在 §13 验证达标；其后目标对象已由 **plan-015**（commit `91443c10`）迁回 auto-ai 仓库，本仓库无后续工作。376 实施的 a2r 类型流分析改进（struct_field_types / fn_ret_types / fix_borrowing / enum attrs / post_process 链）作为**通用 a2r 基础设施留存**，对本仓库所有 a2r 转译场景持续生效。
 > **仓库**：auto-lang
 > **前置**：plan 372（系统性 a2r 根因）、plan 373（B1 细节 + post_process 链）
-> **当前进度**：343 → 225（-34%）；手修版保持 0 错误。
 > **目标**：让 `crates/auto-ai-agent/rust/` 的 **re-transpile**（全部 .at → a2r → 组装 → cargo check）达到与手修版同等的 0 错误水平。
 > **当前进度**：343 → 251（-27%）；手修版保持 0 错误。
 

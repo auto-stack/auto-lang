@@ -28,7 +28,7 @@
 | **375** | SCU001 config/build | ✅ 已归档。与基线字节级一致；device 子 group 顺序差异明确"不修" |
 | **378** | `.to_uint()` u64 槽位修复 | ✅ 已归档。9 叠加缺陷全修；§10.5 `str.lower()` heap string 回归已于 2026-08-01 修复（根因：engine.rs inline str 分发表漏 `upper/lower` 别名），遗留全清 |
 | **379** | 放宽 `route` 关键字 | ✅ 已归档。§5 遗留已由 Plan 383 彻底解决（函数引用作方法实参），不再绕开 |
-| **383** | 命名函数引用作为值 | ✅ 已完成（2026-08-01）。VM 复用 CLOSURE 让 `let f = handler`/`f()` 工作；a2r 修 `is_copy_type` 认 `Type::Fn` 使 `.route("/", handler)` 输出干净 handler。零新增回归 |
+| **383** | 命名函数引用作为值 | ✅ 已完成并归档（2026-08-04）。VM 复用 CLOSURE 让 `let f = handler`/`f()` 工作；a2r 修 `is_copy_type` 认 `Type::Fn` 使 `.route("/", handler)` 输出干净 handler。零新增回归。详见 `archive/383-*.md` |
 
 > ⚠️ **归档前复核**: ~~`378` §10.5 发现 `str.lower()` 在 heap string 上返回垃圾值~~
 > ——**已于 2026-08-01 修复**（实际根因：`engine.rs` CALL_SPEC inline str 分发表漏了
@@ -72,8 +72,8 @@
 | **357** | 015-notes v4 UX | v1-v3 done；**v4 三项待做**（Tag 编辑独立、导航栏 tag 动态化、Pin 改 hover 图标） |
 | **359** | "Auto 作 Rust 脚本层"发布 | 庞大计划；Phase E 前置部分 fixed，**主体 Phase A/B/C/D + DoD V1-V7 全未勾** |
 | **369** | Python parity suite | P0-P5 done（69/69）；**P6（Task 23-28，6 个新库 os/re/json/configparser/hashlib/sys）未开始** |
-| **373** | a2r B1 papercuts | MVP 达成（0 errors + cargo run 通）；**re-transpile 可重现性未达成（移交给 376）** |
-| **376** | a2r 类型流分析 | MVP 达成（re-transpile 0 错误）；**lib.rs 仍手写**；37 警告清理 |
+| **373** | a2r B1 papercuts | MVP 达成（0 errors + cargo run 通）；re-transpile 可重现性已由 376 达成 |
+| **376** | a2r 类型流分析 | ✅ MVP 达成并归档（2026-08-04）。re-transpile 0 错误已验证（§13）；目标对象 auto-ai-agent 已由 plan-015 迁回 auto-ai 仓库，a2r 类型流改进（struct_field_types/fn_ret_types/fix_borrowing/post_process 链）作为通用基础设施留存。详见 `archive/376-*.md` |
 
 ---
 
@@ -109,7 +109,8 @@
 | **365** | AutoUI 可插拔 Host | W1-W4 pending，W5 deferred（依赖 364 W1-W3） |
 | **366** | 跨平台 UI 测试 DSL | "设计阶段暂不实现"；366a 5 项验收未勾（1-2 天可落地） |
 | **374** | a2r store/viewfn parity | 4 Task 全未实施（Rust 模式 015-notes 功能 parity） |
-| **377** | 统一值表示消除 2-slot | ✅ **已完成并归档**（2026-08-01）。5 阶段全部完成：全值单槽化（f64/i64/u64 单 NanoValue）+ BigInt 堆兜底（完整 64 位范围）+ 统一 print + 删除 RET_D + 性能验收（单槽快 ~10%）。解决 378 全局 u64 大值截断遗留；全量回归 0 新增失败、修复 5 个既有失败。详见 `archive/377-*.md` |
+
+> **377**（统一值表示消除 2-slot）已于 2026-08-01 完成并归档至 `archive/377-*.md`（详见 §1）。
 
 ### 3.2 ⚠️ Stale 风险（久未更新）
 
