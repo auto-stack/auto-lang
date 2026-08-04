@@ -5818,12 +5818,25 @@ impl RustTrans {
                         if let Some(fields) = struct_fields {
                             write!(out, " {{ ")?;
                             for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
-                                if let Arg::Pos(expr) = arg {
-                                    write!(out, "{}: ", field_name)?;
-                                    self.expr(expr, out)?;
-                                    if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                        write!(out, ".to_string()")?;
+                                match arg {
+                                    Arg::Pos(expr) => {
+                                        write!(out, "{}: ", field_name)?;
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
                                     }
+                                    // C7b: named-arg construction
+                                    // (Tier.NeedsApproval(reason: "x")) — use the
+                                    // pair's own key as the field name.
+                                    Arg::Pair(key, expr) => {
+                                        write!(out, "{}: ", key)?;
+                                        self.expr(expr, out)?;
+                                        if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                    Arg::Name(_) => {}
                                 }
                                 if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
                             }
@@ -8462,10 +8475,16 @@ impl RustTrans {
                 write!(sink.body, ", ")?;
             }
             for (i, param) in params_to_emit.iter().enumerate() {
+                // Plan 380 P3: destructure params output as `TypeName(name): Type`
+                let param_name = if let Some(ref d) = param.destructure {
+                    format!("{}({})", d.wrapper_type, param.name)
+                } else {
+                    param.name.to_string()
+                };
                 write!(
                     sink.body,
                     "{}: {}",
-                    param.name,
+                    param_name,
                     self.effective_param_type_name(param, &result_idents)
                 )?;
                 if i < params_to_emit.len() - 1 {
@@ -8496,11 +8515,17 @@ impl RustTrans {
                     )?;
                 } else {
                     let mut_prefix = if param.mode == crate::ast::ParamMode::Mut { "mut " } else { "" };
+                    // Plan 380 P3: destructure params output as `TypeName(name): Type`
+                    let param_name = if let Some(ref d) = param.destructure {
+                        format!("{}({})", d.wrapper_type, param.name)
+                    } else {
+                        param.name.to_string()
+                    };
                     write!(
                         sink.body,
                         "{}{}: {}",
                         mut_prefix,
-                        param.name,
+                        param_name,
                         self.effective_param_type_name(param, &result_idents)
                     )?;
                 }
