@@ -817,3 +817,7 @@ fn test_312_codegen_collects_api_routes() {
 #[test] fn test_cookbook_web_url_004_new() { test_cookbook("web/url/004_new").unwrap(); }
 #[test] fn test_cookbook_web_url_005_origin() { test_cookbook("web/url/005_origin").unwrap(); }
 
+// === 21_generators ===
+// Plan 364 W6: first compile-test of ~Stream<T> generator transpilation.
+#[test] fn test_21_generators_002_stream_yield() { test_a2r("21_generators/002_stream_yield").unwrap(); }
+

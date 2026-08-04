@@ -334,6 +334,11 @@ once_cell = "1"
 # Plan 347 P4: async tests transpile to `async fn main()` with `#[tokio::main]`,
 # so the test binary needs tokio as a dependency.
 tokio = {{ version = "1", features = ["rt", "macros"] }}
+# Plan 364 W6: ~Stream<T> generators transpile to
+# `impl futures::Stream<Item=T> {{ async_stream::stream! {{ ... }} }}`, so any
+# a2r test crate exercising streams needs these two crates available.
+async_stream = "0.3"
+futures = "0.3"
 
 [[bin]]
 name = "{bin_name}"

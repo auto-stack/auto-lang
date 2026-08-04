@@ -1,0 +1,16 @@
+// Plan 364 W6: ~Stream<T> generator — first compile-test of the Stream path.
+fn counter(start int, count int) ~Stream<int> {
+    var i int = 0
+    while i < count {
+        yield start + i
+        i = i + 1
+    }
+}
+
+pub fn main() {
+    var sum = 0
+    for n in counter(10, 3) {
+        sum = sum + n
+    }
+    print(sum)
+}

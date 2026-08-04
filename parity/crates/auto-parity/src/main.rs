@@ -183,7 +183,7 @@ fn run_library(config: &RunConfig) {
 /// Async libraries (P4: reqwest, tokio) have non-deterministic completion
 /// order, so their results must be sorted by test name before comparison.
 fn is_async_library(library: &str) -> bool {
-    matches!(library, "reqwest" | "tokio")
+    matches!(library, "reqwest" | "tokio" | "tokio_stream")
 }
 
 /// Run all three backends for a single library and build the per-test
@@ -334,7 +334,7 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("p1", &["base64", "url"]),
         ("p2", &["serde_json", "regex"]),
         ("p3", &["sha2", "rusqlite"]),
-        ("p4", &["reqwest", "tokio"]),
+        ("p4", &["reqwest", "tokio", "tokio_stream"]),
         // Plan 358 additions:
         ("d1", &["cli_app"]),
         ("d2", &["trait_advanced"]),

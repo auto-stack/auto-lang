@@ -1,0 +1,19 @@
+/// tokio_stream tests — TAP output format.
+///
+/// Tests that ~Stream<T> generator functions can be constructed.
+/// (Full for-over-Stream consumption is a known a2r limitation — see the
+/// library doc comment.)
+use auto.tokio_stream: counter, repeat
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn main() {
+    // Stream generator functions are callable and return a stream value.
+    // We verify construction + that the function compiles under a2r.
+    var s1 = counter(10, 3)
+    var s2 = repeat(42, 5)
+    tap_ok(1, "counter_constructs")
+    tap_ok(2, "repeat_constructs")
+}

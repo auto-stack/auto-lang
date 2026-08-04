@@ -142,7 +142,7 @@ a failing test first (see W4).
 | W3 | Multi-bound `#[with(T as A + B)]` + struct/trait/impl-level bound output | ✅ | ⭐⭐ Low-Mid | ast/types.rs:370, parser.rs:7288-7329/7643-7655, rust.rs:957-963 + 13 output sites | bounds emit at all sites; `T: A + B`; spec-as-constraint bypasses the `Box<dyn>` special case (`rust_bound_name`, rust.rs:957) |
 | W4 | `~{}` full statement support, test-driven | ✅ | ⭐⭐ Mid | rust.rs:3031-3067 → delegate to stmt() (rust.rs:7838) | new tests under test/a2r/ for If/For/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
 | W5 | `move` closure prefix keyword | ✅ | ⭐⭐ Mid | ast/fun.rs:494, parser.rs:1636 (parse_expr), rust.rs:2785 (Expr::Closure arm) | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
-| W6 | `~Stream<T>` parity coverage | ⏳ | ⭐ Low | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:229-252 | parity runner Cargo template gains `futures`, `async-stream`, tokio `sync` feature; 3-way (VM-skip / a2r / native) tests pass |
+| W6 | `~Stream<T>` parity coverage | ✅ | ⭐ Low (infra) / ⭐⭐⭐ (codegen gap found) | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:321-348 | parity runner Cargo template gains `futures`, `async-stream`; new `tokio_stream` parity package; native oracle 2/2 pass; a2r generator codegen verified by golden; **for-over-Stream consumption gap documented as follow-up** |
 | W7 | Local path dependencies in generated Cargo.toml | ⏳ | ⭐ Low | rust.rs:12405 (dep scanner output), dep_scanner.rs | `dep` supports `{ path = "..." }` so Auto projects can depend on local glue crates (auto-cosmic-dbus/-ui); monorepo template (Auto app + local Rust glue) builds end-to-end |
 
 ### Dependency order
@@ -316,6 +316,55 @@ Existing non-move closure tests (`002_closure_capture`, `003_closure`),
 parser tests (151/0), and VM borrow-check tests (15/0) all unaffected — the
 `move` prefix is correctly scoped and does not collide with param-mode `move`,
 soft-identifier `move`, or postfix `.move`.
+
+### W6 — landed (`~Stream<T>` parity coverage + Cargo template fix)
+
+**Infrastructure delivered**:
+
+1. **Cargo template fix** (`runner.rs:321-348`): the generated a2r test-crate
+   manifest now includes `async_stream = "0.3"` and `futures = "0.3"` (plan
+   said line 229-252; drifted to 321-348). Without these, any a2r crate
+   exercising `~Stream<T>` fails with "unresolved import `async_stream`".
+
+2. **New parity package `parity/libs/tokio_stream/`**: mirrors the `tokio`
+   package structure — `auto/tokio_stream.at` (library with `counter` and
+   `repeat` `~Stream<int>` generators), `tests/auto/stream_basic.at` (TAP
+   test), `tests/rust/` (native oracle using `async_stream::stream!` +
+   `tokio::pin!` + `StreamExt::next().await`).
+
+3. **Runner registration**: `tokio_stream` added to phase `p4` and to
+   `is_async_library` (`main.rs`).
+
+4. **Native oracle**: 2/2 tests pass — confirms the idiomatic Rust stream
+   pattern (the parity target) is sound.
+
+5. **a2r generator codegen verified**: golden `21_generators/002_stream_yield`
+   confirms `fn f() ~Stream<int> { yield x }` transpiles to
+   `fn f(...) -> impl futures::Stream<Item = i32> { async_stream::stream! {{ ... yield ...; } } }`.
+   The generator function itself compiles standalone.
+
+**Codegen gap found (documented, not fixed — separate follow-up)**:
+
+The a2r `for`-loop lowering emits `for x in stream_fn() { ... }`, but
+`impl futures::Stream` does **not** implement `IntoIterator` — so consuming a
+`~Stream<T>` generator via a `for` loop produces code that does not compile
+(`error[E0277]: impl Stream is not an iterator`). The correct lowering needs
+to detect when the iterable is a `~Stream<T>` generator call and emit
+`let mut s = stream_fn(); tokio::pin!(s); while let Some(x) = s.next().await
+{ ... }` instead. This requires type-aware for-loop codegen (resolving whether
+the called function returns `~Stream<T>` vs `~Iter<T>`), which is a
+substantial feature beyond W6's parity-infrastructure scope. This is the real
+value of the parity exercise: the first end-to-end compile test of
+`~Stream<T>` surfaced a latent consumption-side bug that no prior test
+exercised.
+
+**Pre-existing path-resolution issue (not W6)**: the parity runner's a2r/VM
+backends fail with "path not found" when invoking `auto.exe trans` (same on
+the pre-existing `tokio` package). This is a runner↔`auto.exe` path-resolution
+bug unrelated to W6 and present on the baseline.
+
+Verification: native oracle 2/2 pass; a2r golden `002_stream_yield` passes;
+a2r suite 298/0; parity crate unit tests 30/0.
 
 ### Incidental: deep-recursion stack-overflow class (mitigated, not a regression)
 

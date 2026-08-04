@@ -1,0 +1,41 @@
+/// tokio_stream library: async stream generators (~Stream<T>) — Auto replication.
+///
+/// Replicates the async-stream generator pattern: a function declared
+/// `fn f(...) ~Stream<T> { yield x; ... }` returns an async stream of T.
+/// In the a2r backend this transpiles to:
+///   `fn f(...) -> impl futures::Stream<Item = T> { async_stream::stream! { ... } }`
+///
+/// ## Scope
+///
+/// This library exercises the `~Stream<T>` generator transpilation path
+/// (Plan 321 / Plan 364 W6). It is the first compile-and-run parity test for
+/// stream generators.
+///
+/// ## Known limitation (documented, not fixed here)
+///
+/// The a2r transpiler currently lowers `for x in stream_fn()` as a Rust
+/// `for` loop, but `impl Stream` does not implement `IntoIterator` — so the
+/// consuming `for` loop does not compile. The generator function itself
+/// transpiles correctly; the gap is in for-over-Stream consumption lowering.
+/// See the Plan 364 W6 progress log for details.
+///
+/// ## API
+///
+///   `counter(start int, count int) ~Stream<int>` — yields start, start+1, ...
+///   `repeat(v int, count int) ~Stream<int>`     — yields v, count times
+
+fn counter(start int, count int) ~Stream<int> {
+    var i int = 0
+    while i < count {
+        yield start + i
+        i = i + 1
+    }
+}
+
+fn repeat(v int, count int) ~Stream<int> {
+    var i int = 0
+    while i < count {
+        yield v
+        i = i + 1
+    }
+}
