@@ -855,14 +855,44 @@ impl RustTrans {
     fn expr_map_value_is_string(&self, map_expr: &Expr) -> bool {
         if let Expr::Ident(name) = map_expr {
             if let Some(ty) = self.local_var_types.get(name) {
-                if let Type::Map(_, v) = ty {
-                    return matches!(v.as_ref(),
+                if let Some(v) = self.map_value_ty(ty) {
+                    return matches!(v,
                         Type::StrOwned | Type::StrSlice | Type::StrFixed(_));
                 }
             }
         }
-        // Unknown: conservatively true (matches old behavior for Map<str, str> default)
-        true
+        // Unknown: default to no .to_string() on the value arg. The old
+        // conservative-true fallback appended `.to_string()` to ANY unresolved
+        // map value — which breaks struct values (e.g. `MutexGuard<HashMap<str, WikiPage>>`
+        // resolved through wrappers below; when unresolvable, a String value
+        // is already String so `.to_string()` was a no-op anyway).
+        false
+    }
+
+    /// Resolve the value type of a map-typed type, unwrapping common wrapper
+    /// generics (Mutex, MutexGuard, Arc, …) and `GenericInstance` map spellings
+    /// (`HashMap<K, V>`, `BTreeMap<K, V>`) so insert value-arg coercion sees
+    /// through `self.pages.lock().unwrap()` (a `MutexGuard<HashMap<…>>`).
+    fn map_value_ty(&self, ty: &Type) -> Option<Type> {
+        match ty {
+            Type::Map(_, v) => Some((**v).clone()),
+            Type::GenericInstance(inst) => {
+                let base = inst.base_name.as_str();
+                match base {
+                    "Map" | "HashMap" | "BTreeMap" | "IndexMap" => {
+                        inst.args.get(1).cloned()
+                    }
+                    // Wrapper generics: unwrap to the inner type and recurse.
+                    "Mutex" | "MutexGuard" | "RwLock" | "RwLockReadGuard"
+                    | "RwLockWriteGuard" | "RefCell" | "Cell" | "Arc" | "Rc"
+                    | "Box" => {
+                        inst.args.first().and_then(|inner| self.map_value_ty(inner))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
     }
 
     /// Check if current function's return type maps to Rust String (needs &str -> String coercion)
@@ -7092,9 +7122,12 @@ impl RustTrans {
             // The fix: if the arg variable's type IS StrSlice (it's a &str param),
             // don't add .as_str() even when is_str_param says to borrow.
             let arg_is_str_slice = if let Arg::Pos(Expr::Ident(name)) = arg {
-                self.local_var_types.get(name)
-                    .map(|ty| matches!(ty, Type::StrSlice))
-                    .unwrap_or(false)
+                // Only fn params declared `str` render as &str. local_var_types
+                // records EVERY str-typed var (incl. owned String locals) as
+                // StrSlice, so consulting it here would wrongly skip .as_str()
+                // on locals → E0308 (String vs &str). Check the fn-param set
+                // (mirrors is_str_slice_var).
+                self.current_fn_str_params.contains(name)
             } else { false };
             let arg_is_str_literal = matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
             // Plan 380: only add .as_str() for plain String-typed locals or
@@ -7441,6 +7474,19 @@ impl RustTrans {
                 if self.current_fn_str_params.contains(name) {
                     return false;
                 }
+                // C9 codegen (Plan 018): PathBuf/Path-typed locals (e.g.
+                // `let page_path PathBuf = self.wiki_dir.join(...)`) have no
+                // `.as_str()` (E0599) — fs.* accept AsRef<Path> directly.
+                if let Some(ty) = self.local_var_types.get(name) {
+                    if let Type::User(decl) = ty {
+                        let n = decl.name.as_str();
+                        if n == "PathBuf" || n == "Path"
+                            || n == "std::path::PathBuf" || n == "std::path::Path"
+                        {
+                            return false;
+                        }
+                    }
+                }
                 true
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => false,
@@ -7469,6 +7515,15 @@ impl RustTrans {
                     if m == "trim" || m == "trim_start" || m == "trim_end"
                         || m == "trim_matches" || m == "trim_start_matches"
                         || m == "trim_end_matches" || m == "as_str" {
+                        return false;
+                    }
+                    // C9 codegen (Plan 018): `join` on a PathBuf returns a
+                    // PathBuf, which has no `.as_str()` (E0599) — but
+                    // `fs.read_to_string(path)` accepts `AsRef<Path>` directly.
+                    // Without this guard the emitted
+                    // `self.wiki_dir.join("_manifest.json").as_str()` fails to
+                    // compile. (No other module uses `.join`, so this is safe.)
+                    if m == "join" {
                         return false;
                     }
                 }

@@ -105,6 +105,56 @@ fn types_are_compatible(expected: &Type, found: &Type) -> bool {
         }
         (Type::User(a), Type::User(b)) => a.name == b.name,
         (Type::Spec(_), Type::Spec(_)) => true,
+        // C9 (Plan 018 parity): container types were previously never compared
+        // here, so a field like `children Option<List<TreeNode>>` and a variable
+        // with the same annotation (both parsed as `Type::GenericInstance`)
+        // rendered identically yet failed the field type check. Add elementwise
+        // compatibility for the container forms used in .at struct literals.
+        (Type::GenericInstance(a), Type::GenericInstance(b)) => {
+            a.base_name == b.base_name
+                && a.args.len() == b.args.len()
+                && a
+                    .args
+                    .iter()
+                    .zip(b.args.iter())
+                    .all(|(x, y)| types_are_compatible(x, y))
+        }
+        // C9b (Plan 018 parity): `Option<T>` written in .at source parses as
+        // `GenericInstance("Option", [T])`, but `Some(x)` / `None` and suffix-`?`
+        // types infer as `Type::Option(T)`. The two are aliases — a struct
+        // literal assigning `Some(x)` to an `Option<T>` field must pass the
+        // field check. Same aliasing for List / Result.
+        (Type::GenericInstance(a), Type::Option(b))
+        | (Type::Option(b), Type::GenericInstance(a))
+            if a.base_name == "Option" && a.args.len() == 1 => {
+                types_are_compatible(&a.args[0], b)
+            }
+        (Type::GenericInstance(a), Type::Result(b))
+        | (Type::Result(b), Type::GenericInstance(a))
+            if a.base_name == "Result" && a.args.len() == 1 => {
+                types_are_compatible(&a.args[0], b)
+            }
+        (Type::GenericInstance(a), Type::List(b))
+        | (Type::List(b), Type::GenericInstance(a))
+            if a.base_name == "List" && a.args.len() == 1 => {
+                types_are_compatible(&a.args[0], b)
+            }
+        (Type::List(a), Type::List(b)) => types_are_compatible(a, b),
+        (Type::Map(k1, v1), Type::Map(k2, v2)) => {
+            types_are_compatible(k1, k2) && types_are_compatible(v1, v2)
+        }
+        (Type::Slice(a), Type::Slice(b)) => types_are_compatible(&a.elem, &b.elem),
+        (Type::Reference(a), Type::Reference(b)) => types_are_compatible(a, b),
+        (Type::Option(a), Type::Option(b)) => types_are_compatible(a, b),
+        (Type::Result(a), Type::Result(b)) => types_are_compatible(a, b),
+        (Type::Tuple(a), Type::Tuple(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| types_are_compatible(x, y))
+        }
+        // Missing primitive self-compat (Int/Uint already covered above).
+        (Type::Byte, Type::Byte)
+        | (Type::USize, Type::USize)
+        | (Type::U64, Type::U64)
+        | (Type::I64, Type::I64) => true,
         _ => false,
     }
 }

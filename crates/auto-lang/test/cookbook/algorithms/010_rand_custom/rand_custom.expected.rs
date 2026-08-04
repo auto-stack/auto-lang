@@ -29,7 +29,7 @@ impl Color {
     }
 }
 
-fn random_color() -> impl Color {
+fn random_color() -> Color {
     let mut rng = rand::thread_rng();
     let n = rng.gen_range(0..3);
     match n {

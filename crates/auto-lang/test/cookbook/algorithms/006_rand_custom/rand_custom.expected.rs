@@ -29,7 +29,7 @@ impl Pet {
     }
 }
 
-fn random_pet() -> impl Pet {
+fn random_pet() -> Pet {
     let mut rng = rand::thread_rng();
     let n = rng.gen_range(0..3);
     match n {
