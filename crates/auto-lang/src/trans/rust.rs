@@ -203,6 +203,9 @@ pub struct RustTrans {
     local_var_types: HashMap<AutoStr, Type>,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
+    // Plan 016 Phase A A.4: when true, emit json::parse_opt instead of json::parse
+    // (set by is_stmt when scrutinee is json.parse matched against Some/None).
+    json_parse_as_opt: bool,
     // Track function params declared as &str (StrSlice) — safe to pass without .as_str()
     fn_param_str_slice: HashSet<AutoStr>,
     // Track current function's &mut params (merge mode context types) — skip &mut at call sites
@@ -301,6 +304,7 @@ impl RustTrans {
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
+            json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
@@ -365,6 +369,7 @@ impl RustTrans {
             current_fn_ret_type: None,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
+            json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
             current_fn_mut_params: HashSet::new(),
             fn_struct_param_indices: HashMap::new(),
@@ -992,9 +997,14 @@ impl RustTrans {
                 format!("std::collections::HashMap<{}, {}>", k_name, v_name)
             }
             Type::Slice(slice) => {
-                // []T → &[T], but []Spec → Vec<Box<dyn Spec>> (dynamic polymorphism)
+                // []T → &[T], but []Spec → Vec<Box<dyn Spec>> (dynamic polymorphism).
+                // Plan 016 Phase A A.4: []byte → Vec<u8> (not &[u8]) so it matches
+                // owned byte sources like HTTP body_bytes() → Vec<u8> without
+                // needing auto-borrow at call sites.
                 if matches!(&*slice.elem, Type::Spec(_)) {
                     format!("Vec<{}>", self.rust_type_name(&slice.elem))
+                } else if matches!(&*slice.elem, Type::Byte) {
+                    "Vec<u8>".to_string()
                 } else {
                     format!("&[{}]", self.rust_type_name(&slice.elem))
                 }
@@ -3027,8 +3037,22 @@ impl RustTrans {
 
             // Plan 223: is as expression → Rust match expression
             Expr::Is(is) => {
+                // Plan 016 Phase A A.4: set json_parse_as_opt flag if this `is`
+                // expression's scrutinee is json.parse matched against Some/None.
+                let parse_as_opt = self.is_json_parse_scrutinee(&is.target)
+                    && is.branches.iter().any(|b| matches!(b, crate::ast::IsBranch::EqBranch(patterns, _)
+                        if patterns.iter().any(|p| match p {
+                            Expr::Ident(n) => n.as_str() == "Some" || n.as_str() == "None",
+                            Expr::Call(c) => matches!(c.name.as_ref(), Expr::Ident(n) if n.as_str() == "Some"),
+                            Expr::OptionPattern(_) => true,
+                            _ => false,
+                        })));
+                let prev = self.json_parse_as_opt;
+                self.json_parse_as_opt = parse_as_opt;
+
                 write!(out, "match ")?;
                 self.expr(&is.target, out)?;
+                self.json_parse_as_opt = prev;
                 write!(out, " {{ ")?;
                 for (i, branch) in is.branches.iter().enumerate() {
                     if i > 0 { write!(out, " ")?; }
@@ -3590,7 +3614,9 @@ impl RustTrans {
                                 }
                                 ("fs", "exists") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    // Plan 016 Phase A A.4: borrow arg as &str (fs.exists takes &str).
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    else if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -3648,7 +3674,7 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("json", "parse") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
+                                    self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
                                     if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                     write!(out, ")")?;
                                     return Ok(());
@@ -3907,7 +3933,7 @@ impl RustTrans {
                         "Json" => match method.as_str() {
                             "parse" => {
                                 // Json.parse(text) -> a2r_std::json::parse(text)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
+                                self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -4006,7 +4032,7 @@ impl RustTrans {
                         },
                         "json" | "Json" => match method.as_str() {
                             "parse" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
+                                self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -5270,7 +5296,7 @@ impl RustTrans {
                 let normalized_type = if type_name.as_str() == "Json" { "json" } else { type_name.as_str() };
                 match (normalized_type, method_name.as_str()) {
                     ("json", "parse") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse(")?;
+                        self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr_as_str(a, out)?;
                         }
@@ -5500,16 +5526,14 @@ impl RustTrans {
                     }
                     ("fs", "exists") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
+                        // Plan 016 Phase A A.4: use expr_as_str (handles owned
+                        // String, &str params, str literals, and loop vars
+                        // tracked as StrSlice — avoids the unstable str_as_str
+                        // and the E0308 String-vs-&str mismatch).
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr(a, out)?;
-                            if let Expr::Ident(name) = a {
-                                let needs_as_str = self.local_var_types.get(name)
-                                    .map(|ty| !matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false);
-                                if needs_as_str && !matches!(a, Expr::Str(_) | Expr::CStr(_)) {
-                                    write!(out, ".as_str()")?;
-                                }
-                            }
+                            self.expr_as_str(a, out)?;
+                        } else if let Some(arg) = call.args.args.first() {
+                            self.arg(arg, out)?;
                         }
                         write!(out, ")")?;
                         return Ok(());
@@ -5871,7 +5895,7 @@ impl RustTrans {
                 if obj_parens { write!(out, ")")?; }
                 write!(out, ".{}(", rust_name)?;
                 // Auto-borrow string args for pattern-matching and map lookup methods
-                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with") {
+                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with" | "split") {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         // Only add & for String-typed args, not &str params or literals
                         // Note: local_var_types has StrSlice for ALL str vars (params AND locals),
@@ -8655,7 +8679,38 @@ impl RustTrans {
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
                 } else {
-                    // Array iteration: for x in arr
+                    // Array iteration: for x in arr.
+                    // Plan 016 Phase A A.4: bind the loop variable's type into
+                    // local_var_types so downstream codegen can make correct
+                    // borrow/coercion decisions (e.g. .as_str() skipping for
+                    // &str loop vars from .split()). Key iterable patterns:
+                    //   X.split(...) → items are &str
+                    //   X.lines() / X.chars() → items are &str / char
+                    // We only bind StrSlice for split/lines (the common .at
+                    // pattern); other iterables leave the var untyped (the
+                    // pre-existing conservative behavior).
+                    let iter_yields_str = match &for_stmt.range {
+                        Expr::Call(c) => {
+                            if let Expr::Dot(_, m) = c.name.as_ref() {
+                                matches!(m.as_str(), "split" | "lines" | "split_whitespace")
+                            } else { false }
+                        }
+                        // split().collect::<Vec<_>>() wrapper
+                        Expr::Index(inner, _) => {
+                            if let Expr::Call(c) = inner.as_ref() {
+                                if let Expr::Dot(_, m) = c.name.as_ref() {
+                                    matches!(m.as_str(), "split" | "lines" | "split_whitespace")
+                                } else { false }
+                            } else { false }
+                        }
+                        _ => false,
+                    };
+                    if iter_yields_str {
+                        self.local_var_types.insert(name.clone(), Type::StrSlice);
+                        // Also register in current_fn_str_params so auto-borrow
+                        // logic treats it as &str (skip .as_str()/.to_string()).
+                        self.current_fn_str_params.insert(name.clone());
+                    }
                     self.expr(&for_stmt.range, &mut sink.body)?;
                     sink.body.write(b" {\n")?;
 
@@ -9076,7 +9131,39 @@ impl RustTrans {
         false
     }
 
+    /// Plan 016 Phase A A.4: detect `json.parse(x)` scrutinee expression.
+    fn is_json_parse_scrutinee(&self, target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            matches!(call.name.as_ref(),
+                Expr::Dot(obj, m) if m.as_str() == "parse"
+                    && matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "json" || n.as_str() == "Json"))
+                || matches!(call.name.as_ref(),
+                    Expr::Bina(obj, op, m) if matches!(op, Op::Dot)
+                        && matches!(m.as_ref(), Expr::Ident(mm) if mm.as_str() == "parse")
+                        && matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "json" || n.as_str() == "Json"))
+        } else {
+            false
+        }
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
+        // Plan 016 Phase A A.4: detect `is json.parse(x) { Some/None ... }` —
+        // Auto's json.parse returns ?JsonValue (Option), but a2r_std::json::parse
+        // returns Value. Use parse_opt (which returns Option<Value>) when the
+        // scrutinee is json.parse AND branches include Some/None patterns.
+        let is_jp = self.is_json_parse_scrutinee(&is_stmt.target);
+        let has_some_none = is_stmt.branches.iter().any(|b| matches!(b, IsBranch::EqBranch(patterns, _)
+            if patterns.iter().any(|p| match p {
+                Expr::Ident(n) => n.as_str() == "Some" || n.as_str() == "None",
+                Expr::Call(c) => matches!(c.name.as_ref(), Expr::Ident(n) if n.as_str() == "Some"),
+                // Auto's Some(x)/None patterns are Expr::OptionPattern
+                Expr::OptionPattern(_) => true,
+                _ => false,
+            })));
+        let parse_as_opt = is_jp && has_some_none;
+        let prev = self.json_parse_as_opt;
+        self.json_parse_as_opt = parse_as_opt;
+
         sink.body.write(b"match ")?;
 
         // Check if any arm pattern is a string literal — if so, match on &str
@@ -9230,6 +9317,7 @@ impl RustTrans {
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
+        self.json_parse_as_opt = prev;
         Ok(())
     }
 
@@ -14224,11 +14312,87 @@ impl RustTrans {
     /// Plan 376V: PathBuf has no .as_str() (unstable feature). a2r's auto-borrow
     /// adds .as_str() when passing to &str params, but for PathBuf variables this
     /// fails E0599. Convert <pathlike>.as_str() → <pathlike>.to_str().unwrap().
-    /// Pathlike heuristic: names ending in _path, or exactly path/dir/sidecar.
+    ///
+    /// Plan 016 Phase A A.4: type-aware — only rewrite when the variable is
+    /// genuinely PathBuf. The old name-heuristic (_path/path/dir/sidecar) wrongly
+    /// rewrote String variables named `aaid_path`/`path`. Now we scan for PathBuf
+    /// declarations first: explicit annotations, PathBuf::from, .join() chains
+    /// from PathBuf, or fn params typed PathBuf.
     fn fix_pathbuf_as_str(content: &mut String) {
+        // Collect names of variables known to be PathBuf.
+        let mut pathbuf_vars: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Pattern 1: let X: PathBuf = ...  or  fn f(X: PathBuf)
+        if let Some(re) = cached_regex(r"\b(\w+):\s*(?:std::path::)?PathBuf\b") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+            }
+        }
+        // Pattern 2: let X = PathBuf::from(...) or std::path::PathBuf::from(...)
+        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+            }
+        }
+        // Pattern 3: let X = Y.join(...) — in Rust, .join() on a path-like
+        // returns PathBuf (PathBuf::join). Auto's str.join is not a thing in
+        // the transpiled output, so any .join() result is PathBuf.
+        // (Plan 016 Phase A A.4: don't require rhs to be known PathBuf —
+        //  agent's `let path = home.join(...)` where home comes from home_dir()
+        //  still produces a PathBuf path.)
+        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*\w+\.join\(") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+            }
+        }
+        // Pattern 4: is fn { Some(X) => ... } where fn returns ?PathBuf —
+        // detect by the match arm binding X and fn being home_dir/find_aaid etc.
+        // (Skip: too fragile for a text pass. Agent's validate.at path comes
+        //  from home_dir().join() which Pattern 3 covers if home_dir's return
+        //  is tracked — but it isn't at text level. Keep the name heuristic as
+        //  a FALLBACK only for names NOT seen as String.)
+        // Collect known String/str vars to EXCLUDE from the name heuristic.
+        let mut string_vars: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(re) = cached_regex(r"\b(\w+):\s*(?:std::string::)?String\b") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { string_vars.insert(m.as_str().to_string()); }
+            }
+        }
+        // Plan 016 Phase A A.4: also &str params (a name shared between a match
+        // arm binding and a &str fn param in the same file means the name is
+        // string-like, not PathBuf).
+        if let Some(re) = cached_regex(r"\b(\w+):\s*&str\b") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { string_vars.insert(m.as_str().to_string()); }
+            }
+        }
+        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from") {
+            for caps in re.captures_iter(content.as_str()) {
+                if let Some(m) = caps.get(1) { string_vars.remove(&m.as_str().to_string()); }
+            }
+        }
+
+        // Now rewrite: for each <name>.as_str(), rewrite to .to_str().unwrap()
+        // only if name is in pathbuf_vars OR (matches the old heuristic AND is
+        // NOT a known String var).
         if let Some(re) = cached_regex(r"(\b\w*_path|\bpath|\bdir|\bsidecar)\.as_str\(\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("{}.to_str().unwrap()", caps.get(1).unwrap().as_str())
+                let name = caps.get(1).unwrap().as_str();
+                // Definitely PathBuf → rewrite.
+                if pathbuf_vars.contains(name) {
+                    return format!("{}.to_str().unwrap()", name);
+                }
+                // Known String → do NOT rewrite (keep .as_str()).
+                if string_vars.contains(name) {
+                    return format!("{}.as_str()", name);
+                }
+                // Unknown (not confirmed PathBuf, not confirmed String):
+                // Plan 016 Phase A A.4 — conservatively keep .as_str().
+                // String has a valid .as_str() method; &str params/literals
+                // wouldn't reach here (a2r skips .as_str() for them at codegen).
+                // Only PathBuf needs .to_str().unwrap(), and confirmed PathBufs
+                // are in pathbuf_vars (handled above). This avoids wrongly
+                // rewriting String vars named path/aaid_path (E0599 to_str).
+                format!("{}.as_str()", name)
             }).to_string();
             if new != *content { *content = new; }
         }
