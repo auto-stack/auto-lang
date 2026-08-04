@@ -1,7 +1,7 @@
 # Plan 381：`Value` 支持 serde `Deserialize` —— 配置子集的 Deserializer 适配器
 
-> **Status**: Phase A-C 已完成（2026-08-04，ValueDeserializer + Node::deserialize + doctest，582 行 de.rs，160+25 测试通过）。**Phase D（容错 deserialize_with 辅助）进行中** —— 为迁移 auto-ai 的 loader/role_config（leniency 各异）提供基础。已从 archive 移出。
-> **更新（2026-08-04）**:Phase A-C 已落地:auto-os-config 的 `registry.rs` 和 auto-musk 的 `app_config.rs`(标量部分)已迁到 serde。auto-ai 的 loader/role_config/workflow 因 leniency 分歧(6 份 `opt_*` 副本,bool/string/空串/tier 行为不一)暂未迁——**Phase D 解决这个**。
+> **Status**: ✅ 全部完成并归档（2026-08-04）。Phase A-C（ValueDeserializer + Node::deserialize + doctest）+ **Phase D（lenient deserialize_with 辅助：lenient_bool / string_or_list / nonempty_string / lenient_f64）** 已合并 master。811 行 de.rs，165+25 测试通过。auto-ai 的 loader/role_config 迁移现已具备条件（leniency 辅助已就位）。
+> **更新（2026-08-04）**:Phase A-C 落地后已迁:auto-os-config `registry.rs`、auto-musk `app_config.rs`(标量)。Phase D 补齐 leniency 辅助,auto-ai 的 loader/role_config 迁移不再被阻塞。
 > **类型**: 完整计划(设计 + 实施)
 > **日期**: 2026-08-04
 > **影响**: `crates/auto-val`(新增 `serde` feature + `ValueDeserializer`)
