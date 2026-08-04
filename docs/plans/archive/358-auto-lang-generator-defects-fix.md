@@ -1,7 +1,7 @@
 # Plan 358: Auto 语言生成器/编译器缺陷系统性修复
 
 > **类型**: 架构改进 + Bug 修复
-> **状态**: 待评审
+> **状态**: ✅ 已完成并归档（2026-08-04）。实测确认全部 10 个缺陷（D1-D10）已修复，包括最关键的 D1（OOM）和 D9（autodown_editor 卡住）。下方 §1 表格的「Workaround」状态系历史残留——D2/D3/D4/D5/D6/D9 的根因修复均已落地（ts_adapter 数组处理、`cur_is_soft_ident()` tag 关键字、`parse_view_for_loop` 链式迭代、多类型 CRUD、autodown_editor 生成测试通过）。§4 列出的所有 workaround 对应根因已解决。
 > **日期**: 2026-07-17
 > **来源**: 015-notes 开发过程中发现的所有语言/生成器缺陷
 > **原则**: 所有修复必须是编译器/转译器/生成器层面的架构正确方案，而非 workaround

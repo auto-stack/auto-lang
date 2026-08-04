@@ -51,7 +51,7 @@
 | **317** | VM 异步调度统一 | Phase 4（HTTP 异步 server 接入）待评审；Phase 2 `~{}.await` 取值缺陷推迟；Phase 1/3 各有 3-4 项已知遗留 |
 | **333** | VM UI CompileSession 接入 | 核心达成，但子组件 `EditorPanel` `.Delete/.Edit/.Save` 报 `Undefined variable: self`（遗留） |
 | **335** | List 运行时根因②修复 | `read_state_as_vec` 不解引用 `VmRef`；多个 shim（pop/get/set/insert/len/contains）的 `heap_objects/arrays` 双查**待复核**；`shim_list_len` 可能返回错误长度 |
-| **358** | 生成器缺陷 D1-D10 | 仅 4/10 修复；**D9（autodown_editor 卡住生成器）阻塞 354 阶段 C** |
+| **358** | 生成器缺陷 D1-D10 | ✅ **已完成并归档**（2026-08-04）。全部 10 个缺陷已修复（含 D1 OOM、D9 autodown_editor）；354 阶段 C 阻塞已解除。详见 `archive/358-*.md` |
 | **372** | a2r 3 系统性缺陷 | A/B/C 已修，但**单文件 transpile 路径不过 Phase 1.5 预注册**，跨模块 spec 仍解析为裸 `Type::User`（建议补出路 2） |
 
 ### 2.2 一般部分完成
@@ -68,7 +68,7 @@
 | **347** | 8 库 Rust 复刻 | 7 库 257 测试已验证；**reqwest（Task 29-31）疑似未完成**；最终报告全 TBD；checkbox 全未回填 |
 | **349** | HTTP Roadmap | VM 侧 done；**a2r 适配 8 步全未做**（TLS/multipart/download/WebSocket 异步等） |
 | **350** | WebSocket | client + server echo done；`#[ws(path)]` 声明式路由 + a2r 客户端生成未做 |
-| **354** | 015-notes 真实化 | 后端 schema/store/标签/搜索 done；**布局重构（v3 两栏树）+ AutoDown 编辑器 + block 体系未做**（依赖 358 D9） |
+| **354** | 015-notes 真实化 | 后端 schema/store/标签/搜索 done；~~布局重构 + AutoDown 编辑器依赖 358 D9~~ → 358 D9 已修复，AutoDown 编辑器已在 editor.at 使用；剩余布局/block 体系可推进 |
 | **357** | 015-notes v4 UX | v1-v3 done；**v4 三项待做**（Tag 编辑独立、导航栏 tag 动态化、Pin 改 hover 图标） |
 | **359** | "Auto 作 Rust 脚本层"发布 | 庞大计划；Phase E 前置部分 fixed，**主体 Phase A/B/C/D + DoD V1-V7 全未勾** |
 | **369** | Python parity suite | P0-P5 done（69/69）；**P6（Task 23-28，6 个新库 os/re/json/configparser/hashlib/sys）未开始** |
@@ -138,7 +138,7 @@
 
 - ~~`351` SharedStore → 解锁 `338` routing / `354` 多页~~ ——✅ 351 已完成（2026-08-04），路由+共享状态已可用，338/354 多页可推进
 - `364` W1-W3 → 解锁 `365` W3 → 整个 COSMIC 桌面复刻
-- `358` D1+D9 → 解锁 `354` 阶段 C（AutoDown 编辑器）
+- ~~`358` D1+D9 → 解锁 `354` 阶段 C（AutoDown 编辑器）~~ ——✅ 358 已完成（2026-08-04），354 阶段 C 阻塞解除
 - `331` → `336` → `337`（Vue 组件库整条链）
 - `342` → `343`（Block 层整条链）
 
