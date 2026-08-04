@@ -1,5 +1,7 @@
 # Plan 300: AutoVM Python FFI Runtime Maturation
 
+> **实测状态（2026-08-04）**: 🟡 部分完成。Batch 1 的 `PySignature::all_auto()` 已实现（py_ffi_types.rs:48，标 Plan 300，取代硬编码 string→string）；dict→Obj 转换 + use.py 无 items 不跳过（Batch 2）+ 集成测试（Batch 3）+ REPL FFI（Batch 4）均未做。
+
 ## Context
 
 Auto 的 Python FFI 管道（Plan 214/222）已实现完整链路：`use.py module::{items}` → parser → use_scanner → CompileSession → codegen → PyFfiBridge → pyo3 CPython。但存在关键限制：
