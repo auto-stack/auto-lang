@@ -309,6 +309,7 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_16_interop_003_field_attrs() { test_a2r("16_interop/003_field_attrs").unwrap(); }
 #[test] fn test_16_interop_004_variant_from_attr() { test_a2r("16_interop/004_variant_from_attr").unwrap(); }
 #[test] fn test_16_interop_015_impl_trait_return() { test_a2r("16_interop/015_impl_trait_return").unwrap(); }
+#[test] fn test_16_interop_016_extractor_destructure() { test_a2r("16_interop/016_extractor_destructure").unwrap(); }
 
 // === 18_rust_std ===
 #[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }

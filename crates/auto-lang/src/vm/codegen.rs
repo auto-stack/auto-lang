@@ -2170,6 +2170,7 @@ impl Codegen {
                                 ty: Type::User(type_decl.clone()),
                                 default: None,
                                 mode: crate::ast::ParamMode::View,
+                                destructure: None,
                             });
                         }
                     }
@@ -2211,6 +2212,7 @@ impl Codegen {
                                 ty: self_type.clone(),
                                 default: None,
                                 mode: crate::ast::ParamMode::View,
+                                destructure: None,
                             });
                         }
                     }
@@ -2325,6 +2327,7 @@ impl Codegen {
                                     ty: Type::Unknown, // enum 值类型（运行时 i32 或对象 id）
                                     default: None,
                                     mode: crate::ast::ParamMode::View,
+                                destructure: None,
                                 });
                             }
                         }

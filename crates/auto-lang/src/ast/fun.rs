@@ -243,6 +243,18 @@ pub struct Param {
     pub default: Option<Expr>,
     /// Plan 088: Parameter passing mode (default: View)
     pub mode: ParamMode,
+    /// Plan 380 P3: 解构参数 — `Path(id)` 语法。
+    /// None = 普通参数；Some = 解构参数（wrapper_type 包裹，inner_name 解构出来）。
+    pub destructure: Option<DestructureParam>,
+}
+
+/// Plan 380 P3: 函数参数位置的结构体解构。
+/// `fn h(Path(id) ~Path<String>)` 中，Path 是 wrapper_type，id 是 inner_name。
+/// 函数体内直接使用 inner_name；a2r 输出 `Path(id): Path<String>`。
+#[derive(Debug, Clone)]
+pub struct DestructureParam {
+    pub wrapper_type: Name,
+    pub inner_name: Name,
 }
 
 impl PartialEq for Param {
@@ -272,6 +284,7 @@ impl Param {
             ty,
             default,
             mode: ParamMode::default(), // Plan 088: default to View
+            destructure: None,
         }
     }
 
@@ -282,6 +295,7 @@ impl Param {
             ty,
             default,
             mode,
+            destructure: None,
         }
     }
 }

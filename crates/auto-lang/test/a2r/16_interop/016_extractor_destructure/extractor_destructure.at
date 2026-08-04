@@ -1,0 +1,22 @@
+// Plan 380 P3: 函数参数位置的结构体解构 Path(id)
+// 验证 a2r 输出 Path(id): Type 格式
+
+// 测试1：单个解构参数（明确类型）
+fn handler(Path(id) Path<String>) {
+    return id
+}
+
+// 测试2：解构参数 + 普通参数混合
+fn full_handler(Path(id) Path<String>, body str) {
+    return id
+}
+
+// 测试3：多个解构参数
+fn multi(Path(id) Path<String>, Json(data) Json<String>) {
+    return id
+}
+
+// 测试4：普通参数不受影响（回归守护）
+fn normal(name str, count int) {
+    return name
+}

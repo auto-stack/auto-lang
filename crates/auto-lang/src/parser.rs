@@ -7743,10 +7743,27 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // param name
+            // param name (or destructure pattern: TypeName(inner_name))
+            // Plan 380 P3: detect `Path(id)` — after parsing the ident name,
+            // check if next token is LParen (destructure pattern).
+            let mut destructure = None;
             let name = self.cur.text.clone();
-            let name_pos = self.cur.pos; // Capture position before skipping name
+            let name_pos = self.cur.pos;
             self.next(); // skip name
+
+            // Check for destructure pattern: TypeName(inner_name)
+            if self.is_kind(TokenKind::LParen) {
+                self.next(); // skip (
+                let inner = self.cur.text.clone();
+                self.next(); // skip inner_name
+                self.expect(TokenKind::RParen)?;
+                destructure = Some(crate::ast::DestructureParam {
+                    wrapper_type: name.clone(),
+                    inner_name: inner.clone(),
+                });
+                // Override name to inner_name (function body uses inner_name)
+                // but keep original name for scope registration
+            }
 
             // 3. param type (skip ':' if present for type annotation)
             let mut ty = Type::Int;
@@ -7766,31 +7783,41 @@ impl<'a> Parser<'a> {
             }
 
             // 5. define param in current scope (currently in fn scope)
+            // Plan 380 P3: for destructure params, register inner_name in scope
+            let scope_name = if let Some(ref d) = destructure {
+                d.inner_name.clone()
+            } else {
+                name.clone()
+            };
             let var = Store {
                 kind: StoreKind::Var,
                 attrs: vec![],
-                name: name.clone(),
+                name: scope_name.clone(),
                 expr: default.clone().unwrap_or(Expr::Nil),
                 ty: ty.clone(),
             };
             // TODO: should we consider Meta::Param instead of Meta::Var?
-            self.define(name.as_str(), Meta::Store(var.clone()));
+            self.define(scope_name.as_str(), Meta::Store(var.clone()));
 
-            // Register symbol location for LSP
+            // Register symbol location for LSP (use inner_name for destructure)
             let loc = SymbolLocation::new(
                 name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
                 name_pos.at,
                 name_pos.pos,
             );
             // Plan 091: Use wrapper method
-            self.define_symbol_location(name.clone(), loc);
+            self.define_symbol_location(scope_name.clone(), loc);
 
             // 6. Plan 088: Create parameter with explicit mode
+            // Plan 380 P3: For destructure params, Param.name = inner_name
+            // (function body references inner_name; a2r uses destructure field
+            // to emit `TypeName(inner_name): Type` in Rust output).
             params.push(Param {
-                name,
+                name: scope_name,
                 ty,
                 default,
                 mode,
+                destructure,
             });
             self.sep_params()?;
             self.skip_empty_lines();
@@ -7814,6 +7841,7 @@ impl<'a> Parser<'a> {
                 ty: Type::Variadic,
                 default: None,
                 mode: ParamMode::default(),
+                    destructure: None,
             });
         }
 

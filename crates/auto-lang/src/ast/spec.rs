@@ -280,6 +280,7 @@ mod tests {
                     ty: Type::Unknown,
                     default: None,
                     mode: Default::default(),
+                    destructure: None,
                 },
             ],
             Type::Void,
