@@ -233,15 +233,15 @@ pub use de::ValueDeserializer;
 
 ## 5. 验证清单
 
-- [ ] `ValueDeserializer` 实现 `serde::de::Deserializer` 全部必需方法(编译通过)。
-- [ ] 标量:String/i32/u32/i64/f64/bool/unit 全覆盖,round-trip 正确。
-- [ ] `Option<T>`:缺失 → None,存在 → Some。
-- [ ] `Vec<T>`:`Value::Array` → Vec,元素递归反序列化。
-- [ ] 嵌套 struct:`Value::Obj` 里的 `Value::Obj` 字段递归。
-- [ ] enum(serde `#[serde(rename_all)]`):bare ident `info` ↔ `"info"` 一致(因为 parser 已把 bare ident 变 `Value::Str`)。
-- [ ] 错误:类型不匹配、缺 required 字段、VM 变体,都有清晰 error message。
-- [ ] feature 关闭时:`auto-val` 不依赖 serde(现有消费者无影响)。
-- [ ] 从真实 `.at`(role/daemon config)反序列化,与手写解析结果逐字段一致。
+- [x] `ValueDeserializer` 实现 `serde::de::Deserializer` 全部必需方法(编译通过)。
+- [x] 标量:String/i32/u32/i64/f64/bool/unit 全覆盖,round-trip 正确。
+- [x] `Option<T>`:缺失 → None,存在 → Some。
+- [x] `Vec<T>`:`Value::Array` → Vec,元素递归反序列化。
+- [x] 嵌套 struct:`Value::Obj` 里的 `Value::Obj` 字段递归。
+- [x] enum(serde `#[serde(rename_all)]`):bare ident `info` ↔ `"info"` 一致(因为 parser 已把 bare ident 变 `Value::Str`)。
+- [x] 错误:类型不匹配、缺 required 字段、VM 变体,都有清晰 error message。
+- [x] feature 关闭时:`auto-val` 不依赖 serde(现有消费者无影响)。
+- [x] 从真实 `.at`(role/daemon config)反序列化,与手写解析结果逐字段一致。
 
 ---
 
