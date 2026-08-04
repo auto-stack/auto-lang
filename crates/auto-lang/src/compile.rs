@@ -544,17 +544,14 @@ impl CompileSession {
 
                 {
 
-                    if !use_stmt.items.is_empty() {
+                    // Plan 300 Task 2.2: 支持无 items 的模块导入（use.py module）
+                    self.py_imports
 
-                        self.py_imports
+                        .entry(use_stmt.module.clone())
 
-                            .entry(use_stmt.module.clone())
+                        .or_default()
 
-                            .or_default()
-
-                            .extend(use_stmt.items.iter().cloned());
-
-                    }
+                        .extend(use_stmt.items.iter().cloned());
 
                 }
 
