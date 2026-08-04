@@ -59,7 +59,7 @@ mod de;
 #[cfg(feature = "serde")]
 pub use de::ValueDeserializer;
 #[cfg(feature = "serde")]
-pub use de::{lenient_bool, lenient_f64, nonempty_string, string_or_list, string_or_list_opt};
+pub use de::{lenient_bool, lenient_bool_opt, lenient_f64, lenient_f64_opt, nonempty_string, string_or_list, string_or_list_opt};
 
 pub type AutoError = Box<dyn std::error::Error>;
 pub type AutoResult<T> = Result<T, AutoError>;

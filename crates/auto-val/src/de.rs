@@ -452,6 +452,23 @@ pub fn lenient_bool<'de, D: de::Deserializer<'de>>(d: D) -> Result<bool, D::Erro
     })
 }
 
+/// Lenient `Option<bool>` deserializer — like [`lenient_bool`] but for optional
+/// fields. Null/absent → None; otherwise delegates to [`lenient_bool`].
+pub fn lenient_bool_opt<'de, D: de::Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Unit => None,
+        RawValue::Bool(b) => Some(b),
+        RawValue::Uint(0) | RawValue::Int(0) => Some(false),
+        RawValue::Uint(_) | RawValue::Int(_) => Some(true),
+        RawValue::Str(s) => match s.to_ascii_lowercase().as_str() {
+            "true" | "yes" | "1" | "on" => Some(true),
+            "false" | "no" | "0" | "off" => Some(false),
+            other => return Err(de::Error::custom(format!("invalid bool `{other}`"))),
+        },
+        other => return Err(de::Error::custom(format!("expected bool, got {other:?}"))),
+    })
+}
+
 /// Lenient `Vec<String>` deserializer — replicates `role_config.rs`'s
 /// `opt_string_list`. A bare string becomes a one-element list; an array of
 /// strings becomes the list. Missing/null → empty Vec (pair with
@@ -513,6 +530,20 @@ pub fn lenient_f64<'de, D: de::Deserializer<'de>>(d: D) -> Result<f64, D::Error>
         RawValue::Float(f) => f,
         RawValue::Int(i) => i as f64,
         RawValue::Uint(u) => u as f64,
+        other => return Err(de::Error::custom(format!("expected number, got {other:?}"))),
+    })
+}
+
+/// Lenient `Option<f64>` deserializer — like [`lenient_f64`] but for optional
+/// fields. Needed because `#[serde(deserialize_with)]` replaces the whole
+/// field's deserialization, including Option handling. A null/absent value →
+/// None; otherwise delegates to [`lenient_f64`].
+pub fn lenient_f64_opt<'de, D: de::Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Unit => None,
+        RawValue::Float(f) => Some(f),
+        RawValue::Int(i) => Some(i as f64),
+        RawValue::Uint(u) => Some(u as f64),
         other => return Err(de::Error::custom(format!("expected number, got {other:?}"))),
     })
 }
@@ -853,5 +884,25 @@ mod tests {
         o.set("rate", Value::Double(2.5));
         let r: WithLenientF64 = Value::Obj(o).deserialize_into().unwrap();
         assert_eq!(r.rate, 2.5);
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithOptF64 {
+        #[serde(default, deserialize_with = "crate::lenient_f64_opt")]
+        rate: Option<f64>,
+    }
+    #[test]
+    fn lenient_f64_opt_int_float_and_absent() {
+        let mut o = Obj::new();
+        o.set("rate", Value::Int(3));
+        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(3.0));
+
+        let mut o = Obj::new();
+        o.set("rate", Value::Double(2.5));
+        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, Some(2.5));
+
+        // absent → None
+        let o = Obj::new();
+        assert_eq!(Value::Obj(o).deserialize_into::<WithOptF64>().unwrap().rate, None);
     }
 }
