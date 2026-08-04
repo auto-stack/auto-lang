@@ -1214,6 +1214,28 @@ impl RustTrans {
                 } else {
                     inst.base_name.to_string()
                 };
+                // Plan 380 P2: ~SpecName in return position → impl SpecName.
+                // Auto's ~TraitName means "return something implementing this trait".
+                // In Rust that's `impl TraitName`. We detect trait names by:
+                // 1. Known spec (declared in this compilation), OR
+                // 2. A bare PascalCase ident with no type args that isn't a known
+                //    concrete type (String, Vec, Option, Result, etc.) — this covers
+                //    external Rust traits like axum's IntoResponse.
+                if inst.args.is_empty() {
+                    if self.spec_decls.contains_key(base.as_str()) {
+                        return format!("impl {}", base);
+                    }
+                    // Heuristic: bare PascalCase ident that isn't a concrete type
+                    // → likely a trait name → prefix `impl`.
+                    let is_concrete = matches!(base.as_str(),
+                        "String" | "Vec" | "Option" | "Result" | "Box" | "Arc"
+                        | "Rc" | "Cell" | "RefCell" | "Mutex"
+                    );
+                    let is_pascal = base.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                    if is_pascal && !is_concrete {
+                        return format!("impl {}", base);
+                    }
+                }
                 format!("{}<{}>", base, args.join(", "))
             }
             // Tuple: recurse in case inner types need mapping
@@ -1224,6 +1246,25 @@ impl RustTrans {
             // Handle type: recurse for inner type
             Type::Handle { task_type } => {
                 format!("std::sync::Arc<TaskHandle<{}>>", self.rust_return_type_name(task_type))
+            }
+            // Plan 380 P2: Type::User in return position — if it's a bare
+            // PascalCase name (not a known concrete type), treat as trait:
+            // ~IntoResponse → impl IntoResponse (via Future unwrap in caller).
+            Type::User(usr) => {
+                let name = usr.borrow().name.to_string();
+                if self.spec_decls.contains_key(name.as_str()) {
+                    return format!("impl {}", name);
+                }
+                let is_concrete = matches!(name.as_str(),
+                    "String" | "Vec" | "Option" | "Result" | "Box" | "Arc"
+                    | "Rc" | "Cell" | "RefCell" | "Mutex"
+                );
+                let is_pascal = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                if is_pascal && !is_concrete {
+                    format!("impl {}", name)
+                } else {
+                    self.rust_type_name(ty)
+                }
             }
             // All other types delegate to rust_type_name
             _ => self.rust_type_name(ty),

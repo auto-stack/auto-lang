@@ -1,6 +1,7 @@
 # Plan 381：`Value` 支持 serde `Deserialize` —— 配置子集的 Deserializer 适配器
 
-> **Status**: ✅ 已完成并归档（2026-08-04）。Phase A（ValueDeserializer 标量+Obj+Array+MapIter+SeqIter）+ Phase B（Node::deserialize 便捷入口）+ Phase C（doctest + 文档）全部完成。582 行 de.rs，15 个 de 测试 + 160+25 全量测试通过。复审无 workaround。v1 限制（Node kids 不支持）记入 KNOWN-DEBT-AND-RISKS。
+> **Status**: Phase A-C 已完成（2026-08-04，ValueDeserializer + Node::deserialize + doctest，582 行 de.rs，160+25 测试通过）。**Phase D（容错 deserialize_with 辅助）进行中** —— 为迁移 auto-ai 的 loader/role_config（leniency 各异）提供基础。已从 archive 移出。
+> **更新（2026-08-04）**:Phase A-C 已落地:auto-os-config 的 `registry.rs` 和 auto-musk 的 `app_config.rs`(标量部分)已迁到 serde。auto-ai 的 loader/role_config/workflow 因 leniency 分歧(6 份 `opt_*` 副本,bool/string/空串/tier 行为不一)暂未迁——**Phase D 解决这个**。
 > **类型**: 完整计划(设计 + 实施)
 > **日期**: 2026-08-04
 > **影响**: `crates/auto-val`(新增 `serde` feature + `ValueDeserializer`)
@@ -244,16 +245,53 @@ pub use de::ValueDeserializer;
 
 ---
 
-## 6. 不在范围
-- ⏸ `Node` kids(命名子块)的反序列化(v1 只 props)。
+## 6. 不在范围(v1)
+- ⏸ `Node` kids(命名子块)的反序列化(v1 只 props)—— Phase D 的 `lenient_*` 辅助不解决这个问题;musk 的 harness 子节点仍手写。
 - ⏸ `Serialize` 方向(`Value` ← struct)—— Plan 332 的 `ToAtom` 或单独的 `ValueSerializer`。
 - ⏸ 改 ecow 加 serde feature(用适配器绕开,不碰第三方库)。
 - ⏸ Plan 332 的 `#[derive(FromAtom)]` 宏(标注为未来基于本计划)。
 
 ---
 
-## 7. 衍生迁移(auto-os-config / auto-ai,本计划落地后)
+## 7. 衍生迁移(部分已完成)
 
-- `auto-os-config/backend/src/registry.rs`:`parse_module_node` + `opt_string`/`required_string` → `#[derive(Deserialize)] struct ModuleDecl` + `node.deserialize()`。
-- `auto-ai` 的 `role_config.rs`/`loader.rs`/`app_config.rs`:同模式迁移。
-- **不阻塞**:这些迁移是独立的小改进,当前手写版本已验证通过。
+- ✅ `auto-os-config/backend/src/registry.rs`:**已迁**(commit c0ec7f8)—— `parse_module_node` + `opt_string`/`required_string` → `#[derive(Deserialize)]` + `node.deserialize()`。22 单测通过。
+- ✅ `auto-musk/.../app_config.rs`:**已迁标量**(commit e56649e)—— 5 个标量字段走 serde;`harness` 子节点保留手写(v1 不支持 kids)。4 测试通过。
+- ⏸ `auto-ai` 的 `role_config.rs`/`loader.rs`/`workflow.rs`:**未迁**—— leniency 分歧(见 Phase D)。这是 Phase D 的目标消费者。
+
+---
+
+## 8. Phase D:容错 `deserialize_with` 辅助(为 auto-ai 迁移铺路)
+
+> **状态**:待实施
+> **动机**:Phase A-C 落地后,auto-os-config/musk 的干净站点已迁。但 auto-ai 的 `loader.rs`/`role_config.rs`/`workflow.rs` 仍是手写 `opt_*`,因为它们有**6 份行为各异的 `opt_*` 副本**。直接用默认 serde 会改变这些既有配置的接受行为(回归风险)。Phase D 提供一组 `#[serde(deserialize_with)]` 辅助函数,**精确复刻**现有 leniency,让 auto-ai 能无行为变化地迁移。
+
+### 8.1 要加的辅助(基于实测的现有语义)
+
+每个辅助是 `crates/auto-val/src/de.rs` 里的 `pub fn`,签名符合 serde 的 `deserialize_with` 约定(`fn<'de, D>(deserializer: D) -> Result<T, D::Error>`)。
+
+| 辅助 | 复刻自 | 行为 |
+|---|---|---|
+| `lenient_bool` | `loader.rs` `opt_bool` | `Bool` 直接用;`0`/`1`(Int/Uint)→ false/true;字符串 `"true"/"yes"/"1"/"on"` ↔ `"false"/"no"/"0"/"off"`;其余 → error(不是 None,因为是字段级 deserialize_with) |
+| `string_or_list` | `role_config.rs` `opt_string_list` | `Array<Str>` → Vec;单个 `Str` → 1 元素 Vec;Nil/缺失 → 空 Vec(default) |
+| `nonempty_string` | `registry.rs` `opt_string` | `Str` → Some(非空时)/ None(空串时);Nil → None。用于"空串等价于未设"的字段 |
+| `lenient_f64` | `role_config.rs` `opt_float` | `Float`/`Double` → f64;`Int`/`Uint` → as f64(整数当浮点) |
+
+> `tier` 解析(`parse_tier`,tier 名 ↔ `ModelTier` 枚举,未知→Mid default)属于 auto-ai 的领域逻辑,不放 auto-val。迁移时在 auto-ai 侧用 `#[serde(deserialize_with = "parse_tier_de")]` 本地辅助。
+
+### 8.2 设计要点
+- 放 `de.rs` 里(feature-gated,`#[cfg(feature = "serde")]`)。
+- 签名是 serde 标准的 `fn<'de, D: Deserializer<'de>>(D) -> Result<T, D::Error>`——它们消费 `Deserializer`,内部用 `deserialize_any` 拿到 `Value` 再做 lenient 判断。
+- 但 `ValueDeserializer` 的 `deserialize_any` 已经按 `Value` 变体分派了;`deserialize_with` 辅助需要在**拿到原始 Value**后做自定义判断。实现方式:辅助内部调 `deserializer.deserialize_any(ValueVisitor)`,其中 `ValueVisitor` 把任意 `Value` 收集成一个临时枚举,再 lenient 转换。或者更简单:辅助直接调 `Value::deserialize_any` 收 `serde_json::Value` 风格的中间态——但这绕了。
+
+  **更干净的实现**:加一个 `ValueCollector` visitor,`deserialize_any` 把 `Value` 原样回收(`visit_str`/`visit_i64`/...重建 `Value`),辅助拿到 `Value` 后 match 做判断。这复用现有分派,不绕路。
+
+### 8.3 验证
+- 每个辅助加单测:覆盖它声称接受的每种输入形状 + 拒绝的形状。
+- 关键回归测试:用 auto-ai 真实的 `.at` 片段(`auth_required : yes`、`models : "a,b,c"`、`tier : mid`),确认辅助的输出与现有 `opt_*` 逐字段一致。
+- 默认 feature 配置不拉新依赖、不破坏现有 160 测试。
+
+### 8.4 不在 Phase D 范围
+- ⏸ `Node` kids 反序列化(独立问题,musk harness 仍手写)。
+- ⏸ `opt_models` 的 3 形状(Obj 数组/Str 数组/逗号串)——太特化,留在 auto-ai 本地辅助。
+- ⏸ 实际迁移 auto-ai 站点(Phase D 只铺路;迁移是 auto-ai 侧的独立工作)。
