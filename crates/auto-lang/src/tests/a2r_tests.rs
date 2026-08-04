@@ -663,6 +663,8 @@ fn test_escape_analysis_detects_multiple_bindings() {
 #[test] fn test_19_ownership_007_self_ref() { test_a2r_expect_error("19_ownership/007_self_ref", "self-reference"); }
 // 008: indirect self-reference (List<Self>) is legal + W0008 warning
 #[test] fn test_19_ownership_008_indirect_self() { test_a2r("19_ownership/008_indirect_self").unwrap(); }
+// Plan 364 W5: explicit `move` closure prefix → Rust `move |..| ..`
+#[test] fn test_19_ownership_009_move_closure() { test_a2r("19_ownership/009_move_closure").unwrap(); }
 #[test] fn test_cookbook_devtools_001_log_debug() { test_cookbook("devtools/001_log_debug").unwrap(); }
 #[test] fn test_cookbook_devtools_002_log_error() { test_cookbook("devtools/002_log_error").unwrap(); }
 #[test] fn test_cookbook_devtools_003_log_stdout() { test_cookbook("devtools/003_log_stdout").unwrap(); }

@@ -1634,6 +1634,30 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     pub fn parse_expr(&mut self) -> AutoResult<Expr> {
+        // Plan 364 W5 (D4): explicit `move` closure prefix.
+        // `move (params) => body` and `move x => body` → Expr::Closure with
+        // is_move=true. We detect `move` at the expression boundary so both the
+        // multi-param path (pratt→atom→group→parse_closure) and the single-param
+        // path (expr_pratt_with_left's `x =>` arm) are covered. `move` here must
+        // be followed by `(` or an identifier to be a closure prefix; otherwise
+        // it falls through to its existing roles (param mode `fn(move x)`,
+        // soft-identifier use as a variable name).
+        if self.is_kind(TokenKind::Move) {
+            // Lookahead: consume the token after `move` and push it back.
+            let after = self.lexer.next()?;
+            let is_closure_prefix = matches!(after.kind, TokenKind::LParen | TokenKind::Ident);
+            self.lexer.push_token(after);
+            if is_closure_prefix {
+                self.next(); // consume 'move'
+                let mut exp = self.expr_pratt(0)?;
+                if let Expr::Closure(ref mut c) = exp {
+                    c.is_move = true;
+                }
+                exp = self.check_symbol(exp)?;
+                return Ok(exp);
+            }
+        }
+
         let mut exp = self.expr_pratt(0)?;
         exp = self.check_symbol(exp)?;
         Ok(exp)

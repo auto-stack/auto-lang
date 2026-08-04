@@ -11896,6 +11896,7 @@ mod tests {
                 Op::Add,
                 Box::new(Expr::Ident("n".into())),
             )),
+            is_move: false,
         };
 
         codegen.compile_expr(&Expr::Closure(closure)).unwrap();
@@ -11947,6 +11948,7 @@ mod tests {
                 Op::Add,
                 Box::new(Expr::Ident("b".into())),
             )),
+            is_move: false,
         };
 
         codegen.compile_expr(&Expr::Closure(closure)).unwrap();

@@ -2783,6 +2783,10 @@ impl RustTrans {
 
             // Closure (Plan 060): (params) => body or param => body
             Expr::Closure(closure) => {
+                // Plan 364 W5 (D4): explicit `move` prefix → `move |..| ..`
+                if closure.is_move {
+                    write!(out, "move ")?;
+                }
                 write!(out, "|")?;
                 for (i, param) in closure.params.iter().enumerate() {
                     // Name first, then optional type annotation

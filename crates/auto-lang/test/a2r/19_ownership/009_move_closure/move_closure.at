@@ -1,0 +1,21 @@
+// Plan 364 W5 (D4): explicit `move` closure prefix keyword.
+// `move (params) => body` transpiles to Rust `move |params| body`.
+// This is the COSMIC Subscription::run / tokio::spawn capture shape — the
+// closure must take ownership of captured variables to satisfy 'static.
+
+fn main() {
+    let name str = "cosmic"
+    let count int = 3
+
+    // move closure with a single param
+    let f = move (n int) => {
+        print(n)
+    }
+    f(count)
+
+    // move closure capturing an outer variable (the ownership-transfer case)
+    let g = move () => {
+        print(name)
+    }
+    g()
+}

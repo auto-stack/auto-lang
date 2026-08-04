@@ -500,6 +500,11 @@ pub struct Closure {
 
     /// Closure body (expression or block)
     pub body: Box<Expr>,
+
+    /// Plan 364 W5 (D4): explicit `move` prefix keyword. `move (x) => ...`
+    /// transpiles to Rust `move |x| ...` (ownership capture). False for all
+    /// existing closures; the postfix `.move` (Expr::Move) is unrelated.
+    pub is_move: bool,
 }
 
 impl Closure {
@@ -508,7 +513,14 @@ impl Closure {
             params,
             ret,
             body: Box::new(body),
+            is_move: false,
         }
+    }
+
+    /// Plan 364 W5: builder for an explicit-move closure.
+    pub fn with_move(mut self) -> Self {
+        self.is_move = true;
+        self
     }
 }
 
@@ -560,7 +572,8 @@ impl PartialEq for Closure {
             _ => false,
         };
 
-        params_equal && ret_equal // Skip body comparison (Expr doesn't have PartialEq)
+        params_equal && ret_equal && self.is_move == other.is_move
+            // Skip body comparison (Expr doesn't have PartialEq)
     }
 }
 

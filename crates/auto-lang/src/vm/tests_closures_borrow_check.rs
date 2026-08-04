@@ -28,6 +28,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::View(Box::new(Expr::Ident("x".into())))),
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -56,6 +57,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::Mut(Box::new(Expr::Ident("x".into())))),
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -83,6 +85,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::Ident("x".into())),  // Default: copy semantics
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -108,6 +111,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::Take(Box::new(Expr::Ident("x".into())))),
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -139,6 +143,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::Ident("y".into())),
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -164,6 +169,7 @@ mod borrow_check_tests {
                 Op::Add,
                 Box::new(Expr::View(Box::new(Expr::Ident("y".into())))),
             )),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -194,6 +200,7 @@ mod borrow_check_tests {
                 type_args: vec![],
                 pos: None,
             })),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -218,6 +225,7 @@ mod borrow_check_tests {
                 Expr::View(Box::new(Expr::Ident("x".into()))),
                 Expr::Ident("z".into()),
             ])),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -249,6 +257,7 @@ mod borrow_check_tests {
                 ],
                 else_: Some(Body::single_expr(Expr::Int(0))),
             })),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -285,6 +294,7 @@ mod borrow_check_tests {
                 has_new_line: false,
                 source_lines: Vec::new(),
             })),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);
@@ -303,6 +313,7 @@ mod borrow_check_tests {
             params: vec![],
             ret: None,
             body: Box::new(Expr::Ident("x".into())),
+            is_move: false,
         };
 
         let result = codegen.compile_closure(&closure);

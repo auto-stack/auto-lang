@@ -141,7 +141,7 @@ a failing test first (see W4).
 | W2 | `Fn.attrs` field + function-level attribute output | ✅ | ⭐ Low | ast/fun.rs:17-36, rust.rs:7060 area | `#[tokio.main]` / arbitrary attrs on fn emit to Rust |
 | W3 | Multi-bound `#[with(T as A + B)]` + struct/trait/impl-level bound output | ✅ | ⭐⭐ Low-Mid | ast/types.rs:370, parser.rs:7288-7329/7643-7655, rust.rs:957-963 + 13 output sites | bounds emit at all sites; `T: A + B`; spec-as-constraint bypasses the `Box<dyn>` special case (`rust_bound_name`, rust.rs:957) |
 | W4 | `~{}` full statement support, test-driven | ✅ | ⭐⭐ Mid | rust.rs:3031-3067 → delegate to stmt() (rust.rs:7838) | new tests under test/a2r/ for If/For/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
-| W5 | `move` closure prefix keyword | ⏳ | ⭐⭐ Mid | ast/fun.rs:472, parser.rs (closure syntax), rust.rs:2412/2320, vm/codegen.rs | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
+| W5 | `move` closure prefix keyword | ✅ | ⭐⭐ Mid | ast/fun.rs:494, parser.rs:1636 (parse_expr), rust.rs:2785 (Expr::Closure arm) | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
 | W6 | `~Stream<T>` parity coverage | ⏳ | ⭐ Low | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:229-252 | parity runner Cargo template gains `futures`, `async-stream`, tokio `sync` feature; 3-way (VM-skip / a2r / native) tests pass |
 | W7 | Local path dependencies in generated Cargo.toml | ⏳ | ⭐ Low | rust.rs:12405 (dep scanner output), dep_scanner.rs | `dep` supports `{ path = "..." }` so Auto projects can depend on local glue crates (auto-cosmic-dbus/-ui); monorepo template (Auto app + local Rust glue) builds end-to-end |
 
@@ -269,6 +269,53 @@ Bonus: eliminating the stack-overflow crashes also resolved 3 previously-
 flaky golden tests (`rand_custom` 006/010, `log_custom` 004) that had been
 collateral damage of overflow-induced process crashes — the full a2r suite is
 now green.
+
+### W5 — landed (`move` closure prefix keyword, D4 Option B)
+
+**Design (D4)**: an explicit `move` prefix keyword on closures —
+`move (params) => body` and `move x => body` — transpiles to Rust's
+`move |params| body` (ownership capture). This is the COSMIC
+`Subscription::run` / `tokio::spawn` shape where the closure must own its
+captures to satisfy `'static`.
+
+**AST** (`ast/fun.rs:494`): added `pub is_move: bool` to `Closure`.
+`Closure::new` keeps its 3-arg signature defaulting `is_move=false` (so the
+6 existing construction sites needed no change); a `with_move()` builder sets
+the flag. `PartialEq` updated to compare `is_move`. The postfix `.move`
+(`Expr::Move`) is unrelated and untouched.
+
+**Parser** (`parser.rs:1636`, `parse_expr`): detect `TokenKind::Move` at the
+expression boundary. Since this parser's `peek()` returns the *current* token
+(not the next), a real lookahead uses `self.lexer.next()` + `push_token`
+rollback. Only when `move` is followed by `LParen` or `Ident` (the closure
+forms) is it consumed as a prefix; otherwise it falls through to its existing
+roles (param mode `fn(move x)`, soft-identifier use as a variable name). After
+consuming `move`, the rest parses via the normal closure paths
+(`expr_pratt` → atom/group/`parse_closure` for `(..)=>`; `expr_pratt_with_left`
+for `x =>`), then the resulting `Expr::Closure` is flagged `is_move=true`.
+This covers both single-param and multi/zero-param move closures.
+
+**Emission** (`rust.rs:2785`, `Expr::Closure` arm): when `closure.is_move`,
+emit `move ` before the `|`. The hardcoded `thread::spawn` move heuristics
+(`rust.rs:6254`/`6471`) are call-site specials independent of `is_move` and
+remain unchanged.
+
+**VM**: `compile_closure` (`codegen.rs:10986`) accepts and ignores the flag
+(VM closures capture the environment via `find_free_vars` already) — no code
+change required, only the two `Closure { .. }` struct-literal test fixtures at
+`codegen.rs:11891`/`11939` and the 11 in `tests_closures_borrow_check.rs`
+gained `is_move: false`.
+
+**Test-driven**: golden `19_ownership/009_move_closure` — `move (n int) =>`
+and `move () =>` (capturing an outer variable). Written first (red: "Expected
+end of statement, got DoubleArrow"), then implementation made it green.
+
+Verification: `cargo test -p auto-lang --lib --features test-trans
+tests::a2r_tests::` → **297 passed, 0 failed** (296 + the new W5 test).
+Existing non-move closure tests (`002_closure_capture`, `003_closure`),
+parser tests (151/0), and VM borrow-check tests (15/0) all unaffected — the
+`move` prefix is correctly scoped and does not collide with param-mode `move`,
+soft-identifier `move`, or postfix `.move`.
 
 ### Incidental: deep-recursion stack-overflow class (mitigated, not a regression)
 
