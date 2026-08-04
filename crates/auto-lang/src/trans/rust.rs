@@ -8711,6 +8711,18 @@ impl RustTrans {
                         // logic treats it as &str (skip .as_str()/.to_string()).
                         self.current_fn_str_params.insert(name.clone());
                     }
+                    // Borrow collection by reference to avoid moving it:
+                    //   `for x in self.sections` → `for x in &self.sections`
+                    //   `for x in some_vec`      → `for x in &some_vec`
+                    // This mirrors the Destructured branch. Method calls
+                    // (e.g. `.clone()`, iterator-yielding fns) stay un-borrowed.
+                    let is_borrowable = matches!(
+                        &for_stmt.range,
+                        Expr::Ident(_) | Expr::Dot(_, _)
+                    );
+                    if is_borrowable {
+                        sink.body.write(b"&")?;
+                    }
                     self.expr(&for_stmt.range, &mut sink.body)?;
                     sink.body.write(b" {\n")?;
 
