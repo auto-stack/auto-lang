@@ -3,6 +3,13 @@ name = "auto-val"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+# Enable serde Deserialize support for Value/Node (Plan 381). Lets any
+# #[derive(Deserialize)] struct read directly from a parsed .at, replacing
+# hand-written opt_string/opt_uint field extraction.
+serde = ["dep:serde"]
+
 [dependencies]
 ecow = { workspace = true }
 normalize-path = { workspace = true }
@@ -10,3 +17,4 @@ regex = { workspace = true }
 glob-match = { workspace = true }
 thiserror = { workspace = true }
 indexmap = "2.0"
+serde = { workspace = true, optional = true }

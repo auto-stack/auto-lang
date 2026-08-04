@@ -1,6 +1,8 @@
 # Plan 332: `#[derive(ToAtom)]` / `#[derive(FromAtom)]` — 标注驱动的 .at 序列化
 
 > **实测状态（2026-08-04）**: ❌ 未实施。宏 crate (auto-lang-macros) 无 derive。保留为后续设计。
+>
+> **更新（2026-08-04,Plan 381 落地后）**: Plan 381 已实现 `auto-val` 的 serde `Deserializer` 适配器(`serde` feature),提供了**反序列化方向**的零样板方案(`#[derive(Deserialize)]` + `node.deserialize::<T>()`)。本计划(332)的 `#[derive(FromAtom)]` 现定位为**未来的、针对 .at 的定制宏**,可基于 381 的 serde 路径构建(宏生成 serde 调用而非新 trait),或保留独立的 `FromAtom` trait 用于 serialize 方向(`ToAtom`)和 .at 特有标注(如 `#[atom(node="role")]`)。**反序列化方向不再阻塞 —— 332 的优先级降低。**
 
 > **类型**:完整计划(设计 + 实施)
 > **状态**:设计草案,待评审

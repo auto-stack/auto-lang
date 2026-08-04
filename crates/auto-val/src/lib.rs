@@ -53,6 +53,12 @@ pub use path::*;
 mod emit;
 pub use emit::*;
 
+// Plan 381: optional serde Deserialize support for Value/Node.
+#[cfg(feature = "serde")]
+mod de;
+#[cfg(feature = "serde")]
+pub use de::ValueDeserializer;
+
 pub type AutoError = Box<dyn std::error::Error>;
 pub type AutoResult<T> = Result<T, AutoError>;
 
