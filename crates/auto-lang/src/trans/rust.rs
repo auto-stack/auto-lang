@@ -1270,7 +1270,13 @@ impl RustTrans {
                     | "Rc" | "Cell" | "RefCell" | "Mutex"
                 );
                 let is_pascal = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-                if is_pascal && !is_concrete {
+                // C8: a type declared in this file is a concrete struct, never a
+                // trait — skip the `impl` prefix (Option<AgentMode> must stay
+                // `Option<AgentMode>`, and `-> AgentMode` must not be `-> impl
+                // AgentMode`).
+                if self.local_struct_types.contains(name.as_str()) {
+                    self.rust_type_name(ty)
+                } else if is_pascal && !is_concrete {
                     format!("impl {}", name)
                 } else {
                     self.rust_type_name(ty)

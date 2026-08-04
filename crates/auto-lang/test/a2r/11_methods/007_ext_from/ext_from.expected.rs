@@ -6,7 +6,7 @@ struct Name {
 }
 
 impl From<String> for Name {
-    fn from(s: String) -> impl Name {
+    fn from(s: String) -> Name {
         return Name { value: s };
     }
 }

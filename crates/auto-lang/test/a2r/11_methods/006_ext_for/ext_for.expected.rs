@@ -7,13 +7,13 @@ struct Point {
 }
 
 impl Point {
-    fn origin(&self) -> impl Point {
+    fn origin(&self) -> Point {
         return Point { x: 0, y: 0 };
     }
 }
 
 impl Default for Point {
-    fn default(&self) -> impl Point {
+    fn default(&self) -> Point {
         return Point { x: 0, y: 0 };
     }
 }

@@ -6,7 +6,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn default() -> impl Settings {
+    pub fn default() -> Settings {
         return Settings { env: {} };
     }
 }

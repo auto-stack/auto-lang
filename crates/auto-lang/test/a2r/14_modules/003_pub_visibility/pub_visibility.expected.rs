@@ -12,7 +12,7 @@ impl Point {
     }
 }
 
-pub fn get_origin() -> impl Point {
+pub fn get_origin() -> Point {
     return Point { x: 0, y: 0 };
 }
 
