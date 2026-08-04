@@ -58,6 +58,8 @@ pub use emit::*;
 mod de;
 #[cfg(feature = "serde")]
 pub use de::ValueDeserializer;
+#[cfg(feature = "serde")]
+pub use de::{lenient_bool, lenient_f64, nonempty_string, string_or_list};
 
 pub type AutoError = Box<dyn std::error::Error>;
 pub type AutoResult<T> = Result<T, AutoError>;
