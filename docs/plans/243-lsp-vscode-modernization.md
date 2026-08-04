@@ -1,6 +1,6 @@
 # Auto LSP & VSCode Plugin Modernization Plan
 
-> **Status: ✅ Phase 1 已完成** — `auto-lsp` 已用 `tower-lsp-server 0.23` 重写（v0.3.0），恢复 workspace 成员资格，包含 completion/diagnostics/goto_def/hover/signature_help/workspace 模块。Phase 2-6 待实现。
+> **Status（2026-08-04 实测）**: 🟡 Phase 1 ✅ + Phase 2/3/4 主体已做（references/rename/code_action/workspace_symbol 有真实实现）；Phase 5 ❌（VSCode 仍是 JS 单文件，未迁 TS）；Phase 6 CI 存在但禁用、测试覆盖低（70 行）。文档原说「Phase 2-6 待实现」低估了实际进度。
 
 ## Executive Summary
 

@@ -1,5 +1,7 @@
 # Plan 242: a2r Feature Gap Tracker
 
+> **实测状态（2026-08-04）**: 🟡 追踪文档状态过时——Item #1（泛型约束）实际已实现（rust.rs:8273）但表格未标记；Item #2（HashMap::from）仍未做。多数核心 gap 仍未解决。引用的 372/373/376/384 计划文件已归档至 archive/。
+
 ## Background
 
 The Auto-to-Rust transpiler (a2r) has reached a functional state with 144 passing tests across 17 categorized directories (Plan 170/204/220/223). However, significant gaps remain compared to the C transpiler (a2c) in terms of feature parity, type system fidelity, and production readiness.

@@ -1,6 +1,6 @@
 # Plan 288: Notes App Full-Stack API Integration
 
-> **Status: Phase 1 ✅ 已完成** — Vue 前端已对接后端 API，API 函数自动检测已实现。Phase 2（动态发现）和 Phase 3（rustvm 模式）待实现。
+> **Status（2026-08-04 实测）**: 🟡 Phase 1 ✅（前端对接 API）+ Phase 2 ✅（动态 API 发现，api_gen.rs:275 写出 .api_functions）；Phase 3 ❌（无 RustVm backend 变体）。文档原说「Phase 2/3 待做」不准确——Phase 2 已完成。
 
 ## Context
 
