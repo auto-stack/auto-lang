@@ -57,4 +57,4 @@ CTEE 在编译管线中的位置、变换算法、七处集成点，以及"下�
 - 不做跨模块 comptime：每个编译入口独立构造 `CTEE::new()`，无会话级共享状态。
 - 不做增量/缓存：每次编译全量重跑变换（与 AIE 增量架构无集成）。
 
-> 来源: docs/design/09-compiler.md、docs/plans/old/095-compile-time-execution-engine.md、docs/plans/archive/310-auto-ownership-escape-analysis.md、crates/auto-lang/src/comptime/transformer.rs、crates/auto-lang/src/lib.rs、crates/auto-lang/src/trans/c.rs、crates/auto-lang/src/trans/rust.rs、crates/auto-lang/src/indexer.rs、crates/auto-lang/src/infer/stmt.rs
+> 来源: docs/design/09-compiler.md、docs/plans/archive/095-compile-time-execution-engine.md、docs/plans/archive/310-auto-ownership-escape-analysis.md、crates/auto-lang/src/comptime/transformer.rs、crates/auto-lang/src/lib.rs、crates/auto-lang/src/trans/c.rs、crates/auto-lang/src/trans/rust.rs、crates/auto-lang/src/indexer.rs、crates/auto-lang/src/infer/stmt.rs

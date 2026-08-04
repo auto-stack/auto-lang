@@ -66,4 +66,4 @@
   Future Extensions，未立项）。
 - 协议版本协商：固定回 `2024-11-05`，不看客户端请求的版本。
 
-> 来源: `crates/auto-lang/src/mcp/protocol.rs`、`crates/auto-lang/src/mcp/server.rs`、`docs/plans/old/265-autovm-mcp-server.md`
+> 来源: `crates/auto-lang/src/mcp/protocol.rs`、`crates/auto-lang/src/mcp/server.rs`、`docs/plans/archive/265-autovm-mcp-server.md`

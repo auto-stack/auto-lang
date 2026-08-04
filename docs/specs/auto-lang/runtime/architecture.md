@@ -51,7 +51,7 @@ graph TD
 ## ADR 日志
 
 ### ADR-01: 编译期/运行期状态分离（Universe → Database + ExecutionEngine）
-- 日期 / 来源：2025-02-01 完成 / plan-064（`docs/plans/old/064-split-universe-compile-runtime.md`）
+- 日期 / 来源：2025-02-01 完成 / plan-064（`docs/plans/archive/064-split-universe-compile-runtime.md`）
 - 决策：把原 `Universe` 拆为持久的编译期 `Database`（含 `SymbolTable`）与易失的运行期
   `ExecutionEngine`（含 `StackFrame`），两者以 `StackFrame.scope_sid → SymbolTable.sid` 单向链接。
 - 备选：保持单一 Universe（pros：无迁移成本、引用简单；cons：编译期/运行期耦合，
@@ -72,7 +72,7 @@ graph TD
 - 状态：active
 
 ### ADR-03: 混合 FFI——内建 shim + 沙箱动态加载双轨
-- 日期 / 来源：plan 未标注日期 / plan-092、plan-094（`docs/plans/old/092-rust-ffi-sandbox.md`、`094-hybrid-ffi-bridge.md`）
+- 日期 / 来源：plan 未标注日期 / plan-092、plan-094（`docs/plans/archive/092-rust-ffi-sandbox.md`、`094-hybrid-ffi-bridge.md`）
 - 决策：Rust FFI 走双轨——VM 内建 shim（编译进引擎）+ `use.rust` 沙箱把用户 crate
   编译为 cdylib 动态加载，统一进 `NativeInterface` 混合查找。
 - 备选：纯内建（pros：零加载成本、ABI 稳定；cons：用户 crate 无法接入）；
@@ -115,7 +115,7 @@ graph TD
 - 状态：active
 
 ### ADR-07: 混合路由——约定发现 + 配置覆盖
-- 日期 / 来源：plan 未标注日期 / plan-114（`docs/plans/old/114-hybrid-routing.md`，文件内标题作 "Plan 119"）
+- 日期 / 来源：plan 未标注日期 / plan-114（`docs/plans/archive/114-hybrid-routing.md`，文件内标题作 "Plan 119"）
 - 决策：路由两来源——扫描 `routes/` 目录按文件命名约定（`index.at`→`/`、
   `user/[id].at`→`/user/:id`）自动发现，与 `routes {}` 配置块合并，配置覆盖约定。
 - 备选：纯约定（pros：零配置；cons：layout/auth 等元数据无处表达）；

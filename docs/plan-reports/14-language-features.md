@@ -144,4 +144,4 @@ Plan 086 proposes loading widget specifications from `stdlib/aura/widgets/*.at` 
 - [206-closure-hof-call-closure-api.md](../plans/206-closure-hof-call-closure-api.md)
 - [207-enum-multi-field-destruct-construction.md](../plans/207-enum-multi-field-destruct-construction.md)
 - [208-result-heap-object.md](../plans/208-result-heap-object.md)
-- [228-hetero-enum-tuple-syntax.md](../plans/old/228-hetero-enum-tuple-syntax.md)
+- [228-hetero-enum-tuple-syntax.md](../plans/archive/228-hetero-enum-tuple-syntax.md)

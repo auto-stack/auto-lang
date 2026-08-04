@@ -22,7 +22,7 @@
 
 被删除的 `config_codegen.rs` 最早由 **Plan 075**（2026-02，`df5e0cc06`）引入。
 Plan 075 当初的决策是"config 逻辑放编译期 codegen，VM 保持 mode-agnostic"
-（见 [docs/plans/old/075-config-template-modes.md](old/075-config-template-modes.md)）。
+（见 [docs/plans/archive/075-config-template-modes.md](old/075-config-template-modes.md)）。
 
 但真实 SCU001 的 dep pac.at 里有编译期无法求值的构造，迫使 config 求值下沉到 VM
 （见下方 Step 5 动机）——这是顺应"统一所有 VM 解释能力、不为每类 Auto 代码重写一套

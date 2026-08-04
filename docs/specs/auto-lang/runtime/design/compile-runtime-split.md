@@ -58,4 +58,4 @@ Compile-time (Database)          Runtime (ExecutionEngine)
 - 不做垃圾回收策略设计；`weak_refs` 仅是清理挂钩，非 GC。
 - 不保证 `pop_frame` 后的帧数据回收（已知遗留，见代码注释）。
 
-> 来源: docs/plans/old/064-split-universe-compile-runtime.md、crates/auto-lang/src/runtime.rs、crates/auto-lang/src/scope.rs、docs/design/05-vm-runtime.md（Streaming/REPL 节的"语句级栈平衡"原则）
+> 来源: docs/plans/archive/064-split-universe-compile-runtime.md、crates/auto-lang/src/runtime.rs、crates/auto-lang/src/scope.rs、docs/design/05-vm-runtime.md（Streaming/REPL 节的"语句级栈平衡"原则）

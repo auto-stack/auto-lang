@@ -49,4 +49,4 @@ comptime 的语法表面（四种 `#` 构造）、lexer/parser 落点、AST 数�
 - 不做编译期类型反射：`type_of(val).fields` 之类属设计 Phase 4 的 `std.meta` 规划，未实现。
 - `#{ }` 设计为多语句求值块（"最后一行为返回值"），实现只支持单表达式。
 
-> 来源: docs/design/raw/compile-time-execution.md、docs/plans/old/095-compile-time-execution-engine.md、crates/auto-lang/src/ast/comptime.rs、crates/auto-lang/src/parser.rs、crates/auto-lang/src/lexer.rs
+> 来源: docs/design/raw/compile-time-execution.md、docs/plans/archive/095-compile-time-execution-engine.md、crates/auto-lang/src/ast/comptime.rs、crates/auto-lang/src/parser.rs、crates/auto-lang/src/lexer.rs

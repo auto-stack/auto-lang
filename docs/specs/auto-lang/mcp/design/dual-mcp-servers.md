@@ -47,4 +47,4 @@
 - 本文不维护 AutoUI 工具的完整契约——那是 ui 模块 spec 的职责；
   此处只记录与本模块的边界。
 
-> 来源: `docs/design/14-developer-tools.md`、`docs/plans/old/278-autoui-mcp-desktop.md`、`docs/plans/archive/299-autoui-mcp-v2.md`、`docs/plans/archive/314-autoui-mcp-styled-vtree.md`、`crates/auto-lang/src/ui/mcp_server.rs`（工具注册表核对）
+> 来源: `docs/design/14-developer-tools.md`、`docs/plans/archive/278-autoui-mcp-desktop.md`、`docs/plans/archive/299-autoui-mcp-v2.md`、`docs/plans/archive/314-autoui-mcp-styled-vtree.md`、`crates/auto-lang/src/ui/mcp_server.rs`（工具注册表核对）

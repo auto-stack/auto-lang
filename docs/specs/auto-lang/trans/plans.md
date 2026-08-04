@@ -1,6 +1,6 @@
 # trans 相关 plan 索引
 
-> 状态以各 plan 文件自身为准；归档列为当前所在目录（`plans/`、`plans/archive/`、`plans/old/`）。
+> 状态以各 plan 文件自身为准；归档列为当前所在目录（`plans/`、`plans/archive/`、`plans/archive/`）。
 > 主题概览见 docs/plan-indices/06-transpilers.md。
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |

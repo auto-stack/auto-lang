@@ -119,7 +119,7 @@ The Comptime Example Codebase (Plan 137, completed) provides 16 working example 
 - 188-tier3-blocker-resolution.md
 - 189-tier4-prerequisites.md
 - [196-plan-reports.md](../plans/196-plan-reports.md)
-- [202-playground-design.md](../plans/old/202-playground-design.md)
-- [209-example-modernization.md](../plans/old/209-example-modernization.md)
+- [202-playground-design.md](../plans/archive/202-playground-design.md)
+- [209-example-modernization.md](../plans/archive/209-example-modernization.md)
 - [210-book-listing-test-harness-design.md](../plans/210-book-listing-test-harness-design.md)
 - [218-plan-status-reconciliation.md](../plans/218-plan-status-reconciliation.md)

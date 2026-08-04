@@ -25,4 +25,4 @@
 - plan-reports/07-vm-runtime.md 的"Source Plans"链接多指向 `docs/plans/` 根目录，
   实际文件在 `old/` 子目录，链接已过时（上表"归档"列以实际位置为准）。
 
-> 来源: docs/plan-reports/07-vm-runtime.md、docs/plans/old/、docs/plans/archive/
+> 来源: docs/plan-reports/07-vm-runtime.md、docs/plans/archive/、docs/plans/archive/

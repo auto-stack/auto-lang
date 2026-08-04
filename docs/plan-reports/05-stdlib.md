@@ -115,4 +115,4 @@ Plan 143 defines the migration of approximately 45 UI components from `examples/
 - [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)
 - [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)
 - [211-stdlib-test-coverage.md](../plans/211-stdlib-test-coverage.md)
-- [250-auto-stdlib-enhancement.md](../plans/old/250-auto-stdlib-enhancement.md)
+- [250-auto-stdlib-enhancement.md](../plans/archive/250-auto-stdlib-enhancement.md)

@@ -69,4 +69,4 @@ plan-095 声称 "E0401-E0406"，实际枚举只到 E0404 区间内的四个变�
 - 不保证确定性：无 I/O/随机/时间禁用机制（设计见 `determinism-sandbox.md`）。
 - 不做编译期函数调用图分析：`#{ }` 内调用的函数能否求值，完全取决于 VmInterpreter 能否执行。
 
-> 来源: crates/auto-lang/src/comptime/transformer.rs、crates/auto-lang/src/error.rs、docs/plans/old/095-compile-time-execution-engine.md、docs/design/09-compiler.md
+> 来源: crates/auto-lang/src/comptime/transformer.rs、crates/auto-lang/src/error.rs、docs/plans/archive/095-compile-time-execution-engine.md、docs/design/09-compiler.md

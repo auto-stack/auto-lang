@@ -55,5 +55,5 @@ enum Msg { Quit, Move Point }          // 异质 enum（ADT）
 ## 蒸馏来源（Phase 1）
 
 - `docs/design/02-type-system.md`、`03-error-handling.md`、`04-memory-ownership.md`
-- `docs/plan-indices/02/03/04`、`docs/plans/old/008-208`、`docs/plans/archive/310`
+- `docs/plan-indices/02/03/04`、`docs/plans/archive/008-208`、`docs/plans/archive/310`
 - 代码核对：`crates/auto-lang/src/{types.rs, infer/, typeck.rs, typeck/, ownership/, trait_checker.rs, ast/types.rs, ast/fun.rs, ast/enums.rs, error.rs}`

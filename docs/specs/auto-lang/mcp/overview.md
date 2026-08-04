@@ -71,6 +71,6 @@ history）→ `auto_patch`（按名替换单个定义并重建会话）→ `auto
 ## 蒸馏来源（Phase 1）
 
 - `docs/design/14-developer-tools.md`（MCP 节：AutoVM MCP Server / AutoUI MCP Server）
-- `docs/plans/old/265-autovm-mcp-server.md`（本模块奠基 plan）
+- `docs/plans/archive/265-autovm-mcp-server.md`（本模块奠基 plan）
 - `docs/plans/archive/314-autoui-mcp-styled-vtree.md`（AutoUI MCP 侧，交叉引用）
 - 代码：`crates/auto-lang/src/mcp/`（mod/protocol/server/session_manager/tests）

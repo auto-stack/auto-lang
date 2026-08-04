@@ -473,7 +473,7 @@ plan 378 加的 2-slot 补丁，在 plan 377 完成后**大部分可删除**（�
 - [Mozilla Bug 1401624 — Object-biased NaN boxing](https://bugzilla.mozilla.org/show_bug.cgi?id=1401624) — SpiderMonkey nan-box 优化细节
 
 ### 本仓库相关计划
-- plan 221：NaN-boxing 迁移（已完成）— `docs/plans/old/221-nanboxing-migration.md`
+- plan 221：NaN-boxing 迁移（已完成）— `docs/plans/archive/221-nanboxing-migration.md`
 - plan 073：AutoVM f64/u64 支持（已完成）— 2-slot 的历史起源
 - plan 378：`to_uint()` 栈错位（已完成）— 暴露 2-slot 缺陷，补丁由本计划清理
 

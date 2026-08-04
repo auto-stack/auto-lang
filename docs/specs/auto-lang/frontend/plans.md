@@ -2,7 +2,7 @@
 
 > 状态以 plan 文件自身标注为准；未标注的写"未标注"。归档列为当前位置
 > （`plans/` 活跃，`old/` 旧归档）。
-> 编号注意：docs/plans/old/013-unify-args-and-props.md 与 docs/plans/013-auto-ai-port-to-auto.md
+> 编号注意：docs/plans/archive/013-unify-args-and-props.md 与 docs/plans/013-auto-ai-port-to-auto.md
 > **重号但不同题**——本模块相关的是 old/ 的 013（args/props 合一），plans/ 的 013 是
 > auto-ai 移植，与本模块无关。重编号批次（327/336/337/338/342/351/355/359 →
 > 317/318/320/322/330/346/347/348）均不涉及本模块。

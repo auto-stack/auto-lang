@@ -31,7 +31,7 @@
 - `UIArtifact`/`UIBackend`：UI 代码生成产物；`UICache`：持久化增量缓存，
   使 UI 生成只重跑变更的 `.at` 文件（plan-135 的 AIE 复用思路：文件哈希 + 脏跟踪）。
 - 注意：database/mod.rs 头注写 "Plan 134: UI Artifact support"，实际来源是
-  plan-135（`docs/plans/old/135-ui-incremental-compilation.md` 明确以 AIE Database 做
+  plan-135（`docs/plans/archive/135-ui-incremental-compilation.md` 明确以 AIE Database 做
   UI 增量）；134 是 jet-generator-view-body，无此内容——注释编号有误。
 
 ### 与运行时分层的关系
@@ -46,4 +46,4 @@
   （头注 Phase 1-3 自述；未逐行验证完成度）。
 - 不做跨进程持久化格式规范（UICache 的序列化格式是内部实现细节）。
 
-> 来源: crates/auto-lang/src/database/mod.rs、ui_artifact.rs、ui_cache.rs；docs/plans/old/064-split-universe-compile-runtime.md、135-ui-incremental-compilation.md
+> 来源: crates/auto-lang/src/database/mod.rs、ui_artifact.rs、ui_cache.rs；docs/plans/archive/064-split-universe-compile-runtime.md、135-ui-incremental-compilation.md

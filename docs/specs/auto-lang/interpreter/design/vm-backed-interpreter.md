@@ -53,4 +53,4 @@
 - **不做函数级调用**：`call()` 未实现，跨 eval 的函数复用不存在（exports 每次被覆盖）。
 - **不复制 `run_autovm` 的 4MB 独立线程方案**：当前直接 `block_on` 全局 runtime。
 
-> 来源: crates/auto-lang/src/interpreter/mod.rs、crates/auto-lang/src/interpreter/vm_interpreter.rs、docs/plans/old/091-universe-removal.md、docs/plans/old/080-autovm-stack-frame-bug.md、docs/plans/old/197-vm-adt-generic-lists-pattern-debug.md
+> 来源: crates/auto-lang/src/interpreter/mod.rs、crates/auto-lang/src/interpreter/vm_interpreter.rs、docs/plans/archive/091-universe-removal.md、docs/plans/archive/080-autovm-stack-frame-bug.md、docs/plans/archive/197-vm-adt-generic-lists-pattern-debug.md

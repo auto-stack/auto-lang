@@ -114,14 +114,14 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264.
 
-- [204-a2r-transpiler-completeness.md](../plans/old/204-a2r-transpiler-completeness.md)
+- [204-a2r-transpiler-completeness.md](../plans/archive/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
-- [283-a2py-maturation-plan.md](../plans/old/283-a2py-maturation-plan.md)
+- [283-a2py-maturation-plan.md](../plans/archive/283-a2py-maturation-plan.md)
 - [215-a2ts-maturation.md](../plans/215-a2ts-maturation.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
 - [220-a2r-transpiler-improvement.md](../plans/220-a2r-transpiler-improvement.md)
 - [223-a2r-step00-transpiler-fixes.md](../plans/223-a2r-step00-transpiler-fixes.md)
-- [241-a2r-string-type-cleanup.md](../plans/old/241-a2r-string-type-cleanup.md)
-- [264-a2r-dot-to-double-colon.md](../plans/old/264-a2r-dot-to-double-colon.md)
+- [241-a2r-string-type-cleanup.md](../plans/archive/241-a2r-string-type-cleanup.md)
+- [264-a2r-dot-to-double-colon.md](../plans/archive/264-a2r-dot-to-double-colon.md)
 - [240-rust-cookbook-a2r-tests.md](../plans/archive/240-rust-cookbook-a2r-tests.md)

@@ -31,4 +31,4 @@
 - 不做列级映射，只有行级。
 - source map 不序列化进输出文件；由调用方（playground，plan-219）消费。
 
-> 来源: crates/auto-lang/src/trans.rs；docs/plans/old/167-module-system.md、old/168-shared-variable.md（MultiSink/escape_str 代码注释）、old/219-playground-source-map.md
+> 来源: crates/auto-lang/src/trans.rs；docs/plans/archive/167-module-system.md、old/168-shared-variable.md（MultiSink/escape_str 代码注释）、old/219-playground-source-map.md

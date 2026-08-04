@@ -72,7 +72,7 @@ graph TD
 - 状态：active（supersede 了 08 文档描述的 parser 直查实现）
 
 ### ADR-04: 路由语法 `use module` + 懒加载（Plan 106 取代 Plan 105）
-- 日期 / 来源：docs/plans/old/106-router-use-syntax.md；docs/router.md §Plan History
+- 日期 / 来源：docs/plans/archive/106-router-use-syntax.md；docs/router.md §Plan History
 - 决策：`routes { "/" => use index }` 映射 `@/pages/index.vue`，生成 `() => import(...)` 懒加载；旧语法 `"/" => HomePage {}`（组件名转小写、静态 import）保留兼容。
 - 备选：A. Plan 105 组件名直引（pros：语义显式；cons：PascalCase 文件名、全量静态打包）；B. Plan 106 use 约定（pros：懒加载、文件约定小写统一；cons：隐式约定需文档化）。
 - 后果：正面——首屏 bundle 减小、pages/ 约定稳定；负面——双语法并存，生成器需同时支持（`vue.rs` 内 Plan 105/106 分支）。

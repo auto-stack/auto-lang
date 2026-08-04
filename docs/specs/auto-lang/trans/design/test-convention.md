@@ -35,4 +35,4 @@
 - a2p/a2j/a2gd 目前主要靠后端文件内 inline `#[test]`（cargo test -p auto-lang），
   尚未全部迁入 `tests/*.at` 声明式。
 
-> 来源: docs/plans/old/263-transpiler-tests.md；tests/a2c_tests.at、a2r_tests.at、a2ts_tests.at；docs/plans/archive/240-rust-cookbook-a2r-tests.md；docs/python-transpiler.md §Test Case Template
+> 来源: docs/plans/archive/263-transpiler-tests.md；tests/a2c_tests.at、a2r_tests.at、a2ts_tests.at；docs/plans/archive/240-rust-cookbook-a2r-tests.md；docs/python-transpiler.md §Test Case Template

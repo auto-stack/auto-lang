@@ -67,7 +67,7 @@ let merged = RouteMerger::merge(discovered, config_routes);
   `Scope.get_val` 永远返回 `None`（代码内 TODO 明示）。
 - `libs/std.rs` 是 0 行空文件，仅占模块位。
 - `database/mod.rs` 头注 "Plan 134: UI Artifact" 实为 plan-135（134 是 jet-generator-view-body）。
-- `docs/plans/old/114-hybrid-routing.md` 文件内标题写作 "Plan 119"；代码注释按文件名引 plan-114。
+- `docs/plans/archive/114-hybrid-routing.md` 文件内标题写作 "Plan 119"；代码注释按文件名引 plan-114。
 - plan 重号：`old/` 下有两个 152（SSE 与 a2ts 各一）；355 在 archive/（session 递归修复）
   与 plans/（a2r async-await 转译）各一，引用须带归档位置区分。
 - docs/design/05-vm-runtime.md 的 "Status" 描述的是 `vm/` 子系统，不是本目录这些文件；
@@ -76,6 +76,6 @@ let merged = RouteMerger::merge(discovered, config_routes);
 ## 蒸馏来源（Phase 1）
 
 - `docs/design/05-vm-runtime.md`、`docs/design/13-networking.md`
-- `docs/plans/old/064-split-universe-compile-runtime.md`、`081`、`092`、`094`、`102`、`114`、`152-streaming-http-sse`、`154`、`195`、`211`、`212`、`214`、`216`、`222`、`224`、`250`、`267`
+- `docs/plans/archive/064-split-universe-compile-runtime.md`、`081`、`092`、`094`、`102`、`114`、`152-streaming-http-sse`、`154`、`195`、`211`、`212`、`214`、`216`、`222`、`224`、`250`、`267`
 - `docs/plans/` 300、312-313（archive/）、316-318、321-322、326、328-329、334-335、341、344、349-350、352-353、355（archive/）
 - 代码：`crates/auto-lang/src/{runtime,scope,session,ffi,py_ffi,py_ffi_types,scope_manager,a2r_std}.rs`、`libs/`、`database/`、`sse/`、`route/`、`stdlib/auto/`

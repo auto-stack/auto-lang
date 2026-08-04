@@ -44,4 +44,4 @@ auto-man（`crates/auto-man/src/asset.rs`）。
 - **不保证转义完备**：Flip 只转义 `\` 与 `"`，模板行内若含其他与 f-string 语法冲突的
   字符（如未配对的 `${`）需在调用方处理。
 
-> 来源: crates/auto-lang/src/interpreter/mod.rs、crates/auto-gen/src/lib.rs、docs/plans/old/075-config-template-modes.md
+> 来源: crates/auto-lang/src/interpreter/mod.rs、crates/auto-gen/src/lib.rs、docs/plans/archive/075-config-template-modes.md

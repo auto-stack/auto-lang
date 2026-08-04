@@ -82,7 +82,7 @@ default = ["with-file-history", "ui-iced"]  # 去掉 "nanbox"
 ### Phase 4: 清理注释和文档
 
 - 移除代码中解释 nanbox vs non-nanbox 差异的注释
-- 更新 `docs/plans/old/221-nanboxing-migration.md` 标记 Phase 4 已完成
+- 更新 `docs/plans/archive/221-nanboxing-migration.md` 标记 Phase 4 已完成
 - 检查 `docs/design/05-vm-runtime.md` 是否需要更新
 - 移除 `crates/auto-lang/src/ui/vm_bridge.rs` 中 "works in both nanbox and non-nanbox modes" 等注释
 

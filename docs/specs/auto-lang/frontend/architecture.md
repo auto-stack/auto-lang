@@ -53,7 +53,7 @@ graph LR
 
 ### ADR-01: ToNode 与 ToAtom 双 trait 分离
 
-- 日期：未标注（plan 归档于 docs/plans/old/）
+- 日期：未标注（plan 归档于 docs/plans/archive/）
 - 来源：plan-003、plan-004
 - 决策：新增 `ToNode` trait 直接返回 `Node`；`ToAtom` 收窄为文本序列化并改返回 `AutoStr`。
   节点产出型 AST 的 `to_atom()` 委托为 `Value::Node(self.to_node())`。
@@ -65,7 +65,7 @@ graph LR
 
 ### ADR-02: AtomWriter 流式 S 表达式输出
 
-- 日期：未标注（plan 归档于 docs/plans/old/）
+- 日期：未标注（plan 归档于 docs/plans/archive/）
 - 来源：plan-005、plan-006
 - 决策：为全部 AST 类型实现 `AtomWriter::write_atom(&self, f: &mut impl io::Write)`，
   输出 Lisp 风格 S 表达式（如 `(fn name=add params=(params ...) return=int body=(body ...))`）。

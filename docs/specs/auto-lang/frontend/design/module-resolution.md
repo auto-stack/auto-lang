@@ -44,4 +44,4 @@
 - ModuleResolver 不含模块加载/缓存语义（加载缓存属 AIE/AutoCache 侧，plan-085/090）。
 - `lib`/`pac` 的 manifest 文件形式未定（docs/design/10 §Open Questions），当前靠目录约定。
 
-> 来源: docs/design/10-language-syntax.md §Code Organization；docs/plans/old/131-module-path-syntax-design.md、docs/plans/old/078-automan-integration.md；代码核对 use_scanner.rs、resolver.rs、ast/module_path.rs
+> 来源: docs/design/10-language-syntax.md §Code Organization；docs/plans/archive/131-module-path-syntax-design.md、docs/plans/archive/078-automan-integration.md；代码核对 use_scanner.rs、resolver.rs、ast/module_path.rs

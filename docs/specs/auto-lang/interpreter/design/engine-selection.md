@@ -38,4 +38,4 @@ run(code) / run_with_capture(code)
 - **不做按依赖选引擎**：plan-081 Phase 2（pac.at 中 per-dependency 执行模式）属
   auto-man / 构建侧职责，不在本文件。
 
-> 来源: crates/auto-lang/src/execution_engine.rs、crates/auto-lang/src/lib.rs、docs/execution-engine-selection.md、docs/plans/old/081-autovm-default-mode.md、docs/plans/old/091-universe-removal.md
+> 来源: crates/auto-lang/src/execution_engine.rs、crates/auto-lang/src/lib.rs、docs/execution-engine-selection.md、docs/plans/archive/081-autovm-default-mode.md、docs/plans/archive/091-universe-removal.md

@@ -72,4 +72,4 @@ stdio 模式下会话数量只增不减（ADR-02 的负面后果）。
 - sandbox 策略执行：标志位已留，I/O/网络限制未实现（plan-265 Phase 4，
   未落地）。
 
-> 来源: `crates/auto-lang/src/mcp/session_manager.rs`、`crates/auto-lang/src/autovm_daemon.rs`、`docs/plans/old/265-autovm-mcp-server.md`、`docs/plans/old/269-autovm-daemon-cli.md`
+> 来源: `crates/auto-lang/src/mcp/session_manager.rs`、`crates/auto-lang/src/autovm_daemon.rs`、`docs/plans/archive/265-autovm-mcp-server.md`、`docs/plans/archive/269-autovm-daemon-cli.md`

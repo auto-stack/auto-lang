@@ -92,11 +92,11 @@ The linker error precision improvement addresses the problem where "Undefined sy
 - `docs/plans/172-a2ts-test-reorganization.md`
 - `docs/plans/179-migrate-vm-tests-to-file-based.md`
 - `docs/plans/191-assert-and-precise-linker-errors.md`
-- `docs/plans/old/199-vm-interactive-debugger.md`
-- `docs/plans/old/209-example-modernization.md`
+- `docs/plans/archive/199-vm-interactive-debugger.md`
+- `docs/plans/archive/209-example-modernization.md`
 - `docs/plans/210-book-listing-test-harness-design.md`
 - `docs/plans/211-stdlib-test-coverage.md`
-- `docs/plans/old/260-auto-test-framework.md`
-- `docs/plans/old/261-migrate-rust-tests-to-auto.md`
-- `docs/plans/old/262-file-based-tests.md`
-- `docs/plans/old/263-transpiler-tests.md`
+- `docs/plans/archive/260-auto-test-framework.md`
+- `docs/plans/archive/261-migrate-rust-tests-to-auto.md`
+- `docs/plans/archive/262-file-based-tests.md`
+- `docs/plans/archive/263-transpiler-tests.md`

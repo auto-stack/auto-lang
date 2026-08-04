@@ -60,4 +60,4 @@
 - 不做 WebAssembly/JS 宿主桥接。
 - Python FFI 不解决 CPython 崩溃隔离（嵌入模型的已知代价，进程隔离是非目标）。
 
-> 来源: crates/auto-lang/src/ffi.rs、py_ffi.rs、py_ffi_types.rs；docs/plans/old/081、092、094、212、214、216、222；docs/plans/300-python-ffi-runtime-maturation.md
+> 来源: crates/auto-lang/src/ffi.rs、py_ffi.rs、py_ffi_types.rs；docs/plans/archive/081、092、094、212、214、216、222；docs/plans/300-python-ffi-runtime-maturation.md

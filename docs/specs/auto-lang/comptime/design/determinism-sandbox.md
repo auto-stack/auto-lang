@@ -46,4 +46,4 @@ CTEELimits {
 - 本文档不把该设计标记为"已实现"；overview 的 Status 为 partial 主要由此而来。
 - 不设计二级缓存/指纹：确定性是缓存的**前提**，缓存本身归 AIE/AutoCache 模块（09-compiler.md 另述）。
 
-> 来源: docs/plans/old/095-compile-time-execution-engine.md（Part A "Deterministic Execution"/"Resource Limits"、Task 4.1）、crates/auto-lang/src/comptime/mod.rs、crates/auto-lang/src/interpreter/（核对无该字段）
+> 来源: docs/plans/archive/095-compile-time-execution-engine.md（Part A "Deterministic Execution"/"Resource Limits"、Task 4.1）、crates/auto-lang/src/comptime/mod.rs、crates/auto-lang/src/interpreter/（核对无该字段）

@@ -44,7 +44,7 @@ Replicate the `a3ui` project (a Vue/shadcn-vue clone of Google's A2UI Composer g
 ### Existing Related Work
 - `examples/component-gallery/` — 46 shadcn-vue components documented in pure Auto
 - `examples/a2ui-composer/` — Simplified A2UI Composer (Phase 0-1 of Plan 217)
-- `docs/plans/old/217-a2ui-composer-implementation.md` — Prior A2UI composer plan
+- `docs/plans/archive/217-a2ui-composer-implementation.md` — Prior A2UI composer plan
 - `docs/design/new/a2ui-composer-analysis.md` — A2UI ↔ AutoUI architecture mapping
 
 ---
@@ -303,7 +303,7 @@ widget App {
 - `crates/auto-lang/src/ui_gen/vue.rs` — a2vue generator (must support all needed shadcn-vue components)
 - `examples/component-gallery/` — Reference for complex Auto UI patterns
 - `../a3ui/my-app/src/` — Source of truth for A2UIRenderer, widget data, and styling
-- `docs/plans/old/217-a2ui-composer-implementation.md` — Lessons learned from prior attempt
+- `docs/plans/archive/217-a2ui-composer-implementation.md` — Lessons learned from prior attempt
 
 ---
 

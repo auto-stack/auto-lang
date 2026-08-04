@@ -92,4 +92,4 @@
 | 355 | fix-persistent-session-fn-body-recursion | ✅ | archive/355-fix-persistent-session-fn-body-recursion.md | session.run 移至 8MB 栈独立线程，修解析栈溢出（与 plans/355 同号不同 plan） |
 
 （*）plan-069/080 文件无显式状态行，状态取自 docs/plan-reports/07-vm-runtime.md。
-plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移至 `docs/plans/old/`，属报告链接腐化。
+plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移至 `docs/plans/archive/`，属报告链接腐化。

@@ -46,4 +46,4 @@ Auto 有统一字符串模型（`str` / `Str` / 字面量），Rust 区分 `&str
 - 不从类型系统层根除启发式（plan-241 选择继续打补丁路线）。
 - 不生成带生命周期参数的 struct（字段一律 `String`，见 escape-analysis-tiers.md ADR-06 决策 1）。
 
-> 来源: docs/design/06-code-generation.md §Rust Transpiler；docs/plans/old/232-a2r-lexer-compilation.md、old/241-a2r-string-type-cleanup.md；crates/auto-lang/src/trans/rust.rs
+> 来源: docs/design/06-code-generation.md §Rust Transpiler；docs/plans/archive/232-a2r-lexer-compilation.md、old/241-a2r-string-type-cleanup.md；crates/auto-lang/src/trans/rust.rs

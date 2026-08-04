@@ -66,4 +66,4 @@ roadmap）、plan-350（WebSocket）、plan-352（中间件/session/SSR/OpenAPI�
 - json 流式（JSON Lines）大数据集支持未做（13 章 Open Question）。
 
 > 来源: docs/design/13-networking.md；crates/auto-lang/src/sse/、route/；stdlib/auto/；
-> docs/plans/old/102、114、152-streaming-http-sse、154、195；docs/plans/archive/312、313、344、353；docs/plans/328、329、349、350、352
+> docs/plans/archive/102、114、152-streaming-http-sse、154、195；docs/plans/archive/312、313、344、353；docs/plans/328、329、349、350、352

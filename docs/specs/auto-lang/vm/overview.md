@@ -48,7 +48,7 @@ auto serve / auto req                           # 守护进程 + 跨进程会话
 - UI bug 先降级为纯 VM 脚本复现再分层定位（plan-341 方法论）。
 - `VirtualRAM.raw: Vec<i32>` 是 nanbox 迁移残留，运行时栈走 `raw_nv: Vec<NanoValue>`；读旧代码注意区分。
 - 与 a2r 的行为漂移对照 `docs/conformance/` 与 plan-242 gap tracker。
-- plan-report 07 的 plan 链接指向 `docs/plans/`，实际文件在 `docs/plans/old/`。
+- plan-report 07 的 plan 链接指向 `docs/plans/`，实际文件在 `docs/plans/archive/`。
 
 ## 蒸馏来源（Phase 1）
 

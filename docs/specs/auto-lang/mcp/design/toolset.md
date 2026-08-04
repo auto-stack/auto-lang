@@ -52,4 +52,4 @@
 - 诊断里的 `code`/`span`/`suggestions`（plan-265 统一诊断 schema）：
   未实现。
 
-> 来源: `crates/auto-lang/src/mcp/server.rs`、`docs/plans/old/265-autovm-mcp-server.md`、`docs/design/14-developer-tools.md`
+> 来源: `crates/auto-lang/src/mcp/server.rs`、`docs/plans/archive/265-autovm-mcp-server.md`、`docs/design/14-developer-tools.md`

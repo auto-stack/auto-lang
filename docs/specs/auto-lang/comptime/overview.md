@@ -69,6 +69,6 @@
 - `docs/design/09-compiler.md`（"Compile-Time Execution (Comptime)" 节）
 - `docs/design/raw/compile-time-execution.md`（定稿设计文档 v1.0，语法与原理的主要来源）
 - `docs/features/comptime-metaprogramming.md`（注意：其 `comptime fn` 语法与实现不符，见蒸馏报告分歧清单）
-- `docs/plans/old/095-compile-time-execution-engine.md`、`docs/plans/old/137-comptime-examples.md`
+- `docs/plans/archive/095-compile-time-execution-engine.md`、`docs/plans/archive/137-comptime-examples.md`
 - `test/comptime/`（示例语料）
 - 代码核对：`crates/auto-lang/src/comptime/`、`ast/comptime.rs`、`error.rs`、`lib.rs`、`trans/`、`vm/codegen.rs`

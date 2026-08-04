@@ -94,8 +94,8 @@ The implementation identified three categories of external functions: `#[vm]` na
 - Plan 131: Module Path Syntax Design
 - Plan 167: Complete Module System Implementation
 - Plan 184: Cross-Module Function Calls
-- [198-native-metadata-from-source.md](../plans/old/198-native-metadata-from-source.md)
-- [203-native-registry-namespace.md](../plans/old/203-native-registry-namespace.md)
-- [212-rust-ffi-e2e.md](../plans/old/212-rust-ffi-e2e.md)
+- [198-native-metadata-from-source.md](../plans/archive/198-native-metadata-from-source.md)
+- [203-native-registry-namespace.md](../plans/archive/203-native-registry-namespace.md)
+- [212-rust-ffi-e2e.md](../plans/archive/212-rust-ffi-e2e.md)
 - [214-python-ffi-use-py.md](../plans/214-python-ffi-use-py.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)

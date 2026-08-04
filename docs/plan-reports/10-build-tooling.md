@@ -113,12 +113,12 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - Plan 146: `docs/plans/146-ash-smartcmd-integration.md`
 - Plan 151: `docs/plans/151-tauri-ipc-mode.md`
 - Plan 186: `docs/plans/186-bun-package-manager.md`
-- [212-rust-ffi-e2e.md](../plans/old/212-rust-ffi-e2e.md)
+- [212-rust-ffi-e2e.md](../plans/archive/212-rust-ffi-e2e.md)
 - [214-python-ffi-use-py.md](../plans/214-python-ffi-use-py.md)
 - [216-cffi-bindgen.md](../plans/216-cffi-bindgen.md)
-- [202-playground-design.md](../plans/old/202-playground-design.md)
+- [202-playground-design.md](../plans/archive/202-playground-design.md)
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
-- [225-playground-interactive-debugger.md](../plans/old/225-playground-interactive-debugger.md)
+- [225-playground-interactive-debugger.md](../plans/archive/225-playground-interactive-debugger.md)
 - [243-lsp-vscode-modernization.md](../plans/243-lsp-vscode-modernization.md)
-- [267-ffi-complex-patterns.md](../plans/old/267-ffi-complex-patterns.md)
+- [267-ffi-complex-patterns.md](../plans/archive/267-ffi-complex-patterns.md)

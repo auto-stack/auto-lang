@@ -51,4 +51,4 @@ widget App {
 - Phase 2-4 未做：`app` 一等关键字（routes 移出 widget）、app 级 theme/i18n；`AuraApp` 分离 app/widget 关注（`AuraApp` 结构体已在 types.rs 预留）；嵌套路由 `children`、`beforeEnter` 守卫、redirect/alias。
 - 非 Vue 后端的路由映射未定。
 
-> 来源: docs/router.md；docs/plans/old/{105-auto-router,106-router-use-syntax}.md；crates/auto-lang/src/ui_gen/vue.rs（generate_router_file）；crates/auto-lang/src/aura/types.rs
+> 来源: docs/router.md；docs/plans/archive/{105-auto-router,106-router-use-syntax}.md；crates/auto-lang/src/ui_gen/vue.rs（generate_router_file）；crates/auto-lang/src/aura/types.rs
