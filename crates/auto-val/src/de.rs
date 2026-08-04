@@ -483,6 +483,29 @@ pub fn nonempty_string<'de, D: de::Deserializer<'de>>(d: D) -> Result<Option<Str
     })
 }
 
+/// Lenient `Option<Vec<String>>` deserializer — like [`string_or_list`] but
+/// distinguishes absent (`None`) from an explicitly-empty list (`Some([])`).
+/// Replicates `role_config.rs`'s `opt_string_list` (which returns None when the
+/// prop is absent). A bare string → `Some(vec![s])`; null/absent → `None`.
+pub fn string_or_list_opt<'de, D: de::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Seq(items) => Some(
+            items
+                .into_iter()
+                .filter_map(|v| match v {
+                    RawValue::Str(s) => Some(s),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        RawValue::Str(s) => Some(vec![s]),
+        RawValue::Unit => None,
+        other => return Err(de::Error::custom(format!("expected string list, got {other:?}"))),
+    })
+}
+
 /// Lenient `f64` deserializer — replicates `role_config.rs`'s `opt_float`.
 /// Accepts floats and integers (an integer is read as f64).
 pub fn lenient_f64<'de, D: de::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
@@ -771,6 +794,29 @@ mod tests {
         o.set("items", Value::str("solo"));
         let r: WithStringList = Value::Obj(o).deserialize_into().unwrap();
         assert_eq!(r.items, vec!["solo".to_string()]);
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithOptList {
+        #[serde(default, deserialize_with = "crate::string_or_list_opt")]
+        items: Option<Vec<String>>,
+    }
+    #[test]
+    fn string_or_list_opt_distinguishes_absent_from_empty() {
+        // array → Some([a,b])
+        let mut o = Obj::new();
+        o.set("items", Value::Array(Array { values: vec![Value::str("a"), Value::str("b")] }));
+        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.items.as_deref(), Some(&["a".to_string(), "b".into()][..]));
+        // single string → Some([solo])
+        let mut o = Obj::new();
+        o.set("items", Value::str("solo"));
+        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.items.as_deref(), Some(&["solo".to_string()][..]));
+        // absent field (default) → None
+        let o = Obj::new();
+        let r: WithOptList = Value::Obj(o).deserialize_into().unwrap();
+        assert!(r.items.is_none());
     }
 
     #[derive(Debug, Deserialize, PartialEq)]
