@@ -1,6 +1,6 @@
 # Plan 380：a2r 对 Rust 互操作的三项补全（impl Trait 返回 / 元组结构体构造 / extractor 参数）
 
-> **Status**: P0/P1/P2/P5 已实施并合并 master；P3 记录待后续（可绕开）；P4 调研后确认非缺口。P2（~SpecName → impl SpecName）于 2026-08-04 完成：rust_return_type_name 的 Type::User 分支加启发式判断，裸 PascalCase ident 且非具体类型时前缀 `impl`。
+> **Status**: ✅ P0/P1/P2/P5 完成；P3 确认为 Auto 语言设计差异（不支持参数位置解构，非缺陷，用 `fn h(p Path<str>)` + 函数体内 `let id = p.0` 绕开）；P4 确认非缺口。全部缺陷已解决或确认无需修复。
 > **来源**: auto-musk Plan 014 —— 移植 axum 异步 Web 层（server.rs 2206 行）时，
 > 误判"a2r 缺 async 支持"。复核 a2r 测试用例 + 逐点验证后发现：a2r 的 async/trait/
 > 库调用支持相当完整，真正阻塞 server handler 全量移植的是 3 个具体转译缺陷。
