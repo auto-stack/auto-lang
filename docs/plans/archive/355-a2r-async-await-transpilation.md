@@ -1,6 +1,7 @@
 # Plan 355: a2r async/await 转译（从 Plan 344 拆出）
 
-> **状态**：设计文档 / TODO
+> **状态**：✅ 已完成并归档（2026-08-04）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。.await 转译已实现（rust.rs 多处 write .await）+ async fn 处理（post_process 识别 async fn 签名）。文档下方「设计/TODO」系历史残留。
 > **来源**：从 Plan 344（统一 HTTP 通讯架构）拆出，Plan 344 VM 侧已完成
 
 ## 背景

@@ -1,6 +1,7 @@
 # Plan 352: Web Framework 四项缺失能力设计与实施计划
 
-> **状态**：设计文档
+> **状态**：✅ 已完成并归档（2026-08-04）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。四项能力全部实现：中间件链（MIDDLEWARE_CHAIN + shim_http_server_use）、Session（cookie 解析 + cookie_header 传递）、SSR 模板（render_template）、OpenAPI（shim_openapi_generate）。文档下方「设计文档」系历史残留。
 > **前置**：Plan 346（Web Framework Gap Analysis 五阶段已完成）
 > **目标**：中间件链、Session 管理、模板引擎（SSR）、OpenAPI 自动生成
 

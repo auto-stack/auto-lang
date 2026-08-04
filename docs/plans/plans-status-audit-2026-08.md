@@ -67,10 +67,10 @@
 | **340** | List 方法对 `ListData<Value>` 支持 | push/len 已修；filter/map/get/find/contains + 辅助函数待实现 |
 | **347** | 8 库 Rust 复刻 | 7 库 257 测试已验证；**reqwest（Task 29-31）疑似未完成**；最终报告全 TBD；checkbox 全未回填 |
 | **349** | HTTP Roadmap | VM 侧 done；**a2r 适配 8 步全未做**（TLS/multipart/download/WebSocket 异步等） |
-| **350** | WebSocket | client + server echo done；`#[ws(path)]` 声明式路由 + a2r 客户端生成未做 |
-| **354** | 015-notes 真实化 | 后端 schema/store/标签/搜索 done；~~布局重构 + AutoDown 编辑器依赖 358 D9~~ → 358 D9 已修复，AutoDown 编辑器已在 editor.at 使用；剩余布局/block 体系可推进 |
-| **357** | 015-notes v4 UX | v1-v3 done；**v4 三项待做**（Tag 编辑独立、导航栏 tag 动态化、Pin 改 hover 图标） |
-| **359** | "Auto 作 Rust 脚本层"发布 | 庞大计划；Phase E 前置部分 fixed，**主体 Phase A/B/C/D + DoD V1-V7 全未勾** |
+| **350** | WebSocket | ✅ 已完成并归档（2026-08-04）。ws.connect/send/on_message 全注册 + websocket.rs 实现。详见 `archive/350-*.md` |
+| **354** | 015-notes 真实化 | ✅ 已完成并归档（2026-08-04）。三列布局+store+AutoDown 编辑器+文件夹+Pin+标签/搜索+暗色模式全落地。详见 `archive/354-*.md` |
+| **357** | 015-notes v4 UX | ✅ 已完成并归档（2026-08-04）。Pin hover+文件夹+tag 动态+dark_mode+accent_color 全实现。详见 `archive/357-*.md` |
+| **359** | "Auto 作 Rust 脚本层"发布 | 🟡 大部分落地（conformance/CI/tour 6 章双语/CodeView/ScriptShipView/trait_advanced 都有）；**C3 parity 仪表盘 + D2 generators 用例未做**。165 checkbox 未勾但多数已落地，需回填 |
 | **369** | Python parity suite | ✅ 已完成并归档（2026-08-04）。P0-P6 全部 11 个库（math/random/datetime/struct/uuid + os/re/json/configparser/hashlib/sys）均有 parity 测试。详见 `archive/369-*.md` |
 | **373** | a2r B1 papercuts | MVP 达成（0 errors + cargo run 通）；re-transpile 可重现性已由 376 达成 |
 | **376** | a2r 类型流分析 | ✅ MVP 达成并归档（2026-08-04）。re-transpile 0 错误已验证（§13）；目标对象 auto-ai-agent 已由 plan-015 迁回 auto-ai 仓库，a2r 类型流改进（struct_field_types/fn_ret_types/fix_borrowing/post_process 链）作为通用基础设施留存。详见 `archive/376-*.md` |
@@ -103,8 +103,8 @@
 | **343** | Block 层 Phase B（CLI） | "设计待确认"，依赖 342 |
 | **346** | Web Framework 差距调研 | 调研文档，20 项差距待后续 Plan 实施 |
 | **351** | SharedStore（Rung-4 共享状态） | ✅ **已完成并归档**（2026-08-04）。`store` 声明 + composable 单例 codegen + `use store:` 消费 + `routes {}` 路由全部实现；金丝雀 `k1-shared-store-routing` GREEN；013-todo/015-notes 在用。详见 `archive/351-*.md` |
-| **352** | 中间件/Session/SSR/OpenAPI | "设计文档"，四能力全未实施 |
-| **355** | a2r async/await 转译 | "设计文档/TODO"，4 项未做（中优先级） |
+| **352** | 中间件/Session/SSR/OpenAPI | ✅ 已完成并归档（2026-08-04）。四项全实现（MIDDLEWARE_CHAIN + cookie/session + render_template SSR + shim_openapi_generate）。详见 `archive/352-*.md` |
+| **355** | a2r async/await 转译 | ✅ 已完成并归档（2026-08-04）。.await 转译 + async fn 处理已实现。详见 `archive/355-*.md` |
 | **364** | a2r COSMIC 就绪 | **W1-W7 全 pending**；阻塞 365 W3（整个 COSMIC 复刻） |
 | **365** | AutoUI 可插拔 Host | W1-W4 pending，W5 deferred（依赖 364 W1-W3） |
 | **366** | 跨平台 UI 测试 DSL | "设计阶段暂不实现"；366a 5 项验收未勾（1-2 天可落地） |

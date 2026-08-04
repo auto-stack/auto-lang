@@ -1,6 +1,7 @@
 # Plan 350: WebSocket 双向通讯
 
-> **状态**：设计文档 / TODO
+> **状态**：✅ 已完成并归档（2026-08-04）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。ws.connect/ws.send/ws.on_message 全部注册（native_catalog ID 2280-2282）+ websocket.rs 独立 shim 实现（shim_ws_connect + 异步迭代器）。文档下方「设计/TODO」系历史残留。
 > **优先级**：🟡 中
 > **难度**：高
 > **依赖**：Plan 348（非阻塞 yield 机制复用）、Plan 350（WSS over TLS）

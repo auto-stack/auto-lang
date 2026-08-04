@@ -1,5 +1,6 @@
 # Plan 354: 把 015-notes 从 CRUD demo 扩展成真正可用的笔记应用
 
+> **状态**: ✅ 已完成并归档（2026-08-04）。功能全落地：三列布局（app/editor/sidebar）+ store（notes_store）+ AutoDown 编辑器 + 文件夹组织（NewNoteInFolder/active_folder）+ Pin 置顶 + 标签/搜索 + 暗色模式（dark_mode/accent_color）。文档下方「实施中」系历史残留。
 > **类型**:完整计划(实施)
 > **状态**:实施中（Tier 1 核心体验 + 后端 schema + 标签/搜索已完成；三列布局 + AutoDown 编辑器 + block + 文件夹组织待实施）
 > **日期**:2026-07-06（初版）/ 2026-07-14（v2 融合三列布局 + AutoDown + block 方案）

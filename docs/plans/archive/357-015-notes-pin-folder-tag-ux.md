@@ -1,7 +1,8 @@
 # Plan 357: 015-notes Pin 图标 / 目录操作 / Tag 编辑 / Dark Mode / 主题色 (v4)
 
 > **类型**: 功能增强
-> **状态**: 实施中
+> **状态**: ✅ 已完成并归档（2026-08-04）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。v4 全部功能落地：Pin 置顶（toggle_pin/hover 按钮）+ 文件夹（active_folder/NewNoteInFolder）+ tag 动态 + 暗色模式（dark_mode/ToggleDarkMode）+ 主题色（accent_color/SetAccent）。文档下方「实施中」系历史残留。
 > **日期**: 2026-07-17
 > **设计文档**: [Design 19](../design/19-theming-and-dark-mode.md)
 
