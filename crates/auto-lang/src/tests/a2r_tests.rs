@@ -43,6 +43,19 @@ fn test_a2r(case: &str) -> AutoResult<()> {
     test_a2r_with_base("a2r", case)
 }
 
+/// Run an a2r case on a dedicated large-stack thread. Same rationale as
+/// `test_cookbook_deep`: some cases (notably `~{}` async blocks containing
+/// `for`/`if` — the COSMIC `Subscription::run` shape) drive deep recursion in
+/// the transpiler hot path and overflow the 2 MB libtest worker thread stack.
+fn test_a2r_deep(case: &str) {
+    let case = case.to_string();
+    let child = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || test_a2r(&case))
+        .expect("failed to spawn deep-stack test thread");
+    child.join().expect("deep-stack test thread panicked").unwrap();
+}
+
 fn test_cookbook(case: &str) -> AutoResult<()> {
     test_a2r_with_base("cookbook", case)
 }
@@ -335,6 +348,9 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_16_interop_017_comptime_read_text() { test_a2r("16_interop/017_comptime_read_text").unwrap(); }
 #[test] fn test_16_interop_018_dotted_attrs() { test_a2r("16_interop/018_dotted_attrs").unwrap(); }
 #[test] fn test_16_interop_019_multi_bound() { test_a2r("16_interop/019_multi_bound").unwrap(); }
+// Deep-recursion case: ~{} with for/if drives deep transpiler recursion —
+// run on a dedicated 16 MB thread (see test_a2r_deep).
+#[test] fn test_16_interop_020_async_block_stmts() { test_a2r_deep("16_interop/020_async_block_stmts"); }
 
 // === 18_rust_std ===
 #[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }

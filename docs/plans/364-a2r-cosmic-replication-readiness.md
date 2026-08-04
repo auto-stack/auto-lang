@@ -140,7 +140,7 @@ a failing test first (see W4).
 | W1 | Dotted pass-through annotations (`#[zbus.interface]` → `#[zbus::interface]`) | ✅ | ⭐ Low | parser.rs:6785-6894 | `#[zbus.interface(...)]` on impl parses and round-trips; single unknown ident still errors |
 | W2 | `Fn.attrs` field + function-level attribute output | ✅ | ⭐ Low | ast/fun.rs:17-36, rust.rs:7060 area | `#[tokio.main]` / arbitrary attrs on fn emit to Rust |
 | W3 | Multi-bound `#[with(T as A + B)]` + struct/trait/impl-level bound output | ✅ | ⭐⭐ Low-Mid | ast/types.rs:370, parser.rs:7288-7329/7643-7655, rust.rs:957-963 + 13 output sites | bounds emit at all sites; `T: A + B`; spec-as-constraint bypasses the `Box<dyn>` special case (`rust_bound_name`, rust.rs:957) |
-| W4 | `~{}` full statement support, test-driven | ⏳ | ⭐⭐ Mid | rust.rs:2657-2693 → delegate to stmt() (rust.rs:6514) | new tests under test/a2r/ for If/For/Try/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
+| W4 | `~{}` full statement support, test-driven | ✅ | ⭐⭐ Mid | rust.rs:3031-3067 → delegate to stmt() (rust.rs:7838) | new tests under test/a2r/ for If/For/Is/Break/Continue inside `~{}` pass; no silent drops (unknown stmt = compile error) |
 | W5 | `move` closure prefix keyword | ⏳ | ⭐⭐ Mid | ast/fun.rs:472, parser.rs (closure syntax), rust.rs:2412/2320, vm/codegen.rs | `move (x) => ...` emits `move \|x\| ...`; `.go`/`~{}` cases unchanged; existing tests unaffected |
 | W6 | `~Stream<T>` parity coverage | ⏳ | ⭐ Low | parity/libs/tokio_stream/ (new), parity/crates/auto-parity/src/runner.rs:229-252 | parity runner Cargo template gains `futures`, `async-stream`, tokio `sync` feature; 3-way (VM-skip / a2r / native) tests pass |
 | W7 | Local path dependencies in generated Cargo.toml | ⏳ | ⭐ Low | rust.rs:12405 (dep scanner output), dep_scanner.rs | `dep` supports `{ path = "..." }` so Auto projects can depend on local glue crates (auto-cosmic-dbus/-ui); monorepo template (Auto app + local Rust glue) builds end-to-end |
@@ -221,6 +221,54 @@ pieces are in place and verified:
 
 Verification: `cargo test -p auto-lang --lib --features test-trans
 test_16_interop_019_multi_bound` → ok.
+
+### W4 — landed (`~{}` full statement support, test-driven)
+
+**Defect fixed**: the `~{}` (async block) emission at `rust.rs:3031-3067`
+hand-matched only `Expr/Store/Return/Reply` and **silently dropped** every
+other statement class via `_ => {}`. So `~{ if x { ... } }`,
+`~{ for i in ... { } }`, `~{ break }`, `~{ continue }` vanished from the
+generated Rust — silently wrong code, exactly the COSMIC `Subscription::run`
+shape (`~{ for evt in stream { ... } }`) that D5 targets.
+
+**Fix (D5 directive)**: replaced the hand-match with delegation to the unified
+`stmt()` entry (`rust.rs:7838`), which handles 22 variants with an
+`_ => Err(...)` catch-all (loud failure, no silent drops). The bridge between
+the two output styles (`stmt()` writes to a `Sink`; the async-block arm has
+`out: impl Write`) uses a fresh `Sink::dummy()` per statement, drained into
+`out` after each `stmt()` call. A fresh sink per statement is required because
+`stmt()` internally calls `sink.record()` (e.g. inside `emit_loop_body`),
+which slices `body[record_pos..]` — reusing one sink without resetting
+`record_pos` after `clear()` slices out of bounds.
+
+**Separator logic**: `stmt()`'s `Store/Return/Reply/Break/Continue` arms
+already emit their own trailing `;`; only `Expr` omits it (callers add it).
+The new code appends `;` only for `Expr`, and a space separator between
+statements, matching the old single-line `async move { x; y; }` style.
+
+**Scope note — `Try`/`Block`**: these two variants are NOT arms in `stmt()`
+(they hit `_ => Err`). Before W4 they were silently dropped inside `~{}`;
+after W4 they produce a clear transpiler error. Full a2r `try/catch` lowering
+(a separate, larger feature — the whole try→`Result`/`?` transformation) is
+out of W4 scope and tracked separately. `stmt()` does not yet emit `Try`/`Block`
+at the fn-body level either.
+
+**Golden**: `16_interop/020_async_block_stmts` — `~{ var ...; for ...;
+if ...; expr }` exercising Store/For/If/Expr inside an async block. Test-driven:
+written first (red — For/If dropped), then implementation made it green.
+
+**Test harness note**: the `~{ for ... }` shape drives the same deep-transpiler-
+recursion that overflows the 2 MB libtest worker stack (see the stack-overflow
+section below). A `test_a2r_deep` helper (16 MB dedicated thread, mirroring
+`test_cookbook_deep`) was added for this case.
+
+Verification: `cargo test -p auto-lang --lib --features test-trans
+tests::a2r_tests::` → **296 passed, 0 failed, 0 overflows** (stable across
+2 runs). Existing async tests (`005_async_move`, `001_async_fn`) unchanged.
+Bonus: eliminating the stack-overflow crashes also resolved 3 previously-
+flaky golden tests (`rand_custom` 006/010, `log_custom` 004) that had been
+collateral damage of overflow-induced process crashes — the full a2r suite is
+now green.
 
 ### Incidental: deep-recursion stack-overflow class (mitigated, not a regression)
 

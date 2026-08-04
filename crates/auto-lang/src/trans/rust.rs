@@ -3033,36 +3033,42 @@ impl RustTrans {
                 // Force move capture: Auto's ownership model defaults async blocks
                 // to owning their captured variables, avoiding lifetime issues
                 // across await points (the #1 async footgun in Rust).
+                //
+                // Plan 364 W4 (D5): delegate every statement to the unified
+                // `stmt()` entry instead of hand-matching a few variants here.
+                // Previously only Expr/Store/Return/Reply were emitted and all
+                // other classes (if/for/break/continue/is/...) were silently
+                // dropped via `_ => {}` — a correctness bug. `stmt()` writes to
+                // a `Sink` while this arm has `out: impl Write`, so we bridge
+                // with a throwaway `Sink::dummy()`, draining its body into
+                // `out` after each statement. `stmt()`'s catch-all is
+                // `_ => Err(...)`, so genuinely-unsupported statements (Try,
+                // Block) now fail loudly instead of vanishing silently.
                 write!(out, "async move {{ ")?;
-                for stmt in &body.stmts {
-                    match stmt {
-                        Stmt::Expr(expr) => {
-                            self.expr(expr, out)?;
+                for (i, stmt) in body.stmts.iter().enumerate() {
+                    // Fresh sink per statement: stmt() may call sink.record()
+                    // internally (e.g. emit_loop_body), which slices
+                    // body[record_pos..]; reusing one sink across statements
+                    // without resetting record_pos would slice out of bounds.
+                    let mut sink = Sink::dummy();
+                    self.stmt(stmt, &mut sink)?;
+                    out.write_all(&sink.body)?;
+                    // stmt()'s Store/Return/Reply/Break/Continue arms already
+                    // emit their own trailing ';'. Only Expr omits it (callers
+                    // add it), so append ';' just for Expr, then a separator
+                    // space between statements.
+                    if i + 1 < body.stmts.len() {
+                        if matches!(stmt, Stmt::Expr(_)) {
                             write!(out, "; ")?;
+                        } else {
+                            write!(out, " ")?;
                         }
-                        Stmt::Store(store) => {
-                            self.store(store, out)?;
-                            write!(out, "; ")?;
-                        }
-                        Stmt::Return(ret_expr) => {
-                            write!(out, "return ")?;
-                            self.expr(ret_expr, out)?;
-                            write!(out, "; ")?;
-                        }
-                        Stmt::Reply(expr) => {
-                            // Plan 124 Phase 2.3: reply expr
-                            // In async context, reply sends to oneshot channel
-                            write!(out, "let _ = reply_tx.send(")?;
-                            self.expr(expr, out)?;
-                            write!(out, "); ")?;
-                        }
-                        _ => {
-                            // For other statements, use stmt method (which requires Sink)
-                            // For now, skip complex statements in async blocks
-                        }
+                    } else if matches!(stmt, Stmt::Expr(_)) {
+                        // trailing Expr in the block still needs its semicolon
+                        write!(out, ";")?;
                     }
                 }
-                write!(out, "}}")?;
+                write!(out, " }}")?;
                 Ok(())
             }
 

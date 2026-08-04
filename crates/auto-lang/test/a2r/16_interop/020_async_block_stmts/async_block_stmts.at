@@ -1,0 +1,18 @@
+// Plan 364 W4: ~{} async block must transpile ALL statement classes, not
+// just Expr/Store/Return/Reply. Before the fix, if/for/break/continue were
+// silently dropped (_ => {}). This case exercises the previously-dropped
+// classes inside ~{}.
+
+fn main() {
+    let f = ~{
+        var found int = 0
+        for i in 0..3 {
+            found = found + i
+        }
+        if found > 0 {
+            print("nonempty")
+        }
+        found
+    }
+    print(f)
+}
