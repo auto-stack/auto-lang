@@ -1,0 +1,8 @@
+// Plan 018: Auto's `None` (unit type → Rust `()`) in return position must not
+// be treated as a trait despite its uppercase initial (regression lock for the
+// `impl None` E0404 variant). Note: MyError comes from `use error:`.
+use error: MyError
+
+pub fn save() Result<None, MyError> {
+    return Ok(None)
+}

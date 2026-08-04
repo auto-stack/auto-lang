@@ -1,0 +1,8 @@
+// Plan 018: imported enums/structs in return position must NOT get `impl`
+// (regression lock for E0404 — a2r used to treat any PascalCase name as a
+// trait). MyEnum/MyError are concrete types pulled in via `use other:` .
+use other: MyEnum, MyError
+
+pub fn fetch() ~Result<MyEnum, MyError> {
+    return Ok(MyEnum.Foo)
+}

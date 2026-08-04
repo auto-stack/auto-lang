@@ -351,6 +351,10 @@ fn test_14_modules_005_multi_file() {
 // Deep-recursion case: ~{} with for/if drives deep transpiler recursion —
 // run on a dedicated 16 MB thread (see test_a2r_deep).
 #[test] fn test_16_interop_020_async_block_stmts() { test_a2r_deep("16_interop/020_async_block_stmts"); }
+// Plan 018: regression locks for E0404 — imported concrete types and the
+// `None` unit type must NOT get an `impl` prefix in return position.
+#[test] fn test_16_interop_022_imported_concrete_return() { test_a2r("16_interop/022_imported_concrete_return").unwrap(); }
+#[test] fn test_16_interop_023_unit_none_return() { test_a2r("16_interop/023_unit_none_return").unwrap(); }
 
 // Plan 364 W7: local path deps → structured Cargo.toml [dependencies] lines.
 // Uses transpile_rust_project (multi-file entry) to exercise Cargo.toml gen.
@@ -849,4 +853,5 @@ fn test_312_codegen_collects_api_routes() {
 // === 21_generators ===
 // Plan 364 W6: first compile-test of ~Stream<T> generator transpilation.
 #[test] fn test_21_generators_002_stream_yield() { test_a2r("21_generators/002_stream_yield").unwrap(); }
+
 
