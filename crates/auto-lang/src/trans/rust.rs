@@ -10669,6 +10669,16 @@ impl RustTrans {
                 self.indent();
 
                 for item in &enum_decl.items {
+                    // Clear any hardcoded struct-variant seed for this variant
+                    // (seed_known_struct_enum_variants, line ~11278). The real
+                    // declaration below is authoritative: if the .at declares a
+                    // tuple variant `Text(str)`, the seed's struct entry
+                    // (`Text { text }`) must NOT survive — otherwise construction
+                    // (call(), ~line 5705/6520) emits struct syntax for a tuple
+                    // variant. Removing here makes the source declaration win.
+                    let item_key = (enum_decl.name.clone(), item.name.clone());
+                    self.enum_struct_variants.remove(&item_key);
+
                     self.print_indent(&mut sink.body)?;
                     if item.has_fields() {
                         // Register struct variant for pattern matching
@@ -11186,6 +11196,16 @@ impl RustTrans {
                     Stmt::Node(node) => {
                         // Node (struct constructor) as tail expression — no semicolon
                         self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
+                        sink.body.write(b"\n")?;
+                    }
+                    Stmt::Is(is_stmt) => {
+                        // `is` (match) as tail expression — emit WITHOUT the
+                        // trailing semicolon that statement-position `is` adds
+                        // (fn stmt(), line ~7670). A match as the last stmt of
+                        // a value-returning fn is a tail expression: its value
+                        // is the fn's return value. Adding `;` makes the fn
+                        // return `()` (E0308). (Plan 016 Phase A A2.)
+                        self.is_stmt(is_stmt, sink)?;
                         sink.body.write(b"\n")?;
                     }
                     _ => {
