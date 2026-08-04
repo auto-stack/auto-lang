@@ -1,7 +1,7 @@
 # Plan 351: Shared Store (Rung 4) — 跨 widget/跨路由共享状态
 
 > **类型**:完整计划(实施)
-> **状态**:设计待确认,实施未开始
+> **状态**:✅ 已完成并归档（2026-08-04）。实测确认全部 6 个 Phase 已实现：`store` 声明（parser + AST + `shared`/`computed`）→ AURA `AuraStore` 提取 → `generate_store_composable` 生成 `useXxxStore.ts` → `use store:` 消费 → `routes {}` + `<router-view/>` 路由集成。金丝雀 `k1-shared-store-routing` **GREEN**（`auto build` + `vue-tsc` 通过）；`013-todo`/`015-notes` 真实应用在用。本文档下方 DoD 的「设计待确认」系历史残留，实际代码已全部落地。
 > **日期**:2026-07-02
 > **战略文档**:[docs/design/18-shared-store.md](../design/18-shared-store.md)(Rung 4)
 > **关联**:Plan 345(`k1-shared-store-routing` 金丝雀,RED 待实现)、015/025-notes(路由阻塞)、blocks(design 17)

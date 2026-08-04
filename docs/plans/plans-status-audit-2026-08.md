@@ -97,12 +97,12 @@
 | **334** | vm+vm 合并跳过 HTTP | Phase 1 未实现（333 的直接收尾） |
 | **336** | vue-gallery showcase | "设计待确认"，依赖 331 |
 | **337** | gallery↔widgets 同步层 | "设计待确认"，依赖 331+336 |
-| **338** | 015-notes M1 基准 | 已重定范围到 `025-notes-extended`；routing 明确 blocked（依赖 351） |
+| **338** | 015-notes M1 基准 | 已重定范围到 `025-notes-extended`；~~routing blocked（依赖 351）~~ → 351 已完成，路由可推进 |
 | **339** | VM Symbol 命名空间系统 | 6 Phase 设计未实现（335 部分依赖本计划） |
 | **342** | Block 层 Phase A（包基础） | "设计待确认"，5 Phase 全未勾 |
 | **343** | Block 层 Phase B（CLI） | "设计待确认"，依赖 342 |
 | **346** | Web Framework 差距调研 | 调研文档，20 项差距待后续 Plan 实施 |
-| **351** | SharedStore（Rung-4 共享状态） | **阻塞多页路由**；DoD 7 项全未勾 |
+| **351** | SharedStore（Rung-4 共享状态） | ✅ **已完成并归档**（2026-08-04）。`store` 声明 + composable 单例 codegen + `use store:` 消费 + `routes {}` 路由全部实现；金丝雀 `k1-shared-store-routing` GREEN；013-todo/015-notes 在用。详见 `archive/351-*.md` |
 | **352** | 中间件/Session/SSR/OpenAPI | "设计文档"，四能力全未实施 |
 | **355** | a2r async/await 转译 | "设计文档/TODO"，4 项未做（中优先级） |
 | **364** | a2r COSMIC 就绪 | **W1-W7 全 pending**；阻塞 365 W3（整个 COSMIC 复刻） |
@@ -136,7 +136,7 @@
 
 ### 4.2 强依赖链（动一处解锁一片）
 
-- `351` SharedStore → 解锁 `338` routing / `354` 多页
+- ~~`351` SharedStore → 解锁 `338` routing / `354` 多页~~ ——✅ 351 已完成（2026-08-04），路由+共享状态已可用，338/354 多页可推进
 - `364` W1-W3 → 解锁 `365` W3 → 整个 COSMIC 桌面复刻
 - `358` D1+D9 → 解锁 `354` 阶段 C（AutoDown 编辑器）
 - `331` → `336` → `337`（Vue 组件库整条链）
