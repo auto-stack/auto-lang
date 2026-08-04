@@ -293,15 +293,15 @@ const FEATURE_DEV_AT = #{ read_text("../workflows/feature-dev.at") }
 ```
 a2r 在编译期执行 `read_text` 把文件内容嵌入为字符串常量。
 
-**实测现状**：a2r 转译器对 `#{expr}` 报 "unsupported expression"（rust.rs 未实现
-comptime → Rust 转译）。但 `#{}` 的 parser + VM 执行能力**已存在**
-（`crates/auto-lang/src/comptime.rs`，rust.rs:14195 有 `CTEE::new()` 调用点）。
-a2r 缺的是"把 `#{read_text(path)}` 在编译期求值后输出为字符串字面量"的转译路径。
+**实测现状（2026-08-04 复核）**：✅ **已实现**。rust.rs 的 `Expr::Comptime` 分支
+（rust.rs:3127）在转译期求值 `#{expr}`：`#{read_text("path")}` 读取文件内容并转义为
+Rust 字符串字面量；字面量（`#{42}` / `#{"x"}`）直接透出。golden：
+`16_interop/017_comptime_read_text`（read_text 嵌入 + 整数字面量 + 字符串字面量）。
 
-**待做**：a2r 增加 `#{}` 转译——编译期求值 `#{expr}` 后把结果作为常量输出到 Rust。
-工作量小（comptime 基础设施已有，只需连上 a2r 输出路径）。
+**注**：路径按 CWD 相对解析（测试进程 CWD = crate 根），非 include_str! 的源文件相对
+语义；如需严格对齐可后续增强。
 
-### 缺口 G2：`pub use.rust` re-export — 已工作 ✅
+### 缺口 G2：`pub use.rust` re-export — ✅ 已实现
 
 **影响模块**：auto-musk relay/mod.rs
 
@@ -313,11 +313,9 @@ pub use flows::{builtin_flows, get_builtin_flow};
 pub type RelayMode = PipelineMode;
 ```
 
-**实测结果**：`pub use.rust std::collections::{HashMap}` 转译通过，生成
-`use std::collections::{HashMap};`（但缺 `pub` 前缀——生成的是 `use` 而非 `pub use`）。
-
-**待做**：a2r 在 `pub use.rust` 时生成 `pub use`（目前丢失 `pub`）。这是小修复。
-`pub mod` 和 `type alias` 需要 Auto 模块系统支持（见下）。
+**实测结果（2026-08-04 复核）**：✅ **已实现**。parser 识别 `pub use.rust` 前缀
+（parser.rs:4000），rust.rs:9408 按 `use_stmt.is_pub` 输出 `pub use`（含 crate 根
+re-export 的 `is_reexport` 兜底）。golden：`14_modules/002_pub_use`。
 
 **Auto 模块系统现状**：Auto 用文件 = 模块（不需要 `pub mod`声明，文件名即模块名）。
 跨文件引用通过 `use module_name` 或 `use.rust`。`pub mod api` 在 Auto 中不需要
@@ -326,7 +324,7 @@ pub type RelayMode = PipelineMode;
 
 **难度**：低（`pub` 丢失是小修复；`pub mod` 在 Auto 模型中不需要）
 
-### 缺口 G3：`#[derive(Parser)]` 过程宏 — 已透传 ✅（derive 属性层面）
+### 缺口 G3：`#[derive(Parser)]` 过程宏 — ✅ 已实现（含多 derive）
 
 **影响模块**：auto-musk main.rs（clap CLI）
 
@@ -340,23 +338,24 @@ struct Cli {
 }
 ```
 
-**实测结果**：
+**实测结果（2026-08-04 复核）**：✅ **已实现**。
 - `#[derive(Parser)]` 在 `type Cli` 上 → 生成 `#[derive(Parser)] struct Cli` ✅
 - 字段级 `#[serde(rename = "x")]` → 正确透传 ✅
-- **但** `#[derive(Parser, Subcommand)]`（多个 derive 逗号分隔）失败（E0007）
+- 多 derive 逗号分隔（`#[derive(Parser, Subcommand)]`）：parser.rs:7053 的
+  `collect_annotation_args()` 将整个 `(Debug, Clone)` 原始文本收集透传，**已工作** ✅
+  （golden：`14_modules/008_derive_attr`）
 
 **Auto 编译期代码执行能力分析**（对比 Zig comptime）：
 Auto 的 `#{}` 编译期执行 + `#[]` 标注系统理论上可以替代 Rust 过程宏：
 - Zig 的 `comptime { ... }` 在编译期执行任意代码生成 → Auto 的 `#{}` 同理
 - Rust 过程宏接收 TokenStream 输出 TokenStream → Auto 可以用 `#{}` 在编译期
   构造 AST/代码并注入
-- **但** Auto 的 comptime → a2r 转译路径尚未连通（同 G1 的 `#{}` 问题）
+- comptime → a2r 转译路径已连通（G1，`#{read_text}` / 字面量）
 
-**待做**：
-1. 修复多 derive 逗号分隔（`#[derive(Parser, Subcommand)]` 的解析）
-2. 长期：用 `#{}` comptime 实现真正的编译期代码生成（替代过程宏的 TokenStream 变换）
+**长期（未做）**：用 `#{}` comptime 实现真正的编译期代码生成（替代过程宏的
+TokenStream 变换）。
 
-**难度**：低（derive 透传已有，只需修多 derive 解析）/ 长期高（comptime 代码生成）
+**难度**：derive 透传 + 多 derive 解析已完成；长期 comptime 代码生成高。
 
 ### 缺口 G4：tuple 数组字面量 — 已工作 ✅
 
@@ -380,15 +379,15 @@ lib.rs 的 Agent builder + tuple 数组现可移植。
 
 **难度**：无（已支持）
 
-### 更新后的缺口总览
+### 更新后的缺口总览（2026-08-04 复核：G1/G2/G3 全部已实现）
 
 | 缺口 | 影响模块 | 实测结论 | 待做 | 难度 |
 |---|---|---|---|---|
-| G1 `include_str!` | workflow.rs | `#{}` comptime 基础设施已有，a2r 转译未连通 | a2r 增加 `#{}` → 常量输出 | 低 |
-| G2 `pub use` | relay/mod.rs | `pub use.rust` 转译通过但丢 `pub` 前缀 | a2r 补 `pub` 前缀 | 低 |
-| G3 `#[derive]` | main.rs | 单 derive 透传 ✅；多 derive 逗号失败 | 修多 derive 解析 | 低 |
+| G1 `include_str!` | workflow.rs | ✅ `#{read_text("path")}` / `#{字面量}` 已转译输出 | 无（golden 017_comptime_read_text；可选：路径改源文件相对） | 低 |
+| G2 `pub use` | relay/mod.rs | ✅ `pub use.rust` → `pub use`（parser:4000 + rust.rs:9408） | 无（golden 002_pub_use） | 低 |
+| G3 `#[derive]` | main.rs | ✅ 单/多 derive 逗号分隔均透传 | 无（golden 008_derive_attr） | 低 |
 | G4 tuple 数组 | lib.rs | **已完全工作** ✅ | 无 | 无 |
 
-**结论**：4 个缺口中 G4 已解决、G1/G2/G3 各需一个小修复（a2r `#{}` 输出 / `pub` 前缀 /
-多 derive 解析）。没有"高难度架构缺口"——长期路线图的 Auto 模块系统不需要（Auto 用
-文件=模块模型）。修复这 3 个小缺口后，auto-musk 全部模块可 100% 移植。
+**结论（2026-08-04）**：4 个缺口**全部已解决**（G1/G2/G3 此前判断"各需一个小修复"，
+复核代码 + golden 后确认均已实现）。没有"高难度架构缺口"——auto-musk 全部模块可
+100% 移植。

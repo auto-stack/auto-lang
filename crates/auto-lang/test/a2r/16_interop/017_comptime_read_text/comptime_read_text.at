@@ -1,0 +1,16 @@
+// Plan 380 G1: a2r 编译期 #{expr} 求值 — read_text 文件嵌入 + 字面量
+
+// 测试1：#{read_text("...")} 把文件内容嵌入为字符串字面量（include_str! 等价）
+fn banner() str {
+    return #{read_text("test/a2r/16_interop/017_comptime_read_text/greeting.txt")}
+}
+
+// 测试2：整数字面量 fallback
+fn answer() int {
+    return #{42}
+}
+
+// 测试3：字符串字面量 fallback
+fn tag() str {
+    return #{"comptime"}
+}
