@@ -13833,7 +13833,12 @@ impl RustTrans {
             "JsonValue", "serde_json::Value", "Value", "HashMap", "BTreeMap",
             "Box<dyn", "Message", "ClientError", "ToolError",
             "HandoffDocument", "AgentError", "AgentResult", "ToolCallRecord",
-            // Plan 016 Phase A A6: ModelTier removed — it IS Ord (fieldless enum).
+            "RoleConfig",
+            // Plan 016 Phase A A6: ModelTier removed — it IS Ord (fieldless enum,
+            // and rust-ref tier.rs now derives PartialOrd+Ord).
+            // RoleConfig added: it contains Option<f64> (non-Ord) and is defined
+            // cross-file in auto-ai-agent (role_config.at), so the single-file
+            // derived-marker collection can't see it from roles.at.
         ];
         // (?s) dotall: capture derive + whole body up to matching closing brace.
         // We approximate the body as everything up to the first "\n}\n" at column 0.
@@ -13892,6 +13897,19 @@ impl RustTrans {
                     }
                 }
             }
+            // Plan 016 Phase A A3: also collect names of structs whose derive
+            // is PartialEq-only (no Eq/Ord) — these are non-Ord (e.g. contain
+            // f64, or were downgraded by type_decl's has_float_field/has_map_field).
+            // A struct referencing such a type must not be upgraded to Ord.
+            if let Some(partial_eq_re) = cached_regex(
+                r"(?s)#\[derive\(Clone, Debug, PartialEq\)\]\n(?:pub )?struct (\w+) \{"
+            ) {
+                for caps in partial_eq_re.captures_iter(content.as_str()) {
+                    if let Some(m) = caps.get(1) {
+                        derived_markers.insert(m.as_str().to_string());
+                    }
+                }
+            }
             let all_markers: Vec<String> = non_ord_markers.iter()
                 .map(|s| s.to_string())
                 .chain(derived_markers.iter().cloned())
@@ -13902,6 +13920,16 @@ impl RustTrans {
                 // If body references any non-Ord marker (base or derived),
                 // keep the conservative PartialEq.
                 if all_markers.iter().any(|m| body.contains(m.as_str())) {
+                    return caps.get(0).unwrap().as_str().to_string();
+                }
+                // Plan 016 Phase A A3: float fields (f32/f64) are non-Ord.
+                // type_decl downgrades them to PartialEq via has_float_field,
+                // but this text pass doesn't see types — check for float type
+                // names in the body to avoid upgrading float-bearing structs
+                // (which would fail E0277 "f64: Ord not satisfied").
+                if body.contains("f64") || body.contains("f32")
+                    || body.contains("float") || body.contains("double")
+                {
                     return caps.get(0).unwrap().as_str().to_string();
                 }
                 // Safe to upgrade: no non-Ord payload detected.
