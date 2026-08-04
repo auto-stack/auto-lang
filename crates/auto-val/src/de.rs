@@ -356,6 +356,144 @@ impl<'de> de::Deserializer<'de> for StrDeserializer<'de> {
     }
 }
 
+// ===========================================================================
+// Phase D: lenient `deserialize_with` helpers
+//
+// These replicate the leniency of the hand-written `opt_*` helpers across
+// auto-ai's loader.rs / role_config.rs (6 divergent copies), so those sites
+// can migrate to `#[derive(Deserialize)]` WITHOUT changing which config
+// values they accept. Each is a `#[serde(deserialize_with = "...")]` function.
+//
+// Usage:
+//   #[derive(Deserialize)]
+//   struct P { #[serde(deserialize_with = "auto_val::lenient_bool")] auth: bool }
+//
+// Mechanism: each helper drives `deserialize_any` with a `ValueCollector`
+// visitor that reconstructs a small `RawValue` enum (the primitive shapes a
+// config value can take), then matches on it leniently.
+// ===========================================================================
+
+/// A reconstructed primitive value, captured by [`ValueCollector`] from a
+/// `deserialize_any` drive. Used only by the lenient helpers below.
+#[derive(Debug)]
+enum RawValue {
+    Bool(bool),
+    Int(i64),
+    Uint(u64),
+    Float(f64),
+    Str(String),
+    Seq(Vec<RawValue>),
+    Unit,
+}
+
+struct ValueCollector;
+impl<'de> Visitor<'de> for ValueCollector {
+    type Value = RawValue;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("any primitive value")
+    }
+    fn visit_bool<E: de::Error>(self, b: bool) -> Result<RawValue, E> { Ok(RawValue::Bool(b)) }
+    fn visit_i64<E: de::Error>(self, i: i64) -> Result<RawValue, E> { Ok(RawValue::Int(i)) }
+    fn visit_u64<E: de::Error>(self, u: u64) -> Result<RawValue, E> { Ok(RawValue::Uint(u)) }
+    fn visit_f64<E: de::Error>(self, f: f64) -> Result<RawValue, E> { Ok(RawValue::Float(f)) }
+    fn visit_str<E: de::Error>(self, s: &str) -> Result<RawValue, E> { Ok(RawValue::Str(s.to_string())) }
+    fn visit_string<E: de::Error>(self, s: String) -> Result<RawValue, E> { Ok(RawValue::Str(s)) }
+    fn visit_unit<E: de::Error>(self) -> Result<RawValue, E> { Ok(RawValue::Unit) }
+    fn visit_none<E: de::Error>(self) -> Result<RawValue, E> { Ok(RawValue::Unit) }
+    fn visit_some<D: de::Deserializer<'de>>(self, d: D) -> Result<RawValue, D::Error> {
+        d.deserialize_any(ValueCollector)
+    }
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<RawValue, A::Error> {
+        let mut out = Vec::new();
+        while let Some(v) = seq.next_element()? { out.push(v); }
+        Ok(RawValue::Seq(out))
+    }
+}
+
+/// Drive `deserialize_any` to capture a `RawValue`, the common first step of
+/// every lenient helper.
+fn collect_raw<'de, D: de::Deserializer<'de>>(d: D) -> Result<RawValue, D::Error> {
+    d.deserialize_any(ValueCollector)
+}
+
+// `RawValue` must be `Deserialize` so `SeqAccess::next_element::<RawValue>()`
+// in `ValueCollector::visit_seq` works (the element type needs Deserialize).
+impl<'de> Deserialize<'de> for RawValue {
+    fn deserialize<D: de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        d.deserialize_any(ValueCollector)
+    }
+}
+
+/// Lenient `bool` deserializer — replicates `loader.rs`'s `opt_bool`.
+///
+/// Accepts: `true`/`false`; integers (`0`→false, nonzero→true); and the strings
+/// `"true"/"yes"/"1"/"on"` ↔ `"false"/"no"/"0"/"off"` (case-insensitive).
+/// Anything else is an error.
+///
+/// ```ignore
+/// # #[cfg(feature = "serde")] {
+/// use serde::Deserialize;
+/// #[derive(Deserialize)] struct P {
+///   #[serde(deserialize_with = "auto_val::lenient_bool")] auth: bool,
+/// }
+/// # }
+/// ```
+pub fn lenient_bool<'de, D: de::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Bool(b) => b,
+        RawValue::Uint(0) | RawValue::Int(0) => false,
+        RawValue::Uint(_) | RawValue::Int(_) => true,
+        RawValue::Str(s) => match s.to_ascii_lowercase().as_str() {
+            "true" | "yes" | "1" | "on" => true,
+            "false" | "no" | "0" | "off" => false,
+            other => return Err(de::Error::custom(format!("invalid bool `{other}`"))),
+        },
+        other => return Err(de::Error::custom(format!("expected bool, got {other:?}"))),
+    })
+}
+
+/// Lenient `Vec<String>` deserializer — replicates `role_config.rs`'s
+/// `opt_string_list`. A bare string becomes a one-element list; an array of
+/// strings becomes the list. Missing/null → empty Vec (pair with
+/// `#[serde(default)]`).
+pub fn string_or_list<'de, D: de::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Seq(items) => items
+            .into_iter()
+            .filter_map(|v| match v {
+                RawValue::Str(s) => Some(s),
+                _ => None,
+            })
+            .collect(),
+        RawValue::Str(s) => vec![s],
+        RawValue::Unit => Vec::new(),
+        other => return Err(de::Error::custom(format!("expected string list, got {other:?}"))),
+    })
+}
+
+/// Lenient `Option<String>` deserializer — replicates `registry.rs`'s
+/// `opt_string`. A non-empty string → `Some`; an empty string or null → `None`.
+/// Useful for fields where "" is semantically "unset".
+pub fn nonempty_string<'de, D: de::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Str(s) if s.is_empty() => None,
+        RawValue::Str(s) => Some(s),
+        RawValue::Unit => None,
+        other => return Err(de::Error::custom(format!("expected string, got {other:?}"))),
+    })
+}
+
+/// Lenient `f64` deserializer — replicates `role_config.rs`'s `opt_float`.
+/// Accepts floats and integers (an integer is read as f64).
+pub fn lenient_f64<'de, D: de::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    Ok(match collect_raw(d)? {
+        RawValue::Float(f) => f,
+        RawValue::Int(i) => i as f64,
+        RawValue::Uint(u) => u as f64,
+        other => return Err(de::Error::custom(format!("expected number, got {other:?}"))),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -578,5 +716,96 @@ mod tests {
         }
         let r: Role = node.deserialize().unwrap();
         assert!(r.tier.is_none());
+    }
+
+    // ---- Phase D: lenient deserialize_with helpers ----
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithLenientBool {
+        #[serde(deserialize_with = "crate::lenient_bool")]
+        auth: bool,
+    }
+    #[test]
+    fn lenient_bool_accepts_all_forms() {
+        let cases = [
+            (Value::Bool(true), true),
+            (Value::Bool(false), false),
+            (Value::Int(1), true),
+            (Value::Int(0), false),
+            (Value::Uint(1), true),
+            (Value::str("true"), true),
+            (Value::str("YES"), true),
+            (Value::str("on"), true),
+            (Value::str("no"), false),
+            (Value::str("0"), false),
+            (Value::str("off"), false),
+        ];
+        for (v, expected) in cases {
+            let mut o = Obj::new();
+            o.set("auth", v);
+            let r: WithLenientBool = Value::Obj(o).deserialize_into().unwrap();
+            assert_eq!(r.auth, expected, "lenient_bool mismatch");
+        }
+    }
+    #[test]
+    fn lenient_bool_rejects_garbage() {
+        let mut o = Obj::new();
+        o.set("auth", Value::str("maybe"));
+        let r: Result<WithLenientBool, _> = Value::Obj(o).deserialize_into();
+        assert!(r.is_err());
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithStringList {
+        #[serde(default, deserialize_with = "crate::string_or_list")]
+        items: Vec<String>,
+    }
+    #[test]
+    fn string_or_list_array_and_single() {
+        let mut o = Obj::new();
+        o.set("items", Value::Array(Array { values: vec![Value::str("a"), Value::str("b")] }));
+        let r: WithStringList = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.items, vec!["a".to_string(), "b".into()]);
+
+        let mut o = Obj::new();
+        o.set("items", Value::str("solo"));
+        let r: WithStringList = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.items, vec!["solo".to_string()]);
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithNonempty {
+        #[serde(default, deserialize_with = "crate::nonempty_string")]
+        name: Option<String>,
+    }
+    #[test]
+    fn nonempty_string_treats_empty_as_none() {
+        let mut o = Obj::new();
+        o.set("name", Value::str("x"));
+        let r: WithNonempty = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.name.as_deref(), Some("x"));
+
+        let mut o = Obj::new();
+        o.set("name", Value::str(""));
+        let r: WithNonempty = Value::Obj(o).deserialize_into().unwrap();
+        assert!(r.name.is_none());
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WithLenientF64 {
+        #[serde(deserialize_with = "crate::lenient_f64")]
+        rate: f64,
+    }
+    #[test]
+    fn lenient_f64_from_int_and_float() {
+        let mut o = Obj::new();
+        o.set("rate", Value::Int(3));
+        let r: WithLenientF64 = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.rate, 3.0);
+
+        let mut o = Obj::new();
+        o.set("rate", Value::Double(2.5));
+        let r: WithLenientF64 = Value::Obj(o).deserialize_into().unwrap();
+        assert_eq!(r.rate, 2.5);
     }
 }
