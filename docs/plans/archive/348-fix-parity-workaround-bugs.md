@@ -1,5 +1,7 @@
 # 修复 Parity Workaround — Auto 编译器 Bug 修复计划
 
+> **实测状态（2026-08-04）**: 🟡 部分修复。A4（shr 守卫）等已修；Task 20-25 为可选后续。核心 parity workaround 已大部分消除。
+
 > 原编号 359；2026-07-23 因编号冲突改为 348（原号保留给 359-auto-as-rust-script-rollout）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.

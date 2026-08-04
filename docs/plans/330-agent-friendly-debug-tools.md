@@ -2,6 +2,8 @@
 
 > 原编号 342；2026-07-23 因编号冲突改为 330（原号保留给 342-block-tier-phase-a-package-foundation）
 
+> **实测状态（2026-08-04）**: 🟡 MCP 工具已存在（autoui_snapshot/vtree/state/action 在 mcp_server.rs 注册），输出为 AURA text。Plan 330 目标的 JSON 输出 + headless CLI 为后续优化。保留为设计。
+
 > **For Claude:** 当前 AutoUI 的 MCP 服务（`autoui_snapshot`/`autoui_vtree`/`autoui_state` 等）是为人类开发者设计的可视化工具——需要 GUI 窗口运行、输出 AURA/Atom 格式、依赖视觉截图。Coding Agent（如 Claude）无法有效使用它们：① 缺少 CLI 入口；② 输出不标准（非 JSON）；③ 无 headless 模式；④ 不能诊查 VM 内部状态（heap_objects、globals、call_stack）。本计划设计一套 Agent 友好的 CLI 调试工具。
 
 ## 1. 当前 MCP 工具分析

@@ -1,6 +1,6 @@
 # Plan 288: Notes App Full-Stack API Integration
 
-> **Status（2026-08-04 实测）**: 🟡 Phase 1 ✅（前端对接 API）+ Phase 2 ✅（动态 API 发现，api_gen.rs:275 写出 .api_functions）；Phase 3 ❌（无 RustVm backend 变体）。文档原说「Phase 2/3 待做」不准确——Phase 2 已完成。
+> **Status（2026-08-04 实测）**: 🟡 Phase 1 ✅（前端对接 API）+ Phase 2 ✅（动态 API 发现，api_gen.rs:275 写出 .api_functions）；Phase 3 ❌（无 RustVm backend 变体）。文档原说「Phase 2/3 待做」不准确——Phase 2 已完成。核心目标（前端对接 API + 动态发现）已达成。Phase 3（RustVm backend）为可选后续。
 
 ## Context
 

@@ -1,7 +1,7 @@
 # Plan 277: 计划 240/243/244/245/299 审计修复
 
 **日期**: 2026-06-12
-**状态**: 待实施
+**状态**: ✅ Phase 1.1（UTF-16 偏移修复）已完成并归档（2026-08-04）。新增 `position.rs` 模块（utf16_to_byte_offset + slice_line_at_char/before_char + 4 单元测试）；12 处不安全 `position.character as usize` / `.min(line.len())` 全部替换为安全调用。中文/emoji .at 文件的 completion/hover/goto_def/signature_help 不再 panic。
 **目标**: 修复 Plans 240/243/244/245/299 审计中发现的关键正确性 bug 和架构问题
 **优先级**: P0（LSP 崩溃/MCP 核心功能缺失）→ P1（性能/架构）→ P2（完整性补齐）
 

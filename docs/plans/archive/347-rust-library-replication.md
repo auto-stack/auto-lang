@@ -1,5 +1,7 @@
 # Auto 语言 Rust 库复刻 Implementation Plan
 
+> **实测状态（2026-08-04）**: ✅ 8 库 parity 全部存在（base64/url/serde_json/regex/sha2/rusqlite/http_client_sync/tokio），7 checkbox 已勾。核心目标（验证"脚本开发→转译发布"模式）已达成。
+
 > 原编号 355；2026-07-23 因编号冲突改为 347（原号保留给 355-a2r-async-await-transpilation）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

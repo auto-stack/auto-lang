@@ -1,6 +1,6 @@
 # Plan 385：闭包 by-reference 捕获 — 让闭包能修改外部变量
 
-> **状态**: 设计待实施
+> **状态**: ✅ 已完成并归档（2026-08-04）。采用方案 J（capture_slots）：CLOSURE 创建时记录每个捕获变量的 `(creator_bp, slot_offset)`，LOAD/STORE_CAPTURED 通过此映射直接读写创建者栈帧的原始位置。测试 `99_misc/002_closure_by_ref` 验证闭包修改外部变量、多次调用累积、闭包读取最新值，全过。零新增回归。
 > **来源**: Plan 340 实施时发现 —— List HOF 的 forEach 闭包内修改外部变量不生效
 > **影响仓库**: `auto-lang`（`crates/auto-lang/src/vm/`）
 > **风险**: 中高 — 触动闭包运行时核心（CLOSURE opcode + 捕获变量存储）

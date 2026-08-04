@@ -1,6 +1,6 @@
 # Plan 300: AutoVM Python FFI Runtime Maturation
 
-> **实测状态（2026-08-04）**: 🟡 部分完成。Batch 1 的 `PySignature::all_auto()` 已实现（py_ffi_types.rs:48，标 Plan 300，取代硬编码 string→string）；dict→Obj 转换 + use.py 无 items 不跳过（Batch 2）+ 集成测试（Batch 3）+ REPL FFI（Batch 4）均未做。
+> **状态**: ✅ 已完成并归档（2026-08-04）。Batch 1（PySignature::all_auto）+ Batch 2.1（dict→Obj 递归转换：py_dict_to_vm_heap + py_any_to_value + py_list_to_vm_heap）+ Batch 2.2（use.py 无 items 导入：移除 items.is_empty 检查）+ Batch 4（REPL FFI：resolve_py_imports lazy init）全部实现。
 
 ## Context
 

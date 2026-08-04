@@ -1,6 +1,6 @@
 # Plan 308: Reverse-Translate Godot Demo Projects into a2gd Test Cases
 
-> **实测状态（2026-08-04）**: ❌ 未实施。a2gd 转译器存在（gdscript.rs 88 测试 + tscn.rs 23 测试），主分支有基础 fixture（000-015），但文档目标的「4 个 Godot demo 逆向翻译 + 11 测试函数」未做（`test/a2gd/tscn/godot_demos/` 不存在）。
+> **实测状态（2026-08-04）**: ❌ 未实施。a2gd 转译器存在（gdscript.rs 88 测试 + tscn.rs 23 测试），主分支有基础 fixture（000-015），但文档目标的「4 个 Godot demo 逆向翻译 + 11 测试函数」未做（`test/a2gd/tscn/godot_demos/` 不存在）。本计划为 Godot 生态验证，优先级低，保留为后续设计。
 
 ## Context
 
