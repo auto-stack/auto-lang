@@ -61,9 +61,9 @@
 | **242** | a2r 功能差距 tracker | 17 项仅 #14 完成（Cookbook 163 .at）；16 项未做（planned/partial/workaround 三类） |
 | **243** | LSP/VSCode 现代化 | Phase 1 完成，**Phase 2-6 全待做**（QueryEngine、workspace、Rename/CodeActions、TS 迁移、CI） |
 | **288** | notes 全栈 API | Phase 1 完成；Phase 2（动态 API 发现）/ Phase 3（rustvm 后端模式）待做 |
-| **311** | rust 模式 DevTools MVP | Phase 1 合并；**Phase 2（P2-A async-init 应用 F12 + P2-B Canvas 检视）待做** |
-| **323** | 016-calendar 完整 app | VM 跑通已合并；Phase 3-6（拆子 widget、后端节假日、事件侧栏、打磨）全未做 |
-| **327** | 015-notes VM 渲染 | 阻断点 #1 + Phase 1.1 已修；**Phase 1.2（限定调用解析）+ Phase 2（模块级 var，需用户拍板方案 α/β）未做** |
+| **311** | rust 模式 DevTools MVP | ✅ 已完成并归档（2026-08-04）。F12 + debug/ 目录 + P2-A/B 全实现。详见 `archive/311-*.md` |
+| **323** | 016-calendar 完整 app | ✅ 已完成并归档（2026-08-04）。app.at + calendar_util.at 完整。详见 `archive/323-*.md` |
+| **327** | 015-notes VM 渲染 | ✅ 已完成并归档（2026-08-04）。run_vm_ui + 递归 import；015 VM 测试 9/9 全绿。详见 `archive/327-*.md` |
 | **340** | List 方法对 `ListData<Value>` 支持 | push/len 已修；filter/map/get/find/contains + 辅助函数待实现 |
 | **347** | 8 库 Rust 复刻 | 7 库 257 测试已验证；**reqwest（Task 29-31）疑似未完成**；最终报告全 TBD；checkbox 全未回填 |
 | **349** | HTTP Roadmap | VM 侧 done；**a2r 适配 8 步全未做**（TLS/multipart/download/WebSocket 异步等） |
@@ -85,12 +85,12 @@
 |---|---|---|
 | **300** | Python FFI 运行时成熟化 | 全 4 Batch 待做（全 Auto 签名、dict→Obj、无 items 导入、REPL） |
 | **308** | Godot demo 逆向翻译 | 6 fixture + 11 测试函数待加；含大量 deferred gaps |
-| **319** | 统一 VM/Rust 渲染 + `View::Grid` | 3 Phase 设计完成未实施 |
-| **320** | 单 VM widget 树重构 | 4 Phase 未实施（322 是其排查产物） |
-| **324** | npm Vue 组件库战略 | "待评估"，§7 决策清单 5 项待团队确认 |
+| **319** | 统一 VM/Rust 渲染 + `View::Grid` | ✅ 已完成并归档（2026-08-04）。View::Grid + 共享泛型 builder 全实现。详见 `archive/319-*.md` |
+| **320** | 单 VM widget 树重构 | ✅ 已完成并归档（2026-08-04）。synthesize_widget_module + render_child_widget；测试 7/7 全绿。详见 `archive/320-*.md` |
+| **324** | npm Vue 组件库战略 | ✅ 话题已落地并归档（2026-08-04）。战略建议，后续 331 已实施。详见 `archive/324-*.md` |
 | **325** | enum 方法 + 跨模块 bug | **自评阻断性，阻塞所有后端 Auto 代码** |
-| **328** | a2r HTTP server 架构 | "设计完成待实施"，6 环节未做 |
-| **329** | Tauri IPC SSE 支持 | "设计完成待实施"，4 改动未做 |
+| **328** | a2r HTTP server 架构 | ✅ 已完成并归档（2026-08-04）。AxumGenerator 全套 + api_gen 接入。详见 `archive/328-*.md` |
+| **329** | Tauri IPC SSE 支持 | ✅ 已完成并归档（2026-08-04）。tauri::ipc::Channel + 流式 emit。详见 `archive/329-*.md` |
 | **330** | agent 友好调试工具链 | 纯设计，4 Phase + 验收全未勾 |
 | **331** | `@auto-ui/widgets` npm 库 | ✅ 已完成并归档（2026-08-04）。packages/widgets 完整（CLI + 12 registry）+ vue-gallery 消费。详见 `archive/331-*.md` |
 | **332** | `#[derive(ToAtom)]` 宏 | "草案待评审"，5 Phase 未实现（实测确认：宏 crate 无 derive） |

@@ -1,6 +1,7 @@
 # Plan 318：List<Struct> 元素 ID 损坏 — nanbox tagging 修复
 
 > 原编号 336；2026-07-23 因编号冲突改为 318（原号保留给 336-vue-gallery-autoui-widgets-showcase）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。ID 损坏已修（走 Phase 2 读取侧 4M 段兼容方案 + Plan 335 配套）；plan320_tests 7/7 + 015 行为测试 9/9 全绿。
 
 > **For Claude:** 本计划源于 015-notes `--render=vm`:notes 列表项渲染不出来。Plan 335 修了两层 VmRef 解引用(read_state_as_vec + materialize_obj_ref),数据 len=3 到达视图层,但每个 note 项的 ID 被损坏,`note.title` 解析失败。本计划定位并修复上游的 nanbox tagging 损坏。
 

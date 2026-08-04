@@ -1,6 +1,7 @@
 # Plan 322：List<Struct> 运行时修复 — 排查总结 + 后续
 
 > 原编号 338；2026-07-23 因编号冲突改为 322（原号保留给 338-extend-015-notes-m1-benchmark）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。排查记录文档，其记录的 bug（generic constructor + List<Item>.new heap type）已全修；test_list_struct_push_then_len 现 PASS。
 
 > **For Claude:** 本文档是 Plan 320（单 VM widget 树）过程中对 List<Struct> 运行时问题的完整排查记录。目的是：(1) 记录根因和修复方向；(2) 总结 VM bug 排查方法论，以便优化未来类似问题的排查效率。
 

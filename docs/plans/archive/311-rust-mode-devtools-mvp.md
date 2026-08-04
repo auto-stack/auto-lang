@@ -1,6 +1,7 @@
 # F12 DevTools for rust mode (render=rust)
 
 > **For Claude:** Primarily `crates/auto-lang/src/ui/iced/renderer.rs` + a small change to `crates/auto-man/src/rust_ui.rs` (generated `main.rs`). Build with `cargo build -p auto`; regression `cargo test -p auto-lang --lib 'ui::debug'`. End-to-end manual: `auto r -r rust` in any `examples/ui/*` (force rust render regardless of `pac.at`).
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。F12 DevTools（renderer.rs:2151）+ debug/ 目录（inspector/overlay/primitives/style_probe）+ P2-A async-init + P2-B canvas selection 全实现。
 
 ## Status
 

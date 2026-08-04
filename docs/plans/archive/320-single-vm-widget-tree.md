@@ -1,6 +1,7 @@
 # Plan 320：单 VM Widget 树 — 消除子组件独立 VM
 
 > 原编号 337；2026-07-23 因编号冲突改为 320（原号保留给 337-vue-gallery-widgets-sync-foundation）
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。synthesize_widget_module（handler_codegen.rs:425）+ render_child_widget 不建新 VM（aura_view_builder.rs:1295）；plan320_tests 7/7 全绿。
 
 > **For Claude:** 本计划重构 VM UI 架构：从"每个子组件一个独立 VM"改为"一个 VM 跑整个 widget 树"。核心改动：① 多 widget handler 编译进同一 module（命名空间化）；② render_child_widget 不建新 VM（同一 heap 上操作 child state）；③ 事件路由带 widget_name。
 

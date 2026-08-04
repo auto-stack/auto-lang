@@ -1,6 +1,7 @@
 # Plan 327：让 015-notes 在 VM 渲染模式下跑通
 
 > **For Claude:** 本计划处理 Plan 323（Option B）合并后、015-notes 在 `render:vm` 下暴露的剩余阻断点。**前置已修**：点分模块路径（commit `64ba5f21`，`use back.api` → `back/api.at`）。改 stdlib/VM/codegen 后跑 `cargo build -p auto` + `cargo test -p auto-lang --lib`。每个新计划用专用 worktree（sibling：`../auto-lang-327`，**不要**用 `.claude/worktrees/` 嵌套——会破坏 `../auto-ai` 相对路径依赖）。
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。run_vm_ui（rust_ui.rs:1978）+ 递归 import（vm_bridge.rs:1677）；015 VM 行为测试 9/9 全绿。
 
 ## 背景
 

@@ -1,6 +1,7 @@
 # Plan 324: AutoUI 通用 Widget 库战略建议（npm 可发布的 Vue 组件库）
 
 > **类型**：战略建议（非立即实施）
+> **实测状态**: ✅ 话题已落地并归档（2026-08-04）。战略建议文档，其建议的 widget 库（Plan 331）已实施：vue.rs:9555 library templates。
 > **来源**：auto-musk 前端架构分析 + auto-forge 前端技术债评估
 > **状态**：待 auto-lang 团队评估。**建议在 a2vue 关键缺陷修复 + "生成库"能力具备后启动**，不立即建库。
 > **关联计划**：312（#[api]+HTTP）、313（SSE）、319（unify-vm-rust-rendering）、314（autoui-mcp）

@@ -1,6 +1,7 @@
 # 016-calendar → 完整月历应用（Plan 323）
 
 > **For Claude:** 在专用 worktree `plan-323/calendar-full-app` 里实现。改 stdlib/VM 后跑 `cargo build -p auto` 再测；改 `.at` 前先调 `/auto-lang-creator`。每阶段 `examples/ui/016-calendar` 在 **vm 和 rust 两模式**下目视一致（Plan 319 已统一渲染，两者必须同形）。回归 `cargo test -p auto-lang --lib`。
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。016-calendar app.at（widget+handlers）+ calendar_util.at（纯 Auto 日期算术）完整；Phase 2 for-as-grid-child bug 已修。
 
 ## Goal
 

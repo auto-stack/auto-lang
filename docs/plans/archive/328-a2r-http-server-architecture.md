@@ -1,6 +1,7 @@
 # Plan 328: a2r HTTP Server 架构 — 把 #[api] 转译成 Axum 原生 Rust Server
 
 > **Status**: 设计完成,待实施
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。AxumGenerator 全套（api/targets/axum.rs）+ api_gen.rs 接入 build + Cargo.toml 注入 axum + SSE handler。文档「待实施」系历史残留。
 > **目标**: `auto build`(Rust backend)时,把 #[api] 函数转译成 Axum handler,生成完整可运行的编译期 HTTP server(无 VM)
 > **关联**: Plan 312(HTTP server MVP)、Plan 317(AutoVM HTTP server,路径 B)
 

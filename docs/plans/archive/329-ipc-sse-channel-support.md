@@ -1,6 +1,7 @@
 # Plan 329: IPC SSE 支持 — Tauri Channel 流式推送
 
 > **Status**: 设计完成,待实施
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。tauri.rs:122 tauri::ipc::Channel + :152 for 循环 emit 流式推送。文档「待实施」系历史残留。
 > **目标**: 让 Tauri IPC 的 #[api] handler 支持 SSE（~Iter/~Stream），用 Tauri 2 的 Channel 替代 HTTP SSE
 > **关联**: Plan 328（a2r HTTP server + IPC 兼容）
 

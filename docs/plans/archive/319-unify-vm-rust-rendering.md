@@ -1,6 +1,7 @@
 # 统一 VM / Rust 渲染：单一转换器 + `View::Grid` 变体
 
 > **For Claude:** 核心 `crates/auto-lang/src/ui/iced/renderer.rs` + `crates/auto-lang/src/ui/view.rs`。每次改完 `cargo build -p auto`；回归 `cargo test -p auto-lang --lib`。手动验证：`examples/ui/016-calendar` 在 `render:vm` 和 `render:rust` 下渲染一致。**在专用 worktree 里执行**（per CLAUDE.md）。
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。View::Grid 变体（view.rs:405）+ 共享泛型 widget builder（renderer.rs:647 Plan 319 unify）全实现。
 
 ## Context（为什么做）
 
