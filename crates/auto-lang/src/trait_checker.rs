@@ -276,6 +276,7 @@ mod tests {
             members: Vec::new(),
             delegations: Vec::new(),
             methods,
+            consts: Vec::new(),
             attrs: vec![],
             impl_attrs: vec![],
             doc: None,
@@ -427,7 +428,7 @@ mod tests {
             name: Name::from("Storage"),
             generic_params: vec![GenericParam::Type(TypeParam {
                 name: Name::from("T"),
-                constraint: None,
+                constraint: Vec::new(),
             })],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
@@ -435,6 +436,7 @@ mod tests {
 
         // Create a type that implements the spec with correct type args
         let ty = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Heap"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -484,11 +486,11 @@ mod tests {
             generic_params: vec![
                 GenericParam::Type(TypeParam {
                     name: Name::from("K"),
-                    constraint: None,
+                    constraint: Vec::new(),
                 }),
                 GenericParam::Type(TypeParam {
                     name: Name::from("V"),
-                    constraint: None,
+                    constraint: Vec::new(),
                 }),
             ],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
@@ -497,6 +499,7 @@ mod tests {
 
         // Create a type that implements the spec with wrong number of type args
         let ty = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("HashMap"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -543,7 +546,7 @@ mod tests {
             name: Name::from("Storage"),
             generic_params: vec![GenericParam::Type(TypeParam {
                 name: Name::from("T"),
-                constraint: None,
+                constraint: Vec::new(),
             })],
             methods: vec![
                 create_spec_method("get", vec![], Type::Unknown),
@@ -554,6 +557,7 @@ mod tests {
 
         // Create a type that implements the spec but is missing a method
         let ty = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Heap"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -595,6 +599,7 @@ mod tests {
 
         // Create a type that implements a non-existent spec
         let ty = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("MyType"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,

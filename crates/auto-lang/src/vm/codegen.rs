@@ -1223,6 +1223,7 @@ impl Codegen {
                             // Create a synthetic TypeDecl for type tracking
                             if let Some(_type_info) = self.get_type(&type_name) {
                                 let type_decl = crate::ast::TypeDecl {
+                                    consts: Vec::new(),
                                     name: crate::ast::Name::from(type_name),
                                     kind: crate::ast::TypeDeclKind::UserType,
                                     parent: None,
@@ -1851,6 +1852,7 @@ impl Codegen {
                             let should_override = matches!(existing_type, Some(Type::Unknown) | Some(Type::Int) | None);
                             if should_override {
                                 let type_decl = crate::ast::TypeDecl {
+                                    consts: Vec::new(),
                                     name: crate::ast::Name::from(variant_mono.clone()),
                                     kind: crate::ast::TypeDeclKind::UserType,
                                     parent: None,
@@ -1926,6 +1928,7 @@ impl Codegen {
                                 // Create a TypeDecl from the template
                                 let template = self.generic_registry.get_template(type_name).unwrap();
                                 crate::ast::TypeDecl {
+                                    consts: Vec::new(),
                                     name: crate::ast::Name::from(type_name),
                                     kind: crate::ast::TypeDeclKind::UserType,
                                     parent: None,
@@ -1949,6 +1952,7 @@ impl Codegen {
                             } else if let Some(type_info) = self.get_type(type_name) {
                                 // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
                                 crate::ast::TypeDecl {
+                                    consts: Vec::new(),
                                     name: crate::ast::Name::from(type_name),
                                     kind: crate::ast::TypeDeclKind::UserType,
                                     parent: None,
@@ -1972,6 +1976,7 @@ impl Codegen {
                             } else {
                                 // Fallback: create minimal type decl
                                 crate::ast::TypeDecl {
+                                    consts: Vec::new(),
                                     name: crate::ast::Name::from(type_name),
                                     kind: crate::ast::TypeDeclKind::UserType,
                                     parent: None,
@@ -2029,6 +2034,7 @@ impl Codegen {
                         if let Some(_type_info) = self.get_type(&type_name) {
                             // Create a synthetic TypeDecl for type tracking
                             let type_decl = crate::ast::TypeDecl {
+                                consts: Vec::new(),
                                 name: crate::ast::Name::from(type_name),
                                 kind: crate::ast::TypeDeclKind::UserType,
                                 parent: None,
@@ -11663,6 +11669,7 @@ impl Codegen {
         const NON_GENERIC_TYPES: &[&str] = &["StringBuilder", "String"];
         if NON_GENERIC_TYPES.contains(&type_name) {
             let type_decl = crate::ast::TypeDecl {
+                consts: Vec::new(),
                 name: crate::ast::Name::from(type_name),
                 kind: crate::ast::TypeDeclKind::UserType,
                 parent: None,
@@ -11699,6 +11706,7 @@ impl Codegen {
         // Final fallback: check codegen's own type registry
         if self.types.contains_key(type_name) {
             let type_decl = crate::ast::TypeDecl {
+                consts: Vec::new(),
                 name: crate::ast::Name::from(type_name),
                 kind: crate::ast::TypeDeclKind::UserType,
                 parent: None,
@@ -12156,6 +12164,7 @@ mod tests {
         let stmt = Stmt::Store(crate::ast::Store {
             kind: StoreKind::Let,
             attrs: vec![],
+            is_pub: false,
             name: Name::from("x"),
             ty: Type::Unknown,
             expr: Expr::Int(5),

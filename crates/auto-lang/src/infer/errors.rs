@@ -396,6 +396,7 @@ mod tests {
     #[test]
     fn test_suggest_type_mismatch_fix_user_type() {
         let expected = Type::User(crate::ast::TypeDecl {
+            consts: Vec::new(),
             name: Name::from("MyType"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -412,6 +413,7 @@ mod tests {
             is_pub: false,
         });
         let found = Type::User(crate::ast::TypeDecl {
+            consts: Vec::new(),
             name: Name::from("MyTyp"), // typo
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,

@@ -436,7 +436,7 @@ impl ToNode for Fn {
             for type_param in &self.type_params {
                 let mut param_node = AutoNode::new("type_param");
                 param_node.set_prop("name", Value::str(type_param.name.as_str()));
-                if let Some(constraint) = &type_param.constraint {
+                for constraint in &type_param.constraint {
                     param_node.set_prop("constraint", Value::str(&*constraint.to_atom()));
                 }
                 node.add_kid(param_node);

@@ -1,6 +1,6 @@
 use crate::ast::{AtomWriter, EnumDecl, SpecDecl, ToAtomStr};
 
-use super::{Expr, Fn, Name, Tag, Union};
+use super::{Expr, Fn, Name, Store, Tag, Union};
 use auto_val::{AutoStr, Shared};
 use std::{fmt, io as stdio};
 
@@ -369,7 +369,9 @@ pub enum GenericParam {
 #[derive(Debug, Clone)]
 pub struct TypeParam {
     pub name: Name,
-    pub constraint: Option<Box<Type>>,
+    /// Plan 364 W3: trait bounds — `#[with(T as A + B)]` collects multiple.
+    /// Empty = unbounded. Emitted as `T: A + B` in Rust.
+    pub constraint: Vec<Type>,
 }
 
 /// Const parameter (e.g., `N u32` in `Inline<T, N u32>`)
@@ -392,8 +394,8 @@ impl fmt::Display for GenericParam {
 impl fmt::Display for TypeParam {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
-        if let Some(ref constraint) = self.constraint {
-            write!(f, ": {}", constraint)?;
+        if !self.constraint.is_empty() {
+            write!(f, ": {}", self.constraint.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" + "))?;
         }
         Ok(())
     }
@@ -655,6 +657,9 @@ pub struct TypeDecl {
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
+    /// C8: associated consts from `ext Type { [pub] const NAME TYPE = v }`,
+    /// emitted as `const` items inside the inherent impl block.
+    pub consts: Vec<Store>,
     pub attrs: Vec<AutoStr>,       // Plan 159 Phase 6B-2: derive/serde attribute passthrough
     pub impl_attrs: Vec<AutoStr>,  // Plan 364 W1: dotted macro attrs (#[zbus.interface]) → before `impl Type {`
     pub doc: Option<AutoStr>,      /// Doc comment lines (///)
@@ -684,6 +689,7 @@ impl TypeDecl {
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
+            consts: Vec::new(),
             attrs: Vec::new(),
             impl_attrs: Vec::new(),
             doc: None,

@@ -212,11 +212,18 @@ impl TypeStore {
                 // Also register in fn_decls so import_items can find them
                 self.fn_decls.insert(method.name.clone(), method.clone());
             }
+            // C8: carry associated consts from the ext block into the TypeDecl.
+            for c in &ext.consts {
+                if !decl.consts.iter().any(|existing| existing.name == c.name) {
+                    decl.consts.push(c.clone());
+                }
+            }
             self.type_decls.insert(target_str.clone(), Rc::new(decl));
         } else {
             // Type not yet registered — create a placeholder TypeDecl with the ext methods
             use crate::ast::{TypeDecl, TypeDeclKind};
             let mut placeholder = TypeDecl {
+                consts: ext.consts.clone(),
                 name: target_name.clone(),
                 kind: TypeDeclKind::UserType,
                 parent: None,
@@ -258,6 +265,7 @@ impl TypeStore {
         self.rust_type_paths.insert(type_name.to_string(), path.clone());
 
         let decl = TypeDecl {
+            consts: Vec::new(),
             name: Name::from(type_name.clone()),
             kind: TypeDeclKind::UserType,
             parent: None,
@@ -583,6 +591,7 @@ mod tests {
 
         // 注册一个简单的类型声明
         let type_decl = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Point"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -683,6 +692,7 @@ mod tests {
 
         // 注册类型
         let point_type = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Point"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,

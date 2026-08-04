@@ -833,6 +833,7 @@ mod tests {
             ty: Type::Unknown,
             expr: Expr::Int(42),
             attrs: Vec::new(),
+            is_pub: false,
         };
         let body = transpile_handler_body(&[Stmt::Store(store)], &ctx_empty());
         assert_eq!(body.trim(), "let x = 42;");

@@ -496,6 +496,7 @@ mod tests {
         let meta = Rc::new(Meta::Store(ast::Store {
             kind: ast::StoreKind::Let,
             attrs: vec![],
+            is_pub: false,
             name: AutoStr::from("x"),
             ty: ast::Type::Int,
             expr: ast::Expr::Int(42),
@@ -547,6 +548,7 @@ mod tests {
         let meta = Rc::new(Meta::Store(ast::Store {
             kind: ast::StoreKind::Let,
             attrs: vec![],
+            is_pub: false,
             name: AutoStr::from("x"),
             ty: ast::Type::Int,
             expr: ast::Expr::Int(42),

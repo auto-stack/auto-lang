@@ -749,7 +749,7 @@ mod tests {
     fn make_type_param(name: &str) -> GenericParam {
         GenericParam::Type(TypeParam {
             name: Name::from(name),
-            constraint: None,
+            constraint: Vec::new(),
         })
     }
 
@@ -766,6 +766,7 @@ mod tests {
             members: vec![],
             delegations: vec![],
             methods: vec![],
+            consts: Vec::new(),
             attrs: vec![],
             impl_attrs: vec![],
             doc: None,

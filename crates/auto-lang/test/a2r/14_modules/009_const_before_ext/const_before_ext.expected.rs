@@ -11,4 +11,4 @@ impl Settings {
     }
 }
 
-const SETTINGS_DIR: String = ".auto-code-rs";
+const SETTINGS_DIR: &str = ".auto-code-rs";

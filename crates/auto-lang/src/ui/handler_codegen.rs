@@ -356,7 +356,9 @@ fn synthesize_state_type(widget: &AuraWidget) -> TypeDecl {
         members,
         delegations: Vec::new(),
         methods: Vec::new(),
+        consts: Vec::new(),
         attrs: Vec::new(),
+        impl_attrs: Vec::new(), // Plan 364 W1
         doc: None,
         is_pub: false,
     }
@@ -774,7 +776,9 @@ fn synthesize_state_type_from_decl(
         members,
         delegations: Vec::new(),
         methods: Vec::new(),
+        consts: Vec::new(),
         attrs: Vec::new(),
+        impl_attrs: Vec::new(), // Plan 364 W1
         doc: None,
         is_pub: false,
     }

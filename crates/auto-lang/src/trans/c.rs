@@ -132,6 +132,7 @@ impl CTrans {
             let store = Store {
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 name: name.into(),
                 ty: ty.clone(),
                 expr: Expr::Nil,

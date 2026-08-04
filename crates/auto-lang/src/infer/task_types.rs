@@ -107,6 +107,7 @@ impl TaskTypeChecker {
             TaskMsgPattern::Simple(variant_name) => {
                 // Simple variant is like a unit enum variant
                 Type::User(TypeDecl {
+                    consts: Vec::new(),
                     name: variant_name.clone(),
                     kind: TypeDeclKind::UserType,
                     parent: None,
@@ -126,6 +127,7 @@ impl TaskTypeChecker {
             TaskMsgPattern::WithBindings { variant, bindings: _ } => {
                 // Variant with bindings is like a tuple enum variant
                 Type::User(TypeDecl {
+                    consts: Vec::new(),
                     name: variant.clone(),
                     kind: TypeDeclKind::UserType,
                     parent: None,
@@ -253,6 +255,7 @@ impl TaskTypeChecker {
         match arg {
             Arg::Pos(expr) => self.expr_to_type(expr),
             Arg::Name(name) => Type::User(TypeDecl {
+                consts: Vec::new(),
                 name: name.clone(),
                 kind: TypeDeclKind::UserType,
                 parent: None,
@@ -285,6 +288,7 @@ impl TaskTypeChecker {
             Expr::Char(_) => Type::Char,
             Expr::Str(s) => Type::StrFixed(s.len()),
             Expr::Ident(name) => Type::User(TypeDecl {
+                consts: Vec::new(),
                 name: name.clone(),
                 kind: TypeDeclKind::UserType,
                 parent: None,

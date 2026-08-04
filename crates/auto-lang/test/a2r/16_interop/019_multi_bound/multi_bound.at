@@ -1,0 +1,30 @@
+// Plan 364 W3: 多 bound #[with(T as A + B)] → `T: A + B`
+// 与 type 级约束、spec 作为约束（非 Box<dyn>）
+
+// 测试1：fn 级多 bound
+#[with(T as Clone + Debug)]
+fn check<T>(x T) int {
+    return 42
+}
+
+// 测试2：重复 #[with(T as A, T as B)] 聚合
+#[with(T as Clone, T as Debug)]
+fn dup<T>(x T) int {
+    return 42
+}
+
+// 测试3：type 级约束 → struct 输出
+#[with(K as Debug)]
+type Pair<K> {
+    key K
+}
+
+// 测试4：spec 作为约束（非 Box<dyn>）
+spec Greeter {
+    fn greet() str
+}
+
+#[with(T as Greeter)]
+fn say<T>(g T) str {
+    return g.greet()
+}

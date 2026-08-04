@@ -60,11 +60,11 @@ fn test_type_param_still_works() {
 
     let param = TypeParam {
         name: "T".into(),
-        constraint: None,
+        constraint: Vec::new(),
     };
 
     assert_eq!(param.name.as_str(), "T");
-    assert!(param.constraint.is_none());
+    assert!(param.constraint.is_empty());
 }
 
 /// Test GenericParam Display implementation
@@ -75,7 +75,7 @@ fn test_generic_param_display() {
     // Type parameter
     let type_param = GenericParam::Type(TypeParam {
         name: "T".into(),
-        constraint: None,
+        constraint: Vec::new(),
     });
     assert_eq!(format!("{}", type_param), "T");
 

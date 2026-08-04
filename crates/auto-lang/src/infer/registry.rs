@@ -105,6 +105,7 @@ mod tests {
         let mut registry = TypeRegistry::new();
 
         let type_decl = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Point"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,
@@ -152,6 +153,7 @@ mod tests {
         let mut registry = TypeRegistry::new();
 
         let type_decl = TypeDecl {
+            consts: Vec::new(),
             name: Name::from("Pair"),
             kind: crate::ast::TypeDeclKind::UserType,
             parent: None,

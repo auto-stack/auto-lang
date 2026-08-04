@@ -1,0 +1,31 @@
+// C8: associated consts inside ext blocks + top-level pub const.
+
+pub type Registry {
+    modes List<str>
+}
+
+ext Registry {
+    /// The default mode name.
+    pub const DEFAULT str = "superpowers"
+
+    /// Max modes (private associated const).
+    const MAX_MODES int = 16
+
+    /// Look up by name.
+    pub fn names() List<str> {
+        return self.modes.clone()
+    }
+}
+
+/// Top-level pub const.
+pub const APP_NAME str = "auto-musk"
+
+/// Top-level private const.
+const MAX_RETRIES int = 3
+
+fn main() {
+    say(Registry.DEFAULT)
+    say(Registry.MAX_MODES)
+    say(APP_NAME)
+    say(MAX_RETRIES)
+}

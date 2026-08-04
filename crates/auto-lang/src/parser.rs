@@ -758,6 +758,7 @@ impl<'a> Parser<'a> {
                 } else if let Meta::Enum(ref enum_decl) = meta {
                     // EnumDecl is similar to TypeDecl, register it with minimal fields
                     let type_decl = crate::ast::TypeDecl {
+                        consts: Vec::new(),
                         name: enum_decl.name.clone(),
                         kind: crate::ast::TypeDeclKind::UserType,
                         parent: None,
@@ -822,6 +823,7 @@ impl<'a> Parser<'a> {
             }
             Meta::Enum(ref enum_decl) => {
                 let type_decl = crate::ast::TypeDecl {
+                    consts: Vec::new(),
                     name: enum_decl.name.clone(),
                     kind: crate::ast::TypeDeclKind::UserType,
                     parent: None,
@@ -995,6 +997,7 @@ impl<'a> Parser<'a> {
 
         // Return Type::User with just the name so generators can use it
         shared(Type::User(TypeDecl {
+            consts: Vec::new(),
             name: Name::from(name),
             kind: TypeDeclKind::UserType,
             parent: None,
@@ -1394,6 +1397,7 @@ impl<'a> Parser<'a> {
                                     name: name.into(),
                                     kind: StoreKind::Var,
                                     attrs: vec![],
+                                    is_pub: false,
                                     ty: Type::Unknown,
                                     expr: *value.clone(),
                                 }),
@@ -1514,6 +1518,12 @@ impl<'a> Parser<'a> {
                         merged_decl.methods.retain(|m| m.name != ext_method.name);
                         // Add the ext method
                         merged_decl.methods.push(ext_method);
+                    }
+
+                    // C8: merge associated consts (same-name ext const wins).
+                    for ext_const in ext.consts.clone() {
+                        merged_decl.consts.retain(|c| c.name != ext_const.name);
+                        merged_decl.consts.push(ext_const);
                     }
 
                     // Plan 364 W1: ext's impl-level macro attrs move onto the merged
@@ -3878,7 +3888,7 @@ impl<'a> Parser<'a> {
                     self.fn_decl_stmt_with_annotations("", false, false, false, true, true, Vec::new(), false)?
                 }
                 TokenKind::Type => {
-                    self.type_decl_stmt_with_annotation(false, true)?
+                    self.type_decl_stmt_with_annotation(false, true, Vec::new())?
                 }
                 TokenKind::Enum | TokenKind::Tag => {
                     let mut stmt = self.enum_stmt()?;
@@ -3897,6 +3907,15 @@ impl<'a> Parser<'a> {
                 TokenKind::Ext => {
                     // pub ext — ext block itself doesn't carry pub, just parse normally
                     self.parse_ext_stmt()?
+                }
+                TokenKind::Const => {
+                    // pub const NAME TYPE = value (C8) — parse_store_stmt reads the
+                    // leading `const` token itself.
+                    let mut stmt = self.parse_store_stmt(vec![])?;
+                    if let Stmt::Store(ref mut s) = stmt {
+                        s.is_pub = true;
+                    }
+                    stmt
                 }
                 _ => {
                     // Not a recognized pub declaration — put the token back
@@ -4036,7 +4055,7 @@ impl<'a> Parser<'a> {
                     )?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
-                    self.type_decl_stmt_with_annotation(ann.has_c, ann.has_pub)?
+                    self.type_decl_stmt_with_annotation(ann.has_c, ann.has_pub, ann.with_params.clone())?
                 } else if self.is_kind(TokenKind::Enum) || self.is_kind(TokenKind::Tag) {
                     // Plan 376: #[derive(...)] / #[serde(...)] before an enum/tag.
                     // enum_stmt() picks up the attrs we just collected via raw_attrs.
@@ -4319,8 +4338,9 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
-        // Parse fields and methods
+        // Parse fields, consts and methods
         let mut fields = Vec::new();
+        let mut consts = Vec::new();
         let mut methods = Vec::new();
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
@@ -4390,6 +4410,19 @@ impl<'a> Parser<'a> {
                     self.skip_empty_lines();
                     continue;
                 }
+            }
+
+            // C8: `const NAME TYPE = value` / `pub const NAME TYPE = value`
+            // inside an ext block → associated const on the impl block.
+            if self.is_kind(TokenKind::Const) {
+                let stmt = self.parse_store_stmt(vec![])?;
+                if let Stmt::Store(mut store) = stmt {
+                    store.is_pub = local_has_pub;
+                    consts.push(store);
+                }
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
             }
 
             // Parse method declarations (fn or static fn)
@@ -4497,13 +4530,14 @@ impl<'a> Parser<'a> {
         let module_path: AutoStr = "".into();
         let is_same_module = true;
 
-        // Plan 059: Create Ext with generic params, fields, and methods
+        // Plan 059: Create Ext with generic params, fields, consts, and methods
         let ext = Ext {
             target,
             trait_name,
             trait_generic_args,
             generic_params,
             fields,
+            consts,
             methods,
             module_path,
             is_same_module,
@@ -4898,6 +4932,7 @@ impl<'a> Parser<'a> {
                     let store = Store {
                         kind: StoreKind::Let,
                         attrs: vec![],
+                        is_pub: false,
                         name: item.name.clone(),
                         ty: Type::Int,
                         expr: Expr::Int(item.value()),
@@ -5991,6 +6026,7 @@ impl<'a> Parser<'a> {
                         name: binding.clone(),
                         kind: StoreKind::Let,
                         attrs: vec![],
+                        is_pub: false,
                         ty: Type::Unknown,
                         expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
                             src: target.repr(),
@@ -6013,6 +6049,7 @@ impl<'a> Parser<'a> {
                         name: binding.clone(),
                         kind: StoreKind::Let,
                         attrs: vec![],
+                        is_pub: false,
                         ty: Type::Unknown,
                         expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
                             src: target.repr(),
@@ -6081,6 +6118,7 @@ impl<'a> Parser<'a> {
             let meta_key = Meta::Store(Store {
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 name: key.clone(),
                 expr: Expr::Nil,
                 ty: Type::Int,
@@ -6089,6 +6127,7 @@ impl<'a> Parser<'a> {
             let meta_val = Meta::Store(Store {
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 name: val.clone(),
                 expr: Expr::Nil,
                 ty: Type::Int,
@@ -6122,6 +6161,7 @@ impl<'a> Parser<'a> {
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
                     attrs: vec![],
+                    is_pub: false,
                     name: ident.clone(),
                     expr: Expr::Nil,
                     ty: Type::Int,
@@ -6148,6 +6188,7 @@ impl<'a> Parser<'a> {
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
                     attrs: vec![],
+                    is_pub: false,
                     name: ident2.clone(),
                     expr: Expr::Nil,
                     ty: Type::Int,
@@ -6319,6 +6360,7 @@ impl<'a> Parser<'a> {
         let meta = Meta::Store(Store {
             kind: StoreKind::Var,
             attrs: vec![],
+            is_pub: false,
             name: var.clone(),
             expr: Expr::Nil,
             ty: Type::Int, // Default type, will be inferred later
@@ -6430,6 +6472,7 @@ impl<'a> Parser<'a> {
                                     name: binding.clone(),
                                     kind: StoreKind::Let,
                                     attrs: vec![],
+                                    is_pub: false,
                                     ty: tag_field_type.clone(),
                                     expr: Expr::Uncover(TagUncover {
                                         src: tgt.repr(),
@@ -6594,6 +6637,7 @@ impl<'a> Parser<'a> {
                                         name: binding.clone(),
                                         kind: StoreKind::Let,
                                         attrs: vec![],
+                                        is_pub: false,
                                         ty: tag_field_type.clone(),
                                         expr: Expr::Uncover(TagUncover {
                                             src: tgt.repr(),
@@ -6619,6 +6663,7 @@ impl<'a> Parser<'a> {
                                 name: binding.clone(),
                                 kind: StoreKind::Let,
                                 attrs: vec![],
+                                is_pub: false,
                                 ty: Type::Unknown, // TODO: Infer from Option<T>
                                 expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
                                     src: tgt.repr(),
@@ -6645,6 +6690,7 @@ impl<'a> Parser<'a> {
                                 name: binding.clone(),
                                 kind: StoreKind::Let,
                                 attrs: vec![],
+                                is_pub: false,
                                 ty: Type::Unknown, // TODO: Infer from Result<T, E>
                                 expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
                                     src: tgt.repr(),
@@ -6771,6 +6817,7 @@ impl<'a> Parser<'a> {
             ty,
             expr: expr.clone(),
             attrs,
+            is_pub: false,
         };
         if let Expr::Lambda(lambda) = &expr {
             self.define(name.as_str(), Meta::Ref(lambda.name.clone()));
@@ -7268,12 +7315,16 @@ impl<'a> Parser<'a> {
             let name = self.parse_name()?;
 
             // Check for 'as' keyword for constraint
-            let constraint = if self.is_kind(TokenKind::As) {
+            // Plan 364 W3: `#[with(T as A + B)]` — multiple bounds joined with `+`.
+            let mut constraint = Vec::new();
+            if self.is_kind(TokenKind::As) {
                 self.next(); // skip 'as'
-                Some(Box::new(self.parse_type()?))
-            } else {
-                None
-            };
+                constraint.push(self.parse_type()?);
+                while self.is_kind(TokenKind::Add) {
+                    self.next(); // skip '+'
+                    constraint.push(self.parse_type()?);
+                }
+            }
 
             params.push(TypeParam { name, constraint });
 
@@ -7452,6 +7503,7 @@ impl<'a> Parser<'a> {
                 Meta::Store(Store {
                     kind: StoreKind::Let,
                     attrs: vec![],
+                    is_pub: false,
                     name: "self".into(),
                     ty,
                     expr: Expr::Ident("self".into()),
@@ -7588,15 +7640,16 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Then, merge/override with with_params
+        // Then, merge with with_params — Plan 364 W3: repeated
+        // `#[with(T as A, T as B)]` aggregates bounds into the same Vec
+        // (`T as A + B`).
         for wp in with_params {
-            // Check if this param already exists
             let existing_idx = type_params.iter().position(|tp| tp.name == wp.name);
             if let Some(idx) = existing_idx {
-                // Override with with_params version (has constraint)
-                type_params[idx] = wp;
+                let mut merged = type_params[idx].clone();
+                merged.constraint.extend(wp.constraint.clone());
+                type_params[idx] = merged;
             } else {
-                // Add new param
                 type_params.push(wp);
             }
         }
@@ -7677,6 +7730,7 @@ impl<'a> Parser<'a> {
                 Meta::Store(Store {
                     kind: StoreKind::Let,
                     attrs: vec![],
+                    is_pub: false,
                     name: "self".into(),
                     ty,
                     expr: Expr::Ident("self".into()),
@@ -7895,6 +7949,7 @@ impl<'a> Parser<'a> {
             let var = Store {
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 name: scope_name.clone(),
                 expr: default.clone().unwrap_or(Expr::Nil),
                 ty: ty.clone(),
@@ -8092,10 +8147,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
-        self.type_decl_stmt_with_annotation(false, false)
+        self.type_decl_stmt_with_annotation(false, false, Vec::new())
     }
 
-    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool, is_pub: bool) -> AutoResult<Stmt> {
+    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool, is_pub: bool, with_params: Vec<crate::ast::TypeParam>) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
 
@@ -8119,6 +8174,7 @@ impl<'a> Parser<'a> {
                 let name_pos = self.prev.pos;
 
                 let decl = TypeDecl {
+                    consts: Vec::new(),
                     kind: TypeDeclKind::CType,
                     name: name.clone(),
                     parent: None,
@@ -8226,7 +8282,25 @@ impl<'a> Parser<'a> {
         // self.prev now points to the name token after parse_name()
         let name_pos = self.prev.pos;
 
+        // Plan 364 W3: merge #[with(T as A)] constraints into the type's
+        // generic params (repeated #[with(T as A, T as B)] aggregates).
+        let mut generic_params = generic_params;
+        for wp in with_params {
+            let existing_idx = generic_params.iter().position(|gp| match gp {
+                crate::ast::GenericParam::Type(tp) => tp.name == wp.name,
+                crate::ast::GenericParam::Const(_) => false,
+            });
+            if let Some(idx) = existing_idx {
+                if let crate::ast::GenericParam::Type(tp) = &mut generic_params[idx] {
+                    tp.constraint.extend(wp.constraint.clone());
+                }
+            } else {
+                generic_params.push(crate::ast::GenericParam::Type(wp));
+            }
+        }
+
         let mut decl = TypeDecl {
+            consts: Vec::new(),
             kind: kind.clone(),
             name: name.clone(),
             parent: None,
@@ -8665,6 +8739,7 @@ impl<'a> Parser<'a> {
             },
             kind: StoreKind::Field,
             attrs: vec![],
+            is_pub: false,
         };
         self.define(name.as_str(), Meta::Store(store));
 
@@ -9013,7 +9088,7 @@ impl<'a> Parser<'a> {
                 let name = self.parse_name()?;
                 Ok(TypeParam {
                     name,
-                    constraint: None,
+                    constraint: Vec::new(),
                 })
             }
             _ => Err(SyntaxError::Generic {
@@ -9057,7 +9132,7 @@ impl<'a> Parser<'a> {
             // Type parameter: just `T`
             Ok(GenericParam::Type(TypeParam {
                 name,
-                constraint: None,
+                constraint: Vec::new(),
             }))
         }
     }
@@ -9165,6 +9240,7 @@ impl<'a> Parser<'a> {
                         return self.parse_generic_instance(AutoStr::from(qualified));
                     }
                     return Ok(Type::User(TypeDecl {
+                        consts: Vec::new(),
                         name: AutoStr::from(qualified),
                         kind: TypeDeclKind::UserType,
                         parent: None,
@@ -9284,6 +9360,7 @@ impl<'a> Parser<'a> {
                     // This is a type parameter - return it as a user type for now
                     // The type system will handle substitution later
                     return Ok(Type::User(TypeDecl {
+                        consts: Vec::new(),
                         name: name.clone(),
                         kind: TypeDeclKind::UserType,
                         parent: None,
@@ -9648,6 +9725,7 @@ impl<'a> Parser<'a> {
                 let trait_name = trait_type.unique_name().to_string();
                 let dyn_name = format!("dyn {}", trait_name);
                 Ok(Type::User(TypeDecl {
+                    consts: Vec::new(),
                     name: dyn_name.into(),
                     kind: crate::ast::TypeDeclKind::UserType,
                     parent: None,
@@ -9857,6 +9935,7 @@ impl<'a> Parser<'a> {
                 name: AutoStr::from("port"),
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 ty: Type::Unknown,
                 expr: Expr::Str(port.into()),
             }),
@@ -12839,6 +12918,7 @@ impl<'a> Parser<'a> {
                 let meta = Meta::Store(Store {
                     kind: StoreKind::Var,
                     attrs: vec![],
+                    is_pub: false,
                     name: param.clone().into(),
                     expr: Expr::Nil,
                     ty: Type::Unknown,

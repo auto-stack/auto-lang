@@ -261,7 +261,7 @@ mod tests {
         );
         let params = vec![GenericParam::Type(TypeParam {
             name: Name::from("T"),
-            constraint: None,
+            constraint: Vec::new(),
         })];
         let spec = SpecDecl::with_generic_params(name, params, vec![method]);
 

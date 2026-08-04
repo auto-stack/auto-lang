@@ -661,6 +661,7 @@ mod tests {
             ty: Type::Unknown,
             expr,
             attrs: Vec::new(),
+            is_pub: false,
         })
     }
 

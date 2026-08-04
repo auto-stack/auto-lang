@@ -262,6 +262,7 @@ impl InferenceContext {
                 // Store kind: 默认为 Var（Plan 091: 修复 var 赋值检查）
                 kind: StoreKind::Var,
                 attrs: vec![],
+                is_pub: false,
                 // expr 使用默认值（空表达式）
                 expr: crate::ast::Expr::Nil,
             })));

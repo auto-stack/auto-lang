@@ -1,4 +1,4 @@
-use super::{Fn, GenericParam, Member, Name, Type};
+use super::{Fn, GenericParam, Member, Name, Store, Type};
 use crate::ast::{AtomWriter, ToNode};
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
@@ -64,6 +64,10 @@ pub struct Ext {
     /// Private fields to add to the type (same-module only)
     pub fields: Vec<Member>,
 
+    /// Associated consts (`const NAME TYPE = value` / `pub const`), emitted as
+    /// `const` items inside the impl block (C8).
+    pub consts: Vec<Store>,
+
     /// Methods to add to the type
     pub methods: Vec<Fn>,
 
@@ -88,6 +92,7 @@ impl Ext {
             trait_generic_args: Vec::new(),
             generic_params: Vec::new(),
             fields: Vec::new(),
+            consts: Vec::new(),
             methods,
             module_path: AutoStr::from(""),
             is_same_module: false,
@@ -109,6 +114,7 @@ impl Ext {
             trait_generic_args: Vec::new(),
             generic_params: Vec::new(),
             fields,
+            consts: Vec::new(),
             methods,
             module_path,
             is_same_module,
@@ -128,6 +134,7 @@ impl Ext {
             trait_generic_args: Vec::new(),
             generic_params,
             fields: Vec::new(),
+            consts: Vec::new(),
             methods,
             module_path: AutoStr::from(""),
             is_same_module: false,
@@ -177,6 +184,15 @@ impl fmt::Display for Ext {
             write!(f, ")")?;
         }
 
+        // Add consts if present (C8)
+        if !self.consts.is_empty() {
+            write!(f, " (consts")?;
+            for c in &self.consts {
+                write!(f, " {}", c)?;
+            }
+            write!(f, ")")?;
+        }
+
         // Add methods
         write!(f, " (methods")?;
         for method in &self.methods {
@@ -200,6 +216,18 @@ impl AtomWriter for Ext {
             for (i, field) in self.fields.iter().enumerate() {
                 write!(f, "({}:{})", field.name, field.ty)?;
                 if i < self.fields.len() - 1 {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "], ")?;
+        }
+
+        // Write consts if present (C8)
+        if !self.consts.is_empty() {
+            write!(f, "consts: [")?;
+            for (i, c) in self.consts.iter().enumerate() {
+                write!(f, "({}:{} = {})", c.name, c.ty, c.expr)?;
+                if i < self.consts.len() - 1 {
                     write!(f, ", ")?;
                 }
             }
@@ -234,6 +262,15 @@ impl ToNode for Ext {
                 fields_node.add_kid(field.to_node());
             }
             node.add_kid(fields_node);
+        }
+
+        // Add consts if present (C8)
+        if !self.consts.is_empty() {
+            let mut consts_node = AutoNode::new("consts");
+            for c in &self.consts {
+                consts_node.add_kid(c.to_node());
+            }
+            node.add_kid(consts_node);
         }
 
         // Add methods

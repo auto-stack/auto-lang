@@ -951,8 +951,18 @@ impl RustTrans {
         Ok(())
     }
 
-    fn rust_type_name(&self, ty: &Type) -> String {
+    /// Plan 364 W3: render a trait-bound type — specs emit their bare name
+    /// (a bound `T: Greeter` must not become `T: Box<dyn Greeter>`); all other
+    /// types fall through to the normal type rendering.
+    fn rust_bound_name(&self, ty: &Type) -> String {
         match ty {
+            Type::User(usr) => self.qualify_type_name(&usr.name.to_string()),
+            Type::Spec(spec) => spec.borrow().name.to_string(),
+            _ => self.rust_type_name(ty),
+        }
+    }
+
+    fn rust_type_name(&self, ty: &Type) -> String {        match ty {
             Type::Byte => "u8".to_string(),
             Type::Int => "i32".to_string(),
             Type::Uint => "u32".to_string(),
@@ -8004,12 +8014,19 @@ impl RustTrans {
 
         // Plan 6B-3.4: const declaration → const NAME: &str = "...";
         if matches!(store.kind, StoreKind::Const) {
-            let ty_name = if matches!(store.ty, Type::StrFixed(_)) {
+            // C8: `str`-typed consts emit `&str` (string literals are the only
+            // const-evaluable values; matches hand-written `&'static str`).
+            let ty_name = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned) {
                 "&str".to_string()
             } else {
                 self.rust_type_name(&store.ty)
             };
-            write!(out, "const {}: {} = ", store.name, ty_name)?;
+            // C8: top-level `pub const` → emits `pub const`.
+            if store.is_pub {
+                write!(out, "pub const {}: {} = ", store.name, ty_name)?;
+            } else {
+                write!(out, "const {}: {} = ", store.name, ty_name)?;
+            }
             self.expr(&store.expr, out)?;
             return Ok(());
         }
@@ -8415,8 +8432,15 @@ impl RustTrans {
                     write!(sink.body, ", ")?;
                 }
                 write!(sink.body, "{}", tp.name)?;
-                if let Some(constraint) = &tp.constraint {
-                    write!(sink.body, ": {}", self.rust_type_name(constraint))?;
+                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                if !tp.constraint.is_empty() {
+                    write!(sink.body, ": ")?;
+                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                        if ci > 0 {
+                            write!(sink.body, " + ")?;
+                        }
+                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                    }
                 }
             }
             write!(sink.body, ">")?;
@@ -9932,7 +9956,19 @@ impl RustTrans {
                     write!(sink.body, ", ")?;
                 }
                 match param {
-                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -10147,7 +10183,19 @@ impl RustTrans {
                     for (i, param) in type_decl.generic_params.iter().enumerate() {
                         if i > 0 { write!(sink.body, ", ")?; }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
                         }
                     }
@@ -10192,7 +10240,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -10211,7 +10271,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -10300,7 +10372,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -10397,7 +10481,9 @@ impl RustTrans {
             .filter(|m| !spec_method_names.contains(&m.name))
             .collect();
 
-        if !own_methods.is_empty() {
+        // C8: emit the inherent impl also when there are associated consts
+        // (even with zero methods).
+        if !own_methods.is_empty() || !type_decl.consts.is_empty() {
             sink.body.write(b"\n")?;
             // Plan 364 W1: impl-level attribute macros (#[zbus::interface]) before `impl Type {`
             for attr in &type_decl.impl_attrs {
@@ -10413,7 +10499,19 @@ impl RustTrans {
                         write!(sink.body, ", ")?;
                     }
                     match param {
-                        GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                        GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                         GenericParam::Const(cp) => {
                             write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                         }
@@ -10424,6 +10522,23 @@ impl RustTrans {
 
             writeln!(sink.body, " {{")?;
             self.indent();
+
+            // C8: associated consts (`[pub] const NAME TYPE = value`)
+            for c in &type_decl.consts {
+                self.print_indent(&mut sink.body)?;
+                let ty_name = if matches!(c.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned) {
+                    "&str".to_string()
+                } else {
+                    self.rust_type_name(&c.ty)
+                };
+                if c.is_pub {
+                    write!(sink.body, "pub const {}: {} = ", c.name, ty_name)?;
+                } else {
+                    write!(sink.body, "const {}: {} = ", c.name, ty_name)?;
+                }
+                self.expr(&c.expr, &mut sink.body)?;
+                sink.body.write(b";\n")?;
+            }
 
             for method in &own_methods {
                 self.fn_decl(method, sink)?;
@@ -10526,7 +10641,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -10545,7 +10672,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -10916,7 +11055,19 @@ impl RustTrans {
                             write!(sink.body, ", ")?;
                         }
                         match param {
-                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -11165,7 +11316,19 @@ impl RustTrans {
                     write!(sink.body, ", ")?;
                 }
                 match param {
-                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -11237,7 +11400,19 @@ impl RustTrans {
                     write!(sink.body, ", ")?;
                 }
                 match param {
-                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -11248,6 +11423,23 @@ impl RustTrans {
 
         writeln!(sink.body, " {{")?;
         self.indent();
+
+        // C8: associated consts (`[pub] const NAME TYPE = value` inside ext)
+        for c in &ext.consts {
+            self.print_indent(&mut sink.body)?;
+            let ty_name = if matches!(c.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned) {
+                "&str".to_string()
+            } else {
+                self.rust_type_name(&c.ty)
+            };
+            if c.is_pub {
+                write!(sink.body, "pub const {}: {} = ", c.name, ty_name)?;
+            } else {
+                write!(sink.body, "const {}: {} = ", c.name, ty_name)?;
+            }
+            self.expr(&c.expr, &mut sink.body)?;
+            sink.body.write(b";\n")?;
+        }
 
         // Generate methods
         for method in &ext.methods {
@@ -11320,7 +11512,19 @@ impl RustTrans {
                     write!(sink.body, ", ")?;
                 }
                 match param {
-                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Type(tp) => {
+                            write!(sink.body, "{}", tp.name)?;
+                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                            if !tp.constraint.is_empty() {
+                                write!(sink.body, ": ")?;
+                                for (ci, ct) in tp.constraint.iter().enumerate() {
+                                    if ci > 0 {
+                                        write!(sink.body, " + ")?;
+                                    }
+                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                                }
+                            }
+                        }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -11960,6 +12164,7 @@ impl RustTrans {
             Expr::Node(node) => {
                 // Struct construction: `Url { scheme: ..., ... }`.
                 let ty = Type::User(crate::ast::TypeDecl {
+                    consts: Vec::new(),
                     name: node.name.clone(),
                     kind: crate::ast::TypeDeclKind::UserType,
                     parent: None,

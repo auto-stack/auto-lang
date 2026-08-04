@@ -811,6 +811,7 @@ mod tests {
             ty: Type::Unknown,
             expr: Expr::Int(1),
             attrs: Vec::new(),
+            is_pub: false,
         };
         let body = transpile_handler_body(&[Stmt::Store(store)], &ctx_empty());
         assert_eq!(body.trim(), "var x = 1");
@@ -824,6 +825,7 @@ mod tests {
             ty: Type::Unknown,
             expr: Expr::Int(2),
             attrs: Vec::new(),
+            is_pub: false,
         };
         let body = transpile_handler_body(&[Stmt::Store(store)], &ctx_empty());
         assert_eq!(body.trim(), "val y = 2");

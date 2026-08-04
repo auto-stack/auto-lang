@@ -229,6 +229,7 @@ fn main() {
 #[test] fn test_11_methods_006_ext_for() { test_a2r("11_methods/006_ext_for").unwrap(); }
 #[test] fn test_11_methods_007_ext_from() { test_a2r("11_methods/007_ext_from").unwrap(); }
 #[test] fn test_11_methods_008_empty_body() { test_a2r("11_methods/008_empty_body").unwrap(); }
+#[test] fn test_11_methods_009_ext_const() { test_a2r("11_methods/009_ext_const").unwrap(); }
 
 // === 12_specs ===
 #[test] fn test_12_specs_001_basic_spec() { test_a2r("12_specs/001_basic_spec").unwrap(); }
@@ -312,6 +313,7 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_16_interop_016_extractor_destructure() { test_a2r("16_interop/016_extractor_destructure").unwrap(); }
 #[test] fn test_16_interop_017_comptime_read_text() { test_a2r("16_interop/017_comptime_read_text").unwrap(); }
 #[test] fn test_16_interop_018_dotted_attrs() { test_a2r("16_interop/018_dotted_attrs").unwrap(); }
+#[test] fn test_16_interop_019_multi_bound() { test_a2r("16_interop/019_multi_bound").unwrap(); }
 
 // === 18_rust_std ===
 #[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }

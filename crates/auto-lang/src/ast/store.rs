@@ -23,6 +23,9 @@ pub struct Store {
     /// is reconstructed from source on every parse and is irrelevant to the
     /// VM/IR. GDScript reads `attrs` to emit `@export` and similar prefixes.
     pub attrs: Vec<Name>,
+    /// C8: `pub const` (top-level const or ext-block associated const) →
+    /// emits `pub const` in Rust. Metadata only, not serialized.
+    pub is_pub: bool,
 }
 
 impl fmt::Display for Store {
