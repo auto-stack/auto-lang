@@ -92,12 +92,12 @@
 | **328** | a2r HTTP server 架构 | "设计完成待实施"，6 环节未做 |
 | **329** | Tauri IPC SSE 支持 | "设计完成待实施"，4 改动未做 |
 | **330** | agent 友好调试工具链 | 纯设计，4 Phase + 验收全未勾 |
-| **331** | `@auto-ui/widgets` npm 库 | "设计已确认实施待执行"，8 Phase 待做 |
-| **332** | `#[derive(ToAtom)]` 宏 | "草案待评审"，5 Phase 未实现 |
-| **334** | vm+vm 合并跳过 HTTP | Phase 1 未实现（333 的直接收尾） |
-| **336** | vue-gallery showcase | "设计待确认"，依赖 331 |
-| **337** | gallery↔widgets 同步层 | "设计待确认"，依赖 331+336 |
-| **338** | 015-notes M1 基准 | 已重定范围到 `025-notes-extended`；~~routing blocked（依赖 351）~~ → 351 已完成，路由可推进 |
+| **331** | `@auto-ui/widgets` npm 库 | ✅ 已完成并归档（2026-08-04）。packages/widgets 完整（CLI + 12 registry）+ vue-gallery 消费。详见 `archive/331-*.md` |
+| **332** | `#[derive(ToAtom)]` 宏 | "草案待评审"，5 Phase 未实现（实测确认：宏 crate 无 derive） |
+| **334** | vm+vm 合并跳过 HTTP | ✅ 已完成并归档（2026-08-04）。--merge 默认 + 跳过 HTTP 后端。详见 `archive/334-*.md` |
+| **336** | vue-gallery showcase | ✅ 已完成并归档（2026-08-04）。12 路由 + 12 页面 + DemoBlock/PropTable。详见 `archive/336-*.md` |
+| **337** | gallery↔widgets 同步层 | "设计待确认"，依赖 331+336（实测确认：同步层本体未做，仅 npm file: 连接） |
+| **338** | 015-notes M1 基准 | ✅ 已完成并归档（2026-08-04）。中等 CRUD app（front 5 模块 + back 2 模块 + playwright）。详见 `archive/338-*.md` |
 | **339** | VM Symbol 命名空间系统 | 6 Phase 设计未实现（335 部分依赖本计划） |
 | **342** | Block 层 Phase A（包基础） | ✅ 已完成并归档（2026-08-04）。BlockRegistry + blocks/ 目录（form/login、data-display/note-list、editor/note-editor）+ blocks-gallery。详见 `archive/342-*.md` |
 | **343** | Block 层 Phase B（CLI） | ✅ 已完成并归档（2026-08-04）。cmd_block.rs 的 List/Show/Add/Check 全实现。详见 `archive/343-*.md` |
@@ -139,7 +139,7 @@
 - ~~`351` SharedStore → 解锁 `338` routing / `354` 多页~~ ——✅ 351 已完成（2026-08-04），路由+共享状态已可用，338/354 多页可推进
 - `364` W1-W3 → 解锁 `365` W3 → 整个 COSMIC 桌面复刻
 - ~~`358` D1+D9 → 解锁 `354` 阶段 C（AutoDown 编辑器）~~ ——✅ 358 已完成（2026-08-04），354 阶段 C 阻塞解除
-- `331` → `336` → `337`（Vue 组件库整条链）
+- ~~`331` → `336`~~ → `337`（Vue 组件库链）：✅ 331（widgets npm）+ 336（gallery）已完成；337（同步层）仍未做
 - ~~`342` → `343`（Block 层整条链）~~ ——✅ 已完成（2026-08-04），BlockRegistry + blocks/ + auto block CLI 全落地
 
 ### 4.3 可立即归档的

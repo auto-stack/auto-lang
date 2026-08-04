@@ -2,6 +2,7 @@
 
 > **类型**:完整计划(设计 + 实施)
 > **状态**:设计已确认,实施待执行
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。packages/widgets/package.json 完整（@auto-ui/widgets）+ CLI（add/list）+ 12 widget registry + vue-gallery 消费。文档下方「设计+实施」系历史残留。
 > **日期**:2026-06-23
 > **前身**:[324-autoui-widget-library-strategy.md](324-autoui-widget-library-strategy.md)(战略建议,识别了「缺少可发布的通用组件库」这一空白)
 > **关联**:319(unify-vm-rust-rendering)、327(015-notes-vm-render)

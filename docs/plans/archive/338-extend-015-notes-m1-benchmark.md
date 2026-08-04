@@ -2,6 +2,7 @@
 
 > **类型**:完整计划(实施)
 > **状态**:设计待确认,实施未开始
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。015-notes 已是中等 CRUD app（front: app/editor/notes_store/sidebar/types + back: api/db）+ playwright 测试 + rust-workspace。
 > **日期**:2026-06-26
 > **战略文档**:[docs/design/16-app-generation-and-ai-authoring.md](../design/16-app-generation-and-ai-authoring.md)(M1 = 基准阶梯第一级)
 > **前身**:015-notes(已是最完整 ui 示例:解耦前后端、多模块、`#[api]` REST、CRUD+搜索)

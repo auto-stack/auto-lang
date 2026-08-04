@@ -1,6 +1,7 @@
 # Plan 334：vm+vm 同进程合并 — 跳过冗余后端 HTTP 进程
 
 > **For Claude:** 本计划是 Plan 333 的直接收尾。Plan 333 已让前端 widget VM 直接链接并调用后端函数（`list_notes` → `db.all_notes` → `notes` 全局），**数据访问已经不走 HTTP**。但 `run_vm_ui` 仍冗余地启动后端 Axum HTTP 进程（`start_api_server`），它编译慢、占用端口、且前端从不通过 HTTP 调用它。本计划在 vm+vm 时跳过该进程，让前端 VM 独立运行。
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。--merge 默认开启（main.rs:354）+ rust_ui.rs 跳过 HTTP 后端（Plan 347 注释，in-process API）。
 
 ## 背景与定位
 

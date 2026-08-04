@@ -2,6 +2,7 @@
 
 > **类型**:完整计划(设计 + 实施)
 > **状态**:设计待确认,实施未开始
+> **实测状态**: ✅ 已完成并归档（2026-08-04）。examples/vue-gallery/ 完整：12 vue-router 路由 + 12 页面 + DemoBlock/PropTable 组件 + 消费 @auto-ui/widgets。
 > **日期**:2026-06-26
 > **前身**:[331-autoui-vue-widgets-npm-library-design.md](331-autoui-vue-widgets-npm-library-design.md)(发布 `@auto-ui/widgets` npm 库)
 > **关联**:324(widget-library-strategy)、319(unify-vm-rust-rendering)
