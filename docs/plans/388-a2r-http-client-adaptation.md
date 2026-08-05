@@ -95,3 +95,27 @@ HTTP server 侧（Plan 328 已覆盖）。
 
 > 计划骨架 commit 后开始 W1。各 WI 独立可合并，按依赖排序。
 > house style 用 `### W1 — 待办` / `### W1 — landed` 记录。
+
+### W1 — landed（TLS 适配，ureq → reqwest::blocking）
+- 交付（`crates/auto-man/src/rust_ui.rs`，commit `108b40bb`）：
+  - `generate_http_client_helper` 新增 `_http_client()`：`OnceLock` 缓存
+    `reqwest::blocking::Client`，读 `AUTO_TLS_SKIP_VERIFY`（danger_accept_invalid_certs）/
+    `AUTO_TLS_CA_CERT`（Certificate::from_pem + add_root_certificate）。
+  - `generate_get_fn_body` / `generate_delete_fn_body` / `generate_write_fn_body`：
+    `ureq::X(url)` → `_http_client().X(url).send()`；`.send_json(body)` → `.json(&body).send()`；
+    `.into_json::<T>()` → `.json::<T>()`。
+  - **URL 统一 `.to_string()`**：无路径参数时 `url_expr` 是字面量 → `let url = "..."` 得到 `&str`，
+    `&url` 是 `&&str`，不满足 reqwest `IntoUrl`（ureq 的 `AsRef<str>` 接受，reqwest 不接受）。
+  - 生成 Cargo.toml 模板 reqwest features 加 `"json"`（`Response::json()`/`RequestBuilder::json()` 必需，
+    旧模板只有 blocking+multipart）。
+- 验证：
+  - 3 个 W1 单测（helper TLS 接线 / GET 各返回类型 / write+delete 无 `ureq` 残留）全绿。
+  - **端到端**：015-notes split 模式（`AUTO_VM_MERGE=0`）生成的 API client 在临时 crate
+    （reqwest blocking+json+multipart + tungstenite + lazy_static）`cargo build` 通过。
+- 顺带确认：`generate_http_utility_functions`（upload/download，W2/W3 模板）与
+  `generate_ws_functions`（W4 模板）已存在，随 W1 一起编译通过。
+
+### W2 — 待办（multipart 上传适配）
+### W3 — 待办（文件下载 + 断点续传 + 进度）
+### W4 — 待办（WebSocket 客户端 codegen）
+### W5 — 待办（测试）
