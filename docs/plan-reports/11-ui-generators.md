@@ -41,15 +41,15 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 360 | 015-notes UI 现代化 + 主题色切换 | Planned | Cardification + 5-color accent theming with localStorage; 5 implementation phases, 8 acceptance criteria |
 | 361 | 生成器加固 — Validators + Path Convergence | Complete | Post-generation SFC validators (R001-R007), single-entry generate_component_from_file, 13 playwright smoke tests |
 | 363 | AutoUI Generation Skill | Planned | Pre-generation knowledge encoding (contracts+patterns), wizard CLI tool, test skeleton auto-generation |
-| 365 | AutoUI Pluggable Host Architecture | Planned | One app core (VTree), three hosts: dev (Windows), libcosmic (COSMIC), AutoOS (deferred); system port mocks for Windows |
+| 365 | AutoUI Pluggable Host Architecture | Complete | `HostBackend` unified interface (headless/iced/gpui); `auto-cosmic` crate family; cfg-gated cross-platform; de-iced Component trait; gpui backend fixed; RenderQueue → Plan 386 |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356, 361 (16 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356, 361, 365 (17 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
-**Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181, 360, 363, 365 (13 plans not yet started or early stage)
+**Planned**: 096, 098, 114, 140, 142, 143, 174, 175, 180, 181, 360, 363 (12 plans not yet started or early stage)
 
 ## Design
 
@@ -152,4 +152,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [360-notes-ui-redesign-and-accent-theming.md](../plans/360-notes-ui-redesign-and-accent-theming.md)
 - [361-short-term-generator-hardening.md](../plans/archive/361-short-term-generator-hardening.md)
 - [363-autoui-generation-skill.md](../plans/363-autoui-generation-skill.md)
-- [365-autoui-pluggable-host-architecture.md](../plans/365-autoui-pluggable-host-architecture.md)
+- [365-autoui-pluggable-host-architecture.md](../plans/archive/365-autoui-pluggable-host-architecture.md)

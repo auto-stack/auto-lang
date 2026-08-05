@@ -1,5 +1,7 @@
 # Plan 365: AutoUI Pluggable Host Architecture (COSMIC Replication on Windows)
 
+## Status: COMPLETE
+
 ## Background
 
 Two constraints collide in the COSMIC replication effort (Plan 364):

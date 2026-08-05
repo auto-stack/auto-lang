@@ -40,11 +40,11 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 360 | 015-notes UI 现代化 + 主题色切换 | ⏳ | CI-style cardification, 5-color accent theming with localStorage, dark mode transition smoothing |
 | 361 | 生成器加固 — Validators + Path Convergence | ✅ | Post-generation SFC validators (R001-R007), single-entry generate_component_from_file, 13 playwright smoke tests |
 | 363 | AutoUI Generation Skill | ⏳ | Pre-generation knowledge encoding (contracts+patterns), wizard CLI, test skeleton generation |
-| 365 | AutoUI Pluggable Host Architecture | ⏳ | One app core (VTree=AutoTree), three hosts: dev host (Windows), libcosmic host (COSMIC target), AutoOS shared compositor (deferred); system ports with Linux adapters + Windows mocks |
+| 365 | AutoUI Pluggable Host Architecture | ✅ | `HostBackend` unified interface (headless/iced/gpui); `auto-cosmic` crate family (ports+mock+demo+libcosmic host+Linux adapters); cfg-gated cross-platform; de-iced Component trait; gpui backend fixed; RenderQueue moved to Plan 386 |
 | 371 | AutoUI MCP 功能大改进 | ✅ | Agent-driven UI automation via MCP (snapshot/action/state/find/screenshot), path-addressed actions (Task 19), pixel-diff screenshots (Task 20), Rust state snapshot (Task 21), L1 special-case generalization, L3 persistent child-component instances, API PATCH/DELETE + store clone + var-name sanitization, 013-todo multi-component verification (VM+Rust 8/0/0) |
 
 ## Status Summary
-- Completed: 17 | Partial: 4 | Planned: 13 | Deprecated: 0
+- Completed: 18 | Partial: 4 | Planned: 12 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL
