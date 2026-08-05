@@ -943,3 +943,6 @@ fn test_312_codegen_collects_api_routes() {
 // Plan 387 §16 P0-3: external enum as actor message (on { ev Event }).
 // .expected.out hand-written (VM send shim coerces to Value::Int).
 #[test] fn test_22_actors_012_external_enum_msg() { test_a2r_deep("22_actors/012_external_enum_msg"); }
+// Plan 387 §16 P0-2: TaskRef as a function parameter (move, not clone).
+// .expected.out hand-written (VM uses a different spawn/send API).
+#[test] fn test_22_actors_011_handle_param() { test_a2r_deep("22_actors/011_handle_param"); }
