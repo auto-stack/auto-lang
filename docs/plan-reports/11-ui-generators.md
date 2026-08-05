@@ -42,10 +42,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 361 | 生成器加固 — Validators + Path Convergence | Complete | Post-generation SFC validators (R001-R007), single-entry generate_component_from_file, 13 playwright smoke tests |
 | 363 | AutoUI Generation Skill | Planned | Pre-generation knowledge encoding (contracts+patterns), wizard CLI tool, test skeleton auto-generation |
 | 365 | AutoUI Pluggable Host Architecture | Complete | `HostBackend` unified interface (headless/iced/gpui); `auto-cosmic` crate family; cfg-gated cross-platform; de-iced Component trait; gpui backend fixed; RenderQueue → Plan 386 |
+| 337 | vue-gallery ↔ @auto-ui/widgets 薄同步层 | Complete | LIBRARY_WIDGETS self-consistency, AURA drift guard, `auto ui backlog`, widgets.ts split, gallery-stubs scaffolding, InstallHint |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 356, 361, 365 (17 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365 (18 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -153,3 +154,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [361-short-term-generator-hardening.md](../plans/archive/361-short-term-generator-hardening.md)
 - [363-autoui-generation-skill.md](../plans/363-autoui-generation-skill.md)
 - [365-autoui-pluggable-host-architecture.md](../plans/archive/365-autoui-pluggable-host-architecture.md)
+- [337-vue-gallery-widgets-sync-foundation.md](../plans/archive/337-vue-gallery-widgets-sync-foundation.md)
