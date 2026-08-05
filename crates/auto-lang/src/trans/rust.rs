@@ -291,10 +291,11 @@ pub struct RustTrans {
     // Uses Cell for interior mutability (avoids borrow conflicts with &self writes).
     a2r_std_used: std::cell::Cell<bool>,
 
-    // Plan 387: set true when any `task` definition is seen, so `trans()` forces
-    // `#[tokio::main(flavor = "current_thread")]` + async main + injects the
-    // ActorRuntime bootstrap. Aligns with VM's single-threaded cooperative actor
-    // scheduling (Plan 317 path B).
+    // Plan 387: set true when any `task` definition is seen, so `fn_decl` forces
+    // `#[tokio::main]` + async main for the program and emits the `drain_all`
+    // epilogue. Actor programs use the multi_thread runtime (current_thread
+    // deadlocked — see the comment in fn_decl); stdout behavior still matches
+    // the VM's single-threaded cooperative actor scheduling (Plan 317 path B).
     program_has_actors: bool,
 
     // Plan 387: while compiling a task hook/handler body, set true so that bare
@@ -8829,7 +8830,13 @@ impl RustTrans {
         )?;
         self.indent();
         self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<{}>();", msg_type)?;
+        // Plan 387 archive fix: `a2r_std::task::channel` pairs the TaskRef with a
+        // shared in-flight counter and the actor-side receiver. The loop calls
+        // `rx.mark_processed()` after each message so `drain_all` (called at the
+        // end of generated main) can wait until every sent message is fully
+        // handled — the old fixed-16-yield drain silently lost messages when a
+        // handler awaited internally.
+        writeln!(sink.body, "let (taskref, mut rx) = a2r_std::task::channel::<{}>();", msg_type)?;
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "let join = tokio::spawn(async move {{")?;
         self.indent();
@@ -8844,6 +8851,8 @@ impl RustTrans {
         writeln!(sink.body, "let reply_tx = a2r_std::task::NopReply;")?;
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "let _ = actor.handle_msg(msg, reply_tx).await;")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "rx.mark_processed();")?;
         self.dedent();
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "}}")?;
@@ -8857,7 +8866,7 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "a2r_std::task::track_join(join);")?;
         self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "a2r_std::task::TaskRef::new(tx)")?;
+        writeln!(sink.body, "taskref")?;
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}\n\n")?;

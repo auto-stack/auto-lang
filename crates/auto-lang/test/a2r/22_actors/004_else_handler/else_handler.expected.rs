@@ -36,17 +36,18 @@ impl Router {
 }
 
 pub fn spawn_router() -> a2r_std::task::TaskRef<i64> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
+    let (taskref, mut rx) = a2r_std::task::channel::<i64>();
     let join = tokio::spawn(async move {
         let mut actor = Router::new();
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
             let _ = actor.handle_msg(msg, reply_tx).await;
+            rx.mark_processed();
         }
     });
     a2r_std::task::track_join(join);
-    a2r_std::task::TaskRef::new(tx)
+    taskref
 }
 
 

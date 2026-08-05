@@ -49,17 +49,18 @@ impl Sink {
 }
 
 pub fn spawn_sink() -> a2r_std::task::TaskRef<Event> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+    let (taskref, mut rx) = a2r_std::task::channel::<Event>();
     let join = tokio::spawn(async move {
         let mut actor = Sink::new();
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
             let _ = actor.handle_msg(msg, reply_tx).await;
+            rx.mark_processed();
         }
     });
     a2r_std::task::track_join(join);
-    a2r_std::task::TaskRef::new(tx)
+    taskref
 }
 
 
