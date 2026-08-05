@@ -1,0 +1,22 @@
+task Echo {
+    fn start() ! {
+    }
+    on {
+        "ping" -> {
+            print("pong")
+        }
+        "bye" -> {
+            print("farewell")
+        }
+        else -> {
+            print("unknown")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send("ping")
+    h.send("bye")
+    h.send("what")
+}

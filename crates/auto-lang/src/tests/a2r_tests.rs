@@ -930,3 +930,10 @@ fn test_312_codegen_collects_api_routes() {
 // so this case has no VM golden counterpart; behavior is verified by the
 // a2r-actor-tests parity harness against a hand-written expected output.
 #[test] fn test_22_actors_007_named_variants() { test_a2r_deep("22_actors/007_named_variants"); }
+// Plan 387 audit: string-message pattern. VM send shim coerces to Value::Int,
+// so this case's .expected.out is hand-written; verified by the parity harness.
+#[test] fn test_22_actors_008_string_pattern() { test_a2r_deep("22_actors/008_string_pattern"); }
+// Plan 387 audit: stop hook with a body. VM's live path does not invoke stop on
+// mailbox close, so its .expected.out (with "stopped") is hand-written and
+// documents a2r's intentional ahead-of-VM stop-hook wiring.
+#[test] fn test_22_actors_009_stop_hook() { test_a2r_deep("22_actors/009_stop_hook"); }

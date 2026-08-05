@@ -344,3 +344,47 @@ VM 的 `else ->` 在无匹配时触发（`engine.rs:653-669` 的 `#else` export�
 - **VM 命名变体支持**：VM 的 `shim_task_send_vm` 强制 `Value::Int(msg)`，**不支持命名变体发送**——a2r Tier 2 在此特性上超前于 VM。`007` 的 `.expected.out` 为手写（逻辑正确），非 VM 派生。
 - **guards 真正执行**：parser 已解析 `if guard`，但 a2r codegen 丢弃（与 VM 一致，VM 也未接通）。
 - **`on(ctx)` / reply 真闭环**：Tier 3（ask/reply RPC），VM 也只桩。
+- **消息 binding 类型硬编码 i64**：`derive_task_msg_type` 把所有 `WithBindings` 的 binding 类型忽略，统一生成 `i64`（`rust.rs` 注释 "VM tests use ints"）。声明 `Add(x: String)` 仍生成 `Add(i64)`。后续需按声明类型推导。
+- **`task_msg_variants` 跨 task 同名变体冲突**：变体名→enum 名映射是 `HashMap<String,String>`，两个 task 都有 `Add` 时后者覆盖前者，`h.send(Add(1))` 会改写到错误的 enum。单 task 程序无此问题；多 task 同名变体时 latent bug。
+
+---
+
+## §14 复审与修复（2026-08-05）
+
+对 Plan 387 全部修改的三路审计（a2r-std runtime / 转译器 / 测试覆盖）发现并修复了以下问题：
+
+### §14.1 已修复的代码问题
+
+| # | 问题 | 位置 | 修复 |
+|---|---|---|---|
+| F1 | `trans()` Phase-4 actor-main 分支是死代码（显式 main 走 `fn_decl`），且注释说 current_thread 与实际 multi_thread 矛盾 | `rust.rs` 原 16316-16328 | 改为 multi_thread + 注释说明两条路径关系与死锁 rationale |
+| F2 | 死语句 `let _ = name_of(&td.name);`（重构遗留） | `rust.rs` 原 8661 | 删除 |
+| F3 | 测试名/注释与实际矛盾：`runtime_held_sender_suffices_without_user_drop` 声称测"忘记 drop"，实际 drop 了；且无 assert | `task.rs` 243-263 | 改名 `drop_handle_then_run_completes_without_hang` + 准确注释 |
+| F4 | 模块 doc 误导：说 runtime "drops every TaskRef it owns"，实际靠生成代码 `drop(h)` | `task.rs` 11-23 | 重写 shutdown model 说明：双 clone + 生成代码 drop + 无 fallback |
+| F5 | `007/008/009` 在 `test/vm/23_actor/` 下像 VM 黄金但手写，无注释防误注册 | `vm_file_tests.rs` 902 | 加 NOTE 注释说明为何不注册 + 不可加 |
+
+### §14.2 补齐的测试覆盖（审计最关键发现）
+
+审计发现 4 个**声称已实现但无测试守护**的特性（回归会隐形）。补齐其中 2 个：
+
+| 用例 | 覆盖特性 | 之前状态 | 现状 |
+|---|---|---|---|
+| **008_string_pattern** | `on { "ping" => {...} }` + `h.send("ping")` | commit 声称"端到端通过"但**无 `.at` 用例** | 文本黄金 + parity 测试 |
+| **009_stop_hook** | `fn stop()!{...}` 有 body + mailbox 关闭后执行 | emitter 支持但**无用例**；发现 VM live path 不调 stop | 文本黄金 + parity 测试（手写 expected，含 `stopped`） |
+
+剩余 2 个未补（属 Tier 2 边缘）：`#[single]` 单例（VM 也未真正支持）、混合 literal+命名变体（`Literal(...)` enum 臂的生成路径无测试）。
+
+### §14.3 发现的 a2r 超前于 VM 的行为（非 bug，记录）
+
+- **007 命名变体发送**：VM send shim 强制 `Value::Int`，不支持；a2r 通过生成 enum 支持。
+- **008 字符串消息**：同上，VM 不支持；a2r 支持。
+- **009 stop hook**：VM live path（`run_task_loop`）**不在 mailbox 关闭后调 stop**（只有 skeleton path 调）；a2r spawn helper 在 `recv` 返回 None 后调 `actor.stop()`。
+
+这三项的 `.expected.out` 均为**手写逻辑正确值**，非 VM 派生。a2r-actor-tests parity 测试用它们验证 a2r 行为正确性。
+
+### §14.4 验证
+
+- 9 个 a2r 文本黄金测试全绿（含新 008/009）
+- 9 个 parity 测试全绿（含新 008/009，stdout 逐字节匹配手写 expected）
+- 7 VM actor + 6 a2r-std 单测全绿
+- 复审修复 commit：见下文 §15

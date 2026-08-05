@@ -1,0 +1,18 @@
+task Worker {
+    fn start() ! {
+        print("started")
+    }
+    fn stop() ! {
+        print("stopped")
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Worker", 16)
+    h.send(1)
+}
