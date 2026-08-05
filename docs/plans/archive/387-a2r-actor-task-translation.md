@@ -589,3 +589,70 @@ mailboxes are empty, but that requires peeking the channel (not exposed by mpsc)
 - 消息 binding 类型硬编码 i64（`derive_task_msg_type` 忽略声明类型）
 - 跨 task 同名变体冲突（`task_msg_variants` HashMap 后写覆盖）
 - 旧 `Type::Handle` → `Arc<TaskHandle<T>>` 映射残留（a2r-std 已删 `TaskHandle`；parser 当前不构造该类型，属 latent）
+
+---
+
+## §19 归档后 follow-up phase（2026-08-06）
+
+> 用户指示：不新建计划，在 387 后追加 phase 解决 §17.5/§18.4 的 follow-up。
+> 代码 commit 见各 P 项标注；最终 commit 见 §19.7。
+
+### §19.1 P1 — TaskRef 作 struct 字段（实测已支持 + 补强）✅
+- **§17.5 的"解析失败"是误报**：当时用 `struct Worker {...}`（`struct` 不是 Auto 关键字）。
+  正确语法 `type Worker { sink TaskRef<i64> }` **本就解析成功**并生成
+  `sink: a2r_std::task::TaskRef<i64>`。
+- 实测补强两处（否则编译不过）：
+  - **derive 降级**：含 TaskRef 字段的 struct 从 `#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]`
+    降为 `#[derive(Debug)]`（TaskRef 是 move-only，无 Clone 等 trait）；
+    a2r-std 补 `impl Debug for TaskRef`。
+  - **move 不 clone**：`let h = w.sink` 不再生成 `.clone()`（新 `expr_is_taskref` 识别
+    直接绑定 + 字段访问两种路径；`infer_type_from_expr` 对用户 struct 构造器
+    `Worker(...)` 推断 `Type::User(Worker)` 而非 Unknown）。
+- 用例：`016_actor_methods`（struct 字段 handle + `ext Worker` 方法 send + 字段 move 读取）。
+  文本黄金 + parity 全绿。
+
+### §19.2 P2 — 跨 task 同名变体冲突 ✅
+- 原 `task_msg_variants: HashMap<String,String>`（变体→枚举）后写覆盖 → 两个 task 都声明
+  `Add` 时 `h.send(Add(1))` 会改写进**错误**的枚举（实测 `c.send(Add(1))` → `LedgerMsg::Add`）。
+- 修复：`task_variants: HashMap<task, HashSet<variant>>`（per-task 变体集）+ 
+  `handle_task_map`（`let h = Task.spawn("Counter")` 记录 handle→task）+ send 时按
+  **receiver 变量**消歧；receiver 未知时仅单 task 声明的变体才解析（向后兼容）。
+- 用例：`017_cross_task_variants`（Counter/Ledger 同声明 `Add`，`c.send` → CounterMsg、
+  `l.send` → LedgerMsg）。文本黄金 + parity 全绿。
+
+### §19.3 P3 — 消息 binding 声明类型 ✅
+- 原 `derive_task_msg_type` 把所有 binding 硬编码 `i64`（`Add(x: String)` 仍生成 `Add(i64)`）；
+  且 parser 连 `Add(val: String)` 都解析不了。
+- 修复：
+  - AST `TaskMsgPattern::WithBindings { bindings: Vec<(Name, Option<Type>)> }`（含声明类型）；
+  - parser 支持 `Add(val: String)` / `Add(val String)`（可选冒号 + 类型），binding 注册进
+    scope 时带类型；
+  - `derive_task_msg_type` 用声明类型（缺省 i64）；
+  - send 侧变体参数里的字符串字面量补 `.to_string()`（`Greet("bob")` → `Greet("bob".to_string())`）。
+- 用例：`018_typed_bindings`（`Greet(name: String)` → `Greet(String)` + 无类型 `Count(n)` → `Count(i64)`）。
+  文本黄金 + parity 全绿。
+
+### §19.4 P4 — 旧 `Type::Handle` 映射残留 ✅
+- 原 `rust_type_name`/`rust_return_type_name` 把 `Type::Handle{T}` 映射到
+  `std::sync::Arc<TaskHandle<T>>`——a2r-std 在 §17.1 已删 `TaskHandle`（只剩 `TaskRef`），
+  属 latent 编译陷阱（parser 已不构造该类型，故从未触发）。
+- 修复：两处映射改为 `a2r_std::task::TaskRef<T>`，与现行 handle 模型一致。
+
+### §19.5 P5 — guards 接线 ✅ / `#[single]` 继续推迟 ⏸
+- **guards**：`on { Add(val) if val > 1 -> ... }` 原 parser 解析、转译器 `_guard` 丢弃。
+  现发射为 Rust match-arm guard（`FilterMsg::Add(val) if val > 1 => {...}`），guard 表达式
+  复用 `in_task_body` state 字段改写。
+- 用例：`019_guards`（val>1 → "big"，否则 "small"）。文本黄金 + parity 全绿。
+- **`#[single]` 单例**：维持推迟（§18.4 记录）。理由：VM 未支持（无对齐参照）；
+  387 P0-1/P0-2 已让"单例用法"（建一个 handle 到处传）可行，单例只是便捷而非能力；
+  实现需 a2r-std 全局单例注册表（OnceCell + 按类型名寻址 + 首 send lazy spawn），留后续 plan。
+
+### §19.6 验证
+- 22_actors 文本黄金 **19/19**（001-012 + 013-015 并发会话 + 016-019 本 phase）；
+- parity **16/16**（001-012 + 016-019）；
+- a2r 全量 **325/325**；VM actor **7/7**；a2r-std **8/8**；
+- §19.1 的 derive 降级/构造器推断不改变既有 001-012 文本黄金（回归确认）。
+
+### §19.7 commit
+- 代码（rust.rs / ast/task.rs / parser.rs / vm/pattern_matcher.rs / vm/task_handler.rs /
+  a2r-std task.rs + 016-019 用例 + 注册）与本文档：见 §19.1-§19.5 各 P 项标注的 commit。
