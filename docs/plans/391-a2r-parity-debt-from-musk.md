@@ -2,7 +2,7 @@
 plan: 391
 title: a2r-parity-debt-from-musk
 affects: [auto-lang/a2r, auto-lang/parser, auto-lang/trans-rust]
-status: draft # draft | in-progress | complete
+status: complete # draft | in-progress | complete
 ---
 
 # Plan 391: a2r 功能一致性 debt 清单 — 来自 auto-musk Plan 018 dogfooding
@@ -218,3 +218,33 @@ status: draft # draft | in-progress | complete
    `<name>.a2r.rs` 是否非空且含期望函数，**不能只看 EXIT=0**。
 2. **stdout 的 `[trans] ... ->` 日志行不是产物**——产物是 `.a2r.rs` 文件。
    （Plan 018 复审清理时曾因此误判 specs.at"内存爆炸"，实际是用了修复前的旧构建 + 判断方法错。）
+
+---
+
+## §7 闭环记录（2026-08-06）
+
+六项限制（D1-D6）全部修复并合入 master（merge commit）。实施方式：worktree
+`plan-391/a2r-parity-debt`（已合并删除），4 个诊断 agent 并行（D1/D2/D3/D4）+
+人工整合 + D5/D6。
+
+| ID | 修复 | commit | auto-musk 去变通 |
+|---|---|---|---|
+| D1 | `.len()` 宽类型(u64/i64/usize)抑制 as i32 cast | `492a93a6` | wiki build_tree file size 真实化 ✅ |
+| D2 | `let v: Option<T> = m.get(k)` 标注改写为 `Option<&T>` | `492a93a6` | task_plan dfs graph.get 加标注 ✅ |
+| D3 | `List<str>` + split() 跳过强制 `Vec<String>` 标注 | `3ba03b56` | task_plan validate_handoff_path 加标注 ✅ |
+| D4 | 表达式位置 `::` 路径分隔符(`env::var(x).ok()`) | `492a93a6` | app_config env 覆盖待接线侧改动 |
+| D5 | `()` → Type::Void(类型) + Expr::Tuple([])(表达式) | `6f8162f6`+`492a93a6` | handoff_store save Result<(),str> ✅ |
+| D6 | `impl Trait for Type` 清晰错误(不误伤 ext for) | `3ba03b56`+`c4dff6dd` | task_plan trait impl 维持 static fn |
+
+**回归**：a2r golden 326/0（修复了 ext_for/ext_from）；lib 2801 passed /
+22 pre-existing failures（dstr/ui_gen/route/vm::codegen，与 Plan 391 无关）。
+auto-musk 12 真实文件 re-transpile 零回归；全量测试全绿。
+
+**关键发现**：/tmp 残留 .at 文件导致 CLI 递归扫描爆内存（`trans_rust_with_session`
+向上回溯扫描兄弟 .at）——此前所有"孤立样例挂起"现象均源于此，非真实 codegen bug。
+**教训**：转译测试须用干净空目录，不能放在 /tmp 大目录下。
+
+**已知局限**（非本计划范围，记录于 auto-musk KNOWN-DEBT-AND-RISKS.md）：
+- 多段路径 codegen：`std::env::var`（多段 `::`）parser 可解析但 codegen 发点。
+- wiki modified 仍 None（`duration_since` 方法链，闭包内 `.len()` 仍 cast）。
+- Auto trait impl 是语言设计决策（D6 仅清晰报错，未加语法支持）。
