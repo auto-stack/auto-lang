@@ -1,0 +1,9 @@
+[package]
+name = "auto-cosmic-demo"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 365 W2: demo clock+battery applet driven by mock system ports"
+
+[dependencies]
+auto-lang = { path = "../../auto-lang", features = ["ui-headless"] }
+auto-cosmic-ports = { path = "../ports" }

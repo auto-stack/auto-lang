@@ -1,0 +1,7 @@
+[package]
+name = "auto-cosmic-ports"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 365 W2: System port interfaces + mock framework for COSMIC replication"
+
+[dependencies]

@@ -22,6 +22,9 @@ members = [
     "crates/auto-playground",
     # Plan 216: C FFI Bindgen
     "crates/auto-bindgen",
+    # Plan 365 W2: COSMIC replication — system ports + demo
+    "crates/auto-cosmic/ports",
+    "crates/auto-cosmic/demo",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [

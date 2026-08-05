@@ -138,7 +138,7 @@ as the final validation environment.
 | # | Item | Status | Difficulty | Files | Acceptance |
 |---|------|--------|-----------|-------|------------|
 | W1 | Unify host backend interface over VTree | ✅ | ⭐⭐ | crates/auto-lang/src/ui/{host.rs (new), mod.rs, app.rs} | `HostBackend` enum + `run` + `default_for_features`; `App::run` delegates to it; headless + iced compile; existing examples unchanged |
-| W2 | Dev-host mock framework for system ports | ⏳ | ⭐⭐ | new: auto-cosmic/ports/ (mock impls) | a demo app (clock+battery applet logic) runs on Windows driven by scripted mock events |
+| W2 | Dev-host mock framework for system ports | ✅ | ⭐⭐ | new: crates/auto-cosmic/{ports,demo}/ | a demo app (clock+battery applet logic) runs on Windows driven by scripted mock events |
 | W3 | libcosmic host backend (VTree → Element) | ⏳ | ⭐⭐⭐⭐ | new: auto-cosmic/host-libcosmic/ | same app core binary runs on Linux as a real libcosmic app; widget coverage driven by cosmic-monitor replication |
 | W4 | Linux port adapters | ⏳ | ⭐⭐⭐ | auto-cosmic/ports/ + Plan 364 glue crates | NotificationsPort + SessionPort real adapters pass integration test on WSL2 |
 | W5 | (Deferred) RenderCommand/RenderQueue/compositor per doc 20 | ⏸ Deferred | ⭐⭐⭐⭐⭐ | new crates | entry conditions in D4 met |
@@ -243,3 +243,35 @@ examples that call them directly still work. W1 is additive.
 `IcedComponent` extension trait would also require updating the a2r codegen
 (`ui_gen/rust.rs:983` generates `fn subscription` inside `impl Component`).
 Recorded as a separate cleanup.
+
+### W2 — landed (dev-host mock framework for system ports)
+
+**Delivered**: two new workspace crates under `crates/auto-cosmic/`:
+
+1. **`auto-cosmic-ports`** — the system-port abstraction layer:
+   - `SystemPort` trait (base for all ports) + concrete port traits:
+     `PowerPort` (battery/AC, UPower on Linux), `ClockPort` (wall-clock time),
+     `NotificationsPort` (desktop notifications, FreeDesktop D-Bus on Linux).
+   - `mock` module: scriptable mock impls (`MockPowerPort`, `MockClockPort`,
+     `MockNotificationsPort`) — push scripted states/events in, the app reads
+     them out. Mutex-protected, `Send`-safe, `#[derive(Debug)]`.
+
+2. **`auto-cosmic-demo`** — a `ClockBatteryApplet` (clock + battery indicator)
+   implementing `auto_lang::ui::Component`. Driven by `Arc<MockClockPort>` +
+   `Arc<MockPowerPort>`, rendered via `HostBackend::Headless` (the W1 seam).
+   Platform-neutral: the same component runs under the libcosmic host (W3) on
+   Linux with real ports (W4).
+
+**Verification**: `cargo run -p auto-cosmic-demo` on Windows produces:
+```
+ClockBatteryApplet: 12:00:00, battery 78%, AC=false
+After 2 min: 12:02:00, battery 76%
+```
+Clock advance (+120s → 12:02:00) and battery change (78%→76%) both work;
+headless render via `HostBackend` exits cleanly. Ports crate tests 3/3.
+
+**Design note**: W2 ports are deliberately minimal (3 ports: Power, Clock,
+Notifications). The plan's full list (Audio, Display, Network, Bluetooth,
+Session, Portal, Secrets) will be added incrementally as replicated COSMIC
+components exercise them — per the plan's "W4 proceeds per COSMIC component
+being replicated" directive.
