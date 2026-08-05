@@ -388,3 +388,99 @@ VM 的 `else ->` 在无匹配时触发（`engine.rs:653-669` 的 `#else` export�
 - 9 个 parity 测试全绿（含新 008/009，stdout 逐字节匹配手写 expected）
 - 7 VM actor + 6 a2r-std 单测全绿
 - 复审修复 commit：见下文 §15
+
+---
+
+## §16 下游需求：actor handle 一等公民化（来自 auto-ai Plan 021 缺口 1）
+
+> 2026-08-05：auto-ai 侧评估 Plan 387 当前能力后，发现**不足以支撑缺口 1**（用 actor 替代
+> `Arc<dyn Fn(StreamEvent)>` 做流式）。本节记录 auto-ai 的具体需求，供 auto-lang 后续实施。
+> 来源：auto-ai `docs/plans/021-auto-completion-roadmap.md` Phase 1 调研结论。
+
+### 背景
+
+auto-ai-agent 的 `Client` spec 缺 `complete_stream`（带回调 `Arc<dyn Fn(Value)>`），因为 Auto
+不支持 dyn-Fn 类型。Plan 021 Phase 1 原想用 actor（`Task.spawn` + `h.send`）绕开 dyn-Fn，但发现
+Plan 387 当前能力有三个架构性阻塞。
+
+### 三个 P0 阻塞（按严重度排序）
+
+**P0-1：actor 运行时与 `fn main` 硬耦合（最关键）**
+
+- `ActorRuntime`（`__rt`）、prologue/epilogue、handle drop 追踪**只在 `fn main` 里注入**
+  （`rust.rs:9382` `is_main_actor` 判断为 true 时才注入）
+- `Task.spawn("Foo")` 无条件展开为 `spawn_foo(&mut __rt)`（`rust.rs:3449`）
+- **后果**：agent 的 `run_inner` 是 `Agent` 结构体的方法（非 main），若在里面调 `Task.spawn` 或
+  使用依赖 `__rt` 的展开，`__rt` 在该方法作用域不存在 → 编译失败
+- 所有 7 个测试都在 `fn main` 里 spawn，从未验证在普通方法/结构体方法里用 actor
+
+**需求**：让 actor 机制不限于 `fn main`。可行方案（任一）：
+- (a) `ActorRuntime` 提为程序级单例（`thread_local` 或 `OnceCell`），任意函数能 spawn
+- (b) `__rt` 作为隐式参数线程化到所有含 `Task.spawn`/`h.send` 的函数
+- (c) handle 类型（`TaskRef<M>`）成为 a2r 一等公民：drop 由 RAII 而非 main-epilogue 管理
+
+**P0-2：handle 不是一等类型**
+
+- `TaskRef<M>` 没暴露给 .at 类型系统——用户无法写 `fn run_inner(..., sink TaskRef<StreamEvent>)`
+- 旧的 `Type::Handle`（Plan 121，`rust.rs:1237`）映射到 `std::sync::Arc<TaskHandle<...>>`，
+  与 Plan 387 的 `a2r_std::task::TaskRef`/`TaskHandle` 类型不一致（从未接线）
+- **需求**：统一 `Type::Handle` 与 `TaskRef<M>`，允许 handle 作为函数参数类型、结构体字段类型
+
+**P0-3：外部 enum 作消息未完整支持**
+
+- agent 要 send 的是 `StreamEvent`（auto-ai-agent 定义的 enum），不是本 task 自动生成的 `<Task>Msg`
+- `emit_task_pattern`（`rust.rs:8741-8825`）只识别本 task 的 `<Task>Msg` 变体
+- send 侧 `rewrite_msg_variant_arg`（`rust.rs:8883+`）只改写本 task 变体，不改写外部 enum 构造
+  （如 `sink.send(StreamEvent.Delta("x"))`）
+- `on { ev StreamEvent }` 的 TypeBinding pattern 在 enum context 报错
+  （`rust.rs:8813` "TypeBinding in enum context not yet supported"）
+- **需求**：支持外部 enum 作为 actor 消息类型（send 外部 enum 构造 + handler 接收外部 enum）
+
+### auto-ai 侧的预期用法（验证场景）
+
+改造后，agent.at 的流式应该长这样（概念）：
+
+```auto
+// auto-ai-agent/src/agent.at
+// 定义一个事件收集 actor（调用方 spawn 后把 handle 传进 run_stream）
+task EventSink {
+    on {
+        ev StreamEvent -> {
+            // 转发到外部（打印/写 channel 等）
+        }
+    }
+}
+
+pub mut fn run_stream(task_msg str, cancel Arc<AtomicBool>, sink TaskRef<StreamEvent>) ~Result<AgentResult, AgentError> {
+    // run_inner 内部的事件点改成 sink.send(StreamEvent.Delta(...)) 而非 events.push(...)
+}
+```
+
+调用方（main 或上层）：
+```auto
+fn main() {
+    let sink = Task.spawn("EventSink", 64)
+    let agent = Agent.new(...)
+    let result = agent.run_stream(task, cancel, sink).await.?
+}
+```
+
+### 建议的验证用例（端到端）
+
+补以下测试到 `test/a2r/22_actors/`，验证一等公民化：
+
+1. **handle 跨函数传递**：`fn forward(h ??) { h.send(1) }` + main 里 spawn 后调 forward
+2. **handle 存结构体字段**：`struct Worker { sink: ?? }` + 方法里 `self.sink.send(...)`
+3. **外部 enum 消息**：定义一个普通 `pub enum Event { A, B(str) }`，actor `on { ev Event }`，send `Event.A`
+4. **actor 与普通方法共存**：一个 .at 文件同时有 struct 方法 + task 定义 + 方法里 spawn/send
+
+### 与 §9 Out of Scope 的关系
+
+本需求**不涉及** Tier 3 ask/reply（agent 流式只需单向 push，send 已是同步非阻塞）。
+纯粹是让 actor 的 spawn/send 不再限于 `fn main`、handle 成为一等类型、外部 enum 可作消息。
+
+### auto-ai 侧等待状态
+
+- auto-ai `docs/plans/021-auto-completion-roadmap.md` Phase 1 已记录此否决结论
+- auto-ai 侧无其他不依赖 auto-lang 的实施工作（三个缺口全卡 a2r）
+- 本节需求满足后，auto-ai 可立即实施 agent.at 的流式改造（Phase 1.3）
