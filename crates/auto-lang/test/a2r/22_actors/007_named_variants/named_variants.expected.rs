@@ -6,6 +6,12 @@ use a2r_std;
 use a2r_std::*;
 
 #[derive(Clone, Debug)]
+enum CounterMsg {
+    Add(i64),
+    Reset,
+}
+
+#[derive(Clone, Debug)]
 struct Counter {
     count: i64,
 }
@@ -25,11 +31,17 @@ impl Counter {
         Ok(())
     }
 
-    pub async fn handle_msg(&mut self, msg: i64, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn handle_msg(&mut self, msg: CounterMsg, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg {
-            1i64 => {
-                self.count = 42;
-                println!("handler ran");
+            CounterMsg::Add(val) => {
+                self.count = self.count + val;
+                if self.count == 8 {
+                    println!("reached eight");
+                }
+            }
+            CounterMsg::Reset => {
+                self.count = 0;
+                println!("reset");
             }
             _ => {
                 let _ = msg;
@@ -39,8 +51,8 @@ impl Counter {
     }
 }
 
-pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::TaskRef<i64> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
+pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::TaskRef<CounterMsg> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CounterMsg>();
     let join = tokio::spawn(async move {
         let mut actor = Counter::new();
         let _ = actor.start().await;
@@ -57,7 +69,9 @@ pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::T
 async fn main() {
     let mut __rt = a2r_std::task::ActorRuntime::new();
     let h = spawn_counter(&mut __rt);
-    h.send(1);
+    h.send(CounterMsg::Add(3));
+    h.send(CounterMsg::Add(5));
+    h.send(CounterMsg::Reset);
     drop(h);
     __rt.run_to_completion().await;
 }

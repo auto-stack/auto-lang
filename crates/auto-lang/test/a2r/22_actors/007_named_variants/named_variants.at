@@ -1,0 +1,24 @@
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        Add(val) -> {
+            count = count + val
+            if count == 8 {
+                print("reached eight")
+            }
+        }
+        Reset -> {
+            count = 0
+            print("reset")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(Add(3))
+    h.send(Add(5))
+    h.send(Reset)
+}
