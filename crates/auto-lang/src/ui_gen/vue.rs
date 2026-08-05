@@ -9582,8 +9582,8 @@ fn pascal_case(name: &str) -> String {
 /// All widget names with a library template (Plan 331). Kept in sync with
 /// [`library_template`]; the CLI `auto ui list` reads this.
 pub const LIBRARY_WIDGETS: &[&str] = &[
-    "badge",
     "avatar",
+    "badge",
     "button",
     "card",
     "checkbox",
@@ -10477,6 +10477,23 @@ mod tests {
         assert_eq!(index.1.matches("export").count(), 6, "index: {}", index.1);
         assert!(index.1.contains("Card"), "re-exports Card");
         assert!(index.1.contains("CardHeader"), "re-exports CardHeader");
+    }
+
+    /// Plan 337: pin LIBRARY_WIDGETS self-consistency — every advertised
+    /// widget must have a renderable template, and the list must be sorted.
+    #[test]
+    fn test_library_widgets_list_is_self_consistent() {
+        for name in VueGenerator::LIBRARY_WIDGETS {
+            let mut gen = VueGenerator::new_library();
+            gen.generate_widget_sfc(name)
+                .unwrap_or_else(|e| panic!("LIBRARY_WIDGETS lists '{name}' but template is missing: {e}"));
+        }
+        let mut sorted = VueGenerator::LIBRARY_WIDGETS.to_vec();
+        sorted.sort();
+        assert_eq!(
+            VueGenerator::LIBRARY_WIDGETS.to_vec(), sorted,
+            "LIBRARY_WIDGETS must be sorted"
+        );
     }
 
     #[test]
