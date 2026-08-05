@@ -5266,8 +5266,11 @@ impl<'a> Parser<'a> {
                 self.infer_ctx.bind_var(name.clone(), (**type_expr).clone());
             }
             P::WithBindings { bindings, .. } => {
-                for b in bindings {
-                    self.infer_ctx.bind_var(b.clone(), crate::ast::Type::Unknown);
+                for (b, bty) in bindings {
+                    // Plan 387 follow-up P3: bind the declared type when given,
+                    // so guard/body expressions see e.g. `val: String`.
+                    let ty = bty.clone().unwrap_or(crate::ast::Type::Unknown);
+                    self.infer_ctx.bind_var(b.clone(), ty);
                 }
             }
             _ => {}
@@ -5345,12 +5348,21 @@ impl<'a> Parser<'a> {
         // Check for parentheses with bindings: Add(val)
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume '('
-            let mut bindings = Vec::new();
+            let mut bindings: Vec<(Name, Option<crate::ast::Type>)> = Vec::new();
 
-            // Parse bindings
+            // Parse bindings. Plan 387 follow-up P3: each binding may carry an
+            // optional declared type — `Add(val: String)` / `Add(val String)` —
+            // which drives the generated enum variant's payload type.
             while !self.is_kind(TokenKind::RParen) {
                 let binding = self.parse_name()?;
-                bindings.push(binding);
+                let mut bty = None;
+                if self.is_kind(TokenKind::Colon) {
+                    self.next(); // consume ':'
+                }
+                if self.is_type_name() {
+                    bty = Some(self.parse_type()?);
+                }
+                bindings.push((binding, bty));
 
                 if self.is_kind(TokenKind::Comma) {
                     self.next(); // consume ','

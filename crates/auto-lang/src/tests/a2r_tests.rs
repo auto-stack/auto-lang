@@ -1057,6 +1057,16 @@ fn test_312_codegen_collects_api_routes() {
 // Plan 387 §16 P0-2: TaskRef as a function parameter (move, not clone).
 // .expected.out hand-written (VM uses a different spawn/send API).
 #[test] fn test_22_actors_011_handle_param() { test_a2r_deep("22_actors/011_handle_param"); }
+// Plan 387 follow-up: actor + user-type methods coexist — `type Worker` with a
+// `TaskRef<i64>` field (Debug-only derive, no Clone) + `ext Worker` method that
+// sends through the handle, and a field read that MOVES (no clone). a2r-only
+// (VM has no TaskRef first-class struct field). .expected.out hand-written.
+#[test] fn test_22_actors_016_actor_methods() { test_a2r_deep("22_actors/016_actor_methods"); }
+// Plan 387 follow-up P2: two tasks both declaring an `Add` variant — the
+// receiver's task must pick the right enum (`c.send(Add(1))` → CounterMsg, not
+// LedgerMsg). a2r-only (VM send shim coerces to Value::Int). .expected.out
+// hand-written.
+#[test] fn test_22_actors_017_cross_task_variants() { test_a2r_deep("22_actors/017_cross_task_variants"); }
 // Plan 389 R1: on-pattern TypeBinding usable as an expression variable — the
 // handler forwards the whole event to a free fn (`handle(ev)`), not just an
 // `is ev {...}` scrutinee. a2r-only (VM has no fn-value call in handler body).
@@ -1068,3 +1078,12 @@ fn test_312_codegen_collects_api_routes() {
 // infers its fn-pointer type instead of `/* unknown */`, and `(self.cb)(ev)`
 // forwards the event. a2r-only (VM's actor state is i64-backed).
 #[test] fn test_22_actors_015_fnp_state_field() { test_a2r_deep("22_actors/015_fnp_state_field"); }
+// Plan 387 follow-up P3: declared binding types drive the generated enum —
+// `Greet(name: String)` → `Greet(String)`, untyped bindings default i64, and a
+// string-literal arg is sent as owned String. a2r-only (VM send shim coerces
+// to Value::Int). .expected.out hand-written.
+#[test] fn test_22_actors_018_typed_bindings() { test_a2r_deep("22_actors/018_typed_bindings"); }
+// Plan 387 follow-up P5: guard expressions on message handlers
+// (`Add(val) if val > 1 ->`) emit as Rust match-arm guards. a2r-only (VM does
+// not execute guards). .expected.out hand-written.
+#[test] fn test_22_actors_019_guards() { test_a2r_deep("22_actors/019_guards"); }

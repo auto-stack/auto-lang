@@ -268,9 +268,12 @@ pub enum TaskMsgPattern {
     /// Simple variant without data: Reset, Print
     Simple(Name),
     /// Variant with bindings: Add(val), Log(msg)
+    /// Each binding is `(name, optional_declared_type)` — `Add(val)` →
+    /// `(val, None)`; `Add(val: String)` / `Add(val String)` → `(val, Some(String))`
+    /// (Plan 387 follow-up P3: declared binding types drive the generated enum).
     WithBindings {
         variant: Name,
-        bindings: Vec<Name>,
+        bindings: Vec<(Name, Option<Type>)>,
     },
 
     // === Phase 3 Patterns (Plan 125) ===
@@ -292,7 +295,13 @@ impl PartialEq for TaskMsgPattern {
             (
                 TaskMsgPattern::WithBindings { variant: v1, bindings: b1 },
                 TaskMsgPattern::WithBindings { variant: v2, bindings: b2 },
-            ) => v1 == v2 && b1 == b2,
+            ) => {
+                // Compare variant + binding NAMES only (declared types are not
+                // part of the pattern's identity; Type has no PartialEq).
+                v1 == v2
+                    && b1.len() == b2.len()
+                    && b1.iter().zip(b2.iter()).all(|((n1, _), (n2, _))| n1 == n2)
+            }
             (TaskMsgPattern::Literal(a), TaskMsgPattern::Literal(b)) => a == b,
             (
                 TaskMsgPattern::TypeBinding { name: n1, type_expr: t1 },
@@ -344,11 +353,14 @@ impl fmt::Display for TaskMsgPattern {
             TaskMsgPattern::Simple(name) => write!(f, "{}", name),
             TaskMsgPattern::WithBindings { variant, bindings } => {
                 write!(f, "{}(", variant)?;
-                for (i, binding) in bindings.iter().enumerate() {
+                for (i, (binding, bty)) in bindings.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}", binding)?;
+                    if let Some(ty) = bty {
+                        write!(f, ": {}", ty.unique_name())?;
+                    }
                 }
                 write!(f, ")")
             }
@@ -376,8 +388,9 @@ impl TaskMsgPattern {
         TaskMsgPattern::Simple(name)
     }
 
-    /// Create a pattern with bindings
-    pub fn with_bindings(variant: Name, bindings: Vec<Name>) -> Self {
+    /// Create a pattern with bindings (Plan 387 follow-up: each binding may
+    /// carry an optional declared type — `Add(val: String)`).
+    pub fn with_bindings(variant: Name, bindings: Vec<(Name, Option<Type>)>) -> Self {
         TaskMsgPattern::WithBindings { variant, bindings }
     }
 
@@ -686,7 +699,7 @@ impl ToNode for TaskMsgPattern {
             TaskMsgPattern::WithBindings { variant, bindings } => {
                 node.set_prop("kind", Value::str("with_bindings"));
                 node.set_prop("variant", Value::str(variant.as_str()));
-                for binding in bindings {
+                for (binding, _bty) in bindings {
                     let mut binding_node = AutoNode::new("binding");
                     binding_node.set_prop("name", Value::str(binding.as_str()));
                     node.add_kid(binding_node);
@@ -766,7 +779,7 @@ mod tests {
     fn test_task_msg_pattern_with_bindings() {
         let pattern = TaskMsgPattern::with_bindings(
             "Add".into(),
-            vec!["val".into(), "other".into()],
+            vec![("val".into(), None), ("other".into(), None)],
         );
         assert_eq!(pattern.to_string(), "Add(val, other)");
         assert_eq!(pattern.variant_name(), Some(&AutoStr::from("Add")));
@@ -814,7 +827,7 @@ mod tests {
         let p1 = TaskMsgPattern::simple("Reset".into());
         let p2 = TaskMsgPattern::simple("Reset".into());
         let p3 = TaskMsgPattern::simple("Add".into());
-        let p4 = TaskMsgPattern::with_bindings("Add".into(), vec!["val".into()]);
+        let p4 = TaskMsgPattern::with_bindings("Add".into(), vec![("val".into(), None)]);
 
         assert_eq!(p1, p2);
         assert_ne!(p1, p3);

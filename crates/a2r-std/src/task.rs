@@ -207,6 +207,14 @@ impl<M: Send + 'static> TaskRef<M> {
 // TaskRef's Drop is the default (drops the UnboundedSender, closing the channel
 // if this is the last sender). No custom Drop needed — RAII is automatic.
 
+impl<M: Send + 'static> std::fmt::Debug for TaskRef<M> {
+    /// Handles are move-only; Debug exists so generated structs that hold a
+    /// `TaskRef` field can still derive `Debug` (Plan 387 follow-up).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TaskRef")
+    }
+}
+
 /// No-op reply channel for Tier 1 (Plan 387 §12.3).
 ///
 /// The a2r `Stmt::Reply` emitter produces `let _ = reply_tx.send(expr);` and so

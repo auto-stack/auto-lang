@@ -1,0 +1,16 @@
+task Greeter {
+    on {
+        Greet(name: String) -> {
+            print(`hi ${name}`)
+        }
+        Count(n) -> {
+            print(`count ${n}`)
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Greeter", 4)
+    h.send(Greet("bob"))
+    h.send(Count(7))
+}

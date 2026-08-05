@@ -72,7 +72,10 @@ impl PatternMatcher {
                 Self::match_simple_variant(variant_name.as_str(), message)
             }
             TaskMsgPattern::WithBindings { variant, bindings } => {
-                Self::match_variant_with_bindings(variant.as_str(), bindings, message)
+                // Plan 387 follow-up P3: bindings are `(name, Option<type>)`;
+                // the VM matcher only needs the names.
+                let names: Vec<AutoStr> = bindings.iter().map(|(n, _)| n.clone()).collect();
+                Self::match_variant_with_bindings(variant.as_str(), &names, message)
             }
         }
     }

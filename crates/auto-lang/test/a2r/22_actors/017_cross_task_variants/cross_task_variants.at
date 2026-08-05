@@ -1,0 +1,27 @@
+task Counter {
+    count = 0
+    on {
+        Add(val) -> {
+            count = count + val
+            if count == 3 {
+                print("counter three")
+            }
+        }
+    }
+}
+
+task Ledger {
+    on {
+        Add(val) -> {
+            print("ledger add")
+        }
+    }
+}
+
+fn main() {
+    let c = Task.spawn("Counter", 4)
+    let l = Task.spawn("Ledger", 4)
+    c.send(Add(1))
+    c.send(Add(2))
+    l.send(Add(9))
+}

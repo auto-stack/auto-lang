@@ -1,0 +1,27 @@
+task Sink {
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+pub type Worker {
+    sink TaskRef<i64>
+}
+
+ext Worker {
+    fn emit() {
+        .sink.send(1)
+    }
+}
+
+fn main() {
+    let w = Worker(Task.spawn("Sink", 4))
+    w.emit()
+    let h = w.sink
+    h.send(2)
+}

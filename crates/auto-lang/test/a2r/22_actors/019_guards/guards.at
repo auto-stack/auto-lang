@@ -1,0 +1,16 @@
+task Filter {
+    on {
+        Add(val) if val > 1 -> {
+            print("big")
+        }
+        Add(val) -> {
+            print("small")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Filter", 4)
+    h.send(Add(5))
+    h.send(Add(0))
+}

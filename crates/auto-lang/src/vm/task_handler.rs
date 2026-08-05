@@ -128,8 +128,9 @@ impl SerializedPattern {
                 // Number of bindings
                 data.push(bindings.len() as u8);
 
-                // Each binding name
-                for binding in bindings {
+                // Each binding name (Plan 387 follow-up P3: bindings are
+                // `(name, Option<type>)` tuples now).
+                for (binding, _bty) in bindings {
                     let binding_idx = get_or_add_string(string_pool, binding.as_str());
                     data.extend_from_slice(&binding_idx.to_le_bytes());
                 }
@@ -414,7 +415,7 @@ mod tests {
         let mut table = TaskHandlerTable::new("TestTask".to_string());
         let pattern = TaskMsgPattern::WithBindings {
             variant: "Add".into(),
-            bindings: vec![auto_val::AutoStr::from("val")],
+            bindings: vec![(auto_val::AutoStr::from("val"), None)],
         };
 
         let idx = table.add_handler(&pattern, 400, false);
@@ -435,7 +436,7 @@ mod tests {
         let p2 = TaskMsgPattern::Simple("Reset".into());
         let p3 = TaskMsgPattern::WithBindings {
             variant: "Add".into(),
-            bindings: vec![auto_val::AutoStr::from("val")],
+            bindings: vec![(auto_val::AutoStr::from("val"), None)],
         };
 
         table.add_handler(&p1, 100, true);

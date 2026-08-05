@@ -315,11 +315,19 @@ pub struct RustTrans {
     main_actor_prologue: Option<String>,
     main_actor_epilogue: Option<String>,
 
-    // Plan 387 W4: map from a task message-variant name (e.g. "Add", "Reset") to
-    // its generated enum name (e.g. "CounterMsg"). Populated by task_decl when a
-    // task uses named variants; consulted by call() to rewrite `h.send(Add(5))`
-    // → `h.send(CounterMsg::Add(5))` and `h.send(Reset)` → `h.send(CounterMsg::Reset)`.
-    task_msg_variants: std::collections::HashMap<String, String>,
+    // Plan 387 W4 + follow-up: map from a task message-variant name (e.g.
+    // "Add", "Reset") to the task(s) that declare it, so `h.send(Add(5))` can be
+    // rewritten to the RIGHT enum (`CounterMsg::Add(5)` vs `LedgerMsg::Add(5)`).
+    // Populated by task_decl; consulted by call() to rewrite send args.
+    // A flat variant→enum map silently picked the LAST task's enum when two
+    // tasks declared the same variant name (cross-task conflict).
+    task_variants: std::collections::HashMap<String, std::collections::HashSet<String>>,
+
+    // Plan 387 follow-up: handle variable name → task name, recorded when a
+    // `let h = Task.spawn("Counter", cap)` result is bound. Lets `h.send(...)`
+    // resolve the message enum from the receiver's task, disambiguating
+    // same-named variants across tasks.
+    handle_task_map: std::collections::HashMap<AutoStr, String>,
 }
 
 impl RustTrans {
@@ -391,7 +399,8 @@ impl RustTrans {
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
-            task_msg_variants: std::collections::HashMap::new(),
+            task_variants: std::collections::HashMap::new(),
+            handle_task_map: std::collections::HashMap::new(),
         }
     }
 
@@ -464,7 +473,8 @@ impl RustTrans {
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
-            task_msg_variants: std::collections::HashMap::new(),
+            task_variants: std::collections::HashMap::new(),
+            handle_task_map: std::collections::HashMap::new(),
         }
     }
 
@@ -770,6 +780,44 @@ impl RustTrans {
     ///   Clone    → `x.clone()`         + W0007 warning
     ///   RcRefCell→ `Rc::clone(&x)`     + W0007 warning
     ///   _ (Owned/BorrowView/BorrowMut/None) → `&x` / `&mut x` (unchanged)
+    /// Plan 387 follow-up: true if `expr` resolves to a `TaskRef<T>` value — a
+    /// direct binding of TaskRef type, or a field access whose field type is
+    /// TaskRef. TaskRef is move-only (RAII sole owner): such values must never
+    /// be cloned, so the escape-analysis auto-clone paths must skip them.
+    fn expr_is_taskref(&self, expr: &Expr) -> bool {
+        use crate::ast::Expr as E;
+        match expr {
+            E::Ident(name) | E::Ref(name) => self
+                .local_var_types
+                .get(name.as_str())
+                .map(|ty| matches!(ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef"))
+                .unwrap_or(false),
+            E::Dot(obj, field) => {
+                // Resolve the object's struct type via local var types, then
+                // check whether the accessed field's type is TaskRef.
+                let obj_ty = match obj.as_ref() {
+                    E::Ident(n) => self.local_var_types.get(n.as_str()),
+                    _ => None,
+                };
+                let type_name = match obj_ty {
+                    Some(Type::User(td)) => td.name.as_str(),
+                    Some(Type::GenericInstance(inst)) => inst.base_name.as_str(),
+                    _ => return false,
+                };
+                self.struct_field_types
+                    .get(type_name)
+                    .map(|fields| {
+                        fields.iter().any(|(fname, fty)| {
+                            fname.as_str() == field.as_str()
+                                && matches!(fty, Type::GenericInstance(inst) if inst.base_name == "TaskRef")
+                        })
+                    })
+                    .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
+
     fn emit_borrow(
         &mut self,
         inner: &Expr,
@@ -819,12 +867,9 @@ impl RustTrans {
             OwnershipTier::Clone => {
                 // Plan 387 §16: TaskRef<T> is a single-owner move type (not
                 // Clone). Passing it to a function must MOVE it, not clone.
-                // Detect by the variable's type being a TaskRef generic instance.
-                let is_taskref = binding_name
-                    .and_then(|n| self.local_var_types.get(n))
-                    .map(|ty| matches!(ty, crate::ast::Type::GenericInstance(inst) if inst.base_name == "TaskRef"))
-                    .unwrap_or(false);
-                if is_taskref {
+                // Detect by the value's type being a TaskRef generic instance
+                // (direct binding or a TaskRef-typed struct field).
+                if self.expr_is_taskref(inner) {
                     self.expr(inner, out)?;
                 } else {
                     // Escape detected: clone instead of borrow.
@@ -1221,8 +1266,11 @@ impl RustTrans {
                 };
                 format!("Result<{}, {}>", self.rust_type_name(inner), err_type)
             }
-            // Plan 121: Handle type - maps to Arc<TaskHandle<T>>
-            Type::Handle { task_type } => format!("std::sync::Arc<TaskHandle<{}>>", self.rust_type_name(task_type)),
+            // Plan 121 + 387 follow-up P4: the legacy `Handle<T>` type maps to the
+            // current actor handle `a2r_std::task::TaskRef<T>` (the old
+            // `std::sync::Arc<TaskHandle<T>>` referenced a type that was removed
+            // from a2r-std in §17.1 — any latent use would not compile).
+            Type::Handle { task_type } => format!("a2r_std::task::TaskRef<{}>", self.rust_type_name(task_type)),
             Type::Rust(source) => source.short_name().to_string(),
             Type::Tuple(ts) => {
                 let elems: Vec<String> = ts.iter().map(|t| self.rust_type_name(t)).collect();
@@ -1416,9 +1464,10 @@ impl RustTrans {
                 let elems: Vec<String> = ts.iter().map(|t| self.rust_return_type_name(t)).collect();
                 format!("({})", elems.join(", "))
             }
-            // Handle type: recurse for inner type
+            // Handle type: recurse for inner type (Plan 387 follow-up P4: maps
+            // to the current TaskRef handle; see rust_type_name).
             Type::Handle { task_type } => {
-                format!("std::sync::Arc<TaskHandle<{}>>", self.rust_return_type_name(task_type))
+                format!("a2r_std::task::TaskRef<{}>", self.rust_return_type_name(task_type))
             }
             // Plan 380 P2: Type::User in return position — if it's a bare
             // PascalCase name (not a known concrete type), treat as trait:
@@ -3451,7 +3500,14 @@ impl RustTrans {
         if let Expr::Dot(_obj, method) = call.name.as_ref() {
             if method.as_str() == "send" {
                 if let Some(Arg::Pos(arg0)) = call.args.args.first() {
-                    let rewritten = self.rewrite_msg_variant_arg(arg0);
+                    // Plan 387 follow-up: resolve the receiver's task from the
+                    // handle variable (e.g. `h` in `h.send(Add(1))`) so
+                    // same-named variants across tasks pick the right enum.
+                    let receiver_task: Option<String> = match _obj.as_ref() {
+                        Expr::Ident(v) => self.handle_task_map.get(v.as_str()).cloned(),
+                        _ => None,
+                    };
+                    let rewritten = self.rewrite_msg_variant_arg(arg0, receiver_task.as_deref());
                     if let Some(rw) = rewritten {
                         self.expr(_obj, out)?;
                         write!(out, ".send({})", rw)?;
@@ -7845,6 +7901,13 @@ impl RustTrans {
                         // only the name field is consulted by field-access detection.
                         return Type::User(crate::ast::TypeDecl::builtin(fn_name.as_str()));
                     }
+                    // Plan 387 follow-up: a user-struct constructor call
+                    // (`Worker(...)`) infers the struct type, so locals bound
+                    // from it (e.g. `let w = Worker(...)`) resolve field-access
+                    // types (incl. TaskRef fields) instead of staying Unknown.
+                    if self.struct_fields.contains_key(fn_name) {
+                        return Type::User(crate::ast::TypeDecl::builtin(fn_name.as_str()));
+                    }
                 }
                 Type::Unknown
             }
@@ -8561,7 +8624,10 @@ impl RustTrans {
 
         if let Some(enum_src) = &msg_enum_src {
             sink.body.write(enum_src.as_bytes())?;
-            // Register variant names → enum name so call() can rewrite send args.
+            // Register this task's variant names (per-task, so two tasks may
+            // declare the same variant — call() disambiguates by receiver task).
+            let task_name = name_of(&td.name).to_string();
+            let variants = self.task_variants.entry(task_name).or_default();
             for (pattern, _, _) in &td.on_block.handlers {
                 use crate::ast::TaskMsgPattern as P;
                 let vname: Option<&crate::ast::Name> = match pattern {
@@ -8570,8 +8636,7 @@ impl RustTrans {
                     _ => None,
                 };
                 if let Some(vn) = vname {
-                    self.task_msg_variants
-                        .insert(vn.as_str().to_string(), msg_type.clone());
+                    variants.insert(vn.as_str().to_string());
                 }
             }
         }
@@ -8649,9 +8714,16 @@ impl RustTrans {
                     let n = variant.as_str().to_string();
                     if !seen.contains(&n) {
                         seen.push(n.clone());
-                        // Tier 2: all bindings default to i64 (most common; VM tests use ints).
-                        let fields: Vec<String> =
-                            bindings.iter().map(|_| "i64".to_string()).collect();
+                        // Plan 387 follow-up P3: use the DECLARED binding type
+                        // when given (`Add(val: String)` → `Add(String)`); fall
+                        // back to i64 for untyped bindings (most common; VM
+                        // tests use ints).
+                        let fields: Vec<String> = bindings.iter().map(|(_, bty)| {
+                            match bty {
+                                Some(ty) => self.rust_type_name(ty),
+                                None => "i64".to_string(),
+                            }
+                        }).collect();
                         if fields.is_empty() {
                             src.push_str(&format!("    {},\n", n));
                         } else {
@@ -8839,9 +8911,20 @@ impl RustTrans {
             self.print_indent(&mut sink.body)?;
             writeln!(sink.body, "match {} {{", match_subject)?;
             self.indent();
-            for (pattern, _guard, body) in &td.on_block.handlers {
+            for (pattern, guard, body) in &td.on_block.handlers {
                 self.print_indent(&mut sink.body)?;
                 self.emit_task_pattern(pattern, enum_name, &mut sink.body)?;
+                // Plan 387 follow-up P5: wire guards (`Add(val) if val > 1 ->`)
+                // as Rust match-arm guards. The guard may reference state fields
+                // and the pattern bindings, so compile it with the same
+                // in_task_body state rewrite as handler bodies.
+                if let Some(g) = guard {
+                    let saved = self.in_task_body;
+                    self.in_task_body = has_state;
+                    write!(sink.body, " if ")?;
+                    self.expr(g, &mut sink.body)?;
+                    self.in_task_body = saved;
+                }
                 sink.body.write(b" => {\n")?;
                 self.indent();
                 self.compile_task_body(body, sink, has_state)?;
@@ -8932,7 +9015,7 @@ impl RustTrans {
             P::WithBindings { variant, bindings } => {
                 if let Some(en) = enum_name {
                     write!(out, "{}::{}(", en, variant.as_str())?;
-                    for (i, b) in bindings.iter().enumerate() {
+                    for (i, (b, _bty)) in bindings.iter().enumerate() {
                         write!(out, "{}", b.as_str())?;
                         if i < bindings.len() - 1 {
                             write!(out, ", ")?;
@@ -9031,18 +9114,41 @@ impl RustTrans {
         Ok(())
     }
 
-    /// Plan 387 W4: if `arg` is a task message-variant name (bare ident like
-    /// `Reset`) or a variant constructor (`Add(5)`), return its fully-qualified
-    /// Rust form (`CounterMsg::Reset` / `CounterMsg::Add(5)`) using the
-    /// `task_msg_variants` map. Returns None if it's not a known variant.
-    fn rewrite_msg_variant_arg(&mut self, arg: &Expr) -> Option<String> {
+    /// Plan 387 W4 + follow-up: if `arg` is a task message-variant name (bare
+    /// ident like `Reset`) or a variant constructor (`Add(5)`), return its
+    /// fully-qualified Rust form (`CounterMsg::Reset` / `CounterMsg::Add(5)`).
+    ///
+    /// The enum is chosen from the RECEIVER's task when known (`receiver_task`
+    /// — e.g. the handle variable's task in `h.send(Add(5))`), which
+    /// disambiguates two tasks that declare the same variant name. When the
+    /// receiver task is unknown, a variant declared by exactly ONE task still
+    /// resolves (backward compat); a variant declared by several falls back to
+    /// None (left unrewritten → the compile error names the ambiguity).
+    fn rewrite_msg_variant_arg(&mut self, arg: &Expr, receiver_task: Option<&str>) -> Option<String> {
+        // Resolve variant → (task, enum_name), preferring the receiver's task.
+        fn enum_for<'a>(task_variants: &'a std::collections::HashMap<String, std::collections::HashSet<String>>, variant: &str, receiver_task: Option<&str>) -> Option<String> {
+            if let Some(task) = receiver_task {
+                if task_variants.get(task).map(|vs| vs.contains(variant)).unwrap_or(false) {
+                    return Some(format!("{}Msg", task));
+                }
+            }
+            // Unknown receiver: resolve only if a single task declares it.
+            let owners: Vec<&String> = task_variants
+                .iter()
+                .filter(|(_, vs)| vs.contains(variant))
+                .map(|(t, _)| t)
+                .collect();
+            match owners.as_slice() {
+                [task] => Some(format!("{}Msg", task)),
+                _ => None,
+            }
+        }
+
         match arg {
             // Reset → EnumName::Reset
             Expr::Ident(name) => {
-                if let Some(enum_name) = self.task_msg_variants.get(name.as_str()).cloned() {
-                    return Some(format!("{}::{}", enum_name, name.as_str()));
-                }
-                None
+                enum_for(&self.task_variants, name.as_str(), receiver_task)
+                    .map(|enum_name| format!("{}::{}", enum_name, name.as_str()))
             }
             // Add(5) → EnumName::Add(5); the call name is an Ident equal to a variant.
             Expr::Call(c) => {
@@ -9050,34 +9156,40 @@ impl RustTrans {
                     Expr::Ident(n) => Some(n.as_str().to_string()),
                     _ => None,
                 }?;
-                if let Some(enum_name) = self.task_msg_variants.get(&variant_name).cloned() {
-                    // Render the args by writing to a string buffer via self.expr.
-                    let mut buf: Vec<u8> = Vec::new();
-                    for (i, a) in c.args.args.iter().enumerate() {
-                        if let Arg::Pos(e) = a {
-                            // Recursively rewrite nested variants + render.
-                            if let Some(rw) = self.rewrite_msg_variant_arg(e) {
-                                use std::io::Write;
-                                let _ = write!(buf, "{}", rw);
-                            } else {
-                                // Render normally into buf.
-                                let mut sub: Vec<u8> = Vec::new();
-                                let _ = self.expr(e, &mut sub);
-                                buf.extend_from_slice(&sub);
+                let enum_name = enum_for(&self.task_variants, &variant_name, receiver_task)?;
+                // Render the args by writing to a string buffer via self.expr.
+                let mut buf: Vec<u8> = Vec::new();
+                for (i, a) in c.args.args.iter().enumerate() {
+                    if let Arg::Pos(e) = a {
+                        // Recursively rewrite nested variants + render.
+                        if let Some(rw) = self.rewrite_msg_variant_arg(e, receiver_task) {
+                            use std::io::Write;
+                            let _ = write!(buf, "{}", rw);
+                        } else {
+                            // Render normally into buf.
+                            let mut sub: Vec<u8> = Vec::new();
+                            let _ = self.expr(e, &mut sub);
+                            buf.extend_from_slice(&sub);
+                            // Plan 387 follow-up P3: a String-typed variant payload
+                            // (`Greet(name: String)`) needs owned String — a bare
+                            // string-literal arg (`Greet("bob")`) must become
+                            // `.to_string()` (mirrors the bare `h.send("...")`
+                            // path for String-message tasks).
+                            if matches!(e, Expr::Str(_) | Expr::CStr(_)) {
+                                buf.extend_from_slice(b".to_string()");
                             }
                         }
-                        if i < c.args.args.len() - 1 {
-                            buf.extend_from_slice(b", ");
-                        }
                     }
-                    return Some(format!(
-                        "{}::{}({})",
-                        enum_name,
-                        variant_name,
-                        String::from_utf8_lossy(&buf)
-                    ));
+                    if i < c.args.args.len() - 1 {
+                        buf.extend_from_slice(b", ");
+                    }
                 }
-                None
+                Some(format!(
+                    "{}::{}({})",
+                    enum_name,
+                    variant_name,
+                    String::from_utf8_lossy(&buf)
+                ))
             }
             _ => None,
         }
@@ -9131,6 +9243,24 @@ impl RustTrans {
             store.ty.clone()
         };
         self.local_var_types.insert(store.name.clone(), effective_ty);
+
+        // Plan 387 follow-up: record `let h = Task.spawn("Counter", cap)` so
+        // `h.send(Variant)` can resolve the message enum from the receiver's
+        // task (disambiguates same-named variants across tasks).
+        if let Expr::Call(call) = &store.expr {
+            if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if method.as_str() == "spawn" {
+                    if let Expr::Ident(receiver) = obj.as_ref() {
+                        if receiver.as_str() == "Task" {
+                            if let Some(Arg::Pos(Expr::Str(name))) = call.args.args.first() {
+                                let task_name_str: &str = name_of(name);
+                                self.handle_task_map.insert(store.name.clone(), task_name_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Detect json.get() assignments and mark the variable as JSON value type
         // so that .to_int() and .len() use value_to_int/value_len helpers
@@ -9377,7 +9507,9 @@ impl RustTrans {
             // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)
             // the struct field is moved, but the struct may still be used later
             // Skip for pointer types — *mut T / *const T are Copy
-            if !matches!(store.ty, Type::Ptr(_)) {
+            // Plan 387 follow-up: also skip TaskRef-typed values (move-only,
+            // no Clone impl) — e.g. `let h = w.sink` must move, not clone.
+            if !matches!(store.ty, Type::Ptr(_)) && !self.expr_is_taskref(&store.expr) {
                 if let Expr::Dot(obj, _field) = &store.expr {
                     if let Expr::Ident(obj_name) = obj.as_ref() {
                         let obj_is_copy = self.local_var_types.get(obj_name)
@@ -11202,7 +11334,16 @@ impl RustTrans {
                 }
             }
             let has_dyn_field = type_decl.members.iter().any(|m| type_contains_dyn(&m.ty));
-            if has_dyn_field {
+            // Plan 387 follow-up: a `TaskRef<T>` field is move-only (RAII sole
+            // owner — not Clone/Debug/PartialEq/Eq/Ord), so structs containing
+            // one can only derive Debug.
+            fn type_is_taskref(ty: &Type) -> bool {
+                matches!(ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef")
+            }
+            let has_taskref_field = type_decl.members.iter().any(|m| type_is_taskref(&m.ty));
+            if has_taskref_field {
+                writeln!(sink.body, "#[derive(Debug)]")?;
+            } else if has_dyn_field {
                 writeln!(sink.body, "#[derive(Clone, Debug)]")?;
             } else if has_float_field || has_map_field || has_enum_field {
                 // Structs containing enum fields are conservatively downgraded

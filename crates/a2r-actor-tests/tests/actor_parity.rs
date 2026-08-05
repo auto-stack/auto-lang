@@ -213,3 +213,41 @@ fn actor_012_external_enum_msg() {
     // to Value::Int, so .expected.out is hand-written.
     assert_actor_parity("012_external_enum_msg");
 }
+
+#[test]
+#[ignore]
+fn actor_016_actor_methods() {
+    // Plan 387 follow-up: actor + user-type methods coexist — `type Worker` with
+    // a TaskRef<i64> field + `ext Worker` method sending through the handle, and
+    // a field read that MOVES (no clone). a2r-only (VM has no TaskRef struct
+    // field); .expected.out hand-written.
+    assert_actor_parity("016_actor_methods");
+}
+
+#[test]
+#[ignore]
+fn actor_017_cross_task_variants() {
+    // Plan 387 follow-up P2: two tasks both declaring an `Add` variant — the
+    // receiver's task must pick the right enum (`c.send` → CounterMsg, not
+    // LedgerMsg). a2r-only (VM send shim coerces to Value::Int); .expected.out
+    // hand-written.
+    assert_actor_parity("017_cross_task_variants");
+}
+
+#[test]
+#[ignore]
+fn actor_018_typed_bindings() {
+    // Plan 387 follow-up P3: declared binding types (`Greet(name: String)`) →
+    // `Greet(String)`; untyped → i64; string-literal arg sent as owned String.
+    // a2r-only (VM send shim coerces to Value::Int); .expected.out hand-written.
+    assert_actor_parity("018_typed_bindings");
+}
+
+#[test]
+#[ignore]
+fn actor_019_guards() {
+    // Plan 387 follow-up P5: guard expressions on handlers emit as Rust
+    // match-arm guards. a2r-only (VM does not execute guards); .expected.out
+    // hand-written.
+    assert_actor_parity("019_guards");
+}
