@@ -16,15 +16,15 @@ use std::path::Path;
 /// Plan 368 (consumer-mode parity): aligning the a2r backend's error
 /// convention with the VM's keeps three-way parity well-defined (the `.at`
 /// source is written once and must behave identically across VM/a2r/Rust).
-pub fn read_to_string(path: &str) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+pub fn read_to_string(path: impl AsRef<Path>) -> String {
+    std::fs::read_to_string(path.as_ref()).unwrap_or_default()
 }
 
 /// Read text content from a file (alias).
 ///
 /// See `read_to_string`: returns empty string on error (VM parity).
-pub fn read_text(path: &str) -> String {
-    std::fs::read_to_string(path).unwrap_or_default()
+pub fn read_text(path: impl AsRef<Path>) -> String {
+    std::fs::read_to_string(path.as_ref()).unwrap_or_default()
 }
 
 /// Write text content to a file, returns true on success
