@@ -2020,7 +2020,11 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            // Plan 391 D4 (TEMP DIAG PATCH — to be reverted): path separator `::`
+            // Plan 391 D4: path separator `::` in expressions (e.g. `env::var("X").ok()`).
+            // Previously `env::var` parsed as a single Ident, then `.ok()` couldn't
+            // chain onto the `env::var(...)` call (RHS method chain on a path-call
+            // failed with "Expected Asn, but found ."). Treat `::` like `.` so the
+            // path-call result becomes a valid lhs for the infix Dot loop.
             if self.is_kind(TokenKind::Colon) {
                 let second_is_colon = if let Ok(tok) = self.lexer.next() {
                     let is_colon = tok.kind == TokenKind::Colon;
