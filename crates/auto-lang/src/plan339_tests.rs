@@ -255,6 +255,21 @@ pub fn create_note(title str, body str) Note {
     #[cfg(feature = "ui")]
     #[test]
     fn test_015_notes_app_compiles_with_namespace() {
+        // Plan 364 Phase 8 F3: loading the real 015-notes sources and running
+        // the full VmBridge pipeline (widget synthesis + link + VM init) drives
+        // deep recursion that overflows the 2 MB libtest worker thread stack.
+        // Run on a dedicated 16 MB thread — same pattern as test_cookbook_deep.
+        let child = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(test_015_notes_app_compiles_with_namespace_inner)
+            .expect("failed to spawn deep-stack test thread");
+        child
+            .join()
+            .expect("deep-stack test thread panicked");
+    }
+
+    #[cfg(feature = "ui")]
+    fn test_015_notes_app_compiles_with_namespace_inner() {
         // Tests run from the crate dir; the repo root is two levels up.
         let candidates = [
             std::env::var("CARGO_MANIFEST_DIR")
