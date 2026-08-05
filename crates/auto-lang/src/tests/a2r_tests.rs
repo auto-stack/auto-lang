@@ -134,6 +134,63 @@ fn main() {
     );
 }
 
+/// C1 (Plan 018 §12): `mut p T` on a METHOD (ext-block) param must emit
+/// `&mut T` just like free functions. The a2r-11 base slice only covered the
+/// free-function branch — ext methods emitted `mut p: T` (by-value), so a
+/// `mut doc Doc` store method couldn't mutate the caller's doc in place.
+#[test]
+fn test_a2r_method_mut_param_emits_mut_ref() {
+    let src = "\
+type Ledger {
+    total u64
+}
+ext Ledger {
+    pub fn bump(mut doc Ledger, delta u64) Result<bool, str> {
+        doc.total = doc.total + delta
+        return Ok(true)
+    }
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        code.contains("mut doc: &mut Ledger"),
+        "method `mut` param should emit `&mut Ledger`, got:\n{}", code
+    );
+    assert!(
+        !code.contains("doc: Ledger"),
+        "method `mut` param must not stay by-value, got:\n{}", code
+    );
+    // In-place field write through the &mut param (no clone-on-LHS).
+    assert!(
+        code.contains("doc.total = doc.total + delta"),
+        "expected in-place field assignment, got:\n{}", code
+    );
+}
+
+/// C1 (Plan 018 §12): `Err(\"prefix \" + var)` in a `Result<T, str>` fn is a
+/// string-concat (format! with nested parens). The old fix_residual_error_box
+/// regex only matched one paren level, so the residual `Box::new(...)` stayed
+/// and broke `Result<_, String>` (E0308 Box<String> vs String).
+#[test]
+fn test_a2r_err_concat_no_box_residual() {
+    let src = "\
+fn fail(name str) Result<bool, str> {
+    return Err(\"section '\" + name + \"' not found\")
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        !code.contains("Box::new"),
+        "Err concat payload must not be Box-wrapped (Result<_, String>), got:\n{}", code
+    );
+    assert!(
+        code.contains("return Err(format!"),
+        "expected format!-based Err, got:\n{}", code
+    );
+}
+
 
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
