@@ -9629,9 +9629,15 @@ impl RustTrans {
         }
         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
-        // Cache which params are non-Copy types (need .clone() at call sites)
+        // Cache which params are non-Copy types (need .clone() at call sites).
+        // Plan 387 §16 P0-2: TaskRef<T> is a move-only single-owner type (not
+        // Clone) — passing it must MOVE, never clone. Exclude it from the
+        // struct-param clone set so call sites emit `forward(h)` not `forward(h.clone())`.
         let struct_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| !Self::is_copy_type(&p.ty))
+            .map(|p| {
+                let is_taskref = matches!(&p.ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef");
+                !Self::is_copy_type(&p.ty) && !is_taskref
+            })
             .collect();
         self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
 

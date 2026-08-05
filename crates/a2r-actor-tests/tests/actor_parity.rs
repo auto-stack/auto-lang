@@ -200,6 +200,14 @@ fn actor_010_handle_cross_fn() {
 
 #[test]
 #[ignore]
+fn actor_011_handle_param() {
+    // Plan 387 §16 P0-2: TaskRef passed as a function parameter (move semantics,
+    // not cloned). .expected.out hand-written (VM uses a different API).
+    assert_actor_parity("011_handle_param");
+}
+
+#[test]
+#[ignore]
 fn actor_012_external_enum_msg() {
     // Plan 387 §16 P0-3: external enum as actor message. VM send shim coerces
     // to Value::Int, so .expected.out is hand-written.
