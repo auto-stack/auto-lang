@@ -219,9 +219,41 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
 
 ## §8 实施记录
 
-> worktree：`plan-390/actor-state-injection`（`D:/autostack/auto-lang-390`）。
+> worktree：Phase E/F 在 `plan-390/actor-state-injection`（已合并 master）；
+> Phase A–D 在 `plan-390-ad/actor-spawn-args`（`D:/autostack/auto-lang-390ad`）。
 
-### §8.1 Phase E — a2r call-site spec 自动装箱（2026-08-06，✅ 落地）
+### §8.2 Phase B — a2r Task.spawn 带初始化参数（2026-08-06，✅ 落地）
+
+`Task.spawn("Name", cap, v1, v2)` 的 a2r 转译侧（Phase B / §5）已落地并验证：
+
+- **call 翻译**（`rust.rs ~3475`）：args[2..]（跳过 name+capacity）转发给 `spawn_<name>(v1, v2)`
+- **spawn helper**（`emit_task_spawn_helper ~9133`）：签名加 state 字段为参数
+  （`field: Type = default`），用结构体字面量 `Counter { count: count }` 构造（替代 `::new()`）。
+  default 参数保证无参 spawn 向后兼容。
+- **验证**：新增黄金 `22_actors/020_spawn_with_state` ✅；重新生成 8 个受影响 actor
+  黄金（005/006/007/010/011/014/015/017 — 仅 spawn 签名变）；`cargo test --features test-trans`
+  3133 passed / 22 failed（与 master 逐字节一致，零新增）。
+
+### §8.3 Phase A（VM 侧）— ⏸ 推迟（2026-08-06）
+
+VM 侧 spawn-with-args 实施尝试后**推迟**，根因是两个独立的 VM 前置缺陷：
+
+1. **VM `Task.spawn` codegen 契约脆弱**：现有注入块（`codegen.rs:7473-7498`）的
+   `task_type` 提取自 receiver expr（`Task.spawn("Greeter",16)` 的 receiver 是 `Task`，
+   不是 `"Greeter"`）—— 实际 task_type 是靠**用户参数巧合覆盖**注入值、shim 从用户
+   参数 pop 出字符串才"碰巧正确"。任何改栈布局（加 init args / n_init count）都破坏
+   这个脆弱契约，导致 task_type="" 或 n_init 读到 capacity。
+2. **VM bound-variable handler 缺陷**（Plan 043 相关）：`on { n int -> }` 的绑定变量 `n`
+   在 VM 报 "Undefined variable: n" —— 阻塞 EventSink 这类带绑定变量的 actor 端到端
+   验证。现有 5 个 VM actor 测试用字面量 pattern（`1 ->`）绕开。
+
+**推迟决策**：a2r 路径（Phase B）是 auto-ai EventSink cb 注入（§6.7）实际使用的路径，
+已完整交付。VM 路径的 spawn-with-args 短期价值低（EventSink 不走 VM），且修复需先解决
+上述两个 VM 前置（codegen 契约重构 + bound-variable 缺陷），属独立 VM 工程。
+实施中尝试的 VM 改动（flash/VM/task 字段、shim、STORE_STATE_FIELD lock）已 revert，
+保留 Phase B a2r 侧成果。
+
+**重启前置**：VM codegen `Task.spawn` 契约重构 + Plan 043 bound-variable handler 修复。
 
 实施中发现 §11.2 的根因描述需补强——实际缺陷比"三处"更广，且方法调用走的是
 **独立的 arg 发射循环**（非 §11.2 假设的 free-fn 循环）。修正后的完整修复：
