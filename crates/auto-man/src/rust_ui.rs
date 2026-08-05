@@ -677,17 +677,38 @@ fn parse_api_module(project_dir: &Path) -> Option<ApiModule> {
         .or_else(|| crate::api_gen::extract_api_lenient(&content))
 }
 
-/// Plan 349 step 1: Generate a TLS-aware HTTP client helper.
-/// ureq uses the system's native TLS by default (HTTPS works out of the box).
-/// For custom CA / skip-verify, set AUTO_TLS_SKIP_VERIFY=1 environment variable
-/// before running the app. This requires the `native-tls` feature on ureq,
-/// which is enabled by default on Windows/macOS.
+/// Plan 349 step 1 / Plan 388 W1: Generate a TLS-aware HTTP client helper.
+/// The generated API client uses `reqwest::blocking` so TLS can be configured
+/// via a `ClientBuilder` (ureq cannot configure certificates per-request).
+/// Set AUTO_TLS_SKIP_VERIFY=1 to skip certificate verification (dev/test);
+/// set AUTO_TLS_CA_CERT=/path/to/ca.pem to add a custom CA (PEM). The client is
+/// built once (OnceLock) and reused; per-call cloning is cheap (Arc-backed).
 fn generate_http_client_helper() -> String {
-    r#"// Plan 349: TLS configuration helper.
+    r#"// Plan 349/388: TLS-aware reqwest blocking client helper.
 // Set AUTO_TLS_SKIP_VERIFY=1 to skip certificate verification (dev/test).
-// Set AUTO_TLS_CA_CERT=/path/to/ca.pem for custom CA (requires native-tls).
+// Set AUTO_TLS_CA_CERT=/path/to/ca.pem to add a custom CA (PEM).
 fn _tls_skip_verify() -> bool {
     std::env::var("AUTO_TLS_SKIP_VERIFY").as_deref() == Ok("1")
+}
+
+fn _http_client() -> reqwest::blocking::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut builder = reqwest::blocking::Client::builder();
+        if _tls_skip_verify() {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+        if let Ok(ca_path) = std::env::var("AUTO_TLS_CA_CERT") {
+            if let Ok(pem) = std::fs::read(&ca_path) {
+                if let Ok(cert) = reqwest::Certificate::from_pem(&pem) {
+                    builder = builder.add_root_certificate(cert);
+                }
+            }
+        }
+        builder.build().unwrap_or_default()
+    })
+    .clone()
 }
 
 "#.to_string()
@@ -766,24 +787,24 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     }
 }
 
-/// Generate body for GET requests
+/// Generate body for GET requests (reqwest::blocking, Plan 388 W1)
 fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_type: &str) -> String {
     if is_void {
-        format!("    let _ = ureq::{}({}).call();\n", method, url_expr)
+        format!("    let _ = _http_client().{}({}).send();\n", method, url_expr)
     } else if return_type.starts_with("Vec<") {
         format!(
-            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, return_type
         )
     } else if return_type.starts_with("Option<") {
         // Deserialize as Value, let .ok() produce Option<Value> naturally
         format!(
-            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<serde_json::Value>().ok())\n",
+            "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<serde_json::Value>().ok())\n",
             method, url_expr
         )
     } else {
         format!(
-            "    ureq::{}({})\n        .call().ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, return_type
         )
     }
@@ -794,9 +815,9 @@ fn generate_delete_fn_body(url_expr: String) -> String {
     let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
         format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
     } else {
-        format!("    let url = {};\n", url_expr)
+        format!("    let url = {}.to_string();\n", url_expr)
     };
-    format!("{}    std::thread::spawn(move || {{ let _ = ureq::delete(&url).call(); }});\n", url_owned)
+    format!("{}    std::thread::spawn(move || {{ let _ = _http_client().delete(&url).send(); }});\n", url_owned)
 }
 
 /// Generate body for POST/PUT requests (with JSON body)
@@ -816,16 +837,16 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
             format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
         } else {
-            format!("    let url = {};\n", url_expr)
+            format!("    let url = {}.to_string();\n", url_expr)
         };
         format!(
-            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n",
+            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = _http_client().{}(&url).json(&body).send(); }});\n",
             url_owned, json_body, method
         )
     } else if return_type.starts_with("Vec<") {
         // Vec return — keep blocking (rare for POST/PUT)
         format!(
-            "    ureq::{}({})\n        .send_json({})\n        .ok()\n        .and_then(|r| r.into_json::<{}>().ok())\n        .unwrap_or_default()\n",
+            "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, json_body, return_type
         )
     } else if return_type.starts_with("Option<") {
@@ -833,10 +854,10 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
             format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
         } else {
-            format!("    let url = {};\n", url_expr)
+            format!("    let url = {}.to_string();\n", url_expr)
         };
         format!(
-            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n",
+            "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = _http_client().{}(&url).json(&body).send(); }});\n",
             url_owned, json_body, method
         )
     } else {
@@ -850,10 +871,10 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         let url_owned = if url_expr.starts_with('&') || url_expr.starts_with("format!") {
             format!("    let url = {}.to_string();\n", url_expr.trim_start_matches('&'))
         } else {
-            format!("    let url = {};\n", url_expr)
+            format!("    let url = {}.to_string();\n", url_expr)
         };
         format!(
-            "{}    let body = {};\n    let local_result = {local_json};\n    std::thread::spawn(move || {{ let _ = ureq::{}(&url).send_json(body); }});\n    local_result\n",
+            "{}    let body = {};\n    let local_result = {local_json};\n    std::thread::spawn(move || {{ let _ = _http_client().{}(&url).json(&body).send(); }});\n    local_result\n",
             url_owned, json_body, method, local_json = local_json
         )
     }
@@ -1479,7 +1500,7 @@ default = ["ui-iced", "auto-lang/default"]
 auto-lang.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
-reqwest = {{ version = "0.12", features = ["blocking", "multipart"] }}
+reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart"] }}
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
 tokio.workspace = true
@@ -2178,5 +2199,65 @@ pub struct Timer {
         assert!(!names.contains(&"pac.at".to_string()));
 
         fs::remove_dir_all(&dir).ok();
+    }
+
+    // --- Plan 388 W1: API client migrated from ureq to reqwest::blocking + TLS ---
+
+    #[test]
+    fn test_w1_http_client_helper_emits_tls_client() {
+        // The split-mode helper must build a reqwest::blocking client honouring
+        // AUTO_TLS_SKIP_VERIFY / AUTO_TLS_CA_CERT (OnceLock-cached), so endpoint
+        // functions can configure TLS (ureq could not).
+        let helper = generate_http_client_helper();
+        assert!(helper.contains("fn _http_client() -> reqwest::blocking::Client"), "missing _http_client");
+        assert!(helper.contains("AUTO_TLS_SKIP_VERIFY"), "missing skip-verify env");
+        assert!(helper.contains("AUTO_TLS_CA_CERT"), "missing CA env");
+        assert!(helper.contains("danger_accept_invalid_certs"), "missing skip-verify wiring");
+        assert!(helper.contains("add_root_certificate"), "missing custom CA wiring");
+        assert!(helper.contains("OnceLock"), "client should be built once");
+    }
+
+    #[test]
+    fn test_w1_get_body_uses_reqwest_client() {
+        // GET body must route through _http_client() and reqwest's .send()/.json(),
+        // never emit `ureq::`.
+        for (ret, expected) in [
+            ("serde_json::Value", "_http_client().get("),
+            ("Vec<serde_json::Value>", "r.json::<Vec<serde_json::Value>>().ok()"),
+            ("Option<serde_json::Value>", "r.json::<serde_json::Value>().ok()"),
+        ] {
+            let body = generate_get_fn_body("get".into(), "&format!(\"http://x/{}\", id)".into(), false, ret);
+            assert!(body.contains(expected), "GET({ret}) missing {expected}: {body}");
+            assert!(!body.contains("ureq"), "GET({ret}) still emits ureq: {body}");
+        }
+        let void = generate_get_fn_body("get".into(), "\"http://x\"".into(), true, "");
+        assert!(void.contains("_http_client().get(\"http://x\").send()"), "void GET: {void}");
+        assert!(!void.contains("ureq"), "void GET still emits ureq: {void}");
+    }
+
+    #[test]
+    fn test_w1_write_and_delete_bodies_use_reqwest_client() {
+        // POST/PUT fire-and-forget + blocking bodies, and DELETE, must use
+        // _http_client() and reqwest .json(&body)/.send().
+        let params: Vec<&auto_lang::api::types::ApiParam> = vec![];
+        let void = generate_write_fn_body("post".into(), "\"http://x\"".into(), &params, true, "");
+        assert!(void.contains("_http_client().post(&url).json(&body).send()"), "void POST: {void}");
+        assert!(!void.contains("ureq"), "void POST still emits ureq: {void}");
+
+        let blocking = generate_write_fn_body(
+            "post".into(),
+            "\"http://x\"".into(),
+            &params,
+            false,
+            "serde_json::Value",
+        );
+        // Value-returning POST is non-blocking: placeholder + background thread.
+        assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
+        assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
+        assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+
+        let del = generate_delete_fn_body("\"http://x/1\"".into());
+        assert!(del.contains("_http_client().delete(&url).send()"), "DELETE: {del}");
+        assert!(!del.contains("ureq"), "DELETE still emits ureq: {del}");
     }
 }
