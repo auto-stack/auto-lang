@@ -7,7 +7,7 @@ fn main() {
     for i in 0..2 {
         for j in 0..2 {
             for k in 0..2 {
-                c[(i) as usize].clone()[(j) as usize].clone() = c[(i) as usize].clone()[(j) as usize].clone() + a[(i) as usize].clone()[(k) as usize].clone() * b[(k) as usize].clone()[(j) as usize].clone();
+                c[(i) as usize][(j) as usize] = c[(i) as usize].clone()[(j) as usize].clone() + a[(i) as usize].clone()[(k) as usize].clone() * b[(k) as usize].clone()[(j) as usize].clone();
             }
         }
     }

@@ -5,7 +5,7 @@ fn main() {
     let v: Vec<i32> = vec![1, 2, 3];
     let mut result: Vec<i32> = vec![0, 0, 0];
     for i in 0..3 {
-        result[(i) as usize].clone() = scalar * v[(i) as usize].clone();
+        result[(i) as usize] = scalar * v[(i) as usize].clone();
     }
     assert!(result[0].clone() == 2);
     assert!(result[1].clone() == 4);
