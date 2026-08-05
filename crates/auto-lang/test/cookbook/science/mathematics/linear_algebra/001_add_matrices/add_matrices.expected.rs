@@ -6,7 +6,7 @@ fn main() {
     let mut c: Vec<Vec<i32>> = vec![vec![0, 0], vec![0, 0]];
     for i in 0..2 {
         for j in 0..2 {
-            c[(i) as usize].clone()[(j) as usize].clone() = a[(i) as usize].clone()[(j) as usize].clone() + b[(i) as usize].clone()[(j) as usize].clone();
+            c[(i) as usize][(j) as usize] = a[(i) as usize].clone()[(j) as usize].clone() + b[(i) as usize].clone()[(j) as usize].clone();
         }
     }
     assert!(c[0].clone()[0].clone() == 6);

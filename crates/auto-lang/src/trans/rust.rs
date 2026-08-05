@@ -222,6 +222,10 @@ pub struct RustTrans {
     // C11 (Plan 018 §12 a2r-11): fn_name -> which params are `mut p T` (&mut T).
     // Call sites pass `&mut arg` instead of `arg.clone()` for these.
     fn_mut_params: HashMap<AutoStr, Vec<bool>>,
+    // C11 (Plan 018 §12 a2r-11): depth of assignment-LHS emission. While >0,
+    // the List `.get()` → index conversion skips `.clone()` so in-place element
+    // mutation (`doc.items[i].field = v`) writes the real element, not a clone.
+    assign_lhs_depth: usize,
     // Track which function params are Int type (need enum→i32 cast at call sites)
     fn_int_param_indices: HashMap<AutoStr, Vec<bool>>,
     // Track which function params are spec types (need Box::new() at call sites)
@@ -315,6 +319,7 @@ impl RustTrans {
             fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_mut_params: HashMap::new(),
+            assign_lhs_depth: 0,
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -381,6 +386,7 @@ impl RustTrans {
             fn_ret_types: HashMap::new(),
             fn_merge_mut_params: HashMap::new(),
             fn_mut_params: HashMap::new(),
+            assign_lhs_depth: 0,
             fn_int_param_indices: HashMap::new(),
             struct_to_spec: HashMap::new(),
             var_spec_map: HashMap::new(),
@@ -1962,7 +1968,19 @@ impl RustTrans {
                         }
 
                         // Normal assignment: lhs OP rhs
+                        // C11 (Plan 018 §12 a2r-11): mark LHS emission so the
+                        // List `.get()` → index conversion skips `.clone()` —
+                        // in-place element mutation writes the real element.
+                        // Also: assigning to a `mut p T` (&mut) param emits
+                        // `*p = x` (deref-assign into the caller's value).
+                        if matches!(op, Op::Asn)
+                            && matches!(lhs.as_ref(), Expr::Ident(n) if self.current_fn_mut_params.contains(n))
+                        {
+                            write!(out, "*")?;
+                        }
+                        self.assign_lhs_depth += 1;
                         self.expr(lhs, out)?;
+                        self.assign_lhs_depth -= 1;
                         let op_str = match op {
                             Op::And => "&&",
                             Op::Or => "||",
@@ -2116,8 +2134,10 @@ impl RustTrans {
                 }
                 write!(out, "]")?;
                 // Non-range index access may move non-Copy types (String, struct);
-                // add .clone() to safely handle all element types.
-                if !matches!(idx.as_ref(), Expr::Range(_)) {
+                // add .clone() to safely handle all element types. C11: on an
+                // assignment LHS (in-place element mutation) skip it — writing
+                // to the clone would be a no-op.
+                if !matches!(idx.as_ref(), Expr::Range(_)) && self.assign_lhs_depth == 0 {
                     write!(out, ".clone()")?;
                 }
                 Ok(())
@@ -4895,7 +4915,13 @@ impl RustTrans {
                                 self.expr(object, out)?;
                                 write!(out, "[")?;
                                 self.expr(arg, out)?;
-                                write!(out, " as usize].clone()")?;
+                                write!(out, " as usize]")?;
+                                // C11 (Plan 018 §12 a2r-11): on an assignment LHS
+                                // (in-place element mutation) skip `.clone()` —
+                                // writing to the clone would be a no-op.
+                                if self.assign_lhs_depth == 0 {
+                                    write!(out, ".clone()")?;
+                                }
                                 return Ok(());
                             }
                         }
@@ -8813,6 +8839,11 @@ impl RustTrans {
             }
             // Track &mut params (merge mode context types) — skip &mut at call sites
             if self.merge_mode && Self::is_merge_mut_type(&param.ty) {
+                self.current_fn_mut_params.insert(param.name.clone());
+            }
+            // C11 (Plan 018 §12 a2r-11): `mut p T` params are &mut refs —
+            // `p = x` must emit `*p = x` (deref-assign into the caller's value).
+            if param.mode == crate::ast::ParamMode::Mut {
                 self.current_fn_mut_params.insert(param.name.clone());
             }
         }
