@@ -13044,27 +13044,37 @@ impl<'a> Parser<'a> {
                 self.next(); // consume the dot
                 let name = self.cur.text.to_string();
                 self.next();
-                // Check for params: .Name(param1, param2)
+                // Check for params: .Name(param1, param2) or .Name(name1 type1, name2 type2)
                 let params = if self.is_kind(TokenKind::LParen) {
                     self.next();
-                    let mut p = Vec::new();
+                    // Collect comma-separated groups; each group is either
+                    // `name` or `name type` (1 or 2 space-separated tokens).
+                    let mut groups: Vec<Vec<String>> = Vec::new();
                     while !self.is_kind(TokenKind::RParen) {
-                        p.push(self.cur.text.to_string());
-                        self.next();
+                        let mut group = Vec::new();
+                        // Read tokens until the next comma or close paren.
+                        while !self.is_kind(TokenKind::Comma)
+                            && !self.is_kind(TokenKind::RParen)
+                        {
+                            group.push(self.cur.text.to_string());
+                            self.next();
+                        }
+                        if !group.is_empty() {
+                            groups.push(group);
+                        }
                         if self.is_kind(TokenKind::Comma) {
                             self.next();
                         }
                     }
                     self.expect(TokenKind::RParen)?;
-                    p
+                    // Parameter name is the first token of each group; a
+                    // trailing `type` (if present) is dropped.
+                    groups.into_iter()
+                        .filter_map(|g| g.into_iter().next())
+                        .collect()
                 } else {
                     Vec::new()
                 };
-                // Filter out type names: keep only parameter names (even indices)
-                let params: Vec<String> = params.iter().enumerate()
-                    .filter(|(i, _)| i % 2 == 0)
-                    .map(|(_, v)| v.clone())
-                    .collect();
                 (format!(".{}", name), params)
             } else {
                 let name = self.cur.text.to_string();
@@ -15198,6 +15208,57 @@ widget W {
         let session2 = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser2 = Parser::from(code2).with_session(session2);
         let _ = parser2.parse().expect("lowercase model fields parse normally");
+    }
+
+    /// Plan 043 M5: a parameterized on-handler must bind ALL its params, both
+    /// for bare names `.Run(a, b, c)` and for name+type `.Run(a int, b int)`.
+    /// Previously the param parser kept only even-indexed tokens (assuming
+    /// `name type` pairs), which dropped every other bare name — so
+    /// `.RunSmart(block_id, name, args)` lost `name`.
+    #[test]
+    fn test_on_handler_multi_param_binding() {
+        fn handler_params(code: &str) -> Vec<String> {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from(code).with_session(session);
+            let ast = parser.parse().expect("should parse");
+            let store = ast.stmts.iter().find_map(|s| match s {
+                Stmt::StoreDecl(s) => Some(s),
+                _ => None,
+            }).expect("store present");
+            store.on.as_ref().expect("on block present").handlers[0].params.clone()
+        }
+
+        // 3 bare params — all must survive.
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Run(int, str, []str) }
+    on { .Run(block_id, name, args) -> { .x = 0 } }
+}
+"#);
+        assert_eq!(p, vec!["block_id".to_string(), "name".to_string(), "args".to_string()],
+            "all 3 bare param names bound");
+
+        // name+type form — names kept, types dropped.
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Add(int, int) }
+    on { .Add(a int, b int) -> { .x = a } }
+}
+"#);
+        assert_eq!(p, vec!["a".to_string(), "b".to_string()],
+            "name+type params: names kept, types dropped");
+
+        // Single param (regression guard).
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Set(int) }
+    on { .Set(v) -> { .x = v } }
+}
+"#);
+        assert_eq!(p, vec!["v".to_string()], "single param still works");
     }
 
     /// Plan 043 M5 #2: a computed property with a multi-statement block body
