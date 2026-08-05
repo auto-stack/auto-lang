@@ -62,7 +62,25 @@ imports the package.
 
 When a new widget lands in `packages/widgets/registry/<widget>/`:
 
-1. Add an entry to the relevant group in [`src/widgets.ts`](src/widgets.ts).
+### Automated sync workflow (Plan 337)
+
+1. Add a `library_template` entry + the widget name to `LIBRARY_WIDGETS` in
+   `crates/auto-lang/src/ui_gen/vue.rs`. The self-consistency test (Plan 337
+   Task 1.1) verifies every listed widget has a template.
+2. `auto ui build --target vue --out packages/widgets/registry` — generate the
+   package artifacts.
+3. `auto ui build --target gallery-stubs --out examples/vue-gallery/src` —
+   regenerate `widgets.generated.ts` and create a stub page for any widget
+   that doesn't have one yet (existing pages are **not** overwritten).
+4. Hand-write the page content (variants/states/code examples) and add a
+   blurb + group entry in [`src/widgets.meta.ts`](src/widgets.meta.ts).
+5. `auto ui backlog` — see which AURA widgets are still not in the library.
+
+### Manual steps (if not using the sync tooling)
+
+1. Add an entry to [`src/widgets.meta.ts`](src/widgets.meta.ts) (group + blurb).
+   The name + route is in [`src/widgets.generated.ts`](src/widgets.generated.ts)
+   (generated, do not edit).
 2. Create `src/pages/<widget>.vue` following the existing pages (variants →
    sizes → states → `PropTable`). Import the widget from
    `@auto-ui/widgets/registry/<widget>`. Each `DemoBlock` takes a `:code`

@@ -209,7 +209,7 @@ fn build_gallery_stubs(out: &str) -> Result<()> {
     Ok(())
 }
 
-/// Minimal vue-gallery page stub for a widget (Plan 337 Task 3.2).
+/// Minimal vue-gallery page stub for a widget (Plan 337 Task 3.2 + 4.1).
 fn gallery_page_stub(name: &str) -> String {
     let pascal = pascal_case(name);
     format!(
@@ -217,11 +217,13 @@ fn gallery_page_stub(name: &str) -> String {
 // Plan 337: auto-generated stub page for {name}
 // TODO: add variants, states, code examples
 import {{ {pascal} }} from '@auto-ui/widgets/registry/{name}'
+import InstallHint from '../components/InstallHint.vue'
 </script>
 
 <template>
   <div class="page">
     <h2>{name}</h2>
+    <InstallHint :widget="'{name}'" />
     <!-- TODO: variants/states -->
     <div class="demo-block">
       <{pascal} />
