@@ -2,7 +2,7 @@
 plan: 387
 title: a2r-actor-task-translation
 affects: [auto-lang/vm, auto-lang/a2r, a2r-std]
-status: in-progress # draft | in-progress | complete
+status: complete # draft | in-progress | complete
 ---
 
 # Plan 387: a2r Actor 模型转译 (TaskDef/Msg/On) — 与 VM 行为对齐
@@ -153,13 +153,13 @@ impl ActorRuntime {
 
 ## §10 验收标准（Acceptance）
 
-- [x] `cargo test -p a2r-std` 全绿（task runtime 单测，6/6）
-- [x] `crates/a2r-actor-tests/` VM 移植用例 stdout 与 VM `.expected.out` 逐字节相等（6/6 parity + 007 手写参照）
-- [x] `test/a2r/22_actors/` 文本黄金 + `a2r_tests.rs` 注册全绿（7/7，含 W4 的 007）
-- [x] `cargo test -p auto-lang` 不退化（VM actor 测试 7/7 仍绿；a2r 311 全绿）
+- [x] `cargo test -p a2r-std` 全绿（task runtime 单测，8/8，含 §18 新增 2 个 drain_all 回归）
+- [x] `crates/a2r-actor-tests/` VM 移植用例 stdout 与 VM `.expected.out` 逐字节相等（12/12 parity + 手写参照）
+- [x] `test/a2r/22_actors/` 文本黄金 + `a2r_tests.rs` 注册全绿（12/12）
+- [x] `cargo test -p auto-lang` 不退化（VM actor 测试 7/7 仍绿；a2r 316 全绿）
 - [x] Tier 2 新增用例通过（007 命名变体枚举；字符串 pattern 端到端验证；stop hook 已接线）
-- [ ] 计划文件 status 翻 complete，加 `### W1—W5 — landed` 段，`git mv` 进 `docs/plans/archive/`
-  （**待办**：`#[single]` 单例、guards 执行、ask/reply 真闭环留作后续 plan，见 §13 W4 遗留）
+- [x] 计划文件 status 翻 complete，加 `### W1—W5 — landed` 段（见 §13），`git mv` 进 `docs/plans/archive/`
+  （遗留：`#[single]` 单例、guards 执行、ask/reply 真闭环、handle 存 struct 字段、消息 binding 类型硬编码、跨 task 同名变体冲突 → 后续 plan，见 §13 W4 遗留 / §17.5 / §18.4）
 
 ## §11 关键文件索引
 
@@ -529,3 +529,63 @@ fn main() {
 - **handle 存 struct 字段**：`struct W { h TaskRef<i64> }` 解析失败（Auto struct 字段类型不支持泛型语法 `TaskRef<i64>`，`got Lt<<`）。需 parser 支持字段泛型类型。
 - **013 actor 与方法共存综合用例**：同上依赖。
 - auto-ai 侧现在可实施 agent.at 流式改造（P0-1/P0-2/P0-3 均已解决）。
+
+---
+
+## §18 归档前修复：drain_all 固定-yield workaround（2026-08-05）
+
+> 计划归档前的最后审计（§17 状态复核）发现并修复了 §17.1 引入的一个实际 workaround，
+> 详见 §18.1-§18.3；§18.4 记录归档后的遗留清单。commit：见 §18.2/§18.3 标注。
+
+### §18.1 问题（实证）
+
+`a2r-std::task::drain_all` 用**固定 16 次 `yield_now()`** 排空 mailbox，代码注释自认
+"A fixed number covers typical cases; pathological deep queues would need a loop until
+mailboxes are empty, but that requires peeking the channel (not exposed by mpsc)"。
+实证复现（临时测试，已删）：
+
+- 单 actor、handler 无 `await`：40 条消息全部处理（actor 一次调度即可排空 mailbox）✅
+- **handler 内部有 `.await`：30 条消息只处理 15 条，50% 静默丢失** ❌
+  （每次 yield 只推进一个消息的处理量；main 返回时 runtime teardown，剩余消息丢弃）
+
+这直接威胁 §1 目标"处理完所有 in-flight 消息再退出"，且 §16 的流式用例（actor 替代
+`Arc<dyn Fn>` 转发事件）正是 handler 带异步工作的场景。
+
+### §18.2 修复（代码）
+
+**a2r-std `crates/a2r-std/src/task.rs`** — 引入 per-mailbox in-flight 计数：
+
+- 新入口 `channel::<M>() -> (TaskRef<M>, ActorReceiver<M>)`：共享一个 `Arc<AtomicUsize>`
+  计数，构造时把 `Weak` 注册进新的 `PENDING` thread_local 注册表。
+- `TaskRef::send` 入队成功时 `pending += 1`（send 失败不加，避免 phantom 计数）。
+- `ActorReceiver::mark_processed()` 由生成代码在每条消息 `handle_msg` 完成后调用（`pending -= 1`）。
+- `drain_all` 改为循环：`yield_now` → 检查所有活跃计数是否全零 → 是则返回；带
+  `MAX_DRAIN_SPINS = 1_000_000` 防御上限（仅当 handler 永不完成时触发，防测试挂死）。
+- `TaskRef::new(tx)` 保留但**不再注册计数**（手写循环没有 `mark_processed`，注册会让
+  `drain_all` 空转到上限）；doc 注明生成代码应使用 `channel()`。
+
+**转译器 `crates/auto-lang/src/trans/rust.rs`** `emit_task_spawn_helper`：
+
+- `tokio::sync::mpsc::unbounded_channel::<M>()` → `a2r_std::task::channel::<M>()`；
+- 循环内 `handle_msg(msg, reply_tx).await` 之后加 `rx.mark_processed();`；
+- 返回 `TaskRef::new(tx)` → `taskref`（channel 已返回命名好的 TaskRef）。
+
+**黄金文件**：12 个 `test/a2r/22_actors/*/*.expected.rs` 的 spawn helper 同步更新。
+
+### §18.3 验证
+
+- a2r-std 新增 2 个回归单测（均复现旧实现会失败的场景）：
+  - `drain_waits_for_async_handlers`：30 消息 + handler 内 `yield_now` → 全部处理；
+  - `drain_waits_for_many_actors`：20 个 actor 各 1 消息 → 全部处理。
+  - 原 6 单测更新到 `channel()` API；**8/8 全绿**。
+- 12 文本黄金 + 12 parity（编译+运行）+ 7 VM actor + 316 a2r 全量回归，**全绿**。
+
+### §18.4 归档后遗留（后续 plan）
+
+- `#[single]` 单例（parser/AST 已解析，转译器未实现）
+- guards 真正执行（parser/AST 已解析，转译器 `_guard` 丢弃；VM 也未接通）
+- `on(ctx)` / reply 真闭环（Tier 3，VM 也只桩）
+- handle 存 struct 字段（parser 字段泛型类型不支持）+ 013 综合用例
+- 消息 binding 类型硬编码 i64（`derive_task_msg_type` 忽略声明类型）
+- 跨 task 同名变体冲突（`task_msg_variants` HashMap 后写覆盖）
+- 旧 `Type::Handle` → `Arc<TaskHandle<T>>` 映射残留（a2r-std 已删 `TaskHandle`；parser 当前不构造该类型，属 latent）
