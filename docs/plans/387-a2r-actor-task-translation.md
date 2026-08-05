@@ -153,12 +153,13 @@ impl ActorRuntime {
 
 ## §10 验收标准（Acceptance）
 
-- [ ] `cargo test -p a2r-std` 全绿（task runtime 单测）
-- [ ] `crates/a2r-actor-tests/` 6 个 VM 移植用例 stdout 与 VM `.expected.out` 逐字节相等
-- [ ] `test/a2r/22_actors/` 文本黄金 + `a2r_tests.rs` 注册全绿
-- [ ] `cargo test -p auto-lang` 不退化（VM actor 测试仍绿）
-- [ ] Tier 2 新增用例（stop/singleton/enum 消息）通过
+- [x] `cargo test -p a2r-std` 全绿（task runtime 单测，6/6）
+- [x] `crates/a2r-actor-tests/` VM 移植用例 stdout 与 VM `.expected.out` 逐字节相等（6/6 parity + 007 手写参照）
+- [x] `test/a2r/22_actors/` 文本黄金 + `a2r_tests.rs` 注册全绿（7/7，含 W4 的 007）
+- [x] `cargo test -p auto-lang` 不退化（VM actor 测试 7/7 仍绿；a2r 311 全绿）
+- [x] Tier 2 新增用例通过（007 命名变体枚举；字符串 pattern 端到端验证；stop hook 已接线）
 - [ ] 计划文件 status 翻 complete，加 `### W1—W5 — landed` 段，`git mv` 进 `docs/plans/archive/`
+  （**待办**：`#[single]` 单例、guards 执行、ask/reply 真闭环留作后续 plan，见 §13 W4 遗留）
 
 ## §11 关键文件索引
 
@@ -324,5 +325,22 @@ VM 的 `else ->` 在无匹配时触发（`engine.rs:653-669` 的 `#else` export�
 - 验证：**6/6 parity 测试通过**（stdout 逐字节匹配 VM）。
 - commit `d55c5148`。
 
-### W4 — 待办（Tier 2）
-命名消息枚举（`Add(val)`/`Reset` → `enum TaskMsg`）/ stop hook 接线 / `#[single]` 单例 / 字符串·布尔 pattern / `on(ctx)` 透传。服务流式用例（actor 替代 `Arc<dyn Fn>` 回调）。
+### W4 — landed（Tier 2：命名消息枚举 + 字符串 pattern）
+> 2026-08-05：合入 master（merge `ed30dd81`）。
+
+- **命名变体枚举**（核心）：`on { Add(val) => {...}; Reset => {...} }` → 生成 `enum <Task>Msg { Add(i64), Reset }` + `match msg { <Task>Msg::Add(val) => ..., <Task>Msg::Reset => ... }`。
+  - `h.send(Add(5))` → `h.send(CounterMsg::Add(5))`；`h.send(Reset)` → `h.send(CounterMsg::Reset)`（`call()` send 拦截 + `rewrite_msg_variant_arg`）。
+  - **parser 改动**：解析 task 时把 `on` block 变体名注册到作用域（解决 `h.send(Reset)` 的 `undefined variable`，`parser.rs:4954-4965` 同 enum 机制）。镜像 `register_enum_decl`。
+- **字符串 pattern**：`on { "ping" => {...} }` → `match msg.as_str() { "ping" => ... }`（String 消息用 `as_str()` 借用避免 move）；`h.send("ping")` → `h.send("ping".to_string())`。
+- **混合 literal + 命名变体**：枚举带 `Literal(i64)` / `Literal(String)` / `Literal(bool)` 变体。
+- **TypeBinding**（基础）：`msg string` → `String` 标量。
+- **state 字段整数统一 i64**（对齐 binding i64，避免 `i32 + i64` 类型不匹配）。
+- **stop hook**：W3 已接线（spawn helper 在 mailbox 关闭后调 `actor.stop()`）。
+- **验证**：`007_named_variants` 端到端通过（`reached eight\nreset`，转译→编译→运行）；字符串 pattern 端到端通过（`pong\nunknown`）；311 a2r + 7 VM actor + 6 a2r-std 全绿；005/006 黄金更新（`i32`→`i64`）。
+- commit `5c050c41`。
+
+### W4 已知遗留（后续 plan）
+- **`#[single]` 单例**：VM 自身未真正测试（singleton_send 走 skeleton path，与 live actor 不互通），无对齐参照。
+- **VM 命名变体支持**：VM 的 `shim_task_send_vm` 强制 `Value::Int(msg)`，**不支持命名变体发送**——a2r Tier 2 在此特性上超前于 VM。`007` 的 `.expected.out` 为手写（逻辑正确），非 VM 派生。
+- **guards 真正执行**：parser 已解析 `if guard`，但 a2r codegen 丢弃（与 VM 一致，VM 也未接通）。
+- **`on(ctx)` / reply 真闭环**：Tier 3（ask/reply RPC），VM 也只桩。
