@@ -1,0 +1,15 @@
+task Greeter {
+    fn start() ! {
+        print("Greeter started")
+    }
+    on {
+        1 -> {
+            print("got msg")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Greeter", 16)
+    h.send(1)
+}

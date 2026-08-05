@@ -1,0 +1,19 @@
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+    h.send(2)
+    h.send(1)
+}

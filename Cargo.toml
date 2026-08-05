@@ -1,6 +1,9 @@
 [workspace]
 members = [
     "crates/a2r-std",
+    # Plan 387 W5b: behavior-parity tests — transpile .at → compile+run → compare
+    # stdout to the VM actor suite. Slow (cargo build per case), so #[ignore]d.
+    "crates/a2r-actor-tests",
     "crates/auto",
     "crates/auto-atom",
     "crates/auto-gen",

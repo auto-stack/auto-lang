@@ -912,3 +912,16 @@ fn test_312_codegen_collects_api_routes() {
 // === 21_generators ===
 // Plan 364 W6: first compile-test of ~Stream<T> generator transpilation.
 #[test] fn test_21_generators_002_stream_yield() { test_a2r("21_generators/002_stream_yield").unwrap(); }
+
+// === 22_actors (Plan 387) ===
+// Auto actor model (`task Name { ... on {...} }`) translated to Rust via Tokio.
+// Text golden regression guard; behavior parity with the VM actor suite
+// (test/vm/23_actor/) is verified separately by the a2r-actor-tests crate.
+// Uses test_a2r_deep (16MB stack) — the Pratt parser overflows the default
+// 2MB libtest worker stack on these inputs.
+#[test] fn test_22_actors_001_start_hook() { test_a2r_deep("22_actors/001_start_hook"); }
+#[test] fn test_22_actors_002_message_handler() { test_a2r_deep("22_actors/002_message_handler"); }
+#[test] fn test_22_actors_003_multi_message() { test_a2r_deep("22_actors/003_multi_message"); }
+#[test] fn test_22_actors_004_else_handler() { test_a2r_deep("22_actors/004_else_handler"); }
+#[test] fn test_22_actors_005_state_write() { test_a2r_deep("22_actors/005_state_write"); }
+#[test] fn test_22_actors_006_state_increment() { test_a2r_deep("22_actors/006_state_increment"); }
