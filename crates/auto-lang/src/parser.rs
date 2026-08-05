@@ -1748,10 +1748,17 @@ impl<'a> Parser<'a> {
                         }
                     }
                     // Not a closure, continue with regular group expression
-                    // But we already consumed (, so handle empty group ()
-                    let lhs = self.expr_pratt(0)?;
-                    self.expect(TokenKind::RParen)?;
-                    lhs
+                    // Plan 391 D5: `()` (empty, not a closure) is the unit
+                    // value — e.g. `Ok(())`, `return ()`. Emit an empty tuple
+                    // expression (a2r codegen renders Expr::Tuple([]) as `()`).
+                    if self.is_kind(TokenKind::RParen) {
+                        self.next(); // skip )
+                        Expr::Tuple(vec![])
+                    } else {
+                        let lhs = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs
+                    }
                 } else if self.is_kind(TokenKind::Ident) {
                     // Collect tokens for lookahead and rollback
                     let mut tokens = Vec::new();
