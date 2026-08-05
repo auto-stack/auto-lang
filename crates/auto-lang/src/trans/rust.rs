@@ -3678,6 +3678,39 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
+                    // Plan 349: file download/upload — direct a2r_std mapping.
+                    ("http", "download") | ("http", "upload") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::{}(", method)?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("http", "download_resume") => {
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::download_resume(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 { write!(out, ", ")?; }
+                            if let Arg::Pos(expr) = arg {
+                                if i < 2 {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.expr(expr, out)?;
+                                }
+                            } else {
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                     ("http", "post_stream_with_headers") => {
                         // http.post_stream_with_headers(url, body, headers) → a2r_std::http::post_stream_with_headers(...)
                         // (Plan 013 G6: returns an HTTPStream for SSE.)

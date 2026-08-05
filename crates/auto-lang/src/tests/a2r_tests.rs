@@ -460,6 +460,8 @@ fn test_16_interop_021_path_dep() {
 #[test] fn test_18_rust_std_015_string_methods() { test_a2r("17_rust_std/015_string_methods").unwrap(); }
 #[test] fn test_18_rust_std_016_cmp_ordering() { test_a2r("17_rust_std/016_cmp_ordering").unwrap(); }
 #[test] fn test_18_rust_std_017_hash_map_ops() { test_a2r("17_rust_std/017_hash_map_ops").unwrap(); }
+// Plan 349: http.download / http.upload / http.download_resume a2r parity.
+#[test] fn test_18_rust_std_011_http_download_upload() { test_a2r("17_rust_std/011_http_download_upload").unwrap(); }
 
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 

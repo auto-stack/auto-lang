@@ -338,3 +338,98 @@ impl HTTPStream {
     /// placeholder that lets transpiled `.close()` calls compile.
     pub fn close(&self) {}
 }
+
+// ===========================================================================
+// Plan 349: File download + multipart upload (parity with VM http module).
+// ===========================================================================
+
+/// Download a file from `url` and save it to `file_path`.
+///
+/// Returns the HTTP status code (200 on success, 0 on transport error).
+/// Mirrors Auto's `http.download(url, file_path) -> int`.
+pub fn download(url: &str, file_path: &str) -> u32 {
+    let resp = ureq::get(url).call();
+    match resp {
+        Ok(response) => {
+            let status = response.status() as u32;
+            if let Ok(mut file) = std::fs::File::create(file_path) {
+                let _ = std::io::copy(&mut response.into_reader(), &mut file);
+            }
+            set_last_status(status);
+            status
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            set_last_status(code as u32);
+            code as u32
+        }
+        Err(ureq::Error::Transport(_)) => {
+            set_last_status(0);
+            0
+        }
+    }
+}
+
+/// Upload a single file to `url` via raw POST body.
+///
+/// Returns the HTTP status code. The file contents are sent as the request
+/// body with `Content-Type: application/octet-stream`.
+/// Mirrors Auto's `http.upload(url, file_path) -> int`.
+pub fn upload(url: &str, file_path: &str) -> u32 {
+    let data = match std::fs::read(file_path) {
+        Ok(d) => d,
+        Err(_) => {
+            set_last_status(0);
+            return 0;
+        }
+    };
+    let resp = ureq::post(url)
+        .set("Content-Type", "application/octet-stream")
+        .send_bytes(&data);
+    match resp {
+        Ok(response) => {
+            let status = response.status() as u32;
+            set_last_status(status);
+            status
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            set_last_status(code as u32);
+            code as u32
+        }
+        Err(ureq::Error::Transport(_)) => {
+            set_last_status(0);
+            0
+        }
+    }
+}
+
+/// Download with resume support — sends a Range header for `offset` bytes.
+///
+/// If the server supports range requests (206), appends to the existing file.
+/// Otherwise (200), overwrites from the beginning.
+/// Mirrors Auto's `http.download_resume(url, file_path, offset) -> int`.
+pub fn download_resume(url: &str, file_path: &str, offset: u64) -> u32 {
+    let req = ureq::get(url).set("Range", &format!("bytes={offset}-"));
+    match req.call() {
+        Ok(response) => {
+            let status = response.status() as u32;
+            let file_result = if status == 206 {
+                std::fs::OpenOptions::new().append(true).open(file_path)
+            } else {
+                std::fs::File::create(file_path)
+            };
+            if let Ok(mut file) = file_result {
+                let _ = std::io::copy(&mut response.into_reader(), &mut file);
+            }
+            set_last_status(status);
+            status
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            set_last_status(code as u32);
+            code as u32
+        }
+        Err(ureq::Error::Transport(_)) => {
+            set_last_status(0);
+            0
+        }
+    }
+}

@@ -1,0 +1,11 @@
+// Plan 349: http.download / http.upload / http.download_resume a2r parity.
+fn main() {
+    var status int = http.download("https://example.com/file.txt", "/tmp/file.txt")
+    print(status)
+
+    var up_status int = http.upload("https://example.com/upload", "/tmp/file.txt")
+    print(up_status)
+
+    var resume_status int = http.download_resume("https://example.com/large.bin", "/tmp/large.bin", 1024)
+    print(resume_status)
+}
