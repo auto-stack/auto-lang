@@ -1,0 +1,23 @@
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            if count == 2 {
+                print("reached two")
+            }
+            if count == 3 {
+                print("reached three")
+            }
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(1)
+    h.send(1)
+}
