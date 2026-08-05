@@ -2,14 +2,18 @@
 plan: 390
 title: actor-state-injection
 affects: [auto-lang/parser, auto-lang/a2r, auto-lang/vm, a2r-std]
-status: draft # draft | in-progress | complete
+status: in-progress # draft | in-progress | complete
 ---
 
-# Plan 390: Actor 状态注入机制 — spawn 初始参数 / 状态写入消息 / 只读访问器
+# Plan 390: Actor 状态注入机制 + a2r call-site spec 自动装箱修复
 
-> **来源**：auto-ai `docs/plans/021-auto-completion-roadmap.md` **§6.7**（EventSink cb 转发的外部设置机制）。
-> 继承 Plan 389（task 作用域三修复）后的下一步：`(self.cb)(ev)` 语法已可用，但 app 无法把回调注入 actor。
-> **对应 auto-ai 缺口**：缺口 1（`complete_stream` 流式）的 sink→app 转发收尾；非缺口 1 必需（agent→sink 事件已外发）。
+> **两个独立工作单元**，共享本计划与 worktree：
+> - **§1–§7（Phase A–D）**：Actor 状态注入（spawn 带参）— 来源 auto-ai Plan 021 **§6.7**。
+>   继承 Plan 389（task 作用域三修复）后的下一步：`(self.cb)(ev)` 语法已可用，但 app 无法把回调注入 actor。
+>   对应 auto-ai 缺口 1 的 sink→app 转发收尾；非缺口 1 必需。
+> - **§11（Phase E）**：a2r call-site spec 参数自动装箱缺陷修复 — 来源 auto-ai Plan 021 **缺口 2**。
+>   2026-08-06 实证调研推翻"需泛型语法"前提：spec-param 机制已能实现 `register(my_tool)` 的体验，
+>   缺陷在 call-site 不自动 `Box::new`。详见 §11。
 >
 > **For Claude:**
 > - 构建/测试命令：`cargo test -p auto-lang`（回归）、`cargo test -p a2r-std`（runtime 单测）、
@@ -195,12 +199,23 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
 
 ## §7 验收标准
 
+**Phase A–D（缺口 1 收尾 / §6.7）**：
 - [ ] app 能通过 `Task.spawn("EventSink", 16, cb)` 注入 `fn(StreamEvent)` 回调
 - [ ] EventSink 后续事件转发到注入的 cb（stdout 可观察，非 noop）
 - [ ] VM 与 a2r 转译版行为一致（5.10）
 - [ ] 现有 actor 测试零回归（001-015 黄金 + VM actor_tests 全绿）
 - [ ] 向后兼容：无参 spawn 行为不变
 - [ ] auto-ai Plan 021 §6.7 解锁，Phase 6.6 可推进（回 auto-ai 侧，见 §5 Phase D）
+
+**Phase E（缺口 2 / §11）**：
+- [ ] `r.register(my_tool)`（具体结构体实参）转译为 `r.register(Box::new(my_tool))`，编译通过
+- [ ] spec-bound ident 实参仍走 `.clone()`，行为不变
+- [ ] 现有 spec 测试零回归；`cargo test -p auto-lang` 无新增失败
+
+**Phase F（缺口 2 回 auto-ai / §12）**：
+- [ ] `tool.at`/`agent.at` 加 `register(tool Tool)` / `register_tool(tool Tool)`，retranspile 0 错
+- [ ] auto-ai-cli 的 `register_tool` call site 不再需手包箱
+- [ ] auto-ai Plan 021 Phase 2 + 缺口 2 完成判定勾选
 
 ## §8 实施记录
 
@@ -213,6 +228,10 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
 - 多线程抢占调度
 - sink→app 的 channel/SSE 类型系统（app 侧工作，auto-ai Plan 021 Phase 6.6）
 - 跨仓 driver.at 的 PipelineEvent 转发逻辑（auto-ai 侧，本计划只提供机制）
+- **`fn register<T: Tool + 'static>` 泛型方法语法路线（缺口 2）** —— ❌ **明确否决**（2026-08-06 实证）。
+  spec-param 机制（`fn register(tool Tool)` → `Box<dyn Tool>`）已达到"传入具名结构自动装箱"的体验目标，
+  无需泛型语法。泛型方法 + `'static` lifetime 是 Plan 242 Item #1 / Plan 364 W3 之外的 L 级新工程，
+  对缺口 2 属过度设计。缺口 2 的真缺陷（call-site 不自动 Box::new）见 §11 Phase E。
 
 ## §10 回 auto-ai 后的衔接
 
@@ -225,3 +244,113 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
 4. retranspile + 端到端验证 → 勾选 021 Phase 6.5/6.6 + 缺口 1 完成判定
 
 auto-ai 021 §6.7 已回标"对应 auto-lang Plan 390"，闭环。
+
+---
+
+## §11 Phase E — 缺口 2：a2r call-site spec 参数自动装箱缺陷修复
+
+> **2026-08-06 追加**。来源 auto-ai Plan 021 缺口 2（`register_tool<T>` 泛型）。本 Phase
+> 在 auto-lang worktree 推进 a2r 转译器修复；Phase F 在 auto-ai 侧落地 API（§12）。
+
+### §11.1 调研结论：泛型语法路线否决（spec-param 捷径已够）
+
+Plan 021 缺口 2 原始判断："Auto 无 `<T: Tool>` 泛型方法语法，需 auto-lang 支持"。
+**2026-08-06 实证推翻**：a2r 的 spec-param 机制（`fn register(tool Tool)`，`Tool` 是 spec）
+已能实现 rust-ref `register<T: Tool>(tool: T) { Arc::new(tool) }` 的**全部人体工学价值**——
+调用方写 `register(my_tool)` 即可，无需 `Arc::new(Box::new(...))` 手包箱。
+
+**实证（最小用例，当前 auto.exe 转译）**：
+
+```auto
+spec Tool { fn name() str; fn run() }
+pub mut fn register(tool Tool) void {
+    let n = tool.name()
+    let a = Arc(tool)            # Box<dyn Tool> → Arc<Box<dyn Tool>>
+    self.tools.set(n, a)
+}
+type EchoTool as Tool { fn name() str { return "echo" }; fn run() { print("echo!") } }
+fn main() { let r = Reg.new(); let t = EchoTool(); r.register(t) }
+```
+
+声明侧转译**正确**：
+```rust
+pub fn register(&mut self, tool: Box<dyn Tool>) {   // ✓ spec Tool → Box<dyn Tool>
+    let n = tool.name();
+    let a = Arc::new(tool);                          // ✓ Arc(tool) → Arc::new(tool)
+    self.tools.insert(n, a);
+}
+```
+
+**但 call site 不自动装箱**：`r.register(t)` 转译为 `r.register(t)`（无 `Box::new`）→
+Rust 报 `expected Box<dyn Tool>, found EchoTool`（E0308）。这就是缺口 2 的**真缺陷**，
+与泛型语法无关。详见 §9 非目标（泛型路线否决）。
+
+### §11.2 根因（trans/rust.rs，三处协调缺陷）
+
+| # | 缺陷 | 位置 | 影响 |
+|---|---|---|---|
+| D-A | `fn_spec_param_indices` 对方法未填充 | prescan `Stmt::Fn`（16476-16493）+ `Stmt::TypeDecl` 方法（16525-16557）——两处都填充了 str/int/struct/param_types/mut 的限定键 `"Type.method"`，**唯独跳过 spec** | 方法调用的 spec 标志查不到 |
+| D-B | call-site 的 `spec_flags` 查找不处理方法调用 | 7247-7251：仅匹配 `Expr::Ident(fn_name)`，`Expr::Dot` 方法调用直接落 `else { None }`（对照同文件 `str_flags` 7205-7222 有 `last_seg` 回退，spec 无） | `r.register(t)` 的 `spec_flags` 恒为 None，根本不尝试装箱 |
+| D-C | 装箱关闭括号无条件 `.clone()` | 7566-7568：`is_spec_param` 时写 `Box::new(<arg>.clone())`。对 spec-bound ident（已是 `Box<dyn Trait>`）正确；对**具体结构体值**（`EchoTool`）错误——应是 move 而非 clone | 即使 D-A/D-B 修好，具体值仍会因 `.clone()` 路径不对而编译失败/语义错 |
+
+**对照工作范例**：数组元素装箱（9447-9464）写 `Box::new(<elem>)` 无 `.clone()`（pure move），
+这是 call-site 应模仿的模式。
+
+### §11.3 修复方案（仅 trans/rust.rs，无 parser/AST/语言变更）
+
+**Fix A — 填充 `fn_spec_param_indices` 的方法限定键**：
+- `Stmt::Fn` prescan（16476-16493）：在 int-flags insert（16490）后，仿照计算 `spec_param_flags: Vec<bool> = fn_decl.params.iter().map(|p| matches!(p.ty, Type::Spec(_))).collect()`，`insert(fn_decl.name.clone(), spec_param_flags)`
+- `Stmt::TypeDecl` 方法 prescan（16525-16557）：仿 16541-16545（int 的限定键模式），计算 spec flags 后 `insert(qualified_key.clone(), ...)` + `insert(fn_decl.name.clone(), ...)`
+
+**Fix B — call-site `spec_flags` 查找处理方法调用**（7247-7251）：替换为 `str_flags`（7205-7222）的 `last_seg` 回退模式——`Expr::Dot(_, field) => Some(field.as_str())`，再 `self.fn_spec_param_indices.get(seg).cloned()`。
+
+**Fix C — 装箱关闭括号区分 spec-bound ident vs 具体值**（7566-7568）：
+```rust
+if is_spec_param {
+    if let Arg::Pos(Expr::Ident(name)) = arg {
+        if self.spec_bound_idents.contains(name) {
+            write!(out, ".clone())")?;   // 已是 Box<dyn Trait>，clone 入箱
+        } else {
+            write!(out, ")")?;            // 具体结构体，move 入箱
+        }
+    } else {
+        write!(out, ")")?;                // 非简单 ident 表达式，move 入箱
+    }
+}
+```
+开括号 `Box::new(`（7410-7412）无需改。
+
+### §11.4 实施任务（Phase E，auto-lang worktree）
+
+- [ ] E.1 worktree：`plan-390/actor-state-injection`（与 Phase A–D 同 worktree，§5 Phase A 之前先做 E，因 E 更小且独立）
+- [ ] E.2 Fix A：`trans/rust.rs` 两处 prescan 补 `fn_spec_param_indices` 方法键
+- [ ] E.3 Fix B：`trans/rust.rs` 7247-7251 `spec_flags` 查找加 `last_seg` 回退
+- [ ] E.4 Fix C：`trans/rust.rs` 7566-7568 区分 spec-bound ident / 具体值
+- [ ] E.5 新增 a2r 用例 `12_specs/010_spec_param_callsite/spec_param_callsite.at`：
+       spec 参数的方法调用 + 具体结构体实参 + spec-bound ident 实参两个场景，期望输出含 `Box::new(arg)`
+       （具体值）/ `Box::new(arg.clone())`（spec-bound）黄金对比
+- [ ] E.6 回归：`cargo test -p auto-lang` 全绿（含 001-009 spec 黄金逐字节不变）；
+       spike 最小用例（§11.1）retranspile → 独立 crate 编译运行 stdout 正确
+
+### §11.5 验收（Phase E）
+
+- [ ] `r.register(my_tool)`（`my_tool: EchoTool` 具体结构体）转译为 `r.register(Box::new(my_tool))`，编译通过
+- [ ] spec-bound ident 实参仍走 `.clone()` 路径，行为不变（向后兼容）
+- [ ] 现有 spec 测试（12_specs 001-009）零回归
+- [ ] `cargo test -p auto-lang` 无新增失败
+
+## §12 Phase F — 回 auto-ai 落地缺口 2 API（auto-ai 侧）
+
+> Phase E（a2r 修复）合并 + 重建 auto.exe 后，auto-ai 侧的 API 落地。
+
+- [ ] F.1 `crates/auto-ai-agent/src/tool.at`：`ext ToolRegistry` 加 `pub mut fn register(tool Tool) void`
+       （body：`let a = Arc(tool); self.tools.set(tool.name(), a)`，复用 §11.1 实证形态）
+- [ ] F.2 `crates/auto-ai-agent/src/agent.at`：加 `pub mut fn register_tool(tool Tool) void`
+       （转发 `self.tools.register(tool)`），对齐 rust-ref 的 `register_tool<T>` 名称
+- [ ] F.3 retranspile 0 错；`auto-ai-cli` 的 `agent.register_tool(tools::ReadFile)` 等
+       call site 不再需要 `Arc::new(Box::new(...))` 手包箱（缺口 2 完成判定）
+- [ ] F.4 勾选 auto-ai Plan 021 Phase 2 + 缺口 2 完成判定
+- [ ] F.5 更新 021 §"缺口 2"章节：注明"泛型语法路线否决，改用 spec-param + Phase E call-site 修复"
+
+**注**：存储类型仍是 `Arc<Box<dyn Tool>>`（双层包装，Plan 019/021 已知限制，Deref 链功能可用）。
+转正时若需对齐 rust-ref 的单层 `Arc<dyn Tool>`，另立 a2r spec 返回位/存储位推导计划（非本计划范围）。
