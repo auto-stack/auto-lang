@@ -503,10 +503,15 @@ fn main() {
 
 **验证**：`010_handle_cross_fn`——spawn 在普通函数 `spawn_and_send`（非 main），端到端通过。
 
-### §17.2 P0-2 部分完成：TaskRef 类型映射
+### §17.2 P0-2 解决：TaskRef 类型映射 + 作函数参数 move 传递
 
-- `GenericInstance("TaskRef")` → `a2r_std::task::TaskRef<T>`（类型映射已加，commit `9b6dbb9a`）。
-- **已知限制**：`TaskRef` 作函数参数传递时，escape analyzer 给变量加 `.clone()`（`forward(h)` → `forward(h.clone())`），而 `TaskRef` 非 Clone → 编译失败。根因：escape analysis 的 `OwnershipTier::Clone` 默认对非 Copy escape 变量生效，不识别 `TaskRef` 的 move 语义。修复需 escape analyzer 深度改动（识别 `TaskRef<...>` 类型用 Move tier）。**留作后续**。当前 010 验证用"spawn in fn"（不传 handle）绕过。
+- `GenericInstance("TaskRef")` → `a2r_std::task::TaskRef<T>`（类型映射，commit `9b6dbb9a`）。
+- **作函数参数 move 传递**（commit `f258cb64`）：根因是 `fn_decl` 计算 `struct_param_flags`（line 9633）时对非 Copy 类型参数标 true，调用时生成 `.clone()`。`TaskRef<i64>` 是 `GenericInstance`（非 Copy）被误标 → `forward(h.clone())` 但 `TaskRef` 非 Clone → 编译失败。修复：`struct_param_flags` 排除 `TaskRef` 类型参数（`is_taskref = matches!(p.ty, GenericInstance(inst) if inst.base_name=="TaskRef")`），TaskRef 作参数 move 传递。
+- **验证**：`011_handle_param`——`fn forward(h TaskRef<i64>)` + `forward(h)`，端到端通过（`got one\ngot one`），无 `.clone()`。
+
+### §17.2a P0-2 遗留：handle 存 struct 字段
+
+- `struct Worker { handle TaskRef<i64> }` 解析失败（`got Lt<<`）——Auto struct 字段类型语法不支持泛型 `TaskRef<i64>`。需 parser 支持字段泛型类型。**留作后续**。
 
 ### §17.3 P0-3 解决：外部 enum 作 actor 消息
 
@@ -515,11 +520,12 @@ fn main() {
 
 ### §17.4 验证
 
-- 11 文本黄金（001-010 + 012）+ 11 parity（含手写 expected）+ 7 VM actor + 6 a2r-std 单测，全绿。
-- commit：W6-W7 `9b6dbb9a`（RAII + 解耦）、W8-W9 `ea08546e`（外部 enum + 验证用例）。
+- **12 文本黄金**（001-012）+ **12 parity**（含手写 expected）+ 7 VM actor + 6 a2r-std 单测，全绿。
+- §16 三个 P0 阻塞全部解决。
+- commit：W6-W7 `9b6dbb9a`（RAII + 解耦）、W8-W9 `ea08546e`（外部 enum + 验证用例）、P0-2 `f258cb64`（TaskRef 作参数 move）。
 
 ### §17.5 后续遗留
 
-- **P0-2 handle 作函数参数**：escape analyzer 识别 `TaskRef` move 语义（`escalate_visible`/`OwnershipTier` 对 `TaskRef<...>` 用 Move 而非 Clone）。
-- **011 handle 存结构体字段**：未做（依赖 P0-2 的 move 修复，`self.sink.send()` 应可用但需验证）。
-- **013 actor 与方法共存综合用例**：未做（同上）。
+- **handle 存 struct 字段**：`struct W { h TaskRef<i64> }` 解析失败（Auto struct 字段类型不支持泛型语法 `TaskRef<i64>`，`got Lt<<`）。需 parser 支持字段泛型类型。
+- **013 actor 与方法共存综合用例**：同上依赖。
+- auto-ai 侧现在可实施 agent.at 流式改造（P0-1/P0-2/P0-3 均已解决）。
