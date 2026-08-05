@@ -1,4 +1,4 @@
-# Plan 367: AutoUI RenderQueue / 分离渲染架构（未来优化）
+# Plan 386: AutoUI RenderQueue / 分离渲染架构（未来优化）
 
 > **状态**：⏸ 暂缓（明确的前置条件未满足）
 > **来源**：从 Plan 365 W5 独立出来。Plan 365 的 Host ①/②（in-process）已
