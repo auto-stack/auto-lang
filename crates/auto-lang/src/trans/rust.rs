@@ -7381,6 +7381,16 @@ impl RustTrans {
                     if let Arg::Pos(expr) = arg {
                         self.expr_as_str(expr, out)?;
                     }
+                } else if needs_ref_borrow && matches!(arg, Arg::Pos(Expr::Dot(_, _))) {
+                    // Plan 018 §Phase 3.5: `&self.field` passed to a `@T` (&T)
+                    // param must NOT get the self-dot `.clone()` that `arg()`
+                    // appends — that produces `&self.field.clone()` (E0599 no
+                    // clone on Mutex). The borrow is a shared reference, so the
+                    // field is moved-by-borrow, not cloned. Emit the expr
+                    // directly and let the `&` written above apply.
+                    if let Arg::Pos(expr) = arg {
+                        self.expr(expr, out)?;
+                    }
                 } else {
                     self.arg(arg, out)?;
                     if needs_clone {
@@ -7765,7 +7775,20 @@ impl RustTrans {
             }
             // Plan 376F: Infer type from plain identifier via local_var_types
             Expr::Ident(name) => {
-                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
+                if let Some(ty) = self.local_var_types.get(name) {
+                    return ty.clone();
+                }
+                // Plan 389 R2: a bare function name in value position (e.g. a
+                // task state field default `cb = noop_event`) is a fn item —
+                // infer its fn-pointer type so the field isn't emitted as
+                // `/* unknown */`. Param types come from the prescan
+                // (fn_param_types); the return type from the Plan 373 cache
+                // (also prescanned by Plan 389), defaulting to Void.
+                if let Some(params) = self.fn_param_types.get(name) {
+                    let ret = self.fn_ret_types.get(name).cloned().unwrap_or(Type::Void);
+                    return Type::Fn(params.clone(), Box::new(ret));
+                }
+                Type::Unknown
             }
             // Plan 376F: Binary arithmetic — infer from operands
             Expr::Bina(lhs, op, rhs) => {
@@ -16163,6 +16186,14 @@ impl Trans for RustTrans {
 
                     let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
                     self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+
+                    // Plan 389 R2: also cache the return type in the prescan so
+                    // task state fields initialized from a fn reference
+                    // (`cb = noop_event`) can infer their fn-pointer type even
+                    // when the fn is declared *after* the task. (Emit-time
+                    // registration below only covers fns seen before the task.)
+                    self.fn_ret_types
+                        .insert(fn_decl.name.clone(), fn_decl.ret.clone());
 
                     // C11 (Plan 018 §12 a2r-11): `mut p T` params are &mut refs —
                     // call sites must pass `&mut arg` (never arg.clone()). The

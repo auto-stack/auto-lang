@@ -946,3 +946,14 @@ fn test_312_codegen_collects_api_routes() {
 // Plan 387 §16 P0-2: TaskRef as a function parameter (move, not clone).
 // .expected.out hand-written (VM uses a different spawn/send API).
 #[test] fn test_22_actors_011_handle_param() { test_a2r_deep("22_actors/011_handle_param"); }
+// Plan 389 R1: on-pattern TypeBinding usable as an expression variable — the
+// handler forwards the whole event to a free fn (`handle(ev)`), not just an
+// `is ev {...}` scrutinee. a2r-only (VM has no fn-value call in handler body).
+#[test] fn test_22_actors_013_forward_event() { test_a2r_deep("22_actors/013_forward_event"); }
+// Plan 389 R3: f-string interpolating a task state field (`f"${log}..."`) parses
+// and accumulates. a2r-only (VM's actor state is i64-backed).
+#[test] fn test_22_actors_014_fstring_state() { test_a2r_deep("22_actors/014_fstring_state"); }
+// Plan 389 R2: fn-pointer task state field (`cb = noop`, reassigned to `show`)
+// infers its fn-pointer type instead of `/* unknown */`, and `(self.cb)(ev)`
+// forwards the event. a2r-only (VM's actor state is i64-backed).
+#[test] fn test_22_actors_015_fnp_state_field() { test_a2r_deep("22_actors/015_fnp_state_field"); }

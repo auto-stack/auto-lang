@@ -1,0 +1,19 @@
+task Counter {
+    log = f""
+    on {
+        1 -> {
+            log = f"${log}n:1;"
+            print(log)
+        }
+        2 -> {
+            log = f"${log}n:2;"
+            print(log)
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(2)
+}

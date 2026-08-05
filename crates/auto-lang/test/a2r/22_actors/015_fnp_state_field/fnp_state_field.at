@@ -1,0 +1,35 @@
+pub enum Event {
+    A
+    B(str)
+}
+
+fn noop(ev Event) {
+    print("fwd")
+}
+
+fn show(ev Event) {
+    is ev {
+        Event.A -> {
+            print("show A")
+        },
+        Event.B(s) -> {
+            print("show " + s)
+        }
+    }
+}
+
+task Sink {
+    cb = noop
+    on {
+        ev Event -> {
+            (self.cb)(ev)
+            cb = show
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    h.send(Event.A)
+    h.send(Event.B("x"))
+}

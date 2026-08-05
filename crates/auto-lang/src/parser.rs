@@ -5037,6 +5037,13 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
+        // Plan 389 R3: task state fields are task-scoped members. Register
+        // them in the parser scope so handler/hook bodies can reference them
+        // (including f-string interpolation `${field}`) — previously check_symbol
+        // raised E0201 for them, which body()'s error recovery re-surfaced as a
+        // confusing E0007 "Expected term, got RBrace".
+        self.infer_ctx.push_scope();
+
         // Parse task body
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -5068,6 +5075,10 @@ impl<'a> Parser<'a> {
                 TokenKind::Ident => {
                     // Parse state field: name [mut] = expr
                     let (field_name, mutable, init_expr) = self.parse_task_state_field()?;
+                    // Plan 389 R3: bind the field name (type unknown — exists()
+                    // only checks name presence) so it resolves in check_symbol.
+                    self.infer_ctx
+                        .bind_var(field_name.clone(), crate::ast::Type::Unknown);
                     task.add_state(field_name, mutable, init_expr);
                 }
                 _ => {
@@ -5080,7 +5091,9 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
 
-        self.expect(TokenKind::RBrace)?;
+        let close_brace = self.expect(TokenKind::RBrace);
+        self.infer_ctx.pop_scope();
+        close_brace?;
 
         // Register task in scope
         self.define(name.as_str(), Meta::Task(task.clone()));
@@ -5220,16 +5233,17 @@ impl<'a> Parser<'a> {
                 // Parse message pattern: Name, Literal, or TypeBinding
                 let pattern = self.parse_task_msg_pattern()?;
 
-                // Phase 3: Parse optional guard expression
-                let guard = if self.is_kind(TokenKind::If) {
-                    self.next(); // consume 'if'
-                    Some(self.parse_expr()?)
-                } else {
-                    None
-                };
-
-                self.expect(TokenKind::Arrow)?;
-                let body = self.body()?;
+                // Plan 389 R1: register on-pattern binding names (TypeBinding /
+                // WithBindings) in a per-handler scope so the guard and body can
+                // reference them as expression variables — previously only
+                // `is ev { ... }` worked, and only because parse_is skips symbol
+                // checks for is-targets. The scope is popped even on parse error
+                // so the scope stack stays balanced for body()'s recovery.
+                self.infer_ctx.push_scope();
+                self.bind_task_pattern_names(&pattern);
+                let parsed = self.parse_on_handler_body();
+                self.infer_ctx.pop_scope();
+                let (guard, body) = parsed?;
                 on_block.add_handler_with_guard(pattern, guard, body);
             }
 
@@ -5239,6 +5253,42 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace)?;
 
         Ok(on_block)
+    }
+
+    /// Plan 389 R1: bind an on-pattern's binding names into the current infer
+    /// scope so the handler body (and guard) can reference them as expression
+    /// variables. TypeBinding binds the bound name with its declared type;
+    /// WithBindings binds each tuple-pattern name as Unknown.
+    fn bind_task_pattern_names(&mut self, pattern: &TaskMsgPattern) {
+        use crate::ast::TaskMsgPattern as P;
+        match pattern {
+            P::TypeBinding { name, type_expr } => {
+                self.infer_ctx.bind_var(name.clone(), (**type_expr).clone());
+            }
+            P::WithBindings { bindings, .. } => {
+                for b in bindings {
+                    self.infer_ctx.bind_var(b.clone(), crate::ast::Type::Unknown);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Plan 389 R1: parse a single on-handler's guard + body. Called with the
+    /// pattern-binding scope already pushed (the caller pops it afterwards, even
+    /// on error, so the scope stack stays balanced under error recovery).
+    fn parse_on_handler_body(&mut self) -> AutoResult<(Option<Expr>, Body)> {
+        // Phase 3: Parse optional guard expression
+        let guard = if self.is_kind(TokenKind::If) {
+            self.next(); // consume 'if'
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Arrow)?;
+        let body = self.body()?;
+        Ok((guard, body))
     }
 
     /// Parse task message pattern
