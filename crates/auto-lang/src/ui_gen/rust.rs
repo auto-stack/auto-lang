@@ -4495,6 +4495,25 @@ impl RustGenerator {
                     format!("if {} {{ {} }} else {{ {} }}", cond, then_body, else_body)
                 }
             }
+            Expr::Block(body) => {
+                // Plan 043 M5 #2: render a multi-statement computed body as a
+                // Rust block `{ stmt; ...; tail }`. The final `return e;` becomes
+                // the trailing expression `e`; any other trailing expression
+                // statement is used as-is. Statements in between are joined by
+                // `; ` (ast_stmt_to_rust already omits the trailing semicolon).
+                let n = body.stmts.len();
+                let mut parts: Vec<String> = Vec::with_capacity(n);
+                for (i, stmt) in body.stmts.iter().enumerate() {
+                    let is_last = i + 1 == n;
+                    match stmt {
+                        crate::ast::Stmt::Return(expr) if is_last => {
+                            parts.push(self.ast_expr_to_rust(expr));
+                        }
+                        _ => parts.push(self.ast_stmt_to_rust(stmt)),
+                    }
+                }
+                format!("{{ {} }}", parts.join("; "))
+            }
             _ => format!("/* expr */"),
         }
     }

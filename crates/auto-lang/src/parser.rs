@@ -11811,18 +11811,25 @@ impl<'a> Parser<'a> {
                 }.into());
             }
 
-            // Parse expression.
-            // Disable symbol checking: widget/store computed expressions
-            // reference props and model fields (e.g. `url => language`) that
-            // are not bound in the parser's variable scope — name resolution
-            // happens in the code generator. Without this, bare identifiers
-            // (and call args like `btoa(lang)`) fail with "undefined variable"
-            // which surfaces as a confusing "Expected term, got RBrace".
+            // Parse expression, or a multi-statement block body.
+            // Plan 043 M5 #2: `x => { ...; return y }` now parses the brace as
+            // a statement block (Expr::Block), reusing the same self.body()
+            // path as on-handlers. A single-expression computed (`x => .foo`)
+            // still goes through parse_expr(). Disable symbol checking: widget
+            // /store computed expressions reference props and model fields
+            // (e.g. `url => language`) that are not bound in the parser's
+            // variable scope — name resolution happens in the code generator.
+            // Without this, bare identifiers (and call args like `btoa(lang)`)
+            // fail with "undefined variable" which surfaces as a confusing
+            // "Expected term, got RBrace".
             let old_skip_check = self.skip_check;
             self.skip_check = true;
-            let expr = self.parse_expr();
+            let expr = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
             self.skip_check = old_skip_check;
-            let expr = expr?;
 
             properties.push(ComputedProperty { name, expr });
             self.skip_empty_lines();
@@ -15068,6 +15075,57 @@ widget Shell {
         // SetTag(str) — single payload still works (regression guard).
         assert_eq!(msg.variants[3].name.as_str(), "SetTag");
         assert_eq!(msg.variants[3].payload.len(), 1, "SetTag has 1 payload type");
+    }
+
+    /// Plan 043 M5 #2: a computed property with a multi-statement block body
+    /// must parse. Previously only single expressions parsed (`x => .foo`);
+    /// `x => { var y = ...; return y }` failed with "Expected term, got RBrace".
+    #[test]
+    fn test_computed_multiline_body() {
+        let code = r#"
+widget Counter {
+    model { count int = 0 }
+    computed {
+        doubled => count * 2
+        summary => {
+            var label = "count="
+            label = label + count
+            return label
+        }
+    }
+    view { col { text "hi" } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("multiline computed body should parse");
+
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let widget = match non_empty[0] {
+            Stmt::WidgetDecl(w) => w,
+            other => panic!("expected WidgetDecl, got {:?}", other),
+        };
+        let computed = widget.computed.as_ref().expect("computed block present");
+        assert_eq!(computed.properties.len(), 2);
+
+        // First property: single expression (regression guard — still works).
+        assert!(
+            !matches!(computed.properties[0].expr, Expr::Block(_)),
+            "single-expression computed stays a bare expr"
+        );
+
+        // Second property: multi-statement block body.
+        match &computed.properties[1].expr {
+            Expr::Block(body) => {
+                assert_eq!(body.stmts.len(), 3, "summary body has 3 statements");
+                // Last statement is the return.
+                assert!(
+                    matches!(body.stmts.last(), Some(Stmt::Return(_))),
+                    "body ends in a return"
+                );
+            }
+            other => panic!("expected Expr::Block for multiline computed, got {:?}", other),
+        }
     }
 
 

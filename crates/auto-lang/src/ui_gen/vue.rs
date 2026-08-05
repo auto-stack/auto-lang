@@ -4806,6 +4806,21 @@ impl VueGenerator {
                     Ok(format!("router.push({{ path: {}, query: {{ {} }} }})", path_js, params_js.join(", ")))
                 }
             }
+            // Plan 043 M5 #2: render a multi-statement computed body. The
+            // computed wrapper at the call site is `computed(() => {expr_js})`,
+            // so we emit `{ stmts; return tail; }` to produce a valid statement
+            // arrow-body. Reuse the handler-body transpiler (same state/prop
+            // rewriting rules) so the body sees `state.value` etc.
+            Expr::Block(body) => {
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+                    .with_props(self.prop_names.iter().cloned().collect())
+                    .with_refs(self.template_refs.iter().cloned().collect());
+                if !self.project_api_functions.is_empty() {
+                    ctx = ctx.with_api_functions(self.project_api_functions.clone());
+                }
+                let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                Ok(format!("{{ {} }}", body_js.trim()))
+            }
             _ => Ok("undefined".to_string()),
         }
     }
@@ -12787,6 +12802,47 @@ widget Dispatch {
         assert!(
             sfc.contains("<template v-else>"),
             "trailing else arm:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 043 M5 #2: a multi-statement computed body must render its logic
+    /// (not collapse to `undefined`). Previously expr_to_js had no Block branch
+    /// so `x => { ...; return y }` emitted `computed(() => undefined)`.
+    #[test]
+    fn test_computed_multiline_body_renders_js() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Counter {
+    model { count int = 0 }
+    computed {
+        summary => {
+            var label = "count="
+            return label
+        }
+    }
+    view { col { text "hi" } }
+}
+"#);
+        // The computed body must keep its logic — the `return label` and the
+        // local binding must survive, not be replaced by `undefined`.
+        assert!(
+            sfc.contains("const summary = computed"),
+            "computed wrapper present:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("computed(() => undefined)"),
+            "multiline body must not collapse to undefined:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("let label"),
+            "local binding from block body survives:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("return label"),
+            "return statement from block body survives:\n{}",
             sfc
         );
     }
