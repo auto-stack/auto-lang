@@ -372,18 +372,22 @@ if is_spec_param {
 - [ ] 现有 spec 测试（12_specs 001-009）零回归
 - [ ] `cargo test -p auto-lang` 无新增失败
 
-## §12 Phase F — 回 auto-ai 落地缺口 2 API（auto-ai 侧）
+## §12 Phase F — 回 auto-ai 落地缺口 2 API（auto-ai 侧）✅ 2026-08-06
 
-> Phase E（a2r 修复）合并 + 重建 auto.exe 后，auto-ai 侧的 API 落地。
+> Phase E（a2r 修复）已合并 master + 重建 auto.exe。本 Phase 在 auto-ai 落地 API。
 
-- [ ] F.1 `crates/auto-ai-agent/src/tool.at`：`ext ToolRegistry` 加 `pub mut fn register(tool Tool) void`
-       （body：`let a = Arc(tool); self.tools.set(tool.name(), a)`，复用 §11.1 实证形态）
-- [ ] F.2 `crates/auto-ai-agent/src/agent.at`：加 `pub mut fn register_tool(tool Tool) void`
+- [x] F.1 `crates/auto-ai-agent/src/tool.at`：`ext ToolRegistry` 加 `pub mut fn register(tool Tool) void`
+       （body：`let a = Arc(tool); self.tools.set(n, a)` —— **let-bound Arc workaround**，
+       因 a2r 实参位 `Arc(x)` 渲染缺陷，见 KNOWN-DEBT Plan 021 条）
+- [x] F.2 `crates/auto-ai-agent/src/agent.at`：加 `pub mut fn register_tool(tool Tool) void`
        （转发 `self.tools.register(tool)`），对齐 rust-ref 的 `register_tool<T>` 名称
-- [ ] F.3 retranspile 0 错；`auto-ai-cli` 的 `agent.register_tool(tools::ReadFile)` 等
-       call site 不再需要 `Arc::new(Box::new(...))` 手包箱（缺口 2 完成判定）
-- [ ] F.4 勾选 auto-ai Plan 021 Phase 2 + 缺口 2 完成判定
-- [ ] F.5 更新 021 §"缺口 2"章节：注明"泛型语法路线否决，改用 spec-param + Phase E call-site 修复"
+- [x] F.3 retranspile 0 错（rust/ 独立 crate + workspace 双检）；`r.register(EchoTool())` →
+       `r.register(Box::new(EchoTool {}))` 自动装箱（Phase E 生效），无需 `Arc::new(Box::new(...))` 手包箱
+- [x] F.4 勾选 auto-ai Plan 021 Phase 2 + 缺口 2 完成判定
+- [x] F.5 更新 021 §"缺口 2"章节：注明"泛型语法路线否决，改用 spec-param + Phase E call-site 修复"
 
 **注**：存储类型仍是 `Arc<Box<dyn Tool>>`（双层包装，Plan 019/021 已知限制，Deref 链功能可用）。
 转正时若需对齐 rust-ref 的单层 `Arc<dyn Tool>`，另立 a2r spec 返回位/存储位推导计划（非本计划范围）。
+
+**遗留（KNOWN-DEBT Plan 021）**：a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷（仅 let 位正确）。
+`register` 体用 `let a = Arc(tool)` 绕过；a2r 根因修复后可去 let 绑定直写。
