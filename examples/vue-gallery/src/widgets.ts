@@ -1,5 +1,8 @@
-// Catalog of v1 widgets grouped for the sidebar + Home overview.
-// Each entry maps a route to its showcase page.
+// Thin wrapper: merges generated (name+route) with meta (blurb+group).
+// Re-exports widgetGroups for App.vue / Home.vue — API unchanged.
+import { generatedWidgets } from './widgets.generated'
+import { widgetMeta, type WidgetMeta } from './widgets.meta'
+
 export interface WidgetEntry {
   name: string
   route: string
@@ -11,37 +14,27 @@ export interface WidgetGroup {
   widgets: WidgetEntry[]
 }
 
-export const widgetGroups: WidgetGroup[] = [
-  {
-    label: 'Form',
-    widgets: [
-      { name: 'button', route: '/button', blurb: 'Action trigger with variants & sizes' },
-      { name: 'input', route: '/input', blurb: 'Single-line text field' },
-      { name: 'textarea', route: '/textarea', blurb: 'Multi-line text field' },
-      { name: 'checkbox', route: '/checkbox', blurb: 'Boolean selector' },
-      { name: 'switch', route: '/switch', blurb: 'Toggle control' },
-      { name: 'label', route: '/label', blurb: 'Form field caption' },
-    ],
-  },
-  {
-    label: 'Layout',
-    widgets: [
-      { name: 'card', route: '/card', blurb: 'Container with header / content / footer' },
-      { name: 'separator', route: '/separator', blurb: 'Horizontal / vertical divider' },
-    ],
-  },
-  {
-    label: 'Feedback',
-    widgets: [
-      { name: 'badge', route: '/badge', blurb: 'Compact status label' },
-      { name: 'avatar', route: '/avatar', blurb: 'User image with fallback' },
-    ],
-  },
-  {
-    label: 'Overlay / Nav',
-    widgets: [
-      { name: 'dialog', route: '/dialog', blurb: 'Modal overlay' },
-      { name: 'tabs', route: '/tabs', blurb: 'Switchable panels' },
-    ],
-  },
-]
+function buildGroups(): WidgetGroup[] {
+  const byGroup: Map<string, WidgetEntry[]> = new Map()
+  for (const w of generatedWidgets) {
+    const meta: WidgetMeta | undefined = widgetMeta[w.name]
+    const group = meta?.group ?? 'Uncategorized'
+    const blurb = meta?.blurb ?? ''
+    const entry: WidgetEntry = { name: w.name, route: w.route, blurb }
+    const arr = byGroup.get(group) ?? []
+    arr.push(entry)
+    byGroup.set(group, arr)
+  }
+  // Preserve a sensible group order.
+  const groupOrder = ['Form', 'Layout', 'Feedback', 'Overlay / Nav', 'Uncategorized']
+  const groups: WidgetGroup[] = []
+  for (const label of groupOrder) {
+    const widgets = byGroup.get(label)
+    if (widgets && widgets.length > 0) {
+      groups.push({ label, widgets })
+    }
+  }
+  return groups
+}
+
+export const widgetGroups: WidgetGroup[] = buildGroups()
