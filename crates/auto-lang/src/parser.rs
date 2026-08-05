@@ -4339,6 +4339,10 @@ impl<'a> Parser<'a> {
     /// }
     /// ```
     fn parse_ext_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 391 D6: record whether this block was opened by `impl` (Rust-style
+        // trait-impl attempt) vs `ext` (Auto's legitimate spec-impl syntax
+        // `ext Type for Spec { ... }`). Only `impl ... for` is an error.
+        let opened_by_impl = self.is_kind(TokenKind::Impl);
         self.next(); // skip `ext` or `impl` keyword
 
         // Plan 364 W1: impl-level macro attrs from the annotation dispatch
@@ -4369,9 +4373,11 @@ impl<'a> Parser<'a> {
         // `impl Trait for Type { ... }` would otherwise be silently misparsed
         // here (target=Trait, `for` mishandled → impl Type for Trait, reversed).
         // Detect the `... for <ident>` tail and raise a clear error instead of
-        // producing a wrong-arity impl block. (Skipping any generic args first,
-        // since `impl TryFrom<Node> for Foo` has `<Node>` between name and for.)
-        if self.is_kind(TokenKind::Lt) {
+        // producing a wrong-arity impl block. NOTE: `ext Type for Spec` is a
+        // LEGITIMATE Auto spec-impl syntax — only flag `impl ... for`.
+        // (Skipping any generic args first, since `impl TryFrom<Node> for Foo`
+        // has `<Node>` between name and for.)
+        if opened_by_impl && self.is_kind(TokenKind::Lt) {
             // skip `<...>` generic args on the trait name
             self.next();
             let mut depth = 1i32;
@@ -4384,7 +4390,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        if self.is_kind(TokenKind::For) {
+        if opened_by_impl && self.is_kind(TokenKind::For) {
             return Err(SyntaxError::Generic {
                 message: "Auto does not support trait impl syntax (`impl Trait for Type`). \
                           Use a `static fn`/`ext` method with an equivalent name instead."
