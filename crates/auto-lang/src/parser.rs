@@ -5819,6 +5819,33 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let stmt_line = self.cur.pos.line;
             let starts_with_dot = self.is_kind(TokenKind::Dot);
+
+            // Plan 043 fix: handle `.field = expr` and `.field.sub = expr`
+            // directly to avoid a stack overflow in expr_pratt_with_left when
+            // the assignment operator (=) follows a dot_item prefix.
+            // Root cause: expr_pratt's prefix match handles Dot via dot_item(),
+            // but expr_pratt_with_left's infix loop fails to properly consume
+            // the RHS when lhs is a Dot expression, causing infinite recursion.
+            if starts_with_dot {
+                // Parse the dot chain: .a.b.c
+                let mut lhs = self.dot_item()?;
+                // If followed by =, parse the assignment
+                if self.is_kind(TokenKind::Asn) {
+                    self.next(); // consume =
+                    let rhs = self.parse_expr()?;
+                    lhs = Expr::Bina(Box::new(lhs), Op::Asn, Box::new(rhs));
+                } else {
+                    // Not an assignment — try to continue parsing as expression
+                    // (e.g. .method() call)
+                    lhs = self.expr_pratt_with_left(lhs, 0)?;
+                }
+                stmts.push(Stmt::Expr(lhs));
+                source_lines.push(stmt_line);
+                stmt_starts_with_dot.push(true);
+                let _ = self.skip_empty_lines();
+                continue;
+            }
+
             match self.parse_stmt() {
                 Ok(stmt) => {
                     if is_node {
