@@ -8760,12 +8760,25 @@ impl RustTrans {
                 } else {
                     param.name.to_string()
                 };
-                write!(
-                    sink.body,
-                    "{}: {}",
-                    param_name,
-                    self.effective_param_type_name(param, &result_idents)
-                )?;
+                if param.mode == crate::ast::ParamMode::Mut {
+                    // C1 (Plan 018 §12 a2r-11): `mut p T` on a METHOD param →
+                    // `p: &mut T` (mirror of the free-function branch below).
+                    // Was missing → ext methods emitted `mut p: T` (by-value),
+                    // so `mut doc Doc` couldn't mutate the caller's doc.
+                    write!(
+                        sink.body,
+                        "{}: &mut {}",
+                        param_name,
+                        self.effective_param_type_name(param, &result_idents)
+                    )?;
+                } else {
+                    write!(
+                        sink.body,
+                        "{}: {}",
+                        param_name,
+                        self.effective_param_type_name(param, &result_idents)
+                    )?;
+                }
                 if i < params_to_emit.len() - 1 {
                     write!(sink.body, ", ")?;
                 }
@@ -14500,11 +14513,60 @@ impl RustTrans {
     /// enclosing `Result`'s error type is a plain enum/String (not Box<...>).
     /// `Err(Box::new(X))` → `Err(X)`
     fn fix_residual_error_box(content: &mut String) {
-        if let Some(re) = cached_regex(r"Err\(Box::new\(([^()*(]*(?:\([^()]*\)[^()]*)*)\)\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("Err({})", caps.get(1).unwrap().as_str())
-            }).to_string();
-            if new != *content { *content = new; }
+        let needle = "Err(Box::new(";
+        let mut out = String::with_capacity(content.len());
+        let mut rest: &str = content;
+        loop {
+            match rest.find(needle) {
+                None => {
+                    out.push_str(rest);
+                    break;
+                }
+                Some(pos) => {
+                    out.push_str(&rest[..pos]);
+                    let after = &rest[pos + needle.len()..];
+                    // Find the close paren that balances the Box::new( open,
+                    // counting nesting (payload may itself contain parens, e.g.
+                    // nested format!(...) from `+` concat). The old regex only
+                    // handled ONE paren level — nested format! stayed Box::new
+                    // and broke `Result<_, String>` fns (E0308 Box<String>).
+                    let mut depth = 1i32;
+                    let mut close: Option<usize> = None;
+                    for (i, ch) in after.char_indices() {
+                        match ch {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    close = Some(i);
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // `Err(Box::new(` opens BOTH Err( and Box::new( — the Err's
+                    // own close paren immediately follows the Box::new close.
+                    // Consume it too: `Err(Box::new(X))` → `Err(X)`.
+                    match close {
+                        Some(i) => {
+                            out.push_str("Err(");
+                            out.push_str(&after[..i]);
+                            out.push_str(")");
+                            let skip = if after[i + 1..].starts_with(')') { i + 2 } else { i + 1 };
+                            rest = &after[skip..];
+                        }
+                        None => {
+                            // Unbalanced — leave the text untouched.
+                            out.push_str(needle);
+                            rest = after;
+                        }
+                    }
+                }
+            }
+        }
+        if out != *content {
+            *content = out;
         }
     }
 
