@@ -900,6 +900,13 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_23_actor_004_else_handler() { test_vm("23_actor/004_else_handler").unwrap(); }
 #[test] #[ignore] fn test_23_actor_005_state_write() { test_vm("23_actor/005_state_write").unwrap(); }
 #[test] #[ignore] fn test_23_actor_006_state_increment() { test_vm("23_actor/006_state_increment").unwrap(); }
+// NOTE (Plan 387 audit): 007_named_variants / 008_string_pattern / 009_stop_hook
+// exist under test/vm/23_actor/ but are INTENTIONALLY NOT registered here. The
+// VM's live send shim coerces messages to Value::Int (stdlib.rs shim_task_send_vm)
+// and its live path does not invoke stop hooks on mailbox close, so the VM
+// cannot run these cases. Their .expected.out files are HAND-WRITTEN and used
+// only by the a2r-actor-tests parity harness (which compiles+runs the a2r-
+// transpiled Rust). Do NOT add test_23_actor_007/008/009 registrations here.
 
 // === 24_generics (Plan 317: List<T> with custom struct elements) ===
 #[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }

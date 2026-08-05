@@ -172,3 +172,20 @@ fn actor_007_named_variants() {
     // logically-correct stdout for the Add(val)/Reset enum dispatch.
     assert_actor_parity("007_named_variants");
 }
+
+#[test]
+#[ignore]
+fn actor_008_string_pattern() {
+    // Plan 387 audit: string-message pattern ("ping"/"bye"). VM send shim
+    // coerces to Value::Int, so .expected.out is hand-written.
+    assert_actor_parity("008_string_pattern");
+}
+
+#[test]
+#[ignore]
+fn actor_009_stop_hook() {
+    // Plan 387 audit: stop hook with a body. VM's live path does NOT invoke
+    // stop on mailbox close, so the expected "stopped" line is hand-written
+    // (a2r wires stop after recv-None; this is intentional ahead-of-VM behavior).
+    assert_actor_parity("009_stop_hook");
+}

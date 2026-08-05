@@ -8658,7 +8658,6 @@ impl RustTrans {
         sink: &mut Sink,
         msg_type: &str,
     ) -> AutoResult<()> {
-        let _ = name_of(&td.name);
         self.print_indent(&mut sink.body)?;
         writeln!(
             sink.body,
@@ -16313,10 +16312,16 @@ impl Trans for RustTrans {
             // Plan 364 Phase 8 F1: also treat for-over-Stream as async, since the
             // rewrite injects `.next().await` (the static has_await_refs can't see it
             // because the .await is injected at transpile time, not present in the AST).
-            // Plan 387: a program with any `task` definition is always async, AND must
-            // use the current_thread flavor to match the VM's single-threaded
-            // cooperative actor scheduling (Plan 317 path B); it also needs an
-            // `ActorRuntime` to join spawned actors before exit.
+            // Plan 387: this Phase-4 path only runs when there is NO explicit
+            // `fn main()` in source (main is synthesized here). Programs WITH an
+            // explicit `fn main()` go through fn_decl() instead (Stmt::Fn → Phase 3),
+            // which has its own actor-main handling at the `is_main_actor` branch.
+            // Actor programs normally have an explicit main (they need it to spawn
+            // and send), so the actor case below is rarely hit — but kept for
+            // completeness. Both paths use multi_thread (NOT current_thread):
+            // current_thread deadlocks when run_to_completion().await joins an actor
+            // awaiting a sender drop that only happens after main returns. See the
+            // detailed rationale in fn_decl()'s is_main_actor branch.
             let is_async = {
                 let refs: Vec<&Stmt> = main.iter().map(|(s, _)| s).collect();
                 self.program_has_actors
@@ -16324,7 +16329,7 @@ impl Trans for RustTrans {
                     || self.body_has_stream_for(&refs)
             };
             if self.program_has_actors {
-                sink.body.write(b"#[tokio::main(flavor = \"current_thread\")]\n")?;
+                sink.body.write(b"#[tokio::main]\n")?;
                 sink.body.write(b"async fn main() {\n")?;
             } else if is_async {
                 sink.body.write(b"#[tokio::main]\n")?;

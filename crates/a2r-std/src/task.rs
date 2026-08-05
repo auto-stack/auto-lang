@@ -11,16 +11,23 @@
 //! ## Shutdown model (Plan 387 D1)
 //!
 //! Each `spawn_<Task>` helper hands the freshly-spawned actor's `TaskHandle`
-//! (mailbox sender + identity) to the `ActorRuntime` via `register`, and gets
+//! (mailbox sender + join handle) to the `ActorRuntime` via `register`, and gets
 //! back a lightweight `TaskRef` carrying a sender clone for `h.send(...)`.
-//! `run_to_completion` then:
-//!   1. drops every `TaskRef` clone it owns → mailbox channels close → each
-//!      actor's `rx.recv().await` returns `None` → actor exits;
-//!   2. awaits each actor's JoinHandle.
 //!
-//! This sidesteps the deadlock that would occur if the last sender lived in
-//! `main`'s stack frame: joining there would await an actor that waits for a
-//! drop that only happens after the join.
+//! The mailbox channel closes only when the LAST sender clone is dropped. After
+//! `register`, TWO clones exist: the runtime's (inside the `ActorEntry.closer`)
+//! and the user's (inside the `TaskRef`). `run_to_completion` drops the
+//! runtime's clone via `closer`, but that ALONE does not close the channel while
+//! the user's `TaskRef` lives — so the **generated `main` must drop every
+//! `TaskRef` before calling `run_to_completion`**. The a2r transpiler emits
+//! `drop(<handle>);` for each variable assigned from `Task.spawn(...)` right
+//! before `__rt.run_to_completion().await;`. With both clones dropped,
+//! `rx.recv()` returns `None`, the actor exits, and `join.await` resolves.
+//!
+//! If a `TaskRef` is NOT dropped before `run_to_completion`, `join.await` will
+//! hang forever (the actor waits for a close that never comes). There is no
+//! runtime timeout/abort fallback — correctness relies on the generated
+//! `drop()` calls.
 //!
 //! ## Generated-code integration
 //!
@@ -241,15 +248,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_held_sender_suffices_without_user_drop() {
-        // Even if the user forgets to drop their TaskRef, the runtime's own
-        // sender clone is dropped in run_to_completion — but that alone does NOT
-        // close the channel while the user clone lives. This test documents that
-        // the user MUST drop their ref (generated main does so at scope end).
-        // Here we keep the ref alive: run_to_completion should still complete
-        // (not hang) because we drop `h` before awaiting... actually this asserts
-        // the happy path. The deadlock-without-drop case is intentionally not
-        // tested (it would hang the test runner).
+    async fn drop_handle_then_run_completes_without_hang() {
+        // The generated-code shutdown contract (Plan 387 D1): main drops every
+        // TaskRef BEFORE calling run_to_completion. This test exercises exactly
+        // that — drop(h) then run — and asserts it completes (no hang). The
+        // closer inside run_to_completion drops the runtime's own sender clone;
+        // combined with the user's drop(h), both clones are gone, recv() returns
+        // None, the actor exits, and join resolves.
+        // NOTE: if drop(h) were removed, run_to_completion would deadlock (the
+        // user's clone keeps the channel open). That deadlock case is intentionally
+        // NOT tested because it would hang the test runner.
         let (tx, rx) = mpsc::unbounded_channel::<i64>();
         let mut rt = ActorRuntime::new();
         let join = tokio::spawn(async move {
@@ -260,5 +268,7 @@ mod tests {
         h.send(1);
         drop(h);
         rt.run_to_completion().await;
+        // Reaching here means no hang — the actor observed the channel close and
+        // exited cleanly. (No stdout to assert; completion is the assertion.)
     }
 }
