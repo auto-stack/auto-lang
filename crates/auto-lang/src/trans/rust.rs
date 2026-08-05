@@ -3437,7 +3437,7 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
-        // Detect Rust macro pattern: name!("...") was parsed as name.collect()("...")
+        // Detect Rust macro patterns: name!("...") was parsed as name.collect()("...")
         // because '!' is the eager collection operator in Auto.
         // Parser creates: Expr::Bina(lhs, Dot, "collect") then wraps in Call.
         // AST: Call { name: Call { name: Bina(Ident(name), Dot, "collect"), args: [] }, args: [...] }
@@ -6788,7 +6788,20 @@ impl RustTrans {
             {
                 write!(out, "move ")?;
             }
+            // Plan 390 §11 Phase E (D-A2): spec-param auto-boxing for method
+            // calls. The method-call arg loop below is a SEPARATE emission path
+            // from the free-fn arg loop (~7267) — `r.register(t)` returns from
+            // this Expr::Dot handler before reaching the free-fn path. So we
+            // compute spec flags here too (method_name → fn_spec_param_indices,
+            // populated by the prescan for Type/Ext methods) and wrap matching
+            // args in Box::new. A spec-bound ident (already Box<dyn Trait>) is
+            // cloned; a concrete struct value is moved — mirroring the free-fn path.
+            let method_spec_flags = self.fn_spec_param_indices.get(method_name).cloned();
             for (i, arg) in call.args.args.iter().enumerate() {
+                let is_method_spec_param = method_spec_flags.as_ref()
+                    .and_then(|f| f.get(i))
+                    .copied()
+                    .unwrap_or(false);
                 match arg {
                     Arg::Pos(expr) => {
                         // Auto-borrow for HashMap.contains_key(): key arg needs &
@@ -6818,7 +6831,23 @@ impl RustTrans {
                                 }
                             }
                         }
+                        // Plan 390 §11 Phase E (D-A2): wrap spec-param args in
+                        // Box::new. A spec-bound ident (already Box<dyn Trait>,
+                        // e.g. from `Some(prof)`) is cloned to stay usable; any
+                        // other expr (concrete struct value like `MyTool`, or a
+                        // call/field) is moved into the box.
+                        let m_spec_is_bound_ident = matches!(expr, Expr::Ident(name) if self.spec_bound_idents.contains(name));
+                        if is_method_spec_param {
+                            write!(out, "Box::new(")?;
+                        }
                         self.expr(expr, out)?;
+                        if is_method_spec_param {
+                            if m_spec_is_bound_ident {
+                                write!(out, ".clone())")?;
+                            } else {
+                                write!(out, ")")?;
+                            }
+                        }
                         // For .get(): auto-borrow handling done via is_str_param below.
                         // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
                         // for Vec accesses, so we don't add as usize here.
@@ -7244,10 +7273,25 @@ impl RustTrans {
         };
 
         // Look up spec-param flags for auto-boxing at call sites
+        // Plan 390 §11 Phase E (D-B): handle method calls (Expr::Dot) via the same
+        // last-segment fallback used by str_flags above, so `r.register(t)` resolves
+        // to the "Type.register" / "register" key populated in the prescan (Fix A).
         let spec_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
             self.fn_spec_param_indices.get(fn_name).cloned()
         } else {
-            None
+            // Try to extract the last segment of a qualified path / method call.
+            let last_seg = match call.name.as_ref() {
+                Expr::Dot(_, field) => Some(field.as_str()),
+                Expr::Bina(_, Op::Dot, rhs) => {
+                    if let Expr::Ident(name) = rhs.as_ref() { Some(name.as_str()) } else { None }
+                }
+                _ => None,
+            };
+            if let Some(name) = last_seg {
+                self.fn_spec_param_indices.get(name).cloned()
+            } else {
+                None
+            }
         };
 
         // Look up int-param flags for enum→i32 cast at call sites
@@ -7564,7 +7608,21 @@ impl RustTrans {
             }
 
             if is_spec_param {
-                write!(out, ".clone())")?;
+                // Plan 390 §11 Phase E (D-C): the close paren of `Box::new(<arg>...)`.
+                // A spec-bound ident (`Some(prof)` scrutinee — already `Box<dyn Trait>`)
+                // must clone the box to stay usable; any other argument (a concrete
+                // struct value like `EchoTool`, or a non-ident expression) is moved
+                // into the box — matching the array-element pattern at ~9454 (pure
+                // `Box::new(elem)`, no clone).
+                if let Arg::Pos(Expr::Ident(name)) = arg {
+                    if self.spec_bound_idents.contains(name) {
+                        write!(out, ".clone())")?;
+                    } else {
+                        write!(out, ")")?;
+                    }
+                } else {
+                    write!(out, ")")?;
+                }
             }
 
             if i < call.args.args.len() - 1 {
@@ -16489,6 +16547,15 @@ impl Trans for RustTrans {
                         .collect();
                     self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
 
+                    // Plan 390 §11 Phase E (D-A): spec params need Box::new() at call
+                    // sites — cache the flags in the prescan so callers declared *before*
+                    // this fn still auto-box. (The emit-time insert at fn_decl emission
+                    // only covers fns seen before the caller.)
+                    let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| matches!(p.ty, Type::Spec(_)))
+                        .collect();
+                    self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+
                     let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
                     self.fn_param_types.insert(fn_decl.name.clone(), param_types);
 
@@ -16544,11 +16611,69 @@ impl Trans for RustTrans {
                         self.fn_int_param_indices.insert(qualified_key.clone(), int_param_flags.clone());
                         self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
 
+                        // Plan 390 §11 Phase E (D-A): spec params need Box::new() at
+                        // call sites — mirror the str/struct/int qualified+unqualified
+                        // key pattern so `r.register(t)` (Expr::Dot) resolves via the
+                        // last-segment fallback (Fix B) to "Type.method".
+                        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::Spec(_)))
+                            .collect();
+                        self.fn_spec_param_indices.insert(qualified_key.clone(), spec_param_flags.clone());
+                        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+
                         let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
                         self.fn_param_types.insert(qualified_key.clone(), param_types.clone());
                         self.fn_param_types.insert(fn_decl.name.clone(), param_types);
 
                         // C11: same prescan for `mut p T` flags (see Stmt::Fn above).
+                        let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| p.mode == crate::ast::ParamMode::Mut)
+                            .collect();
+                        self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags.clone());
+                        self.fn_mut_params.insert(qualified_key.clone(), mut_param_flags);
+                    }
+                }
+                Stmt::Ext(ext) => {
+                    // Plan 390 §11 Phase E (D-A): ext-block methods (e.g.
+                    // `ext ToolRegistry { fn register(tool Tool) }`) are a separate
+                    // Stmt::Ext, NOT inside Stmt::TypeDecl.methods — so the
+                    // TypeDecl prescan above misses them. Mirror the same
+                    // param-flag scans here (str/struct/int/spec/param_types/mut),
+                    // using ext.target as the qualified-key prefix, so call sites
+                    // `r.register(t)` resolve the spec-param auto-box via the
+                    // last-segment fallback (Fix B).
+                    let type_name = &ext.target;
+                    for fn_decl in &ext.methods {
+                        let qualified_key: AutoStr = format!("{}.{}", type_name, fn_decl.name).into();
+
+                        let str_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+                            .collect();
+                        self.fn_str_param_indices.insert(qualified_key.clone(), str_param_flags.clone());
+                        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+
+                        let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| !Self::is_copy_type(&p.ty))
+                            .collect();
+                        self.fn_struct_param_indices.insert(qualified_key.clone(), struct_param_flags.clone());
+                        self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+
+                        let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::Int))
+                            .collect();
+                        self.fn_int_param_indices.insert(qualified_key.clone(), int_param_flags.clone());
+                        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+
+                        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| matches!(p.ty, Type::Spec(_)))
+                            .collect();
+                        self.fn_spec_param_indices.insert(qualified_key.clone(), spec_param_flags.clone());
+                        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+
+                        let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                        self.fn_param_types.insert(qualified_key.clone(), param_types.clone());
+                        self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+
                         let mut_param_flags: Vec<bool> = fn_decl.params.iter()
                             .map(|p| p.mode == crate::ast::ParamMode::Mut)
                             .collect();
@@ -17079,6 +17204,51 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
+    // Plan 390 §11 Phase E: spec params need Box::new() at call sites; track them
+    // cross-module so `r.register(t)` (incl. ext-block methods) auto-boxes.
+    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+
+    // Plan 390 §11 Phase E: collect spec-param flags across Fn / TypeDecl methods /
+    // Ext methods (mirrors collect_fn_str_params but for spec auto-boxing). Ext-block
+    // methods are a separate Stmt::Ext not covered by the TypeDecl scan, so without
+    // this `ext ToolRegistry { fn register(tool Tool) }` would never auto-box.
+    fn collect_fn_spec_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new",
+            "update", "delete", "find", "index",
+        ];
+        let scan_fn = |fn_decl: &Fn, parent: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+            let spec_flags: Vec<bool> = fn_decl.params.iter()
+                .map(|p| matches!(p.ty, Type::Spec(_)))
+                .collect();
+            if !spec_flags.is_empty() {
+                if !generic_methods.contains(&fn_decl.name.as_str()) {
+                    map.insert(fn_decl.name.clone(), spec_flags.clone());
+                }
+                if !parent.is_empty() || fn_decl.parent.is_some() {
+                    let p = fn_decl.parent.as_ref().map(|x| x.to_string()).unwrap_or_else(|| parent.to_string());
+                    let qualified = format!("{}.{}", p, fn_decl.name);
+                    map.insert(AutoStr::from(qualified), spec_flags);
+                }
+            }
+        };
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                scan_fn(fn_decl, type_name, map);
+            }
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                for method in &type_decl.methods {
+                    scan_fn(method, &type_decl.name.to_string(), map);
+                }
+            }
+            if let Stmt::Ext(ext) = stmt {
+                for method in &ext.methods {
+                    scan_fn(method, &ext.target.to_string(), map);
+                }
+            }
+        }
+    }
 
     // Helper: collect Fn declarations from statements, including methods inside TypeDecl
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
@@ -17223,6 +17393,7 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
+        collect_fn_spec_params(&ast.stmts, "", &mut global_fn_spec_params);
         collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, None, Some(&mut global_fn_param_types));
     }
 
@@ -17271,6 +17442,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
                 transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+            }
+        }
+        // Plan 390 §11 Phase E: Pre-populate fn_spec_param_indices cross-module so
+        // spec-param auto-boxing (Box::new at call sites) works across module
+        // boundaries and for ext-block methods (e.g. `ext ToolRegistry { register }`).
+        for (name, flags) in &global_fn_spec_params {
+            if !transpiler.fn_spec_param_indices.contains_key(name) {
+                transpiler.fn_spec_param_indices.insert(name.clone(), flags.clone());
             }
         }
         // Pre-populate fn_param_types for cross-module type-aware call site generation
@@ -17739,6 +17918,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
     let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
     let mut global_merge_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    // Plan 390 §11 Phase E: spec params need Box::new() at call sites.
+    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
 
     fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
         let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
@@ -17772,6 +17953,44 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         let qualified = format!("{}.{}", type_name_str, method.name);
                         map.insert(AutoStr::from(qualified), str_flags);
                     }
+                }
+            }
+        }
+    }
+
+    // Plan 390 §11 Phase E: spec-param collector (mirrors collect_fn_str_params
+    // but for spec auto-boxing). Covers Fn / TypeDecl methods / Ext methods — the
+    // last is a separate Stmt::Ext not reached by the TypeDecl scan.
+    fn collect_fn_spec_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
+            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
+        let scan_fn = |fn_decl: &Fn, parent: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+            let spec_flags: Vec<bool> = fn_decl.params.iter()
+                .map(|p| matches!(p.ty, Type::Spec(_)))
+                .collect();
+            if !spec_flags.is_empty() {
+                if !generic_methods.contains(&fn_decl.name.as_str()) {
+                    map.insert(fn_decl.name.clone(), spec_flags.clone());
+                }
+                if !parent.is_empty() || fn_decl.parent.is_some() {
+                    let p = fn_decl.parent.as_ref().map(|x| x.to_string()).unwrap_or_else(|| parent.to_string());
+                    let qualified = format!("{}.{}", p, fn_decl.name);
+                    map.insert(AutoStr::from(qualified), spec_flags);
+                }
+            }
+        };
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                scan_fn(fn_decl, type_name, map);
+            }
+            if let Stmt::TypeDecl(type_decl) = stmt {
+                for method in &type_decl.methods {
+                    scan_fn(method, &type_decl.name.to_string(), map);
+                }
+            }
+            if let Stmt::Ext(ext) = stmt {
+                for method in &ext.methods {
+                    scan_fn(method, &ext.target.to_string(), map);
                 }
             }
         }
@@ -17888,6 +18107,7 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
+        collect_fn_spec_params(&ast.stmts, "", &mut global_fn_spec_params);
         collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params), Some(&mut global_fn_param_types));
     }
 

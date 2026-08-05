@@ -439,6 +439,7 @@ ext Store {
 #[test] fn test_12_specs_003_spec_delegation() { test_a2r("12_specs/003_spec_delegation").unwrap(); }
 #[test] fn test_12_specs_004_default_body() { test_a2r("12_specs/004_default_body").unwrap(); }
 #[test] fn test_12_specs_005_generic_impl() { test_a2r("12_specs/005_generic_impl").unwrap(); }
+#[test] fn test_12_specs_006_spec_param_callsite() { test_a2r("12_specs/006_spec_param_callsite").unwrap(); }
 
 // === 13_delegation ===
 #[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }

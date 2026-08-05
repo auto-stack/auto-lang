@@ -219,7 +219,39 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
 
 ## §8 实施记录
 
-> 待实施时填写。worktree：`plan-390/actor-state-injection`。
+> worktree：`plan-390/actor-state-injection`（`D:/autostack/auto-lang-390`）。
+
+### §8.1 Phase E — a2r call-site spec 自动装箱（2026-08-06，✅ 落地）
+
+实施中发现 §11.2 的根因描述需补强——实际缺陷比"三处"更广，且方法调用走的是
+**独立的 arg 发射循环**（非 §11.2 假设的 free-fn 循环）。修正后的完整修复：
+
+- **Fix A（prescan）**：`trans/rust.rs` `trans()` 的 prescan 循环，`Stmt::Fn`（~16505）+
+  `Stmt::TypeDecl` 方法（~16561）+ `Stmt::Ext` 方法（~16623）三处补 `fn_spec_param_indices`
+  的限定键 `"Type.method"` + 裸名插入。**关键发现**：`ext Type {}` 解析成 `Stmt::TypeDecl`
+  （非 `Stmt::Ext`），故 TypeDecl 分支是 `ext` 方法的主路径；Stmt::Ext 分支为冗余保险
+  （真实 `Stmt::Ext` 在合并场景才出现）。
+- **Fix A2（方法调用 arg 循环，§11.2 未预见）**：`Expr::Dot` 方法调用在 `call()` 内有
+  **独立的 arg 发射循环**（~6792，在 ~7254 的 free-fn `spec_flags` 查找之前 return）。
+  `r.register(t)` 走这条路径，故必须在方法循环内单独算 `method_spec_flags`（按
+  `method_name` 查 `fn_spec_param_indices`）+ 包 `Box::new`（spec-bound ident 用 `.clone()`，
+  具体值 move）。这是缺口的真正阻塞点。
+- **Fix B（free-fn spec_flags 查找）**：~7250 的 `spec_flags` 查找加 `Expr::Dot`/`Expr::Bina`
+  的 `last_seg` 回退（镜像 `str_flags`）。
+- **Fix C（free-fn 闭括号）**：~7566 区分 spec-bound ident（`.clone())`）vs 具体值（`)`）。
+- **跨模块（`transpile_rust_project_merged`）**：补 `collect_fn_spec_params` helper +
+  `global_fn_spec_params` + 两个入口点的 pre-populate 循环（单文件 CLI 走 `trans()`
+  prescan，多文件走 global；两者都覆盖）。
+
+**验证**：
+- 新增 a2r 黄金 `12_specs/006_spec_param_callsite`：free-fn + method 两 call site，
+  期望 `free_register(Box::new(t.clone()))` + `r.register(Box::new(t))`，✅ 通过。
+- `cargo test -p auto-lang --features test-trans`：3124 passed / 22 failed（与 master
+  **逐字节一致**，零新增失败）；a2r 黄金零失败。
+- spike 最小用例（`reg2.at`）retranspile → `r.register(Box::new(t))`，行为正确。
+
+**§11.2 根因表更正**：原 D-A/D-B/D-C 三处描述对应 free-fn 路径；方法调用路径（D-A2）
+是实施中实证发现的第四处，已补入本记录。
 
 ## §9 非目标 / 超出范围
 
@@ -322,15 +354,16 @@ if is_spec_param {
 
 ### §11.4 实施任务（Phase E，auto-lang worktree）
 
-- [ ] E.1 worktree：`plan-390/actor-state-injection`（与 Phase A–D 同 worktree，§5 Phase A 之前先做 E，因 E 更小且独立）
-- [ ] E.2 Fix A：`trans/rust.rs` 两处 prescan 补 `fn_spec_param_indices` 方法键
-- [ ] E.3 Fix B：`trans/rust.rs` 7247-7251 `spec_flags` 查找加 `last_seg` 回退
-- [ ] E.4 Fix C：`trans/rust.rs` 7566-7568 区分 spec-bound ident / 具体值
-- [ ] E.5 新增 a2r 用例 `12_specs/010_spec_param_callsite/spec_param_callsite.at`：
-       spec 参数的方法调用 + 具体结构体实参 + spec-bound ident 实参两个场景，期望输出含 `Box::new(arg)`
-       （具体值）/ `Box::new(arg.clone())`（spec-bound）黄金对比
-- [ ] E.6 回归：`cargo test -p auto-lang` 全绿（含 001-009 spec 黄金逐字节不变）；
-       spike 最小用例（§11.1）retranspile → 独立 crate 编译运行 stdout 正确
+- [x] E.1 worktree：`plan-390/actor-state-injection`（与 Phase A–D 同 worktree，§5 Phase A 之前先做 E，因 E 更小且独立）
+- [x] E.2 Fix A：`trans/rust.rs` prescan 补 `fn_spec_param_indices` 方法键（Stmt::Fn + TypeDecl + Stmt::Ext）
+- [x] E.2b Fix A2（实施中追加）：方法调用独立 arg 循环（~6792）补 `method_spec_flags` + Box::new 包装
+- [x] E.3 Fix B：`trans/rust.rs` ~7250 `spec_flags` 查找加 `last_seg` 回退
+- [x] E.4 Fix C：`trans/rust.rs` ~7566 区分 spec-bound ident / 具体值
+- [x] E.5 新增 a2r 用例 `12_specs/006_spec_param_callsite/spec_param_callsite.at`：
+       spec 参数的 free-fn 调用 + 方法调用 + 具体结构体实参，期望 `Box::new(t.clone())` /
+       `Box::new(t)` 黄金对比，✅ 通过
+- [x] E.6 回归：`cargo test -p auto-lang --features test-trans` 3124 passed / 22 failed
+       （与 master 逐字节一致，零新增）；spike 最小用例（§11.1）retranspile 行为正确
 
 ### §11.5 验收（Phase E）
 

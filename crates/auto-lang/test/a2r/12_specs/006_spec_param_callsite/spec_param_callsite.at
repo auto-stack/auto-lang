@@ -1,0 +1,43 @@
+// Plan 390 §11 Phase E: spec-param auto-boxing at call sites.
+// A function/method taking a spec-typed param (`tool Tool`) must auto-wrap a
+// concrete struct value in Box::new(...) at the call site — both for free-fn
+// calls and method calls (r.register(t)).
+
+spec Tool {
+    fn name() str
+}
+
+pub fn free_register(tool Tool) void {
+    print(tool.name())
+}
+
+pub type Reg {
+    tools Map<str, Arc<Tool>>
+}
+
+ext Reg {
+    pub static fn new() Reg {
+        return Reg(tools: Map.new())
+    }
+    pub mut fn register(tool Tool) void {
+        let n = tool.name()
+        let a = Arc(tool)
+        self.tools.set(n, a)
+    }
+}
+
+type EchoTool as Tool {
+    fn name() str {
+        return "echo"
+    }
+}
+
+fn main() {
+    // free-fn call site: concrete struct value auto-boxed
+    let t = EchoTool()
+    free_register(t)
+
+    // method call site: concrete struct value auto-boxed
+    let r = Reg.new()
+    r.register(t)
+}
