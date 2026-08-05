@@ -619,8 +619,10 @@ pub struct AuraMsgVariant {
     /// Variant name (e.g., "Inc", "Dec")
     pub name: String,
 
-    /// Optional payload type
-    pub payload: Option<Type>,
+    /// Payload types (empty = no payload). Plan 043 M5 #1: was
+    /// `Option<Type>`; now `Vec<Type>` to support multi-param variants like
+    /// `Complete(str, int)`.
+    pub payload: Vec<Type>,
 }
 
 // ============================================================================
@@ -969,11 +971,11 @@ mod tests {
             variants: vec![
                 AuraMsgVariant {
                     name: "Inc".to_string(),
-                    payload: None,
+                    payload: vec![],
                 },
                 AuraMsgVariant {
                     name: "Set".to_string(),
-                    payload: Some(Type::Int),
+                    payload: vec![Type::Int],
                 },
             ],
         };

@@ -1908,7 +1908,10 @@ impl VueGenerator {
             let mut event_payload_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             for msg in &widget.messages {
                 for variant in &msg.variants {
-                    if let Some(ref ty) = variant.payload {
+                    // Plan 043 M5 #1: payload is now Vec<Type>; the TS event
+                    // path carries a single payload type, so use the first
+                    // (multi-param variants are a Rust-backend feature for now).
+                    if let Some(ty) = variant.payload.first() {
                         // Only carry payload type if the handler actually has
                         // matching params (otherwise the emit() call won't pass
                         // args, causing a TS mismatch).
@@ -10016,8 +10019,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: None },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: None },
+                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col")
@@ -10178,7 +10181,7 @@ mod tests {
                 name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant {
                     name: "BodyChanged".to_string(),
-                    payload: None,
+                    payload: vec![],
                 }],
             }],
             // autodown_editor { content: .body; onupdate: .BodyChanged; style: "..." }
@@ -10246,8 +10249,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Save".to_string(), payload: None },
-                    AuraMsgVariant { name: "Cancel".to_string(), payload: None },
+                    AuraMsgVariant { name: "Save".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Cancel".to_string(), payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col").with_child(

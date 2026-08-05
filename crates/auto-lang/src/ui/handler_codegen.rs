@@ -313,7 +313,9 @@ pub fn state_type_name(widget_name: &str) -> String {
 fn handler_param_type(widget: &AuraWidget, handler_bare: &str) -> Type {
     for msg in &widget.messages {
         if let Some(v) = msg.variants.iter().find(|v| v.name == handler_bare) {
-            if let Some(ty) = &v.payload {
+            // Plan 043 M5 #1: payload is Vec<Type>; the handler gets a single
+            // param slot, so use the first payload type.
+            if let Some(ty) = v.payload.first() {
                 return ty.clone();
             }
         }
@@ -792,7 +794,7 @@ fn synthesize_state_type_from_decl(
 fn handler_param_type_from_decl(decl: &crate::ast::WidgetDecl, handler_bare: &str) -> Type {
     for msg in &decl.messages {
         if let Some(v) = msg.variants.iter().find(|v| v.name.as_str() == handler_bare) {
-            if let Some(ty) = &v.payload {
+            if let Some(ty) = v.payload.first() {
                 return ty.clone();
             }
         }

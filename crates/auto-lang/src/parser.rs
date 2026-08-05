@@ -11624,14 +11624,24 @@ impl<'a> Parser<'a> {
             let variant_name = self.cur.text.clone();
             self.next();
 
-            // Check for payload type
+            // Check for payload type. Plan 043 M5 #1: support multi-param
+            // payloads `Complete(str, int)` / `RunSmart(int, str, []str)`
+            // (was single-type only). Empty vec = unit variant.
             let payload = if self.is_kind(TokenKind::LParen) {
                 self.next();
-                let ty = self.parse_type()?;
+                let mut types = vec![];
+                loop {
+                    types.push(self.parse_type()?);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
                 self.expect(TokenKind::RParen)?;
-                Some(ty)
+                types
             } else {
-                None
+                vec![]
             };
 
             variants.push(MsgVariant {
@@ -15017,6 +15027,47 @@ widget Test {
             }
             other => panic!("expected Return stmt, got: {:?}", other),
         }
+    }
+
+    /// Plan 043 M5 #1: msg variants with multiple payload params must parse.
+    /// Previously `Complete(str, int)` failed with "Expected term, got RBrace"
+    /// because the payload parser consumed only a single type.
+    #[test]
+    fn test_msg_multi_param_payload() {
+        let code = r#"
+widget Shell {
+    msg Msg { Init, Complete(str, int), RunSmart(int, str, []str), SetTag(str) }
+    model { count int = 0 }
+    view { col { text "hi" } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        let ast = result.expect("multi-param msg should parse");
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let widget = match non_empty[0] {
+            Stmt::WidgetDecl(w) => w,
+            other => panic!("expected WidgetDecl, got {:?}", other),
+        };
+        let msg = &widget.messages[0];
+        assert_eq!(msg.variants.len(), 4, "all 4 variants should parse");
+
+        // Init — unit variant, empty payload.
+        assert!(msg.variants[0].payload.is_empty(), "Init has no payload");
+
+        // Complete(str, int) — two payload types.
+        assert_eq!(msg.variants[1].name.as_str(), "Complete");
+        assert_eq!(msg.variants[1].payload.len(), 2, "Complete has 2 payload types");
+
+        // RunSmart(int, str, []str) — three payload types.
+        assert_eq!(msg.variants[2].name.as_str(), "RunSmart");
+        assert_eq!(msg.variants[2].payload.len(), 3, "RunSmart has 3 payload types");
+
+        // SetTag(str) — single payload still works (regression guard).
+        assert_eq!(msg.variants[3].name.as_str(), "SetTag");
+        assert_eq!(msg.variants[3].payload.len(), 1, "SetTag has 1 payload type");
     }
 
 
