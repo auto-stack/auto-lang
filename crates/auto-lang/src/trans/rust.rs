@@ -87,35 +87,6 @@ fn snake_of(n: &crate::ast::Name) -> String {
     out
 }
 
-/// Plan 387 D1: scan a body for `let <var> = Task.spawn(...)` assignments and
-/// return the variable names. These hold `TaskRef` mailbox-sender clones that
-/// must be dropped before `run_to_completion` so actor mailboxes close.
-fn collect_task_handle_vars(body: &crate::ast::Body) -> Vec<String> {
-    let mut out = Vec::new();
-    for stmt in &body.stmts {
-        if let crate::ast::Stmt::Store(s) = stmt {
-            if is_task_spawn_call(&s.expr) {
-                out.push(s.name.as_str().to_string());
-            }
-        }
-    }
-    out
-}
-
-/// True if `expr` is a `Task.spawn(...)` method call (any args).
-fn is_task_spawn_call(expr: &crate::ast::Expr) -> bool {
-    if let crate::ast::Expr::Call(call) = expr {
-        if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
-            if method.as_str() == "spawn" {
-                if let crate::ast::Expr::Ident(receiver) = obj.as_ref() {
-                    return receiver.as_str() == "Task";
-                }
-            }
-        }
-    }
-    false
-}
-
 pub struct RustTrans {
     indent: usize,
     uses: HashSet<AutoStr>,
@@ -1210,6 +1181,12 @@ impl RustTrans {
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int> -> MyType<int>
                 let args: Vec<String> = inst.args.iter().map(|t| self.rust_type_name(t)).collect();
+                // Plan 387 §16 P0-2: TaskRef<T> is a first-class actor-handle type
+                // mapping to the a2r-std runtime type.
+                if inst.base_name == "TaskRef" {
+                    self.a2r_std_used.set(true);
+                    return format!("a2r_std::task::TaskRef<{}>", args.join(", "));
+                }
                 // Plan 190: Use short_name from RustSource if available
                 let base = if let Some(ref source) = inst.source {
                     source.short_name().to_string()
@@ -3446,7 +3423,7 @@ impl RustTrans {
                         // First arg is the task type name as a string literal.
                         if let Some(Arg::Pos(Expr::Str(name))) = call.args.args.first() {
                             self.a2r_std_used.set(true);
-                            write!(out, "spawn_{}(&mut __rt)", snake_of(name))?;
+                            write!(out, "spawn_{}()", snake_of(name))?;
                             return Ok(());
                         }
                     }
@@ -8823,7 +8800,8 @@ impl RustTrans {
         }
     }
 
-    /// Emit the per-task spawn helper `fn spawn_<name>(rt: &mut ActorRuntime) -> TaskHandle<M>`.
+    /// Emit the per-task spawn helper `fn spawn_<name>() -> TaskRef<M>` (§16: no
+    /// __rt parameter — any function can spawn, not just main).
     fn emit_task_spawn_helper(
         &mut self,
         td: &TaskDef,
@@ -8835,8 +8813,7 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         writeln!(
             sink.body,
-            "pub fn spawn_{}(__rt: &mut a2r_std::task::ActorRuntime) \
-             -> a2r_std::task::TaskRef<{}> {{",
+            "pub fn spawn_{}() -> a2r_std::task::TaskRef<{}> {{",
             snake_of(&td.name),
             msg_type
         )?;
@@ -8868,7 +8845,9 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "}});")?;
         self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "__rt.register(a2r_std::task::TaskHandle::new(tx, join))")?;
+        writeln!(sink.body, "a2r_std::task::track_join(join);")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "a2r_std::task::TaskRef::new(tx)")?;
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}\n\n")?;
@@ -9765,24 +9744,16 @@ impl RustTrans {
             write!(sink.body, "{{ async_stream::stream! {{")?;
         }
 
-        // Plan 387: actor `fn main` needs a runtime handle in scope (for the
-        // generated `Task.spawn(...)` -> `spawn_<name>(__rt)` calls) and must
-        // drain all in-flight actor messages before exit. Inject via body()
-        // prologue/epilogue.
+        // Plan 387 §16: actor `fn main` lets in-flight messages process before
+        // exit. No `__rt` binding or `drop(var)` injection — spawn helpers are
+        // parameterless (track_join uses a thread-local registry) and `TaskRef`
+        // RAII-drop closes mailboxes when main returns. drain_all just yields so
+        // already-sent messages get processed before main exits.
         if is_main_actor {
-            self.main_actor_prologue = Some(
-                "let mut __rt = a2r_std::task::ActorRuntime::new();\n".to_string(),
-            );
-            // Plan 387 D1: before joining spawned actors, drop every `TaskRef`
-            // (mailbox sender clone) held by main-scope variables assigned from
-            // `Task.spawn(...)`. Otherwise the mailbox channel never closes,
-            // `rx.recv()` never returns None, and `run_to_completion` deadlocks.
-            let mut epilogue = String::new();
-            for var in collect_task_handle_vars(&fn_decl.body) {
-                epilogue.push_str(&format!("drop({});\n", var));
-            }
-            epilogue.push_str("__rt.run_to_completion().await;\n");
-            self.main_actor_epilogue = Some(epilogue);
+            // No prologue needed (no __rt to declare).
+            self.main_actor_prologue = None;
+            self.main_actor_epilogue =
+                Some("a2r_std::task::drain_all().await;\n".to_string());
         }
 
         // Plan 091: scope removed
@@ -16339,12 +16310,8 @@ impl Trans for RustTrans {
             }
             self.indent();
 
-            // Plan 387: actor programs need a runtime handle in scope for the
-            // generated `Task.spawn(...)` -> `spawn_<name>(__rt)` calls.
-            if self.program_has_actors {
-                self.print_indent(&mut sink.body)?;
-                sink.body.write(b"let mut __rt = a2r_std::task::ActorRuntime::new();\n")?;
-            }
+            // Plan 387 §16: no `__rt` binding — spawn helpers are parameterless
+            // (track_join uses a thread-local registry). Nothing to inject here.
 
             for (stmt, line) in main.iter() {
                 sink.record();
@@ -16369,11 +16336,12 @@ impl Trans for RustTrans {
             }
             sink.record();
 
-            // Plan 387: drain all in-flight actor messages before exit (matches
-            // the VM's "process all in-flight then exit" liveness contract).
+            // Plan 387 §16: let in-flight actor messages process before exit.
+            // drain_all yields so already-sent messages get processed; mailboxes
+            // close naturally when TaskRefs drop at end of main.
             if self.program_has_actors {
                 self.print_indent(&mut sink.body)?;
-                sink.body.write(b"__rt.run_to_completion().await;\n")?;
+                sink.body.write(b"a2r_std::task::drain_all().await;\n")?;
             }
 
             self.dedent();

@@ -51,7 +51,7 @@ impl Counter {
     }
 }
 
-pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::TaskRef<CounterMsg> {
+pub fn spawn_counter() -> a2r_std::task::TaskRef<CounterMsg> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CounterMsg>();
     let join = tokio::spawn(async move {
         let mut actor = Counter::new();
@@ -61,17 +61,16 @@ pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::T
             let _ = actor.handle_msg(msg, reply_tx).await;
         }
     });
-    __rt.register(a2r_std::task::TaskHandle::new(tx, join))
+    a2r_std::task::track_join(join);
+    a2r_std::task::TaskRef::new(tx)
 }
 
 
 #[tokio::main]
 async fn main() {
-    let mut __rt = a2r_std::task::ActorRuntime::new();
-    let h = spawn_counter(&mut __rt);
+    let h = spawn_counter();
     h.send(CounterMsg::Add(3));
     h.send(CounterMsg::Add(5));
     h.send(CounterMsg::Reset);
-    drop(h);
-    __rt.run_to_completion().await;
+    a2r_std::task::drain_all().await;
 }
