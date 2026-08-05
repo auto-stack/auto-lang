@@ -1246,8 +1246,14 @@ impl RustTrans {
             // str/CStr in return position -> String (owned, safe default)
             Type::StrSlice | Type::CStrLit => "String".to_string(),
             // Option<str> / Option<cstr> -> Option<String>
+            // Plan 019: container inner type uses rust_type_name (not
+            // rust_return_type_name) because `impl Trait` cannot nest inside
+            // generic args (Rust forbids `Option<impl T>`). rust_type_name still
+            // maps StrSlice→String, and renders spec names as Box<dyn X>
+            // (matching Type::User-via-spec in rust_type_name) instead of the
+            // illegal `impl X`.
             Type::Option(inner) => {
-                format!("Option<{}>", self.rust_return_type_name(inner))
+                format!("Option<{}>", self.rust_type_name(inner))
             }
             // Result<str> -> Result<String, E> where E is inferred or Box<dyn Error>
             Type::Result(inner) => {
@@ -1255,7 +1261,7 @@ impl RustTrans {
                     Some(enum_name) => enum_name.to_string(),
                     None => "Box<dyn std::error::Error>".to_string(),
                 };
-                format!("Result<{}, {}>", self.rust_return_type_name(inner), err_type)
+                format!("Result<{}, {}>", self.rust_type_name(inner), err_type)
             }
             // Fn type: use return type mapping for the return position
             Type::Fn(params, ret) => {
