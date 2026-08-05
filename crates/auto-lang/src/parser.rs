@@ -12728,6 +12728,14 @@ impl<'a> Parser<'a> {
                 let text = self.cur.text.to_string();
                 self.next();
                 parts.push(text);
+            } else if self.is_kind(TokenKind::NoneKW) || self.is_kind(TokenKind::Nil) {
+                // Plan 043 M5: `None` / `nil` literal in a view condition
+                // (e.g. `if .x != None`). Previously fell through to `break`
+                // and desynced the parser, surfacing as "Expected term, got
+                // RBrace" at the arm's closing brace.
+                let text = self.cur.text.to_string();
+                self.next();
+                parts.push(text);
             } else {
                 break;
             }
@@ -15075,6 +15083,69 @@ widget Shell {
         // SetTag(str) — single payload still works (regression guard).
         assert_eq!(msg.variants[3].name.as_str(), "SetTag");
         assert_eq!(msg.variants[3].payload.len(), 1, "SetTag has 1 payload type");
+    }
+
+    /// Plan 043 M5 #1 regression: the full Plan 043 shell_store msg declaration
+    /// (15 variants, mixing unit / single-param user-type / multi-param with
+    /// []str) must parse end-to-end. This is the exact form that failed at
+    /// `ClearScreen }` in the real shell_store.at.
+    #[test]
+    fn test_msg_full_shellstore_declaration() {
+        let code = r#"
+type CommandResult { code int }
+type CommandOutput { line str }
+
+store S {
+    model { x int = 0 }
+    msg Msg { Init, RunCommand(str), RunResult(CommandResult), RunOutput(CommandOutput),
+              Cancel, RunSmart(int, str, []str), Complete(str, int),
+              NavigateHistory(bool), OpenHistorySearch, CloseHistorySearch,
+              SelectHistory(str), ToggleSidebar, PickTool(str), RefreshGit, ClearScreen }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        let ast = result.expect("full shell_store msg should parse");
+        let store = ast.stmts.iter().find_map(|s| match s {
+            Stmt::StoreDecl(s) => Some(s),
+            _ => None,
+        }).expect("store declaration present");
+        let msg = &store.messages[0];
+        assert_eq!(msg.variants.len(), 15, "all 15 variants parse");
+        // Spot-check the multi-param ones.
+        let runsmart = msg.variants.iter().find(|v| v.name.as_str() == "RunSmart").unwrap();
+        assert_eq!(runsmart.payload.len(), 3, "RunSmart has 3 payload types");
+        let complete = msg.variants.iter().find(|v| v.name.as_str() == "Complete").unwrap();
+        assert_eq!(complete.payload.len(), 2, "Complete has 2 payload types");
+    }
+
+    /// Plan 043 M5: view conditions must accept `None`/`nil` literals
+    /// (e.g. `if .block.output != None`). parse_condition_expr previously had
+    /// no NoneKW/Nil branch, so the `None` was left unconsumed and the parser
+    /// desynced, surfacing as "Expected term, got RBrace" at the arm's brace.
+    #[test]
+    fn test_view_condition_none_comparison() {
+        let code = r#"
+widget W {
+    model { x str = "" }
+    view {
+        col {
+            if .x != None {
+                text "set"
+            }
+            if .x == None {
+                text "unset"
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("view None comparison should parse");
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        assert_eq!(non_empty.len(), 1, "one widget statement");
     }
 
     /// Plan 043 M5 #2: a computed property with a multi-statement block body

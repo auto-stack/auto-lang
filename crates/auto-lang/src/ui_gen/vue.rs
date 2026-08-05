@@ -3999,6 +3999,20 @@ impl VueGenerator {
         result = result.replace(" len ( )", ".length");
         // Plan 345 (gap N1): .contains → .includes (JS uses .includes, not .contains)
         result = result.replace(".contains(", ".includes(");
+        // Plan 043 M5: Auto's None/nil literal → JS null in view conditions.
+        // parse_condition_expr emits tokens space-separated, so `None`/`nil`
+        // appear as standalone words. Replace them with `null`.
+        let mut out = String::with_capacity(result.len());
+        for tok in result.split(' ') {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            match tok {
+                "None" | "nil" => out.push_str("null"),
+                _ => out.push_str(tok),
+            }
+        }
+        result = out;
 
         // Remove leading dot from state references (.count -> count)
         // Pattern: .identifier (at word boundary)
