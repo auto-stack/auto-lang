@@ -1,0 +1,17 @@
+[package]
+name = "auto-cosmic-ports-linux"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 365 W4: Linux port adapters (zbus/wayland/UPower)"
+
+# W4: Linux-only — real zbus/UPower/D-Bus adapters. Excluded from the default
+# workspace build on Windows. Build on Linux/WSL2:
+#   cargo build -p auto-cosmic-ports-linux
+
+[dependencies]
+auto-cosmic-ports = { path = "../ports" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Real Linux deps — uncomment when building on Linux/WSL2:
+# zbus = "4"
+# nix = { version = "0.27", features = ["time"] }

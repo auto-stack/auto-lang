@@ -1,0 +1,21 @@
+[package]
+name = "auto-cosmic-host-libcosmic"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 365 W3: libcosmic host backend (VTree → libcosmic Element)"
+
+# W3: This crate is Linux-only — libcosmic, iced (with wayland feature), and
+# cosmic-protocols are Linux/Wayland libraries that do not compile on Windows.
+# It is excluded from the default workspace build (see root Cargo.toml) so the
+# Windows dev loop is unaffected. Build on Linux/WSL2:
+#   cargo build -p auto-cosmic-host-libcosmic
+
+[dependencies]
+auto-lang = { path = "../../auto-lang", features = ["ui"] }
+auto-cosmic-ports = { path = "../ports" }
+# Linux-only deps — uncomment when building on Linux/WSL2:
+# libcosmic = { git = "https://github.com/pop-os/libcosmic.git" }
+# iced = { version = "0.13", features = ["wayland"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Real Linux deps land here when building on Linux.

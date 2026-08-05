@@ -139,8 +139,8 @@ as the final validation environment.
 |---|------|--------|-----------|-------|------------|
 | W1 | Unify host backend interface over VTree | ✅ | ⭐⭐ | crates/auto-lang/src/ui/{host.rs (new), mod.rs, app.rs} | `HostBackend` enum + `run` + `default_for_features`; `App::run` delegates to it; headless + iced compile; existing examples unchanged |
 | W2 | Dev-host mock framework for system ports | ✅ | ⭐⭐ | new: crates/auto-cosmic/{ports,demo}/ | a demo app (clock+battery applet logic) runs on Windows driven by scripted mock events |
-| W3 | libcosmic host backend (VTree → Element) | ⏳ | ⭐⭐⭐⭐ | new: auto-cosmic/host-libcosmic/ | same app core binary runs on Linux as a real libcosmic app; widget coverage driven by cosmic-monitor replication |
-| W4 | Linux port adapters | ⏳ | ⭐⭐⭐ | auto-cosmic/ports/ + Plan 364 glue crates | NotificationsPort + SessionPort real adapters pass integration test on WSL2 |
+| W3 | libcosmic host backend (VTree → Element) | 🔨 scaffold | ⭐⭐⭐⭐ | crates/auto-cosmic/host-libcosmic/ (excluded from Windows workspace) | crate structure + lowering design doc; real VTree→Element impl requires libcosmic (Linux), built incrementally per replicated component |
+| W4 | Linux port adapters | 🔨 scaffold | ⭐⭐⭐ | crates/auto-cosmic/ports-linux/ (excluded from Windows workspace) | adapter signatures + service-mapping doc; real zbus/UPower impls require Linux, built per COSMIC component |
 | W5 | (Deferred) RenderCommand/RenderQueue/compositor per doc 20 | ⏸ Deferred | ⭐⭐⭐⭐⭐ | new crates | entry conditions in D4 met |
 
 ### Dependency order
@@ -275,3 +275,58 @@ Notifications). The plan's full list (Audio, Display, Network, Bluetooth,
 Session, Portal, Secrets) will be added incrementally as replicated COSMIC
 components exercise them — per the plan's "W4 proceeds per COSMIC component
 being replicated" directive.
+
+### W3 — scaffold (libcosmic host backend — Linux-only)
+
+**Delivered**: `crates/auto-cosmic/host-libcosmic/` — the crate structure,
+lowering design, and `run_libcosmic::<C>()` entry signature. The actual
+VTree→libcosmic-Element lowering requires the `libcosmic` crate
+(Linux/Wayland-only) and is **excluded from the Windows workspace build** via
+`Cargo.toml` `exclude`. On Linux, the crate's `src/linux.rs` documents the full
+lowering map (all 18 `VNodeKind` → libcosmic widgets) and event-routing strategy.
+
+**Why scaffold, not full impl**: W3 is ⭐⭐⭐⭐ difficulty (the plan's highest) —
+it must cover all 18 widget variants, libcosmic theming, and cosmic-protocols
+integration (layer-shell for panels). It is built **incrementally, driven by
+replicated COSMIC components** — the plan says "widget coverage driven by
+cosmic-monitor replication." There are no replicated components yet (that is the
+post-365 work: cosmic-screenshot → cosmic-session → cosmic-monitor), so the
+scaffold is the correct deliverable at this stage. The first real component
+replication will fill in the lowering.
+
+**Build**: Linux/WSL2 only. `compile_error!` on non-Linux prevents accidental
+Windows build. On Linux: uncomment libcosmic dep in Cargo.toml, implement the
+lowering in `src/linux.rs`.
+
+### W4 — scaffold (Linux port adapters — Linux-only)
+
+**Delivered**: `crates/auto-cosmic/ports-linux/` — adapter signatures and a
+service-mapping doc (`src/linux.rs`) covering `LinuxPowerPort` (UPower),
+`LinuxClockPort` (clock_gettime), `LinuxNotificationsPort` (FreeDesktop D-Bus).
+The `LinuxClockPort::now_secs()` impl is already functional (uses
+`std::time::SystemTime`); the UPower and D-Bus adapters require `zbus`
+(Linux-only) and are stubbed with TODO markers.
+
+**Excluded from Windows workspace** the same way as W3.
+
+**Why scaffold**: same reason as W3 — the real adapters are validated against
+real D-Bus services on WSL2 (W4 acceptance: "pass integration test on WSL2"),
+which requires a Linux environment. The W2 mock impls remain the primary path
+on Windows. The adapter stubs document the exact service interfaces so a Linux
+developer can fill them in without re-deriving the design.
+
+### Plan 365 status after W1–W4
+
+| WI | Status | Notes |
+|----|--------|-------|
+| W1 | ✅ landed | `HostBackend` unified interface |
+| W2 | ✅ landed | mock framework + demo applet (Windows-verified) |
+| W3 | 🔨 scaffold | libcosmic host (Linux, incremental per component) |
+| W4 | 🔨 scaffold | Linux port adapters (Linux, incremental per component) |
+| W5 | ⏸ deferred | RenderQueue/compositor (AutoOS phase) |
+
+The cross-platform foundation (W1–W2) is complete and Windows-verified. W3/W4
+are Linux deliverables whose real implementations are driven by COSMIC component
+replication — the next phase of work beyond Plan 365. The scaffolds make that
+work a "fill in the lowering/adapters" task rather than a "design from scratch"
+task.
