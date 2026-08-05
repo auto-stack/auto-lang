@@ -937,3 +937,9 @@ fn test_312_codegen_collects_api_routes() {
 // mailbox close, so its .expected.out (with "stopped") is hand-written and
 // documents a2r's intentional ahead-of-VM stop-hook wiring.
 #[test] fn test_22_actors_009_stop_hook() { test_a2r_deep("22_actors/009_stop_hook"); }
+// Plan 387 §16: spawn works in a regular fn (not just main). P0-1 解除 fn main 耦合。
+// .expected.out hand-written (VM uses different spawn API).
+#[test] fn test_22_actors_010_handle_cross_fn() { test_a2r_deep("22_actors/010_handle_cross_fn"); }
+// Plan 387 §16 P0-3: external enum as actor message (on { ev Event }).
+// .expected.out hand-written (VM send shim coerces to Value::Int).
+#[test] fn test_22_actors_012_external_enum_msg() { test_a2r_deep("22_actors/012_external_enum_msg"); }

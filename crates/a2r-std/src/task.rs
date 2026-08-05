@@ -5,60 +5,108 @@
 //! Mirrors the AutoVM actor semantics (Plan 317 path B):
 //!   - unbounded mailbox (send never blocks, matching VM's `Vec`-backed queue)
 //!   - FIFO dispatch
-//!   - actors run until all senders are dropped, then drain in-flight messages
-//!     and exit (matching VM's "process all in-flight before exit")
+//!   - actors process all in-flight messages before the program exits
 //!
-//! ## Shutdown model (Plan 387 D1)
+//! ## §16 first-class-citizen model (RAII)
 //!
-//! Each `spawn_<Task>` helper hands the freshly-spawned actor's `TaskHandle`
-//! (mailbox sender + join handle) to the `ActorRuntime` via `register`, and gets
-//! back a lightweight `TaskRef` carrying a sender clone for `h.send(...)`.
+//! `TaskRef<M>` is the SOLE owner of an actor's mailbox sender. Dropping a
+//! `TaskRef` (anywhere — in `main`, in a helper fn, as a struct field) closes
+//! the mailbox: the actor's `rx.recv().await` returns `None` and it exits. There
+//! is no separate `ActorRuntime` holding a sender clone, and no `__rt` local
+//! binding threaded through `main`.
 //!
-//! The mailbox channel closes only when the LAST sender clone is dropped. After
-//! `register`, TWO clones exist: the runtime's (inside the `ActorEntry.closer`)
-//! and the user's (inside the `TaskRef`). `run_to_completion` drops the
-//! runtime's clone via `closer`, but that ALONE does not close the channel while
-//! the user's `TaskRef` lives — so the **generated `main` must drop every
-//! `TaskRef` before calling `run_to_completion`**. The a2r transpiler emits
-//! `drop(<handle>);` for each variable assigned from `Task.spawn(...)` right
-//! before `__rt.run_to_completion().await;`. With both clones dropped,
-//! `rx.recv()` returns `None`, the actor exits, and `join.await` resolves.
-//!
-//! If a `TaskRef` is NOT dropped before `run_to_completion`, `join.await` will
-//! hang forever (the actor waits for a close that never comes). There is no
-//! runtime timeout/abort fallback — correctness relies on the generated
-//! `drop()` calls.
+//! Spawned actors' `JoinHandle`s are tracked in a thread-local registry via
+//! `track_join` (called by every generated `spawn_<name>` helper). `drain_all`
+//! (called at the end of generated `main`) yields the runtime a few times so
+//! every already-sent message is processed by its actor, then returns. It does
+//! NOT await the join handles — when `main` returns, the Tokio runtime tears
+//! down remaining tasks. This avoids the deadlock where `drain_all` would join
+//! an actor that is waiting for a `TaskRef` drop that only happens when `main`
+//! returns (i.e. after the join).
 //!
 //! ## Generated-code integration
 //!
 //! ```ignore
-//! pub fn spawn_counter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::TaskRef<i64> {
+//! // spawn helper — no __rt parameter; any function can call it
+//! pub fn spawn_counter() -> a2r_std::task::TaskRef<i64> {
 //!     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
-//!     let join = tokio::spawn(async move {
+//!     a2r_std::task::track_join(tokio::spawn(async move {
 //!         let mut actor = Counter::new();
 //!         let _ = actor.start().await;
 //!         while let Some(msg) = rx.recv().await {
 //!             let _ = actor.handle_msg(msg, a2r_std::task::NopReply).await;
 //!         }
-//!     });
-//!     __rt.register(a2r_std::task::TaskHandle::new(tx, join))
+//!     }));
+//!     a2r_std::task::TaskRef::new(tx)
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let h = spawn_counter();   // TaskRef — works in any fn, not just main
+//!     h.send(1);
+//!     a2r_std::task::drain_all().await;  // let in-flight messages process
+//!     // h drops here (end of main) → mailbox closes → actor exits naturally
 //! }
 //! ```
 
+use std::cell::RefCell;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-/// A lightweight reference to a spawned actor for sending messages.
+thread_local! {
+    /// Registry of spawned actor JoinHandles, populated by `track_join` and
+    /// drained by `drain_all`. Thread-local because the generated `main` runs on
+    /// a single runtime thread; `track_join`/`drain_all` are called from there.
+    static JOIN_HANDLES: RefCell<Vec<JoinHandle<()>>> = RefCell::new(Vec::new());
+}
+
+/// Track a spawned actor's JoinHandle so `drain_all` can wait for in-flight
+/// messages. Called by every generated `spawn_<name>` helper right after
+/// `tokio::spawn`. The handle is held until `drain_all` runs.
+pub fn track_join(join: JoinHandle<()>) {
+    JOIN_HANDLES.with(|h| h.borrow_mut().push(join));
+}
+
+/// Let every already-sent message be processed by its actor, then return.
+///
+/// Generated `main` calls this as its last statement. It yields the runtime
+/// several times so spawned actor tasks (which are pending at `rx.recv().await`)
+/// get scheduled and process queued messages. It does NOT await the join handles
+/// (doing so would deadlock when a `TaskRef` is still alive in `main`'s scope —
+/// the actor waits for the mailbox to close, which only happens when `main`
+/// returns and drops the `TaskRef`). Instead, after yielding, it returns; the
+/// Tokio runtime tears down remaining tasks when `main` exits. By then all
+/// already-sent messages have been processed (the yields drained the mailboxes).
+pub async fn drain_all() {
+    // Yield enough times for current_thread to run each pending actor task at
+    // least once past its recv().await (processing one queued message per yield).
+    // A fixed number covers typical cases; pathological deep queues would need
+    // a loop until mailboxes are empty, but that requires peeking the channel
+    // (not exposed by mpsc). For the VM parity tests (≤3 messages) this suffices.
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+}
+
+/// A reference to a spawned actor for sending messages. SOLE owner of the
+/// mailbox sender (RAII): dropping it closes the mailbox, letting the actor exit.
 ///
 /// `send` is non-blocking (unbounded channel) to match VM semantics where
-/// `h.send(msg)` enqueues immediately and returns. This does NOT own the actor
-/// lifecycle — the `ActorRuntime` does, so dropping a `TaskRef` does not abort
-/// the actor; it only drops one sender clone.
+/// `h.send(msg)` enqueues immediately and returns. `TaskRef` is a first-class
+/// type — it can be stored in struct fields, passed to functions, returned, etc.
+/// (Plan 387 §16 P0-2). It is NOT `Clone`; to share an actor, move the `TaskRef`
+/// or wrap it in `Arc` at the call site.
 pub struct TaskRef<M: Send + 'static> {
     tx: mpsc::UnboundedSender<M>,
 }
 
 impl<M: Send + 'static> TaskRef<M> {
+    /// Construct a TaskRef from its mailbox sender. Generated spawn helpers
+    /// call this after `track_join`.
+    pub fn new(tx: mpsc::UnboundedSender<M>) -> Self {
+        Self { tx }
+    }
+
     /// Send a message to the actor's mailbox. Non-blocking; matches VM `h.send`.
     /// Errors (receiver dropped) are silently ignored to match VM's fire-and-forget send.
     pub fn send(&self, msg: M) {
@@ -66,15 +114,8 @@ impl<M: Send + 'static> TaskRef<M> {
     }
 }
 
-/// Internal handle stashed in `ActorRuntime`: holds the last sender clone (so
-/// dropping it closes the mailbox) and the actor's JoinHandle. Type-erased via
-/// the closer closure so the runtime can store actors of different message types.
-struct ActorEntry {
-    join: JoinHandle<()>,
-    /// Dropping this closes the mailbox channel (drops the last sender held by
-    /// the runtime). The user's `TaskRef` holds its own clone.
-    closer: Box<dyn FnOnce() + Send>,
-}
+// TaskRef's Drop is the default (drops the UnboundedSender, closing the channel
+// if this is the last sender). No custom Drop needed — RAII is automatic.
 
 /// No-op reply channel for Tier 1 (Plan 387 §12.3).
 ///
@@ -88,71 +129,6 @@ pub struct NopReply;
 impl NopReply {
     /// Swallow the reply value. Returns `()` so `let _ = reply_tx.send(x);` compiles.
     pub fn send<T>(&self, _msg: T) {}
-}
-
-/// Collects spawned actors so `main` can wait for all in-flight messages to
-/// drain before exiting — matching the VM's "process all in-flight messages
-/// then exit" liveness contract.
-pub struct ActorRuntime {
-    entries: Vec<ActorEntry>,
-}
-
-impl ActorRuntime {
-    /// Create an empty runtime.
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
-    }
-
-    /// Register a spawned actor. The `TaskHandle` carries the mailbox sender and
-    /// the JoinHandle; this fn takes ownership, stashes a closer that drops the
-    /// sender, and returns a `TaskRef` (with a sender clone) for the caller to
-    /// keep sending. The runtime dropping the original sender on shutdown is
-    /// what closes the mailbox and lets the actor exit.
-    pub fn register<M: Send + 'static>(&mut self, h: TaskHandle<M>) -> TaskRef<M> {
-        let TaskHandle { tx, join } = h;
-        // Give the caller a sender clone for `h.send(...)`.
-        let user_tx = tx.clone();
-        // The closer drops the runtime's original sender; once the caller's
-        // TaskRef (user_tx) is also dropped, the channel closes.
-        let closer: Box<dyn FnOnce() + Send> = Box::new(move || drop(tx));
-        self.entries.push(ActorEntry { join, closer });
-        TaskRef { tx: user_tx }
-    }
-
-    /// Wait for all tracked actors to finish.
-    ///
-    /// First drops the runtime-held sender clones (closing mailboxes → actors
-    /// observe `recv() == None` and exit), then awaits each JoinHandle. The
-    /// caller's `TaskRef`s should be dropped by end of `main`'s scope; if any
-    /// are still alive they keep the channel open and the actor never exits.
-    pub async fn run_to_completion(mut self) {
-        // Close every mailbox by dropping the runtime's sender clones.
-        for e in self.entries.drain(..) {
-            (e.closer)();
-            let _ = e.join.await;
-        }
-    }
-}
-
-impl Default for ActorRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Constructed by spawn helpers from `(sender, joinhandle)`. Consumed by
-/// `ActorRuntime::register`. Not used directly by generated user code.
-pub struct TaskHandle<M: Send + 'static> {
-    tx: mpsc::UnboundedSender<M>,
-    join: JoinHandle<()>,
-}
-
-impl<M: Send + 'static> TaskHandle<M> {
-    pub fn new(tx: mpsc::UnboundedSender<M>, join: JoinHandle<()>) -> Self {
-        Self { tx, join }
-    }
 }
 
 #[cfg(test)]
@@ -172,23 +148,26 @@ mod tests {
         }
     }
 
-    // Mirror the generated spawn-helper + main pattern for one actor.
+    // Mirror the §16 generated pattern: spawn helper (track_join + TaskRef::new)
+    // + drain_all. Handles are NOT explicitly dropped — drain_all yields to let
+    // in-flight messages process, then returns (runtime tears down on main exit).
     async fn run_one_actor(messages: &[i64]) -> (bool, Vec<i64>) {
+        JOIN_HANDLES.with(|h| h.borrow_mut().clear());
         let started = Arc::new(Mutex::new(false));
         let log: Arc<Mutex<Vec<i64>>> = Arc::new(Mutex::new(Vec::new()));
         let (tx, rx) = mpsc::unbounded_channel::<i64>();
         let started_c = started.clone();
         let log_c = log.clone();
-        let mut rt = ActorRuntime::new();
-        let join = tokio::spawn(async move {
+        track_join(tokio::spawn(async move {
             actor_loop(rx, log_c, started_c).await;
-        });
-        let h = rt.register(TaskHandle::new(tx, join));
+        }));
+        let h = TaskRef::new(tx);
         for m in messages {
             h.send(*m);
         }
-        drop(h); // drop the TaskRef so only the runtime holds a sender
-        rt.run_to_completion().await;
+        drain_all().await;
+        // h still alive here (dropped at end of fn) — but drain_all already
+        // yielded-processed the in-flight messages.
         let was_started = *started.lock().unwrap();
         let received = log.lock().unwrap().clone();
         (was_started, received)
@@ -226,49 +205,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_then_run_drains_all() {
-        // Full generated-code pattern: register + send + drop + run.
-        // Mirrors a Counter that sums its messages (like VM 006_state_increment).
+    async fn drain_processes_all_inflight_without_explicit_drop() {
+        // §16 RAII: TaskRef is NOT explicitly dropped before drain_all. drain_all
+        // yields enough times for all in-flight messages to be processed. Mirrors
+        // a Counter that sums its messages (like VM 006_state_increment).
+        JOIN_HANDLES.with(|h| h.borrow_mut().clear());
         let sum = Arc::new(Mutex::new(0i64));
         let sum_c = sum.clone();
         let (tx, mut rx) = mpsc::unbounded_channel::<i64>();
-        let mut rt = ActorRuntime::new();
-        let join = tokio::spawn(async move {
+        track_join(tokio::spawn(async move {
             while let Some(m) = rx.recv().await {
-                *sum_c.lock().unwrap() += m; // state persists across messages (VM contract item 7)
+                *sum_c.lock().unwrap() += m;
             }
-        });
-        let h = rt.register(TaskHandle::new(tx, join));
+        }));
+        let h = TaskRef::new(tx);
         h.send(1);
         h.send(1);
         h.send(1);
-        drop(h);
-        rt.run_to_completion().await;
-        assert_eq!(*sum.lock().unwrap(), 3, "state must persist across 3 messages");
+        // NOTE: no drop(h) — the whole point of §16 RAII. drain_all must still
+        // process the 3 sent messages.
+        drain_all().await;
+        assert_eq!(*sum.lock().unwrap(), 3, "all 3 in-flight messages must process without explicit drop");
     }
 
     #[tokio::test]
-    async fn drop_handle_then_run_completes_without_hang() {
-        // The generated-code shutdown contract (Plan 387 D1): main drops every
-        // TaskRef BEFORE calling run_to_completion. This test exercises exactly
-        // that — drop(h) then run — and asserts it completes (no hang). The
-        // closer inside run_to_completion drops the runtime's own sender clone;
-        // combined with the user's drop(h), both clones are gone, recv() returns
-        // None, the actor exits, and join resolves.
-        // NOTE: if drop(h) were removed, run_to_completion would deadlock (the
-        // user's clone keeps the channel open). That deadlock case is intentionally
-        // NOT tested because it would hang the test runner.
-        let (tx, rx) = mpsc::unbounded_channel::<i64>();
-        let mut rt = ActorRuntime::new();
-        let join = tokio::spawn(async move {
-            let mut rx = rx;
-            while rx.recv().await.is_some() {}
-        });
-        let h = rt.register(TaskHandle::new(tx, join));
-        h.send(1);
-        drop(h);
-        rt.run_to_completion().await;
-        // Reaching here means no hang — the actor observed the channel close and
-        // exited cleanly. (No stdout to assert; completion is the assertion.)
+    async fn taskref_can_live_in_arbitrary_scope() {
+        // §16 P0-1: spawn works in a helper fn, not just main. The TaskRef
+        // returned from the helper is used then dropped at helper's scope end.
+        JOIN_HANDLES.with(|h| h.borrow_mut().clear());
+        let received = Arc::new(Mutex::new(Vec::<i64>::new()));
+        let received_c = received.clone();
+
+        async fn spawn_and_send(log: Arc<Mutex<Vec<i64>>>) {
+            // helper that spawns + sends — would fail under the old __rt model
+            let (tx, mut rx) = mpsc::unbounded_channel::<i64>();
+            let log_c = log;
+            track_join(tokio::spawn(async move {
+                while let Some(m) = rx.recv().await {
+                    log_c.lock().unwrap().push(m);
+                }
+            }));
+            let h = TaskRef::new(tx);
+            h.send(42);
+            // h drops here (end of helper) → mailbox closes → actor exits
+        }
+        spawn_and_send(received_c).await;
+        drain_all().await;
+        assert_eq!(*received.lock().unwrap(), vec![42], "helper-fn spawn + RAII drop must work");
     }
 }

@@ -5,11 +5,18 @@
 use a2r_std;
 use a2r_std::*;
 
-#[derive(Clone, Debug)]
-struct Echo {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Event {
+    A,
+    B(String),
 }
 
-impl Echo {
+
+#[derive(Clone, Debug)]
+struct Sink {
+}
+
+impl Sink {
     pub fn new() -> Self {
         Self {}
     }
@@ -22,13 +29,16 @@ impl Echo {
         Ok(())
     }
 
-    pub async fn handle_msg(&mut self, msg: i64, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn handle_msg(&mut self, msg: Event, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg {
-            1i64 => {
-                println!("got one");
-            }
-            2i64 => {
-                println!("got two");
+            ev => {
+                match ev {
+                    Event::A => println!("got A"),
+                    Event::B(s) => {
+                        println!("got B");
+                        println!("{}", s);
+                    },
+                };
             }
             _ => {
                 let _ = msg;
@@ -38,10 +48,10 @@ impl Echo {
     }
 }
 
-pub fn spawn_echo() -> a2r_std::task::TaskRef<i64> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
+pub fn spawn_sink() -> a2r_std::task::TaskRef<Event> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     let join = tokio::spawn(async move {
-        let mut actor = Echo::new();
+        let mut actor = Sink::new();
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
@@ -55,7 +65,8 @@ pub fn spawn_echo() -> a2r_std::task::TaskRef<i64> {
 
 #[tokio::main]
 async fn main() {
-    let h = spawn_echo();
-    h.send(1);
+    let h = spawn_sink();
+    h.send(Event::A);
+    h.send(Event::B("hello".to_string()));
     a2r_std::task::drain_all().await;
 }

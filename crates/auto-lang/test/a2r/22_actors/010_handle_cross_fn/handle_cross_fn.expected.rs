@@ -6,12 +6,15 @@ use a2r_std;
 use a2r_std::*;
 
 #[derive(Clone, Debug)]
-struct Echo {
+struct Counter {
+    count: i64,
 }
 
-impl Echo {
+impl Counter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            count: 0,
+        }
     }
 
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -25,10 +28,8 @@ impl Echo {
     pub async fn handle_msg(&mut self, msg: i64, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg {
             1i64 => {
+                self.count = self.count + 1;
                 println!("got one");
-            }
-            2i64 => {
-                println!("got two");
             }
             _ => {
                 let _ = msg;
@@ -38,10 +39,10 @@ impl Echo {
     }
 }
 
-pub fn spawn_echo() -> a2r_std::task::TaskRef<i64> {
+pub fn spawn_counter() -> a2r_std::task::TaskRef<i64> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
     let join = tokio::spawn(async move {
-        let mut actor = Echo::new();
+        let mut actor = Counter::new();
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
@@ -53,9 +54,14 @@ pub fn spawn_echo() -> a2r_std::task::TaskRef<i64> {
 }
 
 
+fn spawn_and_send() {
+    let h = spawn_counter();
+    h.send(1);
+    h.send(1);
+}
+
 #[tokio::main]
 async fn main() {
-    let h = spawn_echo();
-    h.send(1);
+    spawn_and_send();
     a2r_std::task::drain_all().await;
 }

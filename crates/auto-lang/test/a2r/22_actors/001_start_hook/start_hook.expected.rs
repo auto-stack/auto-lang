@@ -36,7 +36,7 @@ impl Greeter {
     }
 }
 
-pub fn spawn_greeter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::TaskRef<i64> {
+pub fn spawn_greeter() -> a2r_std::task::TaskRef<i64> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<i64>();
     let join = tokio::spawn(async move {
         let mut actor = Greeter::new();
@@ -46,15 +46,14 @@ pub fn spawn_greeter(__rt: &mut a2r_std::task::ActorRuntime) -> a2r_std::task::T
             let _ = actor.handle_msg(msg, reply_tx).await;
         }
     });
-    __rt.register(a2r_std::task::TaskHandle::new(tx, join))
+    a2r_std::task::track_join(join);
+    a2r_std::task::TaskRef::new(tx)
 }
 
 
 #[tokio::main]
 async fn main() {
-    let mut __rt = a2r_std::task::ActorRuntime::new();
-    let h = spawn_greeter(&mut __rt);
+    let h = spawn_greeter();
     h.send(1);
-    drop(h);
-    __rt.run_to_completion().await;
+    a2r_std::task::drain_all().await;
 }

@@ -1,0 +1,28 @@
+pub enum Event {
+    A
+    B(str)
+}
+
+task Sink {
+    fn start() ! {
+    }
+    on {
+        ev Event -> {
+            is ev {
+                Event.A -> {
+                    print("got A")
+                }
+                Event.B(s) -> {
+                    print("got B")
+                    print(s)
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    h.send(Event.A)
+    h.send(Event.B("hello"))
+}
