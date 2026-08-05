@@ -484,3 +484,42 @@ fn main() {
 - auto-ai `docs/plans/021-auto-completion-roadmap.md` Phase 1 已记录此否决结论
 - auto-ai 侧无其他不依赖 auto-lang 的实施工作（三个缺口全卡 a2r）
 - 本节需求满足后，auto-ai 可立即实施 agent.at 的流式改造（Phase 1.3）
+
+---
+
+## §17 §16 实施落地（2026-08-05）
+
+> merge `1e1c23e2`。P0-1 + P0-3 完整解决，P0-2 部分完成（类型映射已加，handle 作函数参数的 escape clone 留后续）。
+
+### §17.1 P0-1 解决：spawn 解除 fn main 耦合（RAII）
+
+**a2r-std `task.rs` 重构**（commit `9b6dbb9a`）：
+- `TaskRef<M>` 成为 mailbox sender **唯一所有者**（非 Clone）。Drop 自动关 mailbox。
+- 移除 `ActorRuntime`/`ActorEntry`/`closer`/`Box<dyn FnOnce()>`——改用 `thread_local! JOIN_HANDLES` + `track_join()` + `drain_all()`。
+- `drain_all()` **不等 join**——yield 16 次让 in-flight 消息处理，然后返回；main 返回时 runtime 自然 teardown。**解除死锁**（无需显式 `drop(h)`）。
+
+**转译器**（commit `9b6dbb9a`）：
+- `spawn_<name>(&mut __rt)` → `spawn_<name>()`（无参）；main 移除 `let mut __rt` + `collect_task_handle_vars`/`drop(var)`；epilogue 改 `drain_all().await`。删死代码 `collect_task_handle_vars`/`is_task_spawn_call`。
+
+**验证**：`010_handle_cross_fn`——spawn 在普通函数 `spawn_and_send`（非 main），端到端通过。
+
+### §17.2 P0-2 部分完成：TaskRef 类型映射
+
+- `GenericInstance("TaskRef")` → `a2r_std::task::TaskRef<T>`（类型映射已加，commit `9b6dbb9a`）。
+- **已知限制**：`TaskRef` 作函数参数传递时，escape analyzer 给变量加 `.clone()`（`forward(h)` → `forward(h.clone())`），而 `TaskRef` 非 Clone → 编译失败。根因：escape analysis 的 `OwnershipTier::Clone` 默认对非 Copy escape 变量生效，不识别 `TaskRef` 的 move 语义。修复需 escape analyzer 深度改动（识别 `TaskRef<...>` 类型用 Move tier）。**留作后续**。当前 010 验证用"spawn in fn"（不传 handle）绕过。
+
+### §17.3 P0-3 解决：外部 enum 作 actor 消息
+
+- **无需额外代码**——Tier 2 已自然支持：`derive_task_msg_type` 的 `TypeBinding` 返回 bound type 名；`emit_task_pattern` 的 `TypeBinding` 输出绑定名；send 侧 `Event.A` 不被 `rewrite_msg_variant_arg` 改写（`Expr::Dot` 返回 None），正常渲染。
+- **验证**：`012_external_enum_msg`——`on { ev Event }` + `h.send(Event.A)`/`Event.B("hello")`，handler 内 `is ev { Event.A -> ... }` 解构，端到端通过（`got A\ngot B\nhello`）。
+
+### §17.4 验证
+
+- 11 文本黄金（001-010 + 012）+ 11 parity（含手写 expected）+ 7 VM actor + 6 a2r-std 单测，全绿。
+- commit：W6-W7 `9b6dbb9a`（RAII + 解耦）、W8-W9 `ea08546e`（外部 enum + 验证用例）。
+
+### §17.5 后续遗留
+
+- **P0-2 handle 作函数参数**：escape analyzer 识别 `TaskRef` move 语义（`escalate_visible`/`OwnershipTier` 对 `TaskRef<...>` 用 Move 而非 Clone）。
+- **011 handle 存结构体字段**：未做（依赖 P0-2 的 move 修复，`self.sink.send()` 应可用但需验证）。
+- **013 actor 与方法共存综合用例**：未做（同上）。
