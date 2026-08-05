@@ -70,11 +70,26 @@ HTTP server 侧（Plan 328 已覆盖）。
 
 ## §4 Verification / 验证
 
-- `cargo test -p auto-man`（如有）全绿；`cargo test -p auto-lang` 不退化。
-- 生成项目 `cargo build` + `cargo run` 通过；行为与 VM 对应 native 一致。
-- 文本断言：生成的 Rust 源码包含 TLS/multipart/download/ws 函数。
+- `cargo test -p auto-man` 全绿（182 测试，含 7 个 W1-W4 字符串级回归单测）。
+- 端到端：015-notes split 模式（`AUTO_VM_MERGE=0`）生成的 API client 在临时 crate
+  （reqwest blocking+json+multipart + tungstenite + lazy_static）编译通过；
+  运行时冒烟（mock HTTP server + tungstenite echo）：multipart 链式上传 ✅、
+  download_with_progress 进度事件+文件完整 ✅、ws echo（send→on_message）✅。
+- 文本断言：生成的 Rust 源码含 `_http_client()`/TLS 接线、`multipart_form`、
+  `download_with_progress`、`ws_connect/send/on_message/close`，无 `ureq::` 残留。
 
-## §5 风险与缓解
+## §5 验收（Acceptance）
+
+- [x] W1 TLS 适配：API client 从 ureq 迁移到 reqwest::blocking；`AUTO_TLS_SKIP_VERIFY` /
+      `AUTO_TLS_CA_CERT` 生效；生成代码编译通过（015-notes split 模式）。
+- [x] W2 multipart 链式 builder（`multipart_form().text().file().send()`）运行时验证通过。
+- [x] W3 `download_with_progress` 流式进度事件 + 文件完整（100KB / 14 事件）运行时验证通过。
+- [x] W4 `ws_on_message` 帧投递 + 读超时死锁修复，echo 端到端通过。
+- [x] W5 回归单测（7 个）+ 生成代码编译/运行时验证；auto-man 182 全绿。
+- 后续（roadmap 步骤 7/8，本计划 out of scope）：普通 HTTP 异步化（Plan 344 路径 B）、
+  Cookie/重试/压缩/CORS 易用性。
+
+## §6 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
@@ -82,7 +97,7 @@ HTTP server 侧（Plan 328 已覆盖）。
 | reqwest blocking 在 UI 主线程阻塞 | 现状已是阻塞（ureq）；异步化是步骤 7 单独计划 |
 | WS 依赖 native-tls 平台差异 | 已声明 `tungstenite = { features = ["native-tls"] }`；测试用本地 echo server |
 
-## §6 关联 / References
+## §7 关联 / References
 
 - **Plan 349**（active，roadmap）：VM 侧已完成；本计划的 a2r 部分形式化
 - **Plan 350**（archive）：WebSocket VM 侧实现
@@ -91,7 +106,7 @@ HTTP server 侧（Plan 328 已覆盖）。
 
 ---
 
-## §7 实施进度
+## §8 实施进度
 
 > 计划骨架 commit 后开始 W1。各 WI 独立可合并，按依赖排序。
 > house style 用 `### W1 — 待办` / `### W1 — landed` 记录。
@@ -115,7 +130,31 @@ HTTP server 侧（Plan 328 已覆盖）。
 - 顺带确认：`generate_http_utility_functions`（upload/download，W2/W3 模板）与
   `generate_ws_functions`（W4 模板）已存在，随 W1 一起编译通过。
 
-### W2 — 待办（multipart 上传适配）
-### W3 — 待办（文件下载 + 断点续传 + 进度）
-### W4 — 待办（WebSocket 客户端 codegen）
-### W5 — 待办（测试）
+### W2 + W3 + W4 — landed（multipart 链式 / 下载进度 / WebSocket on_message）
+- 交付（`crates/auto-man/src/rust_ui.rs`，commit 待填）：
+  - **W2**：`generate_http_utility_functions` 新增链式 builder
+    `multipart_form().text(field, value).file(field, path).send(url)`（`MultiPart` struct），
+    对齐 VM `RequestBuilder.multipart_file/multipart_text`。原有 `upload_file`/
+    `upload_file_with_fields` 保留。
+  - **W3**：新增 `download_with_progress(url, file_path) -> mpsc::Receiver<Value>`——
+    独立线程 + `copy_to` 流式写盘（非 buffer-all）+ `ProgressWriter` 发进度事件
+    （`{"done": bool, "written", "total"}`），对齐 VM `http.download_with_progress`
+    的非阻塞迭代器。`download_file`/`download_file_resume` 保留。
+  - **W4**：`generate_ws_functions` 补 `ws_on_message(handle) -> Vec<String>`（非阻塞
+    drain 每连接入站队列）；`WsConn` 增加入站 `Receiver`；reader 线程把 Text/Binary
+    帧真实投递到队列（原来直接丢弃）。**修复死锁**：阻塞 `read()` 会让出站 channel
+    永不被轮询（echo 会话互等）——加 50ms 读超时（`MaybeTlsStream::Plain`），超时/
+    WouldBlock 视为等待而非断连。修掉未用的 `Arc` 导入。
+- 验证：
+  - 4 个字符串级单测（multipart 链式 / progress / ws 四函数+投递 / 无 Arc 残留）全绿；
+    auto-man 全套 182 测试通过。
+  - **端到端运行时冒烟**（015-notes split 模式生成代码 + 临时 crate，`include!`
+    模拟真实生成布局）：mock HTTP server + tungstenite echo server——
+    `multipart_form().text().file().send()` 服务端收到正确 multipart body ✅；
+    `download_with_progress` 100KB 下载 14 个进度事件 + 文件完整 ✅；
+    `ws_connect → ws_send → ws_on_message` 收到 `echo:ping` ✅；**ALL PASS**。
+
+### W5 — landed（验证基建，见各 WI）
+- W1/W2/W3/W4 的字符串级回归单测内嵌 rust_ui.rs tests 模块（7 个 W 测试）；
+  端到端编译+运行时验证通过临时 crate 完成（不入库，`#[ignore]` 级重型验证）。
+- 生成 Cargo.toml 模板 reqwest features 补 `"json"`（W1 起生效）。

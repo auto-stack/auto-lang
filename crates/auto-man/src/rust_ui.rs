@@ -1147,9 +1147,12 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
     code
 }
 
-/// Plan 349 step 2: Generate multipart upload + download functions for a2r.
+/// Plan 349 step 2 / Plan 388 W2/W3: Generate multipart upload + download
+/// (resume + progress) functions for a2r. Mirrors the VM natives
+/// `http.upload` / `http.download` / `http.download_resume` /
+/// `http.download_with_progress` and the chainable `RequestBuilder.multipart_*`.
 fn generate_http_utility_functions() -> String {
-    r#"// Plan 349: File upload (multipart) + download utilities (a2r)
+    r#"// Plan 349/388: File upload (multipart) + download utilities (a2r)
 
 fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
     let url = url.to_string();
@@ -1191,6 +1194,54 @@ fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Valu
     }).join().unwrap_or(serde_json::Value::Null)
 }
 
+// Plan 388 W2: chainable multipart builder — mirrors the VM's
+// RequestBuilder.multipart_file(field, path) / multipart_text(field, value).
+// Usage: multipart_form().text("title", "x").file("upload", "a.bin").send(url)
+fn multipart_form() -> MultiPart {
+    MultiPart { fields: Vec::new(), files: Vec::new() }
+}
+
+struct MultiPart {
+    fields: Vec<(String, String)>,
+    files: Vec<(String, String)>,
+}
+
+impl MultiPart {
+    fn text(mut self, field: &str, value: &str) -> Self {
+        self.fields.push((field.to_string(), value.to_string()));
+        self
+    }
+
+    fn file(mut self, field: &str, path: &str) -> Self {
+        self.files.push((field.to_string(), path.to_string()));
+        self
+    }
+
+    fn send(self, url: &str) -> serde_json::Value {
+        let url = url.to_string();
+        let fields = self.fields;
+        let files = self.files;
+        std::thread::spawn(move || {
+            let mut form = reqwest::blocking::multipart::Form::new();
+            for (k, v) in fields {
+                form = form.text(k, v);
+            }
+            for (k, path) in files {
+                match reqwest::blocking::multipart::Part::file(&path) {
+                    Ok(part) => form = form.part(k, part),
+                    Err(_) => return serde_json::Value::Null,
+                }
+            }
+            let resp = match reqwest::blocking::Client::new()
+                .post(&url)
+                .multipart(form)
+                .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
+            let text = match resp.text() { Ok(t) => t, Err(_) => return serde_json::Value::Null };
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
+        }).join().unwrap_or(serde_json::Value::Null)
+    }
+}
+
 fn download_file(url: &str, file_path: &str) -> bool {
     let url = url.to_string();
     let file_path = file_path.to_string();
@@ -1223,13 +1274,59 @@ fn download_file_resume(url: &str, file_path: &str, offset: u64) -> bool {
     }).join().unwrap_or(false)
 }
 
+// Plan 388 W3: non-blocking download with progress events — mirrors the VM's
+// http.download_with_progress iterator. Returns an mpsc::Receiver the caller
+// polls; each event is {"done": bool, "written": u64, "total": u64, ...}.
+fn download_with_progress(url: &str, file_path: &str) -> std::sync::mpsc::Receiver<serde_json::Value> {
+    let (tx, rx) = std::sync::mpsc::channel::<serde_json::Value>();
+    let url = url.to_string();
+    let file_path = file_path.to_string();
+    std::thread::spawn(move || {
+        let mut resp = match reqwest::blocking::Client::new().get(&url).send() {
+            Ok(r) => r,
+            Err(_) => { let _ = tx.send(serde_json::json!({"done": true, "error": "request failed"})); return; }
+        };
+        let total = resp.content_length().unwrap_or(0);
+        let file = match std::fs::File::create(&file_path) {
+            Ok(f) => f,
+            Err(_) => { let _ = tx.send(serde_json::json!({"done": true, "error": "open file"})); return; }
+        };
+        struct ProgressWriter {
+            inner: std::fs::File,
+            tx: std::sync::mpsc::Sender<serde_json::Value>,
+            total: u64,
+            written: u64,
+        }
+        impl std::io::Write for ProgressWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                let n = self.inner.write(buf)?;
+                self.written += n as u64;
+                let _ = self.tx.send(serde_json::json!({
+                    "done": false, "written": self.written, "total": self.total
+                }));
+                Ok(n)
+            }
+            fn flush(&mut self) -> std::io::Result<()> { self.inner.flush() }
+        }
+        let mut writer = ProgressWriter { inner: file, tx: tx.clone(), total, written: 0 };
+        let ok = resp.copy_to(&mut writer).is_ok();
+        let _ = tx.send(serde_json::json!({
+            "done": true, "written": writer.written, "total": total, "ok": ok
+        }));
+    });
+    rx
+}
+
 "#.to_string()
 }
 
-/// Plan 350 step 4: Generate WebSocket client functions for a2r.
+/// Plan 350 step 4 / Plan 388 W4: Generate WebSocket client functions for a2r
+/// (ws_connect / ws_send / ws_on_message / ws_close — mirrors the VM's
+/// `ws.connect/send/on_message/close`). Incoming text/binary frames are queued
+/// per connection and drained by `ws_on_message` (non-blocking, UI-pollable).
 fn generate_ws_functions() -> String {
-    r#"// Plan 350: WebSocket client (a2r)
-use std::sync::{Arc, Mutex};
+    r#"// Plan 350/388: WebSocket client (a2r)
+use std::sync::Mutex;
 use std::collections::HashMap;
 
 lazy_static::lazy_static! {
@@ -1239,11 +1336,13 @@ lazy_static::lazy_static! {
 
 struct WsConn {
     sender: Option<std::sync::mpsc::Sender<String>>,
+    receiver: std::sync::mpsc::Receiver<String>,
 }
 
 fn ws_connect(url: &str) -> i32 {
     let id = WS_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (msg_tx, msg_rx) = std::sync::mpsc::channel::<String>();
     let url = url.to_string();
 
     std::thread::spawn(move || {
@@ -1252,20 +1351,39 @@ fn ws_connect(url: &str) -> i32 {
             Ok(pair) => pair,
             Err(_) => return,
         };
+        // Short read timeout so the loop can service outgoing messages while
+        // waiting for incoming frames — a plain blocking read() would deadlock
+        // an echo conversation until the peer speaks first (the outgoing
+        // channel would never be polled). Only plain ws:// (MaybeTlsStream::
+        // Plain) supports the timeout; TLS streams keep blocking reads.
+        if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = socket.get_mut() {
+            let _ = tcp.set_read_timeout(Some(std::time::Duration::from_millis(50)));
+        }
         loop {
             // Check for outgoing messages (non-blocking).
             if let Ok(msg) = rx.try_recv() {
                 if socket.send(Message::Text(msg.into())).is_err() { break; }
             }
             match socket.read() {
-                Ok(Message::Text(_)) | Ok(Message::Binary(_)) => {}
-                Ok(Message::Close(_)) | Err(_) => break,
+                // Deliver incoming frames to the ws_on_message queue.
+                Ok(Message::Text(t)) => { let _ = msg_tx.send(t); }
+                Ok(Message::Binary(b)) => { let _ = msg_tx.send(String::from_utf8_lossy(&b).into_owned()); }
+                Ok(Message::Close(_)) => break,
+                // Read timeout / would-block: no frame ready yet — not a
+                // connection error, keep servicing outgoing + waiting.
+                Err(e) => {
+                    use tungstenite::Error;
+                    let is_timeout = matches!(&e, Error::Io(ioe)
+                        if ioe.kind() == std::io::ErrorKind::WouldBlock
+                        || ioe.kind() == std::io::ErrorKind::TimedOut);
+                    if !is_timeout { break; }
+                }
                 _ => {}
             }
         }
     });
 
-    WS_CONNS.lock().unwrap().insert(id, WsConn { sender: Some(tx) });
+    WS_CONNS.lock().unwrap().insert(id, WsConn { sender: Some(tx), receiver: msg_rx });
     id
 }
 
@@ -1275,6 +1393,16 @@ fn ws_send(handle: i32, message: &str) -> bool {
         .and_then(|conn| conn.sender.as_ref())
         .and_then(|tx| tx.send(message.to_string()).ok())
         .is_some()
+}
+
+fn ws_on_message(handle: i32) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(conn) = WS_CONNS.lock().unwrap().get(&handle) {
+        while let Ok(m) = conn.receiver.try_recv() {
+            out.push(m);
+        }
+    }
+    out
 }
 
 fn ws_close(handle: i32) {
@@ -2259,5 +2387,49 @@ pub struct Timer {
         let del = generate_delete_fn_body("\"http://x/1\"".into());
         assert!(del.contains("_http_client().delete(&url).send()"), "DELETE: {del}");
         assert!(!del.contains("ureq"), "DELETE still emits ureq: {del}");
+    }
+
+    // --- Plan 388 W2/W3: multipart chain + download progress ---
+
+    #[test]
+    fn test_w2_multipart_chainable_builder() {
+        let utils = generate_http_utility_functions();
+        // Chainable builder mirroring VM RequestBuilder.multipart_file/multipart_text
+        assert!(utils.contains("fn multipart_form() -> MultiPart"), "missing multipart_form");
+        assert!(utils.contains("struct MultiPart"), "missing MultiPart struct");
+        assert!(utils.contains("fn text(mut self, field: &str, value: &str) -> Self"), "missing .text()");
+        assert!(utils.contains("fn file(mut self, field: &str, path: &str) -> Self"), "missing .file()");
+        assert!(utils.contains("fn send(self, url: &str) -> serde_json::Value"), "missing .send()");
+        assert!(utils.contains(".multipart(form)"), "send must attach multipart form");
+        // Existing generic uploads kept
+        assert!(utils.contains("fn upload_file("), "upload_file must remain");
+        assert!(utils.contains("fn upload_file_with_fields("), "upload_file_with_fields must remain");
+    }
+
+    #[test]
+    fn test_w3_download_progress_iterator() {
+        let utils = generate_http_utility_functions();
+        assert!(utils.contains("fn download_with_progress(url: &str, file_path: &str) -> std::sync::mpsc::Receiver<serde_json::Value>"),
+            "missing download_with_progress");
+        assert!(utils.contains("fn download_file(url: &str, file_path: &str) -> bool"), "download_file must remain");
+        assert!(utils.contains("fn download_file_resume("), "download_file_resume must remain");
+        assert!(utils.contains("copy_to"), "progress must stream via copy_to (not buffer-all)");
+        assert!(utils.contains("content_length()"), "progress must report total");
+    }
+
+    // --- Plan 388 W4: WebSocket client ---
+
+    #[test]
+    fn test_w4_ws_on_message_delivers_frames() {
+        let ws = generate_ws_functions();
+        for f in ["ws_connect", "ws_send", "ws_on_message", "ws_close"] {
+            assert!(ws.contains(&format!("fn {}(", f)), "missing {f}");
+        }
+        // Reader thread must forward frames to a per-conn queue consumed by ws_on_message
+        assert!(ws.contains("msg_tx.send"), "reader must deliver frames to a queue");
+        assert!(ws.contains("receiver: std::sync::mpsc::Receiver<String>"), "WsConn must hold the incoming queue");
+        assert!(ws.contains("fn ws_on_message(handle: i32) -> Vec<String>"), "ws_on_message must drain to Vec<String>");
+        // No unused Arc import
+        assert!(!ws.contains("use std::sync::{Arc, Mutex}"), "Arc import must be gone");
     }
 }
