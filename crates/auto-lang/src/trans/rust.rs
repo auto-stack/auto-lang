@@ -342,6 +342,12 @@ pub struct RustTrans {
     // into an actor program's `fn main`.
     main_actor_prologue: Option<String>,
     main_actor_epilogue: Option<String>,
+
+    // Plan 387 W4: map from a task message-variant name (e.g. "Add", "Reset") to
+    // its generated enum name (e.g. "CounterMsg"). Populated by task_decl when a
+    // task uses named variants; consulted by call() to rewrite `h.send(Add(5))`
+    // → `h.send(CounterMsg::Add(5))` and `h.send(Reset)` → `h.send(CounterMsg::Reset)`.
+    task_msg_variants: std::collections::HashMap<String, String>,
 }
 
 impl RustTrans {
@@ -413,6 +419,7 @@ impl RustTrans {
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
+            task_msg_variants: std::collections::HashMap::new(),
         }
     }
 
@@ -485,6 +492,7 @@ impl RustTrans {
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
+            task_msg_variants: std::collections::HashMap::new(),
         }
     }
 
@@ -3441,6 +3449,33 @@ impl RustTrans {
                             write!(out, "spawn_{}(&mut __rt)", snake_of(name))?;
                             return Ok(());
                         }
+                    }
+                }
+            }
+        }
+
+        // Plan 387 W4: `h.send(Variant)` / `h.send(Variant(args))` — when the arg
+        // is a registered task message-variant name, rewrite it to the generated
+        // enum constructor `EnumName::Variant` / `EnumName::Variant(args)` so the
+        // generated TaskRef::<EnumName>::send gets a value of the right type.
+        // Also: for a String-message task, `h.send("literal")` needs `.to_string()`
+        // (the channel carries owned String, not &str).
+        if let Expr::Dot(_obj, method) = call.name.as_ref() {
+            if method.as_str() == "send" {
+                if let Some(Arg::Pos(arg0)) = call.args.args.first() {
+                    let rewritten = self.rewrite_msg_variant_arg(arg0);
+                    if let Some(rw) = rewritten {
+                        self.expr(_obj, out)?;
+                        write!(out, ".send({})", rw)?;
+                        return Ok(());
+                    }
+                    // String-message task: bare string literal → owned String.
+                    if matches!(arg0, Expr::Str(_) | Expr::CStr(_)) {
+                        self.expr(_obj, out)?;
+                        write!(out, ".send(")?;
+                        self.expr(arg0, out)?;
+                        write!(out, ".to_string())")?;
+                        return Ok(());
                     }
                 }
             }
@@ -8367,10 +8402,10 @@ impl RustTrans {
         let name = td.name.as_str();
         self.a2r_std_used.set(true);
 
-        // D2 (simplified for Tier 1): derive the message type from the `on` patterns.
-        // Only integer-literal patterns are supported in Tier 1; everything else
-        // is a Tier 2 concern.
-        let msg_type = self.derive_task_msg_type(&td.on_block)?;
+        // D2 (Plan 387): derive the message type from the `on` patterns.
+        // Returns (type_name, optional enum source) — the enum is emitted before
+        // the struct when named variants are present.
+        let (msg_type, msg_enum_src) = self.derive_task_msg_type(&td.name, &td.on_block)?;
 
         // Record this task's state-field names so compile_task_body can rewrite
         // bare identifiers to `self.<field>`.
@@ -8378,6 +8413,22 @@ impl RustTrans {
         self.task_state_fields
             .extend(td.state.iter().map(|(n, _, _)| n.as_str().to_string()));
 
+        if let Some(enum_src) = &msg_enum_src {
+            sink.body.write(enum_src.as_bytes())?;
+            // Register variant names → enum name so call() can rewrite send args.
+            for (pattern, _, _) in &td.on_block.handlers {
+                use crate::ast::TaskMsgPattern as P;
+                let vname: Option<&crate::ast::Name> = match pattern {
+                    P::Simple(n) => Some(n),
+                    P::WithBindings { variant, .. } => Some(variant),
+                    _ => None,
+                };
+                if let Some(vn) = vname {
+                    self.task_msg_variants
+                        .insert(vn.as_str().to_string(), msg_type.clone());
+                }
+            }
+        }
         self.emit_task_struct(td, sink)?;
         self.emit_task_impl(td, sink, &msg_type)?;
         self.emit_task_spawn_helper(td, sink, &msg_type)?;
@@ -8386,22 +8437,97 @@ impl RustTrans {
         Ok(())
     }
 
-    /// Derive the Rust message type for a task's `on` block (Plan 387 D2, Tier 1).
-    /// Tier 1 supports only integer-literal patterns → `i64`.
-    fn derive_task_msg_type(&self, on: &TaskOnBlock) -> AutoResult<String> {
-        let all_int_literal = on.handlers.iter().all(|(p, _, _)| {
-            matches!(p, TaskMsgPattern::Literal(LiteralValue::Int(_,)))
-        });
-        if all_int_literal {
-            return Ok("i64".to_string());
+    /// Derive the Rust message type for a task's `on` block (Plan 387 D2).
+    /// Returns `(type_name, optional_enum_source)`:
+    ///   - all int literals  → (`i64`, None)
+    ///   - all string literals → (`String`, None)
+    ///   - any named variant (Simple/WithBindings) → (`<Task>Msg`, Some(enum source))
+    ///     mixing int/string literals with named variants adds a `Literal(..)` arm.
+    /// TypeBinding (Tier 2 basic) → scalar of the bound type.
+    fn derive_task_msg_type(
+        &self,
+        task_name: &crate::ast::Name,
+        on: &TaskOnBlock,
+    ) -> AutoResult<(String, Option<String>)> {
+        use TaskMsgPattern as P;
+        // Classify patterns.
+        let mut has_named = false;
+        let mut has_int_lit = false;
+        let mut has_str_lit = false;
+        let mut has_bool_lit = false;
+        for (p, _, _) in &on.handlers {
+            match p {
+                P::Simple(_) | P::WithBindings { .. } => has_named = true,
+                P::Literal(LiteralValue::Int(_,)) => has_int_lit = true,
+                P::Literal(LiteralValue::String(_)) => has_str_lit = true,
+                P::Literal(LiteralValue::Bool(_)) => has_bool_lit = true,
+                P::TypeBinding { type_expr, .. } => {
+                    // Map a few common Auto types to Rust scalars; default i64.
+                    let t = self.rust_type_name(type_expr);
+                    return Ok((t, None));
+                }
+                _ => {}
+            }
         }
-        // Tier 2 will handle named variants / strings / etc.
-        Err(format!(
-            "Rust Transpiler (Plan 387 Tier 1): task `{}` uses a non-integer message pattern; \
-             named/string patterns are Tier 2 (not yet supported)",
-            on.pos
-        )
-        .into())
+
+        // Pure-scalar cases (no named variants).
+        if !has_named {
+            if has_int_lit && !has_str_lit && !has_bool_lit {
+                return Ok(("i64".to_string(), None));
+            }
+            if has_str_lit && !has_int_lit && !has_bool_lit {
+                return Ok(("String".to_string(), None));
+            }
+            if has_bool_lit && !has_int_lit && !has_str_lit {
+                return Ok(("bool".to_string(), None));
+            }
+        }
+
+        // Named variants (or mixed) → generate an enum.
+        let enum_name = format!("{}Msg", name_of(task_name));
+        let mut src = String::new();
+        src.push_str("#[derive(Clone, Debug)]\n");
+        src.push_str(&format!("enum {} {{\n", enum_name));
+        // Collect variants from named patterns (dedup by variant name).
+        let mut seen: Vec<String> = Vec::new();
+        for (p, _, _) in &on.handlers {
+            match p {
+                P::Simple(vname) => {
+                    let n = vname.as_str().to_string();
+                    if !seen.contains(&n) {
+                        seen.push(n.clone());
+                        src.push_str(&format!("    {},\n", n));
+                    }
+                }
+                P::WithBindings { variant, bindings } => {
+                    let n = variant.as_str().to_string();
+                    if !seen.contains(&n) {
+                        seen.push(n.clone());
+                        // Tier 2: all bindings default to i64 (most common; VM tests use ints).
+                        let fields: Vec<String> =
+                            bindings.iter().map(|_| "i64".to_string()).collect();
+                        if fields.is_empty() {
+                            src.push_str(&format!("    {},\n", n));
+                        } else {
+                            src.push_str(&format!("    {}({}),\n", n, fields.join(", ")));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Mixed literals → fold into a single Literal variant.
+        if has_int_lit || has_str_lit || has_bool_lit {
+            if has_str_lit {
+                src.push_str("    Literal(String),\n");
+            } else if has_bool_lit {
+                src.push_str("    Literal(bool),\n");
+            } else {
+                src.push_str("    Literal(i64),\n");
+            }
+        }
+        src.push_str("}\n\n");
+        Ok((enum_name, Some(src)))
     }
 
     /// Emit `struct Name { state_fields }`.
@@ -8413,7 +8539,12 @@ impl RustTrans {
         self.indent();
         for (field, _mutable, init) in &td.state {
             let ty = self.infer_type_from_expr(init);
-            let ty_str = self.rust_type_name(&ty);
+            // Plan 387: task state integer fields use i64 (matches the VM's
+            // i64-backed actor state and the default i64 message-binding type).
+            let ty_str = match &ty {
+                crate::ast::Type::Int => "i64".to_string(),
+                _ => self.rust_type_name(&ty),
+            };
             self.print_indent(&mut sink.body)?;
             writeln!(sink.body, "{}: {},", field.as_str(), ty_str)?;
         }
@@ -8540,6 +8671,18 @@ impl RustTrans {
         // handler bodies may reference bare state-field names that must resolve to
         // `self.<field>`; compile_task_body toggles in_task_body for that rewrite.
         let has_state = !td.state.is_empty();
+        // If msg_type is the generated enum "<Task>Msg", patterns must qualify
+        // variants with the enum name (e.g. `CounterMsg::Add(v)`).
+        let enum_name: Option<&str> = if msg_type == &format!("{}Msg", name_of(&td.name)) {
+            Some(msg_type)
+        } else {
+            None
+        };
+        // String messages match by reference (`msg.as_str()`) so literal patterns
+        // are plain `"ping"` (not `"ping".to_string()`, which would move `msg`
+        // out from under the `_` arm). i64/bool/enum match the value directly.
+        let is_string_msg = msg_type == "String";
+        let match_subject = if is_string_msg { "msg.as_str()" } else { "msg" };
 
         if td.on_block.handlers.is_empty() && td.on_block.else_handler.is_none() {
             // No handlers at all — empty match is unreachable, emit a no-op.
@@ -8549,11 +8692,11 @@ impl RustTrans {
             writeln!(sink.body, "let _ = &reply_tx;")?;
         } else {
             self.print_indent(&mut sink.body)?;
-            writeln!(sink.body, "match msg {{")?;
+            writeln!(sink.body, "match {} {{", match_subject)?;
             self.indent();
             for (pattern, _guard, body) in &td.on_block.handlers {
                 self.print_indent(&mut sink.body)?;
-                self.emit_task_pattern(pattern, &mut sink.body)?;
+                self.emit_task_pattern(pattern, enum_name, &mut sink.body)?;
                 sink.body.write(b" => {\n")?;
                 self.indent();
                 self.compile_task_body(body, sink, has_state)?;
@@ -8591,16 +8734,91 @@ impl RustTrans {
         Ok(())
     }
 
-    /// Emit a single message pattern. Tier 1: integer literals only.
-    fn emit_task_pattern(&self, p: &TaskMsgPattern, out: &mut impl Write) -> AutoResult<()> {
+    /// Emit a single message pattern as a `match` arm LHS.
+    /// `enum_name` is Some when the message type is a generated enum (named
+    /// variants present); in that case literal patterns wrap into
+    /// `EnumName::Literal(value)`. Named patterns emit `EnumName::Variant(bindings)`.
+    fn emit_task_pattern(
+        &self,
+        p: &TaskMsgPattern,
+        enum_name: Option<&str>,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        use TaskMsgPattern as P;
         match p {
-            TaskMsgPattern::Literal(LiteralValue::Int(n,)) => {
-                write!(out, "{}i64", n)?;
+            P::Literal(LiteralValue::Int(n,)) => {
+                if let Some(en) = enum_name {
+                    write!(out, "{}::Literal({}i64)", en, n)?;
+                } else {
+                    write!(out, "{}i64", n)?;
+                }
                 Ok(())
             }
-            _ => Err(format!(
-                "Rust Transpiler (Plan 387 Tier 1): unsupported message pattern {:?} — Tier 2",
-                p
+            P::Literal(LiteralValue::String(s)) => {
+                if let Some(en) = enum_name {
+                    write!(out, "{}::Literal({:?}.to_string())", en, s.as_str())?;
+                } else {
+                    // In scalar String context the match subject is `msg.as_str()`,
+                    // so the pattern is a plain &str literal.
+                    write!(out, "{:?}", s.as_str())?;
+                }
+                Ok(())
+            }
+            P::Literal(LiteralValue::Bool(b)) => {
+                if let Some(en) = enum_name {
+                    write!(out, "{}::Literal({})", en, b)?;
+                } else {
+                    write!(out, "{}", b)?;
+                }
+                Ok(())
+            }
+            P::Simple(vname) => {
+                if let Some(en) = enum_name {
+                    write!(out, "{}::{}", en, vname.as_str())?;
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Rust Transpiler (Plan 387): simple variant pattern `{}` requires an enum message type",
+                        vname.as_str()
+                    )
+                    .into())
+                }
+            }
+            P::WithBindings { variant, bindings } => {
+                if let Some(en) = enum_name {
+                    write!(out, "{}::{}(", en, variant.as_str())?;
+                    for (i, b) in bindings.iter().enumerate() {
+                        write!(out, "{}", b.as_str())?;
+                        if i < bindings.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                    write!(out, ")")?;
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Rust Transpiler (Plan 387): variant pattern `{}` requires an enum message type",
+                        variant.as_str()
+                    )
+                    .into())
+                }
+            }
+            P::TypeBinding { name, .. } => {
+                // TypeBinding matches any value of a type; emit as a binding
+                // (the msg itself). Only valid in scalar (non-enum) context.
+                if enum_name.is_none() {
+                    write!(out, "{}", name.as_str())?;
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Rust Transpiler (Plan 387): TypeBinding pattern in enum context not yet supported"
+                    )
+                    .into())
+                }
+            }
+            other => Err(format!(
+                "Rust Transpiler (Plan 387): unsupported message pattern {:?}",
+                other
             )
             .into()),
         }
@@ -8656,6 +8874,58 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}\n\n")?;
         Ok(())
+    }
+
+    /// Plan 387 W4: if `arg` is a task message-variant name (bare ident like
+    /// `Reset`) or a variant constructor (`Add(5)`), return its fully-qualified
+    /// Rust form (`CounterMsg::Reset` / `CounterMsg::Add(5)`) using the
+    /// `task_msg_variants` map. Returns None if it's not a known variant.
+    fn rewrite_msg_variant_arg(&mut self, arg: &Expr) -> Option<String> {
+        match arg {
+            // Reset → EnumName::Reset
+            Expr::Ident(name) => {
+                if let Some(enum_name) = self.task_msg_variants.get(name.as_str()).cloned() {
+                    return Some(format!("{}::{}", enum_name, name.as_str()));
+                }
+                None
+            }
+            // Add(5) → EnumName::Add(5); the call name is an Ident equal to a variant.
+            Expr::Call(c) => {
+                let variant_name = match c.name.as_ref() {
+                    Expr::Ident(n) => Some(n.as_str().to_string()),
+                    _ => None,
+                }?;
+                if let Some(enum_name) = self.task_msg_variants.get(&variant_name).cloned() {
+                    // Render the args by writing to a string buffer via self.expr.
+                    let mut buf: Vec<u8> = Vec::new();
+                    for (i, a) in c.args.args.iter().enumerate() {
+                        if let Arg::Pos(e) = a {
+                            // Recursively rewrite nested variants + render.
+                            if let Some(rw) = self.rewrite_msg_variant_arg(e) {
+                                use std::io::Write;
+                                let _ = write!(buf, "{}", rw);
+                            } else {
+                                // Render normally into buf.
+                                let mut sub: Vec<u8> = Vec::new();
+                                let _ = self.expr(e, &mut sub);
+                                buf.extend_from_slice(&sub);
+                            }
+                        }
+                        if i < c.args.args.len() - 1 {
+                            buf.extend_from_slice(b", ");
+                        }
+                    }
+                    return Some(format!(
+                        "{}::{}({})",
+                        enum_name,
+                        variant_name,
+                        String::from_utf8_lossy(&buf)
+                    ));
+                }
+                None
+            }
+            _ => None,
+        }
     }
 
     // Plan 387 helper: compile a task hook/handler body. `rewrite_self` is true

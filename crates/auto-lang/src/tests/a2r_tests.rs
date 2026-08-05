@@ -925,3 +925,8 @@ fn test_312_codegen_collects_api_routes() {
 #[test] fn test_22_actors_004_else_handler() { test_a2r_deep("22_actors/004_else_handler"); }
 #[test] fn test_22_actors_005_state_write() { test_a2r_deep("22_actors/005_state_write"); }
 #[test] fn test_22_actors_006_state_increment() { test_a2r_deep("22_actors/006_state_increment"); }
+// Plan 387 W4: named message variants (Add(val) / Reset) → generated enum.
+// VM does not support named-variant send (its send shim coerces to Value::Int),
+// so this case has no VM golden counterpart; behavior is verified by the
+// a2r-actor-tests parity harness against a hand-written expected output.
+#[test] fn test_22_actors_007_named_variants() { test_a2r_deep("22_actors/007_named_variants"); }

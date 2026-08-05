@@ -7,7 +7,7 @@ use a2r_std::*;
 
 #[derive(Clone, Debug)]
 struct Counter {
-    count: i32,
+    count: i64,
 }
 
 impl Counter {

@@ -162,3 +162,13 @@ fn actor_005_state_write() {
 fn actor_006_state_increment() {
     assert_actor_parity("006_state_increment");
 }
+
+#[test]
+#[ignore]
+fn actor_007_named_variants() {
+    // Plan 387 W4: named message variants. VM does not support named-variant
+    // send (its send shim coerces to Value::Int), so the .expected.out here is
+    // hand-written (not VM-derived); this test verifies a2r produces the
+    // logically-correct stdout for the Add(val)/Reset enum dispatch.
+    assert_actor_parity("007_named_variants");
+}

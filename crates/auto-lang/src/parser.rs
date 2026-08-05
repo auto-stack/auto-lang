@@ -5075,6 +5075,35 @@ impl<'a> Parser<'a> {
         // Register task in scope
         self.define(name.as_str(), Meta::Task(task.clone()));
 
+        // Plan 387 W4: register message-variant names (from the `on` block) as
+        // symbols so that `h.send(Reset)` / `h.send(Add(5))` resolve in the
+        // name-checker. Without this, bare `Reset` / `Add` are "undefined variable"
+        // (parser.rs:9908). The a2r transpiler rewrites these to `<Task>Msg::Variant`
+        // at transpile time; here we only satisfy name resolution. Mirrors how
+        // register_enum_decl registers variants (parser.rs:4954-4965).
+        for (pattern, _guard, _body) in &task.on_block.handlers {
+            use crate::ast::TaskMsgPattern as P;
+            let vname: Option<&crate::ast::Name> = match pattern {
+                P::Simple(n) => Some(n),
+                P::WithBindings { variant, .. } => Some(variant),
+                _ => None,
+            };
+            if let Some(vn) = vname {
+                // Only register if not already defined (avoid clobbering real symbols).
+                if !self.exists(vn) {
+                    let store = Store {
+                        kind: StoreKind::Let,
+                        attrs: vec![],
+                        is_pub: false,
+                        name: vn.clone(),
+                        ty: Type::Int,
+                        expr: Expr::Int(0),
+                    };
+                    self.define(vn.as_str(), Meta::Store(store));
+                }
+            }
+        }
+
         Ok(Stmt::TaskDef(task))
     }
 
