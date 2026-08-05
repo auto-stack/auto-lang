@@ -41,18 +41,20 @@ impl Component for Counter {
     }
 }
 
-// Unified main() - works with BOTH backends!
+// Unified main() — Plan 365 W1: uses the HostBackend entry point.
+// This replaces the former hand-written cfg-ladder. The backend is selected
+// by Cargo feature; see HostBackend::default_for_features() for priority.
 fn main() -> auto_lang::ui::AppResult<()> {
     #[cfg(feature = "ui-iced")]
     {
         println!("🎨 Running with Iced backend");
-        return auto_lang::ui::iced::run_app::<Counter>();
+        return auto_lang::ui::HostBackend::Iced.run::<Counter>();
     }
 
-    #[cfg(feature = "ui-gpui")]
+    #[cfg(all(feature = "ui-gpui", not(feature = "ui-iced")))]
     {
-        println!("🎨 Running with GPUI backend (with auto-conversion!)");
-        return auto_lang::ui::gpui::run_app::<Counter>("Counter - AutoUI");
+        println!("🎨 Running with GPUI backend");
+        return auto_lang::ui::HostBackend::Gpui { title: "Counter - AutoUI".into() }.run::<Counter>();
     }
 
     #[cfg(not(any(feature = "ui-iced", feature = "ui-gpui")))]
