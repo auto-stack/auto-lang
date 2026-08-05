@@ -12070,6 +12070,14 @@ impl RustTrans {
                 self.indent();
 
                 for (_i, item) in enum_decl.items.iter().enumerate() {
+                    // Plan 018 §Phase 3.3: variant-level attrs (`#[default]`)
+                    // were silently dropped for scalar enums → derive(Default)
+                    // on the enum without any `#[default]` variant is E0665.
+                    // Emit them so `#[default]` reaches the Rust enum.
+                    for attr in &item.attrs {
+                        self.print_indent(&mut sink.body)?;
+                        write!(sink.body, "#[{}]\n", attr)?;
+                    }
                     self.print_indent(&mut sink.body)?;
                     sink.body
                         .write(format!("{} = {},", item.name, item.value()).as_bytes())?;
@@ -12920,6 +12928,12 @@ impl RustTrans {
             ("ContentBlock", "Text", &["text"]),
             ("ContentBlock", "ToolUse", &["id", "name", "input"]),
             ("ContentBlock", "ToolResult", &["tool_use_id", "content", "is_error"]),
+            // Plan 018 §Phase 3.3: auto_atom::AtomError::InvalidType is a
+            // struct variant ({ expected, found }). Register it so .at
+            // construction `AtomError.InvalidType("String", format!(...))`
+            // emits struct syntax `AtomError::InvalidType { expected: ..., found: ... }`
+            // instead of tuple syntax (E0599 no such struct variant).
+            ("AtomError", "InvalidType", &["expected", "found"]),
         ];
         for (type_name, variant_name, fields) in known {
             self.enum_struct_variants.insert(
