@@ -6284,12 +6284,20 @@ impl RustTrans {
                                 // directly. Adding & makes &&str (E0277 trait bound).
                                 Expr::Str(_) | Expr::CStr(_) => false,
                                 Expr::Ident(name) => {
-                                    // Owned String local, but NOT a str param
-                                    // (params declared `str` are &str in Rust).
-                                    !self.current_fn_str_params.contains(name)
-                                        && self.local_var_types.get(name)
-                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit))
-                                            .unwrap_or(false)
+                                // Owned String local, but NOT a str param
+                                // (params declared `str` are &str in Rust).
+                                // Plan 018 §14 W1: composite keys (Type::Tuple)
+                                // also need & — HashMap::get(&Q) where K:
+                                // Borrow<Q>; `&tuple` is the direct key ref
+                                // (no Display needed). Unknown types get &
+                                // conservatively (borrow is always safe for
+                                // HashMap lookups).
+                                !self.current_fn_str_params.contains(name)
+                                    && self.local_var_types.get(name)
+                                        .map(|ty| matches!(ty,
+                                            Type::StrOwned | Type::StrSlice | Type::StrFixed(_)
+                                            | Type::CStrLit | Type::Tuple(_)))
+                                        .unwrap_or(true)
                                 }
                                 // Field access (cfg.default_provider) — a String
                                 // field; borrow it.
@@ -6759,11 +6767,23 @@ impl RustTrans {
                         // Post-processing (fix_vec_i32_index) converts .get(var) to [var as usize]
                         // for Vec accesses, so we don't add as usize here.
                         // For Map.insert(): auto-convert to String based on Map value type.
-                        // - Key (i==0): always add .to_string() for non-primitive types (Map key is String)
+                        // - Key (i==0): add .to_string() ONLY for string-like args
+                        //   (str literals / &str vars / String locals). Composite keys
+                        //   (tuples, Plan 018 §14 W1) must NOT get .to_string() —
+                        //   they're already the exact key type and tuples have no
+                        //   Display (E0277).
                         // - Value (i==1): only add .to_string() when Map value type is String
                         if is_insert && !matches!(expr, Expr::Int(_) | Expr::Bool(_)) {
                             let should_to_string = if i == 0 {
-                                true // key arg: Map<String, _> key needs .to_string() for &str literals
+                                matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                    || if let Expr::Ident(name) = expr {
+                                        self.local_var_types.get(name).map(|ty| matches!(
+                                            ty,
+                                            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+                                        )).unwrap_or(false)
+                                    } else {
+                                        false
+                                    }
                             } else {
                                 // value arg: check Map value type from local_var_types
                                 self.expr_map_value_is_string(object)
@@ -7730,6 +7750,14 @@ impl RustTrans {
                 } else {
                     Type::Unknown
                 }
+            }
+            Expr::Tuple(items) => {
+                // Tuple literal — infer as Type::Tuple (Plan 018 §14 W1). Without
+                // this, `let key = (a, b, c)` is Unknown, so the HashMap insert
+                // key handler's "key is String" assumption wrongly appends
+                // `.to_string()` (E0277: tuple has no Display).
+                let elem_types: Vec<Type> = items.iter().map(|e| self.infer_type_from_expr(e)).collect();
+                Type::Tuple(elem_types)
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
             Expr::Int(_) => Type::Int,

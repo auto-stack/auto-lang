@@ -191,6 +191,51 @@ fn fail(name str) Result<bool, str> {
     );
 }
 
+/// W1 (Plan 018 §14): tuple-key `HashMap<(String,String,String),_>` —
+/// `insert(key)` must NOT get `.to_string()` (tuple has no Display, E0277) and
+/// `get(key)` must get `&` (HashMap::get takes &Q). Before the fix the key was
+/// inferred Unknown → insert appended `.to_string()`, and the get borrow only
+/// covered String types → `m.get(key)` lacked `&` (E0308).
+#[test]
+fn test_a2r_tuple_key_hashmap_insert_get() {
+    let src = "\
+use.rust std::collections::HashMap
+type Store {
+    cache HashMap<(str, str, str), str>
+}
+ext Store {
+    pub fn save(a str, b str, c str, v str) {
+        var m = self.cache.clone()
+        let key = (a.to_string(), b.to_string(), c.to_string())
+        m.insert(key, v.to_string())
+        self.cache = m
+    }
+    pub fn load(a str, b str, c str) Option<str> {
+        var m = self.cache.clone()
+        let key = (a.to_string(), b.to_string(), c.to_string())
+        is m.get(key) {
+            Some(v) -> return Some(v.clone()),
+            None -> return None
+        }
+    }
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        code.contains("m.insert(key, v.to_string())"),
+        "tuple key must be inserted without .to_string(), got:\n{}", code
+    );
+    assert!(
+        !code.contains("key.to_string()"),
+        "tuple key must NOT get .to_string() (no Display), got:\n{}", code
+    );
+    assert!(
+        code.contains("m.get(&key)"),
+        "tuple key lookup must borrow (&key), got:\n{}", code
+    );
+}
+
 
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
