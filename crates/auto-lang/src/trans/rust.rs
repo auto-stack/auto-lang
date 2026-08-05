@@ -303,6 +303,16 @@ pub struct RustTrans {
     // compile_task_body; read by store()/expr() (Expr::Ident) for the rewrite.
     in_task_body: bool,
 
+    // Plan 391 D1: when true, suppress the `as i32` cast that `.len()`/`.length()`
+    // normally get under Auto's int model. `fs::Metadata::len()`, `Vec::len()`,
+    // `HashMap::len()`, ... all return usize in Rust; forcing `as i32` both
+    // truncates and conflicts with a wider declared type (`let sz u64 = ...`).
+    // Set transiently (with save/restore) in store()/assignment while emitting
+    // the RHS of a binding whose declared type is a wide integer (u64/i64/usize)
+    // and the RHS is a `.len()`/`.length()` call. Read at the two len/length cast
+    // sites in call(). Defaults false so all other call sites keep the cast.
+    len_i32_cast_suppressed: bool,
+
     // Plan 387: the set of state-field names of the task currently being compiled.
     // Populated by emit_task_impl/emit_task_handle_msg; consulted (together with
     // in_task_body) to rewrite bare `count` -> `self.count`.
@@ -396,6 +406,7 @@ impl RustTrans {
             a2r_std_used: std::cell::Cell::new(false),
             program_has_actors: false,
             in_task_body: false,
+            len_i32_cast_suppressed: false,
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
@@ -470,6 +481,7 @@ impl RustTrans {
             a2r_std_used: std::cell::Cell::new(false),
             program_has_actors: false,
             in_task_body: false,
+            len_i32_cast_suppressed: false,
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
@@ -2125,7 +2137,18 @@ impl RustTrans {
                             _ => op.op(),
                         };
                         write!(out, " {} ", op_str)?;
+                        // Plan 391 D1: reassignment `x = <expr>.len()` where x is a
+                        // u64/i64/usize local — suppress the `as i32` cast (same
+                        // rationale as the let-binding case in store()).
+                        let saved_suppress = self.len_i32_cast_suppressed;
+                        self.len_i32_cast_suppressed = matches!(op, Op::Asn)
+                            && Self::expr_is_len_call(rhs)
+                            && matches!(lhs.as_ref(), Expr::Ident(n)
+                                if self.local_var_types.get(n)
+                                    .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize))
+                                    .unwrap_or(false));
                         self.expr(rhs, out)?;
+                        self.len_i32_cast_suppressed = saved_suppress;
                         // When assigning &str literal to a variable, add .to_string()
                         // In Auto, all str variables are String in Rust, so this is always correct
                         if matches!(op, Op::Asn) && matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
@@ -5080,7 +5103,7 @@ impl RustTrans {
                             }
                         }
                         write!(out, ")")?;
-                        if needs_i32_cast_1 {
+                        if needs_i32_cast_1 && !self.len_i32_cast_suppressed {
                             write!(out, " as i32")?;
                         }
                         // trim/trim_start/trim_end return &str, auto-convert to String
@@ -6319,7 +6342,7 @@ impl RustTrans {
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
                 ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
-                if needs_i32_cast { write!(out, "(")?; }
+                if needs_i32_cast && !self.len_i32_cast_suppressed { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
@@ -6433,7 +6456,7 @@ impl RustTrans {
                     }
                 }
                 write!(out, ")")?;
-                if needs_i32_cast {
+                if needs_i32_cast && !self.len_i32_cast_suppressed {
                     write!(out, " as i32)")?;
                 }
                 // trim/trim_start/trim_end return &str, auto-convert to String
@@ -9351,6 +9374,23 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Plan 391 D1: detect a `.len()` / `.length()` method call expression (in
+    /// either AST form: `Expr::Call{ name: Expr::Dot(_, m) }` or the legacy
+    /// `Expr::Call{ name: Expr::Bina(_, Dot, m) }`). Used by store()/assignment
+    /// to decide whether to set `len_i32_cast_suppressed` for a wide-typed binding.
+    fn expr_is_len_call(expr: &Expr) -> bool {
+        if let Expr::Call(call) = expr {
+            return match call.name.as_ref() {
+                Expr::Dot(_, m) => matches!(m.as_str(), "len" | "length"),
+                Expr::Bina(_, op, rhs) if matches!(op, Op::Dot) => {
+                    matches!(rhs.as_ref(), Expr::Ident(m) if matches!(m.as_str(), "len" | "length"))
+                }
+                _ => false,
+            };
+        }
+        false
+    }
+
     // Variable declaration
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         // Track local variable type for string concat detection
@@ -9460,6 +9500,38 @@ impl RustTrans {
         // Plan 204 Phase 1E: Also skip type annotation when the rendered type
         // contains "/* unknown */" (e.g., Option</* unknown */>, [/* unknown */; N])
         let ty_name = self.rust_type_name(&store.ty);
+        // Plan 391 D2: `let v: Option<T> = m.get(k)` where T is a non-Copy
+        // container — Rust's HashMap/Vec::get returns Option<&T>, so the user's
+        // owned annotation `Option<Vec<String>>` triggers E0308. Rewrite the
+        // annotation to `Option<&T>`. (The unannotated path already lets Rust
+        // infer Option<&T> correctly — see is_stmt.) Only fires when the
+        // initializer is a `.get(...)` call (canonical borrowing-returning
+        // lookup) and T is not a primitive-Copy type (i32/bool/… copy fine).
+        // Covers both AST shapes: `?T` → Type::Option(_) and `Option<T>` →
+        // Type::GenericInstance { base_name: "Option", .. }.
+        let init_is_borrowing_get = matches!(&store.expr,
+            Expr::Call(c) if matches!(c.name.as_ref(),
+                Expr::Dot(_, m) if m.as_str() == "get"));
+        let option_inner_from_get: Option<&Type> = if init_is_borrowing_get {
+            match &store.ty {
+                Type::Option(inner) => Some(inner.as_ref()),
+                Type::GenericInstance(inst) if inst.base_name.as_str() == "Option"
+                    && inst.args.len() == 1 => Some(&inst.args[0]),
+                _ => None,
+            }
+        } else { None };
+        let ty_name = if let Some(inner) = option_inner_from_get {
+            if !Self::is_primitive_copy(inner)
+                && !matches!(inner,
+                    Type::Reference(_) | Type::Unknown | Type::Void)
+            {
+                format!("Option<&{}>", self.rust_type_name(inner))
+            } else {
+                ty_name
+            }
+        } else {
+            ty_name
+        };
         // Skip type annotation for: Unknown types, error propagation (?), closures, or unknown placeholders
         let is_error_propagate = matches!(&store.expr, Expr::ErrorPropagate(_));
         let has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */") || is_error_propagate;
@@ -9633,7 +9705,15 @@ impl RustTrans {
                 self.expr(&store.expr, out)?;
             }
         } else {
+            // Plan 391 D1: for `let x: u64/i64/usize = <expr>.len()` (or .length()),
+            // suppress the default `as i32` cast. `.len()` returns usize in Rust;
+            // casting to i32 truncates and conflicts with a wider annotation.
+            // Save/restore so nested lets (rare: closures) don't clobber the flag.
+            let saved_suppress = self.len_i32_cast_suppressed;
+            self.len_i32_cast_suppressed = matches!(store.ty, Type::U64 | Type::I64 | Type::USize)
+                && Self::expr_is_len_call(&store.expr);
             self.expr(&store.expr, out)?;
+            self.len_i32_cast_suppressed = saved_suppress;
             // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)
             // the struct field is moved, but the struct may still be used later
             // Skip for pointer types — *mut T / *const T are Copy

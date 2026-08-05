@@ -2020,6 +2020,23 @@ impl<'a> Parser<'a> {
         }
 
         loop {
+            // Plan 391 D4 (TEMP DIAG PATCH — to be reverted): path separator `::`
+            if self.is_kind(TokenKind::Colon) {
+                let second_is_colon = if let Ok(tok) = self.lexer.next() {
+                    let is_colon = tok.kind == TokenKind::Colon;
+                    self.lexer.push_token(tok);
+                    is_colon
+                } else {
+                    false
+                };
+                if second_is_colon && PREC_DOT.l >= min_power {
+                    self.next(); // consume first ':'
+                    self.next(); // consume second ':'
+                    let segment = self.parse_name()?;
+                    lhs = Expr::Dot(Box::new(lhs), segment);
+                    continue;
+                }
+            }
             let mut op = match self.kind() {
                 TokenKind::EOF
                 | TokenKind::Newline
@@ -9982,6 +9999,12 @@ impl<'a> Parser<'a> {
             TokenKind::LParen => {
                 // Plan 200: Tuple type (T1, T2, ...)
                 self.next(); // skip (
+                // Plan 391 D5: `()` is the unit type (Rust `()`), e.g. Result<(), str>.
+                // Map to Type::Void — rust.rs type_name already emits it as `()`.
+                if self.is_kind(TokenKind::RParen) {
+                    self.next(); // skip )
+                    return Ok(Type::Void);
+                }
                 let mut types = vec![self.parse_type()?];
                 while self.is_kind(TokenKind::Comma) {
                     self.next(); // skip ,
