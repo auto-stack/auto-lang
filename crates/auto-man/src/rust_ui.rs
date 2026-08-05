@@ -615,7 +615,7 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
 }
 
 /// Generate API client functions for Rust UI.
-/// Parses the API definition from src/back/api.at and generates ureq HTTP calls.
+/// Parses the API definition from src/back/api.at and generates reqwest HTTP calls (Plan 388 W1: migrated from ureq).
 /// Falls back to heuristic stubs if the API file can't be parsed.
 fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
@@ -706,6 +706,9 @@ fn _http_client() -> reqwest::blocking::Client {
                 }
             }
         }
+        // Fall back to a plain client only if the builder itself fails (e.g. a
+        // malformed PEM): failures are then *stricter* (verification stays on,
+        // custom CA absent → connection errors), never silently weaker.
         builder.build().unwrap_or_default()
     })
     .clone()
@@ -714,7 +717,7 @@ fn _http_client() -> reqwest::blocking::Client {
 "#.to_string()
 }
 
-/// Generate a single ureq-based API function from an endpoint definition.
+
 fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let fn_name = &endpoint.fn_name;
     let method = endpoint.method().to_uppercase();
@@ -1160,7 +1163,7 @@ fn upload_file(url: &str, file_path: &str) -> serde_json::Value {
     std::thread::spawn(move || {
         let form = match reqwest::blocking::multipart::Form::new()
             .file("file", &file_path) { Ok(f) => f, Err(_) => return serde_json::Value::Null };
-        let resp = match reqwest::blocking::Client::new()
+        let resp = match _http_client()
             .post(&url)
             .multipart(form)
             .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
@@ -1185,7 +1188,7 @@ fn upload_file_with_fields(url: &str, file_path: &str, fields: &serde_json::Valu
         if let Ok(part) = reqwest::blocking::multipart::Part::file(&file_path) {
             form = form.part("file", part);
         }
-        let resp = match reqwest::blocking::Client::new()
+        let resp = match _http_client()
             .post(&url)
             .multipart(form)
             .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
@@ -1232,7 +1235,7 @@ impl MultiPart {
                     Err(_) => return serde_json::Value::Null,
                 }
             }
-            let resp = match reqwest::blocking::Client::new()
+            let resp = match _http_client()
                 .post(&url)
                 .multipart(form)
                 .send() { Ok(r) => r, Err(_) => return serde_json::Value::Null };
@@ -1246,7 +1249,7 @@ fn download_file(url: &str, file_path: &str) -> bool {
     let url = url.to_string();
     let file_path = file_path.to_string();
     std::thread::spawn(move || {
-        let resp = match reqwest::blocking::get(&url) { Ok(r) => r, Err(_) => return false };
+        let resp = match _http_client().get(&url).send() { Ok(r) => r, Err(_) => return false };
         use std::io::Write;
         let mut file = match std::fs::File::create(&file_path) { Ok(f) => f, Err(_) => return false };
         match resp.bytes() {
@@ -1261,7 +1264,7 @@ fn download_file_resume(url: &str, file_path: &str, offset: u64) -> bool {
     let file_path = file_path.to_string();
     std::thread::spawn(move || {
         let range = format!("bytes={}-", offset);
-        let resp = match reqwest::blocking::Client::new()
+        let resp = match _http_client()
             .get(&url).header("Range", &range).send() { Ok(r) => r, Err(_) => return false };
         use std::io::Write;
         let mut file = match std::fs::OpenOptions::new().append(true).open(&file_path) {
@@ -1282,7 +1285,7 @@ fn download_with_progress(url: &str, file_path: &str) -> std::sync::mpsc::Receiv
     let url = url.to_string();
     let file_path = file_path.to_string();
     std::thread::spawn(move || {
-        let mut resp = match reqwest::blocking::Client::new().get(&url).send() {
+        let mut resp = match _http_client().get(&url).send() {
             Ok(r) => r,
             Err(_) => { let _ = tx.send(serde_json::json!({"done": true, "error": "request failed"})); return; }
         };
@@ -1337,12 +1340,15 @@ lazy_static::lazy_static! {
 struct WsConn {
     sender: Option<std::sync::mpsc::Sender<String>>,
     receiver: std::sync::mpsc::Receiver<String>,
+    close: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn ws_connect(url: &str) -> i32 {
     let id = WS_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     let (msg_tx, msg_rx) = std::sync::mpsc::channel::<String>();
+    let close = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let close_reader = close.clone();
     let url = url.to_string();
 
     std::thread::spawn(move || {
@@ -1354,12 +1360,19 @@ fn ws_connect(url: &str) -> i32 {
         // Short read timeout so the loop can service outgoing messages while
         // waiting for incoming frames — a plain blocking read() would deadlock
         // an echo conversation until the peer speaks first (the outgoing
-        // channel would never be polled). Only plain ws:// (MaybeTlsStream::
-        // Plain) supports the timeout; TLS streams keep blocking reads.
-        if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = socket.get_mut() {
-            let _ = tcp.set_read_timeout(Some(std::time::Duration::from_millis(50)));
+        // channel would never be polled). Applied to the underlying TcpStream
+        // for plain and native-TLS (wss://) streams; the `_` arm covers
+        // rustls-enabled builds (MaybeTlsStream is #[non_exhaustive]; the
+        // Rustls variant is feature-gated and only exists with rustls-tls).
+        use tungstenite::stream::MaybeTlsStream;
+        let timeout = Some(std::time::Duration::from_millis(50));
+        match socket.get_ref() {
+            MaybeTlsStream::Plain(tcp) => { let _ = tcp.set_read_timeout(timeout); }
+            MaybeTlsStream::NativeTls(tls) => { let _ = tls.get_ref().set_read_timeout(timeout); }
+            _ => {}
         }
         loop {
+            if close_reader.load(std::sync::atomic::Ordering::SeqCst) { break; }
             // Check for outgoing messages (non-blocking).
             if let Ok(msg) = rx.try_recv() {
                 if socket.send(Message::Text(msg.into())).is_err() { break; }
@@ -1381,9 +1394,10 @@ fn ws_connect(url: &str) -> i32 {
                 _ => {}
             }
         }
+        // Dropping `socket` closes the TCP/WS connection (ws_close relies on this).
     });
 
-    WS_CONNS.lock().unwrap().insert(id, WsConn { sender: Some(tx), receiver: msg_rx });
+    WS_CONNS.lock().unwrap().insert(id, WsConn { sender: Some(tx), receiver: msg_rx, close });
     id
 }
 
@@ -1406,8 +1420,10 @@ fn ws_on_message(handle: i32) -> Vec<String> {
 }
 
 fn ws_close(handle: i32) {
-    if let Some(conn) = WS_CONNS.lock().unwrap().get_mut(&handle) {
-        conn.sender = None;
+    if let Some(conn) = WS_CONNS.lock().unwrap().get(&handle) {
+        // Flag the reader thread to exit (dropping the socket → connection
+        // actually closes), then sever the send path.
+        conn.close.store(true, std::sync::atomic::Ordering::SeqCst);
     }
     WS_CONNS.lock().unwrap().remove(&handle);
 }
@@ -1627,7 +1643,6 @@ default = ["ui-iced", "auto-lang/default"]
 [dependencies]
 auto-lang.workspace = true
 serde_json.workspace = true
-ureq.workspace = true
 reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart"] }}
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
@@ -1844,7 +1859,6 @@ resolver = "2"
 [workspace.dependencies]
 auto-lang = {{ path = "{auto_lang_rel}" }}
 serde_json = "1"
-ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}
 iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
 axum = "0.7"
@@ -2404,6 +2418,11 @@ pub struct Timer {
         // Existing generic uploads kept
         assert!(utils.contains("fn upload_file("), "upload_file must remain");
         assert!(utils.contains("fn upload_file_with_fields("), "upload_file_with_fields must remain");
+        // Plan 388 review: all HTTP clients must be TLS-aware (_http_client),
+        // not raw reqwest builders that ignore AUTO_TLS_*.
+        assert!(!utils.contains("reqwest::blocking::Client::new"), "utils must not build raw clients");
+        assert!(!utils.contains("reqwest::blocking::get"), "utils must not use blocking::get");
+        assert!(utils.contains("_http_client()"), "utils must use TLS-aware _http_client");
     }
 
     #[test]
@@ -2415,6 +2434,8 @@ pub struct Timer {
         assert!(utils.contains("fn download_file_resume("), "download_file_resume must remain");
         assert!(utils.contains("copy_to"), "progress must stream via copy_to (not buffer-all)");
         assert!(utils.contains("content_length()"), "progress must report total");
+        // Plan 388 review: downloads must go through the TLS-aware client too.
+        assert!(utils.contains("_http_client().get"), "download must use TLS-aware _http_client");
     }
 
     // --- Plan 388 W4: WebSocket client ---
@@ -2431,5 +2452,19 @@ pub struct Timer {
         assert!(ws.contains("fn ws_on_message(handle: i32) -> Vec<String>"), "ws_on_message must drain to Vec<String>");
         // No unused Arc import
         assert!(!ws.contains("use std::sync::{Arc, Mutex}"), "Arc import must be gone");
+        // Plan 388 review: read timeout must cover the MaybeTlsStream variants
+        // that exist in generated projects (plain ws:// + native-TLS wss://,
+        // matching the `native-tls` tungstenite feature in the Cargo template) —
+        // otherwise the outgoing-channel deadlock persists for TLS connections.
+        // The `_` arm satisfies #[non_exhaustive] (and rustls-enabled builds).
+        assert!(ws.contains("MaybeTlsStream::Plain(tcp) => { let _ = tcp.set_read_timeout(timeout); }"),
+            "plain ws:// must get a read timeout");
+        assert!(ws.contains("MaybeTlsStream::NativeTls(tls) => { let _ = tls.get_ref().set_read_timeout(timeout); }"),
+            "native-TLS wss:// must get a read timeout");
+        assert!(ws.contains("_ => {}"), "match must be exhaustive (non_exhaustive enum)");
+        // Plan 388 review: ws_close must actually terminate the reader thread
+        // (close flag → socket dropped), not just sever the send path.
+        assert!(ws.contains("close_reader.load"), "reader must check the close flag");
+        assert!(ws.contains("conn.close.store(true"), "ws_close must set the close flag");
     }
 }

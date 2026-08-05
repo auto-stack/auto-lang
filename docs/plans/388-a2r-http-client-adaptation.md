@@ -2,7 +2,7 @@
 plan: 388
 title: a2r-http-client-adaptation
 affects: [auto-man, auto-lang/a2r, a2r-std]
-status: in-progress # draft | in-progress | complete
+status: complete # draft | in-progress | complete
 ---
 
 # Plan 388: a2r HTTP Client 适配 — 与 VM 的 HTTP 能力对齐
@@ -158,3 +158,37 @@ HTTP server 侧（Plan 328 已覆盖）。
 - W1/W2/W3/W4 的字符串级回归单测内嵌 rust_ui.rs tests 模块（7 个 W 测试）；
   端到端编译+运行时验证通过临时 crate 完成（不入库，`#[ignore]` 级重型验证）。
 - 生成 Cargo.toml 模板 reqwest features 补 `"json"`（W1 起生效）。
+
+---
+
+## §9 归档前复审（2026-08-05）
+
+对全部 W1-W4 代码 + 生成模板的三路审计（codegen / 生成代码可编译性 / 运行时行为），
+发现并修复以下问题（commit 待填）：
+
+### §9.1 修复的 workaround / 遗漏
+
+| # | 问题 | 位置 | 修复 |
+|---|---|---|---|
+| R1 | **W4 读超时只覆盖 `ws://`（Plain 变体）**——`wss://` 仍是阻塞 `read()`，出站 channel 死锁依旧 | ws 模板 `socket.get_mut()` 分支 | 改用 `socket.get_ref()` + match Plain/NativeTls 统一设 50ms 读超时；`_` 通配满足 `#[non_exhaustive]`（rustls 启用时也编译通过，不设超时——残余限制，已注释） |
+| R2 | **W2/W3 的 upload/download 用裸 `Client::new()`/`blocking::get`**——忽略 `AUTO_TLS_*`，与 W1 的 TLS-aware 端点不一致（自签证书环境上传/下载会失败） | 6 处 utility 函数 | 全部改用 `_http_client()` |
+| R3 | **W4 `ws_close` 未真正关闭连接**——只断 send 路径，reader 线程持有 socket 继续读 | `ws_close` | `WsConn` 加 `close: Arc<AtomicBool>`；`ws_close` 置位 → reader 循环检测后退出 → socket drop 真正关闭连接 |
+| R4 | **ureq 死依赖残留**——迁移后生成 Cargo.toml 两个模板仍带 `ureq` | 模板 line ~1641/1857 | 移除；同步更新 "ureq" 过时注释 |
+| R5 | `unwrap_or_default()` 静默回退未说明 | `_http_client()` | 注释：builder 失败时回退更严格（验证保持开启/CA 缺失→连接报错），绝不更弱 |
+
+### §9.2 记录的设计偏差（非 bug）
+
+- **W2 endpoint 驱动上传未做**：api.at 的 `ApiParam` 无文件参数类型（`api/types.rs:178`），
+  按 349 roadmap 的"或生成通用 fn upload"分支实现（通用函数 + 链式 builder），
+  非逐 endpoint 生成。需 endpoint 文件参数时后续 plan 先扩展 api.at 类型。
+- **`_http_client()` 每次调用克隆**：`OnceLock` 缓存 + `Client` Arc 克隆，每请求一次 clone，
+  开销可忽略；避免生命周期/线程安全复杂度。
+- **ws_on_message 用 `Vec<String>` drain**：非阻塞逐次取帧；消息未被及时 drain 时
+  `mpsc::channel` 无界累积（UI 轮询场景可接受，文档注明）。
+
+### §9.3 验证
+
+- 8 个 W 测试全绿（W1×3 + W2 + W3 + W4×2，含 R1-R3 守护断言）。
+- 015-notes split 模式生成代码编译 + 运行时冒烟**ALL PASS**（新增 ws_close 断言：
+  `ws_send` 关闭后返回 false + echo server 检测对端 socket 关闭）。
+- auto-man 全套 182 测试通过。
