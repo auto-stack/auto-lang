@@ -236,6 +236,72 @@ ext Store {
     );
 }
 
+/// W2 (Plan 018 §14): a `var guard = X.lock().unwrap()` followed by
+/// `is guard.get(k) { None -> {} }` must `drop(guard)` after the match when
+/// the guard isn't used later — a2r's match (unlike hw's `if let` NLL) keeps
+/// the guard alive to fn end, so a second `lock()` in the same fn deadlocks.
+#[test]
+fn test_a2r_drop_mutex_guard_after_is() {
+    let src = "\
+use.rust std::sync::Mutex
+use.rust std::collections::HashMap
+type Store {
+    cache Mutex<HashMap<str, str>>
+}
+ext Store {
+    pub fn load(key str) Option<str> {
+        var guard = self.cache.lock().unwrap()
+        is guard.get(key) {
+            Some(v) -> return Some(v.clone()),
+            None -> {}
+        }
+        var guard2 = self.cache.lock().unwrap()
+        let _ = guard2.insert(key, \"x\")
+        return None
+    }
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    let first_lock = code.find("self.cache.lock().unwrap()").unwrap();
+    let second_lock = code.rfind("self.cache.lock().unwrap()").unwrap();
+    let between = &code[first_lock..second_lock];
+    assert!(
+        between.contains("drop(guard)"),
+        "guard must be dropped before the second lock(), got:\n{}", code
+    );
+}
+
+/// W2 companion: when the guard IS reused after the `is`, no drop is emitted
+/// (dropping early would be E0382 use-after-move).
+#[test]
+fn test_a2r_no_drop_when_guard_reused() {
+    let src = "\
+use.rust std::sync::Mutex
+use.rust std::collections::HashMap
+type Store {
+    cache Mutex<HashMap<str, str>>
+}
+ext Store {
+    pub fn load(key str) Option<str> {
+        var guard = self.cache.lock().unwrap()
+        is guard.get(key) {
+            Some(v) -> return Some(v.clone()),
+            None -> {}
+        }
+        let n int = guard.len()
+        return None
+    }
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        !code.contains("drop(guard)"),
+        "guard reused later — must NOT drop, got:\n{}", code
+    );
+}
+
 
 // === 01_basics ===
 #[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }

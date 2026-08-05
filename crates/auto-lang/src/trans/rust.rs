@@ -7560,6 +7560,112 @@ impl RustTrans {
         false
     }
 
+    /// Plan 018 §14 W2: is this Store (`var g = <expr>`) a Mutex guard binding?
+    /// Detects `var guard = self.cache.lock().unwrap()` — the pattern whose
+    /// `is guard.get(k) { None -> {} }` scrutinee would otherwise keep the
+    /// guard alive past a later `lock()` in the same fn (deadlock).
+    fn store_is_lock_guard(store: &Store) -> bool {
+        // `var` storage only (guards are locals).
+        if !matches!(store.kind, crate::ast::StoreKind::Var) {
+            return false;
+        }
+        // expr is `X.lock().unwrap()` — a Call whose callee is `X.lock()` and
+        // method name is unwrap (or a direct `.lock()` for non-unwrap users).
+        match &store.expr {
+            Expr::Call(call) => {
+                if let Expr::Dot(_, method) = call.name.as_ref() {
+                    return method.as_str() == "lock" || method.as_str() == "unwrap";
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Plan 018 §14 W2: if the `is` scrutinee is `guard.method(args)` where
+    /// guard is an Ident receiver, return the guard name. The scrutinee is a
+    /// Call (`guard.get(k)`), whose callee is a Dot(Ident, method).
+    fn is_scrutinee_receiver(is_stmt: &Is) -> Option<AutoStr> {
+        match &is_stmt.target {
+            Expr::Call(call) => {
+                if let Expr::Dot(obj, _) = call.name.as_ref() {
+                    if let Expr::Ident(name) = obj.as_ref() {
+                        return Some(name.clone());
+                    }
+                }
+                None
+            }
+            Expr::Dot(obj, _) => {
+                if let Expr::Ident(name) = obj.as_ref() {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Plan 018 §14 W2: does any statement in the slice reference the ident
+    /// (as a bare name, or as a member receiver / call arg)? Shallow scan —
+    /// covers the common guard-reuse patterns (guard.get/guard.insert/guard
+    /// passed as an arg).
+    fn stmts_reference_ident(stmts: &[Stmt], ident: &AutoStr) -> bool {
+        for stmt in stmts {
+            if Self::stmt_references_ident(stmt, ident) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn stmt_references_ident(stmt: &Stmt, ident: &AutoStr) -> bool {
+        match stmt {
+            Stmt::Expr(expr) => Self::expr_references_ident(expr, ident),
+            Stmt::Store(store) => {
+                store.name == *ident || Self::expr_references_ident(&store.expr, ident)
+            }
+            Stmt::Return(expr) => Self::expr_references_ident(expr, ident),
+            Stmt::If(if_) => {
+                if_.branches.iter().any(|b| {
+                    Self::expr_references_ident(&b.cond, ident)
+                        || b.body.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+                }) || if_.else_.as_ref().map_or(false, |e| {
+                    e.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+                })
+            }
+            Stmt::Is(is_stmt) => Self::expr_references_ident(&is_stmt.target, ident),
+            Stmt::For(for_stmt) => {
+                Self::expr_references_ident(&for_stmt.range, ident)
+                    || for_stmt.body.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+            }
+            _ => false,
+        }
+    }
+
+    fn expr_references_ident(expr: &Expr, ident: &AutoStr) -> bool {
+        match expr {
+            Expr::Ident(name) => name == ident,
+            Expr::Call(call) => {
+                Self::expr_references_ident(&call.name, ident)
+                    || call.args.args.iter().any(|a| {
+                        match a {
+                            Arg::Pos(e) => Self::expr_references_ident(e, ident),
+                            Arg::Pair(_, e) => Self::expr_references_ident(e, ident),
+                            Arg::Name(_) => false,
+                        }
+                    })
+            }
+            Expr::Dot(obj, _) => Self::expr_references_ident(obj, ident),
+            Expr::Bina(l, _, r) => {
+                Self::expr_references_ident(l, ident) || Self::expr_references_ident(r, ident)
+            }
+            Expr::Unary(_, e) => Self::expr_references_ident(e, ident),
+            Expr::OptionPattern(c) => c.binding.as_ref().map_or(false, |b| b == ident),
+            _ => false,
+        }
+    }
+
     /// Plan 364 Phase 8 F1: Recursively scan a statement list for any for-loop
     /// whose iterable is a `~Stream<T>` generator call. Such loops get rewritten
     /// to `while let Some(x) = s.next().await`, injecting an `.await` that the
@@ -12817,8 +12923,22 @@ impl RustTrans {
             sink.body.write(prologue.as_bytes())?;
         }
 
+        // Plan 018 §14 W2: track Mutex guards (`var g = ...lock().unwrap()`)
+        // so an `is g.get(k) { None -> {} }` scrutinee can `drop(g)` after the
+        // match. a2r's match (unlike hw's `if let`) keeps the guard alive until
+        // fn end → a second `lock()` in the same fn deadlocks. We drop the
+        // guard right after the is-stmt when it isn't used later in the body.
+        let mut lock_guards: std::collections::HashSet<AutoStr> = std::collections::HashSet::new();
+
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
+            // W2: record guard bindings from `var g = ...lock().unwrap()`
+            if let Stmt::Store(store) = stmt {
+                if Self::store_is_lock_guard(store)
+                {
+                    lock_guards.insert(store.name.clone());
+                }
+            }
             sink.record();
             // Set source line for mapping
             if i < body.source_lines.len() {
@@ -12890,6 +13010,22 @@ impl RustTrans {
                     }
                     Stmt::Break => {
                         sink.body.write(b"break;\n")?;
+                    }
+                    Stmt::Is(is_stmt) => {
+                        // W2: after the match, drop a Mutex guard used only as
+                        // the scrutinee receiver (see lock_guards note above).
+                        self.is_stmt(is_stmt, sink)?;
+                        sink.body.write(b";\n")?;
+                        if let Some(guard) = Self::is_scrutinee_receiver(is_stmt) {
+                            if lock_guards.contains(&guard)
+                                && !Self::stmts_reference_ident(&body.stmts[i + 1..], &guard)
+                            {
+                                self.print_indent(&mut sink.body)?;
+                                sink.body.write(b"drop(")?;
+                                sink.body.write(guard.as_bytes())?;
+                                sink.body.write(b");\n")?;
+                            }
+                        }
                     }
                     _ => {
                         // For other statement types that handle their own formatting
