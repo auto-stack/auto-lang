@@ -9599,6 +9599,15 @@ pub const LIBRARY_WIDGETS: &[&str] = &[
 impl VueGenerator {
     /// Names of all widgets with a self-contained library template (Plan 331).
     pub const LIBRARY_WIDGETS: &'static [&'static str] = LIBRARY_WIDGETS;
+
+    /// Plan 337: Is an AURA registry tag "covered" by the library?
+    ///
+    /// A tag `t` is covered ⟺ some library widget `w` satisfies
+    /// `t == w` or `t.starts_with("{w}-")` (composite coverage — e.g. library
+    /// `card` covers AURA `card-content`, `card-header`, …).
+    pub fn covers_aura_tag(tag: &str) -> bool {
+        Self::LIBRARY_WIDGETS.iter().any(|w| tag == *w || tag.starts_with(&format!("{w}-")))
+    }
 }
 
 /// The `cn` class-merge helper emitted at the registry root (`registry/utils.ts`)
@@ -10494,6 +10503,37 @@ mod tests {
             VueGenerator::LIBRARY_WIDGETS.to_vec(), sorted,
             "LIBRARY_WIDGETS must be sorted"
         );
+    }
+
+    /// Plan 337 Task 2.1: drift guard — every library widget must exist in
+    /// the AURA registry (exact tag or prefix-grouped composite).
+    #[test]
+    fn test_library_widgets_exist_in_aura_registry() {
+        let reg = WidgetRegistry::with_defaults();
+        let aura_tags: std::collections::HashSet<&str> =
+            reg.all_widgets().keys().map(|s| s.as_str()).collect();
+        for w in VueGenerator::LIBRARY_WIDGETS {
+            let known = aura_tags.contains(*w)
+                || aura_tags.iter().any(|t| t.starts_with(&format!("{w}-")));
+            assert!(
+                known,
+                "LIBRARY_WIDGETS has '{w}' but AURA registry has no such widget"
+            );
+        }
+    }
+
+    /// Plan 337 Task 2.1: covers_aura_tag composite coverage logic.
+    #[test]
+    fn test_covers_aura_tag_composite() {
+        // Exact match
+        assert!(VueGenerator::covers_aura_tag("button"));
+        assert!(VueGenerator::covers_aura_tag("card"));
+        // Composite (prefix-dash)
+        assert!(VueGenerator::covers_aura_tag("card-content"));
+        assert!(VueGenerator::covers_aura_tag("card-header"));
+        // Non-covered
+        assert!(!VueGenerator::covers_aura_tag("accordion"));
+        assert!(!VueGenerator::covers_aura_tag("data-table"));
     }
 
     #[test]

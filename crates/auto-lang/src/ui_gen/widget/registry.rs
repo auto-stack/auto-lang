@@ -801,6 +801,19 @@ impl WidgetRegistry {
         });
         self.register(form_label);
 
+        // Label (Plan 337: register so LIBRARY_WIDGETS drift guard passes)
+        let mut label = WidgetSpec::new("Label", WidgetCategory::Form)
+            .with_alias("label");
+        label.has_children = true;
+        label.backends.insert("vue".to_string(), BackendMapping {
+            component: "label".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+        });
+        self.register(label);
+
         // FormControl
         let mut form_control = WidgetSpec::new("FormControl", WidgetCategory::Form)
             .with_alias("form-control");
