@@ -61,6 +61,61 @@ pub enum RustEdition {
     E2024,
 }
 
+// Plan 387 helpers: convert an Auto task name to a Rust type / snake_case ident.
+// `Counter` -> type `Counter`, spawn fn `spawn_counter`.
+fn name_of(n: &crate::ast::Name) -> &str {
+    n.as_str()
+}
+
+/// Convert a CamelCase task name to snake_case for the spawn helper fn name.
+/// `Counter` -> `counter`, `GreeterTask` -> `greeter_task`.
+fn snake_of(n: &crate::ast::Name) -> String {
+    let s = n.as_str();
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() {
+            if i != 0 {
+                out.push('_');
+            }
+            for lc in c.to_lowercase() {
+                out.push(lc);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Plan 387 D1: scan a body for `let <var> = Task.spawn(...)` assignments and
+/// return the variable names. These hold `TaskRef` mailbox-sender clones that
+/// must be dropped before `run_to_completion` so actor mailboxes close.
+fn collect_task_handle_vars(body: &crate::ast::Body) -> Vec<String> {
+    let mut out = Vec::new();
+    for stmt in &body.stmts {
+        if let crate::ast::Stmt::Store(s) = stmt {
+            if is_task_spawn_call(&s.expr) {
+                out.push(s.name.as_str().to_string());
+            }
+        }
+    }
+    out
+}
+
+/// True if `expr` is a `Task.spawn(...)` method call (any args).
+fn is_task_spawn_call(expr: &crate::ast::Expr) -> bool {
+    if let crate::ast::Expr::Call(call) = expr {
+        if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
+            if method.as_str() == "spawn" {
+                if let crate::ast::Expr::Ident(receiver) = obj.as_ref() {
+                    return receiver.as_str() == "Task";
+                }
+            }
+        }
+    }
+    false
+}
+
 pub struct RustTrans {
     indent: usize,
     uses: HashSet<AutoStr>,
@@ -265,6 +320,28 @@ pub struct RustTrans {
     // Uses Cell for interior mutability (avoids borrow conflicts with &self writes).
     a2r_std_used: std::cell::Cell<bool>,
 
+    // Plan 387: set true when any `task` definition is seen, so `trans()` forces
+    // `#[tokio::main(flavor = "current_thread")]` + async main + injects the
+    // ActorRuntime bootstrap. Aligns with VM's single-threaded cooperative actor
+    // scheduling (Plan 317 path B).
+    program_has_actors: bool,
+
+    // Plan 387: while compiling a task hook/handler body, set true so that bare
+    // state-field identifiers are rewritten to `self.<field>`. Toggled by
+    // compile_task_body; read by store()/expr() (Expr::Ident) for the rewrite.
+    in_task_body: bool,
+
+    // Plan 387: the set of state-field names of the task currently being compiled.
+    // Populated by emit_task_impl/emit_task_handle_msg; consulted (together with
+    // in_task_body) to rewrite bare `count` -> `self.count`.
+    task_state_fields: std::collections::HashSet<String>,
+
+    // Plan 387: when Some, body() emits this prologue right after the opening `{`
+    // (and a matching epilogue before the closing `}`). Used to inject the
+    // `let mut __rt = ...;` bootstrap and `__rt.run_to_completion().await;` drain
+    // into an actor program's `fn main`.
+    main_actor_prologue: Option<String>,
+    main_actor_epilogue: Option<String>,
 }
 
 impl RustTrans {
@@ -331,6 +408,11 @@ impl RustTrans {
             module_types: HashMap::new(),
             current_module_name: String::new(),
             a2r_std_used: std::cell::Cell::new(false),
+            program_has_actors: false,
+            in_task_body: false,
+            task_state_fields: std::collections::HashSet::new(),
+            main_actor_prologue: None,
+            main_actor_epilogue: None,
         }
     }
 
@@ -398,6 +480,11 @@ impl RustTrans {
             module_types: HashMap::new(),
             current_module_name: String::new(),
             a2r_std_used: std::cell::Cell::new(false),
+            program_has_actors: false,
+            in_task_body: false,
+            task_state_fields: std::collections::HashSet::new(),
+            main_actor_prologue: None,
+            main_actor_epilogue: None,
         }
     }
 
@@ -1594,6 +1681,11 @@ impl RustTrans {
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::Ident(name) => {
+                // Plan 387: inside a task hook/handler body, a bare state-field
+                // identifier reads `self.<field>`.
+                if self.in_task_body && self.task_state_fields.contains(name.as_str()) {
+                    return write!(out, "self.{}", Self::rust_ident(name.as_str())).map_err(Into::into);
+                }
                 // Plan 151: Global variable access - add .lock().unwrap() pattern.
                 // Plan 347: reads must dereference the MutexGuard (`*G.lock()`)
                 // so the value is usable in arithmetic, comparisons, indexing,
@@ -3329,6 +3421,25 @@ impl RustTrans {
                                     return Ok(());
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Plan 387: `Task.spawn("Name", cap)` -> `spawn_<name>(&mut __rt)`.
+        // The task type name is a static string literal arg; the spawn helper is
+        // a free fn emitted alongside the task struct. `cap` (mailbox capacity)
+        // is ignored in Tier 1 (unbounded channel mirrors VM's Vec-backed mailbox).
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if method.as_str() == "spawn" {
+                if let Expr::Ident(receiver) = obj.as_ref() {
+                    if receiver.as_str() == "Task" {
+                        // First arg is the task type name as a string literal.
+                        if let Some(Arg::Pos(Expr::Str(name))) = call.args.args.first() {
+                            self.a2r_std_used.set(true);
+                            write!(out, "spawn_{}(&mut __rt)", snake_of(name))?;
+                            return Ok(());
                         }
                     }
                 }
@@ -8205,8 +8316,351 @@ impl RustTrans {
                 Ok(true)
             }
 
+            // Plan 387: Auto actor `task Name { state; fn start/stop; on {...} }`
+            Stmt::TaskDef(td) => {
+                self.program_has_actors = true;
+                self.task_decl(td, sink)?;
+                Ok(true)
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    // Plan 387: translate an Auto actor `task Name { ... }` into Rust.
+    // Emits: a state struct, an impl block (new/start/stop/handle_msg), and a
+    // spawn helper. See Plan 387 §12.2 for the frozen template.
+    fn task_decl(&mut self, td: &TaskDef, sink: &mut Sink) -> AutoResult<()> {
+        let name = td.name.as_str();
+        self.a2r_std_used.set(true);
+
+        // D2 (simplified for Tier 1): derive the message type from the `on` patterns.
+        // Only integer-literal patterns are supported in Tier 1; everything else
+        // is a Tier 2 concern.
+        let msg_type = self.derive_task_msg_type(&td.on_block)?;
+
+        // Record this task's state-field names so compile_task_body can rewrite
+        // bare identifiers to `self.<field>`.
+        let prev_state = self.task_state_fields.clone();
+        self.task_state_fields
+            .extend(td.state.iter().map(|(n, _, _)| n.as_str().to_string()));
+
+        self.emit_task_struct(td, sink)?;
+        self.emit_task_impl(td, sink, &msg_type)?;
+        self.emit_task_spawn_helper(td, sink, &msg_type)?;
+
+        self.task_state_fields = prev_state;
+        Ok(())
+    }
+
+    /// Derive the Rust message type for a task's `on` block (Plan 387 D2, Tier 1).
+    /// Tier 1 supports only integer-literal patterns → `i64`.
+    fn derive_task_msg_type(&self, on: &TaskOnBlock) -> AutoResult<String> {
+        let all_int_literal = on.handlers.iter().all(|(p, _, _)| {
+            matches!(p, TaskMsgPattern::Literal(LiteralValue::Int(_,)))
+        });
+        if all_int_literal {
+            return Ok("i64".to_string());
+        }
+        // Tier 2 will handle named variants / strings / etc.
+        Err(format!(
+            "Rust Transpiler (Plan 387 Tier 1): task `{}` uses a non-integer message pattern; \
+             named/string patterns are Tier 2 (not yet supported)",
+            on.pos
+        )
+        .into())
+    }
+
+    /// Emit `struct Name { state_fields }`.
+    fn emit_task_struct(&mut self, td: &TaskDef, sink: &mut Sink) -> AutoResult<()> {
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "#[derive(Clone, Debug)]")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "struct {} {{", name_of(&td.name))?;
+        self.indent();
+        for (field, _mutable, init) in &td.state {
+            let ty = self.infer_type_from_expr(init);
+            let ty_str = self.rust_type_name(&ty);
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "{}: {},", field.as_str(), ty_str)?;
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n\n")?;
+        Ok(())
+    }
+
+    /// Emit `impl Name { fn new() -> Self; async fn start; async fn stop; async fn handle_msg }`.
+    fn emit_task_impl(
+        &mut self,
+        td: &TaskDef,
+        sink: &mut Sink,
+        msg_type: &str,
+    ) -> AutoResult<()> {
+        let name = name_of(&td.name);
+
+        // new() — initialize state fields from their `= init` expressions.
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "impl {} {{", name)?;
+        self.indent();
+
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "pub fn new() -> Self {{")?;
+        self.indent();
+        if td.state.is_empty() {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "Self {{}}")?;
+        } else {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "Self {{")?;
+            self.indent();
+            for (field, _mutable, init) in &td.state {
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(field.as_str().as_bytes())?;
+                sink.body.write(b": ")?;
+                self.expr(init, &mut sink.body)?;
+                sink.body.write(b",\n")?;
+            }
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"}\n")?;
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n\n")?;
+
+        // start hook — runs once at spawn, before the message loop.
+        self.emit_task_hook(&td.name, td.start_hook.as_ref(), "start", sink)?;
+
+        // stop hook — runs after the mailbox closes (Tier 2 wiring; emit stub for Tier 1).
+        self.emit_task_hook(&td.name, td.stop_hook.as_ref(), "stop", sink)?;
+
+        // handle_msg — the message dispatcher.
+        self.emit_task_handle_msg(td, sink, msg_type)?;
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n\n")?;
+        Ok(())
+    }
+
+    /// Emit a start/stop hook as `async fn <name>(&mut self) -> Result<(), ...>`.
+    /// If the hook is absent, emit an empty stub so the spawn helper can always call it.
+    fn emit_task_hook(
+        &mut self,
+        _task_name: &str,
+        hook: Option<&Fn>,
+        hook_name: &str,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        self.print_indent(&mut sink.body)?;
+        writeln!(
+            sink.body,
+            "pub async fn {}(&mut self) -> Result<(), Box<dyn std::error::Error>> {{",
+            hook_name
+        )?;
+        self.indent();
+        match hook {
+            Some(f) => {
+                // Compile the hook body in a `self`-method context so bare state
+                // identifiers resolve to `self.<field>` (Plan 387 compile_task_body).
+                self.compile_task_body(&f.body, sink, true)?;
+                // Append Ok(()) unless the body already ends in a tail return/expr.
+                // (body() does this for fn_decl, but hooks compile via compile_task_body,
+                // so we mirror body()'s tail logic here.)
+                let needs_ok = f.body.stmts.is_empty()
+                    || !f.body.stmts.last().map(|s| self.is_returnable(s)).unwrap_or(false);
+                if needs_ok {
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"Ok(())\n")?;
+                }
+            }
+            None => {
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"Ok(())\n")?;
+            }
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n\n")?;
+        Ok(())
+    }
+
+    /// Emit `async fn handle_msg(&mut self, msg: M, reply_tx: NopReply) -> Result<...>`
+    /// whose body is a `match msg { <pat> => <body>, ... _ => <else> }`.
+    fn emit_task_handle_msg(
+        &mut self,
+        td: &TaskDef,
+        sink: &mut Sink,
+        msg_type: &str,
+    ) -> AutoResult<()> {
+        let _ = name_of(&td.name);
+        self.print_indent(&mut sink.body)?;
+        writeln!(
+            sink.body,
+            "pub async fn handle_msg(&mut self, msg: {}, reply_tx: a2r_std::task::NopReply) \
+             -> Result<(), Box<dyn std::error::Error>> {{",
+            msg_type
+        )?;
+        self.indent();
+
+        // handler bodies may reference bare state-field names that must resolve to
+        // `self.<field>`; compile_task_body toggles in_task_body for that rewrite.
+        let has_state = !td.state.is_empty();
+
+        if td.on_block.handlers.is_empty() && td.on_block.else_handler.is_none() {
+            // No handlers at all — empty match is unreachable, emit a no-op.
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "let _ = msg;")?;
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "let _ = &reply_tx;")?;
+        } else {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "match msg {{")?;
+            self.indent();
+            for (pattern, _guard, body) in &td.on_block.handlers {
+                self.print_indent(&mut sink.body)?;
+                self.emit_task_pattern(pattern, &mut sink.body)?;
+                sink.body.write(b" => {\n")?;
+                self.indent();
+                self.compile_task_body(body, sink, has_state)?;
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}\n")?;
+            }
+            // else arm (or empty wildcard if no explicit else)
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"_ => {\n")?;
+            self.indent();
+            if let Some(else_body) = &td.on_block.else_handler {
+                self.compile_task_body(else_body, sink, has_state)?;
+            } else {
+                self.print_indent(&mut sink.body)?;
+                writeln!(sink.body, "let _ = msg;")?;
+            }
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"}\n")?;
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            // Close `match msg { ... }` as a statement (semicolon) so the trailing
+            // `Ok(())` is a separate expression.
+            sink.body.write(b"};\n")?;
+        }
+
+        // handle_msg always succeeds (errors inside bodies propagate via `?` to here).
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"Ok(())\n")?;
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n")?;
+
+        Ok(())
+    }
+
+    /// Emit a single message pattern. Tier 1: integer literals only.
+    fn emit_task_pattern(&self, p: &TaskMsgPattern, out: &mut impl Write) -> AutoResult<()> {
+        match p {
+            TaskMsgPattern::Literal(LiteralValue::Int(n,)) => {
+                write!(out, "{}i64", n)?;
+                Ok(())
+            }
+            _ => Err(format!(
+                "Rust Transpiler (Plan 387 Tier 1): unsupported message pattern {:?} — Tier 2",
+                p
+            )
+            .into()),
+        }
+    }
+
+    /// Emit the per-task spawn helper `fn spawn_<name>(rt: &mut ActorRuntime) -> TaskHandle<M>`.
+    fn emit_task_spawn_helper(
+        &mut self,
+        td: &TaskDef,
+        sink: &mut Sink,
+        msg_type: &str,
+    ) -> AutoResult<()> {
+        let name = name_of(&td.name);
+        let has_stop = td.stop_hook.is_some();
+        self.print_indent(&mut sink.body)?;
+        writeln!(
+            sink.body,
+            "pub fn spawn_{}(__rt: &mut a2r_std::task::ActorRuntime) \
+             -> a2r_std::task::TaskRef<{}> {{",
+            snake_of(&td.name),
+            msg_type
+        )?;
+        self.indent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<{}>();", msg_type)?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let join = tokio::spawn(async move {{")?;
+        self.indent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let mut actor = {}::new();", name)?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let _ = actor.start().await;")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "while let Some(msg) = rx.recv().await {{")?;
+        self.indent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let reply_tx = a2r_std::task::NopReply;")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "let _ = actor.handle_msg(msg, reply_tx).await;")?;
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        if has_stop {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "let _ = actor.stop().await;")?;
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}});")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "__rt.register(a2r_std::task::TaskHandle::new(tx, join))")?;
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n\n")?;
+        Ok(())
+    }
+
+    // Plan 387 helper: compile a task hook/handler body. `rewrite_self` is true
+    // when the body may reference bare state-field names that must become `self.<field>`.
+    fn compile_task_body(
+        &mut self,
+        body: &Body,
+        sink: &mut Sink,
+        rewrite_self: bool,
+    ) -> AutoResult<()> {
+        // For Tier 1, state fields are integer scalars; the existing stmt() path
+        // already handles `count = count + 1` as a Store with the field name. We
+        // need bare reads/writes of state-field names to target `self.<field>`.
+        // The cleanest approach: temporarily register the state fields as locals
+        // isn't enough (they live on `self`). Instead we walk statements and, for
+        // identifiers that are state fields, prefix with `self.`. This is done
+        // inline below for the common cases (Store name, Expr::Ident read).
+        let saved = self.in_task_body;
+        self.in_task_body = rewrite_self;
+        for stmt in &body.stmts {
+            self.print_indent(&mut sink.body)?;
+            self.stmt(stmt, sink)?;
+            // Mirror body()'s per-statement formatting: Expr/Store need a trailing
+            // semicolon+newline; other statement types handle their own terminator.
+            match stmt {
+                Stmt::Expr(_) => {
+                    sink.body.write(b";\n")?;
+                }
+                Stmt::Store(_) => {
+                    sink.body.write(b";\n")?;
+                }
+                _ => {
+                    sink.body.write(b"\n")?;
+                }
+            }
+        }
+        self.in_task_body = saved;
+        Ok(())
     }
 
     // Variable declaration
@@ -8615,11 +9069,32 @@ impl RustTrans {
 
         // Plan 163: #[tokio::main] for async main.
         // Plan 364 Phase 8 F1: also trigger for for-over-Stream (injects .next().await).
+        // Plan 387: a program with any `task` definition forces main to be async
+        // AND uses the current_thread flavor to match the VM's single-threaded
+        // cooperative actor scheduling (Plan 317 path B).
         let main_refs: Vec<&Stmt> = fn_decl.body.stmts.iter().collect();
         let is_main_with_await = !is_method
             && fn_decl.name.as_ref() == "main"
             && (Self::has_await(&fn_decl.body.stmts) || self.body_has_stream_for(&main_refs));
-        if is_main_with_await {
+        let is_main_actor = !is_method && fn_decl.name.as_ref() == "main" && self.program_has_actors;
+        if is_main_actor {
+            if is_method {
+                // already indented
+            } else {
+                self.print_indent(&mut sink.body)?;
+            }
+            // Plan 387: actor programs use the multi_thread runtime. We tried
+            // current_thread for VM single-thread parity, but it deadlocks when
+            // `run_to_completion().await` joins an actor that is itself waiting
+            // for the `TaskHandle` (last sender) to drop — which only happens
+            // when main returns, i.e. after the join. multi_thread avoids this
+            // because spawned tasks run on worker threads concurrently with the
+            // join. Observable stdout behavior still matches the VM (Plan 317).
+            write!(sink.body, "#[tokio::main]\n")?;
+            if is_method {
+                self.print_indent(&mut sink.body)?;
+            }
+        } else if is_main_with_await {
             if is_method {
                 // already indented
             } else {
@@ -8644,7 +9119,8 @@ impl RustTrans {
         // Plan 373 G2: ~Result methods → async fn (for trait impls with #[async_trait])
         // Plan 382 (A.1): `Type::Result` = `!T` (SYNC Result<T, Box<dyn Error>>) —
         // must NOT be async (Plan 204); `~Result` → GenericInstance("Future").
-        let is_async_fn = is_main_with_await
+        let is_async_fn = is_main_actor
+            || is_main_with_await
             || matches!(fn_decl.ret, Type::Handle { .. })
             || matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
 
@@ -8987,9 +9463,33 @@ impl RustTrans {
             write!(sink.body, "{{ async_stream::stream! {{")?;
         }
 
+        // Plan 387: actor `fn main` needs a runtime handle in scope (for the
+        // generated `Task.spawn(...)` -> `spawn_<name>(__rt)` calls) and must
+        // drain all in-flight actor messages before exit. Inject via body()
+        // prologue/epilogue.
+        if is_main_actor {
+            self.main_actor_prologue = Some(
+                "let mut __rt = a2r_std::task::ActorRuntime::new();\n".to_string(),
+            );
+            // Plan 387 D1: before joining spawned actors, drop every `TaskRef`
+            // (mailbox sender clone) held by main-scope variables assigned from
+            // `Task.spawn(...)`. Otherwise the mailbox channel never closes,
+            // `rx.recv()` never returns None, and `run_to_completion` deadlocks.
+            let mut epilogue = String::new();
+            for var in collect_task_handle_vars(&fn_decl.body) {
+                epilogue.push_str(&format!("drop({});\n", var));
+            }
+            epilogue.push_str("__rt.run_to_completion().await;\n");
+            self.main_actor_epilogue = Some(epilogue);
+        }
+
         // Plan 091: scope removed
         self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
         // Plan 091: scope removed
+
+        // Plan 387: clear actor prologue/epilogue after use.
+        self.main_actor_prologue = None;
+        self.main_actor_epilogue = None;
 
         // Plan 321: Close async_stream::stream! wrapper
         if is_generator_fn {
@@ -11953,6 +12453,12 @@ impl RustTrans {
         sink.body.write(b"{\n")?;
         self.indent();
 
+        // Plan 387: actor `fn main` prologue (e.g. `let mut __rt = ...;`).
+        if let Some(prologue) = &self.main_actor_prologue {
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(prologue.as_bytes())?;
+        }
+
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
             sink.record();
@@ -12038,12 +12544,32 @@ impl RustTrans {
         sink.record();
 
         // For Result-returning functions, append Ok(()) if the last
-        // statement is not a tail expression (e.g., ends with a semicolon)
-        if matches!(ret_type, Type::Result(_)) && !body.stmts.is_empty() {
-            let last = &body.stmts[body.stmts.len() - 1];
-            if !self.is_returnable(last) {
+        // statement is not a tail expression (e.g., ends with a semicolon).
+        // An empty body also needs Ok(()) — otherwise `fn f() -> Result<...> { }`
+        // is a type error (E0308). This matters for actor hooks like
+        // `fn start() ! { }` (Plan 387 §12.4).
+        if matches!(ret_type, Type::Result(_)) {
+            let needs_ok = if body.stmts.is_empty() {
+                true
+            } else {
+                let last = &body.stmts[body.stmts.len() - 1];
+                !self.is_returnable(last)
+            };
+            if needs_ok {
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"Ok(())\n")?;
+            }
+        }
+
+        // Plan 387: actor `fn main` epilogue (e.g. `drop(h); __rt.run_to_completion().await;`).
+        // Each line gets its own indent (epilogue may be multi-line).
+        if let Some(epilogue) = &self.main_actor_epilogue {
+            for line in epilogue.lines() {
+                if !line.is_empty() {
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(line.as_bytes())?;
+                    sink.body.write(b"\n")?;
+                }
             }
         }
 
@@ -15484,17 +16010,33 @@ impl Trans for RustTrans {
             // Plan 364 Phase 8 F1: also treat for-over-Stream as async, since the
             // rewrite injects `.next().await` (the static has_await_refs can't see it
             // because the .await is injected at transpile time, not present in the AST).
+            // Plan 387: a program with any `task` definition is always async, AND must
+            // use the current_thread flavor to match the VM's single-threaded
+            // cooperative actor scheduling (Plan 317 path B); it also needs an
+            // `ActorRuntime` to join spawned actors before exit.
             let is_async = {
                 let refs: Vec<&Stmt> = main.iter().map(|(s, _)| s).collect();
-                Self::has_await_refs(&refs) || self.body_has_stream_for(&refs)
+                self.program_has_actors
+                    || Self::has_await_refs(&refs)
+                    || self.body_has_stream_for(&refs)
             };
-            if is_async {
+            if self.program_has_actors {
+                sink.body.write(b"#[tokio::main(flavor = \"current_thread\")]\n")?;
+                sink.body.write(b"async fn main() {\n")?;
+            } else if is_async {
                 sink.body.write(b"#[tokio::main]\n")?;
                 sink.body.write(b"async fn main() {\n")?;
             } else {
                 sink.body.write(b"fn main() {\n")?;
             }
             self.indent();
+
+            // Plan 387: actor programs need a runtime handle in scope for the
+            // generated `Task.spawn(...)` -> `spawn_<name>(__rt)` calls.
+            if self.program_has_actors {
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"let mut __rt = a2r_std::task::ActorRuntime::new();\n")?;
+            }
 
             for (stmt, line) in main.iter() {
                 sink.record();
@@ -15518,6 +16060,13 @@ impl Trans for RustTrans {
                 }
             }
             sink.record();
+
+            // Plan 387: drain all in-flight actor messages before exit (matches
+            // the VM's "process all in-flight then exit" liveness contract).
+            if self.program_has_actors {
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"__rt.run_to_completion().await;\n")?;
+            }
 
             self.dedent();
             sink.body.write(b"}\n")?;

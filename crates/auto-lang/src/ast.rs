@@ -250,7 +250,8 @@ impl Stmt {
             | Stmt::SpecDecl(_)
             | Stmt::Alias(_)
             | Stmt::TypeAlias(_)
-            | Stmt::Ext(_) => true,  // Plan 035 Phase 5.2: Ext statement is a declaration
+            | Stmt::Ext(_)  // Plan 035 Phase 5.2: Ext statement is a declaration
+            | Stmt::TaskDef(_) => true,  // Plan 387: task definition is a declaration
             _ => false,
         }
     }
