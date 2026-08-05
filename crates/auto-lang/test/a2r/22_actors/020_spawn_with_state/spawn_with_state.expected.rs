@@ -7,13 +7,15 @@ use a2r_std::*;
 
 #[derive(Clone, Debug)]
 struct Counter {
-    log: String,
+    count: i64,
+    label: String,
 }
 
 impl Counter {
     pub fn new() -> Self {
         Self {
-            log: format!(""),
+            count: 0,
+            label: "default",
         }
     }
 
@@ -25,15 +27,11 @@ impl Counter {
         Ok(())
     }
 
-    pub async fn handle_msg(&mut self, msg: i64, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn handle_msg(&mut self, msg: i32, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg {
-            1i64 => {
-                self.log = format!("{}n:1;", self.log);
-                println!("{}", self.log);
-            }
-            2i64 => {
-                self.log = format!("{}n:2;", self.log);
-                println!("{}", self.log);
+            n => {
+                self.count = self.count + n;
+                println!("{label}: {count}");
             }
             _ => {
                 let _ = msg;
@@ -43,10 +41,10 @@ impl Counter {
     }
 }
 
-pub fn spawn_counter(log: String = format!("")) -> a2r_std::task::TaskRef<i64> {
-    let (taskref, mut rx) = a2r_std::task::channel::<i64>();
+pub fn spawn_counter(count: i32 = 0, label: String = "default") -> a2r_std::task::TaskRef<i32> {
+    let (taskref, mut rx) = a2r_std::task::channel::<i32>();
     let join = tokio::spawn(async move {
-        let mut actor = Counter { log: log };
+        let mut actor = Counter { count: count, label: label };
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
@@ -61,8 +59,8 @@ pub fn spawn_counter(log: String = format!("")) -> a2r_std::task::TaskRef<i64> {
 
 #[tokio::main]
 async fn main() {
-    let h = spawn_counter();
-    h.send(1);
-    h.send(2);
+
+    let h = spawn_counter(10, "mycounter");
+    h.send(5);
     a2r_std::task::drain_all().await;
 }

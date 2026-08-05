@@ -1088,3 +1088,9 @@ fn test_312_codegen_collects_api_routes() {
 // (`Add(val) if val > 1 ->`) emit as Rust match-arm guards. a2r-only (VM does
 // not execute guards). .expected.out hand-written.
 #[test] fn test_22_actors_019_guards() { test_a2r_deep("22_actors/019_guards"); }
+// Plan 390 §5 Phase B (M1): Task.spawn with initialization parameters —
+// `Task.spawn("Name", cap, v1, v2)` forwards v1/v2 as positional initializers
+// for the task's state fields (declaration order), overriding the defaults.
+// The spawn helper gains `field: Type = default` params; a no-arg spawn still
+// works via those defaults (see 005/006/015 regenerated goldens).
+#[test] fn test_22_actors_020_spawn_with_state() { test_a2r_deep("22_actors/020_spawn_with_state"); }

@@ -57,10 +57,10 @@ impl Sink {
     }
 }
 
-pub fn spawn_sink() -> a2r_std::task::TaskRef<Event> {
+pub fn spawn_sink(cb: fn(Event) -> () = noop) -> a2r_std::task::TaskRef<Event> {
     let (taskref, mut rx) = a2r_std::task::channel::<Event>();
     let join = tokio::spawn(async move {
-        let mut actor = Sink::new();
+        let mut actor = Sink { cb: cb };
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
