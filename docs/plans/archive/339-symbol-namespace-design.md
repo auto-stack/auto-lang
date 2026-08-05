@@ -1,5 +1,7 @@
 # Plan 339：AutoVM Symbol 命名空间 — 设计与实施计划
 
+> **状态**: ✅ COMPLETE — 6 Phase 全部实施, 4/4 测试通过 (2026-08-05 复审)
+
 > **For Claude:** 这是一个架构级设计。当前 VM 把所有模块（db.at、api.at、widget）的符号（函数、全局变量）扁平化到一个命名空间，导致同名冲突。015-notes 暴露出三类冲突：① `create_note`（api.at vs db.at）；② `notes`（db.at 全局变量 vs App.notes state 字段）；③ `use back.api: create_note` 导入别名歧义。当前 workaround（last-wins 去重、module#name 回退、global_vars always-global）脆弱且不完整。本计划设计 Symbol 命名空间系统，彻底解决冲突。
 
 ## 1. 问题陈述

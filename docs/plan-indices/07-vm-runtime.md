@@ -52,9 +52,10 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 249 | Unify Dual Registry | ✅ | Single-registration architecture with lazy native function registration, catalog macros |
 | 377 | Unify Value Representation — Eliminate 2-slot | ⏳ | Make push_f64/push_i64/push_u64 single-slot (true NaN-boxing); delete all codegen slot-counting logic; i64/u64 via 48-bit payload + heap-boxing fallback. Supersedes plan 378's 2-slot patches |
 | 378 | to_uint() I64/U64 Method-Call Slot Fix | ✅ | Expr::Dot recognition in contains_u64/is_u64_expr; native to_uint → 2-slot i64; u64 print/compare opcodes; full u64 infra (fn_return_types population, REPL/global/let 2-slot) |
+| 339 | AutoVM Symbol 命名空间 | ✅ | module-qualified names (`module#name`), `current_module` in codegen, `collect_module_imports` with module name, `import_aliases` for `use` semantics, widget state field isolation, last-wins workaround replaced; 015-notes + 016-calendar VmBridge verified |
 
 ## Status Summary
-- Completed: 31 | Partial: 4 | Planned: 1 | Deprecated: 0
+- Completed: 32 | Partial: 4 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity

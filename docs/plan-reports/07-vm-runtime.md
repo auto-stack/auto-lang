@@ -51,10 +51,11 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 266 | VM ↔ a2r Conformance | Complete | Semantic conformance specs (docs/conformance/), 30 dual-execution tests, differential testing engine, conformance-driven development flow |
 | 269 | AutoVM Daemon + Stateful CLI | Complete | `auto serve` / `auto req` — named pipe daemon with cross-process session sharing, max-sessions, timeout |
 | 249 | Unify Dual Registry | Complete | Single-registration architecture with lazy native function registration, catalog macros, opaque dispatch tables |
+| 339 | AutoVM Symbol 命名空间 | Complete | Module-qualified names (`module#name`), `current_module` in codegen, `import_aliases` for `use` semantics, last-wins workaround replaced; 015-notes + 016-calendar verified |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269, 339
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -172,3 +173,4 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [266-vm-a2r-conformance.md](../plans/archive/266-vm-a2r-conformance.md)
 - [249-unified-native-registry.md](../plans/archive/249-unified-native-registry.md)
 - [269-autovm-daemon-cli.md](../plans/archive/269-autovm-daemon-cli.md)
+- [339-symbol-namespace-design.md](../plans/archive/339-symbol-namespace-design.md)
