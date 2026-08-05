@@ -76,11 +76,18 @@ pub mod iced;
 #[cfg(feature = "ui-gpui")]
 pub mod gpui;
 
+// Plan 365 W1: Unified host backend interface (seam for W2/W3).
+// Available whenever the base `ui` feature is on; each variant is individually
+// cfg-gated inside the module.
+#[cfg(feature = "ui")]
+pub mod host;
+
 // Re-exports
 pub use component::Component;
 pub use view::{View, ViewBuilder};
 pub use vnode::{VNodeId, VNodeKind, VNode, VNodeProps, VTree};
 pub use vnode_converter::view_to_vtree;
 pub use app::{App, AppResult};
+pub use host::HostBackend;
 pub use style::Style;
 pub use debug::{DebugLayer, DebugState, Rect, LayoutReporter};

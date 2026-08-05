@@ -1294,6 +1294,7 @@ mod tests {
                 Box::new(Expr::Ident(Name::from("other"))),
             ),
             attrs: Vec::new(),
+            is_pub: false,
         });
         let fields = make_state_fields(&["count"]);
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &fields);

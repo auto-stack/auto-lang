@@ -5,32 +5,17 @@ pub type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub struct App;
 
 impl App {
+    /// Run a `Component` app under the auto-detected default backend.
+    ///
+    /// Plan 365 W1: delegates to `HostBackend::default_for_features().run()`.
+    /// The per-backend direct entry points (`iced::run_app`, `gpui::run_app`,
+    /// `headless::run_headless`) remain available for callers that need
+    /// backend-specific control.
     pub fn run<C>() -> AppResult<()>
     where
         C: Component + Default + 'static,
+        C::Msg: Clone + std::fmt::Debug + Send + 'static,
     {
-        #[cfg(feature = "ui-headless")]
-        {
-            super::headless::run_headless::<C>();
-            return Ok(());
-        }
-
-        #[cfg(all(feature = "ui-iced", not(feature = "ui-headless")))]
-        {
-            return Err("Please use the ICED backend crate directly.".into());
-        }
-
-        #[cfg(all(feature = "ui-gpui", not(any(feature = "ui-headless", feature = "ui-iced"))))]
-        {
-            return Err("Please use the GPUI backend crate directly.".into());
-        }
-
-        #[cfg(not(any(feature = "ui-headless", feature = "ui-iced", feature = "ui-gpui")))]
-        {
-            return Err(
-                "No backend enabled. Enable one of: 'ui-headless', 'ui-iced', or 'ui-gpui'."
-                    .into(),
-            );
-        }
+        super::host::HostBackend::default_for_features()?.run::<C>()
     }
 }

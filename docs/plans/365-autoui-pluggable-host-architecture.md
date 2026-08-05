@@ -137,7 +137,7 @@ as the final validation environment.
 
 | # | Item | Status | Difficulty | Files | Acceptance |
 |---|------|--------|-----------|-------|------------|
-| W1 | Unify host backend interface over VTree | ⏳ | ⭐⭐ | crates/auto-lang/src/ui/{mod.rs,iced,gpui,headless} | iced/gpui/headless backends sit behind one `HostBackend` entry; existing examples run unchanged |
+| W1 | Unify host backend interface over VTree | ✅ | ⭐⭐ | crates/auto-lang/src/ui/{host.rs (new), mod.rs, app.rs} | `HostBackend` enum + `run` + `default_for_features`; `App::run` delegates to it; headless + iced compile; existing examples unchanged |
 | W2 | Dev-host mock framework for system ports | ⏳ | ⭐⭐ | new: auto-cosmic/ports/ (mock impls) | a demo app (clock+battery applet logic) runs on Windows driven by scripted mock events |
 | W3 | libcosmic host backend (VTree → Element) | ⏳ | ⭐⭐⭐⭐ | new: auto-cosmic/host-libcosmic/ | same app core binary runs on Linux as a real libcosmic app; widget coverage driven by cosmic-monitor replication |
 | W4 | Linux port adapters | ⏳ | ⭐⭐⭐ | auto-cosmic/ports/ + Plan 364 glue crates | NotificationsPort + SessionPort real adapters pass integration test on WSL2 |
@@ -205,3 +205,41 @@ Rules:
 - RenderQueue/shared-memory IPC, dirty-rect protocol (W5, deferred)
 - cosmic-comp itself (stays upstream Rust)
 - VM-backend GUI work (COSMIC replication is a2r-only, per Plan 364)
+
+---
+
+## Progress log
+
+### W1 — landed (unified `HostBackend` interface)
+
+**Design**: a `HostBackend` enum (not a trait object — the per-backend bounds
+differ: iced requires `C::Msg: Send`, gpui takes a title arg, and the backend
+element types are foreign). Each variant is `#[cfg(feature = "ui-*")]`-gated.
+New file `crates/auto-lang/src/ui/host.rs`:
+
+- `HostBackend::run::<C>(self)` — unified entry; delegates to the existing
+  per-backend `run_app`/`run_headless`. Requires `C::Msg: Send` (iced's
+  constraint, propagated to the method since Rust checks bounds at function
+  scope, not per-match-arm). This is acceptable: GUI message types are
+  conventionally `Send`, and the headless/gpui paths work with any `Send` msg.
+- `HostBackend::default_for_features()` — auto-detect (Headless > Iced > Gpui
+  priority, matching the historical `App::run` cfg-ladder).
+- `App::run::<C>()` rewritten to delegate to
+  `HostBackend::default_for_features()?.run::<C>()`.
+
+**Preserved**: all per-backend direct entry points (`iced::run_app`,
+`gpui::run_app`, `headless::run_headless`) remain public and unchanged —
+examples that call them directly still work. W1 is additive.
+
+**Verification**:
+- `cargo build --features ui-headless` ✅ + `cargo build --features ui-iced` ✅
+- `cargo build --features ui-gpui` — 3 pre-existing E0004 errors in
+  `gpui/renderer.rs` + `style/gpui_adapter.rs` (incomplete `View`/`StyleClass`
+  matches), confirmed identical on clean master; NOT introduced by W1.
+- Host tests 2/2 (default-picks-headless, headless-runs-component).
+- a2r regression: 301/0 (zero new failures).
+
+**Follow-up (not in W1)**: de-ice `Component::subscription` — moving it to an
+`IcedComponent` extension trait would also require updating the a2r codegen
+(`ui_gen/rust.rs:983` generates `fn subscription` inside `impl Component`).
+Recorded as a separate cleanup.
