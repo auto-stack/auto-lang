@@ -1,5 +1,7 @@
 # Plan 337: vue-gallery ↔ @auto-ui/widgets 薄同步层
 
+> **状态**: ✅ COMPLETE (2026-08-05)
+
 > **实测状态（2026-08-04）**: ❌ 未实施。vue-gallery 与 widgets 仅 npm file: 连接，无 spec 同步层。保留为后续设计。
 
 > **类型**:完整计划(设计 + 实施)
