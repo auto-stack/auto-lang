@@ -258,6 +258,8 @@ enum UiAction {
         /// Path to the .at file
         file: String,
     },
+    /// List AURA widgets not yet covered by @auto-ui/widgets (Plan 337)
+    Backlog,
 }
 
 #[derive(Subcommand, Debug)]

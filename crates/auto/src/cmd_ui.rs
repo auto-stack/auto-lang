@@ -12,7 +12,7 @@
 use std::fs;
 use std::path::Path;
 
-use auto_lang::ui_gen::VueGenerator;
+use auto_lang::ui_gen::{VueGenerator, WidgetCategory, WidgetRegistry};
 use miette::Result;
 
 use crate::UiAction;
@@ -42,7 +42,54 @@ pub fn run(action: UiAction) -> Result<()> {
             Ok(())
         }
         UiAction::Inspect { file } => inspect(&file),
+        UiAction::Backlog => backlog(),
     }
+}
+
+/// Plan 337 Task 2.2: List AURA widgets not yet covered by @auto-ui/widgets,
+/// grouped by WidgetCategory.
+fn backlog() -> Result<()> {
+    let reg = WidgetRegistry::with_defaults();
+    let all = reg.all_widgets();
+
+    let total = all.len();
+    let uncovered: Vec<(&String, &WidgetCategory)> = all
+        .iter()
+        .filter(|(tag, _)| !VueGenerator::covers_aura_tag(tag.as_str()))
+        .map(|(tag, spec)| (tag, &spec.category))
+        .collect();
+    let covered = total - uncovered.len();
+
+    // Group by category.
+    let mut by_cat: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for (tag, cat) in &uncovered {
+        let cat_name = match cat {
+            WidgetCategory::Layout => "Layout",
+            WidgetCategory::Form => "Form",
+            WidgetCategory::Display => "Display",
+            WidgetCategory::Navigation => "Navigation",
+            WidgetCategory::Semantic => "Semantic",
+            WidgetCategory::Overlay => "Overlay",
+            WidgetCategory::Feedback => "Feedback",
+            WidgetCategory::Data => "Data",
+        };
+        by_cat.entry(cat_name).or_default().push(tag.as_str());
+    }
+
+    if uncovered.is_empty() {
+        println!("All {} AURA widgets are covered by @auto-ui/widgets.", total);
+        return Ok(());
+    }
+
+    println!("AURA widgets not yet in @auto-ui/widgets ({} uncovered / {} total):\n", uncovered.len(), total);
+    for (cat, tags) in &by_cat {
+        println!("  {}:", cat);
+        for tag in tags {
+            println!("    - {}", tag);
+        }
+    }
+    println!("\n{} covered / {} total ({} uncovered)", covered, total, uncovered.len());
+    Ok(())
 }
 
 /// Generate self-contained widget SFCs into `out`.
