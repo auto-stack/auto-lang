@@ -3100,7 +3100,27 @@ impl<'a> Parser<'a> {
 
             // Check for node instance: Identifier { ... }
             // This handles type construction syntax like Pair {x: 1, y: 2}
-            if self.is_kind(TokenKind::LBrace) && is_type {
+            // Plan 043 M5: also accept this form for PascalCase identifiers
+            // that are NOT known variables, even when the type isn't registered
+            // (e.g. an imported type whose module file wasn't resolvable). This
+            // matches the existing usage in 013-todo/015-notes, where imported
+            // types like `Todo`/`Note` are constructed with `Note { ... }`. The
+            // `is_type` gate alone failed for unresolved imports because
+            // `lookup_ident_type` returns None when the type_decl isn't found.
+            // Lowercase idents stay identifiers (never struct construction) to
+            // avoid clashing with a `name { ... }` block expression.
+            let accepts_as_type_construction = is_type || {
+                // Plan 043 M5: only widen for the UI scenario (store/widget
+                // model fields, where `Type{...}` construction is idiomatic
+                // and imported types may not be registered). Other dialects
+                // (notably gdscript) reuse atom() and their `Ident {` forms
+                // must not be reinterpreted as struct construction — doing so
+                // overflowed the parser stack on godot scene files.
+                self.is_ui_scenario()
+                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
+            };
+            if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
                 // Parse as node instance with the already-read identifier
                 let _ident = Expr::Ident(name.clone());
                 let primary_prop = None;
@@ -15146,6 +15166,38 @@ widget W {
         let ast = parser.parse().expect("view None comparison should parse");
         let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
         assert_eq!(non_empty.len(), 1, "one widget statement");
+    }
+
+    /// Plan 043 M5: `Type{ field: value }` construction must parse even when
+    /// the type is imported (`use types:`) and not resolvable in the current
+    /// file, or fully undeclared. atom() previously gated struct construction
+    /// on `is_type` (lookup_ident_type), which returns None for unresolved
+    /// imports. Now widened for PascalCase idents (UI scenario only) so
+    /// `PromptContext{ git_branch: "", git_status: None }` parses.
+    #[test]
+    fn test_struct_literal_construction_unresolved_type() {
+        // Undeclared PascalCase type — must construct.
+        let code = r#"
+store S {
+    model { var x PromptContext = PromptContext{ git_branch: "", git_status: None } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("undeclared PascalCase struct literal should construct");
+        let _ = ast; // parsed OK is the contract
+
+        // Lowercase idents must NOT be treated as struct construction (they
+        // stay regular identifiers), even in the UI scenario.
+        let code2 = r#"
+widget W {
+    model { var x str = "" }
+    view { col { text "hi" } }
+}
+"#;
+        let session2 = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser2 = Parser::from(code2).with_session(session2);
+        let _ = parser2.parse().expect("lowercase model fields parse normally");
     }
 
     /// Plan 043 M5 #2: a computed property with a multi-statement block body
