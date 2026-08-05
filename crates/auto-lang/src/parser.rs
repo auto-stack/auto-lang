@@ -4348,6 +4348,35 @@ impl<'a> Parser<'a> {
         // Note: We only parse the base name, not generic instance like ListIter<T, S>
         let target = self.parse_name()?;
 
+        // Plan 391 D6: Auto has no trait-impl syntax. Rust-style
+        // `impl Trait for Type { ... }` would otherwise be silently misparsed
+        // here (target=Trait, `for` mishandled → impl Type for Trait, reversed).
+        // Detect the `... for <ident>` tail and raise a clear error instead of
+        // producing a wrong-arity impl block. (Skipping any generic args first,
+        // since `impl TryFrom<Node> for Foo` has `<Node>` between name and for.)
+        if self.is_kind(TokenKind::Lt) {
+            // skip `<...>` generic args on the trait name
+            self.next();
+            let mut depth = 1i32;
+            while depth > 0 {
+                let tok = self.lexer.next()?;
+                match tok.kind {
+                    TokenKind::Lt => depth += 1,
+                    TokenKind::Gt => depth -= 1,
+                    _ => {}
+                }
+            }
+        }
+        if self.is_kind(TokenKind::For) {
+            return Err(SyntaxError::Generic {
+                message: "Auto does not support trait impl syntax (`impl Trait for Type`). \
+                          Use a `static fn`/`ext` method with an equivalent name instead."
+                    .to_string(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+
         // Skip generic instance syntax if present (e.g., <T, S> after ListIter)
         // For now, we just extract the base type name and skip the generic parameters
         // This allows `impl<T, S> ListIter<T, S>` to work

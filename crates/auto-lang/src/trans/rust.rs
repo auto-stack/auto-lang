@@ -9530,7 +9530,19 @@ impl RustTrans {
 
         // Skip type annotation if: Unknown type, type contains unknown, or closure expression
         // Exception: spec array expressions need explicit type annotation for dyn Trait
-        let skip_type_annotation = (has_unknown || is_closure) && spec_array_type.is_none();
+        // Plan 391 D3: also skip when a List<str-family> annotation would conflict with a
+        // borrowed iterator source. `let parts List<str> = x.split(".")` transpiles to
+        // x.split(".").collect::<Vec<_>>() which yields Vec<&str>; forcing Vec<String>
+        // is E0308. Let Rust infer (Vec<&str>) — mirrors the unannotated form.
+        let is_borrowed_split_source = matches!(&store.ty,
+            Type::List(elem) if matches!(elem.as_ref(),
+                Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit))
+            && matches!(&store.expr, Expr::Call(call)
+                if matches!(call.name.as_ref(),
+                    Expr::Dot(_, m) if m.as_str() == "split"));
+        let skip_type_annotation =
+            ((has_unknown || is_closure) && spec_array_type.is_none())
+            || is_borrowed_split_source;
 
         let safe_name = Self::rust_ident(store.name.as_str());
         if skip_type_annotation {
