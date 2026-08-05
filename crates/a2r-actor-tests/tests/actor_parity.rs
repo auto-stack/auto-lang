@@ -189,3 +189,19 @@ fn actor_009_stop_hook() {
     // (a2r wires stop after recv-None; this is intentional ahead-of-VM behavior).
     assert_actor_parity("009_stop_hook");
 }
+
+#[test]
+#[ignore]
+fn actor_010_handle_cross_fn() {
+    // Plan 387 §16 P0-1: Task.spawn works inside a regular fn (not just main).
+    // .expected.out hand-written (VM uses a different spawn API).
+    assert_actor_parity("010_handle_cross_fn");
+}
+
+#[test]
+#[ignore]
+fn actor_012_external_enum_msg() {
+    // Plan 387 §16 P0-3: external enum as actor message. VM send shim coerces
+    // to Value::Int, so .expected.out is hand-written.
+    assert_actor_parity("012_external_enum_msg");
+}

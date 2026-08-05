@@ -1,0 +1,21 @@
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            print("got one")
+        }
+    }
+}
+
+fn spawn_and_send() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(1)
+}
+
+fn main() {
+    spawn_and_send()
+}

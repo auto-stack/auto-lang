@@ -816,12 +816,22 @@ impl RustTrans {
 
         match tier {
             OwnershipTier::Clone => {
-                // Escape detected: clone instead of borrow.
-                self.expr(inner, out)?;
-                write!(out, ".clone()")?;
-                // Emit W0007 warning (buffered, never written to Sink).
-                if let Some(name) = binding_name {
-                    self.emit_escape_warning(name, tier, "value escapes its scope");
+                // Plan 387 §16: TaskRef<T> is a single-owner move type (not
+                // Clone). Passing it to a function must MOVE it, not clone.
+                // Detect by the variable's type being a TaskRef generic instance.
+                let is_taskref = binding_name
+                    .and_then(|n| self.local_var_types.get(n))
+                    .map(|ty| matches!(ty, crate::ast::Type::GenericInstance(inst) if inst.base_name == "TaskRef"))
+                    .unwrap_or(false);
+                if is_taskref {
+                    self.expr(inner, out)?;
+                } else {
+                    // Escape detected: clone instead of borrow.
+                    self.expr(inner, out)?;
+                    write!(out, ".clone()")?;
+                    if let Some(name) = binding_name {
+                        self.emit_escape_warning(name, tier, "value escapes its scope");
+                    }
                 }
             }
             OwnershipTier::RcRefCell => {
