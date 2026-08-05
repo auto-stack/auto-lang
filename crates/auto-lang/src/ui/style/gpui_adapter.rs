@@ -501,6 +501,12 @@ impl GpuiStyle {
             StyleClass::RowStart(start) => {
                 self.row_start = Some(*start);
             }
+
+            // Plan 365 W1 follow-up: StyleClass variants not yet implemented in
+            // the GPUI adapter (per-side margins, border styles, transforms,
+            // etc.). Silently ignore for now — the gpui backend renders a
+            // subset of the full style system.
+            _ => {}
         }
     }
 }

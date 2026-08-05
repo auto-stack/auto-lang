@@ -6299,6 +6299,13 @@ pub trait ComponentIced: Component {
     fn update(&mut self, msg: Self::Msg) {
         self.on(msg);
     }
+
+    /// Iced subscription, built from the backend-neutral `tick_interval_ms()`.
+    /// Plan 365 W1 follow-up: moved here from `Component::subscription()` to
+    /// de-ice the core trait.
+    fn subscription(&self) -> iced::Subscription<Self::Msg> {
+        iced::Subscription::none()
+    }
 }
 
 // Blanket implementation for all Component types

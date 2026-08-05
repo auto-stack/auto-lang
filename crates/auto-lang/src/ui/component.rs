@@ -45,11 +45,14 @@ pub trait Component: Sized + Debug {
     /// Returns the abstract view tree that will be adapted to specific backends.
     fn view(&self) -> View<Self::Msg>;
 
-    /// Optional subscription for periodic events (e.g., .Tick handlers).
-    /// Default implementation returns no subscription.
-    #[cfg(feature = "ui-iced")]
-    fn subscription(&self) -> iced::Subscription<Self::Msg> {
-        iced::Subscription::none()
+    /// Optional periodic tick interval in milliseconds (e.g., `.Tick` handlers).
+    ///
+    /// Plan 365 W1 follow-up: this replaces the former `subscription()` method
+    /// which leaked `iced::Subscription` into this backend-neutral trait. The
+    /// iced backend reads this value and builds `iced::time::every(...)` from it;
+    /// other backends ignore it. Default: no ticking.
+    fn tick_interval_ms(&self) -> Option<u32> {
+        None
     }
 
     /// Snapshot of this component's scalar state fields, keyed by field name.

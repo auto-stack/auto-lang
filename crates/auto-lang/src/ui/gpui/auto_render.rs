@@ -771,6 +771,31 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
 
                 rail.into_any()
             }
+
+            // Plan 365 W1 follow-up: Image + Grid not yet natively supported
+            // in the GPUI backend — render a placeholder.
+            View::Image { src, style } => {
+                let mut d = div().child(format!("[img: {}]", src));
+                if let Some(ref s) = style {
+                    d = apply_style_to_div(d, s);
+                }
+                d.into_any()
+            }
+            View::Grid { cols, cells, gap, style } => {
+                // Decompose into rows of `cols` columns (mirror the iced approach).
+                let mut col = div().flex().flex_col().gap(px(gap as f32));
+                for chunk in cells.chunks(cols) {
+                    let mut row = div().flex().flex_row().gap(px(gap as f32));
+                    for cell in chunk {
+                        row = row.child(cell.clone().into_gpui_impl(handle_msg.clone()));
+                    }
+                    col = col.child(row);
+                }
+                if let Some(ref s) = style {
+                    col = apply_style_to_div(col, s);
+                }
+                col.into_any()
+            }
         }
     }
 
@@ -1309,6 +1334,30 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 }
 
                 rail.into_any()
+            }
+
+            // Plan 365 W1 follow-up: Image + Grid not yet natively supported
+            // in the GPUI backend — render a placeholder / decompose.
+            View::Image { src, style } => {
+                let mut d = div().child(format!("[img: {}]", src));
+                if let Some(ref s) = style {
+                    d = apply_style_to_div(d, s);
+                }
+                d.into_any()
+            }
+            View::Grid { cols, cells, gap, style } => {
+                let mut col = div().flex().flex_col().gap(px(gap as f32));
+                for chunk in cells.chunks(cols) {
+                    let mut row = div().flex().flex_row().gap(px(gap as f32));
+                    for cell in chunk {
+                        row = row.child(cell.clone().into_gpui_impl_with_context(state, cx));
+                    }
+                    col = col.child(row);
+                }
+                if let Some(ref s) = style {
+                    col = apply_style_to_div(col, s);
+                }
+                col.into_any()
             }
         }
     }

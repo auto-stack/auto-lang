@@ -980,16 +980,6 @@ impl RustGenerator {
         // view() method
         code.push_str(&self.generate_view_method(widget));
 
-        // subscription() method — generate if tick_interval is set
-        if let Some(interval_ms) = widget.tick_interval {
-            let msg_name = self.current_msg_name();
-            code.push('\n');
-            code.push_str(&format!(
-                "    fn subscription(&self) -> iced::Subscription<Self::Msg> {{\n        iced::time::every(std::time::Duration::from_millis({})).map(|_| {}::Tick)\n    }}\n",
-                interval_ms, msg_name
-            ));
-        }
-
         // Plan 371 Task 21: state_snapshot() override — emit only scalar fields
         // (String/i32/i64/u32/u64/f32/f64/bool). Collections and nested components
         // are skipped. Feeds the rust-mode MCP `autoui_state` tool via SharedState.
@@ -1000,6 +990,19 @@ impl RustGenerator {
         }
 
         code.push_str("}\n");
+
+        // Plan 365 W1 follow-up: subscription() moved from Component to
+        // ComponentIced (de-ice the core trait). Generate a separate
+        // `impl ComponentIced` block when tick_interval is set.
+        if let Some(interval_ms) = widget.tick_interval {
+            let msg_name = self.current_msg_name();
+            let struct_name = &widget.name;
+            code.push('\n');
+            code.push_str(&format!(
+                "impl auto_lang::ui::iced::ComponentIced for {} {{\n    fn subscription(&self) -> iced::Subscription<Self::Msg> {{\n        iced::time::every(std::time::Duration::from_millis({})).map(|_| {}::Tick)\n    }}\n}}\n",
+                struct_name, interval_ms, msg_name
+            ));
+        }
 
         code
     }
