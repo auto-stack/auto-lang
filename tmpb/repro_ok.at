@@ -1,0 +1,17 @@
+use.rust std::fs
+
+pub type SpecsDocument {
+    name str
+}
+
+fn save_doc(path PathBuf, doc SpecsDocument) Result<(), str> {
+    let ok bool = fs.write(path, "x")
+    if ok == false {
+        return Err("write failed")
+    }
+    return Ok(())
+}
+
+fn load_res() Result<SpecsDocument, str> {
+    return Err("nope")
+}

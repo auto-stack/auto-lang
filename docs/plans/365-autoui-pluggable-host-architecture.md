@@ -120,9 +120,11 @@ AudioPort (settings-daemon varlink), DisplayPort (cosmic-randr), NetworkPort
 
 Hosts ① and ② render in-process. The lock-free shared-memory RenderQueue,
 dirty-rect incremental frames, and the <30 MB self-hosted Vulkan compositor
-(doc 20 §5-§6, §9) are deferred to the AutoOS phase with entry conditions:
-≥3 replicated apps running on host ②, and measured memory/latency budgets that
-justify the split.
+(doc 20 §5-§6, §9) are deferred to **[Plan 367](367-autoui-renderqueue-future-optimization.md)**
+as an independent future-optimization plan. COSMIC compatibility does not require
+RenderQueue — Host ② (libcosmic, in-process) is sufficient. Plan 367's entry
+conditions: ≥3 replicated apps running on host ②, and measured memory/latency
+budgets that justify the split.
 
 ### D5. Wayland-bound components keep a Linux verification loop
 
@@ -141,7 +143,7 @@ as the final validation environment.
 | W2 | Dev-host mock framework for system ports | ✅ | ⭐⭐ | new: crates/auto-cosmic/{ports,demo}/ | a demo app (clock+battery applet logic) runs on Windows driven by scripted mock events |
 | W3 | libcosmic host backend (VTree → Element) | ✅ | ⭐⭐⭐⭐ | crates/auto-cosmic/host-libcosmic/ (cfg-gated, all-platform) | `run_libcosmic()` cross-platform entry; Linux: VTree coverage report + lowering design (libcosmic Application adapter); Windows: headless fallback; test passes on all platforms |
 | W4 | Linux port adapters | ✅ | ⭐⭐⭐ | crates/auto-cosmic/ports-linux/ (cfg-gated, all-platform) | `LinuxPowerPort` (UPower/zbus), `LinuxClockPort` (SystemTime), `LinuxNotificationsPort` (D-Bus); Windows: mock fallback re-export; both compile everywhere |
-| W5 | (Deferred) RenderCommand/RenderQueue/compositor per doc 20 | ⏸ Deferred | ⭐⭐⭐⭐⭐ | new crates | entry conditions in D4 met |
+| W5 | (Deferred) RenderCommand/RenderQueue/compositor per doc 20 | ➡️ Plan 367 | ⭐⭐⭐⭐⭐ | new crates | **Moved to [Plan 367](367-autoui-renderqueue-future-optimization.md)** — independent future-optimization plan; not needed for COSMIC compatibility (Host ② is in-process) |
 
 ### Dependency order
 
@@ -335,7 +337,7 @@ compile the real adapters on Linux. This satisfies the user's requirement:
 | W2 | ✅ landed | mock framework + demo applet (Windows-verified) |
 | W3 | ✅ landed | libcosmic host (cfg-gated; Linux lowering design + Windows fallback) |
 | W4 | ✅ landed | Linux port adapters (cfg-gated; zbus/UPower + Windows mock fallback) |
-| W5 | ⏸ deferred | RenderQueue/compositor (AutoOS phase) |
+| W5 | ➡️ Plan 367 | RenderQueue/compositor moved to independent future-optimization plan; not needed for COSMIC compatibility |
 
 All cross-platform work is complete and Windows-verified (workspace builds,
 demo runs, a2r 301/0, host tests pass). W3/W4 real Linux implementations

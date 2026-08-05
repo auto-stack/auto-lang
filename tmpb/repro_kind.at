@@ -1,0 +1,22 @@
+use.rust std::fs
+use.rust std::io::ErrorKind
+
+fn is_not_found(e std::io::Error) bool {
+    if e.kind() == ErrorKind.NotFound {
+        return true
+    }
+    return false
+}
+
+fn try_load(path PathBuf) Result<str, str> {
+    let r = fs.read(path)
+    is r {
+        Ok(bytes) -> return Ok("ok"),
+        Err(e) -> {
+            if e.kind() == ErrorKind.NotFound {
+                return Ok("notfound")
+            }
+            return Err(e.to_string())
+        }
+    }
+}
