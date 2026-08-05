@@ -2,7 +2,7 @@
 plan: 387
 title: a2r-actor-task-translation
 affects: [auto-lang/vm, auto-lang/a2r, a2r-std]
-status: draft # draft | in-progress | complete
+status: in-progress # draft | in-progress | complete
 ---
 
 # Plan 387: a2r Actor 模型转译 (TaskDef/Msg/On) — 与 VM 行为对齐
@@ -286,4 +286,43 @@ VM 的 `else ->` 在无匹配时触发（`engine.rs:653-669` 的 `#else` export�
 - [x] 转译模板（§12.2）+ Counter `.expected.rs` 示例（§12.2 代码块即示例）
 - [x] 阻塞点识别（§12.4 空体 hook）
 - [x] a2r-std 集成路径（§12.7）
-- [ ] W2-W5 实施（下一阶段）
+- [x] W2-W3/W5 实施（见 §13）
+
+---
+
+## §13 实施进度（W1–W3 / W5 已合并 master）
+
+> 2026-08-05：Tier 1 + 测试基建完成，fast-forward 合入 master（commit `77dcb7b5`，与 Plan 349 http parity 自动合并无冲突）。W4（Tier 2）待做。
+
+### W1 — landed（设计冻结）
+- 交付：§12 全部设计决策冻结；3 处调查修正（C1 `Expr::Dot` 非 `Expr::Bina`、C2 `Task` 是普通 ident、C3 空体 Result hook 编译不过）；转译模板；死锁分析。
+- commit `a5dc1efc`。
+
+### W2 — landed（a2r-std actor runtime）
+- 交付：`crates/a2r-std/src/task.rs`（264 行）— `TaskRef`（用户 send 句柄）/ `TaskHandle`（spawn 构造）/ `ActorRuntime::register+run_to_completion`（drop sender→join 解决死锁）/ `NopReply`（Tier1 reply 占位）；`Cargo.toml` 加 `tokio = { workspace = true, features = ["full"] }`。
+- 验证：6 单测全绿（start 先于消息 / FIFO / 空 mailbox 退出 / 状态持久 / NopReply / register+drain）。
+- commit `0c19a200`。
+
+### W3 — landed（a2r Stmt::TaskDef 转译 Tier 1）
+- 交付（`trans/rust.rs` +565 行）：
+  - `task_decl()`：task → `struct` + `impl{new/start/stop/handle_msg}` + `spawn_<name>` helper。
+  - `call()` 拦截 `Task.spawn("Name")` → `spawn_<name>(&mut __rt)`。
+  - `fn_decl`：`program_has_actors` 触发 `#[tokio::main]` + async main + 注入 `__rt` prologue / `drop(handle)` + `run_to_completion` epilogue（D1 死锁解）。
+  - `body()` 空体 Result 补 `Ok(())`（§12.4 阻塞修复）。
+  - state 字段 `self.` 改写（`in_task_body` + `task_state_fields`，读 `Expr::Ident` + 写 `Op::Asn` 两路径）。
+  - `ast.rs is_decl()` 加 `TaskDef` 路由。
+- 验证：**6 个 VM actor 用例（001-006）端到端通过**（转译→编译→运行→stdout 逐字节匹配 VM）；303 a2r 回归 + 7 VM actor 测试全绿。
+- commit `82ce03cd`。
+
+### W5a — landed（文本黄金测试）
+- 交付：`test/a2r/22_actors/` 6 用例（`.at` + `.expected.rs`）；`a2r_tests.rs` 注册 22_actors 类别（`test_a2r_deep`，16MB 栈）。
+- 验证：6/6 文本黄金测试通过。
+- commit `377e89fb`。
+
+### W5b — landed（行为一致性测试 crate）
+- 交付：`crates/a2r-actor-tests/` — 对每个 `.at` 调 `transpile_rust` → 写临时 crate（依赖 a2r-std+tokio）→ `cargo run` → 比对 stdout 与 `test/vm/23_actor/*.expected.out`。唯一 crate 名 + 共享 `CARGO_TARGET_DIR`（tokio 只编译一次，6 用例 6 秒）。`#[ignore]` 默认。
+- 验证：**6/6 parity 测试通过**（stdout 逐字节匹配 VM）。
+- commit `d55c5148`。
+
+### W4 — 待办（Tier 2）
+命名消息枚举（`Add(val)`/`Reset` → `enum TaskMsg`）/ stop hook 接线 / `#[single]` 单例 / 字符串·布尔 pattern / `on(ctx)` 透传。服务流式用例（actor 替代 `Arc<dyn Fn>` 回调）。
