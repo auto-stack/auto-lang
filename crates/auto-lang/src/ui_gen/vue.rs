@@ -1908,7 +1908,10 @@ impl VueGenerator {
             let mut event_payload_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             for msg in &widget.messages {
                 for variant in &msg.variants {
-                    if let Some(ref ty) = variant.payload {
+                    // Plan 043 M5 #1: payload is now Vec<Type>; the TS event
+                    // path carries a single payload type, so use the first
+                    // (multi-param variants are a Rust-backend feature for now).
+                    if let Some(ty) = variant.payload.first() {
                         // Only carry payload type if the handler actually has
                         // matching params (otherwise the emit() call won't pass
                         // args, causing a TS mismatch).
@@ -2686,6 +2689,58 @@ impl VueGenerator {
         self.node_to_html(child, indent)
     }
 
+    /// Emit an `if`/`else if`/`else` chain as flat sibling `<template>` nodes.
+    ///
+    /// Plan 043 M5 #3 — the parser (`parse_view_conditional`) nests an
+    /// `else if` chain as `else_body = Some([Conditional(...)])`, so a chain
+    /// `if A {} else if B {} else if C {} else {D}` becomes
+    /// `A → else[B → else[C → else[D]]]`. This helper walks that nesting and
+    /// emits one `<template>` per arm at the *same* indent (Vue requires the
+    /// chain arms to be contiguous siblings with no nodes between them).
+    ///
+    /// `is_continuation` distinguishes the head (`v-if`) from arms deeper in
+    /// the chain (`v-else-if`); a plain `else` arm closes the chain.
+    fn emit_conditional(&mut self, node: &AuraNode, indent: usize, is_continuation: bool) -> GenResult<String> {
+        let AuraNode::Conditional { condition, then_body, else_body, .. } = node else {
+            // Not a Conditional — fall back to ordinary rendering.
+            return self.node_to_html(node, indent);
+        };
+        let ind = "  ".repeat(indent);
+
+        let head_attr = if is_continuation {
+            format!("v-else-if=\"{}\"", self.convert_condition(condition))
+        } else {
+            format!("v-if=\"{}\"", self.convert_condition(condition))
+        };
+
+        let mut then_html = String::new();
+        for child in then_body {
+            then_html.push_str(&self.node_to_html(child, indent + 1)?);
+        }
+
+        // Tail of the chain. A single nested Conditional is a continuation
+        // (another v-else-if, or a final v-else) — recurse at the SAME indent
+        // so the arm stays a sibling, not a child.
+        let tail = match else_body {
+            Some(nodes) if nodes.len() == 1 && matches!(nodes[0], AuraNode::Conditional { .. }) => {
+                self.emit_conditional(&nodes[0], indent, true)?
+            }
+            Some(nodes) => {
+                let mut else_html = String::new();
+                for child in nodes {
+                    else_html.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                format!("{}<template v-else>\n{}{}</template>\n", ind, else_html, ind)
+            }
+            None => String::new(),
+        };
+
+        Ok(format!(
+            "{}<template {}>\n{}{}</template>\n{}",
+            ind, head_attr, then_html, ind, tail
+        ))
+    }
+
     /// Convert AuraNode to HTML string
     fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
@@ -3318,70 +3373,14 @@ impl VueGenerator {
                 Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
             }
 
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
-                // Convert condition to Vue expression
-                let vue_condition = self.convert_condition(condition);
-
-                let mut then_html = String::new();
-                for child in then_body {
-                    then_html.push_str(&self.node_to_html(child, indent + 1)?);
-                }
-
-                if let Some(else_nodes) = else_body {
-                    // Plan 367 P2-1: if else_body is a single Conditional node,
-                    // it's an "else if" chain → generate v-else-if (not nested v-else).
-                    if else_nodes.len() == 1 {
-                        if let AuraNode::Conditional { condition: else_cond, then_body: else_then, else_body: inner_else, .. } = &else_nodes[0] {
-                            let else_if_cond = self.convert_condition(else_cond);
-                            let mut else_if_html = String::new();
-                            for child in else_then {
-                                else_if_html.push_str(&self.node_to_html(child, indent + 1)?);
-                            }
-                            // Recursively handle inner_else (could be another else-if or a final else)
-                            let inner_part = if let Some(inner_nodes) = inner_else {
-                                // Check if inner is also a single Conditional (continuation of else-if chain)
-                                if inner_nodes.len() == 1 {
-                                    if let AuraNode::Conditional { .. } = &inner_nodes[0] {
-                                        // Recurse: generate v-else-if for this inner conditional
-                                        let inner_html = self.node_to_html(&inner_nodes[0], indent)?;
-                                        // Strip leading indentation from recursive call to match our format
-                                        let inner_trimmed = inner_html.trim_start();
-                                        format!("{}<template v-else>\n{}{}</template>\n", ind, inner_trimmed, ind)
-                                    } else {
-                                        let mut h = String::new();
-                                        for child in inner_nodes {
-                                            h.push_str(&self.node_to_html(child, indent + 1)?);
-                                        }
-                                        format!("{}<template v-else>\n{}{}</template>\n", ind, h, ind)
-                                    }
-                                } else {
-                                    let mut h = String::new();
-                                    for child in inner_nodes {
-                                        h.push_str(&self.node_to_html(child, indent + 1)?);
-                                    }
-                                    format!("{}<template v-else>\n{}{}</template>\n", ind, h, ind)
-                                }
-                            } else {
-                                String::new()
-                            };
-                            return Ok(format!(
-                                "{}<template v-if=\"{}\">\n{}{}</template>\n{}<template v-else-if=\"{}\">\n{}{}</template>\n{}",
-                                ind, vue_condition, then_html, ind, ind, else_if_cond, else_if_html, ind, inner_part
-                            ));
-                        }
-                    }
-                    // Normal else (not else-if)
-                    let mut else_html = String::new();
-                    for child in else_nodes {
-                        else_html.push_str(&self.node_to_html(child, indent + 1)?);
-                    }
-                    Ok(format!(
-                        "{}<template v-if=\"{}\">\n{}{}</template>\n{}<template v-else>\n{}{}</template>\n",
-                        ind, vue_condition, then_html, ind, ind, else_html, ind
-                    ))
-                } else {
-                    Ok(format!("{}<template v-if=\"{}\">\n{}{}</template>\n", ind, vue_condition, then_html, ind))
-                }
+            AuraNode::Conditional { .. } => {
+                // Plan 043 M5 #3: delegate to the recursive helper that flattens
+                // if/else-if/else chains into sibling <template> nodes (v-if /
+                // v-else-if / v-else). Previously this branch re-entered itself
+                // via node_to_html for chain continuations, which unconditionally
+                // re-emitted a top-level <template v-if> and produced wrongly
+                // nested <template v-else><template v-if>.
+                self.emit_conditional(node, indent, false)
             }
 
             AuraNode::Component { name, props, events, .. } => {
@@ -4000,6 +3999,20 @@ impl VueGenerator {
         result = result.replace(" len ( )", ".length");
         // Plan 345 (gap N1): .contains → .includes (JS uses .includes, not .contains)
         result = result.replace(".contains(", ".includes(");
+        // Plan 043 M5: Auto's None/nil literal → JS null in view conditions.
+        // parse_condition_expr emits tokens space-separated, so `None`/`nil`
+        // appear as standalone words. Replace them with `null`.
+        let mut out = String::with_capacity(result.len());
+        for tok in result.split(' ') {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            match tok {
+                "None" | "nil" => out.push_str("null"),
+                _ => out.push_str(tok),
+            }
+        }
+        result = out;
 
         // Remove leading dot from state references (.count -> count)
         // Pattern: .identifier (at word boundary)
@@ -4806,6 +4819,21 @@ impl VueGenerator {
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(format!("router.push({{ path: {}, query: {{ {} }} }})", path_js, params_js.join(", ")))
                 }
+            }
+            // Plan 043 M5 #2: render a multi-statement computed body. The
+            // computed wrapper at the call site is `computed(() => {expr_js})`,
+            // so we emit `{ stmts; return tail; }` to produce a valid statement
+            // arrow-body. Reuse the handler-body transpiler (same state/prop
+            // rewriting rules) so the body sees `state.value` etc.
+            Expr::Block(body) => {
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+                    .with_props(self.prop_names.iter().cloned().collect())
+                    .with_refs(self.template_refs.iter().cloned().collect());
+                if !self.project_api_functions.is_empty() {
+                    ctx = ctx.with_api_functions(self.project_api_functions.clone());
+                }
+                let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                Ok(format!("{{ {} }}", body_js.trim()))
             }
             _ => Ok("undefined".to_string()),
         }
@@ -10020,8 +10048,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: None },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: None },
+                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col")
@@ -10182,7 +10210,7 @@ mod tests {
                 name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant {
                     name: "BodyChanged".to_string(),
-                    payload: None,
+                    payload: vec![],
                 }],
             }],
             // autodown_editor { content: .body; onupdate: .BodyChanged; style: "..." }
@@ -10250,8 +10278,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Save".to_string(), payload: None },
-                    AuraMsgVariant { name: "Cancel".to_string(), payload: None },
+                    AuraMsgVariant { name: "Save".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Cancel".to_string(), payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col").with_child(
@@ -12738,5 +12766,98 @@ widget App {
             sfc2
         );
         assert!(!sfc2.contains("i?.id"), "no ?.id on primitive index (generic path):\n{}", sfc2);
+    }
+
+    /// Plan 043 M5 #3: an `if / else if / else if / else` chain must flatten
+    /// into contiguous sibling `<template>` nodes (`v-if` → `v-else-if` →
+    /// `v-else`), not nest as `<template v-else><template v-if>`.
+    #[test]
+    fn test_else_if_chain_flattens_to_v_else_if() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Dispatch {
+    model { var kind str = "Table" }
+    view {
+        if .kind == "Table" {
+            text "T"
+        } else if .kind == "Record" {
+            text "R"
+        } else if .kind == "Code" {
+            text "C"
+        } else {
+            text "Other"
+        }
+    }
+}
+"#);
+        // Head of the chain.
+        assert!(
+            sfc.contains(r#"<template v-if="kind == 'Table'">"#),
+            "chain head v-if:\n{}",
+            sfc
+        );
+        // Both continuations flatten to v-else-if (NOT nested v-else + v-if).
+        assert!(
+            sfc.contains(r#"<template v-else-if="kind == 'Record'">"#),
+            "first continuation v-else-if:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(r#"<template v-else-if="kind == 'Code'">"#),
+            "second continuation v-else-if:\n{}",
+            sfc
+        );
+        // The bug symptom: a v-else immediately followed by a nested v-if.
+        assert!(
+            !sfc.contains("<template v-else>\n<template v-if="),
+            "no nested v-else>v-if:\n{}",
+            sfc
+        );
+        // Final else arm.
+        assert!(
+            sfc.contains("<template v-else>"),
+            "trailing else arm:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 043 M5 #2: a multi-statement computed body must render its logic
+    /// (not collapse to `undefined`). Previously expr_to_js had no Block branch
+    /// so `x => { ...; return y }` emitted `computed(() => undefined)`.
+    #[test]
+    fn test_computed_multiline_body_renders_js() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Counter {
+    model { count int = 0 }
+    computed {
+        summary => {
+            var label = "count="
+            return label
+        }
+    }
+    view { col { text "hi" } }
+}
+"#);
+        // The computed body must keep its logic — the `return label` and the
+        // local binding must survive, not be replaced by `undefined`.
+        assert!(
+            sfc.contains("const summary = computed"),
+            "computed wrapper present:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("computed(() => undefined)"),
+            "multiline body must not collapse to undefined:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("let label"),
+            "local binding from block body survives:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("return label"),
+            "return statement from block body survives:\n{}",
+            sfc
+        );
     }
 }

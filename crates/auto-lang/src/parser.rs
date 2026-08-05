@@ -3100,7 +3100,27 @@ impl<'a> Parser<'a> {
 
             // Check for node instance: Identifier { ... }
             // This handles type construction syntax like Pair {x: 1, y: 2}
-            if self.is_kind(TokenKind::LBrace) && is_type {
+            // Plan 043 M5: also accept this form for PascalCase identifiers
+            // that are NOT known variables, even when the type isn't registered
+            // (e.g. an imported type whose module file wasn't resolvable). This
+            // matches the existing usage in 013-todo/015-notes, where imported
+            // types like `Todo`/`Note` are constructed with `Note { ... }`. The
+            // `is_type` gate alone failed for unresolved imports because
+            // `lookup_ident_type` returns None when the type_decl isn't found.
+            // Lowercase idents stay identifiers (never struct construction) to
+            // avoid clashing with a `name { ... }` block expression.
+            let accepts_as_type_construction = is_type || {
+                // Plan 043 M5: only widen for the UI scenario (store/widget
+                // model fields, where `Type{...}` construction is idiomatic
+                // and imported types may not be registered). Other dialects
+                // (notably gdscript) reuse atom() and their `Ident {` forms
+                // must not be reinterpreted as struct construction — doing so
+                // overflowed the parser stack on godot scene files.
+                self.is_ui_scenario()
+                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                    && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
+            };
+            if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
                 // Parse as node instance with the already-read identifier
                 let _ident = Expr::Ident(name.clone());
                 let primary_prop = None;
@@ -11624,14 +11644,24 @@ impl<'a> Parser<'a> {
             let variant_name = self.cur.text.clone();
             self.next();
 
-            // Check for payload type
+            // Check for payload type. Plan 043 M5 #1: support multi-param
+            // payloads `Complete(str, int)` / `RunSmart(int, str, []str)`
+            // (was single-type only). Empty vec = unit variant.
             let payload = if self.is_kind(TokenKind::LParen) {
                 self.next();
-                let ty = self.parse_type()?;
+                let mut types = vec![];
+                loop {
+                    types.push(self.parse_type()?);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
                 self.expect(TokenKind::RParen)?;
-                Some(ty)
+                types
             } else {
-                None
+                vec![]
             };
 
             variants.push(MsgVariant {
@@ -11801,18 +11831,25 @@ impl<'a> Parser<'a> {
                 }.into());
             }
 
-            // Parse expression.
-            // Disable symbol checking: widget/store computed expressions
-            // reference props and model fields (e.g. `url => language`) that
-            // are not bound in the parser's variable scope — name resolution
-            // happens in the code generator. Without this, bare identifiers
-            // (and call args like `btoa(lang)`) fail with "undefined variable"
-            // which surfaces as a confusing "Expected term, got RBrace".
+            // Parse expression, or a multi-statement block body.
+            // Plan 043 M5 #2: `x => { ...; return y }` now parses the brace as
+            // a statement block (Expr::Block), reusing the same self.body()
+            // path as on-handlers. A single-expression computed (`x => .foo`)
+            // still goes through parse_expr(). Disable symbol checking: widget
+            // /store computed expressions reference props and model fields
+            // (e.g. `url => language`) that are not bound in the parser's
+            // variable scope — name resolution happens in the code generator.
+            // Without this, bare identifiers (and call args like `btoa(lang)`)
+            // fail with "undefined variable" which surfaces as a confusing
+            // "Expected term, got RBrace".
             let old_skip_check = self.skip_check;
             self.skip_check = true;
-            let expr = self.parse_expr();
+            let expr = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
             self.skip_check = old_skip_check;
-            let expr = expr?;
 
             properties.push(ComputedProperty { name, expr });
             self.skip_empty_lines();
@@ -12711,6 +12748,14 @@ impl<'a> Parser<'a> {
                 let text = self.cur.text.to_string();
                 self.next();
                 parts.push(text);
+            } else if self.is_kind(TokenKind::NoneKW) || self.is_kind(TokenKind::Nil) {
+                // Plan 043 M5: `None` / `nil` literal in a view condition
+                // (e.g. `if .x != None`). Previously fell through to `break`
+                // and desynced the parser, surfacing as "Expected term, got
+                // RBrace" at the arm's closing brace.
+                let text = self.cur.text.to_string();
+                self.next();
+                parts.push(text);
             } else {
                 break;
             }
@@ -12999,27 +13044,37 @@ impl<'a> Parser<'a> {
                 self.next(); // consume the dot
                 let name = self.cur.text.to_string();
                 self.next();
-                // Check for params: .Name(param1, param2)
+                // Check for params: .Name(param1, param2) or .Name(name1 type1, name2 type2)
                 let params = if self.is_kind(TokenKind::LParen) {
                     self.next();
-                    let mut p = Vec::new();
+                    // Collect comma-separated groups; each group is either
+                    // `name` or `name type` (1 or 2 space-separated tokens).
+                    let mut groups: Vec<Vec<String>> = Vec::new();
                     while !self.is_kind(TokenKind::RParen) {
-                        p.push(self.cur.text.to_string());
-                        self.next();
+                        let mut group = Vec::new();
+                        // Read tokens until the next comma or close paren.
+                        while !self.is_kind(TokenKind::Comma)
+                            && !self.is_kind(TokenKind::RParen)
+                        {
+                            group.push(self.cur.text.to_string());
+                            self.next();
+                        }
+                        if !group.is_empty() {
+                            groups.push(group);
+                        }
                         if self.is_kind(TokenKind::Comma) {
                             self.next();
                         }
                     }
                     self.expect(TokenKind::RParen)?;
-                    p
+                    // Parameter name is the first token of each group; a
+                    // trailing `type` (if present) is dropped.
+                    groups.into_iter()
+                        .filter_map(|g| g.into_iter().next())
+                        .collect()
                 } else {
                     Vec::new()
                 };
-                // Filter out type names: keep only parameter names (even indices)
-                let params: Vec<String> = params.iter().enumerate()
-                    .filter(|(i, _)| i % 2 == 0)
-                    .map(|(_, v)| v.clone())
-                    .collect();
                 (format!(".{}", name), params)
             } else {
                 let name = self.cur.text.to_string();
@@ -15016,6 +15071,244 @@ widget Test {
                 assert!(matches!(expr.as_ref(), Expr::Nil));
             }
             other => panic!("expected Return stmt, got: {:?}", other),
+        }
+    }
+
+    /// Plan 043 M5 #1: msg variants with multiple payload params must parse.
+    /// Previously `Complete(str, int)` failed with "Expected term, got RBrace"
+    /// because the payload parser consumed only a single type.
+    #[test]
+    fn test_msg_multi_param_payload() {
+        let code = r#"
+widget Shell {
+    msg Msg { Init, Complete(str, int), RunSmart(int, str, []str), SetTag(str) }
+    model { count int = 0 }
+    view { col { text "hi" } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        let ast = result.expect("multi-param msg should parse");
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let widget = match non_empty[0] {
+            Stmt::WidgetDecl(w) => w,
+            other => panic!("expected WidgetDecl, got {:?}", other),
+        };
+        let msg = &widget.messages[0];
+        assert_eq!(msg.variants.len(), 4, "all 4 variants should parse");
+
+        // Init — unit variant, empty payload.
+        assert!(msg.variants[0].payload.is_empty(), "Init has no payload");
+
+        // Complete(str, int) — two payload types.
+        assert_eq!(msg.variants[1].name.as_str(), "Complete");
+        assert_eq!(msg.variants[1].payload.len(), 2, "Complete has 2 payload types");
+
+        // RunSmart(int, str, []str) — three payload types.
+        assert_eq!(msg.variants[2].name.as_str(), "RunSmart");
+        assert_eq!(msg.variants[2].payload.len(), 3, "RunSmart has 3 payload types");
+
+        // SetTag(str) — single payload still works (regression guard).
+        assert_eq!(msg.variants[3].name.as_str(), "SetTag");
+        assert_eq!(msg.variants[3].payload.len(), 1, "SetTag has 1 payload type");
+    }
+
+    /// Plan 043 M5 #1 regression: the full Plan 043 shell_store msg declaration
+    /// (15 variants, mixing unit / single-param user-type / multi-param with
+    /// []str) must parse end-to-end. This is the exact form that failed at
+    /// `ClearScreen }` in the real shell_store.at.
+    #[test]
+    fn test_msg_full_shellstore_declaration() {
+        let code = r#"
+type CommandResult { code int }
+type CommandOutput { line str }
+
+store S {
+    model { x int = 0 }
+    msg Msg { Init, RunCommand(str), RunResult(CommandResult), RunOutput(CommandOutput),
+              Cancel, RunSmart(int, str, []str), Complete(str, int),
+              NavigateHistory(bool), OpenHistorySearch, CloseHistorySearch,
+              SelectHistory(str), ToggleSidebar, PickTool(str), RefreshGit, ClearScreen }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        let ast = result.expect("full shell_store msg should parse");
+        let store = ast.stmts.iter().find_map(|s| match s {
+            Stmt::StoreDecl(s) => Some(s),
+            _ => None,
+        }).expect("store declaration present");
+        let msg = &store.messages[0];
+        assert_eq!(msg.variants.len(), 15, "all 15 variants parse");
+        // Spot-check the multi-param ones.
+        let runsmart = msg.variants.iter().find(|v| v.name.as_str() == "RunSmart").unwrap();
+        assert_eq!(runsmart.payload.len(), 3, "RunSmart has 3 payload types");
+        let complete = msg.variants.iter().find(|v| v.name.as_str() == "Complete").unwrap();
+        assert_eq!(complete.payload.len(), 2, "Complete has 2 payload types");
+    }
+
+    /// Plan 043 M5: view conditions must accept `None`/`nil` literals
+    /// (e.g. `if .block.output != None`). parse_condition_expr previously had
+    /// no NoneKW/Nil branch, so the `None` was left unconsumed and the parser
+    /// desynced, surfacing as "Expected term, got RBrace" at the arm's brace.
+    #[test]
+    fn test_view_condition_none_comparison() {
+        let code = r#"
+widget W {
+    model { x str = "" }
+    view {
+        col {
+            if .x != None {
+                text "set"
+            }
+            if .x == None {
+                text "unset"
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("view None comparison should parse");
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        assert_eq!(non_empty.len(), 1, "one widget statement");
+    }
+
+    /// Plan 043 M5: `Type{ field: value }` construction must parse even when
+    /// the type is imported (`use types:`) and not resolvable in the current
+    /// file, or fully undeclared. atom() previously gated struct construction
+    /// on `is_type` (lookup_ident_type), which returns None for unresolved
+    /// imports. Now widened for PascalCase idents (UI scenario only) so
+    /// `PromptContext{ git_branch: "", git_status: None }` parses.
+    #[test]
+    fn test_struct_literal_construction_unresolved_type() {
+        // Undeclared PascalCase type — must construct.
+        let code = r#"
+store S {
+    model { var x PromptContext = PromptContext{ git_branch: "", git_status: None } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("undeclared PascalCase struct literal should construct");
+        let _ = ast; // parsed OK is the contract
+
+        // Lowercase idents must NOT be treated as struct construction (they
+        // stay regular identifiers), even in the UI scenario.
+        let code2 = r#"
+widget W {
+    model { var x str = "" }
+    view { col { text "hi" } }
+}
+"#;
+        let session2 = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser2 = Parser::from(code2).with_session(session2);
+        let _ = parser2.parse().expect("lowercase model fields parse normally");
+    }
+
+    /// Plan 043 M5: a parameterized on-handler must bind ALL its params, both
+    /// for bare names `.Run(a, b, c)` and for name+type `.Run(a int, b int)`.
+    /// Previously the param parser kept only even-indexed tokens (assuming
+    /// `name type` pairs), which dropped every other bare name — so
+    /// `.RunSmart(block_id, name, args)` lost `name`.
+    #[test]
+    fn test_on_handler_multi_param_binding() {
+        fn handler_params(code: &str) -> Vec<String> {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from(code).with_session(session);
+            let ast = parser.parse().expect("should parse");
+            let store = ast.stmts.iter().find_map(|s| match s {
+                Stmt::StoreDecl(s) => Some(s),
+                _ => None,
+            }).expect("store present");
+            store.on.as_ref().expect("on block present").handlers[0].params.clone()
+        }
+
+        // 3 bare params — all must survive.
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Run(int, str, []str) }
+    on { .Run(block_id, name, args) -> { .x = 0 } }
+}
+"#);
+        assert_eq!(p, vec!["block_id".to_string(), "name".to_string(), "args".to_string()],
+            "all 3 bare param names bound");
+
+        // name+type form — names kept, types dropped.
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Add(int, int) }
+    on { .Add(a int, b int) -> { .x = a } }
+}
+"#);
+        assert_eq!(p, vec!["a".to_string(), "b".to_string()],
+            "name+type params: names kept, types dropped");
+
+        // Single param (regression guard).
+        let p = handler_params(r#"
+store S {
+    model { x int = 0 }
+    msg Msg { Set(int) }
+    on { .Set(v) -> { .x = v } }
+}
+"#);
+        assert_eq!(p, vec!["v".to_string()], "single param still works");
+    }
+
+    /// Plan 043 M5 #2: a computed property with a multi-statement block body
+    /// must parse. Previously only single expressions parsed (`x => .foo`);
+    /// `x => { var y = ...; return y }` failed with "Expected term, got RBrace".
+    #[test]
+    fn test_computed_multiline_body() {
+        let code = r#"
+widget Counter {
+    model { count int = 0 }
+    computed {
+        doubled => count * 2
+        summary => {
+            var label = "count="
+            label = label + count
+            return label
+        }
+    }
+    view { col { text "hi" } }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("multiline computed body should parse");
+
+        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let widget = match non_empty[0] {
+            Stmt::WidgetDecl(w) => w,
+            other => panic!("expected WidgetDecl, got {:?}", other),
+        };
+        let computed = widget.computed.as_ref().expect("computed block present");
+        assert_eq!(computed.properties.len(), 2);
+
+        // First property: single expression (regression guard — still works).
+        assert!(
+            !matches!(computed.properties[0].expr, Expr::Block(_)),
+            "single-expression computed stays a bare expr"
+        );
+
+        // Second property: multi-statement block body.
+        match &computed.properties[1].expr {
+            Expr::Block(body) => {
+                assert_eq!(body.stmts.len(), 3, "summary body has 3 statements");
+                // Last statement is the return.
+                assert!(
+                    matches!(body.stmts.last(), Some(Stmt::Return(_))),
+                    "body ends in a return"
+                );
+            }
+            other => panic!("expected Expr::Block for multiline computed, got {:?}", other),
         }
     }
 

@@ -230,8 +230,12 @@ pub struct MsgVariant {
     /// Variant name (e.g., "Inc")
     pub name: Name,
 
-    /// Optional payload type
-    pub payload: Option<Type>,
+    /// Payload types (empty = no payload). Plan 043 M5 #1: was
+    /// `Option<Type>` (single param only); now a `Vec<Type>` so variants like
+    /// `Complete(str, int)` / `RunSmart(int, str, []str)` parse. An empty vec
+    /// means a unit variant; a single-element vec means `Set(int)`; multiple
+    /// elements mean a tuple-style payload.
+    pub payload: Vec<Type>,
 }
 
 // ============================================================================
@@ -818,11 +822,11 @@ mod tests {
             variants: vec![
                 MsgVariant {
                     name: AutoStr::from("Inc"),
-                    payload: None,
+                    payload: vec![],
                 },
                 MsgVariant {
                     name: AutoStr::from("Set"),
-                    payload: Some(Type::Int),
+                    payload: vec![Type::Int],
                 },
             ],
         };

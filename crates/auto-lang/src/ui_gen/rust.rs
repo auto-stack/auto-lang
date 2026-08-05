@@ -517,7 +517,7 @@ impl RustGenerator {
             if !self.message_variants.iter().any(|v| v.name == "Init") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Init".to_string(),
-                    payload: None,
+                    payload: vec![],
                 });
             }
             // If Init calls an API function (async init), add __InitLoaded variant
@@ -531,7 +531,7 @@ impl RustGenerator {
             if !self.message_variants.iter().any(|v| v.name == "Tick") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Tick".to_string(),
-                    payload: None,
+                    payload: vec![],
                 });
             }
         }
@@ -577,9 +577,14 @@ impl RustGenerator {
         code.push_str(&format!("pub enum {} {{\n", msg_name));
 
         for variant in &self.message_variants {
-            if let Some(ref ty) = variant.payload {
-                let ty_str = self.auto_type_to_rust(ty);
-                code.push_str(&format!("    {}({}),\n", variant.name, ty_str));
+            if !variant.payload.is_empty() {
+                // Plan 043 M5 #1: emit each payload type as a tuple field, so
+                // `Complete(str, int)` → `Complete(String, i32)` and a single
+                // `Set(int)` → `Set(i32)`.
+                let ty_strs: Vec<String> = variant.payload.iter()
+                    .map(|t| self.auto_type_to_rust(t))
+                    .collect();
+                code.push_str(&format!("    {}({}),\n", variant.name, ty_strs.join(", ")));
             } else {
                 code.push_str(&format!("    {},\n", variant.name));
             }
@@ -1136,7 +1141,7 @@ impl RustGenerator {
                 if variant_info.is_none() {
                     continue;
                 }
-                let has_payload = variant_info.map_or(false, |v| v.payload.is_some());
+                let has_payload = variant_info.map_or(false, |v| !v.payload.is_empty());
                 // Tick handler: guard with running check if "running" field exists
                 let is_tick_guarded = variant_name == "Tick" && self.state_types.contains_key("running");
                 if has_payload {
@@ -2045,7 +2050,7 @@ impl RustGenerator {
                                 // This keeps the builder's type parameter as M (not fn pointer).
                                 let has_string_payload = self.message_variants.iter()
                                     .find(|v| v.name == variant)
-                                    .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
+                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
                                     .unwrap_or(false);
                                 if has_string_payload {
                                     builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
@@ -2099,7 +2104,7 @@ impl RustGenerator {
                                 // This keeps the builder's type parameter as M (not fn pointer).
                                 let has_string_payload = self.message_variants.iter()
                                     .find(|v| v.name == variant)
-                                    .map(|v| matches!(&v.payload, Some(crate::ast::Type::StrOwned) | Some(crate::ast::Type::StrSlice) | Some(crate::ast::Type::StrFixed(_))))
+                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
                                     .unwrap_or(false);
                                 if has_string_payload {
                                     builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
@@ -3425,7 +3430,7 @@ impl RustGenerator {
                 // Check payload type to determine conversion
                 let payload_ty = self.message_variants.iter()
                     .find(|v| v.name == variant_name)
-                    .and_then(|v| v.payload.as_ref())
+                    .and_then(|v| v.payload.first())
                     .map(|t| self.auto_type_to_rust(t));
                 return match payload_ty.as_deref() {
                     Some("i32") => format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", var_name, field),
@@ -3439,7 +3444,7 @@ impl RustGenerator {
         // Plan 374: String literal args need .to_string() when variant expects String
         let payload_ty = self.message_variants.iter()
             .find(|v| v.name == variant_name)
-            .and_then(|v| v.payload.as_ref())
+            .and_then(|v| v.payload.first())
             .map(|t| self.auto_type_to_rust(t));
         if payload_ty.as_deref() == Some("String") && param.starts_with('"') && !param.contains(".to_string()") {
             return format!("{}.to_string()", param);
@@ -4490,6 +4495,25 @@ impl RustGenerator {
                     format!("if {} {{ {} }} else {{ {} }}", cond, then_body, else_body)
                 }
             }
+            Expr::Block(body) => {
+                // Plan 043 M5 #2: render a multi-statement computed body as a
+                // Rust block `{ stmt; ...; tail }`. The final `return e;` becomes
+                // the trailing expression `e`; any other trailing expression
+                // statement is used as-is. Statements in between are joined by
+                // `; ` (ast_stmt_to_rust already omits the trailing semicolon).
+                let n = body.stmts.len();
+                let mut parts: Vec<String> = Vec::with_capacity(n);
+                for (i, stmt) in body.stmts.iter().enumerate() {
+                    let is_last = i + 1 == n;
+                    match stmt {
+                        crate::ast::Stmt::Return(expr) if is_last => {
+                            parts.push(self.ast_expr_to_rust(expr));
+                        }
+                        _ => parts.push(self.ast_stmt_to_rust(stmt)),
+                    }
+                }
+                format!("{{ {} }}", parts.join("; "))
+            }
             _ => format!("/* expr */"),
         }
     }
@@ -4957,8 +4981,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: None },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: None },
+                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col")
@@ -5037,7 +5061,7 @@ mod tests {
             ],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Inc".to_string(), payload: None }],
+                variants: vec![AuraMsgVariant { name: "Inc".to_string(), payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5086,7 +5110,7 @@ mod tests {
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5125,7 +5149,7 @@ mod tests {
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: None }],
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5339,5 +5363,61 @@ mod tests {
         let code = gen.generate_view_tree(&node);
         assert!(code.contains("View::text(\"Hello, World!\".to_string())"), "got: {}", code);
         assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
+    }
+
+    /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.
+    fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
+        AuraWidget {
+            name: "Shell".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![AuraMessage { name: "Msg".to_string(), variants }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_msg_multi_param_enum_output() {
+        use crate::ast::Type;
+        let widget = widget_with_msg(vec![
+            AuraMsgVariant { name: "Init".to_string(), payload: vec![] },
+            AuraMsgVariant { name: "Complete".to_string(), payload: vec![Type::StrSlice, Type::Int] },
+            AuraMsgVariant {
+                name: "RunSmart".to_string(),
+                payload: vec![Type::Int, Type::StrSlice, Type::Unknown],
+            },
+            AuraMsgVariant { name: "SetTag".to_string(), payload: vec![Type::StrSlice] },
+        ]);
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        // Unit variant.
+        assert!(code.contains("    Init,\n"), "unit variant Init, got:\n{}", code);
+        // Two-field variant (StrSlice renders as String in the Rust backend).
+        assert!(
+            code.contains("    Complete(String, i32),\n"),
+            "multi-param Complete should emit two fields, got:\n{}",
+            code
+        );
+        // Single-field variant still one field (regression guard).
+        assert!(
+            code.contains("    SetTag(String),\n"),
+            "single-param SetTag stays one field, got:\n{}",
+            code
+        );
     }
 }

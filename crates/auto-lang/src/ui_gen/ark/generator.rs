@@ -2158,11 +2158,11 @@ mod tests {
                 variants: vec![
                     AuraMsgVariant {
                         name: "Inc".to_string(),
-                        payload: None,
+                        payload: vec![],
                     },
                     AuraMsgVariant {
                         name: "Dec".to_string(),
-                        payload: None,
+                        payload: vec![],
                     },
                 ],
             }],

@@ -321,7 +321,10 @@ fun {}Preview() {{
 
         for msg in &widget.messages {
             for variant in &msg.variants {
-                if let Some(ref payload_type) = variant.payload {
+                // Plan 043 M5 #1: payload is now Vec<Type>; Kotlin Msg sealed
+                // class emits a single `val value` field, so use the first
+                // payload type (multi-param is a Rust-backend feature for now).
+                if let Some(payload_type) = variant.payload.first() {
                     // Variant with payload
                     let kotlin_type = match payload_type {
                         crate::ast::Type::Int => "Int".to_string(),
