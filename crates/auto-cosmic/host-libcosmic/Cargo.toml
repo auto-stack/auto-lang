@@ -2,20 +2,17 @@
 name = "auto-cosmic-host-libcosmic"
 version = "0.1.0"
 edition = "2021"
-description = "Plan 365 W3: libcosmic host backend (VTree → libcosmic Element)"
-
-# W3: This crate is Linux-only — libcosmic, iced (with wayland feature), and
-# cosmic-protocols are Linux/Wayland libraries that do not compile on Windows.
-# It is excluded from the default workspace build (see root Cargo.toml) so the
-# Windows dev loop is unaffected. Build on Linux/WSL2:
-#   cargo build -p auto-cosmic-host-libcosmic
+description = "Plan 365 W3: libcosmic host backend (VTree → libcosmic Element) + cross-platform fallback"
 
 [dependencies]
-auto-lang = { path = "../../auto-lang", features = ["ui"] }
+# ui-headless gives us the fallback path (headless::run_headless) on non-Linux.
+auto-lang = { path = "../../auto-lang", features = ["ui", "ui-headless"] }
 auto-cosmic-ports = { path = "../ports" }
-# Linux-only deps — uncomment when building on Linux/WSL2:
-# libcosmic = { git = "https://github.com/pop-os/libcosmic.git" }
-# iced = { version = "0.13", features = ["wayland"] }
 
+# libcosmic is Linux/Wayland-only. On Windows the `fallback` module delegates
+# to the headless backend, so this crate compiles everywhere. The real
+# VTree→Element lowering is in `src/linux.rs` (compiled only on Linux).
 [target.'cfg(target_os = "linux")'.dependencies]
-# Real Linux deps land here when building on Linux.
+# Uncomment when wiring the real libcosmic lowering:
+# libcosmic = { git = "https://github.com/pop-os/libcosmic.git" }
+# iced = { version = "0.13", default-features = false, features = ["wayland"] }

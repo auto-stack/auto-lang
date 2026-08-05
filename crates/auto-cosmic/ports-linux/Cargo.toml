@@ -2,16 +2,13 @@
 name = "auto-cosmic-ports-linux"
 version = "0.1.0"
 edition = "2021"
-description = "Plan 365 W4: Linux port adapters (zbus/wayland/UPower)"
-
-# W4: Linux-only — real zbus/UPower/D-Bus adapters. Excluded from the default
-# workspace build on Windows. Build on Linux/WSL2:
-#   cargo build -p auto-cosmic-ports-linux
+description = "Plan 365 W4: Linux port adapters (zbus/UPower) + cross-platform fallback"
 
 [dependencies]
 auto-cosmic-ports = { path = "../ports" }
 
+# zbus is Linux-only (D-Bus). On Windows the `fallback` module re-exports the
+# W2 mock impls, so this crate compiles everywhere; the real D-Bus adapters
+# are only compiled on `target_os = "linux"`.
 [target.'cfg(target_os = "linux")'.dependencies]
-# Real Linux deps — uncomment when building on Linux/WSL2:
-# zbus = "4"
-# nix = { version = "0.27", features = ["time"] }
+zbus = { version = "4", default-features = false }

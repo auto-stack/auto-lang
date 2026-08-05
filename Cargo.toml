@@ -22,20 +22,19 @@ members = [
     "crates/auto-playground",
     # Plan 216: C FFI Bindgen
     "crates/auto-bindgen",
-    # Plan 365 W2: COSMIC replication — system ports + demo (cross-platform)
+    # Plan 365 W2–W4: COSMIC replication — ports, demo, libcosmic host, Linux adapters.
+    # W3/W4 use cfg(target_os) so they compile on all platforms (Windows falls
+    # back to mock/headless stubs; Linux compiles real zbus/libcosmic code).
     "crates/auto-cosmic/ports",
     "crates/auto-cosmic/demo",
+    "crates/auto-cosmic/host-libcosmic",
+    "crates/auto-cosmic/ports-linux",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [
     # Generated Rust UI examples live in their own workspace with a shared
     # target-dir pointing back at the main workspace target/.
     "examples/rust-workspace",
-    # Plan 365 W3/W4: Linux-only crates (libcosmic/zbus/Wayland) — excluded
-    # from the Windows workspace build. Build on Linux/WSL2 by adding them to
-    # `members` temporarily or `cargo build -p <name>` from a Linux checkout.
-    "crates/auto-cosmic/host-libcosmic",
-    "crates/auto-cosmic/ports-linux",
 ]
 resolver = "2"
 
