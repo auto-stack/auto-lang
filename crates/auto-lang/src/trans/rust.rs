@@ -7316,6 +7316,7 @@ impl RustTrans {
             let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
                 && !is_mut_param
                 && !is_sb_param
+                && !needs_ref_borrow
                 && matches!(arg, Arg::Pos(Expr::Ident(_)))
                 // Plan 380: spec-bound idents (`Some(prof)` from an Option<Spec>
                 // scrutinee) are `Box<dyn Trait>` — no Clone impl (E0599).
@@ -16148,6 +16149,17 @@ impl Trans for RustTrans {
 
                     let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
                     self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+
+                    // C11 (Plan 018 §12 a2r-11): `mut p T` params are &mut refs —
+                    // call sites must pass `&mut arg` (never arg.clone()). The
+                    // emit-time registration (below) only covers fns emitted
+                    // *before* the caller; prescan here makes call sites to
+                    // fns declared *after* their caller (e.g. a helper fn at
+                    // the bottom of the file) also inject &mut.
+                    let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                        .map(|p| p.mode == crate::ast::ParamMode::Mut)
+                        .collect();
+                    self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags);
                 }
                 Stmt::SpecDecl(spec_decl) => {
                     // Plan 310 Phase 0.3: Pre-scan spec methods so that delegation
@@ -16183,8 +16195,15 @@ impl Trans for RustTrans {
                         self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
 
                         let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                        self.fn_param_types.insert(qualified_key, param_types.clone());
+                        self.fn_param_types.insert(qualified_key.clone(), param_types.clone());
                         self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+
+                        // C11: same prescan for `mut p T` flags (see Stmt::Fn above).
+                        let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                            .map(|p| p.mode == crate::ast::ParamMode::Mut)
+                            .collect();
+                        self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags.clone());
+                        self.fn_mut_params.insert(qualified_key.clone(), mut_param_flags);
                     }
                 }
                 _ => {}
