@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
-use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -1855,24 +1855,25 @@ impl VueGenerator {
             script.push('\n');
         }
 
+        // Plan 367 P1-1: custom type names that need importing from api.ts.
+        // Collected from prop types (recursively) AND from defineEmits
+        // payloads below; the import is emitted after both blocks.
+        let mut custom_types: Vec<String> = Vec::new();
+
         // Generate defineProps if widget has props (sub-widget component)
         if !widget.props.is_empty() {
-            // Plan 367 P1-1: collect custom type names that need importing from api.ts
-            let mut custom_types: Vec<String> = Vec::new();
             script.push_str("const props = defineProps<{\n");
             for prop in &widget.props {
                 // Plan 367 P1-1: map Auto types to TS types instead of using 'any'.
-                let ts_type = Self::auto_type_to_ts_type(&prop.type_info);
-                // Track custom types for import generation
-                if let crate::ast::Type::User(decl) = &prop.type_info {
-                    let name = decl.name.as_str().to_string();
-                    // Only track types that aren't built-in aliases
-                    if !matches!(name.as_str(), "msg" | "str" | "int" | "i64" | "uint" | "bool") {
-                        if !custom_types.contains(&name) {
-                            custom_types.push(name);
-                        }
-                    }
-                }
+                // Plan 043 M5 B-1: `on_*: msg` callback props are typed from the
+                // msg variant payload — `on_pick` for `Pick(str)` yields
+                // `(arg0: string) => void`, not `() => void` (which rejected the
+                // parent's `(name: any) => void` handler with TS2322).
+                let ts_type = Self::prop_to_ts_type(prop, widget);
+                // Track custom types for import generation. Recurse into
+                // containers (List<Block>, []ToolEntry, Option<T>, ...) so a
+                // nested custom type still triggers `import type { ... }`.
+                Self::collect_custom_types(&prop.type_info, &mut custom_types);
                 if prop.default.is_some() {
                     script.push_str(&format!("  {}?: {}\n", prop.name, ts_type));
                 } else {
@@ -1880,13 +1881,6 @@ impl VueGenerator {
                 }
             }
             script.push_str("}>()\n\n");
-            // Import custom types from api.ts (type-only import)
-            if !custom_types.is_empty() {
-                script.push_str(&format!(
-                    "import type {{ {} }} from '@/lib/api'\n\n",
-                    custom_types.join(", ")
-                ));
-            }
         }
 
         // Widget-level `expose { ... }`: exposed `on` handlers must be
@@ -1918,6 +1912,10 @@ impl VueGenerator {
                         let pattern_key = format!(".{}", variant.name);
                         if Self::get_handler_params(&widget.handler_params, &pattern_key).is_some() {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
+                            // Plan 043 M5 B-2: a custom payload type (e.g.
+                            // PickCompletion(CompletionItem)) must be imported
+                            // from api.ts just like a prop type.
+                            Self::collect_custom_types(ty, &mut custom_types);
                         }
                     }
                 }
@@ -1965,6 +1963,16 @@ impl VueGenerator {
                 }
             }
             script.push_str("}>()\n\n");
+        }
+
+        // Import custom types from api.ts (type-only import) — after both
+        // defineProps and defineEmits so prop types and emit payload types
+        // are collected.
+        if !custom_types.is_empty() {
+            script.push_str(&format!(
+                "import type {{ {} }} from '@/lib/api'\n\n",
+                custom_types.join(", ")
+            ));
         }
 
         // Plan 351: store composable imports + const store
@@ -2051,10 +2059,33 @@ impl VueGenerator {
                 if !already_notifies_parent {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
+                    // Plan 043 M5 B-3: when the handler is a loop-param handler
+                    // (template calls it as OpenPath(b) inside a v-for), the
+                    // generated function signature is `function OpenPath(b: any)`
+                    // — so the emit() must forward `b`, NOT the on-block's
+                    // declared param name (`path`), which is never bound and
+                    // would produce "Cannot find name" TS2304.
                     let pattern_key = Self::base_pattern(pattern);
-                    let emit_args: String = Self::get_handler_params(&widget.handler_params, pattern_key)
-                        .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
-                        .unwrap_or_default();
+                    let declared = Self::get_handler_params(&widget.handler_params, pattern_key);
+                    let emit_args: String = if let Some(loop_var) =
+                        self.loop_param_handlers.get(&handler_name)
+                    {
+                        // Loop-param handlers (template calls OpenPath(b) inside
+                        // a v-for) must emit the loop var, NOT the on-block's
+                        // declared param name (`path`) which is never bound.
+                        // BUT a no-arg handler (.Stop) also receives the loop
+                        // var in its function signature — it must still emit()
+                        // WITHOUT args, matching its `Stop: []` payload.
+                        if declared.map(|p| !p.is_empty()).unwrap_or(false) {
+                            loop_var.clone()
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        declared
+                            .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
+                            .unwrap_or_default()
+                    };
                     if emit_args.is_empty() {
                         body.push_str(&format!("\nemit('{}')", emit_name));
                     } else {
@@ -8856,6 +8887,120 @@ impl VueGenerator {
         }
     }
 
+    /// TS type for a widget prop.
+    ///
+    /// `on_*: msg` callback props resolve the matching msg variant via the
+    /// `on_pick` ↔ `Pick` naming convention and type the callback from its
+    /// payload: `Pick(str)` → `(arg0: string) => void`, `Stop` → `() => void`.
+    /// Non-msg props fall through to the generic Auto→TS mapping.
+    fn prop_to_ts_type(prop: &AuraProp, widget: &AuraWidget) -> String {
+        use crate::ast::Type;
+        if let Type::User(decl) = &prop.type_info {
+            if decl.name.as_str() == "msg" {
+                // on_pick → Pick; on_run_smart → RunSmart; on_open_path → OpenPath.
+                let variant_name = prop
+                    .name
+                    .strip_prefix("on_")
+                    .map(|s| Self::snake_to_pascal(s))
+                    .unwrap_or_default();
+                for msg in &widget.messages {
+                    if let Some(variant) = msg.variants.iter().find(|v| v.name == variant_name) {
+                        if variant.payload.is_empty() {
+                            return "() => void".to_string();
+                        }
+                        let args: Vec<String> = variant.payload.iter()
+                            .enumerate()
+                            .map(|(i, ty)| format!("arg{}: {}", i, Self::auto_type_to_ts_type(ty)))
+                            .collect();
+                        return format!("({}) => void", args.join(", "));
+                    }
+                }
+                // No matching variant — the prop is a plain signal: () => void.
+                return "() => void".to_string();
+            }
+        }
+        Self::auto_type_to_ts_type(&prop.type_info)
+    }
+
+    /// Collect api.ts interface names referenced by an Auto type, recursing
+    /// into containers (`List<T>`, `[]T`, `[N]T`, `Option<T>`,
+    /// `GenericInstance<T, …>`, …). Built-in/pseudo types (`msg`, `str`,
+    /// `int`, `List`, `Array`, …) are excluded — they map to TS primitives
+    /// or `() => void` and have no api.ts interface.
+    fn collect_custom_types(ty: &crate::ast::Type, out: &mut Vec<String>) {
+        use crate::ast::Type;
+        match ty {
+            Type::User(decl) => {
+                let name = decl.name.as_str().to_string();
+                if !Self::is_builtin_type_name(&name) && !out.iter().any(|n| n == &name) {
+                    out.push(name);
+                }
+            }
+            Type::List(inner) | Type::Option(inner) | Type::Result(inner)
+            | Type::Reference(inner) | Type::Linear(inner) => {
+                Self::collect_custom_types(inner, out);
+            }
+            Type::Map(k, v) => {
+                Self::collect_custom_types(k, out);
+                Self::collect_custom_types(v, out);
+            }
+            Type::Slice(s) => Self::collect_custom_types(&s.elem, out),
+            Type::Array(a) => Self::collect_custom_types(&a.elem, out),
+            Type::RuntimeArray(r) => Self::collect_custom_types(&r.elem, out),
+            Type::Ptr(p) => Self::collect_custom_types(&p.of.borrow(), out),
+            Type::GenericInstance(inst) => {
+                for arg in &inst.args {
+                    Self::collect_custom_types(arg, out);
+                }
+            }
+            Type::Union(u) => {
+                for f in &u.fields {
+                    Self::collect_custom_types(&f.ty, out);
+                }
+            }
+            Type::Tuple(ts) => {
+                for t in ts {
+                    Self::collect_custom_types(t, out);
+                }
+            }
+            Type::Handle { task_type } => Self::collect_custom_types(task_type, out),
+            Type::Fn(params, ret) => {
+                for p in params {
+                    Self::collect_custom_types(p, out);
+                }
+                Self::collect_custom_types(ret, out);
+            }
+            _ => {}
+        }
+    }
+
+    /// Built-in / pseudo type names that have no api.ts interface (TS
+    /// primitives, the `msg` callback pseudo-type, stdlib containers).
+    fn is_builtin_type_name(name: &str) -> bool {
+        matches!(name,
+            "msg" | "str" | "int" | "i64" | "uint" | "u64" | "usize" | "byte" | "char"
+            | "float" | "double" | "bool"
+            | "List" | "Array" | "Map" | "Option" | "Result" | "String")
+    }
+
+    /// Convert snake_case to PascalCase for msg-variant lookup
+    /// (`on_open_path` → `OpenPath`).
+    fn snake_to_pascal(s: &str) -> String {
+        let mut result = String::new();
+        let mut cap = true;
+        for ch in s.chars() {
+            if ch == '_' {
+                cap = true;
+            } else if cap {
+                result.push(ch.to_uppercase().next().unwrap_or(ch));
+                cap = false;
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
     /// Look up on-block handler params by base pattern (".Name"), tolerant of
     /// Plan 374 parameterized keys (".Name(e)").
     fn get_handler_params<'a>(
@@ -10353,6 +10498,74 @@ mod tests {
         // onsave/oncancel → @save/@cancel.
         assert!(sfc.contains("@save=\"Save\""), "onsave → @save:\n{}", sfc);
         assert!(sfc.contains("@cancel=\"Cancel\""), "oncancel → @cancel:\n{}", sfc);
+    }
+
+    /// Plan 043 M5 B-1/B-2: `on_*: msg` callback props are typed from the msg
+    /// variant payload (Pick(str) → (arg0: string) => void, Stop → () => void),
+    /// and custom types nested in containers (List<Block>) are imported from
+    /// api.ts as type-only imports.
+    #[test]
+    fn test_msg_prop_signature_and_custom_type_import() {
+        use crate::ast::{Type, TypeDecl, TypeDeclKind};
+        let user = |name: &str| Type::User(TypeDecl {
+            consts: Vec::new(),
+            name: name.into(),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: vec![],
+            impl_attrs: vec![],
+            doc: None,
+            is_pub: false,
+        });
+        let msg_type = user("msg");
+        let widget = AuraWidget {
+            name: "Child".to_string(),
+            state_vars: vec![],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![
+                    AuraMsgVariant { name: "Pick".to_string(), payload: vec![Type::StrSlice] },
+                    AuraMsgVariant { name: "Stop".to_string(), payload: vec![] },
+                ],
+            }],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![
+                AuraProp { name: "on_pick".to_string(), type_info: msg_type.clone(), default: None },
+                AuraProp { name: "on_stop".to_string(), type_info: msg_type, default: None },
+                AuraProp { name: "blocks".to_string(), type_info: Type::List(Box::new(user("Block"))), default: None },
+            ],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+        };
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        // B-1: payload-aware callback prop signatures.
+        assert!(sfc.contains("on_pick: (arg0: string) => void"), "on_pick sig:\n{}", sfc);
+        assert!(sfc.contains("on_stop: () => void"), "on_stop sig:\n{}", sfc);
+        // B-2: container-nested custom type is imported; the msg pseudo-type is not.
+        assert!(sfc.contains("blocks: Block[]"), "blocks type:\n{}", sfc);
+        assert!(sfc.contains("import type { Block } from '@/lib/api'"), "Block import:\n{}", sfc);
+        assert!(!sfc.contains("import type { msg }"), "msg must not be imported:\n{}", sfc);
     }
 
     #[test]
