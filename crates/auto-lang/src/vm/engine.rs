@@ -1773,6 +1773,21 @@ impl AutoVM {
                     continue;
                 }
 
+                // Plan 317 §11 Phase 7 (P3): a generator task suspended at a
+                // YIELD_VAL (Waiting("generator_suspended")) is driven externally
+                // — it only resumes when a consumer calls iter.next() (which
+                // try_locks the task and runs instructions, not via run_task_loop).
+                // Such a task never self-wakes, so if the consumer has broken out
+                // of the for-loop and abandoned it, the task stays Waiting forever.
+                // Without this exclusion, run_task_loop sees alive_count > 0 and
+                // busy-loops on sleep forever — the classic "infinite generator
+                // hangs the VM" symptom. Treat it like an idle actor: don't count
+                // it as alive, so the VM can exit when only suspended generators
+                // (or idle actors) remain.
+                if matches!(task.status, TaskStatus::Waiting(ref reason) if reason == "generator_suspended") {
+                    continue;
+                }
+
                 // Plan 348/353/349: Wake source 4 — SSE/IO stream data available.
                 // Task yielded with Waiting("sse") because the async channel
                 // had no data. Check if data has arrived since then. HTTP and IO

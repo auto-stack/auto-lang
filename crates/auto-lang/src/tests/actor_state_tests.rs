@@ -229,3 +229,55 @@ fn main() {
     assert!(s.contains("20"), "deep-expr msg1 (total=20): stdout={:?} result={:?}", s, r);
     assert!(s.contains("23"), "deep-expr msg2 (total=23): stdout={:?} result={:?}", s, r);
 }
+
+/// Plan 317 §11 Phase 5 (P2 回归): state field 名作为 `print(count)` 的直接参数。
+///
+/// §9 已知遗留 #1 曾记录"state field 名作为 print(count) 参数时报 undefined
+/// variable"——某些 intrinsic/let 的 codegen 路径绕过 state field 检查。实测已
+/// 自然解决(`Expr::Ident` 分支 codegen.rs:5113 正确检查 `current_task_state_fields`)。
+/// 本测试固化此修复,防回归。
+#[test]
+fn actor_state_field_print_direct() {
+    let code = r#"
+task Counter {
+    count = 0
+    fn start() ! {
+        count = count + 1
+        print(count)
+    }
+}
+fn main() {
+    let h = Task.spawn("Counter", 0)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // count 初始 0,start hook 里 +1 → 1,print(count) 应输出 "1"。
+    // 修复前:print(count) 报 "Undefined variable: count"(intrinsic 参数路径
+    // 未识别 state field)。
+    assert!(s.contains("1"), "print(count) state field: stdout={:?} result={:?}", s, r);
+    assert!(!r.contains("Undefined variable"), "count should resolve as state field: {:?}", r);
+}
+
+/// Plan 317 §11 Phase 5 (P2 回归): state field 名作为 `let c = count` 的 RHS。
+///
+/// §9 已知遗留 #1 的第二个具体场景:let 绑定 RHS 读取 state field。实测已解决。
+#[test]
+fn actor_state_field_let_rhs() {
+    let code = r#"
+task Counter {
+    count = 0
+    fn start() ! {
+        count = count + 1
+        let c = count
+        print(c.to(str))
+    }
+}
+fn main() {
+    let h = Task.spawn("Counter", 0)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // count → 1,let c = count 把 state field 读进 local c,print 输出 "1"。
+    assert!(s.contains("1"), "let c = count (state field RHS): stdout={:?} result={:?}", s, r);
+    assert!(!r.contains("Undefined variable"), "count should resolve as state field on let RHS: {:?}", r);
+}

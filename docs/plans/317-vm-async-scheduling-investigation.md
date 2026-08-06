@@ -294,7 +294,7 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 
 ---
 
-### Phase 5(P2)— state field 读取回归测试 [低风险,纯加测试]
+### Phase 5(P2)— state field 读取回归测试 [✅ 已完成 2026-08-06]
 
 **状态**:遗留已自然解决,本 Phase 仅固化。
 
@@ -323,26 +323,20 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 
 ---
 
-### Phase 7(P3)— infinite generator 的 Yield 后误 POP 下溢 [高优先,根因已定位]
+### Phase 7(P3)— infinite generator 挂死 [✅ 已完成 2026-08-06]
 
-**症状**:`fn counter() ~Iter<int> { var i = 0; for { yield i; i = i + 1 } }` 在 lazy generator 模式下,`for n in counter() { ... break }` 挂死/下溢。
+**症状**:`fn counter() ~Iter<int> { var i = 0; for { yield i; i = i + 1 } }` 在 lazy generator 模式下,`for n in counter() { ... break }` 挂死(测试超时被杀)。
 
-**根因(实测定位)**:`Expr::Yield` codegen(codegen.rs:8823)emit `compile_expr(inner)` + `YIELD_VAL`(YIELD_VAL pop 掉 yield 值)。但 `yield i` 作为 `Stmt::Expr` 时,`compile_stmt`(codegen.rs:948)的 `needs_pop = should_pop_expr_result && !last_was_native_void` 为真(`for{}` body 设 `should_pop_expr_result=true`),于是又 emit 一个 `POP`。该 POP 吃掉 YIELD_VAL 之下的栈值(净消耗 1 槽/迭代)。finite generator 有 RET 清栈不暴露;infinite 跨 next() 恢复时累积下溢 → 卡死。
+**根因(实测定位,与初判不同)**:初判"Stmt::Expr 在 Yield 后误 POP 下溢"被推翻——实测 `YIELD_VAL` 不 pop 值,driver 在 `sp-1` PEEK 并把任务设为 `Waiting("generator_suspended")`,resume 后那条 POP 正是消费 PEEK 值、清栈,**正确且必要**(finite generator 全绿证明)。真正的根因在 **`run_task_loop` 的退出条件**(engine.rs:1913):被消费者 `break` 抛弃的 generator 任务停留在 `Waiting("generator_suspended")`,但它不像 idle actor 那样被排除,被计入 `alive_count` → `alive_count != 0` → 循环在 `sleep(10ms)` 上无限转 → VM 永不退出。finite generator 不暴露此 bug 因其 `return` → Terminated → driver 返回 -1 → 消费者自然退出,任务随后被清。
 
-**对照**:文档原述"循环栈不平衡累积"方向正确,但精确定位是 **`Expr::Yield` 未把 `last_expr_type` 设为不需要 POP 的标记**(或 `Stmt::Expr` 未识别 yield 已自平衡)。
+**修复**:在 `run_task_loop` 的 idle-actor 检查(engine.rs:1767)之后,新增一个排除项——`Waiting("generator_suspended")` 的任务不计入 alive_count(它只被外部 `iter.next()` 经 try_lock 驱动,永不自唤醒)。与 idle-actor 同语义、同处理。
 
-**修复方案**(择一,实施时定):
-- A. `Expr::Yield` 分支末尾设 `self.last_expr_type = ObjectType::Void`(yield 不留值,Stmt::Expr 不该再 POP)—— 但 Void 仍走 POP 分支(950 行只对 Double/Uint 走 POP_N)。需改为 yield 路径设一个 `self.last_was_self_balanced = true` 标志,Stmt::Expr 据此跳过 POP。
-- B. `Stmt::Expr` 在 `compile_expr` 后检查:若刚编译的是 `Expr::Yield`,不 emit POP。
-- 推荐 A(加 `last_was_self_balanced` 标志,与 `last_was_native_void` 并列,语义清晰,可复用于其他自平衡 expr 如未来 `Expr::Go`)。
-
-**改动文件**:`vm/codegen.rs`(Expr::Yield 设标志 + Stmt::Expr 检查标志)。
+**改动文件**:`vm/engine.rs`(run_task_loop,~10 行)。
 
 **验收**:
-- 新测试 `generator_infinite_break`:跑 `for n in counter() { sum+=n; if sum>=6 break }` → 输出 "6"(或正确累计值),不挂死。
-- Plan 326 generator_tests 3 测试仍绿(finite 不回归)。
-- plan348_concurrency_tests 全绿。
-- 全量回归零新失败。
+- 新测试 `generator_infinite_break`(sum 累计到 6 后 break,输出 "6")+ `generator_infinite_take_three`(取 3 个 1,输出 "3")全绿,不挂死。
+- Plan 326 generator_tests 3 测试(finite)仍绿。
+- 回归:`generator_` + `actor_` + `plan348_concurrency` + `iterator` 共 62 测试全绿,1 ignored,零新失败。
 
 ---
 
