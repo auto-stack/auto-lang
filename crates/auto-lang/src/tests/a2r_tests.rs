@@ -441,6 +441,7 @@ ext Store {
 #[test] fn test_12_specs_005_generic_impl() { test_a2r("12_specs/005_generic_impl").unwrap(); }
 #[test] fn test_12_specs_006_spec_param_callsite() { test_a2r("12_specs/006_spec_param_callsite").unwrap(); }
 #[test] fn test_12_specs_007_box_fn() { test_a2r("12_specs/007_box_fn").unwrap(); }
+#[test] fn test_12_specs_008_arc_dyn_spec() { test_a2r("12_specs/008_arc_dyn_spec").unwrap(); }
 
 // === 13_delegation ===
 #[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }

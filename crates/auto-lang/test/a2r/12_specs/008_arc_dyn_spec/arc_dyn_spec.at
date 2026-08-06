@@ -1,0 +1,31 @@
+// Plan 390 §15.11 (L2 转正): `Arc<Spec>` → `Arc<dyn Spec>` 单层（rust-ref 对齐）。
+// - 类型标注 `Arc<Tool>` → `Arc<dyn Tool>`（不再是 `Arc<Box<dyn Tool>>` 双层）
+// - 值构造 `Arc(tool)`（tool 是 spec 参数，已 `Box<dyn Tool>`）→ `Arc::from(tool)`
+//   （Box→Arc 单层转换，与字段类型一致）
+// - `?Arc<Tool>` 返回位 → `Option<Arc<dyn Tool>>`
+
+spec Tool {
+    fn name() str
+}
+
+pub type Registry {
+    tools Map<str, Arc<Tool>>
+}
+
+ext Registry {
+    pub static fn new() Registry {
+        return Registry(tools: Map.new())
+    }
+    pub mut fn register(tool Tool) void {
+        let n = tool.name()
+        self.tools.set(n, Arc(tool))
+    }
+    pub fn get(name str) ?Arc<Tool> {
+        return self.tools.get(name)
+    }
+}
+
+fn main() {
+    let r = Registry.new()
+    print("ok")
+}

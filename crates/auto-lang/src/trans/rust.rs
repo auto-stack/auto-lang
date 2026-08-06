@@ -1261,19 +1261,19 @@ impl RustTrans {
                 } else {
                     inst.base_name.to_string()
                 };
-                // Plan 390 §15.10: `Box<Fn>` / `Box<Fn(A)>` → `Box<dyn Fn>` /
-                // `Box<dyn Fn(A) -> ()>`. Only the `Fn` spec is a closure-trait
-                // marker here — OTHER specs keep the existing `Arc<Box<dyn X>>`
-                // / `Box<Box<dyn X>>` storage shape (their `Arc(x)`/`Box(x)`
-                // constructors box an already-`Box<dyn>` param, Plan 019 L2 debt;
-                // changing them would break the value side). A `Fn(...)` signature
-                // arg (Type::Fn) becomes `dyn Fn(...)` (closure trait) instead of
+                // Plan 390 §15.10/§15.11 (L2 转正): `Box<Fn>` → `Box<dyn Fn>`,
+                // `Arc<Tool>` → `Arc<dyn Tool>` — a spec inside a Box/Arc
+                // container is a trait object (`dyn`). The value side matches:
+                // `Arc(spec_bound_ident)` renders `Arc::from(x)` (Box→Arc
+                // conversion, single wrap — see ArcExpr), so the field type and
+                // the constructed value agree. A `Fn(...)` signature arg
+                // (Type::Fn) becomes `dyn Fn(...)` (closure trait) instead of
                 // the fn-pointer `fn(...)`.
                 if matches!(base.as_str(), "Box" | "Arc") && inst.args.len() == 1 {
                     if let Some(arg_ty) = inst.args.first() {
                         match arg_ty {
-                            Type::Spec(spec) if spec.borrow().name.as_str() == "Fn" => {
-                                return format!("{}<dyn Fn>", base);
+                            Type::Spec(spec) => {
+                                return format!("{}<dyn {}>", base, spec.borrow().name);
                             }
                             Type::Fn(params, ret) => {
                                 let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
@@ -1469,15 +1469,14 @@ impl RustTrans {
                 } else {
                     inst.base_name.to_string()
                 };
-                // Plan 390 §15.10: same Box/Arc + Fn-spec/Fn-arg → `dyn` special
-                // case as rust_type_name (return position: `Box<Fn(A)>` →
-                // `Box<dyn Fn(A)>`). Only `Fn` — other specs keep the existing
-                // double-wrap storage shape (Plan 019 L2 debt).
+                // Plan 390 §15.10/§15.11 (L2 转正): same Box/Arc + spec/Fn-arg →
+                // `dyn` special case as rust_type_name (return position:
+                // `Arc<Tool>` → `Arc<dyn Tool>`, `Box<Fn(A)>` → `Box<dyn Fn(A)>`).
                 if matches!(base.as_str(), "Box" | "Arc") && inst.args.len() == 1 {
                     if let Some(arg_ty) = inst.args.first() {
                         match arg_ty {
-                            Type::Spec(spec) if spec.borrow().name.as_str() == "Fn" => {
-                                return format!("{}<dyn Fn>", base);
+                            Type::Spec(spec) => {
+                                return format!("{}<dyn {}>", base, spec.borrow().name);
                             }
                             Type::Fn(params, ret) => {
                                 let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
@@ -1918,13 +1917,19 @@ impl RustTrans {
                 write!(out, ")").map_err(Into::into)
             }
             // Plan 6B-4.14: Smart pointer constructors
+            // Plan 390 §15.11 (L2 转正): wrapping a spec-bound ident (already
+            // `Box<dyn Trait>`) uses `Arc::from`/`Box::from` — `Arc::from(box)`
+            // converts `Box<dyn Tool>` → `Arc<dyn Tool>` (single wrap). Plain
+            // `Arc::new(x)` would produce `Arc<Box<dyn Tool>>` (double wrap).
             Expr::BoxExpr(e) => {
-                write!(out, "Box::new(")?;
+                let spec_bound = matches!(e.as_ref(), Expr::Ident(name) if self.spec_bound_idents.contains(name));
+                write!(out, "Box::{}(", if spec_bound { "from" } else { "new" })?;
                 self.expr(e, out)?;
                 write!(out, ")").map_err(Into::into)
             }
             Expr::ArcExpr(e) => {
-                write!(out, "Arc::new(")?;
+                let spec_bound = matches!(e.as_ref(), Expr::Ident(name) if self.spec_bound_idents.contains(name));
+                write!(out, "Arc::{}(", if spec_bound { "from" } else { "new" })?;
                 self.expr(e, out)?;
                 write!(out, ")").map_err(Into::into)
             }
@@ -10253,6 +10258,13 @@ impl RustTrans {
             if param.mode == crate::ast::ParamMode::Mut {
                 self.current_fn_mut_params.insert(param.name.clone());
             }
+            // Plan 390 §15.11 (L2 转正): spec-typed params are already
+            // `Box<dyn Trait>` — track them like spec-bound idents so
+            // `Arc(tool)` renders `Arc::from(tool)` (Box→Arc single wrap)
+            // instead of `Arc::new(tool)` (`Arc<Box<dyn Trait>>` double wrap).
+            if matches!(param.ty, Type::Spec(_)) {
+                self.spec_bound_idents.insert(param.name.clone());
+            }
         }
         self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
 
@@ -14908,14 +14920,19 @@ impl RustTrans {
         }
     }
 
-    /// Fix derive macros on structs containing `Box<dyn Trait>` fields.
-    /// `dyn Trait` doesn't implement Clone/PartialEq/Eq/PartialOrd/Ord,
-    /// so we replace those derives with `#[derive(Debug)]` (which `dyn Trait`
-    /// does support). If the user explicitly supplied `#[derive(Debug)]`
-    /// already, leave it untouched (Plan 376: user override).
+    /// Fix derive macros on structs containing `dyn Trait` fields — `Box<dyn X>`
+    /// (spec params) or `Arc<dyn X>` (from `Arc<Spec>` type annotations, Plan
+    /// 390 §15.11 L2 转正). `dyn Trait` doesn't implement Clone/PartialEq/Eq/
+    /// PartialOrd/Ord (unless the wrapper provides them):
+    ///   - `Box<dyn T>`: Clone requires T: Clone → unsafe; Debug requires T: Debug → unsafe.
+    ///   - `Arc<dyn T>`: `Arc<T>` is unconditionally Clone for T: ?Sized → Clone SAFE;
+    ///                    Debug/PartialEq/Eq/Ord still require T: those → unsafe.
+    /// So Box<dyn> fields → allow(dead_code) (all derives unsafe); Arc<dyn>
+    /// fields keep Clone but strip the rest. If the user explicitly supplied a
+    /// derive omitting the unsafe traits, leave it untouched (Plan 376 override).
     fn fix_dyn_trait_derives(content: &mut String) {
         if let Some(re) = cached_regex(
-            r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*Box<dyn)"
+            r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*?(?:Box<dyn|Arc<dyn))"
         ) {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let full = caps.get(0).unwrap().as_str();
@@ -14930,7 +14947,15 @@ impl RustTrans {
                 //   - Box<dyn Trait>: Debug requires Trait: Debug (specs don't bound it)
                 // So when a struct has a bare Box<dyn> field, replace the whole
                 // derive with #[allow(dead_code)] (matches the hand-written version).
-                let unsafe_traits = ["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"];
+                // Plan 390 §15.11 (L2): `Arc<dyn T>` keeps Clone — Arc<T> is
+                // unconditionally Clone for T: ?Sized; only Debug/PartialEq/Eq/
+                // Ord remain unsafe (they require T: those).
+                let has_arc_dyn = full.contains("Arc<dyn");
+                let unsafe_traits: &[&str] = if has_arc_dyn {
+                    &["PartialEq", "Eq", "PartialOrd", "Ord", "Debug"]
+                } else {
+                    &["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"]
+                };
                 let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
                 if !needs_fix {
                     return full.to_string();
