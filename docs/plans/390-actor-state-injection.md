@@ -3,9 +3,10 @@ plan: 390
 title: actor-state-injection
 affects: [auto-lang/parser, auto-lang/a2r, auto-lang/vm, a2r-std]
 status: complete # draft | in-progress | complete
-# auto-lang 侧范围完成（Phase A/B/E/G1/G2/F 落地）；Phase D 在 auto-ai 仓推进。
-# 5 个遗留见 §14（L1 a2r Arc/Box 实参渲染 / L2 双层包装 / L3 WithBindings 多字段 /
-# L4 闭包字面量 state 字段推导 / L5 闭包不能捕获外部变量——阻塞 driver 流式转发）。
+# auto-lang 侧范围完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地）；Phase D 在 auto-ai 仓推进。
+# 2026-08-07 二次复审：L1 根因已修（剩 auto-ai workaround 回收）、L3/L5 已闭环；
+# 剩余开放项：L2 双层包装（设计偏差）、L4 a2r 闭包字面量推导（workaround 在用）、
+# 闭包类型缺失（Box<dyn Fn>，语言级，阻塞 auto-ai driver 流式转发）。详见 §14。
 ---
 
 # Plan 390: Actor 状态注入机制 + a2r call-site spec 自动装箱修复
@@ -600,22 +601,28 @@ VM actor 测试 12 passed（11 既有 + 1 新增）；`cargo test --features tes
 
 ## §14 遗留汇总（2026-08-07 复审）
 
-auto-lang 侧实质工作全部完成（Phase A/B/E/G1/G2/F 落地；Phase D 属 auto-ai）。以下是 5 个明确记录的遗留：
+> **2026-08-07 二次复审（H3 全链路闭环后）**：L1 根因已修（1317d91c）、L3 已闭环（H2/H4）、L5 已修
+> （f40b404c）。剩余实质开放项：L2（双层包装，设计偏差）、L4（a2r 闭包字面量推导，有 workaround）、
+> **闭包类型缺失**（§15 H.5 发现，阻塞 auto-ai 流式转发）。
 
-| # | 遗留 | 性质 | 位置 | 严重度 | 触发条件 |
+auto-lang 侧实质工作全部完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；Phase D 属 auto-ai）。遗留状态：
+
+| # | 遗留 | 性质 | 位置 | 严重度 | 状态 |
 |---|---|---|---|---|---|
-| **L1** | a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷 —— 只有 let 位正确，实参位不渲染 `::new` | a2r 转译器 bug | `trans/rust.rs`（§451 KNOWN-DEBT Plan 021）| 中 | 当前用 `let a = Arc(tool)` workaround 绕过（§439）；a2r 根因修复后可去 let 绑定直写 |
-| **L2** | `Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>` | 设计偏差 | auto-ai tool.at 存储（§448）| 低 | Deref 链功能可用；转正时若要对齐 rust-ref 单层，另立 a2r spec 返回位/存储位推导计划 |
-| **L3** | WithBindings 多字段消息绑定未实现 —— `on { Add(a int, b int) -> }` 的多字段绑定 | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs`（§G2.7）| 低 | 当前只支持单字段 TypeBinding（`on { n int -> }`）；多字段需 DUP + 多 STORE_LOC。罕见场景，单字段够用 |
-| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs`（Phase 6.5 实施时发现）| 低 | 当前 EventSink 用具名 `noop_event` 函数绕过（`agent.at:146`）；a2r 修复后可用闭包字面量。**注**：根因与 L5 同源——`fn(params){}` 解析路径不 bind 参数 |
-| **L5** | ~~Auto 闭包不能捕获外部变量~~ → **重新定性（2026-08-07 实证）**：捕获从来不是问题（`(ev) => fwd(ev, outer_cb)` 正常捕获 outer_cb）。真因是 `fn(params){}` 解析路径（`parser.rs:3043-3069`）**不 bind 闭包参数**（另两条路径 `x => ...` 和 `(a,b) => ...` 都 bind）。`fn(ev){...}` 报 "Variable ev not defined" 是因 `ev` 自身未入 scope，非捕获 `outer_cb` 失败 | **parser bug（非语言级限制）** | `parser.rs:3043-3069`（`atom()` 内 `fn(params){}` 路径缺 `bind_var`）| **中**（仍阻塞 driver 流式转发，但修复是 ~6 行） | **Phase H 承接**（§15）：`fn(params){}` 路径加 `bind_var` 循环，镜像 `parser.rs:3842-3847`。a2r 闭包捕获（`rust.rs:3017` + escape analyzer）+ VM 捕获（`codegen.rs:11044`）均已就绪，仅此 parser 路径漏 bind |
+| **L1** | ~~a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷~~ → **根因已修（1317d91c）**：parser `node_or_call_expr` 补 Arc/Box 识别 → `Arc::new(x)`。**剩 auto-ai workaround 回收**：`tool.at` 的 `let a = Arc(tool)` 可改直写 `self.tools.set(n, Arc(tool))` | a2r 转译器 bug（已修）+ 回收待做 | `trans/rust.rs` + `auto-ai/tool.at:100` | 中 | ✅ 根因已修；⏳ workaround 回收 |
+| **L2** | `Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>` | 设计偏差 | auto-ai tool.at 存储（§448）| 低 | ⚠️ 保留（Deref 链可用；转正需 a2r spec 返回位推导 `Arc<dyn>`，见 KNOWN-DEBT 019） |
+| **L3** | ~~WithBindings 多字段消息绑定未实现~~ → **已闭环（§15 H2/H4 + G2-refactor）**：`actor_withbindings_multi_field`/`actor_withbindings_deep_expr_three_fields` 测试通过（含多次 send 不 stale、深表达式不穿透） | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs` | 低 | ✅ 已解决 |
+| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs` | 低 | ⚠️ 开放（EventSink 用 `noop_event` 命名函数绕过，`agent.at:154`） |
+| **L5** | ~~`fn(params){}` 闭包参数不 bind~~ → **已修（f40b404c）**：parser.rs `fn(params){}` 路径加 `bind_var`（镜像 `=>` 路径）。**注**：修完暴露更深缺口——Auto/a2r 缺 `Box<dyn Fn>`/`impl Fn` 闭包类型表达，闭包不能 coerce 成 fn 指针（§15 H.5，阻塞 Plan 021 Phase 6.6 流式转发） | parser bug（已修）+ 语言级缺口（新） | `parser.rs` + a2r 闭包类型 | 中→高（流式转发） | ✅ 参数绑定已修；⏳ 闭包类型属新计划 |
 
 **EventSink VM 端到端未验证**（§5.10/§G2 验收）：EventSink 的生产路径是 a2r（Phase B 交付），
 VM 侧 spawn-with-args + bound-var handler 机制均已就绪（Phase A + G2），但 EventSink 完整形态
 （fn 指针 state + 绑定变量 handler 组合）未在 VM 跑通端到端。非阻塞——EventSink 不走 VM 路径。
 
-**auto-lang 侧范围判定**：Phase A/B/E/G1/G2/F 落地；L5 的 parser 修复（Phase H）是收尾。
-L1/L4 是 a2r bug（workaround 已有）；L5 经实证重新定性为 parser bug（非语言级限制，§15 Phase H）。
+**auto-lang 侧范围判定**：Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；L3/L5 闭环；L1 根因已修。
+**剩余**：L1 的 auto-ai workaround 回收（root cause 已修，`let a = Arc(tool)` 可直写）、
+L4（a2r 闭包字面量推导，workaround 在用）、L2（双层包装设计偏差）、以及 §15 H.5 暴露的
+**闭包类型缺失**（语言级，需新计划，阻塞 auto-ai driver 流式转发）。
 **Plan 021 缺口 3（serde derive 转译）经实证已不阻塞** —— a2r 已支持 `#[derive(Deserialize)]` +
 `#[serde(deserialize_with)]` 注解透传（实证见 Plan 021 缺口 3 章节）；缺口在 auto-ai 侧 `.at`
 源码未迁移到 derive 风格，留 Plan 021 Phase 4 独立推进。
@@ -1029,11 +1036,11 @@ body 解析后配合 `push_scope`/`pop_scope` 防绑定泄漏（镜像 `parse_cl
 
 ### §15.4 实施任务（Phase H，auto-lang worktree）
 
-- [ ] H.1 worktree：`fix/parser-fn-closure-params`
-- [ ] H.2 `parser.rs:3043-3069`：`fn(params){}` 路径加 `bind_var` 循环 + scope push/pop
-- [ ] H.3 新增 a2r 测试：`fn(ev Type) { forward(ev, outer_cb) }` 形式（含外部 fn 捕获），
+- [x] H.1 worktree：`fix/parser-fn-closure-params`
+- [x] H.2 `parser.rs:3043-3069`：`fn(params){}` 路径加 `bind_var` 循环 + scope push/pop（f40b404c）
+- [x] H.3 新增 a2r 测试：`fn(ev Type) { forward(ev, outer_cb) }` 形式（含外部 fn 捕获），
        期望转译为 `|ev: T| forward(ev, outer_cb)` ✅
-- [ ] H.4 回归：`cargo test --features test-trans` 零新增失败；现有 `=>` 闭包测试不受影响
+- [x] H.4 回归：`cargo test --features test-trans` 零新增失败；现有 `=>` 闭包测试不受影响
 - [x] H.5 回 auto-ai：重建 auto.exe → ~~解锁 Plan 021 Phase 6.6~~ Phase H 修了参数绑定，但
        **Phase 6.6 仍阻塞**：driver 转发需 EventSink cb 持有捕获 `on_event` 的闭包，但 cb 是
        裸 `fn(StreamEvent)` 指针——Auto/a2r 缺少 `Box<dyn Fn>`/`impl Fn` 闭包类型表达，
