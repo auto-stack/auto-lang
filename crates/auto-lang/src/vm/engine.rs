@@ -552,7 +552,11 @@ impl AutoVM {
                     data.fields.insert(key.clone(), self.materialize_value(val));
                 }
                 self.objects.insert(id, Arc::new(RwLock::new(data)));
-                auto_val::encode_i32(id as i32)
+                // Plan 390 §15 H2: push object id as a TAG_OBJECT-encoded
+                // value (not a raw i32) so consumers can distinguish it from
+                // scalar i32 via is_object/decode_object instead of the
+                // >= 4_000_000 magic-number heuristic.
+                auto_val::encode_object(id as u32)
             }
 
             // --- Node: register into nodes[] (encoded as a plain id, like runtime) ---
@@ -729,6 +733,53 @@ impl AutoVM {
     /// Returns `None` if the object doesn't exist.
     pub fn get_heap_object_mut(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
         self.heap_objects.get(&id).map(|v| v.clone())
+    }
+
+    /// Plan 390 §15 Phase H2: unified lookup that routes by id segment.
+    ///
+    /// The 4 VM registries occupy disjoint id ranges (objects 1M+, arrays
+    /// 2M+, nodes 3M+, heap_objects 4M+). H2 unifies the *stack encoding*
+    /// (everything → `encode_object`) but does not yet migrate the physical
+    /// storage of `objects`/`arrays`/`nodes` into `heap_objects` — that is H3.
+    /// This helper therefore currently only resolves ids in the `heap_objects`
+    /// (4M+) segment, where every stored type already implements `HeapObject`.
+    ///
+    /// For `objects` (1M+, `ObjectData`) the storage migration is deferred to
+    /// H3, so callers must still query `self.objects` directly for now. Once
+    /// H3 moves `ObjectData` into `heap_objects`, this helper becomes the
+    /// single entry point and the segment routing collapses to
+    /// `self.get_heap_object(id)`.
+    pub fn get_any_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        if id >= 4_000_000 {
+            self.heap_objects.get(&id).map(|v| v.clone())
+        } else {
+            // objects(1M+)/arrays(2M+)/nodes(3M+) storage not yet migrated to
+            // heap_objects — H3 will fold them in. Callers fall back to the
+            // specific registry (`self.objects`/`self.arrays`/`self.nodes`).
+            None
+        }
+    }
+
+    /// Plan 390 §15 H2: rehydrate the `__variant` name of a structured message
+    /// held as a `Value::VmRef`. WithBindings variant constructors
+    /// (`Add(3,5)`) build an `ObjectData { __variant: "Add", a:3, b:5 }` and
+    /// the send shim stores only the registry id in the mailbox. The message
+    /// matcher therefore sees a `VmRef`, not an inlined `Obj`, and needs this
+    /// lookup to compare the variant name against the handler pattern.
+    fn vmref_variant_name(&self, id: usize) -> Option<auto_val::AutoStr> {
+        let id = id as u64;
+        // objects segment (1M+): ObjectData stores the __variant field.
+        if id >= 1_000_000 && id < 2_000_000 {
+            if let Some(obj_ref) = self.objects.get(&id) {
+                let obj = obj_ref.read().unwrap();
+                if let Some(auto_val::Value::Str(v)) =
+                    obj.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from("__variant")))
+                {
+                    return Some(v.clone());
+                }
+            }
+        }
+        None
     }
 
     /// Remove a heap object from the registry
@@ -1538,6 +1589,13 @@ impl AutoVM {
                                 false
                             }
                         }
+                        // Plan 390 §15 H2: structured messages arrive at the
+                        // matcher as Value::VmRef (send shim stores a ref, not
+                        // an inlined Obj). Rehydrate just the __variant field
+                        // from the objects registry to match the variant name.
+                        Value::VmRef(r) => self
+                            .vmref_variant_name(r.id)
+                            .map_or(false, |v| v.as_str() == variant_name.as_str()),
                         Value::Str(s) => s.as_str() == variant_name.as_str(),
                         _ => false,
                     }
@@ -1584,6 +1642,11 @@ impl AutoVM {
                                 false
                             }
                         }
+                        // Plan 390 §15 H2: rehydrate __variant from the
+                        // objects registry (see PatternType::Simple).
+                        Value::VmRef(r) => self
+                            .vmref_variant_name(r.id)
+                            .map_or(false, |v| v.as_str() == variant_name.as_str()),
                         Value::Str(s) => s.as_str() == variant_name.as_str(),
                         _ => false,
                     }
@@ -1650,11 +1713,29 @@ impl AutoVM {
                     if let Some(msg) = drained {
                         let task_type = task.task_type_name.clone().unwrap_or_default();
                         if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
+                            // Plan 390 §15 H2 (handler-frame fix): a handler runs
+                            // with bp=0 (the task never re-establishes a frame), so
+                            // its locals live at bp+1..bp+N and the on-stack message
+                            // + expression temporaries must sit ABOVE that region or
+                            // they alias the same low slots. #start does not emit a
+                            // RESERVE_STACK for the task frame, and the G2.2 RET path
+                            // resets sp to the previous handler_frame_base (which can
+                            // be 0/1), so without reserving here a single-var handler
+                            // only works by luck and a WithBindings handler with >=2
+                            // bindings corrupts its locals (DUP/GET_FIELD temporaries
+                            // overwrite the binding slots). Reserve a safe band of
+                            // slots for the handler locals before pushing the message,
+                            // anchoring handler_frame_base above the reserved region.
+                            const HANDLER_LOCALS_BAND: usize = 16;
+                            let band_top = task.bp + 1 + HANDLER_LOCALS_BAND;
+                            while task.ram.sp < band_top {
+                                task.ram.push_i32(0);
+                            }
                             // Plan 390 §14 L3: structured messages (Value::VmRef
                             // from a WithBindings variant constructor) are pushed
                             // as object refs so the handler can GET_FIELD each
                             // binding. Scalar messages stay as i32 for backward
-                            // compat with Literal/TypeBinding patterns.
+                            // compat with Literal/TypeBinding/Simple patterns.
                             match &msg {
                                 auto_val::Value::VmRef(vmref) => {
                                     task.ram.push_nv(auto_val::encode_object(vmref.id as u32));
@@ -1664,12 +1745,11 @@ impl AutoVM {
                                 auto_val::Value::Bool(b) => { task.ram.push_i32(if *b {1} else {0}); }
                                 _ => { task.ram.push_i32(0); }
                             }
-                            // Plan 390 §G2.2: record the sp just BEFORE the message
-                            // was pushed as the handler's frame base. The handler RET
-                            // path resets sp here so handler locals (the bound pattern
-                            // var + body locals) don't carry stale values across
-                            // message invocations (the task reuses bp=0 and never
-                            // re-establishes a frame on its own).
+                            // Plan 390 §G2.2 + H2: record the sp just BEFORE the
+                            // message was pushed as the handler's frame base. The
+                            // handler RET path resets sp here so the reserved local
+                            // band + pushed message are discarded cleanly before the
+                            // next invocation (no stale locals across sends).
                             task.handler_frame_base = Some(task.ram.sp - 1);
                             task.ip = body_offset as usize;
                             task.current_handler_has_context = has_context;
@@ -2238,8 +2318,11 @@ impl AutoVM {
                     let obj_id = self.object_id_gen.fetch_add(1, Ordering::SeqCst);
                     self.objects.insert(obj_id, Arc::new(RwLock::new(obj)));
 
-                    // Push object ID onto stack
-                    task.ram.push_i32(obj_id as i32);
+                    // Plan 390 §15 H2: push object id as a TAG_OBJECT-encoded
+                    // value so downstream consumers (GET_FIELD/SET_FIELD, send
+                    // shim's is_object check) recognize it as an object ref,
+                    // not a scalar i32. This unblocks L3 WithBindings.
+                    task.ram.push_nv(auto_val::encode_object(obj_id as u32));
                 }
                 // Plan 073: Array literal support
                 OpCode::CREATE_ARRAY => {
