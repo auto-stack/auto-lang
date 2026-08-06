@@ -371,8 +371,29 @@ pub struct AuraStore {
     /// API function names imported via `use back.api` (→ import in composable)
     pub api_imports: Vec<String>,
 
+    /// Streaming API endpoints whose return type is `~Stream<T>` (Plan 043 stream
+    /// phase). Drives type-based SSE wiring in the store composable: each such
+    /// endpoint opens an EventSource at its `path` and dispatches messages into
+    /// actions. Replaces the old name-heuristic ("stream" + RunOutput/RunResult).
+    /// Populated from the project's `back/api.at` via `ComponentGenOptions`.
+    pub stream_endpoints: Vec<StreamEndpoint>,
+
     /// Computed properties (Plan 367 P2-2: → getters in store composable)
     pub computed: Vec<AuraComputed>,
+}
+
+/// A streaming API endpoint: an `#[api]` function returning `~Stream<T>`.
+/// (Plan 043 stream phase.) The store composable opens an EventSource at `path`
+/// and dispatches each SSE message into a handler action. `item_type` is the
+/// inner `T` (e.g. `ShellEvent`), kept as a raw string for lightweight matching.
+#[derive(Debug, Clone)]
+pub struct StreamEndpoint {
+    /// The API function name (e.g. "stream"), for matching against `api_imports`.
+    pub fn_name: String,
+    /// The HTTP path from `#[api(path=...)]` (e.g. "/api/stream").
+    pub path: String,
+    /// The inner item type `T` of `~Stream<T>` (raw string, e.g. "ShellEvent").
+    pub item_type: String,
 }
 
 

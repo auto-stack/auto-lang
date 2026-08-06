@@ -4269,7 +4269,7 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output)?;
+    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None)?;
     Ok((vue_code, widgets))
 }
 
@@ -4277,14 +4277,24 @@ pub fn ui_build_shadcn_with_widgets(
 /// returns the generated store composable files `(filename, code)`. Use this
 /// when compiling multiple .at files in a loop and you need to collect stores
 /// explicitly (the `STORE_EXTRA_FILES` thread-local is cleared per call).
+///
+/// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
+/// (`~Stream<T>`) are resolved from `back/api.at` so the store composable can
+/// wire type-driven SSE. Pass the project root (where `src/back/api.at` lives).
 pub fn ui_build_shadcn_with_widgets_and_stores(
     path: &str,
     output: Option<&str>,
+    root_dir: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
     let at_path = std::path::Path::new(path);
-    let opts = ComponentGenOptions::default();
+    let stream_endpoints = root_dir
+        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let opts = ComponentGenOptions {
+        stream_endpoints,
+        ..Default::default()
+    };
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
@@ -4320,7 +4330,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
     let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
-        path, output, sub_widget_names,
+        path, output, sub_widget_names, None,
     )?;
     Ok((vue_code, widgets))
 }
@@ -4331,16 +4341,23 @@ pub fn ui_build_shadcn_with_sub_widgets(
 /// this variant instead of relying on the `STORE_EXTRA_FILES` thread-local,
 /// which is cleared at the start of every `generate_component_from_file` call
 /// and thus loses stores when multiple .at files are compiled in sequence.
+///
+/// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
+/// (`~Stream<T>`) are resolved from `back/api.at` for type-driven SSE wiring.
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     path: &str,
     output: Option<&str>,
     sub_widget_names: Vec<String>,
+    root_dir: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
+    let stream_endpoints = root_dir
+        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
+        stream_endpoints,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)

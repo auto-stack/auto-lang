@@ -1259,7 +1259,7 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(root_dir.to_str().unwrap())) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -1317,6 +1317,7 @@ export default router
         fn scan_pages_dir(
             dir: &Path,
             front_dir: &Path,
+            root_dir: &Path,
             all_components: &mut Vec<(String, String, String, String)>,
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
@@ -1330,7 +1331,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
+                    scan_pages_dir(&path, front_dir, root_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -1340,7 +1341,7 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
                         Ok((vue_code, widgets, stores)) => {
                             collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);
@@ -1367,7 +1368,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
+            scan_pages_dir(&pages_dir, &front_dir, root_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -1386,7 +1387,7 @@ export default router
                     continue;
                 }
 
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
                     Ok((vue_code, widgets, stores)) => {
                         collect_ext_import_files(&widgets, &mut ext_file_set);
                         let components = detect_shadcn_components(&vue_code);
@@ -2740,12 +2741,22 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 
 /// Compile a .at file to Vue component
 /// Returns (vue_code, widget_names)
+/// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
+/// project's `back/api.at`, so the store composable can wire type-driven SSE.
+/// (Plan 043 stream phase.) Delegates to the auto-lang regex-based resolver.
+fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpoint> {
+    auto_lang::ui_gen::api::resolve_stream_endpoints_for_project(
+        &root_dir.to_string_lossy(),
+    )
+}
+
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
 fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         root_dir_for_validation: Some(root_dir.to_path_buf()),
+        stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -2767,6 +2778,7 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         root_dir_for_validation: Some(root_dir.to_path_buf()),
+        stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
