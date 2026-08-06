@@ -137,8 +137,9 @@ auto-musk chats `push_message` 改回 `append`（对齐 hw），parity 17/17。
 （brace-depth tracking）替换 `Ok(None)` → `Ok(())`。`Result<Option<T>, _>` 函数的
 `Ok(None)` 保留（成功但无值）。参考 `fix_fn_field_calls` 的扫描模式。
 
-auto-musk chats 的 `Ok(target)` 变通保留（target=None 时等价 Ok(None)，行为正确，
-去除需逐函数区分 not-found/成功路径，收益低）。E2 核心价值（让 Ok(None) 可用）已达成。
+auto-musk chats 的 not-found 分支（3 处 `if found == false`）从 `Ok(target)` 改为
+明确的 `Ok(None)`（成功路径保持 `Ok(target)`）。`Ok(target)` 依赖隐式状态（target
+恰好为 None），不如 `Ok(None)` 清晰；E2 修复后 `Ok(None)` 可用，去变通后 parity 17/17。
 
 ### 验收
 - a2r golden 328/0（E1/E2 无新增回归；E3 的 12 个 expected 已更新）。
