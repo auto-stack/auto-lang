@@ -413,25 +413,39 @@ impl VmBridge {
             .map_err(|e| VmBridgeError::InvalidState(e))
     }
 
-    /// Read a state field that holds an array_id and return the actual Vec<Value> from arrays DashMap.
+    /// Read a state field that holds an array_id and return the actual Vec<Value>.
     ///
     /// When the state field is `Value::Array`, returns its inner Vec directly.
-    /// When it's `Value::Int(id)` (array_id from `[...]` literal), reads from vm.arrays.
-    /// Plan 335: `Value::VmRef` (heap id 4000000+ from `List<T>.new` for struct
-    /// element lists) is dereferenced: try heap_objects (ListData<Value>/ListData<i32>)
-    /// first, then vm.arrays. This unblocks 015-notes vm rendering where
-    /// `list_notes()` → `notes.to_array()` returns a VmRef to the struct list.
+    /// When it's `Value::Int(id)` / `Value::VmRef(id)` (array ref from a `[...]`
+    /// literal or `List<T>.new`), reads from heap_objects (ListData<Value> /
+    /// ListData<i32>, Plan 390 §15 H3b — the legacy arrays registry is gone).
+    /// This unblocks 015-notes vm rendering where `list_notes()` →
+    /// `notes.to_array()` returns a VmRef to the struct list.
     pub fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<Value>> {
         let val = self.read_state(field_name)?;
         match val {
             Value::Array(arr) => Ok(arr.values),
-            Value::Int(id) if id >= 2000000 => {
+            // Plan 390 §15 H3b: array literals are ListData<Value> in
+            // heap_objects (probe instead of the old 2M id-range guard).
+            Value::Int(id) => {
                 let arr_id = id as u64;
-                self.vm.arrays.get(&arr_id)
-                    .map(|r| r.read().unwrap().clone())
-                    .ok_or_else(|| VmBridgeError::InvalidState(
-                        format!("array_id {} not found in arrays DashMap", arr_id)
+                if let Some(obj) = self.vm.get_heap_object(arr_id) {
+                    let guard = obj.read().unwrap();
+                    use crate::vm::types::ListData;
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+                        Ok(list.elems.clone())
+                    } else if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                        Ok(list.elems.iter().map(|i| Value::Int(*i)).collect())
+                    } else {
+                        Err(VmBridgeError::InvalidState(
+                            format!("array_id {} is not a readable list", arr_id)
+                        ))
+                    }
+                } else {
+                    Err(VmBridgeError::InvalidState(
+                        format!("array_id {} not found in heap_objects", arr_id)
                     ))
+                }
             }
             Value::VmRef(r) => self.vmref_to_vec(r.id),
             other => Err(VmBridgeError::InvalidState(
@@ -442,7 +456,8 @@ impl VmBridge {
 
     /// Plan 335: dereference a `VmRef` holding a list into `Vec<Value>`. Tries
     /// heap_objects first (ListData<Value> from `List<T>.new` of structs, or
-    /// ListData<i32>), then vm.arrays. Order avoids depending on id-range
+    /// ListData<i32>). Plan 390 §15 H3b: array literals are ListData<Value> in
+    /// heap_objects too.
     /// conventions (4000000 heap / 2000000 arrays) so it stays correct if the
     /// generators' start values change.
     /// Plan 318: index into a list value held as a `VmRef` (heap id) or array_id,
@@ -464,7 +479,9 @@ impl VmBridge {
         self.vmref_to_vec(id).unwrap_or_default()
     }
 
-    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {        // Path 1: heap_objects (4000000+) — ListData<Value> or ListData<i32>.
+    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
+        // Path 1: heap_objects — ListData<Value> (array literals / struct lists,
+        // Plan 390 §15 H3b) or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {
             let guard = obj.read().unwrap();
             use crate::vm::types::ListData;
@@ -475,33 +492,39 @@ impl VmBridge {
                 return Ok(list.elems.iter().map(|i| Value::Int(*i)).collect());
             }
         }
-        // Path 2: vm.arrays (2000000+) — Vec<Value>.
-        if let Some(arr_ref) = self.vm.arrays.get(&(id as u64)) {
-            return Ok(arr_ref.read().unwrap().clone());
-        }
         Err(VmBridgeError::InvalidState(format!(
-            "VmRef {} is not a readable list (not in heap_objects as ListData nor in arrays)", id
+            "VmRef {} is not a readable list (not in heap_objects as ListData)", id
         )))
     }
 
     /// Write a Vec<Value> back to a state field that holds an array reference.
     ///
     /// When the state field is `Value::Array`, writes back as Value::Array.
-    /// When it's `Value::Int(id)` (array_id from `[...]` literal), writes to vm.arrays directly.
+    /// When it's `Value::Int(id)` (array ref from a `[...]` literal), writes to
+    /// the ListData<Value> in heap_objects (Plan 390 §15 H3b).
     pub fn write_state_vec(&mut self, field_name: &str, values: Vec<Value>) -> Result<()> {
         let val = self.read_state(field_name)?;
         match val {
             Value::Array(_) => {
                 self.write_state(field_name, Value::Array(auto_val::Array { values }))
             }
-            Value::Int(id) if id >= 2000000 => {
+            // Plan 390 §15 H3b: array literals are ListData<Value> in
+            // heap_objects (probe instead of the old 2M id-range guard).
+            Value::Int(id) => {
                 let arr_id = id as u64;
-                if let Some(arr_ref) = self.vm.arrays.get(&arr_id) {
-                    *arr_ref.write().unwrap() = values;
-                    Ok(())
+                if let Some(obj) = self.vm.get_heap_object(arr_id) {
+                    let mut guard = obj.write().unwrap();
+                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                        list.elems = values;
+                        Ok(())
+                    } else {
+                        Err(VmBridgeError::InvalidState(
+                            format!("array_id {} is not a writable list", arr_id)
+                        ))
+                    }
                 } else {
                     Err(VmBridgeError::InvalidState(
-                        format!("array_id {} not found in arrays DashMap", arr_id)
+                        format!("array_id {} not found in heap_objects", arr_id)
                     ))
                 }
             }
@@ -519,40 +542,40 @@ impl VmBridge {
     /// id on the stack as a plain `Value::Int`. When such a value is iterated as
     /// a loop item (e.g. `for cell in .days`), the binding is a bare
     /// `Value::Int(obj_id)` and `cell.label` cannot resolve — the view builder's
-    /// resolvers only handle `Value::Obj`. This derefs the id (via `vm.objects`,
-    /// keyed by `object_id_gen` starting at 1_000_000) into a `Value::Obj` whose
-    /// string-keyed fields mirror the `ObjectData`. Non-object values (real ints,
-    /// already-inline `Value::Obj`, etc.) pass through unchanged.
+    /// resolvers only handle `Value::Obj`. This derefs the id (via
+    /// `heap_objects`, Plan 390 §15 H3b — ObjectData and GenericInstanceData
+    /// both live there) into a `Value::Obj` whose string-keyed fields mirror
+    /// the stored data. Non-object values (real ints, already-inline
+    /// `Value::Obj`, etc.) pass through unchanged.
     pub fn materialize_obj_ref(&self, v: &Value) -> Value {
         match v {
             Value::Int(id) => {
-                // 1M segment: CREATE_OBJ → ObjectData in vm.objects
-                if let Some(arc) = self.vm.objects.get(&(*id as u64)) {
-                    let obj = arc.read().unwrap();
-                    let mut out = auto_val::Obj::new();
-                    for (key, val) in obj.fields.iter() {
-                        if let auto_val::ValueKey::Str(s) = key {
-                            out.set(s.clone(), val.clone());
-                        }
-                    }
-                    return Value::Obj(out);
-                }
-                // Plan 318: 4M segment: CONSTRUCT_INSTANCE → GenericInstanceData in
-                // heap_objects. List<Note>.new([Note{...}]) stores Note instances
-                // as bare Int(heap_id) elements; without this arm, note.title in a
-                // for-loop body can't resolve.
-                if *id >= 4_000_000 {
-                    if let Some(obj) = self.vm.get_heap_object(*id as u64) {
-                        let guard = obj.read().unwrap();
-                        if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
-                            let mut out = auto_val::Obj::new();
-                            for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
-                                if name != "_unknown" {
-                                    out.set(name.clone(), val.clone());
-                                }
+                // Plan 390 §15 H3b: CREATE_OBJ → ObjectData and
+                // CONSTRUCT_INSTANCE → GenericInstanceData both in
+                // heap_objects — single probe + downcast.
+                if let Some(obj) = self.vm.get_heap_object(*id as u64) {
+                    let guard = obj.read().unwrap();
+                    if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                        let mut out = auto_val::Obj::new();
+                        for (key, val) in od.fields.iter() {
+                            if let auto_val::ValueKey::Str(s) = key {
+                                out.set(s.clone(), val.clone());
                             }
-                            return Value::Obj(out);
                         }
+                        return Value::Obj(out);
+                    }
+                    // Plan 318: GenericInstanceData structs. List<Note>.new(
+                    // [Note{...}]) stores Note instances as bare Int(heap_id)
+                    // elements; without this arm, note.title in a for-loop body
+                    // can't resolve.
+                    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                        let mut out = auto_val::Obj::new();
+                        for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
+                            if name != "_unknown" {
+                                out.set(name.clone(), val.clone());
+                            }
+                        }
+                        return Value::Obj(out);
                     }
                 }
                 v.clone()
@@ -734,12 +757,26 @@ impl VmBridge {
         let val = self.read_child_state(child_state_id, field_name)?;
         match val {
             auto_val::Value::Array(arr) => Ok(arr.values),
-            auto_val::Value::Int(id) if id >= 2000000 => {
-                self.vm.arrays.get(&(id as u64))
-                    .map(|r| r.read().unwrap().clone())
-                    .ok_or_else(|| VmBridgeError::InvalidState(
-                        format!("array_id {} not found", id)
+            // Plan 390 §15 H3b: array literals are ListData<Value> in
+            // heap_objects (probe instead of the old 2M id-range guard).
+            auto_val::Value::Int(id) => {
+                if let Some(obj) = self.vm.get_heap_object(id as u64) {
+                    let guard = obj.read().unwrap();
+                    use crate::vm::types::ListData;
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+                        Ok(list.elems.clone())
+                    } else if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                        Ok(list.elems.iter().map(|i| auto_val::Value::Int(*i)).collect())
+                    } else {
+                        Err(VmBridgeError::InvalidState(
+                            format!("array_id {} is not a readable list", id)
+                        ))
+                    }
+                } else {
+                    Err(VmBridgeError::InvalidState(
+                        format!("array_id {} not found in heap_objects", id)
                     ))
+                }
             }
             auto_val::Value::VmRef(r) => self.vmref_to_vec(r.id),
             other => Err(VmBridgeError::InvalidState(

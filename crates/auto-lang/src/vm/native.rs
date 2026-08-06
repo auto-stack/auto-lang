@@ -1104,28 +1104,31 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let arg = task.ram.pop_i32();
 
-    if let Some(arr_ref) = vm.arrays.get(&(arg as u64)) {
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
+    if let Some(arr_ref) = vm.get_heap_object(arg as u64) {
         let arr = arr_ref.read().unwrap();
-        // Plan 320: empty lists default to ListData<Value> (not ListData<i32>)
-        // so struct pushes (List<Note>) work. Only use ListData<i32> when there
-        // are actual int elements.
-        if !arr.is_empty() && arr.iter().all(|v| matches!(v, Value::Int(_))) {
-            let mut list: ListData<i32> = ListData::new();
-            for v in arr.iter() {
-                if let Value::Int(i) = v { list.push(*i); }
+        if let Some(arr) = arr.as_any().downcast_ref::<crate::vm::types::ListData<Value>>() {
+            // Plan 320: empty lists default to ListData<Value> (not ListData<i32>)
+            // so struct pushes (List<Note>) work. Only use ListData<i32> when there
+            // are actual int elements.
+            if !arr.elems.is_empty() && arr.elems.iter().all(|v| matches!(v, Value::Int(_))) {
+                let mut list: ListData<i32> = ListData::new();
+                for v in arr.elems.iter() {
+                    if let Value::Int(i) = v { list.push(*i); }
+                }
+                let list_id = vm.insert_heap_object(list);
+                task.ram.push_i32(list_id as i32);
+            } else {
+                // Plan 320: use ListData<Value> for empty or mixed/struct lists.
+                let mut list: ListData<Value> = ListData::new();
+                for v in arr.elems.iter() {
+                    list.push(v.clone());
+                }
+                let list_id = vm.insert_heap_object(list);
+                task.ram.push_i32(list_id as i32);
             }
-            let list_id = vm.insert_heap_object(list);
-            task.ram.push_i32(list_id as i32);
-        } else {
-            // Plan 320: use ListData<Value> for empty or mixed/struct lists.
-            let mut list: ListData<Value> = ListData::new();
-            for v in arr.iter() {
-                list.push(v.clone());
-            }
-            let list_id = vm.insert_heap_object(list);
-            task.ram.push_i32(list_id as i32);
+            return Ok(());
         }
-        return Ok(());
     }
 
     // Legacy fallback: treat arg as first element, pop remaining as variadic.
@@ -1195,11 +1198,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
     }
 
-    // Fallback: arrays DashMap (Vec<Value>) — push the decoded Value.
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        arr.push(elem_val);
-    }
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects and
+    // are handled by the heap path above (the legacy arrays fallback is gone).
 
     task.ram.push_i32(0);
     Ok(())
@@ -1233,15 +1233,6 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
     }
 
-    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        if let Some(val) = arr.pop() {
-            push_value(task, vm, &val);
-            return Ok(());
-        }
-    }
-
     // Invalid list_id
     task.ram.push_i32(0);
     Ok(())
@@ -1268,13 +1259,6 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
         }
-    }
-
-    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let arr = arr_ref.read().unwrap();
-        task.ram.push_i32(arr.len() as i32);
-        return Ok(());
     }
 
     // Invalid list_id
@@ -1415,16 +1399,6 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 return Ok(());
             }
         }
-        // Fallback: arrays DashMap (Vec<Value>)
-        if let Some(arr_ref) = vm.arrays.get(&list_id) {
-            let arr = arr_ref.read().unwrap();
-            if let Some(val) = arr.get(index) {
-                push_value(task, vm, val);
-            } else {
-                task.ram.push_i32(0);
-            }
-            return Ok(());
-        }
         task.ram.push_i32(0);
         return Ok(());
     }
@@ -1454,16 +1428,6 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(0);
             return Ok(());
         }
-    }
-
-    // Fallback: arrays DashMap (Vec<Value>)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        if index < arr.len() {
-            arr[index] = elem_val;
-        }
-        task.ram.push_i32(0);
-        return Ok(());
     }
 
     // Return success (0)
@@ -1499,15 +1463,6 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         }
     }
 
-    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        let pos = index.min(arr.len());
-        arr.insert(pos, elem_val);
-        task.ram.push_i32(0);
-        return Ok(());
-    }
-
     // Return success (0)
     task.ram.push_i32(0);
     Ok(())
@@ -1538,16 +1493,6 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
                 push_value(task, vm, &val);
                 return Ok(());
             }
-        }
-    }
-
-    // Fallback: arrays DashMap (Vec<Value> from [...] literals)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        if index < arr.len() {
-            let val = arr.remove(index);
-            push_value(task, vm, &val);
-            return Ok(());
         }
     }
 
@@ -1603,37 +1548,39 @@ fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError>
         }
     }
 
-    // Fallback: check vm.arrays (array literals created via CREATE_ARRAY)
-    if let Some(array_ref) = vm.arrays.get(&list_id) {
+    // Fallback: check heap ListData<Value> (array literals — Plan 390 §15 H3b)
+    if let Some(array_ref) = vm.get_heap_object(list_id) {
         let guard = array_ref.read().unwrap();
-        let elems: Vec<i32> = guard.iter().map(|v| {
-            match v {
-                auto_val::Value::Int(n) => *n,
-                _ => 0,
-            }
-        }).collect();
-        return Ok(elems);
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            let elems: Vec<i32> = list.elems.iter().map(|v| {
+                match v {
+                    auto_val::Value::Int(n) => *n,
+                    _ => 0,
+                }
+            }).collect();
+            return Ok(elems);
+        }
     }
 
     Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
 }
 
-/// Helper: create a new array from Vec<i32> elements, return array ID
-/// Stores in vm.arrays (same as CREATE_ARRAY) so results work with ARRAY_LEN etc.
+/// Helper: create a new array from Vec<i32> elements, return array ID.
+/// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same storage
+/// as CREATE_ARRAY) so results work with ARRAY_LEN etc.
 fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
-    use std::sync::atomic::Ordering;
-
     let values: Vec<auto_val::Value> = elems.into_iter()
         .map(|e| auto_val::Value::Int(e))
         .collect();
-    let new_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
-    vm.arrays.insert(new_id, Arc::new(RwLock::new(values)));
-    new_id
+    vm.insert_heap_object(crate::vm::types::ListData {
+        elems: values,
+        storage: None,
+    })
 }
 
 /// Plan 340: 从任意 ListData<T> 获取 Vec<Value>（i32 自动转 Value::Int）。
-/// 查 heap_objects 的 ListData<Value> 和 ListData<i32>，再查 vm.arrays。
-/// 用于 HOF shim（map/filter/find 等）的 Value fallback 路径。
+/// 查 heap_objects 的 ListData<Value> 和 ListData<i32>（array 字面量已并入，
+/// Plan 390 §15 H3b）。用于 HOF shim（map/filter/find 等）的 Value fallback 路径。
 fn get_list_elements_as_value(vm: &AutoVM, list_id: u64) -> Result<Vec<auto_val::Value>, VMError> {
     use crate::vm::types::ListData;
 
@@ -1647,20 +1594,16 @@ fn get_list_elements_as_value(vm: &AutoVM, list_id: u64) -> Result<Vec<auto_val:
         }
     }
 
-    if let Some(array_ref) = vm.arrays.get(&list_id) {
-        let guard = array_ref.read().unwrap();
-        return Ok(guard.iter().cloned().collect());
-    }
-
     Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
 }
 
-/// Plan 340: 从 Vec<Value> 创建新列表，返回 array ID（存入 vm.arrays）。
+/// Plan 340: 从 Vec<Value> 创建新列表，返回 registry ID（存入 heap_objects，
+/// Plan 390 §15 H3b，同 CREATE_ARRAY 的 ListData<Value> 存储）。
 fn create_list_from_value(vm: &AutoVM, elems: Vec<auto_val::Value>) -> u64 {
-    use std::sync::atomic::Ordering;
-    let new_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
-    vm.arrays.insert(new_id, Arc::new(RwLock::new(elems)));
-    new_id
+    vm.insert_heap_object(crate::vm::types::ListData {
+        elems,
+        storage: None,
+    })
 }
 
 /// Helper: check if a VM value is truthy (handles both conventions)
@@ -1983,7 +1926,8 @@ pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let elem_val = nv_to_value(elem_nv);
     let list_id = task.ram.pop_i32() as u64;
 
-    // Plan 335: 统一在 ListData<i32> / ListData<Value> / vm.arrays 三种存储上查找。
+    // Plan 335: 统一在 ListData<i32> / ListData<Value> / heap ListData（array
+    // 字面量已并入，Plan 390 §15 H3b）上查找。
     // struct List 的元素是 VmRef —— 按 id 比较（同一 struct 实例视为相等）。
     let found = if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
@@ -1994,9 +1938,6 @@ pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         } else {
             false
         }
-    } else if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let arr = arr_ref.read().unwrap();
-        arr.iter().any(|v| values_eq(v, &elem_val))
     } else {
         false
     };
@@ -2011,25 +1952,24 @@ pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let list_id = task.ram.pop_i32() as u64;
 
-    // Try arrays registry first (most common path for List created by CREATE_ARRAY)
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        arr.sort_by(|a, b| {
-            match (a, b) {
-                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
-                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
-                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
-                (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
-                (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
-                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
-                _ => std::cmp::Ordering::Equal,
-            }
-        });
-    } else if let Some(obj) = vm.get_heap_object(list_id) {
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
+    if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
-        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.sort_by(|a, b| {
+                match (a, b) {
+                    (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                    (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                    (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                    (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                    (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
+                    (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
+                    (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
+                    (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                    _ => std::cmp::Ordering::Equal,
+                }
+            });
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.elems.sort();
         }
     }
@@ -2047,21 +1987,20 @@ pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let _closure_id = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(arr_ref) = vm.arrays.get(&list_id) {
-        let mut arr = arr_ref.write().unwrap();
-        arr.sort_by(|a, b| {
-            match (a, b) {
-                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
-                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
-                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
-                _ => std::cmp::Ordering::Equal,
-            }
-        });
-    } else if let Some(obj) = vm.get_heap_object(list_id) {
+    if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
-        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.sort_by(|a, b| {
+                match (a, b) {
+                    (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                    (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                    (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                    (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                    (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                    _ => std::cmp::Ordering::Equal,
+                }
+            });
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.elems.sort();
         }
     }
@@ -2160,6 +2099,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         match &mut *iter_mut {
             Iterator::List(list_iter) => {
                 // Plan 077 Phase 6: Get list from unified registry
+                // Plan 390 §15 H3b: array literals are ListData<Value> here too.
                 if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
                     let list = obj.read().unwrap();
                     if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
@@ -2175,25 +2115,29 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                     } else {
                         -1
                     }
-                } else if let Some(arr_ref) = vm.arrays.get(&list_iter.list_id) {
-                    // Plan 317: arrays fallback (Vec<Value> from List<T>.new or
-                    // [...] literals). Supports any element type (struct, str, etc).
+                } else if let Some(arr_ref) = vm.get_heap_object(list_iter.list_id) {
+                    // Plan 390 §15 H3b: ListData<Value> (array literals, struct
+                    // lists). Supports any element type (struct, str, etc).
                     let arr = arr_ref.read().unwrap();
-                    if list_iter.current_index >= arr.len() as u32 {
-                        -1
-                    } else {
-                        let val = arr[list_iter.current_index as usize].clone();
-                        list_iter.current_index += 1;
-                        // Encode Value back to i32 for the result (struct→object id,
-                        // str→string idx, int→int). The caller (for-loop) pushes
-                        // this i32; struct id is recognized by GET_FIELD later.
-                        match val {
-                            Value::Int(i) => i,
-                            Value::VmRef(r) => r.id as i32,
-                            Value::Nil => -1,
-                            Value::Bool(b) => if b { 1 } else { 0 },
-                            _ => 0,
+                    if let Some(list) = arr.as_any().downcast_ref::<ListData<Value>>() {
+                        if list_iter.current_index >= list.elems.len() as u32 {
+                            -1
+                        } else {
+                            let val = list.elems[list_iter.current_index as usize].clone();
+                            list_iter.current_index += 1;
+                            // Encode Value back to i32 for the result (struct→object id,
+                            // str→string idx, int→int). The caller (for-loop) pushes
+                            // this i32; struct id is recognized by GET_FIELD later.
+                            match val {
+                                Value::Int(i) => i,
+                                Value::VmRef(r) => r.id as i32,
+                                Value::Nil => -1,
+                                Value::Bool(b) => if b { 1 } else { 0 },
+                                _ => 0,
+                            }
                         }
+                    } else {
+                        -1
                     }
                 } else {
                     -1
@@ -4588,10 +4532,9 @@ pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// alloc_array(size) -> list_id
 /// Allocate a new array of the given size initialized to 0.
 /// Stack: [size] -> list_id
-/// Uses the same arrays registry as CREATE_ARRAY for compatibility with SET_ELEM/GET_ELEM.
+/// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same as
+/// CREATE_ARRAY) so it works with SET_ELEM/GET_ELEM.
 pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use std::sync::atomic::Ordering;
-
     let size_raw = task.ram.pop_i32();
     if size_raw < 0 {
         return Err(VMError::RuntimeError(format!(
@@ -4601,9 +4544,11 @@ pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let size = size_raw as usize;
     let elems: Vec<auto_val::Value> = vec![auto_val::Value::Int(0); size];
 
-    let array_id = vm.array_id_gen.fetch_add(1, Ordering::SeqCst);
-    vm.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
-    task.ram.push_i32(array_id as i32);
+    let array_id = vm.insert_heap_object(crate::vm::types::ListData {
+        elems,
+        storage: None,
+    });
+    task.ram.push_nv(auto_val::encode_object(array_id as u32));
     Ok(())
 }
 
@@ -4620,6 +4565,13 @@ pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             list.elems.resize(new_size, 0);
+            drop(guard);
+            task.ram.push_i32(arr_id as i32);
+            return Ok(());
+        }
+        // Plan 390 §15 H3b: alloc_array/CREATE_ARRAY produce ListData<Value>.
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.resize(new_size, auto_val::Value::Int(0));
             drop(guard);
             task.ram.push_i32(arr_id as i32);
             return Ok(());

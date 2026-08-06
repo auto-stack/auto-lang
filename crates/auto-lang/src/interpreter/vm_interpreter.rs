@@ -168,23 +168,22 @@ impl VmInterpreter {
                             result = Some(Value::Float(auto_val::decode_f32(top_nv) as f64));
                         } else {
                             let top_val = auto_val::decode_i32(top_nv);
-                            // Check object/array IDs
-                            if top_val >= 1000000 && top_val < 2000000 {
+                            // Plan 390 §15 H3b: objects/arrays live in
+                            // heap_objects — probe + downcast instead of id ranges.
+                            if top_val >= 0 {
                                 let id = top_val as u64;
-                                if let Some(obj_arc) = vm.objects.get(&id) {
+                                if let Some(obj_arc) = vm.get_heap_object(id) {
                                     let obj = obj_arc.read().unwrap();
-                                    let mut result_obj = auto_val::Obj::new();
-                                    for (key, val) in &obj.fields {
-                                        result_obj.set(key.clone(), val.clone());
+                                    if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                                        let mut result_obj = auto_val::Obj::new();
+                                        for (key, val) in &od.fields {
+                                            result_obj.set(key.clone(), val.clone());
+                                        }
+                                        result = Some(Value::Obj(result_obj));
+                                    } else if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        let items: Vec<Value> = list.elems.iter().cloned().collect();
+                                        result = Some(Value::Array(auto_val::Array::from_vec(items)));
                                     }
-                                    result = Some(Value::Obj(result_obj));
-                                }
-                            } else if top_val >= 2000000 && top_val < 3000000 {
-                                let id = top_val as u64;
-                                if let Some(arr_arc) = vm.arrays.get(&id) {
-                                    let arr = arr_arc.read().unwrap();
-                                    let items: Vec<Value> = arr.iter().cloned().collect();
-                                    result = Some(Value::Array(auto_val::Array::from_vec(items)));
                                 }
                             }
                             if result.is_none() {

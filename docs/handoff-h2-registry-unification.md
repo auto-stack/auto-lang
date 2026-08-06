@@ -11,6 +11,13 @@
 > 在分支 `plan-390/h3a-nodes-migration` 落地并合并 master：TypeTag::Node + impl HeapObject +
 > CREATE_NODE/POP_ACCUM/inject_value 改 insert_heap_object + encode_object，删 nodes registry。
 > **剩余：H3b（arrays+objects 物理迁移 + 删魔数）**。
+>
+> **更新（2026-08-07，H3b 已完成）**：H3b（arrays+objects 物理迁移 + 删魔数）在分支
+> `plan-390/h3b-arrays-objects-migration` 落地并合并 master：CREATE_ARRAY/inject_value/SLICE/native 3 helper
+> 改 ListData<Value> + insert_heap_object + encode_object；CREATE_OBJ/inject_value Obj 改 insert_heap_object；
+> GET_FIELD/SET_FIELD 并入 heap 分支（ObjectData downcast）；删 objects/arrays registry + 三个 id_gen；
+> decode_tagged_nv 删 `>= 4000000` 分支；get_any_object 简化为 get_heap_object；IS_OK/UNWRAP/STR_CAT/LT 严谨化。
+> **H3 全链路闭环：4 套 registry → 1 套 heap_objects**。
 
 ## 一、背景（为什么做这个）
 

@@ -256,16 +256,10 @@ pub struct AutoVM {
     pub closures: DashMap<u32, Closure>,
     pub closure_id_gen: AtomicU32,
 
-    // Object Registry (Plan 073: Object literals)
-    pub objects: DashMap<u64, Arc<RwLock<crate::vm::types::ObjectData>>>,
-    pub object_id_gen: AtomicU64,
-
-    // Array Registry (Plan 073: Array literals)
-    pub arrays: DashMap<u64, Arc<RwLock<Vec<auto_val::Value>>>>,
-    pub array_id_gen: AtomicU64,
-
     // Plan 077 Phase 4: Unified Object Registry
-    // Single registry for all heap-allocated objects (lists, maps, sets, etc.)
+    // Single registry for all heap-allocated objects (lists, maps, sets, nodes,
+    // ObjectData, GenericInstance, etc.). Plan 390 §15 H3: the standalone
+    // `objects`/`arrays`/`nodes` registries were folded in here (H1/H3a/H3b).
     pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
     pub heap_object_id_gen: AtomicU64,
 
@@ -396,15 +390,8 @@ impl AutoVM {
             iterator_id_gen: AtomicU32::new(0),
             closures: DashMap::new(),
             closure_id_gen: AtomicU32::new(0),
-            // Note: IDs start at 1000000 to avoid confusion with small integer values
-            objects: DashMap::new(),
-            object_id_gen: AtomicU64::new(1000000),
-            // Plan 073: Array registry
-            // Note: IDs start at 2000000 to avoid confusion with objects
-            arrays: DashMap::new(),
-            array_id_gen: AtomicU64::new(2000000),
-            // Plan 077 Phase 4: Unified object registry
-            // Note: IDs start at 4000000 to avoid confusion with nodes
+            // Plan 077 Phase 4: Unified object registry (Plan 390 §15 H3:
+            // objects/arrays/nodes registries folded in — single id space).
             heap_objects: DashMap::new(),
             heap_object_id_gen: AtomicU64::new(4000000),
             // Plan 121: Task/Msg registry for Actor model
@@ -462,10 +449,10 @@ impl AutoVM {
                 return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
             }
         } else if auto_val::is_i32(nv) {
+            // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
+            // arrays/nodes produce encode_object), so a raw i32 is always a
+            // plain scalar Int — the old `>= 4000000 → VmRef` heuristic is gone.
             let i = auto_val::decode_i32(nv);
-            if i >= 4000000 {
-                return auto_val::Value::VmRef(auto_val::VmRef { id: i as usize });
-            }
             return auto_val::Value::Int(i);
         } else if auto_val::is_bool(nv) {
             return auto_val::Value::Bool(auto_val::decode_bool(nv));
@@ -523,31 +510,31 @@ impl AutoVM {
             }
             Value::VmRef(r) => auto_val::encode_object(r.id as u32),
 
-            // --- Array: register into arrays[], element values recurse ---
+            // --- Array: register into heap_objects as ListData<Value> (H3b) ---
             Value::Array(arr) => {
-                let id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
                 let mut elems: Vec<auto_val::Value> = Vec::with_capacity(arr.values.len());
                 for v in &arr.values {
                     elems.push(self.materialize_value(v));
                 }
-                self.arrays.insert(id, Arc::new(RwLock::new(elems)));
-                // Runtime pushes array ids as plain i32 (see CREATE_ARRAY), so
-                // ARRAY_LEN/GET_ELEM recognize them via is_i32 — match that.
-                auto_val::encode_i32(id as i32)
+                let id = self.insert_heap_object(crate::vm::types::ListData {
+                    elems,
+                    storage: None,
+                });
+                // Plan 390 §15 H3b: array ids are TAG_OBJECT-encoded (same as
+                // CREATE_ARRAY now) — consumers distinguish via is_object.
+                auto_val::encode_object(id as u32)
             }
 
-            // --- Obj: register into objects[] ---
+            // --- Obj: register into heap_objects as ObjectData (H3b) ---
             Value::Obj(obj) => {
-                let id = self.object_id_gen.fetch_add(1, Ordering::SeqCst);
                 let mut data = crate::vm::types::ObjectData::new();
                 for (key, val) in obj.iter() {
                     data.fields.insert(key.clone(), self.materialize_value(val));
                 }
-                self.objects.insert(id, Arc::new(RwLock::new(data)));
-                // Plan 390 §15 H2: push object id as a TAG_OBJECT-encoded
-                // value (not a raw i32) so consumers can distinguish it from
-                // scalar i32 via is_object/decode_object instead of the
-                // >= 4_000_000 magic-number heuristic.
+                // Plan 390 §15 H3b: objects live in heap_objects (ObjectData
+                // impl HeapObject, H1). Stack encoding stays TAG_OBJECT so
+                // consumers distinguish it from scalar i32 via is_object.
+                let id = self.insert_heap_object(data);
                 auto_val::encode_object(id as u32)
             }
 
@@ -736,24 +723,14 @@ impl AutoVM {
 
     /// Plan 390 §15 Phase H2: unified lookup that routes by id segment.
     ///
-    /// The VM registries occupy disjoint id ranges (objects 1M+, arrays 2M+,
-    /// heap_objects 4M+ — nodes were folded into heap_objects by H3a). H2
-    /// unified the *stack encoding* (everything → `encode_object`); H3a
-    /// migrated the physical storage of `nodes` into `heap_objects`, so node
-    /// ids now resolve here. `objects`/`arrays` physical storage is still
-    /// separate (H3b), so callers must query `self.objects`/`self.arrays`
-    /// directly for those segments. Once H3b folds them in, this helper
-    /// becomes the single entry point and the segment routing collapses to
-    /// `self.get_heap_object(id)`.
+    /// Plan 390 §15 Phase H2: unified object lookup.
+    ///
+    /// H2 unified the *stack encoding* (everything → `encode_object`); H3a
+    /// folded `nodes`, H3b folded `objects`/`arrays` into `heap_objects` — so
+    /// all VM object ids resolve in the single registry and the old id-segment
+    /// routing collapses to a plain `get_heap_object`.
     pub fn get_any_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
-        if id >= 4_000_000 {
-            self.heap_objects.get(&id).map(|v| v.clone())
-        } else {
-            // objects(1M+)/arrays(2M+) storage not yet migrated to
-            // heap_objects — H3b will fold them in. Callers fall back to the
-            // specific registry (`self.objects`/`self.arrays`).
-            None
-        }
+        self.get_heap_object(id)
     }
 
     /// Plan 390 §15 H2: rehydrate the `__variant` name of a structured message
@@ -764,12 +741,13 @@ impl AutoVM {
     /// lookup to compare the variant name against the handler pattern.
     fn vmref_variant_name(&self, id: usize) -> Option<auto_val::AutoStr> {
         let id = id as u64;
-        // objects segment (1M+): ObjectData stores the __variant field.
-        if id >= 1_000_000 && id < 2_000_000 {
-            if let Some(obj_ref) = self.objects.get(&id) {
-                let obj = obj_ref.read().unwrap();
+        // Plan 390 §15 H3b: ObjectData lives in heap_objects — probe + downcast
+        // (no id-segment routing).
+        if let Some(obj_ref) = self.get_heap_object(id) {
+            let obj = obj_ref.read().unwrap();
+            if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
                 if let Some(auto_val::Value::Str(v)) =
-                    obj.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from("__variant")))
+                    od.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from("__variant")))
                 {
                     return Some(v.clone());
                 }
@@ -922,38 +900,47 @@ impl AutoVM {
         if is_f32(nv) {
             return auto_val::Value::Float(decode_f32(nv) as f64);
         }
-        // Object reference: look up in the objects registry. Since Plan 390
-        // §15 H3a nodes also encode via encode_object (CREATE_NODE/POP_ACCUM),
-        // fall back to heap_objects for a Node — ACCUM_NODE pops a nested
-        // node through this path.
+        // Object reference: ObjectData/Node/ListData all live in heap_objects
+        // (Plan 390 §15 H3b) — probe + downcast instead of registry-membership
+        // checks.
         if is_object(nv) {
             let id = decode_object(nv) as u64;
-            if let Some(obj_ref) = self.objects.get(&id) {
-                let od = obj_ref.value().read().unwrap();
-                let mut out = auto_val::Obj::new();
-                for (k, v) in od.fields.iter() {
-                    out.set(k.clone(), v.clone());
+            if let Some(obj_ref) = self.get_heap_object(id) {
+                let guard = obj_ref.read().unwrap();
+                if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    let mut out = auto_val::Obj::new();
+                    for (k, v) in od.fields.iter() {
+                        out.set(k.clone(), v.clone());
+                    }
+                    return auto_val::Value::Obj(out);
                 }
-                return auto_val::Value::Obj(out);
-            }
-            if let Some(node_ref) = self.get_heap_object(id) {
-                let nd = node_ref.read().unwrap();
-                if let Some(node) = nd.as_any().downcast_ref::<auto_val::Node>() {
+                if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                    // CREATE_ARRAY now encodes arrays as TAG_OBJECT (H3b).
+                    let mut out = auto_val::Array::new();
+                    for v in list.elems.iter() {
+                        out.push(self.resolve_array_elem(v));
+                    }
+                    return auto_val::Value::Array(out);
+                }
+                if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
+                    // ACCUM_NODE pops a nested node through this path.
                     return auto_val::Value::Node((*node).clone());
                 }
             }
             return auto_val::Value::Nil;
         }
-        // List reference: VM lists are stored via the arrays registry.
+        // List reference: arrays/lists are stored in heap_objects (H3b).
         if is_list(nv) {
             let id = decode_list(nv) as u64;
-            if let Some(array_ref) = self.arrays.get(&id) {
-                let elems = array_ref.value().read().unwrap();
-                let mut out = auto_val::Array::new();
-                for v in elems.iter() {
-                    out.push(self.resolve_array_elem(v));
+            if let Some(list_ref) = self.get_heap_object(id) {
+                let elems = list_ref.read().unwrap();
+                if let Some(list) = elems.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                    let mut out = auto_val::Array::new();
+                    for v in list.elems.iter() {
+                        out.push(self.resolve_array_elem(v));
+                    }
+                    return auto_val::Value::Array(out);
                 }
-                return auto_val::Value::Array(out);
             }
             return auto_val::Value::Nil;
         }
@@ -973,30 +960,32 @@ impl AutoVM {
             };
         }
         let id = bits as u64;
-        if let Some(obj_ref) = self.objects.get(&id) {
-            let od = obj_ref.value().read().unwrap();
-            let mut out = auto_val::Obj::new();
-            for (k, v) in od.fields.iter() {
-                out.set(k.clone(), v.clone());
+        // Plan 390 §15 H3b: ObjectData/Node live in heap_objects — single probe.
+        if let Some(obj_ref) = self.get_heap_object(id) {
+            let guard = obj_ref.read().unwrap();
+            if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                let mut out = auto_val::Obj::new();
+                for (k, v) in od.fields.iter() {
+                    out.set(k.clone(), v.clone());
+                }
+                return auto_val::Value::Obj(out);
             }
-            return auto_val::Value::Obj(out);
-        }
-        if let Some(node_ref) = self.get_heap_object(id) {
-            let nd = node_ref.read().unwrap();
-            if let Some(node) = nd.as_any().downcast_ref::<auto_val::Node>() {
+            if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
                 // Deep-clone the Node (props, args, AND kids). Sub-nodes are
                 // accumulated into `kids` via ACCUM_NODE (Plan 364 Step 5), so
                 // they must survive this pop to be queryable via `nodes(name)`.
                 return auto_val::Value::Node((*node).clone());
             }
         }
-        if let Some(array_ref) = self.arrays.get(&id) {
-            let elems = array_ref.value().read().unwrap();
-            let mut out = auto_val::Array::new();
-            for v in elems.iter() {
-                out.push(self.resolve_array_elem(v));
+        if let Some(list_ref) = self.get_heap_object(id) {
+            let elems = list_ref.read().unwrap();
+            if let Some(list) = elems.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                let mut out = auto_val::Array::new();
+                for v in list.elems.iter() {
+                    out.push(self.resolve_array_elem(v));
+                }
+                return auto_val::Value::Array(out);
             }
-            return auto_val::Value::Array(out);
         }
         auto_val::Value::Int(bits)
     }
@@ -2107,13 +2096,16 @@ impl AutoVM {
                         node.add_arg(auto_val::Arg::Pos(arg));
                     }
 
-                    // Assign props if available
+                    // Assign props if available (Plan 390 §15 H3b: ObjectData
+                    // lives in heap_objects).
                     if props_id >= 0 {
-                        if let Some(props_ref) = self.objects.get(&(props_id as u64)) {
-                            let props_data = props_ref.value().read().unwrap();
-                            // Clone properties from ObjectData to Node
-                            for (key, val) in &props_data.fields {
-                                node.set_prop(key.clone(), val.clone());
+                        if let Some(props_ref) = self.get_heap_object(props_id as u64) {
+                            let guard = props_ref.read().unwrap();
+                            if let Some(props_data) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                                // Clone properties from ObjectData to Node
+                                for (key, val) in &props_data.fields {
+                                    node.set_prop(key.clone(), val.clone());
+                                }
                             }
                         }
                     }
@@ -2319,9 +2311,8 @@ impl AutoVM {
                         obj.set(key.clone(), val.clone());
                     }
 
-                    // Store object in objects registry and get ID
-                    let obj_id = self.object_id_gen.fetch_add(1, Ordering::SeqCst);
-                    self.objects.insert(obj_id, Arc::new(RwLock::new(obj)));
+                    // Store object in heap_objects and get ID (Plan 390 §15 H3b)
+                    let obj_id = self.insert_heap_object(obj);
 
                     // Plan 390 §15 H2: push object id as a TAG_OBJECT-encoded
                     // value so downstream consumers (GET_FIELD/SET_FIELD, send
@@ -2375,10 +2366,14 @@ impl AutoVM {
 
                     elems.reverse();
 
-                    let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
-                    self.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
+                    // Plan 390 §15 H3b: arrays live in heap_objects as
+                    // ListData<Value>, TAG_OBJECT-encoded on the stack.
+                    let array_id = self.insert_heap_object(crate::vm::types::ListData {
+                        elems,
+                        storage: None,
+                    });
 
-                    task.ram.push_i32(array_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(array_id as u32));
                 }
                 // Plan 073: Range expression support (0..10, 0..=10)
                 OpCode::CREATE_RANGE => {
@@ -2433,11 +2428,8 @@ impl AutoVM {
                             } else {
                                 auto_val::decode_i32(nv) as u64
                             };
-                            // Check arrays/heap_objects
-                            if let Some(array_ref) = self.arrays.get(&array_id) {
-                                let guard = array_ref.read().unwrap();
-                                task.ram.push_i32(guard.len() as i32);
-                            } else if let Some(list) = self.heap_objects.get(&array_id) {
+                            // Plan 390 §15 H3b: arrays live in heap_objects.
+                            if let Some(list) = self.heap_objects.get(&array_id) {
                                 use crate::vm::types::ListData;
                                 let guard = list.read().unwrap();
                                 let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
@@ -3170,10 +3162,16 @@ impl AutoVM {
                         let left_str = if auto_val::is_string(left_nv) {
                             let idx = auto_val::decode_string(left_nv) as usize;
                             strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else if auto_val::is_object(left_nv) {
+                            // Plan 390 §15 H3b: heap ref rendered as its id
+                            // (explicit, not the low-32 decode coincidence).
+                            auto_val::decode_object(left_nv).to_string()
                         } else { auto_val::decode_i32(left_nv).to_string() };
                         let right_str = if auto_val::is_string(right_nv) {
                             let idx = auto_val::decode_string(right_nv) as usize;
                             strings.get(idx).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                        } else if auto_val::is_object(right_nv) {
+                            auto_val::decode_object(right_nv).to_string()
                         } else { auto_val::decode_i32(right_nv).to_string() };
                         drop(strings);
                         let result = format!("{}{}", left_str, right_str);
@@ -3247,7 +3245,17 @@ impl AutoVM {
                 // Plan 208: Check heap object mono_name instead of sign
                 OpCode::IS_OK => {
                     use crate::vm::generic_registry::GenericInstanceData;
-                    let value = task.ram.pop_i32();
+                    // Plan 390 §15 H3b: Result refs are TAG_OBJECT (encode_object).
+                    // Decode explicitly instead of relying on the low-32-bit
+                    // coincidence of decode_i32 on a tagged object payload.
+                    let nv = task.ram.pop_nv();
+                    let value = if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as i64
+                    } else if auto_val::is_i32(nv) {
+                        auto_val::decode_i32(nv) as i64
+                    } else {
+                        0
+                    };
                     let is_ok = if value > 0 {
                         if let Some(obj) = self.get_heap_object(value as u64) {
                             let guard = obj.read().unwrap();
@@ -3281,7 +3289,16 @@ impl AutoVM {
                 // Plan 208: Extract field[0] from Result.Ok heap object
                 OpCode::UNWRAP_OK => {
                     use crate::vm::generic_registry::GenericInstanceData;
-                    let value = task.ram.pop_i32();
+                    // Plan 390 §15 H3b: Result refs are TAG_OBJECT — decode
+                    // explicitly instead of the low-32 coincidence.
+                    let nv = task.ram.pop_nv();
+                    let value = if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as i64
+                    } else if auto_val::is_i32(nv) {
+                        auto_val::decode_i32(nv) as i64
+                    } else {
+                        0
+                    };
                     if value <= 0 {
                         return Err(VMError::RuntimeError("called unwrap on Err".to_string()));
                     }
@@ -3297,13 +3314,22 @@ impl AutoVM {
                         }
                     }
                     // Legacy fallback: plain positive value
-                    task.ram.push_i32(value);
+                    task.ram.push_i32(value as i32);
                 }
                 // Plan 120: Unwrap Result error (panic if Ok)
                 // Plan 208: Extract field[0] from Result.Err heap object
                 OpCode::UNWRAP_ERR => {
                     use crate::vm::generic_registry::GenericInstanceData;
-                    let value = task.ram.pop_i32();
+                    // Plan 390 §15 H3b: Result refs are TAG_OBJECT — decode
+                    // explicitly instead of the low-32 coincidence.
+                    let nv = task.ram.pop_nv();
+                    let value = if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as i64
+                    } else if auto_val::is_i32(nv) {
+                        auto_val::decode_i32(nv) as i64
+                    } else {
+                        0
+                    };
                     if value <= 0 {
                         return Err(VMError::RuntimeError("called unwrap_err on non-heap value".to_string()));
                     }
@@ -3318,7 +3344,7 @@ impl AutoVM {
                             }
                         }
                     }
-                    task.ram.push_i32(value);
+                    task.ram.push_i32(value as i32);
                 }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
@@ -3925,16 +3951,25 @@ impl AutoVM {
                     } else {
                         // Array slice
                         let arr_key = container as u64;
-                        if let Some(arr_lock) = self.arrays.get(&arr_key) {
+                        if let Some(arr_lock) = self.get_heap_object(arr_key) {
                             let arr = arr_lock.read().unwrap();
-                            let len = arr.len();
-                            let s_start = if start < 0 { 0 } else { (start as usize).min(len) };
-                            let s_end = if end < 0 { len } else { (end as usize).min(len) };
-                            let sliced: Vec<auto_val::Value> = arr[s_start..s_end].to_vec();
-                            drop(arr);
-                            let new_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
-                            self.arrays.insert(new_id, Arc::new(RwLock::new(sliced)));
-                            task.ram.push_i32(new_id as i32);
+                            if let Some(list) = arr.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                                let len = list.elems.len();
+                                let s_start = if start < 0 { 0 } else { (start as usize).min(len) };
+                                let s_end = if end < 0 { len } else { (end as usize).min(len) };
+                                let sliced: Vec<auto_val::Value> = list.elems[s_start..s_end].to_vec();
+                                drop(arr);
+                                // Plan 390 §15 H3b: slice result is a new
+                                // ListData<Value> in heap_objects.
+                                let new_id = self.insert_heap_object(crate::vm::types::ListData {
+                                    elems: sliced,
+                                    storage: None,
+                                });
+                                task.ram.push_nv(auto_val::encode_object(new_id as u32));
+                            } else {
+                                drop(arr);
+                                task.ram.push_i32(0);
+                            }
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -4148,57 +4183,6 @@ impl AutoVM {
                                 vm_debug!("DEBUG GET_ELEM: Unknown heap object type");
                                 task.ram.push_i32(0); // Unknown heap object type
                             }
-                        }
-                        // Fallback to legacy arrays registry
-                        else if let Some(array_ref) = self.arrays.get(&obj_id) {
-                            let array = array_ref.read().unwrap();
-
-                            // Use normalized index for negative index support
-                            if let Some(normalized_idx) = normalize_index(index_i32, array.len()) {
-                                // Get element value
-                                let elem = &array[normalized_idx];
-
-                                // Push element value onto stack based on type
-                                match elem {
-                                    auto_val::Value::Int(i) => {
-                                        // Preserve string tag: negative values are string indices
-                                        {
-                                            if *i < 0 {
-                                                let str_idx = (-(*i) - 1) as u32;
-                                                task.ram.push_nv(auto_val::encode_string(str_idx));
-                                            } else {
-                                                task.ram.push_i32(*i);
-                                            }
-                                        }
-                                    }
-                                    auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
-                                    auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
-                                    auto_val::Value::Double(d) => task.ram.push_f64(*d),
-                                    auto_val::Value::Bool(b) => {
-                                        task.ram.push_i32(if *b { 1 } else { 0 })
-                                    }
-                                    auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
-                                    auto_val::Value::Nil => task.ram.push_i32(0),
-                                    // Plan 197 Bug E: heap object references stored in arrays
-                                    auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
-                                    auto_val::Value::Str(s) => {
-                                        // Push string back into pool and restore TAG_STRING
-                                        let mut strings = self.strings.write().unwrap();
-                                        let str_idx = strings.len() as u32;
-                                        strings.push(s.as_bytes().to_vec());
-                                        drop(strings);
-                                        task.ram.push_str_idx(str_idx);
-                                    }
-                                    _ => {
-                                        // Unsupported type - push 0 as placeholder
-                                        task.ram.push_i32(0);
-                                    }
-                                }
-                            } else {
-                                // Index out of bounds - push 0 as error sentinel
-                                // TODO: Proper error handling for out-of-bounds access
-                                task.ram.push_i32(0);
-                            }
                         } else {
                             // Object not found - push 0 as error sentinel
                             // TODO: Proper error handling for invalid object IDs
@@ -4221,21 +4205,28 @@ impl AutoVM {
                     // Pop value (bottom of stack)
                     let value = task.ram.pop_i32();
 
-                    // Get array from registry
-                    if let Some(array_ref) = self.arrays.get(&array_id) {
-                        let mut array = array_ref.write().unwrap();
-
-                        // Check bounds
-                        if index < array.len() {
-                            // Update element value
-                            // Convert i32 value to appropriate Value type
-                            // For now, store as Int (we can enhance this later with type tracking)
-                            array[index] = auto_val::Value::Int(value);
+                    // Get array from heap_objects (Plan 390 §15 H3b: arrays are
+                    // ListData<Value> in the unified registry now).
+                    if let Some(list_ref) = self.get_heap_object(array_id) {
+                        let mut guard = list_ref.write().unwrap();
+                        if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                            // Check bounds
+                            if index < list.elems.len() {
+                                // Update element value
+                                // Convert i32 value to appropriate Value type
+                                // For now, store as Int (we can enhance this later with type tracking)
+                                list.elems[index] = auto_val::Value::Int(value);
+                            } else {
+                                // Plan 118: Return error for out-of-bounds assignment
+                                return Err(VMError::RuntimeError(format!(
+                                    "Array index {} out of bounds (array length: {})",
+                                    index, list.elems.len()
+                                )));
+                            }
                         } else {
-                            // Plan 118: Return error for out-of-bounds assignment
                             return Err(VMError::RuntimeError(format!(
-                                "Array index {} out of bounds (array length: {})",
-                                index, array.len()
+                                "Invalid array ID: {}",
+                                array_id
                             )));
                         }
                     } else {
@@ -4278,54 +4269,53 @@ impl AutoVM {
                     };
                     drop(strings); // Release lock before writing
 
-                    // Get object from registry
-                    if let Some(obj_ref) = self.objects.get(&obj_id) {
-                        let mut obj = obj_ref.write().unwrap();
-                        // Try multiple key formats: string, integer, boolean (same as GET_FIELD)
-                        let key = if obj.get(&auto_val::ValueKey::Str(field_name.clone().into())).is_some() {
-                            auto_val::ValueKey::Str(field_name.into())
-                        } else if let Ok(int_key) = field_name.parse::<i32>() {
-                            if obj.get(&auto_val::ValueKey::Int(int_key)).is_some() {
-                                auto_val::ValueKey::Int(int_key)
-                            } else {
-                                // Plan 118: Integer field not found - return error
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
-                            }
-                        } else if field_name == "true" {
-                            if obj.get(&auto_val::ValueKey::Bool(true)).is_some() {
-                                auto_val::ValueKey::Bool(true)
-                            } else {
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
-                            }
-                        } else if field_name == "false" {
-                            if obj.get(&auto_val::ValueKey::Bool(false)).is_some() {
-                                auto_val::ValueKey::Bool(false)
-                            } else {
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
-                            }
-                        } else {
-                            // Plan 118: Field not found - return error instead of creating new field
-                            return Err(VMError::RuntimeError(format!(
-                                "Field '{}' not found on object",
-                                field_name
-                            )));
-                        };
-                        obj.set(key, {
-                            self.decode_tagged_nv(value_nv) 
-                        });
-                    } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
-                        // Heap objects (type instances, 4000000+): GenericInstanceData
+                    // Get object from registry (Plan 390 §15 H3b: ObjectData /
+                    // GenericInstance / RustStdlib all in heap_objects).
+                    if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
                         let mut heap_obj = heap_ref.write().unwrap();
-                        if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                        if let Some(obj) = heap_obj.as_any_mut().downcast_mut::<crate::vm::types::ObjectData>() {
+                            // Try multiple key formats: string, integer, boolean (same as GET_FIELD)
+                            let key = if obj.get(&auto_val::ValueKey::Str(field_name.clone().into())).is_some() {
+                                auto_val::ValueKey::Str(field_name.into())
+                            } else if let Ok(int_key) = field_name.parse::<i32>() {
+                                if obj.get(&auto_val::ValueKey::Int(int_key)).is_some() {
+                                    auto_val::ValueKey::Int(int_key)
+                                } else {
+                                    // Plan 118: Integer field not found - return error
+                                    return Err(VMError::RuntimeError(format!(
+                                        "Field '{}' not found on object",
+                                        field_name
+                                    )));
+                                }
+                            } else if field_name == "true" {
+                                if obj.get(&auto_val::ValueKey::Bool(true)).is_some() {
+                                    auto_val::ValueKey::Bool(true)
+                                } else {
+                                    return Err(VMError::RuntimeError(format!(
+                                        "Field '{}' not found on object",
+                                        field_name
+                                    )));
+                                }
+                            } else if field_name == "false" {
+                                if obj.get(&auto_val::ValueKey::Bool(false)).is_some() {
+                                    auto_val::ValueKey::Bool(false)
+                                } else {
+                                    return Err(VMError::RuntimeError(format!(
+                                        "Field '{}' not found on object",
+                                        field_name
+                                    )));
+                                }
+                            } else {
+                                // Plan 118: Field not found - return error instead of creating new field
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            };
+                            obj.set(key, {
+                                self.decode_tagged_nv(value_nv) 
+                            });
+                        } else if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
                                 inst.set_field(idx, {
@@ -4426,62 +4416,8 @@ impl AutoVM {
                     // and fall back to the struct-level id/name. Plan 390 §15
                     // H3a: nodes now live in heap_objects, handled in the heap
                     // branch below (downcast Node) — priority preserved.
-                    if let Some(obj_ref) = self.objects.get(&obj_id) {
-                        let obj = obj_ref.read().unwrap();
-
-                        // Try multiple key formats: string, integer, boolean
-                        // This handles cases like { 1: 2, 3: 4 } accessed as a.3
-                        let value = if let Some(v) = obj.get(&auto_val::ValueKey::Str(field_name.clone().into())) {
-                            Some(v.clone())
-                        } else if let Ok(int_key) = field_name.parse::<i32>() {
-                            obj.get(&auto_val::ValueKey::Int(int_key)).cloned()
-                        } else if field_name == "true" {
-                            obj.get(&auto_val::ValueKey::Bool(true)).cloned()
-                        } else if field_name == "false" {
-                            obj.get(&auto_val::ValueKey::Bool(false)).cloned()
-                        } else {
-                            None
-                        };
-
-                        if let Some(value) = value {
-                            // Push field value onto stack based on type
-                            match value {
-                                auto_val::Value::Int(i) => task.ram.push_i32(i),
-                                auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
-                                auto_val::Value::Float(f) => task.ram.push_f32(f as f32),
-                                auto_val::Value::Double(d) => task.ram.push_f64(d),
-                                auto_val::Value::Bool(b) => {
-                                    task.ram.push_i32(if b { 1 } else { 0 })
-                                }
-                                auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
-                                auto_val::Value::Str(s) => {
-                                    // Push tagged string index (NaN-boxed)
-                                    let str_bytes = s.as_bytes().to_vec();
-                                    let mut strings = self.strings.write().unwrap();
-                                    let str_idx = strings.len();
-                                    strings.push(str_bytes);
-                                    drop(strings);
-                                    push_str_tag(&mut task.ram, str_idx as u32);
-                                }
-                                auto_val::Value::Nil => task.ram.push_i32(0),
-                                // Plan 073: Nested objects/arrays - push their ID
-                                auto_val::Value::VmRef(vm_ref) => {
-                                    task.ram.push_i32(vm_ref.id as i32);
-                                }
-                                _ => {
-                                    // Unsupported type - push 0 as placeholder
-                                    task.ram.push_i32(0);
-                                }
-                            }
-                        } else {
-                            // Plan 118: Field not found - return error
-                            return Err(VMError::RuntimeError(format!(
-                                "Field '{}' not found on object",
-                                field_name
-                            )));
-                        }
-                    } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
-                        // Heap objects (type instances, 4000000+): Node (H3a),
+                    if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                        // Heap objects (4M+): Node (H3a), ObjectData (H3b),
                         // GenericInstanceData, RustStdlibObject.
                         let heap_obj = heap_ref.read().unwrap();
                         // Plan 390 §15 H3a: Node now lives in heap_objects —
@@ -4518,6 +4454,60 @@ impl AutoVM {
                                 }
                             } else {
                                 task.ram.push_i32(0);
+                            }
+                        } else if let Some(obj) = heap_obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                            // Plan 390 §15 H3b: obj literals are ObjectData in
+                            // heap_objects.
+                            // Try multiple key formats: string, integer, boolean
+                            // This handles cases like { 1: 2, 3: 4 } accessed as a.3
+                            let value = if let Some(v) = obj.get(&auto_val::ValueKey::Str(field_name.clone().into())) {
+                                Some(v.clone())
+                            } else if let Ok(int_key) = field_name.parse::<i32>() {
+                                obj.get(&auto_val::ValueKey::Int(int_key)).cloned()
+                            } else if field_name == "true" {
+                                obj.get(&auto_val::ValueKey::Bool(true)).cloned()
+                            } else if field_name == "false" {
+                                obj.get(&auto_val::ValueKey::Bool(false)).cloned()
+                            } else {
+                                None
+                            };
+
+                            if let Some(value) = value {
+                                // Push field value onto stack based on type
+                                match value {
+                                    auto_val::Value::Int(i) => task.ram.push_i32(i),
+                                    auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
+                                    auto_val::Value::Float(f) => task.ram.push_f32(f as f32),
+                                    auto_val::Value::Double(d) => task.ram.push_f64(d),
+                                    auto_val::Value::Bool(b) => {
+                                        task.ram.push_i32(if b { 1 } else { 0 })
+                                    }
+                                    auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
+                                    auto_val::Value::Str(s) => {
+                                        // Push tagged string index (NaN-boxed)
+                                        let str_bytes = s.as_bytes().to_vec();
+                                        let mut strings = self.strings.write().unwrap();
+                                        let str_idx = strings.len();
+                                        strings.push(str_bytes);
+                                        drop(strings);
+                                        push_str_tag(&mut task.ram, str_idx as u32);
+                                    }
+                                    auto_val::Value::Nil => task.ram.push_i32(0),
+                                    // Plan 073: Nested objects/arrays - push their ID
+                                    auto_val::Value::VmRef(vm_ref) => {
+                                        task.ram.push_i32(vm_ref.id as i32);
+                                    }
+                                    _ => {
+                                        // Unsupported type - push 0 as placeholder
+                                        task.ram.push_i32(0);
+                                    }
+                                }
+                            } else {
+                                // Plan 118: Field not found - return error
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
                             }
                         } else if let Some(inst) = heap_obj.as_any().downcast_ref::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
@@ -5029,15 +5019,16 @@ impl AutoVM {
                                 if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
                                     inst.mono_name.split('_').next()
                                         .unwrap_or(&inst.mono_name).to_string()
+                                } else if guard.as_any().downcast_ref::<crate::vm::types::ObjectData>().is_some() {
+                                    // Plan 390 §15 H3b: obj literals are ObjectData
+                                    // in heap_objects — keep the "HashMap" type name
+                                    // so .set/.get/.len dispatch to auto.hashmap.
+                                    "HashMap".to_string()
                                 } else {
                                     let tag_name = guard.type_tag().name();
                                     tag_name.split('<').next()
                                         .unwrap_or(&tag_name).to_string()
                                 }
-                            } else if self.arrays.contains_key(&obj_key) {
-                                "List".to_string()
-                            } else if self.objects.contains_key(&obj_key) {
-                                "HashMap".to_string()
                             } else {
                                 format!("<unknown:{}>", obj_key)
                             }
@@ -5057,15 +5048,14 @@ impl AutoVM {
                             if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
                                 inst.mono_name.split('_').next()
                                     .unwrap_or(&inst.mono_name).to_string()
+                            } else if guard.as_any().downcast_ref::<crate::vm::types::ObjectData>().is_some() {
+                                // Plan 390 §15 H3b: ObjectData → "HashMap" (see above).
+                                "HashMap".to_string()
                             } else {
                                 let tag_name = guard.type_tag().name();
                                 tag_name.split('<').next()
                                     .unwrap_or(&tag_name).to_string()
                             }
-                        } else if self.arrays.contains_key(&obj_key) {
-                            "List".to_string()
-                        } else if self.objects.contains_key(&obj_key) {
-                            "HashMap".to_string()
                         } else {
                             format!("<unknown_obj:{}>", obj_key)
                         }
@@ -5470,10 +5460,12 @@ impl AutoVM {
                                 };
                                 // Pop the index arg
                                 let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
-                                    if index < arr.len() {
-                                        arr.remove(index);
+                                    if let Some(list) = arr.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        if index < list.elems.len() {
+                                            list.elems.remove(index);
+                                        }
                                     }
                                 }
                                 // Pop receiver, push 0 (void)
@@ -5488,9 +5480,11 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
-                                    let _ = arr.pop();
+                                    if let Some(list) = arr.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        let _ = list.elems.pop();
+                                    }
                                 }
                                 // Pop receiver, push 0 (void)
                                 { task.ram.pop_nv(); task.ram.push_i32(0); }
@@ -5507,30 +5501,32 @@ impl AutoVM {
                                 // Stack: [..., receiver, index, elem]
                                 let elem_nv = task.ram.pop_nv();
                                 let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
+                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
-                                    let pos = index.min(arr.len());
-                                    {
-                                        let value = if auto_val::is_i32(elem_nv) {
-                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
-                                        } else if auto_val::is_object(elem_nv) {
-                                            auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
-                                        } else if auto_val::is_string(elem_nv) {
-                                            let idx = auto_val::decode_string(elem_nv) as usize;
-                                            let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
-                                            auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
-                                        } else if auto_val::is_bool(elem_nv) {
-                                            auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
-                                        } else if auto_val::is_f64(elem_nv) {
-                                            auto_val::Value::Double(auto_val::decode_f64(elem_nv))
-                                        } else if auto_val::is_f32(elem_nv) {
-                                            auto_val::Value::Float(auto_val::decode_f32(elem_nv) as f64)
-                                        } else if auto_val::is_null(elem_nv) {
-                                            auto_val::Value::Nil
-                                        } else {
-                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
-                                        };
-                                        arr.insert(pos, value);
+                                    if let Some(list) = arr.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        let pos = index.min(list.elems.len());
+                                        {
+                                            let value = if auto_val::is_i32(elem_nv) {
+                                                auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                            } else if auto_val::is_object(elem_nv) {
+                                                auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
+                                            } else if auto_val::is_string(elem_nv) {
+                                                let idx = auto_val::decode_string(elem_nv) as usize;
+                                                let bytes = self.strings.read().unwrap().get(idx).cloned().unwrap_or_default();
+                                                auto_val::Value::Str(String::from_utf8_lossy(&bytes).to_string().into())
+                                            } else if auto_val::is_bool(elem_nv) {
+                                                auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                                            } else if auto_val::is_f64(elem_nv) {
+                                                auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                                            } else if auto_val::is_f32(elem_nv) {
+                                                auto_val::Value::Float(auto_val::decode_f32(elem_nv) as f64)
+                                            } else if auto_val::is_null(elem_nv) {
+                                                auto_val::Value::Nil
+                                            } else {
+                                                auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                            };
+                                            list.elems.insert(pos, value);
+                                        }
                                     }
                                 }
                                 // Pop receiver, push 0 (void)
@@ -5545,31 +5541,29 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                // Try arrays registry first (most common for List)
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
-                                    let mut arr = arr_ref.write().unwrap();
-                                    match method_name.as_str() {
-                                        "sort" => {
-                                            arr.sort_by(|a, b| {
-                                                match (a, b) {
-                                                    (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
-                                                    (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
-                                                    (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                                                    (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                                                    (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
-                                                    (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
-                                                    (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
-                                                    _ => std::cmp::Ordering::Equal,
-                                                }
-                                            });
-                                        }
-                                        "dedup" => { arr.dedup(); }
-                                        "reverse" => { arr.reverse(); }
-                                        _ => {}
-                                    }
-                                } else if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                if let Some(obj) = self.heap_objects.get(&arr_key) {
                                     let mut guard = obj.write().unwrap();
-                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
+                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        match method_name.as_str() {
+                                            "sort" => {
+                                                list.elems.sort_by(|a, b| {
+                                                    match (a, b) {
+                                                        (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                                                        (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                                                        (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                        (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                        (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
+                                                        (auto_val::Value::Str(x), auto_val::Value::Str(y)) => x.to_string().cmp(&y.to_string()),
+                                                        (auto_val::Value::String(x), auto_val::Value::String(y)) => x.as_str().cmp(y.as_str()),
+                                                        _ => std::cmp::Ordering::Equal,
+                                                    }
+                                                });
+                                            }
+                                            "dedup" => { list.elems.dedup(); }
+                                            "reverse" => { list.elems.reverse(); }
+                                            _ => {}
+                                        }
+                                    } else if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
                                         match method_name.as_str() {
                                             "sort" => { list.elems.sort(); }
                                             "dedup" => { list.elems.dedup(); }
@@ -5590,20 +5584,19 @@ impl AutoVM {
                                 };
                                 // Pop args (closure)
                                 for _ in 0..arg_count { task.ram.pop_nv(); } 
-                                if let Some(arr_ref) = self.arrays.get(&arr_key) {
-                                    let mut arr = arr_ref.write().unwrap();
-                                    arr.sort_by(|a, b| {
-                                        match (a, b) {
-                                            (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
-                                            (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
-                                            (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                                            (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                                            _ => std::cmp::Ordering::Equal,
-                                        }
-                                    });
-                                } else if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                if let Some(obj) = self.heap_objects.get(&arr_key) {
                                     let mut guard = obj.write().unwrap();
-                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
+                                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        list.elems.sort_by(|a, b| {
+                                            match (a, b) {
+                                                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                                                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                                                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                                _ => std::cmp::Ordering::Equal,
+                                            }
+                                        });
+                                    } else if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<i32>>() {
                                         list.elems.sort();
                                     }
                                 }
@@ -6795,8 +6788,18 @@ impl AutoVM {
                             _ => false,
                         }
                     } else {
-                        let a = auto_val::decode_i32(a_nv);
-                        let b = auto_val::decode_i32(b_nv);
+                        // Plan 390 §15 H3b: heap refs are TAG_OBJECT — decode
+                        // explicitly (same id value as the old low-32 trick).
+                        let a = if auto_val::is_object(a_nv) {
+                            auto_val::decode_object(a_nv) as i32
+                        } else {
+                            auto_val::decode_i32(a_nv)
+                        };
+                        let b = if auto_val::is_object(b_nv) {
+                            auto_val::decode_object(b_nv) as i32
+                        } else {
+                            auto_val::decode_i32(b_nv)
+                        };
                         a < b
                     };
                     task.ram.push_nv(auto_val::encode_bool(result));

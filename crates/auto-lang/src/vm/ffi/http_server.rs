@@ -205,15 +205,16 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
         return heap_object_to_json(vm, id, depth);
     }
     // i32: either a plain integer OR a heap/array object ID stored as i32.
-    // Array ids start at 2_000_000 (engine.rs array_id_gen), heap object ids
-    // at 4_000_000 (heap_object_id_gen). Rather than assume a range (which
-    // could misclassify large user integers), we probe the VM tables: if the
-    // value is a known array/heap id, expand it; otherwise treat as a plain int.
+    // Heap object ids start at 4_000_000 (heap_object_id_gen); array literals
+    // are ListData<Value> in heap_objects too (Plan 390 §15 H3b). Rather than
+    // assume a range (which could misclassify large user integers), we probe
+    // the VM tables: if the value is a known heap/object id, expand it;
+    // otherwise treat as a plain int.
     if auto_val::is_i32(nv) {
         let v = auto_val::decode_i32(nv);
         if depth < MAX_DEPTH {
             let id = v as u64;
-            if vm.arrays.contains_key(&id) || vm.heap_objects.contains_key(&id) || vm.objects.contains_key(&id) {
+            if vm.heap_objects.contains_key(&id) {
                 if let Some(json) = heap_object_to_json(vm, id, depth) {
                     return Some(json);
                 }
@@ -224,9 +225,9 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
     Some("null".to_string())
 }
 
-/// Expand a heap object ID into JSON. Handles three storage backends used by
-/// the VM: `heap_objects` (GenericInstanceData, type instances), `arrays`
-/// (`Vec<Value>` from `[...]` literals), and `objects` (ObjectData maps).
+/// Expand a heap object ID into JSON. Handles the storage used by the VM:
+/// `heap_objects` (GenericInstanceData, ListData<Value>/<i32> collections,
+/// Node) and `objects` (ObjectData maps).
 ///
 /// Option handling: a `GenericInstanceData` whose mono_name starts with
 /// "Option.Some" is unwrapped to its single inner field; "Option.None"
@@ -292,33 +293,19 @@ fn heap_object_to_json(
             }
             return Some(format!("[{}]", parts.join(", ")));
         }
+        // Plan 390 §15 H3b: ObjectData (obj literals { k: v }) in heap_objects.
+        if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+            let mut parts: Vec<String> = Vec::new();
+            for (key, val) in od.fields.iter() {
+                let key_json = json_escape_string(&key.to_string());
+                let val_json = value_to_json(vm, val, depth + 1)
+                    .unwrap_or_else(|| "null".to_string());
+                parts.push(format!("{}: {}", key_json, val_json));
+            }
+            return Some(format!("{{{}}}", parts.join(", ")));
+        }
         // Other heap objects (opaque types) — can't serialize generically.
         return None;
-    }
-
-    // 2. arrays: Vec<Value> (array literals like [a, b, c])
-    if let Some(arr_ref) = vm.arrays.get(&id) {
-        let arr = arr_ref.read().unwrap();
-        let mut parts: Vec<String> = Vec::new();
-        for elem in arr.iter() {
-            let json = value_to_json(vm, elem, depth + 1)
-                .unwrap_or_else(|| "null".to_string());
-            parts.push(json);
-        }
-        return Some(format!("[{}]", parts.join(", ")));
-    }
-
-    // 3. objects: ObjectData maps ({ key: value, ... })
-    if let Some(obj_ref) = vm.objects.get(&id) {
-        let obj = obj_ref.read().unwrap();
-        let mut parts: Vec<String> = Vec::new();
-        for (key, val) in obj.fields.iter() {
-            let key_json = json_escape_string(&key.to_string());
-            let val_json = value_to_json(vm, val, depth + 1)
-                .unwrap_or_else(|| "null".to_string());
-            parts.push(format!("{}: {}", key_json, val_json));
-        }
-        return Some(format!("{{{}}}", parts.join(", ")));
     }
 
     None
@@ -335,9 +322,9 @@ fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth:
     }
     match value {
         Value::Int(i) => {
-            // Probe the VM tables to decide: array/heap id → expand, else plain int.
+            // Probe the VM tables to decide: heap id → expand, else plain int.
             let id = *i as u64;
-            if vm.arrays.contains_key(&id) || vm.heap_objects.contains_key(&id) || vm.objects.contains_key(&id) {
+            if vm.heap_objects.contains_key(&id) {
                 if let Some(json) = heap_object_to_json(vm, id, depth) {
                     return Some(json);
                 }
@@ -516,8 +503,9 @@ mod plan326_tests {
     }
 
     /// Array of structs: the handler returns Vec<Value> where each element is
-    /// a struct stored as Value::Int(heap_id). Array id is allocated via the
-    /// VM's array_id_gen (starts at 2_000_000). nv_to_json must recurse.
+    /// a struct stored as Value::Int(heap_id). Array id is allocated the same
+    /// way CREATE_ARRAY does (Plan 390 §15 H3b: ListData<Value> in
+    /// heap_objects). nv_to_json must recurse.
     #[test]
     fn nv_to_json_array_of_structs() {
         let vm = fresh_vm();
@@ -533,12 +521,14 @@ mod plan326_tests {
         );
         let id_a = vm.insert_heap_object(a) as i32;
         let id_b = vm.insert_heap_object(b) as i32;
-        // Allocate an array id the same way the engine does (engine.rs:1585).
-        let arr_id = vm.array_id_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        vm.arrays.insert(arr_id, std::sync::Arc::new(std::sync::RwLock::new(vec![
-            auto_val::Value::Int(id_a),
-            auto_val::Value::Int(id_b),
-        ])));
+        // Allocate an array id the same way CREATE_ARRAY does now.
+        let arr_id = vm.insert_heap_object(crate::vm::types::ListData {
+            elems: vec![
+                auto_val::Value::Int(id_a),
+                auto_val::Value::Int(id_b),
+            ],
+            storage: None,
+        });
         // The handler returns the array id as i32.
         let nv = auto_val::encode_i32(arr_id as i32);
         let json = super::nv_to_json(&vm, nv, 0).unwrap();

@@ -359,24 +359,8 @@ impl VMConvertible for Vec<String> {
             }
         }
 
-        // Path 2: arrays (ID 2000000+) — Vec<auto_val::Value> from CREATE_ARRAY
-        if let Some(array_ref) = vm.arrays.get(&list_id) {
-            let guard = array_ref.read().unwrap();
-            let mut result = Vec::new();
-            for val in guard.iter() {
-                match val {
-                    auto_val::Value::Str(s) => result.push(s.as_str().to_string()),
-                    auto_val::Value::Int(n) if *n < 0 => {
-                        let str_idx = (-n - 1) as usize;
-                        if let Some(bytes) = strings.get(str_idx) {
-                            result.push(String::from_utf8_lossy(bytes).to_string());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            return Ok(result);
-        }
+        // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects,
+        // handled by Path 1 above (the legacy arrays registry is gone).
 
         Err(FFIError::InvalidListId(list_id))
     }

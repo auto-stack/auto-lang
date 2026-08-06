@@ -893,7 +893,11 @@ impl AutovmReplSession {
             bytecode_size: self.bytecode.len(),
             total_strings,
             heap_objects: self.vm.heap_objects.len(),
-            arrays: self.vm.arrays.len(),
+            // Plan 390 §15 H3b: array literals are ListData<Value> in
+            // heap_objects now (legacy arrays registry is gone).
+            arrays: self.vm.heap_objects.iter()
+                .filter(|e| e.value().read().unwrap().type_tag() == crate::vm::heap_object::TypeTag::ListValue)
+                .count(),
         }
     }
 
@@ -912,10 +916,10 @@ impl AutovmReplSession {
         self.vm.iterators.clear();
         self.vm.channels.clear();
         self.vm.heap_objects.clear();
-        self.vm.arrays.clear();
-        self.vm.objects.clear();
-        // Plan 390 §15 H3a: nodes registry deleted (nodes live in
-        // heap_objects, cleared above).
+        // Plan 390 §15 H3a: nodes registry deleted (nodes live in heap_objects,
+        // cleared above). Plan 390 §15 H3b: arrays/objects registries deleted
+        // (array literals are ListData<Value>, obj literals are ObjectData —
+        // both in heap_objects).
 
         // Plan 300 Phase 2: Clear Python FFI bridge
         #[cfg(feature = "python")]
@@ -1039,21 +1043,24 @@ impl AutovmReplSession {
         if auto_val::is_i32(nv) {
             let i = auto_val::decode_i32(nv);
 
-            // Heap object / array reference
-            if i >= 2_000_000 {
+            // Heap object / array reference (Plan 390 §15 H3b: arrays are
+            // ListData<Value> in heap_objects; probe instead of id ranges).
+            if i >= 0 {
                 let id = i as u64;
-                if let Some(arc) = self.vm.arrays.get(&id) {
+                if let Some(arc) = self.vm.heap_objects.get(&id) {
                     let guard = arc.read().unwrap();
-                    let elems: Vec<String> = guard.iter()
-                        .map(|v| match v {
-                            auto_val::Value::Int(n) => n.to_string(),
-                            auto_val::Value::Str(s) => s.as_str().to_string(),
-                            auto_val::Value::Bool(b) => b.to_string(),
-                            auto_val::Value::Nil => "nil".to_string(),
-                            _ => "?".to_string(),
-                        })
-                        .collect();
-                    return format!("[{}]", elems.join(", "));
+                    if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                        let elems: Vec<String> = list.elems.iter()
+                            .map(|v| match v {
+                                auto_val::Value::Int(n) => n.to_string(),
+                                auto_val::Value::Str(s) => s.as_str().to_string(),
+                                auto_val::Value::Bool(b) => b.to_string(),
+                                auto_val::Value::Nil => "nil".to_string(),
+                                _ => "?".to_string(),
+                            })
+                            .collect();
+                        return format!("[{}]", elems.join(", "));
+                    }
                 }
             }
 
