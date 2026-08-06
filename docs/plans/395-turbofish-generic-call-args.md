@@ -279,14 +279,17 @@ match node.deserialize::<ClientScalars>() {
 
 ---
 
-## §7 后续（auto-ai 侧，本计划完成 + 重建 auto.exe 之后）
+## §7 后续（auto-ai 侧）→ ✅ 消费迁移已完成（2026-08-06）
 
 - `loader.at` / `role_config.at`：`is node.deserialize<ClientScalars>()` 等替换
   `is node.deserialize()`，**删除** ai-config/auto-ai-agent 两个 retranspile.sh 的
   turbofish sed（`client_node/daemon_node/provider_node` 锚定的 3 条 + `RoleDecl` 1 条）。
+  **已闭环**：用本 worktree 的 auto.exe 重跑 retranspile，三转译 crate 0 错 +
+  workspace 全绿 + 测试全绿；生成的 loader.rs/role_config.rs 为原生 `::<T>`（无 sed 痕迹）。
 - 可选：`json.decode[T](text)` 迁移为 `json.decode<Type>(text)`（rust.rs:3569 特判
-  改为读 `generic_args`）。
-- 验证：auto-ai 三个转译 crate 0 错 + workspace 全绿 + rust-ref 测试全绿。
+  改为读 `generic_args`）。**未做**（auto-ai 仅 auto-ai-client/lib.at:107 一处使用，
+  Index hack 仍工作；迁移需改 a2r 特判，留作 follow-up）。
+- 验证：auto-ai 三个转译 crate 0 错 + workspace 全绿 + rust-ref 测试全绿。**✅**
 
 ---
 
