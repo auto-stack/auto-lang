@@ -440,6 +440,7 @@ ext Store {
 #[test] fn test_12_specs_004_default_body() { test_a2r("12_specs/004_default_body").unwrap(); }
 #[test] fn test_12_specs_005_generic_impl() { test_a2r("12_specs/005_generic_impl").unwrap(); }
 #[test] fn test_12_specs_006_spec_param_callsite() { test_a2r("12_specs/006_spec_param_callsite").unwrap(); }
+#[test] fn test_12_specs_007_box_fn() { test_a2r("12_specs/007_box_fn").unwrap(); }
 
 // === 13_delegation ===
 #[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }
@@ -1100,3 +1101,4 @@ fn test_312_codegen_collects_api_routes() {
 // Clone/Eq/Ord) because TaskRef is move-only. Migrated from the plan-387
 // worktree before its removal (013 there → 021 here to avoid number clash).
 #[test] fn test_22_actors_021_handle_struct_field() { test_a2r_deep("22_actors/021_handle_struct_field"); }
+#[test] fn test_22_actors_022_closure_cb() { test_a2r_deep("22_actors/022_closure_cb"); }

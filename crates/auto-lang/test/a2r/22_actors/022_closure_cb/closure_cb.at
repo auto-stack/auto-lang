@@ -1,0 +1,21 @@
+// Plan 390 §15.10: Box<dyn Fn> closure state field (值路径).
+// A closure-literal default (`cb = fn(e str) {...}`) transpiles to a
+// `Box<dyn Fn(String)>` field initialized with `Box::new(move |e| {...})`
+// (captures-owned — 'static). The handler forwards events via `(self.cb)(ev)`.
+
+task Sink {
+    log = ""
+    cb = fn(e str) {
+        print(f"cb:{e}")
+    }
+    on { ev str -> {
+        (self.cb)(ev)
+        log = ev
+        print(log)
+    } }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    h.send("x")
+}

@@ -1,0 +1,32 @@
+// Plan 390 §15.10: Box<Fn> closure-trait type support.
+// - `spec Fn {}` 空声明（映射 Rust Fn trait）
+// - `Box<Fn>`          → `Box<dyn Fn>`            （零参闭包）
+// - `Box<Fn(int)>`     → `Box<dyn Fn(i32)>`       （带参，返回 () 省略）
+// - `Box<Fn(int) str>` → `Box<dyn Fn(i32) -> String>`
+// - spec 参数位（`cb Box<Fn(int)>`）与 struct 字段同理 —— 不产生 Box<Box<dyn>> 双层
+
+spec Fn {
+}
+spec Tool {
+    fn name() str
+}
+
+pub type Callback {
+    on_ev Box<Fn(int)>
+    on_done Box<Fn>
+    on_named Box<Fn(int) str>
+}
+
+pub fn set_cb(cb Box<Fn(int)>) void {
+    print("set")
+}
+
+pub fn get_cb() Box<Fn(int)> {
+    return Callback(on_ev: nil, on_done: nil, on_named: nil).on_ev
+}
+
+fn main() {
+    let c = Callback(on_ev: nil, on_done: nil, on_named: nil)
+    set_cb(c.on_ev)
+    print(get_cb() != nil)
+}

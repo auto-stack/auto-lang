@@ -1,0 +1,16 @@
+/// Fn Module (Plan 390 §15.10)
+///
+/// Provides the `Fn` spec for closure types, mapping to Rust's `Fn` trait.
+/// Auto only uses `Box` for Rust interop, so `Fn` is declared as an empty
+/// spec (no methods — it's a marker trait). In a2r:
+///   - `Fn` as a type annotation     → `Box<dyn Fn>`   (Type::Spec path)
+///   - `Box<Fn>`                     → `Box<dyn Fn>`   (spec in container = dyn)
+///   - `Box<Fn(A, B)>`               → `Box<dyn Fn(A, B) -> ()>`
+///   - `Box<Fn(A) R>`                → `Box<dyn Fn(A) -> R>`
+/// The `Fn(...)` signature form parses to Type::Fn (same AST as fn-pointer);
+/// the transpiler renders it as `dyn Fn(...)` when it's a Box/Arc type arg.
+
+/// Fn spec — closure trait (maps to Rust's `Fn`). No methods: the signature
+/// is carried by the `Fn(...)` type-argument syntax.
+spec Fn {
+}

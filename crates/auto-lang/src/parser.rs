@@ -9402,9 +9402,19 @@ impl<'a> Parser<'a> {
     /// Parse function type: fn(Params)ReturnType (Plan 060)
     /// Examples: fn(int)str, fn(int, bool)void, fn()int
     fn parse_fn_type(&mut self) -> AutoResult<Type> {
+        self.expect(TokenKind::Fn)?; // Consume 'fn'
+        self.parse_fn_signature()
+    }
+
+    /// Plan 390 §15.10: parse `(params) [ret]` — the signature shared by
+    /// fn-pointer types (`fn(a, b) ret`, via parse_fn_type) and the Fn spec's
+    /// closure-trait form (`Fn(a, b)`, via parse_ident_or_generic_type).
+    /// Both produce `Type::Fn(params, ret)`; a2r renders a Fn-type arg inside
+    /// a Box/Arc container as `dyn Fn(...)` (closure trait) and elsewhere as
+    /// `fn(...)` (fn pointer).
+    fn parse_fn_signature(&mut self) -> AutoResult<Type> {
         use crate::ast::Type;
 
-        self.expect(TokenKind::Fn)?; // Consume 'fn'
         self.expect(TokenKind::LParen)?; // Consume '('
 
         // Parse parameters
@@ -9577,6 +9587,16 @@ impl<'a> Parser<'a> {
                     "char" | "i8" => return Ok(Type::Char),
                     "void" => return Ok(Type::Void),
                     _ => {}
+                }
+
+                // Plan 390 §15.10: `Fn(...)` closure-trait signature form
+                // (`Box<Fn(A)>` → `Box<dyn Fn(A)>`). Parse like a fn-pointer
+                // signature and produce Type::Fn — the transpiler renders a
+                // Fn-type arg inside a Box/Arc container as `dyn Fn(...)`.
+                // A bare `Fn` (no parens) falls through to the spec lookup
+                // below (Type::Spec → `Box<dyn Fn>`).
+                if name.as_str() == "Fn" && self.is_kind(TokenKind::LParen) {
+                    return self.parse_fn_signature();
                 }
 
                 // Handle dotted module paths: flow.FlowSpec -> User("flow.FlowSpec")

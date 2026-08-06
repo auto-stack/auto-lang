@@ -1261,6 +1261,33 @@ impl RustTrans {
                 } else {
                     inst.base_name.to_string()
                 };
+                // Plan 390 §15.10: `Box<Fn>` / `Box<Fn(A)>` → `Box<dyn Fn>` /
+                // `Box<dyn Fn(A) -> ()>`. Only the `Fn` spec is a closure-trait
+                // marker here — OTHER specs keep the existing `Arc<Box<dyn X>>`
+                // / `Box<Box<dyn X>>` storage shape (their `Arc(x)`/`Box(x)`
+                // constructors box an already-`Box<dyn>` param, Plan 019 L2 debt;
+                // changing them would break the value side). A `Fn(...)` signature
+                // arg (Type::Fn) becomes `dyn Fn(...)` (closure trait) instead of
+                // the fn-pointer `fn(...)`.
+                if matches!(base.as_str(), "Box" | "Arc") && inst.args.len() == 1 {
+                    if let Some(arg_ty) = inst.args.first() {
+                        match arg_ty {
+                            Type::Spec(spec) if spec.borrow().name.as_str() == "Fn" => {
+                                return format!("{}<dyn Fn>", base);
+                            }
+                            Type::Fn(params, ret) => {
+                                let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
+                                let ret_str = if matches!(&**ret, Type::Void) {
+                                    String::new()
+                                } else {
+                                    format!(" -> {}", self.rust_type_name(ret))
+                                };
+                                return format!("{}<dyn Fn({}){}>", base, param_str.join(", "), ret_str);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 format!("{}<{}>", base, args.join(", "))
             }
             Type::Storage(storage) => {
@@ -1442,6 +1469,29 @@ impl RustTrans {
                 } else {
                     inst.base_name.to_string()
                 };
+                // Plan 390 §15.10: same Box/Arc + Fn-spec/Fn-arg → `dyn` special
+                // case as rust_type_name (return position: `Box<Fn(A)>` →
+                // `Box<dyn Fn(A)>`). Only `Fn` — other specs keep the existing
+                // double-wrap storage shape (Plan 019 L2 debt).
+                if matches!(base.as_str(), "Box" | "Arc") && inst.args.len() == 1 {
+                    if let Some(arg_ty) = inst.args.first() {
+                        match arg_ty {
+                            Type::Spec(spec) if spec.borrow().name.as_str() == "Fn" => {
+                                return format!("{}<dyn Fn>", base);
+                            }
+                            Type::Fn(params, ret) => {
+                                let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
+                                let ret_str = if matches!(&**ret, Type::Void) {
+                                    String::new()
+                                } else {
+                                    format!(" -> {}", self.rust_type_name(ret))
+                                };
+                                return format!("{}<dyn Fn({}){}>", base, param_str.join(", "), ret_str);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 // Plan 380 P2: ~SpecName in return position → impl SpecName.
                 // Auto's ~TraitName means "return something implementing this trait".
                 // In Rust that's `impl TraitName`. We detect trait names by:
@@ -8868,12 +8918,18 @@ impl RustTrans {
         writeln!(sink.body, "struct {} {{", name_of(&td.name))?;
         self.indent();
         for (field, _mutable, init) in &td.state {
-            let ty = self.infer_type_from_expr(init);
-            // Plan 387: task state integer fields use i64 (matches the VM's
-            // i64-backed actor state and the default i64 message-binding type).
-            let ty_str = match &ty {
-                crate::ast::Type::Int => "i64".to_string(),
-                _ => self.rust_type_name(&ty),
+            // Plan 390 §15.10: a closure-literal default (`cb = fn(e) {...}`)
+            // is a Box<dyn Fn(...)> field (closures capture — not fn-pointers).
+            let ty_str = if let Expr::Closure(closure) = init {
+                self.closure_field_rust_type(closure)
+            } else {
+                let ty = self.infer_type_from_expr(init);
+                // Plan 387: task state integer fields use i64 (matches the VM's
+                // i64-backed actor state and the default i64 message-binding type).
+                match &ty {
+                    crate::ast::Type::Int => "i64".to_string(),
+                    _ => self.rust_type_name(&ty),
+                }
             };
             self.print_indent(&mut sink.body)?;
             writeln!(sink.body, "{}: {},", field.as_str(), ty_str)?;
@@ -8882,6 +8938,24 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}\n\n")?;
         Ok(())
+    }
+
+    /// Plan 390 §15.10: Rust type of a task state field whose default is a
+    /// closure literal — `Box<dyn Fn(params) -> ret>` (closures capture, unlike
+    /// fn-pointers). Built as `Box<Fn(...)>` and rendered through the Box/Arc
+    /// special case so the output is byte-identical to an explicit `Box<Fn>`
+    /// annotation.
+    fn closure_field_rust_type(&self, closure: &crate::ast::Closure) -> String {
+        let params: Vec<crate::ast::Type> = closure.params.iter().map(|p| {
+            p.ty.clone().unwrap_or(crate::ast::Type::Unknown)
+        }).collect();
+        let ret = closure.ret.clone().unwrap_or(crate::ast::Type::Void);
+        let boxed_ty = crate::ast::Type::GenericInstance(crate::ast::GenericInstance {
+            base_name: "Box".into(),
+            args: vec![crate::ast::Type::Fn(params, Box::new(ret))],
+            source: None,
+        });
+        self.rust_type_name(&boxed_ty)
     }
 
     /// Emit `impl Name { fn new() -> Self; async fn start; async fn stop; async fn handle_msg }`.
@@ -8912,7 +8986,16 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(field.as_str().as_bytes())?;
                 sink.body.write(b": ")?;
+                // Plan 390 §15.10: closure defaults are boxed closures —
+                // `Box::new(move |..| ..)` (move = own captures for 'static).
+                let is_closure = matches!(init, Expr::Closure(_));
+                if is_closure {
+                    sink.body.write(b"Box::new(move ")?;
+                }
                 self.expr(init, &mut sink.body)?;
+                if is_closure {
+                    sink.body.write(b")")?;
+                }
                 sink.body.write(b",\n")?;
             }
             self.dedent();
@@ -9195,8 +9278,14 @@ impl RustTrans {
                     params_str.push_str(", ");
                 }
                 let field_str = field.to_string();
-                let ty = self.infer_type_from_expr(init);
-                let ty_name = self.rust_type_name(&ty);
+                // Plan 390 §15.10: closure-literal fields take Box<dyn Fn(...)>
+                // (same as the struct field type) instead of `/* unknown */`.
+                let ty_name = if let Expr::Closure(closure) = init {
+                    self.closure_field_rust_type(closure)
+                } else {
+                    let ty = self.infer_type_from_expr(init);
+                    self.rust_type_name(&ty)
+                };
                 params_str.push_str(&field_str);
                 params_str.push_str(": ");
                 params_str.push_str(&ty_name);
@@ -13153,6 +13242,16 @@ impl RustTrans {
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         // Cache spec methods for later use in impl Trait for Type
         self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
+
+        // Plan 390 §15.10: `spec Fn` is a phantom spec — it maps to Rust's
+        // builtin `Fn` trait (std prelude). Emitting a local `trait Fn {}`
+        // would SHADOW the prelude `Fn` and break `Box<dyn Fn(A)>` (the local
+        // trait has no `Args` type param). Skip the trait definition; the
+        // spec_decls entry above keeps `Fn` resolvable as a spec (Type::Spec →
+        // `Box<dyn Fn>` / the Box/Arc special case).
+        if spec_decl.name.as_str() == "Fn" {
+            return Ok(());
+        }
 
         // Plan 380: async spec methods (~Result / Future) need #[async_trait]
         // on the TRAIT declaration too — a bare `-> Future<...>` return type in
