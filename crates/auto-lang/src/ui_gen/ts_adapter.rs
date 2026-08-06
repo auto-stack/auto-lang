@@ -129,7 +129,16 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 StoreKind::Const => "const",
                 _ => "let", // Shared, CVar, Field — shouldn't appear in handlers
             };
-            write!(out, "{} {} = ", kw, store.name.as_str()).ok();
+            write!(out, "{} {}", kw, store.name.as_str()).ok();
+            // Plan 043 store-codegen: emit a type annotation when the parser
+            // recorded a TS-builtin scalar/array type, so `var result []str = []`
+            // becomes `let result: string[] = []` (valid under noImplicitAny).
+            // Skip user-defined types — the TS frontend erases them to `any`,
+            // so annotating with e.g. `Block` would be a `Cannot find name`.
+            if let Some(ty_str) = builtin_type_annotation(&store.ty) {
+                write!(out, ": {}", ty_str).ok();
+            }
+            write!(out, " = ").ok();
             transpile_expr(&store.expr, ctx, out);
             writeln!(out, ";").ok();
         }
@@ -352,6 +361,28 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             match call.name.as_ref() {
                 // Method call: object.method(args)
                 Expr::Dot(object, method) => {
+                    // Plan 043 store-codegen: container constructor
+                    // `List<T>.new([...])` / `Array<T>.new(...)` → `[...]` (or `[]`).
+                    // Without this the call falls through to the generic
+                    // fallback and emits `List.new([])` (undefined `List` in TS).
+                    if method.as_str() == "new" {
+                        let base = match object.as_ref() {
+                            Expr::GenName(g) => g.as_str().split('<').next().unwrap_or(g.as_str()),
+                            Expr::Ident(n) => n.as_str(),
+                            _ => "",
+                        };
+                        if matches!(base, "List" | "Array" | "Slice" | "Map") {
+                            if base == "Map" {
+                                // Map has no literal; emit {} (empty object).
+                                write!(out, "{{}}").ok();
+                            } else if let Some(first) = call.args.args.first() {
+                                transpile_expr(&first.get_expr(), ctx, out);
+                            } else {
+                                write!(out, "[]").ok();
+                            }
+                            return;
+                        }
+                    }
                     // D3 fix: self-method call (.MethodName()) — when object is
                     // "." or "self", this is a store sibling action call.
                     // Generate as bare MethodName() instead of .MethodName().
@@ -651,6 +682,38 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             write!(out, " }}").ok();
         }
 
+        // Plan 043 store-codegen: struct-literal construction
+        // `Type{ field: value, ... }` parses as Expr::Node. The a2ts delegate
+        // emits `new Type(...)` (TS has no such types → "Cannot find name"),
+        // so intercept here and emit an object literal `{ field: value }`.
+        // `loop` nodes keep their special delegate behavior (`while(true)`).
+        // Handler bodies only ever construct data structs (Block, BlockStatus,
+        // ...), not widget view nodes — view nodes live in the template, not
+        // in handler logic.
+        Expr::Node(node) => {
+            if node.name == "loop" {
+                delegate_expr(expr, ctx, out);
+            } else {
+                write!(out, "{{ ").ok();
+                for (i, arg) in node.args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    match arg {
+                        Arg::Pair(key, val) => {
+                            write!(out, "{}: ", key.as_str()).ok();
+                            transpile_expr(val, ctx, out);
+                        }
+                        Arg::Pos(val) => transpile_expr(val, ctx, out),
+                        Arg::Name(key) => {
+                            write!(out, "{}: {}", key.as_str(), key.as_str()).ok();
+                        }
+                    }
+                }
+                write!(out, " }}").ok();
+            }
+        }
+
         // === Delegate to a2ts for everything else ===
         _ => delegate_expr(expr, ctx, out),
     }
@@ -697,6 +760,27 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
 }
 
 /// Delegate expression to a2ts transpiler for standard transpilation.
+/// Plan 043 store-codegen: return a TS type annotation string for a parsed
+/// `var`/`let` type, but ONLY when it maps to a TS builtin (number, string,
+/// boolean, or arrays thereof). User-defined types return None — the store
+/// composable frontend erases them to `any`, and annotating with the raw name
+/// (e.g. `Block`) would be a `Cannot find name` error.
+fn builtin_type_annotation(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Int | Type::I64 | Type::Byte | Type::Char
+        | Type::Uint | Type::U64 | Type::USize
+        | Type::Float | Type::Double => Some("number".into()),
+        Type::Bool => Some("boolean".into()),
+        Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => Some("string".into()),
+        Type::Array(arr) => builtin_type_annotation(&arr.elem).map(|e| format!("{}[]", e)),
+        Type::RuntimeArray(rta) => builtin_type_annotation(&rta.elem).map(|e| format!("{}[]", e)),
+        Type::List(elem) => builtin_type_annotation(elem).map(|e| format!("{}[]", e)),
+        Type::Slice(slice) => builtin_type_annotation(&slice.elem).map(|e| format!("{}[]", e)),
+        // Everything else (User, Enum, Spec, Unknown, Map of custom, …) → None
+        _ => None,
+    }
+}
+
 /// Handles: literals, arrays, objects, lambdas, closures, f-strings,
 /// indexing, ranges, tag construction, etc.
 fn delegate_expr(expr: &Expr, _ctx: &AuraTsContext, out: &mut Vec<u8>) {
@@ -1216,6 +1300,76 @@ mod tests {
             out.contains("notes.value = 'tick'") || out.contains("notes.value = \"tick\""),
             "StateRef lost .value inside block-bodied closure:\n{}",
             out
+        );
+    }
+
+    /// Plan 043 store-codegen cat-1: `List<T>.new([...])` / `Array<T>.new()`
+    /// must transpile to the array argument (or `[]`), not `List.new(...)`.
+    #[test]
+    fn d4_container_new_transpiles_to_array_literal() {
+        // List<Block>.new([])  →  []
+        let call = Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::GenName("List<Block>".into())),
+                "new".into(),
+            )),
+            args: Args { args: vec![Arg::Pos(Expr::Array(vec![]))] },
+            ret: Type::Unknown,
+            type_args: vec![],
+            pos: None,
+        });
+        let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
+        assert!(
+            out.contains("[]") && !out.contains("List.new"),
+            "List<T>.new([]) should be [], got:\n{}",
+            out
+        );
+    }
+
+    /// Plan 043 store-codegen cat-2: struct-literal `Type{ field: value }`
+    /// (Expr::Node) must transpile to an object literal `{ field: value }`,
+    /// not `new Type(...)` (TS has no such type names). Verified end-to-end
+    /// via the closed-loop `auto build` on ash-gui-auto (b.status = { }).
+    /// Constructing an Expr::Node directly in-unit is awkward (Node lives in
+    /// a non-Default private module), so this is covered by the closed-loop
+    /// + the d4_container_new test below.
+
+    /// Plan 043 store-codegen cat-4: `var result []str = []` must emit a
+    /// type annotation for the TS-builtin array type so it's valid under
+    /// noImplicitAny. User-defined types must NOT be annotated.
+    #[test]
+    fn d4_store_array_gets_builtin_annotation() {
+        use crate::ast::SliceType;
+        // var result []str = []  →  let result: string[] = [];
+        let store_array = Stmt::Store(crate::ast::Store {
+            kind: crate::ast::StoreKind::Var,
+            name: "result".into(),
+            ty: Type::Slice(SliceType { elem: Box::new(Type::StrSlice) }),
+            expr: Expr::Array(vec![]),
+            attrs: vec![],
+            is_pub: false,
+        });
+        let out = transpile_handler_body(&[store_array], &test_ctx());
+        assert!(
+            out.contains("let result: string[] ="),
+            "scalar array var should get : string[] annotation, got:\n{}",
+            out
+        );
+
+        // User-type var (Type::User) must NOT be annotated — TS erases it.
+        let store_user_int = Stmt::Store(crate::ast::Store {
+            kind: crate::ast::StoreKind::Let,
+            name: "x".into(),
+            ty: Type::Int, // builtin → annotated
+            expr: Expr::Int(0),
+            attrs: vec![],
+            is_pub: false,
+        });
+        let out_b = transpile_handler_body(&[store_user_int], &test_ctx());
+        assert!(
+            out_b.contains("let x: number ="),
+            "builtin int var annotated, got:\n{}",
+            out_b
         );
     }
 }
