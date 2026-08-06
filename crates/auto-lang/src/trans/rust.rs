@@ -3495,14 +3495,12 @@ impl RustTrans {
             }
         }
 
-        // Plan 387: `Task.spawn("Name", cap)` -> `spawn_<name>(&mut __rt)`.
-        // The task type name is a static string literal arg; the spawn helper is
-        // a free fn emitted alongside the task struct. `cap` (mailbox capacity)
-        // is ignored in Tier 1 (unbounded channel mirrors VM's Vec-backed mailbox).
+        // Plan 387: `Task.spawn("Name", cap)` -> `spawn_<name>()` (default-construct).
         // Plan 390 §5 Phase B (M1): `Task.spawn("Name", cap, init1, init2, ...)`
-        // forwards the init args (args[2..]) to `spawn_<name>(init1, init2, ...)`,
-        // which constructs the actor with those state-field values instead of the
-        // defaults. Arg 0 = name literal, arg 1 = capacity (ignored), args[2..] =
+        // -> `spawn_<name>_with(init1, init2, ...)` (required state-field args;
+        // Rust doesn't support default fn params, so init-arg spawns use a
+        // separate _with helper that takes all state fields as required params).
+        // Arg 0 = name literal, arg 1 = capacity (ignored), args[2..] =
         // positional initializers for the task's state fields (declaration order).
         if let Expr::Dot(obj, method) = call.name.as_ref() {
             if method.as_str() == "spawn" {
@@ -3511,7 +3509,9 @@ impl RustTrans {
                         // First arg is the task type name as a string literal.
                         if let Some(Arg::Pos(Expr::Str(name))) = call.args.args.first() {
                             self.a2r_std_used.set(true);
-                            write!(out, "spawn_{}(", snake_of(name))?;
+                            let has_init = call.args.args.len() > 2;
+                            let suffix = if has_init { "_with" } else { "" };
+                            write!(out, "spawn_{}{}(", snake_of(name), suffix)?;
                             // Forward init args (everything after name + capacity).
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i < 2 {
@@ -9179,42 +9179,65 @@ impl RustTrans {
     ) -> AutoResult<()> {
         let name = name_of(&td.name);
         let has_stop = td.stop_hook.is_some();
-        // Build the spawn helper's parameter list from the state fields. Each
-        // field becomes `field_name: Type` where Type is inferred from the
-        // field's initializer expr (same logic as emit_task_struct). Params
-        // carry a `= default` so a no-init `spawn_<name>()` call still compiles.
-        let mut params_str = String::new();
-        let mut construct_fields = String::new();
-        for (field, _mutable, init) in &td.state {
-            if !params_str.is_empty() {
-                params_str.push_str(", ");
+        // Plan 390 §5 Phase B (M1): for tasks with state fields, emit TWO helpers:
+        //   spawn_<name>()            — no args, uses Name::new() (declared defaults)
+        //   spawn_<name>_with(f1, f2) — required state-field args (no defaults;
+        //                               Rust doesn't support default fn params)
+        // Task.spawn call sites pick _with only when init args are present.
+        // For tasks with NO state fields, emit a single spawn_<name>() (as before).
+        let snake = snake_of(&td.name);
+        if !td.state.is_empty() {
+            // Build the _with parameter list (no defaults — Rust doesn't allow them).
+            let mut params_str = String::new();
+            let mut construct_fields = String::new();
+            for (field, _mutable, init) in &td.state {
+                if !params_str.is_empty() {
+                    params_str.push_str(", ");
+                }
+                let field_str = field.to_string();
+                let ty = self.infer_type_from_expr(init);
+                let ty_name = self.rust_type_name(&ty);
+                params_str.push_str(&field_str);
+                params_str.push_str(": ");
+                params_str.push_str(&ty_name);
+                if !construct_fields.is_empty() {
+                    construct_fields.push_str(", ");
+                }
+                construct_fields.push_str(&field_str);
+                construct_fields.push_str(": ");
+                construct_fields.push_str(&field_str);
             }
-            let field_str = field.to_string();
-            let ty = self.infer_type_from_expr(init);
-            let ty_name = self.rust_type_name(&ty);
-            params_str.push_str(&field_str);
-            params_str.push_str(": ");
-            params_str.push_str(&ty_name);
-            // Default = the field's initializer expr (so omitted args fall back).
-            params_str.push_str(" = ");
-            let mut init_buf: Vec<u8> = Vec::new();
-            self.expr(init, &mut init_buf)?;
-            params_str.push_str(&String::from_utf8_lossy(&init_buf));
-            // Collect field: param for the struct-literal construction below.
-            if !construct_fields.is_empty() {
-                construct_fields.push_str(", ");
-            }
-            construct_fields.push_str(&field_str);
-            construct_fields.push_str(": ");
-            construct_fields.push_str(&field_str);
+            // spawn_<name>_with — takes all state fields as required params.
+            self.emit_spawn_body(&snake, "_with", Some(&params_str), &name,
+                &format!("{} {{ {} }}", name, construct_fields), msg_type, has_stop, sink)?;
         }
+        // spawn_<name> — no args, default-constructs via ::new() (always emitted;
+        // matches the no-init Task.spawn call site).
+        self.emit_spawn_body(&snake, "", None, &name,
+            &format!("{}::new()", name), msg_type, has_stop, sink)?;
+        Ok(())
+    }
+
+    /// Emit one spawn helper variant. `suffix` is "" or "_with"; `params` is the
+    /// parameter list (None = no params); `ctor_expr` is the actor construction
+    /// expression (`Name::new()` or `Name { f1: f1, ... }`).
+    fn emit_spawn_body(
+        &mut self,
+        snake: &str,
+        suffix: &str,
+        params: Option<&str>,
+        name: &str,
+        ctor_expr: &str,
+        msg_type: &str,
+        has_stop: bool,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        let params_str = params.unwrap_or("");
         self.print_indent(&mut sink.body)?;
         writeln!(
             sink.body,
-            "pub fn spawn_{}({}) -> a2r_std::task::TaskRef<{}> {{",
-            snake_of(&td.name),
-            params_str,
-            msg_type
+            "pub fn spawn_{}{}({}) -> a2r_std::task::TaskRef<{}> {{",
+            snake, suffix, params_str, msg_type
         )?;
         self.indent();
         self.print_indent(&mut sink.body)?;
@@ -9229,14 +9252,7 @@ impl RustTrans {
         writeln!(sink.body, "let join = tokio::spawn(async move {{")?;
         self.indent();
         self.print_indent(&mut sink.body)?;
-        // Plan 390 M1: construct with the (possibly-defaulted) init params.
-        // When no init args are passed, each param equals its default → same as
-        // the old `Name::new()`. When init args are passed, they override.
-        if td.state.is_empty() {
-            writeln!(sink.body, "let mut actor = {}::new();", name)?;
-        } else {
-            writeln!(sink.body, "let mut actor = {} {{ {} }};", name, construct_fields)?;
-        }
+        writeln!(sink.body, "let mut actor = {};", ctor_expr)?;
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "let _ = actor.start().await;")?;
         self.print_indent(&mut sink.body)?;

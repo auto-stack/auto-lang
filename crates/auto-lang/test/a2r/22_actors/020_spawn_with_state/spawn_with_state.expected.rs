@@ -41,10 +41,25 @@ impl Counter {
     }
 }
 
-pub fn spawn_counter(count: i32 = 0, label: String = "default") -> a2r_std::task::TaskRef<i32> {
+pub fn spawn_counter_with(count: i32, label: String) -> a2r_std::task::TaskRef<i32> {
     let (taskref, mut rx) = a2r_std::task::channel::<i32>();
     let join = tokio::spawn(async move {
         let mut actor = Counter { count: count, label: label };
+        let _ = actor.start().await;
+        while let Some(msg) = rx.recv().await {
+            let reply_tx = a2r_std::task::NopReply;
+            let _ = actor.handle_msg(msg, reply_tx).await;
+            rx.mark_processed();
+        }
+    });
+    a2r_std::task::track_join(join);
+    taskref
+}
+
+pub fn spawn_counter() -> a2r_std::task::TaskRef<i32> {
+    let (taskref, mut rx) = a2r_std::task::channel::<i32>();
+    let join = tokio::spawn(async move {
+        let mut actor = Counter::new();
         let _ = actor.start().await;
         while let Some(msg) = rx.recv().await {
             let reply_tx = a2r_std::task::NopReply;
@@ -60,7 +75,7 @@ pub fn spawn_counter(count: i32 = 0, label: String = "default") -> a2r_std::task
 #[tokio::main]
 async fn main() {
 
-    let h = spawn_counter(10, "mycounter");
+    let h = spawn_counter_with(10, "mycounter");
     h.send(5);
     a2r_std::task::drain_all().await;
 }
