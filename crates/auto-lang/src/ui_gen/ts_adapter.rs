@@ -115,6 +115,44 @@ pub fn transpile_handler_body(stmts: &[Stmt], ctx: &AuraTsContext) -> String {
     String::from_utf8(out).unwrap_or_default()
 }
 
+/// Render a statement list for use as the **body of an IIFE that must produce a
+/// value** (Plan 043 H1). Used by `Expr::If` IIFE generation so that
+/// `if (c) { '✓' } else { '…' }` evaluates to the glyph, not `undefined`.
+///
+/// All leading statements render normally (via `transpile_stmt`); the **last**
+/// statement, if it is a bare expression statement (`Stmt::Expr(e)`), renders as
+/// `return e;` so the IIFE returns it. Non-expression trailing statements
+/// (e.g. a trailing `if`) are left as-is — the IIFE then has no explicit return
+/// (undefined), matching a statement-expression block.
+pub fn transpile_body_as_return(stmts: &[Stmt], ctx: &AuraTsContext) -> String {
+    let mut out = Vec::new();
+    let n = stmts.len();
+    for (i, stmt) in stmts.iter().enumerate() {
+        let is_last = i + 1 == n;
+        if is_last {
+            if let Stmt::Expr(expr) = stmt {
+                // Plan 354: NavCall → router.push(path) (same special-case as transpile_stmt).
+                write!(out, "return ").ok();
+                if let Expr::NavCall { path, .. } = expr {
+                    write!(out, "router.push(").ok();
+                    transpile_expr(path, ctx, &mut out);
+                    write!(out, ")").ok();
+                } else {
+                    transpile_expr(expr, ctx, &mut out);
+                }
+                writeln!(out, ";").ok();
+                continue;
+            }
+        }
+        transpile_stmt(stmt, ctx, &mut out);
+        let s = std::str::from_utf8(&out).unwrap_or("");
+        if !s.ends_with('\n') {
+            writeln!(out).ok();
+        }
+    }
+    String::from_utf8(out).unwrap_or_default()
+}
+
 // ---------------------------------------------------------------------------
 // Statement transpilation
 // ---------------------------------------------------------------------------
@@ -621,22 +659,20 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // If expression (appears when parser treats if as RHS of let)
         Expr::If(if_expr) => {
-            // Convert to IIFE so it works in expression position
+            // Convert to IIFE so it works in expression position.
+            // Plan 043 H1: branch bodies must RETURN their value, else the IIFE
+            // evaluates to undefined (e.g. status_glyph computed vanished).
             write!(out, "(() => {{ ").ok();
             if let Some(first) = if_expr.branches.first() {
                 write!(out, "if (").ok();
                 transpile_expr(&first.cond, ctx, out);
                 write!(out, ") {{ ").ok();
-                for stmt in &first.body.stmts {
-                    transpile_stmt(stmt, ctx, out);
-                }
+                write!(out, "{}", transpile_body_as_return(&first.body.stmts, ctx).trim()).ok();
                 write!(out, " }}").ok();
             }
             if let Some(else_body) = &if_expr.else_ {
                 write!(out, " else {{ ").ok();
-                for stmt in &else_body.stmts {
-                    transpile_stmt(stmt, ctx, out);
-                }
+                write!(out, "{}", transpile_body_as_return(&else_body.stmts, ctx).trim()).ok();
                 write!(out, " }}").ok();
             }
             write!(out, " }})()").ok();
