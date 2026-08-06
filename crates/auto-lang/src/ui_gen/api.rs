@@ -117,6 +117,11 @@ pub struct ComponentGenOptions {
     pub store_deps_override: Option<Vec<String>>,
     /// Root directory for API import validation (auto-man uses this).
     pub root_dir_for_validation: Option<std::path::PathBuf>,
+    /// Streaming API endpoints (`#[api] fn` returning `~Stream<T>`) discovered
+    /// from the project's `back/api.at`. Populated by the build driver; stamped
+    /// onto each store so its composable can wire type-driven SSE. (Plan 043
+    /// stream phase.) When `None`, no SSE wiring is generated.
+    pub stream_endpoints: Option<Vec<crate::aura::StreamEndpoint>>,
 }
 
 /// Result of generating a component from an .at file.
@@ -187,6 +192,7 @@ pub fn generate_component_from_file(
             let mut store = extract_store_from_decl(store_decl)
                 .map_err(|e| e.to_string())?;
             store.api_imports = api_imports.clone();
+            store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
             let composable = VueGenerator::generate_store_composable(&store);
             let filename = format!("stores/use{}Store.ts", store.name);
             store_composables.push((filename, composable));

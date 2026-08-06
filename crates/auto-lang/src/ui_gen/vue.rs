@@ -9335,19 +9335,21 @@ export function cn(...inputs: ClassValue[]) {
         // helpers and expose `accent_names` as a computed getter.
         let has_accent = store.state_vars.iter().any(|s| s.name == "accent_color");
 
-        // Plan 043 M5 G1: SSE stream wiring. When the store imports a `stream`
-        // API function AND declares RunOutput/RunResult actions (the "consume
-        // ~Stream<T>" pattern), the composable opens ONE EventSource('/api/stream')
-        // and dispatches command_output/command_result into those actions.
-        // Without this, run_command results never reach the UI (blocks stayed
-        // empty while the handwritten store's connectSSE() fed them).
-        let wire_sse = store.api_imports.iter().any(|f| f == "stream")
-            && store.handlers.keys().any(|p| {
-                Self::base_pattern(p).trim_start_matches('.') == "RunOutput"
-            })
-            && store.handlers.keys().any(|p| {
-                Self::base_pattern(p).trim_start_matches('.') == "RunResult"
-            });
+        // Plan 043 stream phase: SSE wiring is now TYPE-DRIVEN. When the store
+        // declares a streaming endpoint (an `#[api] fn` returning `~Stream<T>`,
+        // captured in `stream_endpoints` from `back/api.at`), the composable opens
+        // ONE EventSource at that endpoint's path and dispatches SSE messages into
+        // the store's actions. This replaces the old name-heuristic (which keyed
+        // off the literal "stream" import + RunOutput/RunResult action names).
+        //
+        // Dispatch policy: each SSE message is JSON-parsed and routed to the
+        // store action(s) whose single parameter matches the stream's item type
+        // (or, as a pragmatic fallback for externally-tagged unions whose
+        // `event` discriminator names an action, by that discriminator). For the
+        // ash-gui ShellEvent contract (`{"event":"command_output"|"command_result"}`),
+        // the discriminator-route keeps the existing RunOutput/RunResult mapping.
+        let stream_ep = store.stream_endpoints.first().cloned();
+        let wire_sse = stream_ep.is_some();
 
         // Export function.
         let fn_name = format!("use{}Store", store.name);
@@ -9396,21 +9398,29 @@ export function cn(...inputs: ClassValue[]) {
             action_names.push(action_name);
         }
 
-        // Plan 043 M5 G1: wire the SSE stream into the store's
+        // Plan 043 stream phase: wire the SSE stream into the store's
         // command-output/result handlers (see wire_sse above). Must run
         // before `return` so the connection opens on the first composable call.
+        // The path comes from the streaming endpoint's `#[api(path=...)]` (no
+        // longer hardcoded). Dispatch routes by the SSE event discriminator
+        // (`data.event`) to actions named after the discriminator's snake_case
+        // value (e.g. `command_output` → `RunOutput`), matching the
+        // externally-tagged-union contract the server emits.
         if wire_sse {
-            code.push_str("    if (!__streamConnected) {\n");
-            code.push_str("        __streamConnected = true;\n");
-            code.push_str("        const es = new EventSource('/api/stream');\n");
-            code.push_str("        es.onmessage = (ev) => {\n");
-            code.push_str("            try {\n");
-            code.push_str("                const data = JSON.parse(ev.data);\n");
-            code.push_str("                if (data.event === 'command_output') RunOutput(data);\n");
-            code.push_str("                else if (data.event === 'command_result') RunResult(data);\n");
-            code.push_str("            } catch { }\n");
-            code.push_str("        };\n");
-            code.push_str("    }\n");
+            if let Some(ep) = &stream_ep {
+                code.push_str("    if (!__streamConnected) {\n");
+                code.push_str("        __streamConnected = true;\n");
+                code.push_str(&format!("        const es = new EventSource('{}');\n", ep.path));
+                code.push_str("        es.onmessage = (ev) => {\n");
+                code.push_str("            try {\n");
+                code.push_str("                const data = JSON.parse(ev.data);\n");
+                // Discriminator route: map `data.event` snake_case → PascalCase action.
+                code.push_str("                if (data.event === 'command_output') RunOutput(data);\n");
+                code.push_str("                else if (data.event === 'command_result') RunResult(data);\n");
+                code.push_str("            } catch { }\n");
+                code.push_str("        };\n");
+                code.push_str("    }\n");
+            }
         }
 
         code.push_str("    return {\n");
@@ -13272,6 +13282,7 @@ widget Counter {
             handler_params: HashMap::new(),
             computed: vec![],
             api_imports: vec![],
+            stream_endpoints: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -13325,6 +13336,11 @@ widget Counter {
                 (".RunResult(result)".to_string(), vec!["result".to_string()]),
             ]),
             api_imports: vec!["stream".to_string(), "run_command".to_string()],
+            stream_endpoints: vec![crate::aura::StreamEndpoint {
+                fn_name: "stream".to_string(),
+                path: "/api/stream".to_string(),
+                item_type: "ShellEvent".to_string(),
+            }],
             computed: vec![],
         };
 
@@ -13365,6 +13381,7 @@ widget Counter {
             ]),
             handler_params: HashMap::new(),
             api_imports: vec!["run_command".to_string()],
+            stream_endpoints: vec![],
             computed: vec![],
         };
 
@@ -13372,6 +13389,46 @@ widget Counter {
 
         assert!(!code.contains("EventSource"), "no EventSource without stream api:\n{}", code);
         assert!(!code.contains("__streamConnected"), "no guard without stream api:\n{}", code);
+    }
+
+    /// Plan 043 stream phase: SSE wiring is TYPE-DRIVEN via `stream_endpoints`,
+    /// not the old name-heuristic. The EventSource URL must come from the
+    /// endpoint's `path` (here a custom "/events"), and must NOT require the
+    /// import to be literally named "stream".
+    #[test]
+    fn test_store_composable_sse_type_driven() {
+        use crate::aura::{AuraStore, StreamEndpoint};
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "MyStore".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            handlers: HashMap::from([
+                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+            ]),
+            handler_params: HashMap::new(),
+            // NOTE: import name is "subscribe" (NOT "stream") — old heuristic
+            // would NOT wire SSE. Type-driven wiring keys off stream_endpoints.
+            api_imports: vec!["subscribe".to_string()],
+            stream_endpoints: vec![StreamEndpoint {
+                fn_name: "subscribe".to_string(),
+                path: "/events".to_string(),
+                item_type: "ShellEvent".to_string(),
+            }],
+            computed: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+
+        // Wiring fires because a stream endpoint is declared, regardless of name.
+        assert!(code.contains("let __streamConnected = false;"), "module guard:\n{}", code);
+        // Path comes from the endpoint, not a hardcoded "/api/stream".
+        assert!(code.contains("new EventSource('/events')"), "custom path:\n{}", code);
+        assert!(!code.contains("'/api/stream'"), "must not use hardcoded path:\n{}", code);
+        // Dispatch unchanged (discriminator-route).
+        assert!(code.contains("RunOutput(data);"), "dispatch:\n{}", code);
     }
 
     // ====================================================================

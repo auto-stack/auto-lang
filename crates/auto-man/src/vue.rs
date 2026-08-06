@@ -2740,12 +2740,52 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 
 /// Compile a .at file to Vue component
 /// Returns (vue_code, widget_names)
+/// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
+/// project's `back/api.at`, so the store composable can wire type-driven SSE.
+/// (Plan 043 stream phase.) Returns an empty vec if api.at is absent or has no
+/// stream endpoints. Tries full parse first, falls back to lenient extraction —
+/// mirroring `generate_api` in api_gen.rs.
+fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpoint> {
+    // Match generate_api's layout probing: src/back/api.at, else back/api.at.
+    let src_back = root_dir.join("src").join("back").join("api.at");
+    let api_file = if src_back.exists() {
+        src_back
+    } else {
+        let back = root_dir.join("back").join("api.at");
+        if back.exists() { back } else { return Vec::new(); }
+    };
+    let content = match std::fs::read_to_string(&api_file) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let module = crate::api_gen::try_full_parse(&content)
+        .or_else(|| crate::api_gen::extract_api_lenient(&content));
+    let module = match module {
+        Some(m) => m,
+        None => return Vec::new(),
+    };
+    module.endpoints.iter()
+        .filter_map(|ep| {
+            let rt = ep.return_type.trim();
+            // type_to_string drops the `~` prefix, so the inner type is between `<` and `>`.
+            let inner = rt.strip_prefix("~Stream<").or_else(|| rt.strip_prefix("Stream<"))?;
+            let item_type = inner.trim_end_matches('>').to_string();
+            Some(auto_lang::aura::StreamEndpoint {
+                fn_name: ep.fn_name.clone(),
+                path: ep.path(),
+                item_type,
+            })
+        })
+        .collect()
+}
+
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
 fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         root_dir_for_validation: Some(root_dir.to_path_buf()),
+        stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -2767,6 +2807,7 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         root_dir_for_validation: Some(root_dir.to_path_buf()),
+        stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)

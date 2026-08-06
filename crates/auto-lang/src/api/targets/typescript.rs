@@ -60,6 +60,30 @@ impl TypeScriptGenerator {
             }
         }
 
+        // Handle tuple types (a, b, c) → [a, b, c] (Plan 043: RecordField et al.)
+        // The lenient field-type path receives raw strings like "(str, RenderedCell)";
+        // produce a valid TS tuple. Top-level paren group only (split on top-level commas
+        // to avoid being fooled by nested parens/brackets/angles).
+        if trimmed.starts_with('(') && trimmed.ends_with(')') {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            let elems = split_top_level_commas(inner);
+            if !elems.is_empty() {
+                let ts_elems: Vec<String> = elems.iter().map(|e| self.to_ts_type(e)).collect();
+                return format!("[{}]", ts_elems.join(", "));
+            }
+        }
+
+        // Handle stream types: ~Stream<T> / Stream<T> → the stream is consumed via SSE
+        // in the store composable (see vue.rs type-driven SSE wiring), not via a fetch
+        // call. Render as the inner item type so any incidental reference stays valid.
+        // (Plan 043 stream phase.)
+        if let Some(inner) = trimmed.strip_prefix("~Stream<").and_then(|s| s.strip_suffix('>')) {
+            return self.to_ts_type(inner);
+        }
+        if let Some(inner) = trimmed.strip_prefix("Stream<").and_then(|s| s.strip_suffix('>')) {
+            return self.to_ts_type(inner);
+        }
+
         // Basic type mappings
         match trimmed {
             "int" | "i32" | "i64" | "u32" | "u64" | "uint" => "number",
@@ -355,12 +379,32 @@ export type { IApi };
         lines.push("// API Functions".to_string());
         lines.push("".to_string());
         for endpoint in &module.endpoints {
-            lines.push(self.generate_fetch_function(endpoint));
-            lines.push("".to_string());
+            if endpoint_is_stream(endpoint) {
+                // Stream endpoints (return ~Stream<T>) are consumed via SSE in the store
+                // composable (see vue.rs type-driven SSE wiring), not via a fetch call.
+                // Emit a stub comment so the file still lists the endpoint, but no dead
+                // fetch function is generated. (Plan 043 stream phase.)
+                lines.push(format!(
+                    "// stream() is consumed via SSE (EventSource) in the store composable; no fetch client. (path: {})",
+                    endpoint.path()
+                ));
+                lines.push("".to_string());
+            } else {
+                lines.push(self.generate_fetch_function(endpoint));
+                lines.push("".to_string());
+            }
         }
 
         lines.join("\n")
     }
+}
+
+/// True if the endpoint's return type is a stream (~Stream<T> / Stream<T>).
+/// Such endpoints are consumed via SSE in the store composable, not via a fetch call,
+/// so no fetch function should be generated for them. (Plan 043 stream phase.)
+fn endpoint_is_stream(endpoint: &ApiEndpoint) -> bool {
+    let rt = endpoint.return_type.trim();
+    rt.starts_with("~Stream<") || rt.starts_with("Stream<")
 }
 
 impl TargetGenerator for TypeScriptGenerator {
@@ -426,6 +470,31 @@ impl TypeScriptGenerator {
 
 use std::collections::HashMap;
 
+/// Split a type-list string on top-level commas, respecting nested (), [], <>.
+/// Used to convert Auto tuple syntax `(str, RenderedCell)` into TS tuple `[string, RenderedCell]`.
+/// (Plan 043: tuple field types.)
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '[' | '<' => depth += 1,
+            ')' | ']' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    let last = s[start..].trim();
+    if !last.is_empty() {
+        parts.push(last);
+    }
+    parts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -488,5 +557,21 @@ mod tests {
         assert!(result.contains("fetch"));
         assert!(result.contains("/api/users"));
         assert!(!result.contains("axios"));
+    }
+
+    #[test]
+    fn test_to_ts_type_tuple_and_stream() {
+        let gen = TypeScriptGenerator::new();
+        // Plan 043: tuple (a, b) → [a, b]
+        assert_eq!(gen.to_ts_type("(str, RenderedCell)"), "[string, RenderedCell]");
+        // Single-element tuple still produces a tuple.
+        assert_eq!(gen.to_ts_type("(str)"), "[string]");
+        // Nested generics inside tuple must not confuse the splitter.
+        assert_eq!(gen.to_ts_type("(str, List<int>)"), "[string, List<int>]");
+        // Array of tuple (field type as it arrives from lenient parse_fields).
+        assert_eq!(gen.to_ts_type("[](str, RenderedCell)"), "[string, RenderedCell][]");
+        // Stream types collapse to inner item type (SSE consumed in store, not via fetch).
+        assert_eq!(gen.to_ts_type("~Stream<ShellEvent>"), "ShellEvent");
+        assert_eq!(gen.to_ts_type("Stream<ShellEvent>"), "ShellEvent");
     }
 }
