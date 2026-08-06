@@ -529,7 +529,7 @@ impl AutoVM {
                 let idx = self.intern_string(s.as_bytes());
                 auto_val::encode_string(idx as u32)
             }
-            Value::VmRef(r) => auto_val::encode_i32(r.id as i32),
+            Value::VmRef(r) => auto_val::encode_object(r.id as u32),
 
             // --- Array: register into arrays[], element values recurse ---
             Value::Array(arr) => {
@@ -584,8 +584,15 @@ impl AutoVM {
         match val {
             auto_val::Value::Array(_) | auto_val::Value::Obj(_) | auto_val::Value::Node(_) => {
                 let nv = self.inject_value(val);
-                // ids are pushed as plain i32 (see inject_value above).
-                let id = auto_val::decode_i32(nv) as usize;
+                // Plan 390 §15 H2: Obj now encodes its id as TAG_OBJECT while
+                // Array/Node still use raw i32 (their storage migration is H3).
+                // Decode whichever tag inject_value produced — the low-32-bit
+                // payload is the registry id in both forms.
+                let id = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as usize
+                } else {
+                    auto_val::decode_i32(nv) as usize
+                };
                 auto_val::Value::VmRef(auto_val::VmRef { id })
             }
             auto_val::Value::VmRef(r) => auto_val::Value::VmRef(r.clone()),
@@ -4132,7 +4139,7 @@ impl AutoVM {
                                         auto_val::Value::Bool(b) => { task.ram.push_i32(if *b { 1 } else { 0 }); }
                                         auto_val::Value::Float(f) => { task.ram.push_f32(*f as f32); }
                                         auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
-                                        auto_val::Value::VmRef(r) => { task.ram.push_i32(r.id as i32); }
+                                        auto_val::Value::VmRef(r) => { task.ram.push_nv(auto_val::encode_object(r.id as u32)); }
                                         auto_val::Value::Nil => { task.ram.push_i32(0); }
                                         _ => { task.ram.push_i32(0); }
                                     }
@@ -4175,7 +4182,7 @@ impl AutoVM {
                                     auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                     auto_val::Value::Nil => task.ram.push_i32(0),
                                     // Plan 197 Bug E: heap object references stored in arrays
-                                    auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
+                                    auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
                                     auto_val::Value::Str(s) => {
                                         // Push string back into pool and restore TAG_STRING
                                         let mut strings = self.strings.write().unwrap();
@@ -4534,7 +4541,7 @@ impl AutoVM {
                                         }
                                         auto_val::Value::Nil => task.ram.push_i32(0),
                                         auto_val::Value::VmRef(vm_ref) => {
-                                            task.ram.push_i32(vm_ref.id as i32);
+                                            task.ram.push_nv(auto_val::encode_object(vm_ref.id as u32));
                                         }
                                         _ => {
                                             task.ram.push_i32(0);
@@ -4575,7 +4582,7 @@ impl AutoVM {
                                 let native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name, &field_name);
                                 if let Some(native_name) = native_name {
                                     drop(heap_obj);
-                                    task.ram.push_i32(obj_id as i32);
+                                    task.ram.push_nv(auto_val::encode_object(obj_id as u32));
                                     if let Some(&native_id) = crate::vm::native_registry::NATIVE_ID_MAP.get(native_name) {
                                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                             shim(task, self)?;
