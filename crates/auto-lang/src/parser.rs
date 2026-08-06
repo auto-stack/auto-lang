@@ -6021,8 +6021,25 @@ impl<'a> Parser<'a> {
                             // Find the previous expression to chain to.
                             // Walk back through stmts to find the last non-self-dot expression.
                             // This handles: let x = A.new()\n  .b()\n  .c()
+                            //
+                            // Plan 043 cat-3 Guard 1: skip dot-prefix statements
+                            // (`.field = expr`) as chain targets — they are independent
+                            // statements, not method-chain receivers. A real receiver
+                            // (`let x = A.new()`) never starts with `.`.
+                            //
+                            // If we cross ANY dot-prefix statement while walking back,
+                            // don't chain at all — a method chain's receiver must be
+                            // the *immediately preceding* statement, not an earlier one
+                            // reached by skipping over assignments. This prevents
+                            // `.RefreshGit()` at the end of an assignment sequence from
+                            // chaining back to `let snap = command_list()` at the top.
                             let mut chain_target_idx = None;
+                            let mut crossed_dot_prefix = false;
                             for i in (0..stmts_len - 1).rev() {
+                                if *stmt_starts_with_dot.get(i).unwrap_or(&false) {
+                                    crossed_dot_prefix = true;
+                                    continue;
+                                }
                                 match &stmts[i] {
                                     Stmt::Expr(e) if !is_dot_self_call(e) && !matches!(e, Expr::Nil | Expr::Null) => {
                                         chain_target_idx = Some(i);
@@ -6035,6 +6052,9 @@ impl<'a> Parser<'a> {
                                     _ => continue,
                                 }
                             }
+                            if crossed_dot_prefix {
+                                chain_target_idx = None;
+                            }
 
                             if let Some(target_idx) = chain_target_idx {
                                 // Get the base expression from the target stmt
@@ -6045,10 +6065,21 @@ impl<'a> Parser<'a> {
                                 };
 
                                 // Collect all self-dot stmts from target_idx+1 to end
-                                // and chain them onto base_expr
+                                // and chain them onto base_expr.
+                                // Plan 043 cat-3 Guard 2: STOP at the first non-self-dot-call
+                                // statement (e.g. a dot-prefix assignment `.field = expr`,
+                                // which is Expr::Bina, not a method call). Those are
+                                // independent statements and must not be pulled into the chain.
                                 let mut chained = base_expr;
                                 let chain_count = stmts_len - target_idx - 1;
                                 for _ in 0..chain_count {
+                                    let is_chainable_stmt = matches!(
+                                        stmts.last(),
+                                        Some(Stmt::Expr(e)) if is_dot_self_call(e)
+                                    );
+                                    if !is_chainable_stmt {
+                                        break;
+                                    }
                                     if let Some(Stmt::Expr(dot_expr)) = stmts.pop() {
                                         source_lines.pop();
                                         stmt_starts_with_dot.pop();
@@ -15379,6 +15410,31 @@ widget Counter {
             }
             other => panic!("expected Expr::Block for multiline computed, got {:?}", other),
         }
+    }
+
+    /// Plan 043 cat-3: a dot-prefix assignment (`.field = expr`) must NOT be
+    /// merged into a method chain, and a self-dot action call following a
+    /// dot-prefix assignment must stay a separate statement.
+    #[test]
+    fn test_dot_prefix_assignment_not_chained() {
+        fn fn_body_stmt_count(code: &str) -> usize {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from(code).with_session(session);
+            let ast = parser.parse().expect("should parse");
+            let fd = ast.stmts.iter().find_map(|s| match s {
+                Stmt::Fn(f) => Some(f),
+                _ => None,
+            }).expect("fn present");
+            fd.body.stmts.len()
+        }
+        // dot-prefix assign + action call → 2 separate stmts (was 1: merged).
+        assert_eq!(fn_body_stmt_count("fn f() {\n    .cwd = result.cwd\n    .RefreshGit()\n}\n"), 2);
+        // legitimate method chain → 1 stmt (regression guard).
+        assert_eq!(fn_body_stmt_count("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n"), 1);
+        // api-call assign + action → 2 separate stmts.
+        assert_eq!(fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"), 2);
+        // let + dot assigns (no action) → 3 stmts.
+        assert_eq!(fn_body_stmt_count("fn f() {\n    let snap = command_list()\n    .cwd = snap.cwd\n    .home = snap.home\n}\n"), 3);
     }
 
 

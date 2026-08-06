@@ -9299,21 +9299,16 @@ export function cn(...inputs: ClassValue[]) {
         // Export function.
         let fn_name = format!("use{}Store", store.name);
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
-        code.push_str("    return {\n");
 
-        // Expose state refs by name.
-        for sv in &store.state_vars {
-            code.push_str(&format!("        {},\n", sv.name));
-        }
-
-        // Expose handlers as action functions.
+        // Plan 043 cat-3: declare actions as const arrow functions BEFORE the
+        // return object, so sibling actions can call each other by bare name.
+        // Previously actions were inlined as object properties
+        // (`Action: (p) => {...}`), making them invisible to other actions'
+        // bodies — a cross-call like `.RefreshGit()` emitted `RefreshGit()`
+        // which has no binding in scope. Declaring `const RefreshGit = ...`
+        // first makes it a closure variable visible to all sibling actions.
+        let mut action_names: Vec<String> = Vec::new();
         for (pattern, payload) in &store.handlers {
-            // Plan 374: the aura extractor embeds parameter names in the pattern
-            // key (e.g. ".SelectFolder(folder)"), so we must strip both the
-            // leading dot AND the parameter list to recover the bare action name.
-            // Otherwise we'd emit `SelectFolder(folder): (folder: any) => ...`,
-            // a JS method-shorthand followed by an arrow — a syntax error.
-            // Params still come from handler_params below for the arrow signature.
             let after_dot = pattern.trim_start_matches('.');
             let action_name = match after_dot.find('(') {
                 Some(paren) => after_dot[..paren].to_string(),
@@ -9323,28 +9318,34 @@ export function cn(...inputs: ClassValue[]) {
                 crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
                 _ => String::new(),
             };
-            // Plan 360: for accent-enabled stores, wire up CSS-variable updates
-            // alongside the .at-side state changes. We append JS calls that the
-            // .at source can't express directly.
             if has_accent {
                 if action_name == "SetAccent" {
-                    // applyAccent(name, isDark) writes the --primary CSS variable.
                     body.push_str("; applyAccent(name, dark_mode.value)");
                 } else if action_name == "ToggleDarkMode" {
-                    // After flipping dark_mode, re-apply accent so lightness adjusts.
                     body.push_str("; applyAccent(accent_color.value, dark_mode.value)");
                 }
             }
-            // Actions with API calls need to be async (ts_adapter added `await`).
             let is_async = body.contains("await");
             let params = store.handler_params.get(pattern)
                 .map(|p| p.iter().map(|n| format!("{}: any", n)).collect::<Vec<_>>().join(", "))
                 .unwrap_or_default();
             let async_kw = if is_async { "async " } else { "" };
             code.push_str(&format!(
-                "        {}: {}({}) => {{ {} }},\n",
+                "    const {} = {}({}) => {{ {} }}\n",
                 action_name, async_kw, params, body
             ));
+            action_names.push(action_name);
+        }
+
+        code.push_str("    return {\n");
+
+        // Expose state refs by name.
+        for sv in &store.state_vars {
+            code.push_str(&format!("        {},\n", sv.name));
+        }
+        // Expose actions by reference (declared as const above).
+        for name in &action_names {
+            code.push_str(&format!("        {},\n", name));
         }
 
         // Auto-generate a computed 'all_tags' property that collects unique tags
