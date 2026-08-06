@@ -9470,8 +9470,28 @@ export function cn(...inputs: ClassValue[]) {
         // helpers and expose `accent_names` as a computed getter.
         let has_accent = store.state_vars.iter().any(|s| s.name == "accent_color");
 
+        // Plan 043 M5 G1: SSE stream wiring. When the store imports a `stream`
+        // API function AND declares RunOutput/RunResult actions (the "consume
+        // ~Stream<T>" pattern), the composable opens ONE EventSource('/api/stream')
+        // and dispatches command_output/command_result into those actions.
+        // Without this, run_command results never reach the UI (blocks stayed
+        // empty while the handwritten store's connectSSE() fed them).
+        let wire_sse = store.api_imports.iter().any(|f| f == "stream")
+            && store.handlers.keys().any(|p| {
+                Self::base_pattern(p).trim_start_matches('.') == "RunOutput"
+            })
+            && store.handlers.keys().any(|p| {
+                Self::base_pattern(p).trim_start_matches('.') == "RunResult"
+            });
+
         // Export function.
         let fn_name = format!("use{}Store", store.name);
+        // Module-level guard: every widget calls reactive(useXxxStore()), so
+        // without a flag each call would open its own SSE connection.
+        if wire_sse {
+            code.push_str("// Plan 043 M5 G1: single SSE stream connection for the module.\n");
+            code.push_str("let __streamConnected = false;\n\n");
+        }
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
 
         // Plan 043 cat-3: declare actions as const arrow functions BEFORE the
@@ -9509,6 +9529,23 @@ export function cn(...inputs: ClassValue[]) {
                 action_name, async_kw, params, body
             ));
             action_names.push(action_name);
+        }
+
+        // Plan 043 M5 G1: wire the SSE stream into the store's
+        // command-output/result handlers (see wire_sse above). Must run
+        // before `return` so the connection opens on the first composable call.
+        if wire_sse {
+            code.push_str("    if (!__streamConnected) {\n");
+            code.push_str("        __streamConnected = true;\n");
+            code.push_str("        const es = new EventSource('/api/stream');\n");
+            code.push_str("        es.onmessage = (ev) => {\n");
+            code.push_str("            try {\n");
+            code.push_str("                const data = JSON.parse(ev.data);\n");
+            code.push_str("                if (data.event === 'command_output') RunOutput(data);\n");
+            code.push_str("                else if (data.event === 'command_result') RunResult(data);\n");
+            code.push_str("            } catch { }\n");
+            code.push_str("        };\n");
+            code.push_str("    }\n");
         }
 
         code.push_str("    return {\n");
@@ -13245,5 +13282,83 @@ widget Counter {
             "composable function name, got:\n{}",
             code
         );
+    }
+
+    /// Plan 043 M5 G1: a store that imports `stream` and declares
+    /// RunOutput/RunResult (the "consume ~Stream<T>" pattern) must wire a
+    /// single EventSource('/api/stream') that dispatches command_output /
+    /// command_result into those actions. Without this, run_command results
+    /// never reach the UI.
+    #[test]
+    fn test_store_composable_wires_sse_stream() {
+        use crate::aura::{AuraStore, AuraStateDef};
+        use crate::ast::Expr;
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "ShellStore".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "blocks".to_string(),
+                type_info: crate::ast::Type::Unknown,
+                initial: Expr::Array(vec![]),
+                decorators: vec![],
+            }],
+            messages: vec![],
+            handlers: HashMap::from([
+                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+            ]),
+            handler_params: HashMap::from([
+                (".RunOutput(output)".to_string(), vec!["output".to_string()]),
+                (".RunResult(result)".to_string(), vec!["result".to_string()]),
+            ]),
+            api_imports: vec!["stream".to_string(), "run_command".to_string()],
+            computed: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+
+        // Module-level single-connection guard.
+        assert!(code.contains("let __streamConnected = false;"), "module guard:\n{}", code);
+        // The connection is opened inside the composable, guarded, before return.
+        assert!(code.contains("if (!__streamConnected) {"), "guard check:\n{}", code);
+        assert!(code.contains("new EventSource('/api/stream')"), "EventSource:\n{}", code);
+        // Dispatch into the store's actions.
+        assert!(
+            code.contains("if (data.event === 'command_output') RunOutput(data);"),
+            "output dispatch:\n{}",
+            code
+        );
+        assert!(
+            code.contains("else if (data.event === 'command_result') RunResult(data);"),
+            "result dispatch:\n{}",
+            code
+        );
+    }
+
+    /// Plan 043 M5 G1 negative: without the `stream` api import, no
+    /// EventSource wiring is generated (a store with RunOutput/RunResult but
+    /// no stream API must stay plain).
+    #[test]
+    fn test_store_composable_no_sse_without_stream_api() {
+        use crate::aura::{AuraStore};
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "PlainStore".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            handlers: HashMap::from([
+                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+            ]),
+            handler_params: HashMap::new(),
+            api_imports: vec!["run_command".to_string()],
+            computed: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+
+        assert!(!code.contains("EventSource"), "no EventSource without stream api:\n{}", code);
+        assert!(!code.contains("__streamConnected"), "no guard without stream api:\n{}", code);
     }
 }
