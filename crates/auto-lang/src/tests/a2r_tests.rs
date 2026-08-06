@@ -1094,3 +1094,8 @@ fn test_312_codegen_collects_api_routes() {
 // The spawn helper gains `field: Type = default` params; a no-arg spawn still
 // works via those defaults (see 005/006/015 regenerated goldens).
 #[test] fn test_22_actors_020_spawn_with_state() { test_a2r_deep("22_actors/020_spawn_with_state"); }
+
+// Plan 387 §16: a struct with a TaskRef field must derive only Debug (not
+// Clone/Eq/Ord) because TaskRef is move-only. Migrated from the plan-387
+// worktree before its removal (013 there → 021 here to avoid number clash).
+#[test] fn test_22_actors_021_handle_struct_field() { test_a2r_deep("22_actors/021_handle_struct_field"); }

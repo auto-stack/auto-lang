@@ -251,3 +251,14 @@ fn actor_019_guards() {
     // hand-written.
     assert_actor_parity("019_guards");
 }
+
+#[test]
+#[ignore]
+fn actor_021_handle_struct_field() {
+    // Plan 387 §16: a struct with a TaskRef field must derive only Debug (not
+    // Clone/Eq/Ord) because TaskRef is move-only (UnboundedSender isn't Clone).
+    // Verifies the transpiler downgrades the derive + TaskRef's manual Debug impl
+    // lets the containing struct still derive Debug. a2r-only (VM cannot run
+    // TaskRef-field spawns); .expected.out hand-written.
+    assert_actor_parity("021_handle_struct_field");
+}

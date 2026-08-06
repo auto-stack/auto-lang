@@ -1,0 +1,24 @@
+task Sink {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("sink got one")
+        }
+    }
+}
+
+type Worker {
+    handle TaskRef<i64>
+
+    fn emit() {
+        self.handle.send(1)
+        self.handle.send(1)
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    let w = Worker { handle: h }
+    w.emit()
+}
