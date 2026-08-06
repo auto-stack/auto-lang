@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let name = entry.file_name();
         let name_str = name.to_str().unwrap();
         if !(name_str.starts_with(".")) {
-            non_dot += 1
+            non_dot += 1;
         }
     }
     assert!(non_dot > 0)

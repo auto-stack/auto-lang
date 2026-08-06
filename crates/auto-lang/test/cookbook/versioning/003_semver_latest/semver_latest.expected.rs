@@ -7,7 +7,7 @@ fn main() {
     for v in &versions {
         let parsed = Version::parse(v).unwrap();
         if parsed > max {
-            max = parsed
+            max = parsed;
         }
     }
     assert!(max.major == 2);

@@ -6,7 +6,7 @@ fn main() {
     let mut found: bool = false;
     for x in &v {
         if x == target {
-            found = true
+            found = true;
         }
     }
     assert!(found == true);

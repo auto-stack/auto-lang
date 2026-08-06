@@ -3,9 +3,9 @@
 use std::collections::HashSet;
 fn visit(path: &str, mut visited: HashSet<String>) {
     if !(visited.contains(path)) {
-        visited.insert(path.to_string())
+        visited.insert(path.to_string());
     } else {
-        println!("Loop detected: {}", path)
+        println!("Loop detected: {}", path);
     }
 
 }

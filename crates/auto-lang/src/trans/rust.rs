@@ -10623,11 +10623,12 @@ impl RustTrans {
                         }
                         if !is_last {
                             sink.body.write(b";\n")?;
-                        } else if !has_else && matches!(expr, Expr::Call(_)) {
-                            // No else branch: Call tail needs ; to discard return value
-                            sink.body.write(b";\n")?;
                         } else {
-                            sink.body.write(b"\n")?;
+                            // Plan 393 E3: 语句上下文 if 的分支尾表达式也需要 `;`
+                            // (值被丢弃)。原逻辑仅在 !has_else && Call 时补 `;`,
+                            // 遗漏 has_else 的情况,导致 m.insert(...) 等
+                            // Option<V>-返回调用泄漏为分支尾类型 (E0308)。
+                            sink.body.write(b";\n")?;
                         }
                     }
                     Stmt::If(inner_if) => {
@@ -10685,11 +10686,8 @@ impl RustTrans {
                             && self.expr_needs_string_coercion(expr) {
                             sink.body.write(b".to_string()")?;
                         }
-                        if !is_last {
-                            sink.body.write(b";\n")?;
-                        } else {
-                            sink.body.write(b"\n")?;
-                        }
+                        // Plan 393 E3: else 分支尾表达式也一律 `;` (语句上下文)
+                        sink.body.write(b";\n")?;
                     }
                     Stmt::If(inner_if) => {
                         // Nested if statement in else

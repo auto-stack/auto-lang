@@ -7,10 +7,10 @@ fn main() {
 
     let mut filtered_count: i32 = 0;
     if 30 > 28 {
-        filtered_count += 1
+        filtered_count += 1;
     }
     if 35 > 28 {
-        filtered_count += 1
+        filtered_count += 1;
     }
     assert!(filtered_count == 2);
 }
