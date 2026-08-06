@@ -74,6 +74,13 @@ pub struct AutoTask {
     /// plus any body locals) don't carry stale values across message invocations.
     /// None when not in a handler dispatch.
     pub handler_frame_base: Option<usize>,
+    /// Plan 390 §15 G2-refactor (方案 B): stable re-park ip captured when
+    /// TASK_LOOP yields (the RET after TASK_LOOP in #start). On handler RET,
+    /// the RET-catch resets task.ip here so the actor cleanly re-parks for
+    /// the next message — independent of whatever ip the handler's RET
+    /// restored (which points at #start's RET and would execute/advance,
+    /// corrupting the next wake's saved_ip). None until the task parks.
+    pub park_ip: Option<usize>,
     // Plan 199: Source line tracking for debugging
     pub current_line: u32,
     pub current_source: Option<String>,
@@ -187,6 +194,7 @@ impl AutoTask {
             state_vars: Vec::new(), // Plan 317: actor state fields
             locked_state_fields: std::collections::HashSet::new(),
             handler_frame_base: None,
+            park_ip: None,
             current_line: 0,
             current_source: None,
             call_stack: Vec::new(),

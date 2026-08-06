@@ -3788,8 +3788,13 @@ impl Codegen {
                     }
                     self.pop_scope();
 
-                    // Handler must return - emit RET
+                    // Handler must return - emit RET.
+                    // Plan 390 §15 G2-refactor (方案 B): handler 现运行在真 bp 帧内
+                    // （唤醒路径建帧），bp≠0，RET 会执行 new_sp = bp - n_args。handler
+                    // 无栈参数，故 n_args = 0 —— 必须显式 emit 0 字节（裸 RET 会读到
+                    // 下一条字节码当 n_args）。对照普通函数 RET（codegen.rs:1422-1423）。
                     self.emit(OpCode::RET);
+                    self.code.push(0); // n_args = 0
 
                     if crate::is_vm_debug() {
                         eprintln!("[TaskDef] Compiled handler {} for task {} at offset {}",
@@ -3805,7 +3810,10 @@ impl Codegen {
                     for stmt in &else_body.stmts {
                         self.compile_stmt(stmt)?;
                     }
+                    // Plan 390 §15 G2-refactor (方案 B): else handler 同样运行在真 bp 帧内，
+                    // RET 需跟 n_args=0 字节（见上方 handler RET 注释）。
                     self.emit(OpCode::RET);
+                    self.code.push(0); // n_args = 0
                     self.exports.insert(format!("{}#else", task_name), else_offset);
                 }
 
