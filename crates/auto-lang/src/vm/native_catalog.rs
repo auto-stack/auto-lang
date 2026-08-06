@@ -1107,10 +1107,7 @@ macro_rules! for_each_bigvm_native {
             // Plan 349: Multipart file upload
             ("RequestBuilder.multipart_file", 2268, Void),
             ("RequestBuilder.multipart_text", 2269, Void),
-            // Plan 349 step 8: Cookie / retry / compression
-            ("RequestBuilder.cookie_store", 2272, Void),
-            ("RequestBuilder.retry", 2273, Void),
-            ("RequestBuilder.gzip", 2274, Void),
+            // Plan 349: Multipart file upload
             ("auto.http.upload", 2270, Void),
             ("http.upload", 2270, Void),
             // Plan 349: File download + resume + progress
@@ -1120,6 +1117,14 @@ macro_rules! for_each_bigvm_native {
             ("http.download_resume", 2272, Void),
             ("auto.http.download_with_progress", 2273, Void),
             ("http.download_with_progress", 2273, Void),
+            // Plan 349 步骤 7/8 (W2): Cookie / retry / compression — moved out of the
+            // 2270-2273 download range to fix an ID collision (cookie_store/retry
+            // previously aliased download_resume/download_with_progress, so the
+            // later-registered shim overwrote the other name's binding).
+            ("RequestBuilder.cookie_store", 3110, Void),
+            ("RequestBuilder.retry", 3111, Void),
+            ("RequestBuilder.gzip", 3112, Void),
+            ("RequestBuilder.brotli", 3113, Void),
             // Plan 350: WebSocket client
             ("auto.ws.connect", 2280, Void),
             ("ws.connect", 2280, Void),
@@ -1853,9 +1858,6 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("RequestBuilder.tls_client_cert", 2267),
     ("RequestBuilder.multipart_file", 2268),
     ("RequestBuilder.multipart_text", 2269),
-    ("RequestBuilder.cookie_store", 2272),
-    ("RequestBuilder.retry", 2273),
-    ("RequestBuilder.gzip", 2274),
     ("auto.http.upload", 2270),
     ("http.upload", 2270),
     ("auto.http.download", 2271),
@@ -1864,6 +1866,11 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("http.download_resume", 2272),
     ("auto.http.download_with_progress", 2273),
     ("http.download_with_progress", 2273),
+    // Plan 349 步骤 7/8 (W2): relocated to resolve ID collision with download_*.
+    ("RequestBuilder.cookie_store", 3110),
+    ("RequestBuilder.retry", 3111),
+    ("RequestBuilder.gzip", 3112),
+    ("RequestBuilder.brotli", 3113),
     ("auto.ws.connect", 2280),
     ("ws.connect", 2280),
     ("auto.ws.send", 2281),

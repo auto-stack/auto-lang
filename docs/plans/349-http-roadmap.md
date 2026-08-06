@@ -82,9 +82,13 @@
 - Echo 模式：文本帧原样返回，支持 Ping/Pong/Close
 - 协作式 yield_now（多连接并发）
 
-## 待实现步骤
+## 步骤与实施记录
 
-### 步骤 1：a2r HTTPS TLS 配置适配
+> 步骤 1-6 由 **Plan 388**（archive complete）承接落地（a2r HTTP client 适配）。
+> 步骤 7/8 由本 roadmap 直接实施（实施记录见各步的"落地"小节）。
+> 步骤 7 技术债记录方法语法 native 异步化的后续路径。
+
+### 步骤 1：a2r HTTPS TLS 配置适配 — ✅ landed（Plan 388 W1）
 
 **目标**：让 Rust 前端生成的 API client 支持 TLS 配置。
 
@@ -95,7 +99,7 @@
 
 **文件**：`crates/auto-man/src/rust_ui.rs`
 
-### 步骤 2：a2r 文件上传 multipart 适配
+### 步骤 2：a2r 文件上传 multipart 适配 — ✅ landed（Plan 388 W2）
 
 **目标**：让 Rust 前端能生成 multipart 上传函数。
 
@@ -106,7 +110,7 @@
 
 **文件**：`crates/auto-man/src/rust_ui.rs`
 
-### 步骤 3：a2r 文件下载适配
+### 步骤 3：a2r 文件下载适配 — ✅ landed（Plan 388 W3）
 
 **目标**：让 Rust 前端能生成下载函数。
 
@@ -117,7 +121,7 @@
 
 **文件**：`crates/auto-man/src/rust_ui.rs`
 
-### 步骤 4：a2r WebSocket 客户端适配
+### 步骤 4：a2r WebSocket 客户端适配 — ✅ landed（Plan 388 W4）
 
 **目标**：让 Rust 前端能生成 WebSocket 客户端代码。
 
@@ -128,7 +132,7 @@
 
 **文件**：`crates/auto-man/src/rust_ui.rs` + `generate_cargo_toml`
 
-### 步骤 5：VM 测试用例
+### 步骤 5：VM 测试用例 — ✅ landed（Plan 388 W5）
 
 **目标**：为所有新 HTTP 特性编写 VM 测试。
 
@@ -140,7 +144,7 @@
 - 测试 download_with_progress（验证进度事件格式）
 - 测试 WebSocket echo（启动 echo server → connect → send → on_message）
 
-### 步骤 6：a2r 测试用例
+### 步骤 6：a2r 测试用例 — ✅ landed（Plan 388 W5）
 
 **目标**：验证 a2r 生成的 Rust 代码能正确编译和运行。
 
@@ -149,23 +153,90 @@
 - 扩展测试：验证生成的 Rust 代码包含 TLS/multipart/download/ws 函数
 - 检查 `Cargo.toml` 依赖是否正确
 
-### 步骤 7：普通 HTTP 请求异步化（Plan 344 路径 B）
+### 步骤 7：普通 HTTP 请求异步化（Plan 344 路径 B） — ⚠️ 部分落地
 
 **目标**：普通 GET/POST 也支持真异步（AWAIT_FUTURE 外部 future 挂起），消除 UI 冻结。
 
-**改动**：
+**改动**（Plan 344 原设计）：
 - engine.rs FutureValue 加 external_result 字段
 - AutoTask 加 waiting_future_id 字段
 - AWAIT_FUTURE Pending 分支分外部/内部两条路
 - run_task_loop 加 future-wake 轮询
 - 见 Plan 344 详细设计
 
-### 步骤 8：易用性增强
+#### 落地情况
+
+- ✅ **`*_json` 系列（`#[api]` codegen 路径，走 CALL_NAT）已异步化**——真异步
+  re-entry yield 范式（spawn OS 线程 → `ASYNC_HTTP_RESULTS` → CALL_NAT IP 回退 →
+  `run_task_loop` wake source 5 轮询）。`#[api]` codegen 全部走 `*_json`
+  （codegen.rs:4106-4110），**核心 UI 冻结问题已解决**。
+- ⚠️ **方法语法 native 保持同步**：`http.get()`/`RequestBuilder.send()`/
+  `http.post_sync()` 等经 CALL_SPEC 分发，其栈清理契约（engine.rs:5034-5054）假定
+  shim 同步返回值，无法容忍 re-entry yield。详见下方"步骤 7 技术债"。
+- Plan 344 的 AWAIT_FUTURE 通用 future 架构仍是 TODO（未落地）。
+
+#### 步骤 7 技术债：CALL_SPEC re-entry（方法语法 HTTP native 异步化）
+
+**问题**：`http.get(url)`/`RequestBuilder.send()` 等方法语法经 CALL_SPEC 分发
+（engine.rs:4836+）。CALL_SPEC 的栈契约（5034-5054）在 shim 返回后无条件做栈清理
+（pop 返回值 + pop arg_count+1），假定 shim **同步返回值**。re-entry yield 范式要求
+shim 第一次调用设 `waiting_http_request_id` 并 return（不推返回值），与该契约冲突。
+重入时 receiver_pos（4853-4860）计算也需要 receiver+args 仍在栈上，但第一次调用已
+消费 args。
+
+**两条解决路径**（留后续 plan）：
+1. **codegen 改 CALL_NAT**（推荐）：让 `http.get()` 编译成 `auto.http.get`（全限定
+   CALL_NAT），复用现有 `*_json` 的 re-entry 范式。已保留的异步基础设施即可直接启用。
+   改动集中在 codegen.rs，风险低、复用多。
+2. **CALL_SPEC re-entry 机制**：在 CALL_SPEC native 分支加 `waiting_http_request_id`
+   检查，yield 时回退 IP + 跳过栈清理。需精确处理 receiver_pos 与 args 生命周期，复杂度高。
+
+**保留的异步基础设施**（`#[allow(dead_code)]`，待路径 1 启用）：
+- `ASYNC_HTTP_RESULTS_HANDLE` / `ASYNC_HTTP_RESULTS_AUTH` 全局表（stdlib.rs lazy_static）。
+- `spawn_async_http_handle` / `spawn_async_http_auth` / `spawn_async_http_bearer`。
+- `check_async_http_result_handle` / `check_async_http_result_auth` / `push_auth_result`。
+- engine.rs wake source 5 的 `.or_else()` 分支（查上述两表）。
+
+方法语法 native 现保持同步（`blocking_http_handle`/`blocking_http_auth`，spawn + join），
+但复用步骤 8 的 `send_with_retry`，retry/compression 改进统一生效。
+
+### 步骤 8：易用性增强 — ✅ landed
 
 - Cookie 管理（`http.cookie_store(true)`）
 - 请求重试（`request.retry(count, delay)`）
 - 压缩支持（自动 gzip/brotli）
 - CORS（AutoVM server 端）
+
+#### 落地细节
+
+**W2 — native 编号冲突修复**：`native_catalog.rs` 主表 + 镜像表把
+cookie_store 2272→3110、retry 2273→3111、gzip 2274→3112，新增 brotli=3113。
+原 2272/2273 与 download_resume/download_with_progress 双重占用，导致
+`register_shim_by_name` 后注册者覆盖前者（运行时某 name 调到错误 shim）。download
+系列现独占 2270-2273。`plan349_tests::test_native_ids_no_collision` 断言。
+
+**W3 — retry 真接入 send**：`send_with_retry(build_request, client, retry_count)`
+每次 attempt 重建 request（multipart Form 消费性，需重建）。`is_retryable_send_error`
+（连接错误/超时）+ HTTP 5xx/429 重试，4xx 不重试。`backoff_sleep`（200ms × 2^attempt，
+cap 5s）。`shim_request_builder_send` 接入 `retry_count`。`retry_count=0` → 单次 attempt
+（无回归）。
+
+**W4 — brotli 压缩**：`Cargo.toml` reqwest features +`"brotli"`；
+`HttpRequestBuilderData` +`brotli: bool`；`shim_request_builder_brotli`（仿 gzip）；
+send 闭包 `if brotli { client_builder.brotli(true); }`。
+
+**W5 — AutoVM server CORS**：`http_server.rs` 新增 `cors_origin()`（读 `AUTO_CORS_ORIGIN`，
+默认 `*`）、`cors_headers()`、`handle_cors_preflight(method)`（OPTIONS → 204 + CORS 头）。
+阻塞 server 与 async server 在路由匹配前加 OPTIONS 短路；9 处响应头
+（400/404/413/500/200-JSON/200-SSE/MW）拼接 `cors_headers()`。
+
+**W6 — a2r 对齐**：`rust_ui.rs` `_http_client()` helper 读 `AUTO_COOKIE_STORE`/
+`AUTO_GZIP`/`AUTO_BROTLI` env（默认 off）；Cargo 模板 reqwest features
++`"cookies"`/`"gzip"`/`"brotli"`。沿用 Plan 388 的 `AUTO_*` env 约定与字符串级回归测试模式。
+
+**W7 — 测试**：VM 侧 `plan349_tests.rs` 新增 6 个（`test_native_ids_no_collision`、
+`test_brotli_native_callable`、4 个 CORS）；a2r 侧 `rust_ui.rs tests` 新增 2 个
+（helper env 接线 + Cargo features）。
 
 ## 设计原则
 

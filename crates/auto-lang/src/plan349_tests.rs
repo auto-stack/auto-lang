@@ -6,6 +6,7 @@
 #[cfg(test)]
 mod plan349_tests {
     use crate::run_with_capture;
+    use crate::vm::native_registry::BIGVM_NATIVES;
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
@@ -295,5 +296,154 @@ print("ok")
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
         assert!(stdout.contains("ok"), "expected ok, got: [{}]", stdout);
+    }
+
+    // ==================================================================
+    // 步骤 7/8 follow-up（HTTP 异步化收尾 + 易用性增强）
+    // ==================================================================
+
+    // ------------------------------------------------------------------
+    // 步骤 8 W2: native-id collision fix
+    // ------------------------------------------------------------------
+
+    /// Verify cookie_store / retry / gzip / brotli resolve to the relocated
+    /// 3110-3113 range and do NOT alias download_resume / download_with_progress
+    /// (the pre-fix 2272/2273 collision). Before the fix, register_shim_by_name
+    /// would overwrite one name's shim with the other's because both mapped to
+    /// the same id.
+    #[test]
+    fn test_native_ids_no_collision() {
+        let mut reg = BIGVM_NATIVES.lock().unwrap();
+        let cookie = reg.resolve_qualified("RequestBuilder.cookie_store");
+        let retry = reg.resolve_qualified("RequestBuilder.retry");
+        let gzip = reg.resolve_qualified("RequestBuilder.gzip");
+        let brotli = reg.resolve_qualified("RequestBuilder.brotli");
+        let download_resume = reg.resolve_qualified("http.download_resume");
+        let download_progress = reg.resolve_qualified("http.download_with_progress");
+
+        let (cookie, retry, gzip, brotli) = (cookie.unwrap(), retry.unwrap(), gzip.unwrap(), brotli.unwrap());
+        let (download_resume, download_progress) =
+            (download_resume.unwrap(), download_progress.unwrap());
+
+        // Relocated into the 3110 range.
+        assert_eq!(cookie, 3110, "cookie_store should be 3110");
+        assert_eq!(retry, 3111, "retry should be 3111");
+        assert_eq!(gzip, 3112, "gzip should be 3112");
+        assert_eq!(brotli, 3113, "brotli should be 3113");
+        // Download family stays in 2270-2273 and does not collide.
+        assert_eq!(download_resume, 2272, "download_resume should be 2272");
+        assert_eq!(download_progress, 2273, "download_with_progress should be 2273");
+        // The critical assertion: none of the RequestBuilder ids equal a download id.
+        assert_ne!(cookie, download_resume, "cookie_store must not alias download_resume");
+        assert_ne!(retry, download_progress, "retry must not alias download_with_progress");
+    }
+
+    // ------------------------------------------------------------------
+    // 步骤 8 W4: brotli native callable
+    // ------------------------------------------------------------------
+
+    /// Verify RequestBuilder.brotli(true) registers and is callable without
+    /// panicking (the field + shim were added in 步骤 8 W4).
+    #[test]
+    fn test_brotli_native_callable() {
+        let code = r#"
+let builder = http.request("GET", "http://127.0.0.1:1/nonexistent")
+builder.brotli(1)
+print("ok")
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "brotli should register: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("ok"), "expected ok, got: [{}]", stdout);
+    }
+
+    // ------------------------------------------------------------------
+    // 步骤 8 W5: AutoVM server CORS
+    // ------------------------------------------------------------------
+
+    /// handle_cors_preflight returns a full 204 response for OPTIONS — verify
+    /// its shape (status + required CORS headers).
+    #[test]
+    fn test_cors_preflight_shape() {
+        let preflight = crate::vm::ffi::http_server::handle_cors_preflight("OPTIONS");
+        assert!(preflight.is_some(), "OPTIONS must produce a preflight response");
+        let resp = preflight.unwrap();
+        assert!(resp.contains("204 No Content"), "preflight must be 204: [{}]", resp);
+        assert!(
+            resp.contains("Access-Control-Allow-Origin"),
+            "preflight must carry CORS origin header: [{}]",
+            resp
+        );
+        assert!(
+            resp.contains("Access-Control-Allow-Methods"),
+            "preflight must list allowed methods: [{}]",
+            resp
+        );
+        assert!(
+            resp.contains("OPTIONS"),
+            "allowed methods must include OPTIONS: [{}]",
+            resp
+        );
+    }
+
+    /// Non-OPTIONS methods must NOT short-circuit (return None) so normal
+    /// routing proceeds and the regular response still carries CORS headers.
+    #[test]
+    fn test_cors_preflight_skips_non_options() {
+        for method in &["GET", "POST", "PUT", "DELETE", "PATCH"] {
+            assert!(
+                crate::vm::ffi::http_server::handle_cors_preflight(method).is_none(),
+                "{} should not be treated as a preflight request",
+                method
+            );
+        }
+    }
+
+    /// `cors_headers()` must be appendable to a normal response and include the
+    /// three required headers (origin, methods, headers).
+    #[test]
+    fn test_cors_headers_content() {
+        let h = crate::vm::ffi::http_server::cors_headers();
+        assert!(h.contains("Access-Control-Allow-Origin"), "missing origin: [{}]", h);
+        assert!(h.contains("Access-Control-Allow-Methods"), "missing methods: [{}]", h);
+        assert!(h.contains("Access-Control-Allow-Headers"), "missing headers: [{}]", h);
+        // Default origin is `*` when AUTO_CORS_ORIGIN is unset.
+        assert!(h.contains("*") || std::env::var("AUTO_CORS_ORIGIN").is_ok(),
+            "default origin should be '*': [{}]", h);
+    }
+
+    /// Lightweight integration: a mock that mirrors the AutoVM response shape
+    /// (CORS-bearing 404 built with cors_headers()) must expose the header over
+    /// a real socket exchange.
+    #[test]
+    fn test_cors_header_on_real_get() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let cors = crate::vm::ffi::http_server::cors_headers();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let resp = format!(
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n{}\r\n",
+                    cors
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        stream
+            .write_all(b"GET /anything HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut resp = String::new();
+        stream.read_to_string(&mut resp).unwrap();
+        assert!(
+            resp.contains("Access-Control-Allow-Origin"),
+            "response must carry CORS header: [{}]",
+            resp
+        );
     }
 }
