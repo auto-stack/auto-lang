@@ -902,10 +902,16 @@ fn expand_fragment_node(
             let new_body: Vec<ViewNode> = body.iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
+            // Plan 043 M5: the iterable is a STRING (parse_view_for_loop
+            // builds it manually), so it can't go through substitute_expr.
+            // Substitute param refs (e.g. `for col in output.columns` →
+            // `output.Table.columns`) so inlined view fns narrow to the
+            // variant sub-type. Previously this stayed untouched and relied
+            // on the widget coincidentally exposing a same-named prop.
             Ok(ViewNode::ForLoop {
                 var: var.clone(),
                 index: index.clone(),
-                iterable: iterable.clone(),
+                iterable: substitute_condition(iterable, subs),
                 body: new_body,
                 span: *span,
             })
@@ -1058,6 +1064,14 @@ fn expr_to_condition_str(expr: &Expr) -> String {
         Expr::Bool(b) => b.to_string(),
         Expr::Str(s) => format!("\"{}\"", s),
         Expr::Dot(obj, field) => {
+            // Plan 043 M5: `.output` / `.output.Table` parse as Dot chains
+            // rooted at the `self` placeholder (Ident(".") / Ident("self")).
+            // The self-dot base must NOT leak as "self.output" — render the
+            // whole self-path dot-prefixed (.output / .output.Table) so
+            // substituted iterables/conditions stay valid .at field paths.
+            if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                return format!(".{}", field.as_str());
+            }
             let obj_str = expr_to_condition_str(obj);
             // If obj is ".self" or ".store", keep the dotted path
             if obj_str.starts_with('.') {

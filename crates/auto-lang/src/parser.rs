@@ -189,6 +189,13 @@ pub struct Parser<'a> {
     /// Prevents `store` (contextual keyword) from being misinterpreted as a
     /// store declaration when it's actually a variable reference (store.action()).
     in_on_body: bool,
+    /// Plan 043 M5: true while parsing the RHS of a Dot expression
+    /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
+    /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
+    /// would otherwise parse `Text{` as a Node and swallow the element's
+    /// props brace ("Expected term, got RBrace"). Struct literals are always
+    /// standalone `Type{...}`, never `obj.Field{...}`.
+    in_dot_rhs: bool,
     /// 方言表：按 session 装配，语句派发时按优先级查询。
     /// PR-1 阶段初始为空（无方言注册），行为与现状一致。
     /// PR-2 将把 UI 关键字迁入 UiDialect 并在 build_dialects 中注册。
@@ -272,6 +279,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -338,6 +346,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -387,6 +396,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -2394,7 +2404,18 @@ impl<'a> Parser<'a> {
                         }
                         continue;
                     }
+                    // Plan 043 M5: the RHS of a Dot is a FIELD/METHOD name —
+                    // suppress struct-literal widening so `cell.Text { }` keeps
+                    // the `{` for the element's props instead of parsing
+                    // `Text{...}` as a Node (see in_dot_rhs). Only Dot (not
+                    // Asn/other infix ops) sets the flag, so `x = Type{...}`
+                    // still widens.
+                    let saved_dot_rhs = self.in_dot_rhs;
+                    if matches!(op, Op::Dot) {
+                        self.in_dot_rhs = true;
+                    }
                     let rhs = self.expr_pratt(power.r)?;
+                    self.in_dot_rhs = saved_dot_rhs;
                     match op {
                         Op::Range => {
                             lhs = Expr::Range(Range {
@@ -3159,18 +3180,52 @@ impl<'a> Parser<'a> {
                 // must not be reinterpreted as struct construction — doing so
                 // overflowed the parser stack on godot scene files.
                 self.is_ui_scenario()
+                    && !self.in_dot_rhs
                     && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                     && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
             };
             if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
-                // Parse as node instance with the already-read identifier
-                let _ident = Expr::Ident(name.clone());
-                let primary_prop = None;
-                let args = Args::new();
+                if !self.is_ui_scenario() {
+                    // Non-UI dialects (notably gdscript) reuse atom() and their
+                    // `Ident {` forms must keep the OLD path — empty args, then
+                    // parse_node reads the braces as a body. Re-parsing the
+                    // braces as object() pairs here overflowed the parser stack
+                    // on godot scene files (dodge_player).
+                    let _ident = Expr::Ident(name.clone());
+                    return Ok(Expr::Node(self.parse_node(
+                        &name,
+                        None,
+                        Args::new(),
+                        &AutoStr::new(),
+                    )?));
+                }
+                // Struct literal `Type{ field: value, ... }` (UI scenario) —
+                // parse the braces as NAMED ARGS (object() returns the Pair
+                // list), NOT as a node body. Plan 043 M5: parse_node's `{...}`
+                // → parse_node_body path can't parse `field: value` as
+                // statements ("Expected term, got RBrace" — the error is
+                // collected and the fields silently dropped), so codegen
+                // received an empty-args Node and emitted `{}` — e.g.
+                // `Block{ id: id, command: cmd }` became `let block = {}` and
+                // command results never matched the block.
+                let pairs = self.object()?;
+                let mut args = Args::new();
+                for p in pairs {
+                    match p.key {
+                        Key::NamedKey(name) => {
+                            args.args.push(Arg::Pair(name, (*p.value).clone()));
+                        }
+                        _ => {
+                            // Non-named keys can't be struct fields — keep the
+                            // pair as a positional expression.
+                            args.args.push(Arg::Pos(Expr::Pair(p)));
+                        }
+                    }
+                }
 
                 return Ok(Expr::Node(self.parse_node(
                     &name,
-                    primary_prop,
+                    None,
                     args,
                     &AutoStr::new(),
                 )?));
@@ -6170,6 +6225,51 @@ impl<'a> Parser<'a> {
 
     pub fn parse_node_body(&mut self) -> AutoResult<Body> {
         self.parse_body(true)
+    }
+
+    /// Plan 043 M5: is `Type{...}` a struct-literal construction (braces =
+    /// named field args) in the UI scenario? Mirrors atom()'s gate: a
+    /// registered type, or PascalCase + not a known var (unresolved imports).
+    /// Kept in its own fn so the callers' stack frames stay small.
+    fn is_ui_struct_construction(&mut self, ident: &Expr, is_constructor: bool) -> bool {
+        if is_constructor {
+            return true;
+        }
+        let ident_name = match ident {
+            Expr::Ident(n) => n.as_str(),
+            Expr::GenName(n) => n.as_str().split('<').next().unwrap_or(""),
+            _ => "",
+        };
+        if ident_name.is_empty() {
+            return false;
+        }
+        ident_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            && !matches!(
+                self.lookup_meta(ident_name),
+                Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_))
+            )
+    }
+
+    /// Plan 043 M5: parse `Type{ field: value, ... }` braces as NAMED ARGS
+    /// and append them to the given args. Separate fn so node_or_call_expr /
+    /// atom (hot recursive paths) don't grow their stack frames — godot scene
+    /// files (dodge_player) barely fit in the 2MB test stack.
+    fn parse_braced_struct_args(&mut self, ident: &Expr, mut args: Args) -> AutoResult<Args> {
+        let _ = ident; // name is used by object()/pair resolution implicitly
+        let pairs = self.object()?;
+        for p in pairs {
+            match p.key {
+                Key::NamedKey(name) => {
+                    args.args.push(Arg::Pair(name, (*p.value).clone()));
+                }
+                _ => {
+                    // Non-named keys can't be struct fields — keep the pair
+                    // as a positional expression.
+                    args.args.push(Arg::Pos(Expr::Pair(p)));
+                }
+            }
+        }
+        Ok(args)
     }
 
     pub fn body(&mut self) -> AutoResult<Body> {
@@ -10726,12 +10826,31 @@ impl<'a> Parser<'a> {
                     );
                 }
             }
+
+            // Plan 043 M5: a TYPE constructor in rhs position
+            // (`var b Block = Block{ id: id, ... }`) must parse the braces as
+            // STRUCT FIELDS (named args), not a node body. parse_node's
+            // `{...}` → parse_node_body can't parse `field: value` as
+            // statements, so fields were dropped and codegen emitted `{}`.
+            // UI scenario only; the object() parse lives in a helper so this
+            // hot fn's stack frame stays small (gdscript dodge_player barely
+            // fits in the 2MB test stack).
+            let node_args = if self.is_ui_scenario()
+                && self.is_ui_struct_construction(&ident, is_constructor)
+                && !has_paren
+                && primary_prop.is_none()
+                && self.is_kind(TokenKind::LBrace)
+            {
+                self.parse_braced_struct_args(&ident, args)?
+            } else {
+                args
+            };
             match ident {
                 Expr::Ident(name) => {
                     return Ok(Expr::Node(self.parse_node(
                         &name,
                         primary_prop,
-                        args,
+                        node_args,
                         &secondary_prop,
                     )?));
                 }
@@ -14043,6 +14162,179 @@ mod tests {
         let ast = parse_once(code);
         let call = ast.stmts[1].clone();
         assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2)))");
+    }
+
+    #[test]
+    fn test_struct_literal_fields_become_node_args() {
+        // Plan 043 M5: `var block = Block{ id: 1, command: "hi" }` in a store
+        // handler must parse its fields as NAMED ARGS (not a node body).
+        // Previously the braces fed parse_node_body, which can't parse
+        // `field: value` as statements — the error was collected, fields were
+        // dropped, and codegen emitted `{}` (command results never matched).
+        // Needs the UI session so the PascalCase struct-construction fallback
+        // applies (Block isn't registered in a standalone parse).
+        let code = concat!(
+            "store S {\n",
+            "    on {\n",
+            "        .Go -> {\n",
+            "            var block = Block{ id: 1, command: \"hi\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        // Traverse: StoreDecl → on → handlers[0] → body stmts → the var Store.
+        use crate::ast::{Expr, Stmt};
+        let stmt = ast
+            .stmts
+            .iter()
+            .find(|s| matches!(s, Stmt::StoreDecl(_)))
+            .expect("store decl");
+        let Stmt::StoreDecl(decl) = stmt else { unreachable!() };
+        let on = decl.on.as_ref().expect("on block");
+        let handler = on
+            .handlers
+            .iter()
+            .find(|h| h.pattern == ".Go")
+            .expect(".Go handler");
+        let var_store = handler
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Store(store) if store.name.as_str() == "block" => Some(store),
+                _ => None,
+            })
+            .expect("var block store stmt");
+        let Expr::Node(node) = &var_store.expr else {
+            panic!(
+                "block init should be a Node (struct literal), got: {:?}",
+                var_store.expr
+            );
+        };
+        assert_eq!(
+            node.args.args.len(),
+            2,
+            "both fields as named args, got {:?}",
+            node.args.args
+        );
+        assert!(
+            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "id")),
+            "id field present as named arg, got {:?}",
+            node.args.args
+        );
+        assert!(
+            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "command")),
+            "command field present as named arg, got {:?}",
+            node.args.args
+        );
+    }
+
+    #[test]
+    fn test_dot_rhs_field_access_not_struct_construction() {
+        // Plan 043 M5: `text cell.Text { }` in a view fn — the PascalCase
+        // field `Text` is immediately followed by the element's props brace.
+        // The struct-literal widening (any PascalCase ident + `{`) must NOT
+        // fire for the RHS of a Dot: it would parse `Text{...}` as a Node,
+        // swallow the props brace, and desync → "Expected term, got RBrace".
+        // Struct literals are standalone `Type{...}` (`x = Block{...}`), never
+        // `obj.Field{...}`.
+        let code = concat!(
+            "widget W {\n",
+            "    view {\n",
+            "        col {\n",
+            "            RenderT(a: .a)\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "view fn RenderT(a Any) {\n",
+            "    col {\n",
+            "        for cell in a {\n",
+            "            text cell.Text { }\n",
+            "            if cell.Tagged != nil {\n",
+            "                text cell.Tagged.text { }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("widget view with PascalCase fields parses");
+        // RenderT's view body must contain the for loop with the text element.
+        use crate::ast::Stmt;
+        let view_fn = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::ViewFragmentDecl(vf) if vf.name.as_str() == "RenderT" => Some(vf),
+                _ => None,
+            })
+            .expect("RenderT view fn decl");
+        let root = view_fn.body.clone();
+        // Root → col element → for loop → text element with a Dot primary prop.
+        fn collect_text_primary(
+            node: &crate::ast::ui::ViewNode,
+            out: &mut Vec<crate::ast::Expr>,
+        ) {
+            use crate::ast::ui::ViewNode;
+            match node {
+                ViewNode::Element { tag, props, children, .. } => {
+                    if tag == "text" {
+                        for p in props {
+                            if p.name == "text" {
+                                if let crate::ast::ui::ViewPropValue::Expr(e) = &p.value {
+                                    out.push(e.clone());
+                                }
+                            }
+                        }
+                    }
+                    for c in children {
+                        collect_text_primary(c, out);
+                    }
+                }
+                ViewNode::ForLoop { body, .. } => {
+                    for c in body {
+                        collect_text_primary(c, out);
+                    }
+                }
+                ViewNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body.iter().chain(else_body.iter().flatten()) {
+                        collect_text_primary(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut primaries = Vec::new();
+        collect_text_primary(&root, &mut primaries);
+        assert!(
+            primaries.iter().any(|e| matches!(
+                e,
+                crate::ast::Expr::Dot(obj, f)
+                    if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "cell")
+                        && f.as_str() == "Text"
+            )),
+            "cell.Text parsed as field access (Dot), got: {:?}",
+            primaries
+        );
+        assert!(
+            primaries.iter().any(|e| matches!(
+                e,
+                crate::ast::Expr::Dot(inner, f)
+                    if f.as_str() == "text"
+                        && matches!(
+                            inner.as_ref(),
+                            crate::ast::Expr::Dot(o, ff)
+                                if ff.as_str() == "Tagged"
+                                    && matches!(o.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "cell")
+                        )
+            )),
+            "cell.Tagged.text parsed as nested Dot, got: {:?}",
+            primaries
+        );
     }
 
     #[test]
