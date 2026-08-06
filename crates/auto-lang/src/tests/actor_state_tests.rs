@@ -89,3 +89,56 @@ fn main() {
     // The injected count=41 survives to the handler; +1 → 42.
     assert!(s.contains("42"), "spawn init arg (count=41 → +1 = 42): stdout={:?} result={:?}", s, r);
 }
+
+/// VM bug fix: a task with state fields but NO `fn start()` now applies the
+/// declared default initializers. Previously the whole #start block (initializers
+/// + #start export) was gated on `start_hook.is_some()`, so `count = 5` was
+/// silently dropped (state started at 0) and shim_task_spawn_vm fell back to
+/// ip=0. Now `count = 5` runs, handler does +1 → 6.
+#[test]
+fn actor_state_default_init_without_fn_start() {
+    let code = r#"
+task Counter {
+    count = 5
+    on {
+        1 -> {
+            count = count + 1
+            print(count)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // Default count=5 applied (no fn start), handler +1 → 6.
+    assert!(s.contains("6"), "state default-init (count=5 → +1 = 6): stdout={:?} result={:?}", s, r);
+}
+
+/// VM bug fix interaction: spawn init args override the (now-working) declared
+/// defaults. `Task.spawn("Counter", 16, 100)` injects count=100; the #start
+/// default initializer `count = 5` is skipped for the locked field, so the
+/// handler sees 100 (+1 → 101), not 5.
+#[test]
+fn actor_spawn_init_arg_overrides_now_working_default() {
+    let code = r#"
+task Counter {
+    count = 5
+    on {
+        1 -> {
+            count = count + 1
+            print(count)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Counter", 16, 100)
+    h.send(1)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // Injected count=100 wins over default 5; handler +1 → 101.
+    assert!(s.contains("101"), "spawn init arg overrides default (100 → +1 = 101): stdout={:?} result={:?}", s, r);
+}

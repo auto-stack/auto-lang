@@ -62,6 +62,12 @@ pub struct AutoTask {
     // (not in ram) so they survive handler RET and are independent of bp.
     // Accessed via LOAD_STATE_FIELD / STORE_STATE_FIELD opcodes.
     pub state_vars: Vec<auto_val::NanoValue>,
+    /// VM bug fix (Plan 390 M1 + state-default fix interaction): field indices
+    /// set at spawn via Task.spawn init args. STORE_STATE_FIELD in the #start
+    /// hook skips these so the (now-working) default initializers don't clobber
+    /// the spawn-injected values. Cleared at TASK_LOOP so handler writes are
+    /// unaffected.
+    pub locked_state_fields: std::collections::HashSet<u8>,
     // Plan 199: Source line tracking for debugging
     pub current_line: u32,
     pub current_source: Option<String>,
@@ -173,6 +179,7 @@ impl AutoTask {
             current_handler_has_context: false,
             current_msg_context: None,
             state_vars: Vec::new(), // Plan 317: actor state fields
+            locked_state_fields: std::collections::HashSet::new(),
             current_line: 0,
             current_source: None,
             call_stack: Vec::new(),

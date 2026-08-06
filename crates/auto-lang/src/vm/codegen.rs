@@ -3629,7 +3629,15 @@ impl Codegen {
                 // Compile lifecycle hooks if present
                 // Start hook
                 let has_handlers = !task_def.on_block.handlers.is_empty();
-                if let Some(ref start_hook) = task_def.start_hook {
+                // VM bug fix: emit a #start hook (state-field initializers + TASK_LOOP
+                // + #start export) whenever the task has an explicit `fn start()` OR
+                // any state fields. Previously this whole block was gated on
+                // `start_hook.is_some()`, so a task with state fields but no
+                // `fn start()` never emitted the STORE_STATE_FIELD default initializers
+                // AND never registered `#start` — shim_task_spawn_vm then fell back to
+                // ip=0 and the declared defaults (e.g. `count = 5`) were silently lost.
+                let has_state = !task_def.state.is_empty();
+                if task_def.start_hook.is_some() || has_state {
                     let start_offset = self.code.len() as u32;
                     // Plan 317: emit state field initializers at the very start
                     // of the start hook. spawn_task points the actor's ip here,
@@ -3642,12 +3650,14 @@ impl Codegen {
                             self.code.push(idx);
                         }
                     }
-                    // Compile the hook body
-                    self.push_scope();
-                    for stmt in &start_hook.body.stmts {
-                        self.compile_stmt(stmt)?;
+                    // Compile the hook body (only if an explicit fn start() exists).
+                    if let Some(ref start_hook) = task_def.start_hook {
+                        self.push_scope();
+                        for stmt in &start_hook.body.stmts {
+                            self.compile_stmt(stmt)?;
+                        }
+                        self.pop_scope();
                     }
-                    self.pop_scope();
                     // Plan 317 Phase 1: if the task has message handlers, the
                     // start hook does NOT simply RET — instead it parks the task
                     // in the message loop (TASK_LOOP sets in_message_loop + Waiting)

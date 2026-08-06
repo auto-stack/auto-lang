@@ -6338,6 +6338,11 @@ impl AutoVM {
                     task.in_message_loop = true;
                     task.task_type_name = Some(task_type.clone());
 
+                    // VM bug fix: #start's default initializers have run (or were
+                    // skipped for spawn-injected fields). Clear the lock set so
+                    // message handlers can freely STORE_STATE_FIELD on any field.
+                    task.locked_state_fields.clear();
+
                     // Set task to waiting state (will be woken when messages arrive)
                     task.status = TaskStatus::Waiting("message_loop".to_string());
 
@@ -6480,11 +6485,17 @@ impl AutoVM {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
                     let val_nv = task.ram.pop_nv();
-                    // Grow state_vars if needed (safety; normally pre-sized at spawn).
-                    if field_idx >= task.state_vars.len() {
-                        task.state_vars.resize(field_idx + 1, 0);
+                    // VM bug fix: skip the default initializer for fields set at
+                    // spawn via init args (shim_task_spawn_vm locked them). The
+                    // lock set is cleared at TASK_LOOP, so handler writes (which
+                    // run after TASK_LOOP) are unaffected.
+                    if !task.locked_state_fields.contains(&(field_idx as u8)) {
+                        // Grow state_vars if needed (safety; normally pre-sized at spawn).
+                        if field_idx >= task.state_vars.len() {
+                            task.state_vars.resize(field_idx + 1, 0);
+                        }
+                        task.state_vars[field_idx] = val_nv;
                     }
-                    task.state_vars[field_idx] = val_nv;
                 }
                 // Plan 317: Global variable access (module-level var).
                 // name_idx: u16 indexes the string pool.

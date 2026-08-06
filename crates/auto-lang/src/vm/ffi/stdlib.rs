@@ -5745,6 +5745,10 @@ pub fn shim_task_spawn_vm(
                 for (i, v) in init_values.into_iter().enumerate() {
                     if i < spawned.state_vars.len() {
                         spawned.state_vars[i] = v;
+                        // VM bug fix: lock this field so #start's (now-working)
+                        // default initializers don't clobber the spawn-injected
+                        // value. Cleared at TASK_LOOP so handlers can write freely.
+                        spawned.locked_state_fields.insert(i as u8);
                     }
                 }
             }
