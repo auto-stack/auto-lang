@@ -674,7 +674,11 @@ body 解析后配合 `push_scope`/`pop_scope` 防绑定泄漏（镜像 `parse_cl
 - [ ] H.3 新增 a2r 测试：`fn(ev Type) { forward(ev, outer_cb) }` 形式（含外部 fn 捕获），
        期望转译为 `|ev: T| forward(ev, outer_cb)` ✅
 - [ ] H.4 回归：`cargo test --features test-trans` 零新增失败；现有 `=>` 闭包测试不受影响
-- [ ] H.5 回 auto-ai：重建 auto.exe → 解锁 Plan 021 Phase 6.6（driver Delta/Tool 转发）
+- [x] H.5 回 auto-ai：重建 auto.exe → ~~解锁 Plan 021 Phase 6.6~~ Phase H 修了参数绑定，但
+       **Phase 6.6 仍阻塞**：driver 转发需 EventSink cb 持有捕获 `on_event` 的闭包，但 cb 是
+       裸 `fn(StreamEvent)` 指针——Auto/a2r 缺少 `Box<dyn Fn>`/`impl Fn` 闭包类型表达，
+       闭包不能 coerce 成 fn 指针。这是更深层的语言限制（非 Phase H 范围）。driver 非流式
+       事件已正常工作，仅流式 Delta/Tool 待 Auto 增加闭包类型。详见 Plan 021 Phase 6.6。
 
 ### §15.5 验收（Phase H）
 
