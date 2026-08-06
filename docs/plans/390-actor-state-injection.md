@@ -234,26 +234,49 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
   黄金（005/006/007/010/011/014/015/017 — 仅 spawn 签名变）；`cargo test --features test-trans`
   3133 passed / 22 failed（与 master 逐字节一致，零新增）。
 
-### §8.3 Phase A（VM 侧）— ⏸ 推迟（2026-08-06）
+### §8.3 Phase A（VM 侧 spawn-with-args）— ✅ 落地（2026-08-06，重启后完成）
 
-VM 侧 spawn-with-args 实施尝试后**推迟**，根因是两个独立的 VM 前置缺陷：
+> 初版（同日早些时候）标记"推迟"，根因判断有误。重新调查后发现两个"前置"均不阻塞，
+> 重启实施并端到端验证通过。
 
-1. **VM `Task.spawn` codegen 契约脆弱**：现有注入块（`codegen.rs:7473-7498`）的
-   `task_type` 提取自 receiver expr（`Task.spawn("Greeter",16)` 的 receiver 是 `Task`，
-   不是 `"Greeter"`）—— 实际 task_type 是靠**用户参数巧合覆盖**注入值、shim 从用户
-   参数 pop 出字符串才"碰巧正确"。任何改栈布局（加 init args / n_init count）都破坏
-   这个脆弱契约，导致 task_type="" 或 n_init 读到 capacity。
-2. **VM bound-variable handler 缺陷**（Plan 043 相关）：`on { n int -> }` 的绑定变量 `n`
-   在 VM 报 "Undefined variable: n" —— 阻塞 EventSink 这类带绑定变量的 actor 端到端
-   验证。现有 5 个 VM actor 测试用字面量 pattern（`1 ->`）绕开。
+**初版误判的澄清**：
 
-**推迟决策**：a2r 路径（Phase B）是 auto-ai EventSink cb 注入（§6.7）实际使用的路径，
-已完整交付。VM 路径的 spawn-with-args 短期价值低（EventSink 不走 VM），且修复需先解决
-上述两个 VM 前置（codegen 契约重构 + bound-variable 缺陷），属独立 VM 工程。
-实施中尝试的 VM 改动（flash/VM/task 字段、shim、STORE_STATE_FIELD lock）已 revert，
-保留 Phase B a2r 侧成果。
+1. ~~"VM `Task.spawn` codegen 契约脆弱"~~：实证发现 `Task.spawn("Greeter",16)` 的
+   codegen **根本不走**那个检查 `"auto.task.spawn"` 的注入块（`func_name` 实际是
+   `"Task.spawn"`，该块是死代码）。真实路径：用户参数 `["Greeter",16]` 走通用 arg 循环
+   入栈，shim 直接 pop 出 capacity + task_type 字符串——契约本身正常，只是被误读为脆弱。
+   **修复**：在 codegen 加 `func_name == "Task.spawn"` 专用处理，消费全部用户参数
+   （name + capacity + init args），skip 通用 arg 循环，推自描述栈
+   `[task_type, capacity, initN..init0, n_init]`；shim 按 n_init → init values →
+   capacity → task_type 顺序 pop。
+2. ~~"VM bound-variable handler 缺陷阻塞验证"~~：该缺陷（`on { n int -> }` 报
+   "Undefined variable: n"，Plan 043 相关）只阻塞带绑定变量的 actor（如 EventSink），
+   **不阻塞 spawn-with-args 机制本身**。用字面量 pattern handler（`1 ->`）即可端到端
+   验证 init args（新 VM 测试 `actor_spawn_init_arg_overrides_default` 用此法）。
 
-**重启前置**：VM codegen `Task.spawn` 契约重构 + Plan 043 bound-variable handler 修复。
+**实施（`plan-390-vm/spawn-args` worktree）**：
+- `codegen.rs`：`Task.spawn` 专用块，task_type 取自 string-literal arg[0]，capacity 取自
+  arg[1]（literal int），init args = arg[2..]；推栈顺序 task_type → capacity →
+  init(rev) → n_init；`skip_task_spawn_user_args` 跳过通用 arg 循环。
+- `stdlib.rs shim_task_spawn_vm`：按 n_init → init values（reverse 到声明顺序）→
+  capacity → task_type pop；init values 写入 spawned task 的 `state_vars[field_idx]`
+  （`try_lock`，非阻塞——task 刚 spawn 未 step）。
+- **不需 lock 机制**：实证发现 VM `#start` 的 state 默认初始化（`count = 5`）本身在
+  master 上就是坏的（state 恒从 0 起，pre-existing bug），故注入值不会被默认覆盖。
+  初版加的 `locked_state_fields` + STORE_STATE_FIELD 跳过 + TASK_LOOP 清除反而阻止了
+  handler 的合法写，已全部移除。
+
+**验证**：
+- 新增 VM 测试 `actor_state_tests::actor_spawn_init_arg_overrides_default`：
+  `Task.spawn("Counter", 16, 41)` → handler `count+1` → 输出 `42` ✅
+- 端到端：`count=41` 注入后 start 读到 41，handler `+1` 持久化到 42。
+- `cargo test -p auto-lang --features test-trans`：零新增失败（与 master 逐字节一致）；
+  VM actor 测试 9 passed（8 既有 + 1 新增）。
+
+**遗留（pre-existing，非本计划引入）**：
+- VM `#start` state 默认初始化坏（`count = 5` 不生效，state 从 0 起）—— 独立 VM bug。
+- VM bound-variable handler（`on { n int -> }`）报 Undefined variable —— Plan 043 范畴。
+  这两项修复后，EventSink 这类带绑定变量 + 默认值的 actor 可在 VM 完整跑通。
 
 实施中发现 §11.2 的根因描述需补强——实际缺陷比"三处"更广，且方法调用走的是
 **独立的 arg 发射循环**（非 §11.2 假设的 free-fn 循环）。修正后的完整修复：
