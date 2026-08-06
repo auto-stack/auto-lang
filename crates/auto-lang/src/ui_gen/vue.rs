@@ -1869,6 +1869,13 @@ impl VueGenerator {
                 // msg variant payload — `on_pick` for `Pick(str)` yields
                 // `(arg0: string) => void`, not `() => void` (which rejected the
                 // parent's `(name: any) => void` handler with TS2322).
+                // Plan 043 M5 R4: skip `on_*` callback props with a matching
+                // msg variant entirely — the parent wires them via the emit
+                // (`@Run`), so a required `on_run` prop would make the parent's
+                // object literal miss it (TS2345).
+                if Self::prop_is_emitted_callback(prop, widget) {
+                    continue;
+                }
                 let ts_type = Self::prop_to_ts_type(prop, widget);
                 // Track custom types for import generation. Recurse into
                 // containers (List<Block>, []ToolEntry, Option<T>, ...) so a
@@ -2967,7 +2974,7 @@ impl VueGenerator {
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
                         }
-                        let vue_event = self.auto_event_to_vue(event);
+                        let vue_event = self.sub_widget_event_to_vue(event);
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
                         // If inside a for-loop, pass the loop variable's .id as argument
@@ -8707,14 +8714,29 @@ impl VueGenerator {
         }
     }
 
+    /// Vue event binding for a KNOWN SUB-WIDGET callback prop.
+    ///
+    /// Sub-widgets emit their msg variant names from defineEmits (`Run`,
+    /// `OpenPath`, `Stop`), so the parent-side callback prop `on_run` must
+    /// bind to `@Run` — NOT the DOM fallback in `base_event_to_dom`, which
+    /// strips a leading "on" and would emit `@_run` (never fired by the
+    /// child). Uses the same `on_pick` ↔ `Pick` convention as
+    /// `prop_to_ts_type`. Non-`on_` events (e.g. DOM events forwarded to the
+    /// child) keep the normal DOM mapping.
+    fn sub_widget_event_to_vue(&self, event: &str) -> String {
+        if let Some(base) = event.strip_prefix("on_") {
+            return format!("@{}", Self::snake_to_pascal(base));
+        }
+        self.auto_event_to_vue(event)
+    }
+
     /// Convert AutoUI event name (with optional `.modifier` chain) to a Vue
     /// template event binding, e.g. `onkeydown.up.prevent` → `@keydown.up.prevent`.
     ///
     /// `.window` / `.document` modifiers are NOT handled here — they mark
     /// global listeners and are intercepted by `try_register_global_listener`
     /// before this function is called.
-    fn auto_event_to_vue(&self, event: &str) -> String {
-        let (base, modifiers) = Self::split_event_key(event);
+    fn auto_event_to_vue(&self, event: &str) -> String {        let (base, modifiers) = Self::split_event_key(event);
         // Existing shorthands keep their historical expansion.
         let mut vue = match base {
             "onenter" | "onEnter" => "@keyup.enter".to_string(),
@@ -8949,6 +8971,35 @@ impl VueGenerator {
             }
         }
         Self::auto_type_to_ts_type(&prop.type_info)
+    }
+
+    /// True when an `on_*: msg` callback prop has a matching msg VARIANT that
+    /// the child emits (`on_run` ↔ `Run`, `on_open_path` ↔ `OpenPath`).
+    ///
+    /// Plan 043 M5 R4: such callbacks are delivered parent→child through the
+    /// emit (`@Run="handler"` — Vue turns the listener into an `onRun`
+    /// fallthrough), and the child's generated on-block never calls
+    /// `props.on_run`. Declaring the prop as REQUIRED makes the parent's
+    /// usage `{ ... , @Run }` miss `on_run` → TS2345. So skip it in
+    /// defineProps. `on_*` props with NO matching variant stay real props
+    /// (the parent binds them with `:on_xxx="..."`).
+    fn prop_is_emitted_callback(prop: &AuraProp, widget: &AuraWidget) -> bool {
+        use crate::ast::Type;
+        if let Type::User(decl) = &prop.type_info {
+            if decl.name.as_str() == "msg" {
+                let variant_name = prop
+                    .name
+                    .strip_prefix("on_")
+                    .map(Self::snake_to_pascal)
+                    .unwrap_or_default();
+                return widget
+                    .messages
+                    .iter()
+                    .flat_map(|m| &m.variants)
+                    .any(|v| v.name == variant_name);
+            }
+        }
+        false
     }
 
     /// Collect api.ts interface names referenced by an Auto type, recursing
@@ -10572,6 +10623,50 @@ mod tests {
     /// api.ts as type-only imports.
     #[test]
     fn test_msg_prop_signature_and_custom_type_import() {
+        // B-1/B-2 (as amended by R4): `on_*: msg` callback props with a
+        // matching msg variant are delivered via the EMIT — they are dropped
+        // from defineProps (`on_pick`/`on_stop`), and the payload-aware
+        // signature moves to defineEmits (`Pick: [string]`, `Stop: []`).
+        // Container-nested custom types still import from api.ts.
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
+    msg Msg { Pick(str), Stop }
+    view {
+        col {
+            button "pick" {
+                onclick: .Pick("x")
+            }
+            button "stop" {
+                onclick: .Stop
+            }
+        }
+    }
+    on {
+        .Pick(s) -> { }
+        .Stop -> { }
+    }
+}
+"#,
+        );
+
+        // R4: emitted-callback props dropped from defineProps.
+        assert!(!sfc.contains("on_pick"), "on_pick dropped from defineProps:\n{}", sfc);
+        assert!(!sfc.contains("on_stop"), "on_stop dropped from defineProps:\n{}", sfc);
+        // B-1 payload signature now lives on the emit.
+        assert!(sfc.contains("Pick: [string]"), "Pick emit payload:\n{}", sfc);
+        assert!(sfc.contains("Stop: []"), "Stop emit no payload:\n{}", sfc);
+        // Standalone parse can't resolve `Block`, so the container type is
+        // `any[]` here; the Block import is covered by
+        // test_custom_type_import_in_define_props below.
+        assert!(sfc.contains("blocks: any[]"), "blocks type:\n{}", sfc);
+        assert!(!sfc.contains("import type { msg }"), "msg must not be imported:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_custom_type_import_in_define_props() {
+        // B-2: a container-nested custom type (List<Block>) must still import
+        // from api.ts even after R4 drops emitted-callback props.
         use crate::ast::{Type, TypeDecl, TypeDeclKind};
         let user = |name: &str| Type::User(TypeDecl {
             consts: Vec::new(),
@@ -10590,24 +10685,17 @@ mod tests {
             doc: None,
             is_pub: false,
         });
-        let msg_type = user("msg");
         let widget = AuraWidget {
             name: "Child".to_string(),
             state_vars: vec![],
-            messages: vec![AuraMessage {
-                name: "Msg".to_string(),
-                variants: vec![
-                    AuraMsgVariant { name: "Pick".to_string(), payload: vec![Type::StrSlice] },
-                    AuraMsgVariant { name: "Stop".to_string(), payload: vec![] },
-                ],
-            }],
+            messages: vec![],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
-            props: vec![
-                AuraProp { name: "on_pick".to_string(), type_info: msg_type.clone(), default: None },
-                AuraProp { name: "on_stop".to_string(), type_info: msg_type, default: None },
-                AuraProp { name: "blocks".to_string(), type_info: Type::List(Box::new(user("Block"))), default: None },
-            ],
+            props: vec![AuraProp {
+                name: "blocks".to_string(),
+                type_info: Type::List(Box::new(user("Block"))),
+                default: None,
+            }],
             computed: vec![],
             routes: None,
             lifecycle: vec![],
@@ -10624,14 +10712,8 @@ mod tests {
 
         let mut gen = VueGenerator::new();
         let sfc = gen.generate(&widget).unwrap();
-
-        // B-1: payload-aware callback prop signatures.
-        assert!(sfc.contains("on_pick: (arg0: string) => void"), "on_pick sig:\n{}", sfc);
-        assert!(sfc.contains("on_stop: () => void"), "on_stop sig:\n{}", sfc);
-        // B-2: container-nested custom type is imported; the msg pseudo-type is not.
         assert!(sfc.contains("blocks: Block[]"), "blocks type:\n{}", sfc);
         assert!(sfc.contains("import type { Block } from '@/lib/api'"), "Block import:\n{}", sfc);
-        assert!(!sfc.contains("import type { msg }"), "msg must not be imported:\n{}", sfc);
     }
 
     #[test]
@@ -13360,5 +13442,96 @@ widget Counter {
 
         assert!(!code.contains("EventSource"), "no EventSource without stream api:\n{}", code);
         assert!(!code.contains("__streamConnected"), "no guard without stream api:\n{}", code);
+    }
+
+    // ====================================================================
+    // Plan 043 M5 R4 — sub-widget callback events: parent binds `on_run` →
+    // `@Run` (matching the child's emit), and the child drops the redundant
+    // `on_run` prop from defineProps (the callback arrives via the emit).
+    // ====================================================================
+
+    #[test]
+    fn test_sub_widget_on_prop_binds_pascal_emit_name() {
+        // Parent side: `on_run: .RunCmd` on a known sub-widget must emit
+        // `@Run="RunCmd"`, NOT the DOM fallback `@_run` (which the child
+        // never fires — it emits the msg variant name `Run`).
+        let parent = gen_sfc_with_sub_widgets(
+            r#"
+widget App {
+    model { var n int = 0 }
+    view {
+        col {
+            PromptBar(
+                on_run: .RunCmd,
+                on_clear: .Reset
+            )
+        }
+    }
+    on {
+        .RunCmd(cmd) -> { .n = .n + 1 }
+        .Reset -> { .n = 0 }
+    }
+}
+"#,
+            &["PromptBar"],
+        );
+        assert!(
+            parent.contains("@Run=\"RunCmd\""),
+            "parent binds @Run (Pascal msg variant), not @_run:\n{}",
+            parent
+        );
+        assert!(
+            parent.contains("@Clear=\"Reset\""),
+            "parent binds @Clear for on_clear:\n{}",
+            parent
+        );
+        assert!(
+            !parent.contains("@_run") && !parent.contains("@_clear"),
+            "no DOM-fallback `@_*` bindings for callback props:\n{}",
+            parent
+        );
+    }
+
+    #[test]
+    fn test_sub_widget_omits_emitted_callback_prop_from_define_props() {
+        // Child side: `on_run: msg` with a matching `Run(str)` msg variant is
+        // delivered via the emit — declaring it as a required prop would make
+        // the parent's `{ ..., @Run }` miss `on_run` (TS2345).
+        let child = gen_sfc_from_widget_src(
+            r#"
+widget PromptBar(cwd: str, on_run: msg, on_clear: msg, on_exit: msg) {
+    msg Msg { Run(str), Clear, Exit }
+    model { var input str = "" }
+    view {
+        col {
+            input {
+                value: .input
+                onenter: .Run(.input)
+            }
+        }
+    }
+    on {
+        .Run(cmd) -> { }
+        .Clear -> { }
+        .Exit -> { }
+    }
+}
+"#,
+        );
+        assert!(
+            !child.contains("on_run") && !child.contains("on_clear") && !child.contains("on_exit"),
+            "emitted-callback props dropped from defineProps:\n{}",
+            child
+        );
+        assert!(
+            child.contains("cwd: string"),
+            "non-callback props stay in defineProps:\n{}",
+            child
+        );
+        assert!(
+            child.contains("Run: [string]"),
+            "child still declares the Run emit with payload:\n{}",
+            child
+        );
     }
 }
