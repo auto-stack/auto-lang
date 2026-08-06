@@ -6,7 +6,8 @@ status: complete # draft | in-progress | complete
 # auto-lang 侧范围完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地）；Phase D 在 auto-ai 仓推进。
 # 2026-08-07 二次复审：L1 根因已修（剩 auto-ai workaround 回收）、L3/L5 已闭环；
 # 剩余开放项：L2 双层包装（设计偏差）、L4 a2r 闭包字面量推导（workaround 在用）、
-# 闭包类型缺失（Box<dyn Fn>，语言级，阻塞 auto-ai driver 流式转发）。详见 §14。
+# 闭包类型机制已交付（§15.10，Box<Fn> → Box<dyn Fn> 含带签名 + 闭包值路径）；
+# 剩 auto-ai EventSink 换闭包落地（Plan 021 Phase 6.6）。详见 §14。
 ---
 
 # Plan 390: Actor 状态注入机制 + a2r call-site spec 自动装箱修复
@@ -622,7 +623,9 @@ VM 侧 spawn-with-args + bound-var handler 机制均已就绪（Phase A + G2）�
 **auto-lang 侧范围判定**：Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；L3/L5 闭环；L1 根因已修。
 **剩余**：L1 的 auto-ai workaround 回收（root cause 已修，`let a = Arc(tool)` 可直写）、
 L4（a2r 闭包字面量推导，workaround 在用）、L2（双层包装设计偏差）、以及 §15 H.5 暴露的
-**闭包类型缺失**（语言级，需新计划，阻塞 auto-ai driver 流式转发）。
+**闭包类型缺失**（语言级）——**类型机制已交付（§15.10，2026-08-07）**：`Box<Fn>` → `Box<dyn Fn>`
+含带签名 + 闭包值路径 `Box::new(move |..|)`；剩 auto-ai 侧 EventSink 换闭包落地（Plan 021
+Phase 6.6 解锁）。
 **Plan 021 缺口 3（serde derive 转译）经实证已不阻塞** —— a2r 已支持 `#[derive(Deserialize)]` +
 `#[serde(deserialize_with)]` 注解透传（实证见 Plan 021 缺口 3 章节）；缺口在 auto-ai 侧 `.at`
 源码未迁移到 derive 风格，留 Plan 021 Phase 4 独立推进。
@@ -1052,3 +1055,52 @@ body 解析后配合 `push_scope`/`pop_scope` 防绑定泄漏（镜像 `parse_cl
 - [ ] `fn(ev str) void { fwd(ev, outer_cb) }` 转译为 `|ev: String| fwd(ev.as_str(), outer_cb)`，捕获外部 fn
 - [ ] `(ev) => fwd(ev, outer_cb)` 仍工作（向后兼容）
 - [ ] 现有闭包测试零回归
+
+---
+
+## §15.10 Phase H4 — `Box<dyn Fn>` 闭包类型支持（承接 §14 闭包类型缺口）
+
+> **2026-08-07 立项**。按用户设计实现：`Box<T>` 名字映射 + `Fn` spec 声明 +
+> `Box<Fn>` → `Box<dyn Fn>`（带签名语法 `Box<Fn(A,B)>` → `Box<dyn Fn(A,B)>`）+
+> 闭包值路径（闭包字面量赋 `Box<Fn>` 字段自动 `Box::new(move |..|)`）。分支 `plan-390/fn-closure-type`。
+
+### §15.10.1 设计（用户定义）
+
+- **`Box<T>` 名字映射**：Auto 平时不用 Box（仅 Rust 互操作），像 `Vec` 一样在 a2r 做名字映射——
+  `Box<T>` 直接映射 Rust `Box<T>`。
+- **`Fn` spec 只声明**：`spec Fn { }` 空声明，自动映射 Rust 的 `Fn` trait。
+- **`Box<Fn>` = `Box<dyn Fn>`**：spec 放容器里必然 dyn（spec 无直接实体）。
+
+### §15.10.2 实施（5 处改动）
+
+1. **`stdlib/auto/fn.at`**：`spec Fn { }` 空声明。
+2. **parser（`parse_ident_or_generic_type` + `parse_fn_signature`）**：`Fn(...)` 签名语法 →
+   `Type::Fn(params, ret)`（复用 fn-pointer AST；`Fn` 裸用走 spec 解析 → `Type::Spec`）。parse_fn_type
+   重构复用 `parse_fn_signature`。
+3. **a2r `rust_type_name`/`rust_return_type_name` GenericInstance 特判**：base ∈ {Box, Arc} +
+   单参数，arg 为 `Spec(Fn)` → `dyn Fn`；arg 为 `Type::Fn` → `dyn Fn(params) -> ret`（Void 返回省略
+   `-> ()`）。**收窄到 Fn**：其他 spec（`Arc<Tool>`）保持 `Arc<Box<dyn Tool>>` 双层（Plan 019 L2 债，
+   `Arc(tool)` 值构造 box 的是已 `Box<dyn>` 的参数，改成单层会类型不匹配）。
+4. **a2r `spec_decl` Fn phantom**：`spec Fn` 不发射本地 `trait Fn {}`（会遮蔽 Rust 标准库 Fn trait，
+   导致 `Box<dyn Fn(i32)>` 指向本地空 trait 编译失败），仅注册 spec_decls。
+5. **值路径**：`closure_field_rust_type` helper —— task state 闭包字段类型 →
+   `Box<dyn Fn(params) -> ret>`；`emit_task_impl` 默认值 → `Box::new(move |..| ..)`（move 保证捕获
+   'static）；`emit_task_spawn_helper` 的 `_with` 参数类型同步（原 `/* unknown */` → `Box<dyn Fn>`）。
+
+### §15.10.3 测试与验证
+
+- **黄金**：`12_specs/007_box_fn`（`Box<Fn>`/`Box<Fn(int)>`/`Box<Fn(int) str>` → `Box<dyn Fn>`/
+  `Box<dyn Fn(i32)>`/`Box<dyn Fn(i32) -> String>`；struct 字段 + 参数 + 返回位）、
+  `22_actors/022_closure_cb`（`cb = fn(e str) {...}` → 字段 `Box<dyn Fn(String)>` +
+  默认 `Box::new(move |e: String| { .. })` + `(self.cb)(ev)` + `_with` 参数 `Box<dyn Fn(String)>`）。
+- **回归**：`cargo test -p auto-lang --lib` **2829/22**（基线，零新增）；test-trans（RUST_MIN_STACK=16MB）
+  **3166/22**（基线，零新增）；`cargo test -p auto-man --lib` **179/0**。
+- **auto-ai**：重建 auto.exe + retranspile **0 错**，生成的 rust/src 无新增 diff（a2r 改动对现有代码
+  行为中性）。
+
+### §15.10.4 后续（未做，另立）
+
+- **EventSink 端到端**：auto-ai `agent.at` 的 EventSink cb 换 `Box<Fn(StreamEvent)>` 闭包（捕获
+  `on_event`），driver 流式 Delta/Tool 转发（Plan 021 Phase 6.6）——类型机制已就绪，落地在 auto-ai 侧。
+- **`Arc<dyn Tool>` 单层**（L2 转正）：`Arc<Tool>` 类型标注单层化需同步改 `Arc(tool)` 值语义
+  （spec 参数不再预 Box），另立 a2r spec 存储位推导计划。
