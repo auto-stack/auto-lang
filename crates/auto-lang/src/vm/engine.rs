@@ -1491,6 +1491,30 @@ impl AutoVM {
         false
     }
 
+    /// Plan 317 §11 Phase 11 (Bug fix): Read a function's declared parameter
+    /// count (the `n_args` byte stored right after its FN_PROLOG opcode at the
+    /// function's entry address). Returns `None` if the function isn't found or
+    /// the bytecodes don't start with FN_PROLOG (defensive).
+    ///
+    /// Used by HTTP handler dispatch (`build_handler_args`) to decide whether
+    /// the handler declared an extra parameter to receive the cookies/auth
+    /// metadata. Without this, the runtime can't tell a 1-param handler
+    /// (`fn echo_id(id int)`) from a 2-param one that wants the metadata, and it
+    /// unconditionally pushes the metadata — corrupting parameter binding (the
+    /// handler's first param ends up bound to the metadata JSON instead of the
+    /// path param).
+    pub fn get_fn_n_args(&self, fn_name: &str) -> Option<usize> {
+        let addr = *self.flash.exports_by_name.get(fn_name)? as usize;
+        // The first byte at the entry point is FN_PROLOG (0xFN), followed by
+        // n_args (u8), then n_locals (u8). See codegen.rs Plan 088 Phase 4:
+        // "Always emit FN_PROLOG at function entry".
+        let prolog_byte = self.flash.memory.get(addr).copied()?;
+        if prolog_byte != OpCode::FN_PROLOG as u8 {
+            return None;
+        }
+        self.flash.memory.get(addr + 1).copied().map(|n| n as usize)
+    }
+
 
     /// Returns true if the message matches the pattern
     fn match_message_pattern_vm(
