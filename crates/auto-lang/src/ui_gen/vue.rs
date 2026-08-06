@@ -9352,9 +9352,14 @@ export function cn(...inputs: ClassValue[]) {
         // Check both model state_vars AND the user-declared computed block: a
         // `computed { all_tags => ... }` declaration must suppress this auto-inject,
         // otherwise we'd emit a duplicate `get all_tags()` key (vite warning).
+        // Plan 043 store-codegen: also require a `notes` state var — this is a
+        // 015-notes-specific helper that references `notes.value`, so injecting it
+        // into a store without `notes` (e.g. ShellStore) yields a runtime
+        // `notes is not defined`.
         let has_all_tags = store.state_vars.iter().any(|s| s.name == "all_tags")
             || store.computed.iter().any(|c| c.name == "all_tags");
-        if !has_all_tags {
+        let has_notes = store.state_vars.iter().any(|s| s.name == "notes");
+        if !has_all_tags && has_notes {
             code.push_str("        get all_tags() {\n");
             code.push_str("            const tags = new Set<string>();\n");
             code.push_str("            for (const n of notes.value) {\n");
@@ -9376,11 +9381,28 @@ export function cn(...inputs: ClassValue[]) {
         // Uses ts_adapter to transpile the expression, with store state_names
         // as context (so .value is appended correctly to module-level refs).
         for computed_prop in &store.computed {
-            let mut buf = Vec::new();
-            crate::ui_gen::ts_adapter::transpile_expr_pub(&computed_prop.expr, &ctx, &mut buf);
-            let expr_js = String::from_utf8_lossy(&buf);
+            // Plan 043 store-codegen: a single-expression computed renders as
+            // `get name() { return <expr>; }`. A multi-statement block body
+            // (Expr::Block) already ends in its own `return`, so we emit the
+            // statements directly into the getter body (no wrapping `return`).
             code.push_str(&format!("        get {}() {{\n", computed_prop.name));
-            code.push_str(&format!("            return {};\n", expr_js.trim()));
+            match &computed_prop.expr {
+                crate::ast::Expr::Block(body) => {
+                    let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                    // indent each line of the already-transpiled body
+                    for line in body_js.lines() {
+                        code.push_str("            ");
+                        code.push_str(line);
+                        code.push('\n');
+                    }
+                }
+                _ => {
+                    let mut buf = Vec::new();
+                    crate::ui_gen::ts_adapter::transpile_expr_pub(&computed_prop.expr, &ctx, &mut buf);
+                    let expr_js = String::from_utf8_lossy(&buf);
+                    code.push_str(&format!("            return {};\n", expr_js.trim()));
+                }
+            }
             code.push_str("        },\n");
         }
 
@@ -9507,6 +9529,19 @@ export function getAccentNames(): string[] {
             Expr::Str(s) | Expr::CStr(s) => format!("'{}'", s.as_str().replace('\'', "\\'")),
             Expr::Bool(b) => b.to_string(),
             Expr::Array(_) => "[]".to_string(),
+            // Plan 043 store-codegen: `List<T>.new([])` and similar container
+            // constructors parse as a call whose callee ends in `.new`. Treat
+            // any `*.new(...)` initializer as an empty array — the common case
+            // is `List<Block>.new([])`. Struct-literal `Type{...}` (Expr::Node)
+            // and None/nil fall back to null.
+            Expr::Call(call) => {
+                let callee = match call.name.as_ref() {
+                    Expr::Dot(_, method) => method.as_str(),
+                    _ => "",
+                };
+                if callee == "new" { "[]".to_string() } else { "null".to_string() }
+            }
+            Expr::Nil | Expr::Null => "null".to_string(),
             _ => "null".to_string(),
         }
     }
@@ -12858,6 +12893,61 @@ widget Counter {
             sfc.contains("return label"),
             "return statement from block body survives:\n{}",
             sfc
+        );
+    }
+
+    /// Plan 043 store-codegen: a store WITHOUT a `notes` state var must NOT
+    /// get the 015-notes-specific `all_tags` getter injected (it references
+    /// `notes.value` and would be a runtime `notes is not defined`). And
+    /// array inits render as `[]`.
+    #[test]
+    fn test_store_composable_no_notes_no_all_tags() {
+        use crate::aura::{AuraStore, AuraStateDef};
+        use crate::ast::Expr;
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "ShellStore".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "blocks".to_string(),
+                    type_info: crate::ast::Type::Unknown,
+                    initial: Expr::Array(vec![]),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "cwd".to_string(),
+                    type_info: crate::ast::Type::Unknown,
+                    initial: Expr::Str("".into()),
+                    decorators: vec![],
+                },
+            ],
+            messages: vec![],
+            handlers: HashMap::new(),
+            handler_params: HashMap::new(),
+            computed: vec![],
+            api_imports: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+
+        // Array init rendered as [].
+        assert!(
+            code.contains("const blocks = ref<any>([])"),
+            "array init should render as [], got:\n{}",
+            code
+        );
+        // No all_tags getter (no `notes` state var).
+        assert!(
+            !code.contains("all_tags"),
+            "all_tags must NOT be injected for a store without `notes`, got:\n{}",
+            code
+        );
+        // The store composable function name follows the use{Name}Store convention.
+        assert!(
+            code.contains("export function useShellStoreStore()"),
+            "composable function name, got:\n{}",
+            code
         );
     }
 }

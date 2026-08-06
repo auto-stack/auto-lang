@@ -1098,6 +1098,15 @@ pub struct VueProject {
     /// copied into `src/ext/` (layout preserved) so the generated SFCs can
     /// import them as `@/ext/<path>`. Paths are relative to root_dir.
     pub ext_files: Vec<String>,
+    /// Plan 043 store-codegen: generated store composable files
+    /// `(filename, code)` — e.g. `("stores/useShellStoreStore.ts", ...)`.
+    /// Collected explicitly from each .at's `store_composables` during
+    /// `from_workspace`, then written to `src/stores/` in `generate()` /
+    /// `regenerate_source_files()`. Replaces the fragile
+    /// `STORE_EXTRA_FILES` thread-local (which is cleared per
+    /// `generate_component_from_file` call and loses stores when multiple
+    /// .at files are compiled in sequence).
+    pub store_files: Vec<(String, String)>,
 }
 
 impl VueProject {
@@ -1208,6 +1217,11 @@ export default router
         let mut all_routes: Vec<AuraRoute> = Vec::new();
         // Project-local files referenced by widget `use { ... }` imports
         let mut ext_file_set: std::collections::BTreeSet<String> = Default::default();
+        // Plan 043 store-codegen: collect store composable files explicitly.
+        // The STORE_EXTRA_FILES thread-local is cleared at the start of every
+        // generate_component_from_file call (api.rs), so it only ever holds
+        // the last .at's stores — unusable for multi-file workspaces.
+        let mut all_store_files: Vec<(String, String)> = Vec::new();
 
         // Phase 1: Collect sub-widget names from front_dir .at files (to avoid shadcn name collisions)
         let mut sub_widget_names: Vec<String> = Vec::new();
@@ -1241,13 +1255,14 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
-                Ok((vue_code, widgets)) => {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
+                Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
                     for comp in &components {
                         all_shadcn_components.insert(comp.clone());
                     }
+                    all_store_files.extend(stores);
                     for (i, widget) in widgets.iter().enumerate() {
                         if let Some(ref routes) = widget.routes {
                             all_routes.extend(routes.routes.clone());
@@ -1302,6 +1317,7 @@ export default router
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
             ext_file_set: &mut std::collections::BTreeSet<String>,
+            all_store_files: &mut Vec<(String, String)>,
         ) -> Result<(), String> {
             for entry in fs::read_dir(dir)
                 .map_err(|e| format!("Failed to read pages directory: {}", e))?
@@ -1310,7 +1326,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes, ext_file_set)?;
+                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -1320,8 +1336,8 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
-                        Ok((vue_code, widgets)) => {
+                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                        Ok((vue_code, widgets, stores)) => {
                             collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);
                             for comp in &components {
@@ -1334,6 +1350,7 @@ export default router
                             }
                             let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(file_stem);
                             all_components.push((rel_path, file_stem.to_string(), vue_code, widget_name.to_string()));
+                            all_store_files.extend(stores);
                         }
                         Err(e) => {
                             println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -1346,7 +1363,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set)
+            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -1365,13 +1382,14 @@ export default router
                     continue;
                 }
 
-                match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
-                    Ok((vue_code, widgets)) => {
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                    Ok((vue_code, widgets, stores)) => {
                         collect_ext_import_files(&widgets, &mut ext_file_set);
                         let components = detect_shadcn_components(&vue_code);
                         for comp in &components {
                             all_shadcn_components.insert(comp.clone());
                         }
+                        all_store_files.extend(stores);
                         // Extract store deps from this .at file so re-generated
                         // components get their store import + `const store = ...`
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
@@ -1436,6 +1454,7 @@ export default router
             npm_deps: parse_npm_deps(&pac_content),
             style_files: parse_style_files(&pac_content),
             ext_files: ext_file_set.into_iter().collect(),
+            store_files: all_store_files,
         })
     }
 
@@ -1630,6 +1649,21 @@ export default router
             }
         }
 
+        // Plan 043 store-codegen: write store composable files (explicit, not
+        // thread-local). Mirrors prepare_vue_sources' drain logic.
+        if !self.store_files.is_empty() {
+            let stores_dir = src_dir.join("stores");
+            fs::create_dir_all(&stores_dir)
+                .map_err(|e| format!("Failed to create src/stores: {}", e))?;
+            for (filename, code) in &self.store_files {
+                let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                let path = stores_dir.join(clean_name);
+                fs::write(&path, code)
+                    .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+                println!("  {} Store composable: {}", "✓".bright_green(), path.display());
+            }
+        }
+
         println!("{}", "✓ Generated project files".bright_green());
 
         Ok(())
@@ -1807,6 +1841,20 @@ export default router
                 let component_file = output_subdir.join(format!("{}.vue", vue_file_name));
                 fs::write(&component_file, code)
                     .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
+            }
+        }
+
+        // Plan 043 store-codegen: regenerate store composable files explicitly.
+        if !self.store_files.is_empty() {
+            let stores_dir = src_dir.join("stores");
+            fs::create_dir_all(&stores_dir)
+                .map_err(|e| format!("Failed to create src/stores: {}", e))?;
+            for (filename, code) in &self.store_files {
+                let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                let path = stores_dir.join(clean_name);
+                fs::write(&path, code)
+                    .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+                println!("  {} Store composable: {}", "✓".bright_green(), path.display());
             }
         }
 
@@ -2789,6 +2837,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             npm_deps: vec![],
             style_files: vec!["src/front/autodown-editor.css".to_string()],
             ext_files: vec![],
+            store_files: vec![],
         };
 
         let copied = project.copy_style_files().unwrap();
@@ -2819,6 +2868,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             npm_deps: vec![],
             style_files: vec!["src/front/nope.css".to_string()],
             ext_files: vec![],
+            store_files: vec![],
         };
 
         assert!(project.copy_style_files().is_err());
@@ -2902,6 +2952,7 @@ widget App {
             npm_deps: vec![],
             style_files: vec![],
             ext_files: vec!["src/front/utils/greet.ts".to_string()],
+            store_files: vec![],
         };
 
         let copied = project.copy_ext_files().unwrap();
@@ -2930,6 +2981,7 @@ widget App {
             npm_deps: vec![],
             style_files: vec![],
             ext_files: vec!["../outside/x.ts".to_string()],
+            store_files: vec![],
         };
 
         let err = project.copy_ext_files().unwrap_err().to_string();

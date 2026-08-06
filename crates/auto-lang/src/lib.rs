@@ -4262,12 +4262,25 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
+    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output)?;
+    Ok((vue_code, widgets))
+}
+
+/// Plan 043 store-codegen: same as `ui_build_shadcn_with_widgets`, but also
+/// returns the generated store composable files `(filename, code)`. Use this
+/// when compiling multiple .at files in a loop and you need to collect stores
+/// explicitly (the `STORE_EXTRA_FILES` thread-local is cleared per call).
+pub fn ui_build_shadcn_with_widgets_and_stores(
+    path: &str,
+    output: Option<&str>,
+) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
     let at_path = std::path::Path::new(path);
     let opts = ComponentGenOptions::default();
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
+    let store_composables = result.store_composables.clone();
 
     // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {
@@ -4288,7 +4301,7 @@ pub fn ui_build_shadcn_with_widgets(
         }
     }
 
-    Ok((result.vue_code, result.widgets))
+    Ok((result.vue_code, result.widgets, store_composables))
 }
 
 /// Like `ui_build_shadcn_with_widgets`, but accepts a list of known sub-widget names
@@ -4299,6 +4312,23 @@ pub fn ui_build_shadcn_with_sub_widgets(
     output: Option<&str>,
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
+    let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
+        path, output, sub_widget_names,
+    )?;
+    Ok((vue_code, widgets))
+}
+
+/// Plan 043 store-codegen: same as `ui_build_shadcn_with_sub_widgets`, but also
+/// returns the generated store composable files `(filename, code)`. Callers that
+/// need to write store files explicitly (e.g. `VueProject::from_workspace`) use
+/// this variant instead of relying on the `STORE_EXTRA_FILES` thread-local,
+/// which is cleared at the start of every `generate_component_from_file` call
+/// and thus loses stores when multiple .at files are compiled in sequence.
+pub fn ui_build_shadcn_with_sub_widgets_and_stores(
+    path: &str,
+    output: Option<&str>,
+    sub_widget_names: Vec<String>,
+) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
@@ -4308,6 +4338,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
     };
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
+    let store_composables = result.store_composables.clone();
 
     // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {
@@ -4327,7 +4358,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
         }
     }
 
-    Ok((result.vue_code, result.widgets))
+    Ok((result.vue_code, result.widgets, store_composables))
 }
 
 // ============================================================================
