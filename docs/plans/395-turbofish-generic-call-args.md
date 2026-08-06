@@ -2,7 +2,7 @@
 plan: 395
 title: turbofish-generic-call-args
 affects: [auto-lang/parser, auto-lang/ast, auto-lang/a2r]
-status: draft # draft | in-progress | complete
+status: complete # draft | in-progress | complete  # 2026-08-07 核查回填：Phase 1-4 全部落地并合入主分支（merge 0ca86a7c），仅 status 字段此前忘改
 ---
 
 # Plan 395: Auto 调用泛型实参（turbofish）—— `expr.method<Type>(args)`
