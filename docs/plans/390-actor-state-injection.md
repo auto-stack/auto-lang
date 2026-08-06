@@ -5,7 +5,8 @@ affects: [auto-lang/parser, auto-lang/a2r, auto-lang/vm, a2r-std]
 status: complete # draft | in-progress | complete
 # auto-lang 侧范围完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地）；Phase D 在 auto-ai 仓推进。
 # 2026-08-07 二次复审：L1 根因已修（剩 auto-ai workaround 回收）、L3/L5 已闭环；
-# 剩余开放项：L2 双层包装（设计偏差）、L4 a2r 闭包字面量推导（workaround 在用）、
+# L2 双层包装已转正（§15.11，Arc<dyn Tool> 单层 + Arc::from）；
+# 剩余开放项：L4 a2r 闭包字面量推导（workaround 在用）；
 # 闭包类型机制已交付（§15.10，Box<Fn> → Box<dyn Fn> 含带签名 + 闭包值路径）；
 # 剩 auto-ai EventSink 换闭包落地（Plan 021 Phase 6.6）。详见 §14。
 ---
@@ -603,15 +604,17 @@ VM actor 测试 12 passed（11 既有 + 1 新增）；`cargo test --features tes
 ## §14 遗留汇总（2026-08-07 复审）
 
 > **2026-08-07 二次复审（H3 全链路闭环后）**：L1 根因已修（1317d91c）、L3 已闭环（H2/H4）、L5 已修
-> （f40b404c）。剩余实质开放项：L2（双层包装，设计偏差）、L4（a2r 闭包字面量推导，有 workaround）、
+> （f40b404c）。剩余实质开放项：L4（a2r 闭包字面量推导，有 workaround）、
 > **闭包类型缺失**（§15 H.5 发现，阻塞 auto-ai 流式转发）。
+> **2026-08-07 三次复审（§15.11 后）**：L2 双层包装已转正（`Arc<dyn Tool>` 单层 + `Arc::from`），
+> 仅剩 L4（闭包字面量推导）开放。
 
 auto-lang 侧实质工作全部完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；Phase D 属 auto-ai）。遗留状态：
 
 | # | 遗留 | 性质 | 位置 | 严重度 | 状态 |
 |---|---|---|---|---|---|
 | **L1** | ~~a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷~~ → **根因已修（1317d91c）**：parser `node_or_call_expr` 补 Arc/Box 识别 → `Arc::new(x)`。**剩 auto-ai workaround 回收**：`tool.at` 的 `let a = Arc(tool)` 可改直写 `self.tools.set(n, Arc(tool))` | a2r 转译器 bug（已修）+ 回收待做 | `trans/rust.rs` + `auto-ai/tool.at:100` | 中 | ✅ 根因已修；⏳ workaround 回收 |
-| **L2** | `Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>` | 设计偏差 | auto-ai tool.at 存储（§448）| 低 | ⚠️ 保留（Deref 链可用；转正需 a2r spec 返回位推导 `Arc<dyn>`，见 KNOWN-DEBT 019） |
+| **L2** | ~~`Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>`~~ → **已转正（§15.11，2026-08-07）**：Box/Arc 特判推广到所有 spec（`Arc<Tool>` → `Arc<dyn Tool>`）+ 值侧 spec-bound `Arc(role)` → `Arc::from(role)` 单层转换；derive post-pass 扩展 Arc 感知。golden：`12_specs/008_arc_dyn_spec`。**待 auto-ai retranspile 生效** | 设计偏差（已转正） | auto-ai tool.at 存储（§448）| 低 | ✅ 已转正（生成侧 retranspile 后生效） |
 | **L3** | ~~WithBindings 多字段消息绑定未实现~~ → **已闭环（§15 H2/H4 + G2-refactor）**：`actor_withbindings_multi_field`/`actor_withbindings_deep_expr_three_fields` 测试通过（含多次 send 不 stale、深表达式不穿透） | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs` | 低 | ✅ 已解决 |
 | **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs` | 低 | ⚠️ 开放（EventSink 用 `noop_event` 命名函数绕过，`agent.at:154`） |
 | **L5** | ~~`fn(params){}` 闭包参数不 bind~~ → **已修（f40b404c）**：parser.rs `fn(params){}` 路径加 `bind_var`（镜像 `=>` 路径）。**注**：修完暴露更深缺口——Auto/a2r 缺 `Box<dyn Fn>`/`impl Fn` 闭包类型表达，闭包不能 coerce 成 fn 指针（§15 H.5，阻塞 Plan 021 Phase 6.6 流式转发） | parser bug（已修）+ 语言级缺口（新） | `parser.rs` + a2r 闭包类型 | 中→高（流式转发） | ✅ 参数绑定已修；⏳ 闭包类型属新计划 |
@@ -620,9 +623,10 @@ auto-lang 侧实质工作全部完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地
 VM 侧 spawn-with-args + bound-var handler 机制均已就绪（Phase A + G2），但 EventSink 完整形态
 （fn 指针 state + 绑定变量 handler 组合）未在 VM 跑通端到端。非阻塞——EventSink 不走 VM 路径。
 
-**auto-lang 侧范围判定**：Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；L3/L5 闭环；L1 根因已修。
-**剩余**：L1 的 auto-ai workaround 回收（root cause 已修，`let a = Arc(tool)` 可直写）、
-L4（a2r 闭包字面量推导，workaround 在用）、L2（双层包装设计偏差）、以及 §15 H.5 暴露的
+**auto-lang 侧范围判定**：Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地；L3/L5 闭环；L1 根因已修；
+L2 已转正（§15.11）。
+**剩余**：L1 的 auto-ai workaround 回收（root cause 已修，`let a = Arc(tool)` 可直写，已在 auto-ai
+回收）、L4（a2r 闭包字面量推导，workaround 在用）、以及 §15 H.5 暴露的
 **闭包类型缺失**（语言级）——**类型机制已交付（§15.10，2026-08-07）**：`Box<Fn>` → `Box<dyn Fn>`
 含带签名 + 闭包值路径 `Box::new(move |..|)`；剩 auto-ai 侧 EventSink 换闭包落地（Plan 021
 Phase 6.6 解锁）。
@@ -1104,3 +1108,53 @@ body 解析后配合 `push_scope`/`pop_scope` 防绑定泄漏（镜像 `parse_cl
   `on_event`），driver 流式 Delta/Tool 转发（Plan 021 Phase 6.6）——类型机制已就绪，落地在 auto-ai 侧。
 - **`Arc<dyn Tool>` 单层**（L2 转正）：`Arc<Tool>` 类型标注单层化需同步改 `Arc(tool)` 值语义
   （spec 参数不再预 Box），另立 a2r spec 存储位推导计划。
+
+---
+
+## §15.11 Phase H5 — `Arc<dyn Tool>` 单层化（L2 转正）
+
+> **2026-08-07 追加**。承接 §15.10.4 的 L2 遗留（`Arc<Box<dyn Tool>>` 双层包装 → rust-ref 对齐的
+> `Arc<dyn Tool>` 单层）。按用户建议在现有 Plan 390 加 Phase 实施。分支 `plan-390/l2-arc-dyn-tool`。
+
+### §15.11.1 方案（双面对齐）
+
+双层根因：类型标注 `Arc<Tool>` 渲染 `Arc<Box<dyn Tool>>`，但值构造 `Arc(tool)`（tool 是 spec 参数，
+已 `Box<dyn>`）也是 `Arc::new(Box<dyn>)` —— 两者"一致地"双层，但偏离 rust-ref 单层。
+
+**单层化**：
+- **类型侧**：Box/Arc 特判（§15.10）从 Fn-only 推广到**所有 spec** —— `Arc<Tool>` → `Arc<dyn Tool>`。
+- **值侧**：spec 参数在 fn 入口加入 `spec_bound_idents`；`Arc(x)`/`Box(x)` 对 spec-bound ident 渲染
+  `Arc::from(x)`/`Box::from(x)` —— `Arc::from(Box<dyn Tool>)` 走 std 的
+  `impl<T: ?Sized> From<Box<T>> for Arc<T>`，Box→Arc **单层转换**，与字段类型一致。
+
+### §15.11.2 附带修复
+
+- **derive post-pass**（`fix_dyn_trait_derives`）：原正则只匹配 `Box<dyn`，`Arc<dyn Tool>` 不被识别为
+  不安全 derive → `#[derive(Clone, Debug, PartialEq)]` 含 dyn 字段编译失败。扩展正则匹配
+  `Box<dyn|Arc<dyn`，且 **Arc 感知**：`Arc<dyn>` 的 Clone 安全（`Arc<T>: Clone` for T: ?Sized），
+  仅剥离 Debug/PartialEq/Eq/Ord（`Box<dyn>` 的 Clone 仍不安全 → allow(dead_code)）。
+
+### §15.11.3 验证
+
+- **黄金**：`12_specs/006` 更新（`Arc<dyn Tool>` + `Arc::from` + `#[derive(Clone)]`）、新增
+  `12_specs/008_arc_dyn_spec`（字段/值/`?Arc<Tool>` 返回位 → `Option<Arc<dyn Tool>>`）。
+- **回归**：test-trans **3167 passed / 22 failed**（基线 22，零新增；+008）；lib 2829/22；auto-man 179/0。
+- **auto-ai**：tool.rs 验证 `Arc<dyn Tool>` + `Arc::from(tool)` ✅。⚠️ 共享工作区被并行代理在途改动
+  （EventSink Box<Fn> 迁移 + role_config turbofish），retranspile 错误数与并行工作耦合，非 L2 引入。
+
+### §15.11.4 影响面
+
+- auto-ai `tool.at`/`agent.at` 的 `Arc<Tool>` 存储 → `Arc<dyn Tool>`（生成侧，重建 auto.exe + retranspile 后生效）。
+- KNOWN-DEBT 019 行（双层包装）→ 已修复。
+
+### §15.11.5 实施记录（2026-08-07）
+
+- **代码交付**：rust.rs（Box/Arc 特判泛化到所有 spec、fn 入口 spec 参数入 `spec_bound_idents`、
+  `Arc::from`/`Box::from` 值侧、`fix_dyn_trait_derives` Arc 感知）、更新 `12_specs/006` 黄金、
+  新增 `12_specs/008_arc_dyn_spec` 黄金（`Arc<dyn Tool>` 字段/值/`?Arc<Tool>` 返回位 +
+  `#[derive(Clone)]` 保留），分支 `plan-390/l2-arc-dyn-tool`。
+- **回归**：test-trans（RUST_MIN_STACK=16MB）**3167 passed / 22 failed**（基线 22，零新增，+008）；
+  lib 2829/22；auto-man 179/0。
+- **auto-ai**：KNOWN-DEBT 019 行更新为已修复；tool.rs 验证 `Arc<dyn Tool>` + `Arc::from(tool)` ✅。
+  ⚠️ auto-ai 为共享工作区：并行代理在途改动（EventSink Box<Fn> 迁移、role_config turbofish、
+  driver Arc 导入）尚未提交，retranspile 全量验证与并行工作耦合，待其提交后再全量 retranspile 复核。
