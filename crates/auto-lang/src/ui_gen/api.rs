@@ -228,13 +228,15 @@ pub fn generate_component_from_file(
         cell.borrow_mut().clear();
     });
     let mut store_composables: Vec<(String, String)> = Vec::new();
+    let mut store_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
             let mut store = extract_store_from_decl(store_decl)
                 .map_err(|e| e.to_string())?;
             store.api_imports = api_imports.clone();
             store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
-            let composable = VueGenerator::generate_store_composable(&store);
+            let (composable, warnings) = VueGenerator::generate_store_composable_full(&store);
+            store_warnings.extend(warnings);
             let filename = format!("stores/use{}Store.ts", store.name);
             store_composables.push((filename, composable));
             // Also stash via thread-local for callers that use STORE_EXTRA_FILES
@@ -272,7 +274,7 @@ pub fn generate_component_from_file(
 
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
-    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
 
     for widget in &widgets {
         let mut gen = VueGenerator::new()
@@ -297,6 +299,19 @@ pub fn generate_component_from_file(
         .first()
         .map(|(_, code)| code.clone())
         .unwrap_or_default();
+
+    // Plan 012 Batch A: --strict (`auto build --strict`) escalates any
+    // Warning/Error-severity validation warning to a hard build failure.
+    // Info-severity warnings stay advisory.
+    if crate::ui_gen::validators::strict_enabled()
+        && crate::ui_gen::validators::has_blocking_warnings(&all_validation_warnings)
+    {
+        return Err(format!(
+            "codegen validation failed (strict mode) for {}:\n{}",
+            at_path.display(),
+            crate::ui_gen::validators::format_warnings(&all_validation_warnings)
+        ));
+    }
 
     Ok(GeneratedComponent {
         vue_code,
@@ -704,5 +719,88 @@ widget W(active: bool) {
         );
         assert_eq!(out.matches("v-for").count(), 10, "expected 10 v-for loops");
         assert!(out.contains("SelectTag"), "expected handler binding");
+    }
+
+    // --- Plan 012 Batch A: --strict escalation ----------------------------
+
+    /// Resets the process-wide strict flag on drop, so a failing test can't
+    /// leave strict mode on for parallel tests.
+    struct StrictGuard;
+    impl StrictGuard {
+        fn on() -> Self {
+            crate::ui_gen::validators::set_strict(true);
+            StrictGuard
+        }
+    }
+    impl Drop for StrictGuard {
+        fn drop(&mut self) {
+            crate::ui_gen::validators::set_strict(false);
+        }
+    }
+
+    /// Strict mode is a process-wide flag and cargo runs tests in parallel,
+    /// so both strict assertions live in ONE test to avoid toggling races.
+    #[test]
+    fn test_strict_mode_escalation() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let comma_src = r#"
+widget StrictCommaProbe {
+    view {
+        col {
+            button "a"
+            ,
+            button "b",
+        }
+    }
+}
+"#;
+        let comma_path = std::env::temp_dir().join("plan012_strict_comma_probe.at");
+        std::fs::write(&comma_path, comma_src).expect("write probe .at");
+
+        // Non-strict: R008 is advisory, generation succeeds.
+        crate::ui_gen::validators::set_strict(false);
+        let ok = generate_component_from_file(&comma_path, ComponentGenOptions::default());
+        assert!(ok.is_ok(), "non-strict build must succeed: {:?}", ok.err());
+
+        // Strict: the R008 warning becomes a hard build failure.
+        let _guard = StrictGuard::on();
+        let err = generate_component_from_file(&comma_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on blocking warnings");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R008"),
+            "error should name strict mode and the rule: {msg}"
+        );
+
+        // Strict + Info only: `.remove` on an ext-composable facade passes
+        // through with an R010 Info note — advisory, must NOT fail the build.
+        // (A composable facade rather than `store.*`, to avoid tripping
+        // R002's store-without-import Error.)
+        let info_src = r#"
+widget StrictInfoProbe {
+    use { composable: useRecentFilesStore from "src/front/composables/useRecentFilesStore.ts" }
+    msg Msg { ExtDel(int) }
+    view {
+        col {
+            button "xdel" { onclick: .ExtDel(0) }
+        }
+    }
+    on {
+        .ExtDel(i) -> { .recentFilesStore.remove(i) }
+    }
+}
+"#;
+        let info_path = std::env::temp_dir().join("plan012_strict_info_probe.at");
+        std::fs::write(&info_path, info_src).expect("write probe .at");
+        let res = generate_component_from_file(&info_path, ComponentGenOptions::default());
+        drop(_guard);
+        assert!(
+            res.is_ok(),
+            "Info-severity notes must not block a strict build: {:?}",
+            res.err()
+        );
+
+        let _ = std::fs::remove_file(&comma_path);
+        let _ = std::fs::remove_file(&info_path);
     }
 }

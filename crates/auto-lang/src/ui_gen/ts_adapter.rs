@@ -26,6 +26,21 @@ pub struct AuraTsContext {
     pub ref_names: HashSet<String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
+    /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
+    /// array-ish (`T[]`). Only these receivers get the `.remove → .splice`
+    /// method mapping; anything else passes through unchanged.
+    typed_arrays: HashSet<String>,
+    /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
+    /// `string`. Together with `typed_arrays`, these are the proven receivers
+    /// for `.contains → .includes`.
+    typed_strings: HashSet<String>,
+    /// Plan 012 Batch A (gap 19): names known to be facade/plain objects
+    /// (widget `use { composable: ... }` locals, e.g. `recentFilesStore`).
+    /// Their methods always pass through — they are never arrays.
+    facade_names: HashSet<String>,
+    /// Plan 012 Batch A: passthrough notes collected during transpilation.
+    /// Drained by the caller into the unified codegen warning channel.
+    warnings: std::cell::RefCell<Vec<String>>,
 }
 
 /// Default API function names (fallback when no dynamic list is provided)
@@ -45,6 +60,10 @@ impl AuraTsContext {
             prop_names: HashSet::new(),
             ref_names: HashSet::new(),
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
+            typed_arrays: HashSet::new(),
+            typed_strings: HashSet::new(),
+            facade_names: HashSet::new(),
+            warnings: std::cell::RefCell::new(Vec::new()),
         }
     }
 
@@ -65,6 +84,30 @@ impl AuraTsContext {
         self
     }
 
+    /// Plan 012 Batch A (gap 19): declare which state/prop names are proven
+    /// arrays / strings, so the `.remove → .splice` and `.contains →
+    /// .includes` mappings apply ONLY to them. Other receivers pass through.
+    pub fn with_typed_collections(
+        mut self,
+        arrays: HashSet<String>,
+        strings: HashSet<String>,
+    ) -> Self {
+        self.typed_arrays = arrays;
+        self.typed_strings = strings;
+        self
+    }
+
+    /// Plan 012 Batch A: record a passthrough note (drained by the caller
+    /// into the unified codegen warning channel).
+    fn note_warning(&self, message: String) {
+        self.warnings.borrow_mut().push(message);
+    }
+
+    /// Plan 012 Batch A: drain collected passthrough notes.
+    pub fn take_warnings(&self) -> Vec<String> {
+        self.warnings.borrow_mut().drain(..).collect()
+    }
+
     fn is_state(&self, name: &str) -> bool {
         self.state_names.contains(name)
     }
@@ -77,9 +120,119 @@ impl AuraTsContext {
         self.ref_names.contains(name)
     }
 
+    fn is_typed_array(&self, name: &str) -> bool {
+        self.typed_arrays.contains(name)
+    }
+
+    fn is_typed_string(&self, name: &str) -> bool {
+        self.typed_strings.contains(name)
+    }
+
+    /// Plan 012 Batch A (gap 19): declare facade/plain-object names (widget
+    /// `use { composable: ... }` locals). Their `.remove`/`.contains` calls
+    /// always pass through — never mapped to `.splice`/`.includes`.
+    pub fn with_facade_names(mut self, names: HashSet<String>) -> Self {
+        self.facade_names = names;
+        self
+    }
+
+    fn is_facade(&self, name: &str) -> bool {
+        self.facade_names.contains(name)
+    }
+
     fn is_api(&self, name: &str) -> bool {
         self.api_functions.iter().any(|f| f == name)
     }
+}
+
+/// Plan 012 Batch A (gap 19): decide whether the legacy
+/// `.remove → .splice(idx, 1)` / `.contains → .includes` mapping applies to a
+/// method-call receiver.
+///
+/// The mapping was originally applied to ANY receiver — including store
+/// facades and ext objects held in state refs (`.recentFilesStore.remove(x)`
+/// mis-emitted as `.splice(x, 1)`), which silently broke at runtime while
+/// vue-tsc stayed green. Now only receivers PROVEN to be arrays (or strings,
+/// for `.contains`) are mapped; typed non-array state/props and `store.*`
+/// chains pass through unchanged with a note; unknown receivers (locals,
+/// loop data) keep the legacy mapping.
+///
+/// `Map` covers `contains` only when the receiver is proven string/array;
+/// `Pass`/`PassWarn` skip the mapping.
+pub enum MethodMapDecision {
+    /// Apply the legacy mapping (proven array/string, or unknown receiver).
+    Map,
+    /// Pass the call through unchanged, silently (DOM element refs — their
+    /// own `.remove()` is a real method).
+    Pass,
+    /// Pass the call through unchanged and record a note (typed non-array
+    /// state/prop, or a `store.*` facade chain).
+    PassWarn,
+}
+
+fn method_map_decision(method: &str, object: &Expr, ctx: &AuraTsContext) -> MethodMapDecision {
+    // `.field` / `self.field` receiver → the widget member name.
+    if let Expr::Dot(obj, field) = object {
+        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") {
+            let field = field.as_str();
+            if ctx.is_typed_array(field) {
+                return MethodMapDecision::Map;
+            }
+            if method == "contains" && ctx.is_typed_string(field) {
+                return MethodMapDecision::Map;
+            }
+            if ctx.is_state(field) || ctx.is_prop(field) {
+                // A state/prop ref with a NON-array declared type — e.g. a
+                // store facade held in a model var. Its own method wins.
+                return MethodMapDecision::PassWarn;
+            }
+            if ctx.is_ref(field) {
+                return MethodMapDecision::Pass;
+            }
+            if ctx.is_facade(field) {
+                // `use { composable: ... }` local — a facade object, never an
+                // array. Its own method wins.
+                return MethodMapDecision::PassWarn;
+            }
+            return MethodMapDecision::Map; // unknown member — legacy behavior
+        }
+    }
+    // Root identifier of a (possibly nested) receiver chain.
+    fn chain_root(object: &Expr) -> Option<&str> {
+        match object {
+            Expr::Ident(n) => Some(n.as_str()),
+            Expr::Dot(obj, _) => chain_root(obj),
+            _ => None,
+        }
+    }
+    match chain_root(object) {
+        Some("store") => MethodMapDecision::PassWarn, // store facade chain
+        Some(root) if ctx.is_ref(root) => MethodMapDecision::Pass,
+        Some(root) if ctx.is_facade(root) => MethodMapDecision::PassWarn,
+        Some(_) => {
+            if let Expr::Ident(name) = object {
+                let n = name.as_str();
+                if ctx.is_typed_array(n) {
+                    return MethodMapDecision::Map;
+                }
+                if method == "contains" && ctx.is_typed_string(n) {
+                    return MethodMapDecision::Map;
+                }
+                if ctx.is_state(n) || ctx.is_prop(n) {
+                    return MethodMapDecision::PassWarn;
+                }
+            }
+            MethodMapDecision::Map // locals / nested data — legacy behavior
+        }
+        None => MethodMapDecision::Map, // calls, index exprs — legacy behavior
+    }
+}
+
+/// Render a receiver expression to a short string for warning messages.
+fn expr_brief(expr: &Expr, ctx: &AuraTsContext) -> String {
+    let mut tmp = Vec::new();
+    transpile_expr(expr, ctx, &mut tmp);
+    String::from_utf8(tmp).unwrap_or_else(|_| "?".to_string())
 }
 
 /// Convert a snake_case identifier to camelCase (for TS/JS output).
@@ -443,6 +596,35 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     }
                     if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
                         return;
+                    }
+                    // Plan 012 Batch A (gap 19): the `.remove → .splice` /
+                    // `.contains → .includes` mappings apply ONLY to receivers
+                    // proven to be arrays (strings too, for `.contains`).
+                    // Facades/store chains pass through unchanged.
+                    if matches!(method.as_str(), "remove" | "contains") {
+                        match method_map_decision(method.as_str(), object, ctx) {
+                            MethodMapDecision::Map => {}
+                            decision @ (MethodMapDecision::Pass | MethodMapDecision::PassWarn) => {
+                                if matches!(decision, MethodMapDecision::PassWarn) {
+                                    ctx.note_warning(format!(
+                                        "`.{method}()` on `{}` passed through unchanged: the receiver is not a proven array, so the old `.{}` mapping no longer applies. If this IS an array, declare it with an array type; if it's a facade/ext object, its own `.{method}` method is now called as intended.",
+                                        expr_brief(object, ctx),
+                                        if method.as_str() == "remove" { "splice" } else { "includes" },
+                                        method = method.as_str(),
+                                    ));
+                                }
+                                transpile_expr(object, ctx, out);
+                                write!(out, ".{}(", method.as_str()).ok();
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 {
+                                        write!(out, ", ").ok();
+                                    }
+                                    transpile_expr(&arg.get_expr(), ctx, out);
+                                }
+                                write!(out, ")").ok();
+                                return;
+                            }
+                        }
                     }
                     // Handle common method call conversions
                     match method.as_str() {

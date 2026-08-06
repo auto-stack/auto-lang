@@ -338,6 +338,8 @@ enum Commands {
         scene: Option<String>,
         #[arg(long, help = "Stop after code generation; skip npm/gradle install and build (vue backend)")]
         gen_only: bool,
+        #[arg(long, help = "Escalate codegen validation warnings (vue backend) to build failure")]
+        strict: bool,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -682,10 +684,13 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only }) => {
+        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only, strict }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
+            }
+            if strict {
+                auto_lang::ui_gen::validators::set_strict(true);
             }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
