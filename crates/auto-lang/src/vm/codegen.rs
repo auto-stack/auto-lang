@@ -3664,7 +3664,15 @@ impl Codegen {
                 // AND never registered `#start` — shim_task_spawn_vm then fell back to
                 // ip=0 and the declared defaults (e.g. `count = 5`) were silently lost.
                 let has_state = !task_def.state.is_empty();
-                if task_def.start_hook.is_some() || has_state {
+                // Plan 317 §11 Phase 8 (P4'): ALSO emit `#start` when the task has
+                // `on` handlers but no `fn start()` and no state fields. Without a
+                // `#start` export, shim_task_spawn_vm falls back to start_offset=0,
+                // the spawned task runs from the wrong ip, and message payload
+                // bindings (`on { n int -> }`) read 0 instead of the sent value.
+                // Every actor that can receive messages needs a #start that parks
+                // it in the message loop via TASK_LOOP.
+                let needs_start = task_def.start_hook.is_some() || has_state || has_handlers;
+                if needs_start {
                     let start_offset = self.code.len() as u32;
                     // Plan 317: emit state field initializers at the very start
                     // of the start hook. spawn_task points the actor's ip here,

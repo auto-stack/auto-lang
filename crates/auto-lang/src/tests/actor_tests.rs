@@ -145,3 +145,73 @@ fn main() {
     assert!(stdout.contains("ping"), "handler ran: stdout={:?}", stdout);
     assert!(stdout.contains("main done"), "main completed: stdout={:?} result={:?}", stdout, result);
 }
+
+/// Plan 317 §11 Phase 8 (P4'): a task with `on` handlers but NO `fn start()` and
+/// NO state fields must still bind the message payload correctly.
+///
+/// Before the fix, such a task never got a `#start` export (the #start emit
+/// block was gated on `start_hook.is_some() || has_state`), so
+/// `shim_task_spawn_vm` fell back to start_offset=0, the spawned task ran from
+/// the wrong ip, and the `on { n int -> }` binding read 0 instead of the sent
+/// value (`h.send(42)` → handler printed "got 0"). The fix also emits `#start`
+/// when `has_handlers`, so every message-receiving actor has a proper entry
+/// that parks it in the message loop.
+#[test]
+fn actor_no_start_no_state_binds_payload() {
+    let code = r#"
+task Solo {
+    on { n int -> {
+        print("got " + n.to(str))
+    } }
+}
+fn main() {
+    let h = Task.spawn("Solo", 0)
+    h.send(42)
+    h.send(99)
+}
+"#;
+    let (result, stdout) = run_with_capture(code)
+        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(stdout.contains("got 42"), "payload msg1 (42): stdout={:?} result={:?}", stdout, result);
+    assert!(stdout.contains("got 99"), "payload msg2 (99): stdout={:?} result={:?}", stdout, result);
+}
+
+/// Plan 317 §11 Phase 8 (P4'): cross-actor coexistence + independent payload
+/// binding. Two actors of different types each receive their own messages; the
+/// payload bindings must not bleed across actors and each `n` must equal the
+/// sent value.
+#[test]
+fn actor_two_types_independent_payload() {
+    let code = r#"
+task Adder1 {
+    total = 0
+    on { n int -> {
+        total = total + n
+        print(total)
+    } }
+}
+task Adder2 {
+    total = 0
+    on { n int -> {
+        total = total + n
+        print(total)
+    } }
+}
+fn main() {
+    let h1 = Task.spawn("Adder1", 16)
+    let h2 = Task.spawn("Adder2", 16)
+    h1.send(5)
+    h2.send(7)
+    h1.send(3)
+    h2.send(9)
+}
+"#;
+    let (result, stdout) = run_with_capture(code)
+        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // Adder1: 0+5=5, 5+3=8; Adder2: 0+7=7, 7+9=16. Independent totals, correct
+    // payloads (no bleed across actors).
+    assert!(stdout.contains("5"), "Adder1 msg1 (total=5): stdout={:?} result={:?}", stdout, result);
+    assert!(stdout.contains("8"), "Adder1 msg2 (total=8): stdout={:?} result={:?}", stdout, result);
+    assert!(stdout.contains("7"), "Adder2 msg1 (total=7): stdout={:?} result={:?}", stdout, result);
+    assert!(stdout.contains("16"), "Adder2 msg2 (total=16): stdout={:?} result={:?}", stdout, result);
+}
