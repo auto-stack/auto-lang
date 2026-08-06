@@ -3163,14 +3163,47 @@ impl<'a> Parser<'a> {
                     && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
             };
             if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
-                // Parse as node instance with the already-read identifier
-                let _ident = Expr::Ident(name.clone());
-                let primary_prop = None;
-                let args = Args::new();
+                if !self.is_ui_scenario() {
+                    // Non-UI dialects (notably gdscript) reuse atom() and their
+                    // `Ident {` forms must keep the OLD path — empty args, then
+                    // parse_node reads the braces as a body. Re-parsing the
+                    // braces as object() pairs here overflowed the parser stack
+                    // on godot scene files (dodge_player).
+                    let _ident = Expr::Ident(name.clone());
+                    return Ok(Expr::Node(self.parse_node(
+                        &name,
+                        None,
+                        Args::new(),
+                        &AutoStr::new(),
+                    )?));
+                }
+                // Struct literal `Type{ field: value, ... }` (UI scenario) —
+                // parse the braces as NAMED ARGS (object() returns the Pair
+                // list), NOT as a node body. Plan 043 M5: parse_node's `{...}`
+                // → parse_node_body path can't parse `field: value` as
+                // statements ("Expected term, got RBrace" — the error is
+                // collected and the fields silently dropped), so codegen
+                // received an empty-args Node and emitted `{}` — e.g.
+                // `Block{ id: id, command: cmd }` became `let block = {}` and
+                // command results never matched the block.
+                let pairs = self.object()?;
+                let mut args = Args::new();
+                for p in pairs {
+                    match p.key {
+                        Key::NamedKey(name) => {
+                            args.args.push(Arg::Pair(name, (*p.value).clone()));
+                        }
+                        _ => {
+                            // Non-named keys can't be struct fields — keep the
+                            // pair as a positional expression.
+                            args.args.push(Arg::Pos(Expr::Pair(p)));
+                        }
+                    }
+                }
 
                 return Ok(Expr::Node(self.parse_node(
                     &name,
-                    primary_prop,
+                    None,
                     args,
                     &AutoStr::new(),
                 )?));
@@ -6170,6 +6203,51 @@ impl<'a> Parser<'a> {
 
     pub fn parse_node_body(&mut self) -> AutoResult<Body> {
         self.parse_body(true)
+    }
+
+    /// Plan 043 M5: is `Type{...}` a struct-literal construction (braces =
+    /// named field args) in the UI scenario? Mirrors atom()'s gate: a
+    /// registered type, or PascalCase + not a known var (unresolved imports).
+    /// Kept in its own fn so the callers' stack frames stay small.
+    fn is_ui_struct_construction(&mut self, ident: &Expr, is_constructor: bool) -> bool {
+        if is_constructor {
+            return true;
+        }
+        let ident_name = match ident {
+            Expr::Ident(n) => n.as_str(),
+            Expr::GenName(n) => n.as_str().split('<').next().unwrap_or(""),
+            _ => "",
+        };
+        if ident_name.is_empty() {
+            return false;
+        }
+        ident_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            && !matches!(
+                self.lookup_meta(ident_name),
+                Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_))
+            )
+    }
+
+    /// Plan 043 M5: parse `Type{ field: value, ... }` braces as NAMED ARGS
+    /// and append them to the given args. Separate fn so node_or_call_expr /
+    /// atom (hot recursive paths) don't grow their stack frames — godot scene
+    /// files (dodge_player) barely fit in the 2MB test stack.
+    fn parse_braced_struct_args(&mut self, ident: &Expr, mut args: Args) -> AutoResult<Args> {
+        let _ = ident; // name is used by object()/pair resolution implicitly
+        let pairs = self.object()?;
+        for p in pairs {
+            match p.key {
+                Key::NamedKey(name) => {
+                    args.args.push(Arg::Pair(name, (*p.value).clone()));
+                }
+                _ => {
+                    // Non-named keys can't be struct fields — keep the pair
+                    // as a positional expression.
+                    args.args.push(Arg::Pos(Expr::Pair(p)));
+                }
+            }
+        }
+        Ok(args)
     }
 
     pub fn body(&mut self) -> AutoResult<Body> {
@@ -10726,12 +10804,31 @@ impl<'a> Parser<'a> {
                     );
                 }
             }
+
+            // Plan 043 M5: a TYPE constructor in rhs position
+            // (`var b Block = Block{ id: id, ... }`) must parse the braces as
+            // STRUCT FIELDS (named args), not a node body. parse_node's
+            // `{...}` → parse_node_body can't parse `field: value` as
+            // statements, so fields were dropped and codegen emitted `{}`.
+            // UI scenario only; the object() parse lives in a helper so this
+            // hot fn's stack frame stays small (gdscript dodge_player barely
+            // fits in the 2MB test stack).
+            let node_args = if self.is_ui_scenario()
+                && self.is_ui_struct_construction(&ident, is_constructor)
+                && !has_paren
+                && primary_prop.is_none()
+                && self.is_kind(TokenKind::LBrace)
+            {
+                self.parse_braced_struct_args(&ident, args)?
+            } else {
+                args
+            };
             match ident {
                 Expr::Ident(name) => {
                     return Ok(Expr::Node(self.parse_node(
                         &name,
                         primary_prop,
-                        args,
+                        node_args,
                         &secondary_prop,
                     )?));
                 }
@@ -14043,6 +14140,74 @@ mod tests {
         let ast = parse_once(code);
         let call = ast.stmts[1].clone();
         assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2)))");
+    }
+
+    #[test]
+    fn test_struct_literal_fields_become_node_args() {
+        // Plan 043 M5: `var block = Block{ id: 1, command: "hi" }` in a store
+        // handler must parse its fields as NAMED ARGS (not a node body).
+        // Previously the braces fed parse_node_body, which can't parse
+        // `field: value` as statements — the error was collected, fields were
+        // dropped, and codegen emitted `{}` (command results never matched).
+        // Needs the UI session so the PascalCase struct-construction fallback
+        // applies (Block isn't registered in a standalone parse).
+        let code = concat!(
+            "store S {\n",
+            "    on {\n",
+            "        .Go -> {\n",
+            "            var block = Block{ id: 1, command: \"hi\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        // Traverse: StoreDecl → on → handlers[0] → body stmts → the var Store.
+        use crate::ast::{Expr, Stmt};
+        let stmt = ast
+            .stmts
+            .iter()
+            .find(|s| matches!(s, Stmt::StoreDecl(_)))
+            .expect("store decl");
+        let Stmt::StoreDecl(decl) = stmt else { unreachable!() };
+        let on = decl.on.as_ref().expect("on block");
+        let handler = on
+            .handlers
+            .iter()
+            .find(|h| h.pattern == ".Go")
+            .expect(".Go handler");
+        let var_store = handler
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Store(store) if store.name.as_str() == "block" => Some(store),
+                _ => None,
+            })
+            .expect("var block store stmt");
+        let Expr::Node(node) = &var_store.expr else {
+            panic!(
+                "block init should be a Node (struct literal), got: {:?}",
+                var_store.expr
+            );
+        };
+        assert_eq!(
+            node.args.args.len(),
+            2,
+            "both fields as named args, got {:?}",
+            node.args.args
+        );
+        assert!(
+            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "id")),
+            "id field present as named arg, got {:?}",
+            node.args.args
+        );
+        assert!(
+            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "command")),
+            "command field present as named arg, got {:?}",
+            node.args.args
+        );
     }
 
     #[test]

@@ -392,8 +392,12 @@ fn generate_postcss_config() -> String {
 }
 
 fn generate_index_html(name: &str) -> String {
+    // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
+    // in index.css; the handwritten ash-gui (and the shadcn default) render
+    // dark. Without `class="dark"` on <html> the app falls back to the light
+    // `:root` tokens and looks broken (light bg + dark-designed text).
     format!(r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
@@ -1777,6 +1781,16 @@ export default router
         fs::write(&tsconfig_path, &tsconfig)
             .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
         println!("{}", "  ✓ Regenerated tsconfig.json".bright_green());
+
+        // Regenerate index.html (Plan 043 M5: carries `class="dark"` so the
+        // shadcn `.dark` tokens in index.css actually apply; without it the
+        // app renders light). Previously only written on the initial scaffold,
+        // so a fresh index.html (or a generator fix) never took effect.
+        let index_html_path = self.output_dir.join("index.html");
+        let index_html = generate_index_html(&self.name);
+        fs::write(&index_html_path, &index_html)
+            .map_err(|e| format!("Failed to write index.html: {}", e))?;
+        println!("{}", "  ✓ Regenerated index.html".bright_green());
 
         // Regenerate package.json if outdated (e.g., missing @types/prismjs)
         let pkg_path = self.output_dir.join("package.json");
