@@ -116,3 +116,65 @@ status: in-progress # draft | in-progress | complete
 - [ ] auto-ai 两 `retranspile.sh` 的对应 sed 全部删除（变 no-op 后清理）
 - [ ] a2r golden 回归零新增失败
 - [ ] auto-ai 三转译 crate 独立 build 0 错（无 sed）、workspace 全绿
+
+---
+
+## §5 根因精确定位 + 实施蓝图（2026-08-07 核查，待实施）
+
+> 以下为逐条代码核查（Explore agent）的结论：每条缺陷的 a2r 发射点（文件:行号）、
+> 现有判定方式、修复切入点。**5 条均未修**（§2.3 的"可能自愈"经核实不成立）。
+> 实施时按 §3 流程逐条做。核查用的 auto.exe 构建于 2026-08-07 03:57（含 Plan 391 §8）。
+
+### §5.1 对应 §2.1（loopvar.field 传 owned 参数未 clone）
+
+- **现有 self.field clone 逻辑**：`arg()` 函数 `rust.rs:8567`、`8575`——仅在 `Self::is_self_dot(expr)` 时追加 `.clone()`。
+- **`is_self_dot`** `rust.rs:14400-14402`：只识别 receiver 为 `Ident("self")` 的 Dot，**不识别任意循环变量**（如 `Ident("tc")`）。
+- **owned 参数检测**：`fn_struct_param_indices` 预扫描 `rust.rs:10449-10459`（非 Copy 即 owned-struct-param）。
+- **`needs_clone` 判定** `rust.rs:7716-7726`：`matches!(arg, Arg::Pos(Expr::Ident(_)))`——只匹配裸 Ident，`tc.args`（`Expr::Dot`）不匹配 → `needs_clone=false`。
+- **修复切入点（两处同改）**：(1) `arg()`/`is_self_dot` 推广为识别"任意按引用绑定的 receiver"；(2) `needs_clone` 的 `7720` 行放宽到接受 `Arg::Pos(Expr::Dot(obj,_))` 且 `obj` 是已知按引用绑定。**需新增循环变量绑定追踪集合**（在 `for_stmt` `Iter::Named` `rust.rs:10675-10747` 进入时按借用决策插入）。
+
+### §5.2 对应 §2.2（for-in 对 ReadDir 无条件加 `&`）
+
+- **发射点**：`for_stmt` 的 `Iter::Named` 分支 `rust.rs:10731-10737`——`is_borrowable` 仅看 AST 形式（`Expr::Ident | Expr::Dot`），**无类型判断**，无条件 `sink.body.write(b"&")`。
+- **根因**：`is fs.read_dir() { Ok(entries) -> ... }` 的 match binding 未把 `entries` 的内层迭代器类型写入 `local_var_types`，故 `for entry in entries` 无法知道 `entries` 是 by-value `IntoIterator`（`ReadDir`）。
+- **修复切入点**：(1) `is_stmt` 的 `Ok(binding)` 分支记录 `read_dir`/`Result<X>` 解包后的内层类型到 `local_var_types`（目前 `rust.rs:11274` 附近只处理 `Some` 不处理 `Ok`）；或 (2) `for_stmt` 加 by-value 迭代器类型白名单（`ReadDir`/`Vec`/`Lines`）比对 `local_var_types`。
+
+### §5.3 对应 §2.3（参数 move 后重用未借用）
+
+- **发射点**：`fs.read_to_string` 分发 `rust.rs:6234-6245`——`expr_as_str(a, out)` 直接 emit arg，无 `&`。
+- **move 分析现状**：**完全缺失**。grep `move_analysis`/`borrow_infer`/`last_use`/`needs_borrow`/`owned_param`/`used_after` 全无定义。仅有 escape analysis（`rust.rs:766-929`、`17482-17505`）服务 `view`/`mut`，不覆盖"owned 函数调用让参数失效"。§2.3 自述"可能自愈"**不成立**。
+- **唯一相关兜底**：`rust.rs:19324-19328` 硬编码 `str_substr(path,...)` → `&path` 文本替换，与 `read_to_string` 无关。
+- **修复切入点**：新增"参数重用分析"——`fn_decl` 处理（`rust.rs:10419`）建参数名集合；调用点（`6234` 及通用 `7591`）记录被 move 的 owned 参数；两遍扫描找出"被 move 后又出现"的参数，对应调用点 emit `&`。`read_to_string` 接受 `AsRef<Path>`，emit `&path` 安全。
+
+### §5.4 对应 §2.4（对已 `&str` 多余插 `.as_str()`）
+
+- **发射点**：调用点参数渲染 `rust.rs:7802-7829`，`arg_is_str_slice` 判定 `7809-7816`——**只查 `current_fn_str_params`**（fn 参数集合），**不查 `local_var_types`**。
+- **误命中原因**：`after_open` 来自 `is_stmt` 的 `Some(after_open)` 绑定（`rust.rs:11263`、`11313` 写入 `local_var_types` 为 `StrSlice`），是真实 `&str`，但 `arg_is_str_slice` 不查 `local_var_types` → 判否 → 多余 `.as_str()` → E0658。
+- **为什么不直接查 `local_var_types`**：注释 `rust.rs:7810-7814` 解释——`local_var_types` 把 owned `String` 局部也记为 `StrSlice`，直接查会漏加 `.as_str()`（E0308）。
+- **修复切入点**：新增"真实 &str 局部"集合（如 `true_str_slice_locals`），只在确定 &str 位置插入（`is_str_returning_scrutinee` 的 `Some` 绑定、`split`/`lines` 循环变量）。`arg_is_str_slice`/`needs_as_str`（`rust.rs:8366-8369`）改为 `current_fn_str_params.contains(name) || true_str_slice_locals.contains(name)`。
+
+### §5.5 对应 §2.5（unit-variant `auto_val.Value.Nil` 渲染成 `auto_val::Value.Nil`）
+
+- **实测（含 Plan 391 §8 的 03:57 build）**：`is v { auto_val.Value.Nil -> ... }` 仍输出 `auto_val::Value.Nil`（点），而 `Value.Str(s)` 正确输出 `Value::Str(s)`。
+- **AST（关键发现）**：`auto_val.Value.Nil` 在 is-pattern 里被 parser 的 `tag_cover`（`parser.rs:3703-3736`）错误转换——`tag_cover(&"auto_val")` 读 `.` + `tag_field="Value"`，未见 `(` 走 nil 分支（`:3728-3734`），生成 `Cover::Tag { kind: "auto_val", tag: "Value", bindings: ["_"] }`——把 `auto_val.Value` 当 nil variant，**漏了 `.Nil`**。`.Nil` 残留为外层 `Dot(Cover::Tag, "Nil")`。
+- **对照**：带参数的 `auto_val.Value.Str(s)` 经 `parser.rs:3789-3824` 的 Call 转换正确处理（剥 module 前缀，`kind="Value"`）；无参数的 unit variant 不经该转换。
+- **值位正常**：`let v = auto_val.Value.Nil`（值位，非 pattern）输出正确 `auto_val::Value::Nil`（走 `Expr::Dot` 值位 emit `rust.rs:3298-3323`）——**仅 is-pattern 路径坏**。
+- **修复切入点（推荐 parser 侧）**：扩展 `tag_cover`（`parser.rs:3703`）或 `is_branch_cond_expr_inner` 的 Call 转换（`:3789-3824`），识别"三段 Dot 链 `module.Type.UnitVariant`（无括号）"并转为 `Cover::Tag { kind: "Type", tag: "UnitVariant", bindings: [] }`（剥 module 前缀，与带参变体一致）。难点：区分"两段 module.Type"（需继续读）vs"两段 Type.Variant"（完整 nil variant）。可用 `type_store.lookup_enum_decl_str` 判断 `tag_field` 是否是已知 enum 类型。
+
+### 共用基础缺口（影响多条）
+
+| 缺口 | 现状 | 影响 |
+|---|---|---|
+| 循环变量绑定追踪集合 | 无（仅 `current_fn_str_params` 容 str-yield loopvar） | §2.1、§2.2 |
+| 真实 &str 局部 vs owned String 区分 | `local_var_types` 混记 StrSlice | §2.4 |
+| 参数 move-后-重用分析 | 完全缺失 | §2.3 |
+| is-pattern 的 module.Type.UnitVariant 转换 | `tag_cover` 误截两段 | §2.5 |
+
+### 实施顺序建议（独立性递增）
+1. **§2.5**（parser cover，最独立，不依赖借用推理基础）。
+2. **§2.4**（新集合 `true_str_slice_locals`，自洽）。
+3. **§2.2**（ReadDir 类型追踪，依赖 `local_var_types` 扩展）。
+4. **§2.3**（move 分析，独立新建）。
+5. **§2.1**（loopvar clone，依赖循环变量追踪集合，与 §2.2 共享基础）。
+
+每条修完跑 `cargo test -p auto-lang --lib --features test-trans`（a2r golden 回归），全部修完回 auto-ai 删 sed + 三 crate build 验证。
