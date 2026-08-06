@@ -290,7 +290,7 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 | **P4** | producer/consumer 跨 actor | §9 #2"未验证" | ✅ **已修复(Phase 8)**。多 actor 共存 + 各自收发(P4a)本就正常;发现更深的 P4':**无 `fn start()` 且无 state field 的 task,payload binding 绑到 0**(`h.send(42)` → handler 里 `n` 是 0)。根因=`#start` 未 emit,shim fallback 到 ip=0。修复:有 on handlers 就 emit `#start`。 |
 | **P5** | `~Stream<T>` 独立 Iterator 变体 | §10 #3"装饰性" | 🟢 **确认不必要**。parser 已识别 `~Stream<T>`(parser.rs:10268),engine 折叠到 `Iterator::Generator`,lazy 后语义足够。降级为"不做",见 Phase 9。 |
 | **P6** | yield↔await 真异步互通 | §10 #4"大改造" | 🟢 **范围外**。lazy generator SSE 已满足当前 HTTP 需求;真"yield 返回 future"需重写调度器,单独立项。本计划不做,见 Phase 10。 |
-| **P7** | Phase 4 SSE/concurrent 测试 `#[ignore]` | 未列 | 🟡 实测存在:`e2e_sse_*`、`e2e_concurrent_sse`、`e2e_notes_crud` 等均 `#[ignore]`(起真实 TCP),常规 `cargo test` 不跑,回归风险无门禁。见 Phase 11。 |
+| **P7** | Phase 4 SSE/concurrent 测试 `#[ignore]` | 未列 | ✅ **2 个真 bug 已修(Phase 11)**:实测 7 个 `#[ignore]` e2e 测试,5 个本就过,2 个 fail 是真 bug(`build_handler_args` 无条件推 cookies/auth meta,1-param handler 参数绑定错位)。修复:`AutoVM::get_fn_n_args` + 按声明 arity 门禁 meta 推送。CI 接入(动态端口/feature 门禁)仍待做。 |
 
 ---
 
@@ -379,19 +379,26 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 
 ---
 
-### Phase 11(P7)— Phase 4 SSE/concurrent 测试去 `#[ignore]` 接入 CI [中优先]
+### Phase 11(P7)— Phase 4 SSE/concurrent 测试去 `#[ignore]` 接入 CI [✅ bug 已修 + 1 回归测试;CI 接入待做]
 
-**现状**:`http_server.rs` 的 `plan326_tests` 模块里 `e2e_sse_generator_handler`、`e2e_sse_indirect_generator`、`e2e_concurrent_sse`、`e2e_notes_crud`、`e2e_notes_list_generic` 均 `#[ignore]`(起真实 TCP 监听,有端口冲突/挂死风险)。CI(`auto-lsp-ci.yml` 只跑 `cargo test -p auto-lsp`,且未 `--ignored`)从不覆盖,Phase 4 的并发 SSE 回归无门禁。
+**现状核实(2026-08-07,推翻初判)**:`http_server.rs` 的 `plan326_tests` 模块里 7 个 `#[ignore]` e2e 测试。逐个隔离跑:5 个本就过,2 个 fail。**原以为"全局路由表污染"是误诊**——`register_http_routes` 是覆盖语义(`*table = routes`,stdlib.rs:2575),第二个 run 覆盖第一个,本不串。两个 fail 是**真 bug**:
 
-**修复方案**:
-- 给这组测试分配**动态端口**(每测试取一个空闲端口,或用 `portpicker` crate),消除端口冲突。
-- 加超时防护(测试自身 `tokio::time::timeout` 包裹,防 server 挂死)。
-- 新建 feature `http-e2e`(默认关),在 CI 加一个 job:`cargo test -p auto-lang --features http-e2e -- --ignored` 专跑这组(与常规测试隔离,避免日常 `cargo test` 拖慢)。
-- 或:把 server 起在专用线程 + 短超时,直接去 `#[ignore]`(若能证明不拖慢/不冲突)。
+- **Bug A**(`e2e_int_path_param_handler`,`http_server.rs:678`):`fn echo_id(id int)`,`GET /api/echo/42` 返回 `{"cookies":{},"auth":""}` 而非 `42`。
+- **Bug B**(`e2e_notes_crud`,`http_server.rs:848`):`fn get_note(id int) ?Note`,`GET /api/notes/1` 返回 `null` 而非匹配的 Note。
 
-**改动文件**:`vm/ffi/http_server.rs`(测试改造)、`Cargo.toml`(feature)、`.github/workflows/auto-lsp-ci.yml`(新 job,可选)。
+**共同根因**:`build_handler_args`(`http_server.rs:1540`,serve_async 活路径)**无条件**把 cookies/auth 元数据 JSON 推栈(`n_args += 1`)。1-param handler 收到 `[id=42, meta_json]` + `n_args=2`,参数绑定错位——`id` 形参绑到了栈顶的 meta JSON 而非 `42`(B 因 `note.id == id` 用错 id 永不匹配 → None → null)。
 
-**验收**:`cargo test --features http-e2e -- --ignored plan326_tests::` 全绿;常规 `cargo test` 不受影响。
+**修复**:
+1. 新增 `AutoVM::get_fn_n_args(fn_name)`(`engine.rs`):从函数入口 FN_PROLOG 的 n_args 字节读声明参数数。
+2. `build_handler_args` 改为**按声明 arity 门禁** meta 推送:仅当 `declared_n_args > 已推 data args(path/query/body)` 才推 meta。让 meta 成为"按签名 opt-in"(handler 多声明一个参数才收到 cookies/auth)。
+3. 加非-ignore 回归测试 `get_fn_n_args_reads_declared_arity`(`http_server.rs`),固化 arity 查询契约。
+
+**验收**:
+- 7 个 e2e 测试 `cargo test -- --ignored --test-threads=1` 全绿(2 个 bug 修复后)。
+- 新增 `get_fn_n_args_reads_declared_arity` 常规(非-ignore)测试绿。
+- 回归:`plan326_tests` 17 单元测试 + `vm_tests/ffi_tests/conformance/generator/actor/plan348_concurrency` 共 109 测试全绿,8 ignored,零新失败。
+
+**仍待做(CI 接入,未在本 Phase)**:动态端口(`bind(("127.0.0.1", 0))`)+ server 受控 shutdown + feature 门禁 `http-e2e` + CI job。当前 2 个 bug 已修,测试串行 `--ignored` 全绿,CI 接入是独立的小基建工作。
 
 ---
 
@@ -402,7 +409,7 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 2. ✅ **Phase 7**(P3 infinite generator)——已完成(2026-08-06)。真根因与初判不同(run_task_loop 退出条件,非栈下溢)。
 3. ✅ **Phase 8**(P4' payload binding)——已完成(2026-08-06)。
 4. 🟢 **Phase 6**(P1 死代码清理)——**决议不做**(2026-08-06)。深入核实推翻原假设:路径 A 是活的(3 示例 + 7 测试 + native 2305),非死代码;真正零引用项都是 `pub` API,删除是破坏性变更,收益极小。路径 A 的废弃属产品决策,单独立项。
-5. ⏳ **Phase 11**(P7 CI 接入)——待做。中价值(防回归),但实测发现需先重构测试隔离(7 个 #[ignore] 测试因全局路由表污染无法共存),属测试基建,工作量大。**待讨论**。
+5. ✅ **Phase 11**(P7 HTTP handler 参数 bug)——**2 个真 bug 已修**(2026-08-07)。原"测试隔离污染"诊断被推翻(全局路由是覆盖语义,不串);真因是 `build_handler_args` 无条件推 cookies/auth meta 导致 1-param handler 参数绑定错位。修复 + 1 非-ignore 回归测试。CI 接入(动态端口/feature 门禁)仍待做,是独立小基建。
 6. Phase 9/10 —— 不做(已记录决议:范围外/不必要)。
 
 每个 Phase 独立可验收,单独提交。Phase 5/7/8 已闭环(3 个真 bug + 6 回归测试,零回归)。

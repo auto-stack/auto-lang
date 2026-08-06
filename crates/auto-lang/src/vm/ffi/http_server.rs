@@ -456,6 +456,33 @@ mod plan326_tests {
         AutoVM::new(flash, 1024)
     }
 
+    /// Plan 317 §11 Phase 11 (Bug fix regression): `get_fn_n_args` must read the
+    /// declared parameter count from a function's FN_PROLOG. This is the
+    /// primitive `build_handler_args` uses to decide whether to push the
+    /// cookies/auth metadata — the root cause of the `e2e_int_path_param` /
+    /// `e2e_notes_crud` failures (1-param handlers received the metadata JSON as
+    /// their first arg). This test pins the lookup without needing a live HTTP
+    /// server, so it runs in the regular (non-`--ignored`) suite.
+    #[test]
+    fn get_fn_n_args_reads_declared_arity() {
+        use crate::vm::opcode::OpCode;
+        // Bytecode for two exported "functions":
+        //   - "echo_id" at addr 0: FN_PROLOG, n_args=1, n_locals=0, RET
+        //   - "create_note" at addr 4: FN_PROLOG, n_args=2, n_locals=0, RET
+        let bytecode: Vec<u8> = vec![
+            OpCode::FN_PROLOG as u8, 1, 0, OpCode::RET as u8,            // echo_id (1 param)
+            OpCode::FN_PROLOG as u8, 2, 0, OpCode::RET as u8,            // create_note (2 params)
+        ];
+        let mut flash = VirtualFlash::new_with_code(bytecode);
+        flash.exports_by_name.insert("echo_id".to_string(), 0);
+        flash.exports_by_name.insert("create_note".to_string(), 4);
+        let vm = AutoVM::new(flash, 1024);
+
+        assert_eq!(vm.get_fn_n_args("echo_id"), Some(1), "1-param handler arity");
+        assert_eq!(vm.get_fn_n_args("create_note"), Some(2), "2-param handler arity");
+        assert_eq!(vm.get_fn_n_args("nonexistent"), None, "unknown fn -> None");
+    }
+
     #[test]
     fn nv_to_json_plain_int() {
         let vm = fresh_vm();
@@ -1606,28 +1633,45 @@ fn build_handler_args(
 
             // Plan 346 stage 4: Push cookies + auth as a JSON metadata string.
             // Format: {"cookies":{"key":"val"}, "auth":"Bearer xxx"}
-            let cookies_json: String = if cookie_header.is_empty() {
-                "{}".to_string()
-            } else {
-                let pairs: Vec<String> = cookie_header.split(';')
-                    .filter_map(|pair| {
-                        let pair = pair.trim();
-                        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                        Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
-                    })
-                    .collect();
-                format!("{{{}}}", pairs.join(","))
+            //
+            // Plan 317 §11 Phase 11 (Bug fix): ONLY push the metadata when the
+            // handler declared an extra parameter to receive it. Previously this
+            // was unconditional, so a 1-param handler like `fn echo_id(id int)`
+            // received [id=42, meta_json] with n_args=2 — the handler's `id`
+            // slot bound to the meta JSON instead of 42 (returned
+            // {"cookies":{},"auth":""}). Now we read the handler's declared
+            // n_args from its FN_PROLOG and push metadata iff the handler
+            // declares more params than the data args we've already pushed
+            // (path/query/body). This makes the metadata opt-in via signature.
+            let declared_n_args = vm.get_fn_n_args(&route_match.fn_name);
+            let push_meta = match declared_n_args {
+                Some(declared) => declared > n_args, // handler wants an extra param
+                None => true, // unknown — preserve old behavior (defensive)
             };
-            let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
-            let meta_json = format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val);
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(meta_json.into_bytes());
-                i
-            };
-            task.ram.push_nv(auto_val::encode_string(idx as u32));
-            n_args += 1;
+            if push_meta {
+                let cookies_json: String = if cookie_header.is_empty() {
+                    "{}".to_string()
+                } else {
+                    let pairs: Vec<String> = cookie_header.split(';')
+                        .filter_map(|pair| {
+                            let pair = pair.trim();
+                            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                            Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
+                        })
+                        .collect();
+                    format!("{{{}}}", pairs.join(","))
+                };
+                let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
+                let meta_json = format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val);
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(meta_json.into_bytes());
+                    i
+                };
+                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            }
         }
     }
     n_args
