@@ -6311,7 +6311,20 @@ impl RustTrans {
                 "ends_with" => Some("ends_with"),
                 "find_last" => Some("rfind"),
                 "to_str" => Some("to_str"),
-                "append" => Some("push_str"),
+                // Plan 393 E1: only remap to push_str when receiver is NOT a known
+                // struct. A struct method named `append` (e.g. ChatSession.append)
+                // must pass through unchanged. Unknown receiver keeps the legacy
+                // remap (String is the common case for .append).
+                "append" => {
+                    let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty,
+                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                | Type::GenericInstance(_)))
+                            .unwrap_or(false)
+                    } else { false };
+                    if !lhs_is_struct { Some("push_str") } else { None }
+                }
                 // Collection methods
                 "push" => Some("push"),
                 "pop" => Some("pop"),
@@ -15945,17 +15958,83 @@ impl RustTrans {
         }
     }
 
-    /// Plan 373: `Result<None, E>` → `Result<(), E>` and `Ok(None)` → `Ok(())`.
-    /// Auto functions returning `nil` get transpiled with `None` as the Ok-type
-    /// and `Ok(None)` returns; Rust needs the unit type `()`.
+    /// Plan 373/393 E2: `Result<None, E>` → `Result<(), E>` (type position, always),
+    /// and `Ok(None)` → `Ok(())` **only inside functions whose return type is
+    /// `Result<(), _>`**. Functions returning `Result<Option<T>, _>` legitimately
+    /// use `Ok(None)` (success-but-no-value), so the global replace was an E0308
+    /// bug. We track brace depth to bound each fn body.
     fn fix_result_none_unit(content: &mut String) {
-        // Type position: `Result<None,` or `Result<None>` → unit first arg.
+        // Type position: `Result<None,` or `Result<None>` → unit first arg (always safe).
         let reduced = content.replace("Result<None,", "Result<(),").replace("Result<None>", "Result<(),>");
         if reduced != *content { *content = reduced; }
-        // Value position: `Ok(None)` → `Ok(())` (only in return/value contexts;
-        // `Ok(None)` is never a meaningful Option payload in transpiled output).
-        let reduced = content.replace("Ok(None)", "Ok(())");
-        if reduced != *content { *content = reduced; }
+
+        // Value position: only replace `Ok(None)` → `Ok(())` inside fn bodies
+        // whose signature returns `Result<(), _>` (Ok-type is unit). Walk the
+        // content line by line, tracking fn boundaries + brace depth.
+        let lines: Vec<&str> = content.lines().collect();
+        let mut out = String::with_capacity(content.len());
+        // Regex to detect a fn returning Result<(), ...> (Ok-type is `()` or `None`
+        // already normalized to `()` above). Match `-> Result<(),` or `-> Result<()>`.
+        let unit_fn_re = cached_regex(r"fn\s+\w+[^{]*->\s*Result\s*<\s*\(\s*\)\s*,");
+        let mut in_unit_fn = false;
+        let mut depth: i32 = 0;
+        let mut fn_header = String::new(); // accumulate multi-line fn signature
+        let mut header_done = false;
+        for line in &lines {
+            if !in_unit_fn {
+                // Detect fn start. Signatures may span lines, so accumulate until `{`.
+                if !header_done && line.contains("fn ") {
+                    fn_header.clear();
+                    fn_header.push_str(line);
+                    if line.contains('{') {
+                        header_done = true;
+                    } else {
+                        out.push_str(line);
+                        out.push('\n');
+                        continue;
+                    }
+                } else if !header_done && !fn_header.is_empty() {
+                    fn_header.push('\n');
+                    fn_header.push_str(line);
+                    if line.contains('{') {
+                        header_done = true;
+                    } else {
+                        out.push_str(line);
+                        out.push('\n');
+                        continue;
+                    }
+                }
+
+                if header_done {
+                    if unit_fn_re.as_ref().map(|r| r.is_match(&fn_header)).unwrap_or(false) {
+                        in_unit_fn = true;
+                        depth = line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                        if depth <= 0 { in_unit_fn = false; }
+                    }
+                    header_done = false;
+                    fn_header.clear();
+                    out.push_str(line);
+                    out.push('\n');
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            } else {
+                // Inside a Result<(), _> fn body: replace Ok(None) → Ok(()).
+                let replaced = line.replace("Ok(None)", "Ok(())");
+                out.push_str(&replaced);
+                out.push('\n');
+                depth += line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                if depth <= 0 {
+                    in_unit_fn = false;
+                }
+            }
+        }
+        // Trim trailing extra newline added by the loop.
+        if out.ends_with('\n') && !content.ends_with('\n') {
+            out.pop();
+        }
+        if out != *content { *content = out; }
     }
 
     /// Plan 373: calls on function-typed struct fields need parenthesization.
