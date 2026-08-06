@@ -1259,7 +1259,7 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone()) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(root_dir.to_str().unwrap())) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -1317,6 +1317,7 @@ export default router
         fn scan_pages_dir(
             dir: &Path,
             front_dir: &Path,
+            root_dir: &Path,
             all_components: &mut Vec<(String, String, String, String)>,
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
@@ -1330,7 +1331,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
+                    scan_pages_dir(&path, front_dir, root_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -1340,7 +1341,7 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
                         Ok((vue_code, widgets, stores)) => {
                             collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);
@@ -1367,7 +1368,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
+            scan_pages_dir(&pages_dir, &front_dir, root_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -1386,7 +1387,7 @@ export default router
                     continue;
                 }
 
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None) {
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
                     Ok((vue_code, widgets, stores)) => {
                         collect_ext_import_files(&widgets, &mut ext_file_set);
                         let components = detect_shadcn_components(&vue_code);
@@ -2742,41 +2743,11 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 /// Returns (vue_code, widget_names)
 /// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
 /// project's `back/api.at`, so the store composable can wire type-driven SSE.
-/// (Plan 043 stream phase.) Returns an empty vec if api.at is absent or has no
-/// stream endpoints. Tries full parse first, falls back to lenient extraction —
-/// mirroring `generate_api` in api_gen.rs.
+/// (Plan 043 stream phase.) Delegates to the auto-lang regex-based resolver.
 fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpoint> {
-    // Match generate_api's layout probing: src/back/api.at, else back/api.at.
-    let src_back = root_dir.join("src").join("back").join("api.at");
-    let api_file = if src_back.exists() {
-        src_back
-    } else {
-        let back = root_dir.join("back").join("api.at");
-        if back.exists() { back } else { return Vec::new(); }
-    };
-    let content = match std::fs::read_to_string(&api_file) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    let module = crate::api_gen::try_full_parse(&content)
-        .or_else(|| crate::api_gen::extract_api_lenient(&content));
-    let module = match module {
-        Some(m) => m,
-        None => return Vec::new(),
-    };
-    module.endpoints.iter()
-        .filter_map(|ep| {
-            let rt = ep.return_type.trim();
-            // type_to_string drops the `~` prefix, so the inner type is between `<` and `>`.
-            let inner = rt.strip_prefix("~Stream<").or_else(|| rt.strip_prefix("Stream<"))?;
-            let item_type = inner.trim_end_matches('>').to_string();
-            Some(auto_lang::aura::StreamEndpoint {
-                fn_name: ep.fn_name.clone(),
-                path: ep.path(),
-                item_type,
-            })
-        })
-        .collect()
+    auto_lang::ui_gen::api::resolve_stream_endpoints_for_project(
+        &root_dir.to_string_lossy(),
+    )
 }
 
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).

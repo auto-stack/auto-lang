@@ -9309,9 +9309,19 @@ export function cn(...inputs: ClassValue[]) {
 
         let mut code = String::new();
         code.push_str("import { ref } from 'vue'\n");
-        // API functions used in handler bodies (from `use back.api`)
-        if !store.api_imports.is_empty() {
-            let fns = store.api_imports.join(", ");
+        // API functions used in handler bodies (from `use back.api`).
+        // Streaming endpoints (~Stream<T>) are consumed via SSE in this composable,
+        // not via a fetch client, so api.ts does NOT export them — exclude their
+        // names from the import to avoid a dangling TS2305. (Plan 043 stream phase.)
+        let stream_fn_names: std::collections::HashSet<&str> = store.stream_endpoints
+            .iter()
+            .map(|ep| ep.fn_name.as_str())
+            .collect();
+        let importable_fns: Vec<&String> = store.api_imports.iter()
+            .filter(|f| !stream_fn_names.contains(f.as_str()))
+            .collect();
+        if !importable_fns.is_empty() {
+            let fns = importable_fns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
             code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
         }
         code.push('\n');
@@ -9356,7 +9366,8 @@ export function cn(...inputs: ClassValue[]) {
         // Module-level guard: every widget calls reactive(useXxxStore()), so
         // without a flag each call would open its own SSE connection.
         if wire_sse {
-            code.push_str("// Plan 043 M5 G1: single SSE stream connection for the module.\n");
+            code.push_str("// Plan 043 stream phase: type-driven SSE. The streaming endpoint's\n");
+            code.push_str("// `~Stream<T>` return type + path drive this EventSource wiring.\n");
             code.push_str("let __streamConnected = false;\n\n");
         }
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
@@ -13429,6 +13440,9 @@ widget Counter {
         assert!(!code.contains("'/api/stream'"), "must not use hardcoded path:\n{}", code);
         // Dispatch unchanged (discriminator-route).
         assert!(code.contains("RunOutput(data);"), "dispatch:\n{}", code);
+        // The streaming fn ("subscribe") is consumed via SSE, so it must NOT appear
+        // in the api import line (api.ts does not export it).
+        assert!(!code.contains("import { subscribe"), "stream fn excluded from import:\n{}", code);
     }
 
     // ====================================================================

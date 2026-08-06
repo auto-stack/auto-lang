@@ -98,6 +98,47 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
 }
 
 // ============================================================================
+// Plan 043 stream phase: resolve streaming endpoints from back/api.at
+// ============================================================================
+
+/// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
+/// project's `back/api.at`, so the store composable can wire type-driven SSE.
+/// (Plan 043 stream phase.) Uses a targeted regex scan (robust against
+/// `use types:`-style module references that defeat full AST parsing). Returns
+/// an empty vec if api.at is absent or has no stream endpoints.
+pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::StreamEndpoint> {
+    let root = std::path::Path::new(root_dir);
+    let src_back = root.join("src").join("back").join("api.at");
+    let api_file = if src_back.exists() {
+        src_back
+    } else {
+        let back = root.join("back").join("api.at");
+        if back.exists() { back } else { return Vec::new(); }
+    };
+    let content = match std::fs::read_to_string(&api_file) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    // Match: #[api(method = "M", path = "/p")] pub fn name(...) ~Stream<T> {
+    // The path attribute and the `~Stream<T>` return type are both required.
+    // Robust against multi-line annotations and extra whitespace.
+    let Ok(re) = regex::Regex::new(
+        r#"(?s)#\[api\([^]]*path\s*=\s*"([^"]+)"[^]]*\)\]\s*pub\s+fn\s+(\w+)\s*\([^)]*\)\s*~?Stream<([^>]+)>"#,
+    ) else { return Vec::new(); };
+
+    re.captures_iter(&content)
+        .filter_map(|cap| {
+            Some(crate::aura::StreamEndpoint {
+                path: cap.get(1)?.as_str().to_string(),
+                fn_name: cap.get(2)?.as_str().to_string(),
+                item_type: cap.get(3)?.as_str().trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+// ============================================================================
 // Plan 361 §3: generate_component_from_file — 统一生成入口
 // ============================================================================
 
