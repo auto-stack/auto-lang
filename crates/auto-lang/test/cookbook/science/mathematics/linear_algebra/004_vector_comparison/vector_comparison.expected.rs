@@ -6,7 +6,7 @@ fn main() {
     let mut equal: bool = true;
     for i in 0..3 {
         if a[(i) as usize].clone() != b[(i) as usize].clone() {
-            equal = false
+            equal = false;
         }
     }
     assert!(equal == true);

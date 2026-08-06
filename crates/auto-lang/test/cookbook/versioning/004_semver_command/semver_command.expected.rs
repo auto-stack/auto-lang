@@ -6,7 +6,7 @@ fn main() {
     let threshold = Version::parse("1.0.0").unwrap();
     let mut is_greater: bool = false;
     if v > threshold {
-        is_greater = true
+        is_greater = true;
     }
     assert!(is_greater == true);
 }
