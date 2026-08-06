@@ -4,7 +4,8 @@ title: actor-state-injection
 affects: [auto-lang/parser, auto-lang/a2r, auto-lang/vm, a2r-std]
 status: complete # draft | in-progress | complete
 # auto-lang 侧范围完成（Phase A/B/E/G1/G2/F 落地）；Phase D 在 auto-ai 仓推进。
-# 3 个非阻塞遗留见 §14（L1 a2r Arc/Box 实参渲染 / L2 双层包装 / L3 WithBindings 多字段）。
+# 5 个遗留见 §14（L1 a2r Arc/Box 实参渲染 / L2 双层包装 / L3 WithBindings 多字段 /
+# L4 闭包字面量 state 字段推导 / L5 闭包不能捕获外部变量——阻塞 driver 流式转发）。
 ---
 
 # Plan 390: Actor 状态注入机制 + a2r call-site spec 自动装箱修复
@@ -597,18 +598,23 @@ VM actor 测试 12 passed（11 既有 + 1 新增）；`cargo test --features tes
 
 ---
 
-## §14 遗留汇总（2026-08-06 复审）
+## §14 遗留汇总（2026-08-07 复审）
 
-auto-lang 侧实质工作全部完成（Phase A/B/E/G1/G2/F 落地；Phase D 属 auto-ai）。以下是 3 个明确记录的遗留，均非阻塞：
+auto-lang 侧实质工作全部完成（Phase A/B/E/G1/G2/F 落地；Phase D 属 auto-ai）。以下是 5 个明确记录的遗留：
 
 | # | 遗留 | 性质 | 位置 | 严重度 | 触发条件 |
 |---|---|---|---|---|---|
 | **L1** | a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷 —— 只有 let 位正确，实参位不渲染 `::new` | a2r 转译器 bug | `trans/rust.rs`（§451 KNOWN-DEBT Plan 021）| 中 | 当前用 `let a = Arc(tool)` workaround 绕过（§439）；a2r 根因修复后可去 let 绑定直写 |
 | **L2** | `Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>` | 设计偏差 | auto-ai tool.at 存储（§448）| 低 | Deref 链功能可用；转正时若要对齐 rust-ref 单层，另立 a2r spec 返回位/存储位推导计划 |
 | **L3** | WithBindings 多字段消息绑定未实现 —— `on { Add(a int, b int) -> }` 的多字段绑定 | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs`（§G2.7）| 低 | 当前只支持单字段 TypeBinding（`on { n int -> }`）；多字段需 DUP + 多 STORE_LOC。罕见场景，单字段够用 |
+| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs`（Phase 6.5 实施时发现）| 低 | 当前 EventSink 用具名 `noop_event` 函数绕过（`agent.at:146`）；a2r 修复后可用闭包字面量 |
+| **L5** | **Auto 闭包不能捕获外部变量** —— `fn(ev) { forward(ev, outer_cb) }` 报 "Variable ev not defined"。阻塞 auto-ai Plan 021 Phase 6.6（driver Delta/Tool → PipelineEvent 转发）：EventSink cb 单参数无法持 `on_event`，rust-ref 用 `Arc<dyn Fn>` 闭包捕获，Auto 无等价 | **语言级限制（非 a2r bug）** | `parser.rs` / 闭包语义（§KNOWN-DEBT Plan 021）| **高**（阻塞 driver 流式转发） | 需 Auto 支持 `Arc<dyn Fn>` 闭包捕获，或非 actor 流式架构，或 EventSink 能持额外上下文。**driver 非流式事件已正常工作**，仅流式 Delta/Tool 受阻 |
 
 **EventSink VM 端到端未验证**（§5.10/§G2 验收）：EventSink 的生产路径是 a2r（Phase B 交付），
 VM 侧 spawn-with-args + bound-var handler 机制均已就绪（Phase A + G2），但 EventSink 完整形态
 （fn 指针 state + 绑定变量 handler 组合）未在 VM 跑通端到端。非阻塞——EventSink 不走 VM 路径。
 
 **auto-lang 侧范围判定：完成**。剩余 Phase D（§5.12-5.15）在 auto-ai 仓推进。
+L1/L4 是 a2r bug（workaround 已有）；L5 是语言级限制（影响 driver 流式转发，需独立语言增强计划）。
+**Plan 021 缺口 3（serde derive 转译）不属本计划范畴** —— 它阻塞于 a2r 的 `#[derive(Deserialize)]`
++ `#[serde(deserialize_with)]` 注解转译，与 actor 无关，留在 Plan 021 Phase 4 独立推进。
