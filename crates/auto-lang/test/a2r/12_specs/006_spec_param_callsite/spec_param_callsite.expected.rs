@@ -9,9 +9,9 @@ pub fn free_register(tool: Box<dyn Tool>) {
     println!("{}", tool.name());
 }
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct Reg {
-    pub tools: std::collections::HashMap<String, Arc<Box<dyn Tool>>>,
+    pub tools: std::collections::HashMap<String, Arc<dyn Tool>>,
 }
 
 impl Reg {
@@ -20,7 +20,7 @@ impl Reg {
     }
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         let n = tool.name();
-        self.tools.insert(n, Arc::new(tool));
+        self.tools.insert(n, Arc::from(tool));
     }
 }
 
