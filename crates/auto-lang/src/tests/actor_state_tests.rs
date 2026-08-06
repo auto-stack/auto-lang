@@ -62,3 +62,30 @@ fn main() {
     assert!(s.contains("reached two"), "count==2: stdout={:?} result={:?}", s, r);
     assert!(s.contains("reached three"), "count==3: stdout={:?} result={:?}", s, r);
 }
+
+/// Plan 390 §5 Phase A (M1): Task.spawn passes init args that override the
+/// state field's declared default. `Task.spawn("Counter", 16, 41)` sets
+/// `count` to 41 at spawn; a handler then does `count = count + 1` → 42.
+/// Uses a literal-pattern handler (`1 ->`) to avoid the unrelated bound-variable
+/// VM defect (Plan 043). Verified end-to-end: start reads 41, handler prints 42.
+#[test]
+fn actor_spawn_init_arg_overrides_default() {
+    let code = r#"
+task Counter {
+    count = 0
+    on {
+        1 -> {
+            count = count + 1
+            print(count)
+        }
+    }
+}
+fn main() {
+    let h = Task.spawn("Counter", 16, 41)
+    h.send(1)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // The injected count=41 survives to the handler; +1 → 42.
+    assert!(s.contains("42"), "spawn init arg (count=41 → +1 = 42): stdout={:?} result={:?}", s, r);
+}

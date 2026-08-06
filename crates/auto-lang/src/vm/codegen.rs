@@ -7470,30 +7470,58 @@ impl Codegen {
                         }
                     }
 
-                    // Plan 127: Special handling for Task.spawn - inject task_type and capacity
-                    // The rust_fn macro pops args in REVERSE order:
-                    // shim_task_spawn(task_type: String, capacity: i32)
-                    // Pop order: capacity first (from top), then task_type (from next)
-                    // Stack layout needed: [task_type, capacity] where capacity is on top
-                    // Push order: task_type first (bottom), capacity second (top)
-                    if func_name.as_deref() == Some("auto.task.spawn") {
-                        // Get the task type name from the original Dot expression
-                        if let Expr::Dot(obj, _) = call.name.as_ref() {
-                            if let Expr::Ident(task_type) = obj.as_ref() {
-                                // Push task_type as string FIRST (goes to bottom of stack)
-                                let task_type_str = task_type.to_string();
-                                let task_type_bytes = task_type_str.as_bytes().to_vec();
-                                let str_idx = self.strings.len() as u16;
-                                self.strings.push(task_type_bytes);
-                                self.emit(OpCode::LOAD_STR);
-                                self.code.extend_from_slice(&str_idx.to_le_bytes());
+                    // Plan 127 / Plan 390 §5 Phase A (M1): Task.spawn handling.
+                    // `Task.spawn("Name", cap, init1, init2, ...)` — the first arg is the
+                    // task type name as a string literal, the second is capacity, and any
+                    // further args are positional initializers for the task's state fields
+                    // (declaration order). We consume ALL args here (the generic user-arg
+                    // loop below is skipped via skip_task_spawn_user_args) and push a
+                    // self-describing stack for shim_task_spawn_vm:
+                    //   bottom→top: [task_type_str, capacity, n_init, initN, ..., init0]
+                    // The shim pops n_init first (top), then the n_init values, then
+                    // capacity, then task_type — and writes the init values into the
+                    // spawned task's state_vars, locking them so the #start hook's
+                    // default initializers don't clobber them.
+                    let mut skip_task_spawn_user_args = false;
+                    if func_name.as_deref() == Some("Task.spawn") {
+                        // task type name = call.args[0] as a string literal.
+                        if let Some(crate::ast::Arg::Pos(Expr::Str(task_type))) = call.args.args.first().cloned() {
+                            // Push task_type string (bottom of stack).
+                            let task_type_str = task_type.to_string();
+                            let task_type_bytes = task_type_str.as_bytes().to_vec();
+                            let str_idx = self.strings.len() as u16;
+                            self.strings.push(task_type_bytes);
+                            self.emit(OpCode::LOAD_STR);
+                            self.code.extend_from_slice(&str_idx.to_le_bytes());
 
-                                // Push default capacity (64) as i32 SECOND (goes to top of stack)
-                                self.emit(OpCode::CONST_I32);
-                                self.emit_i32(64);
+                            // capacity = call.args[1] (literal int) or default 64.
+                            let capacity_val = match call.args.args.get(1) {
+                                Some(crate::ast::Arg::Pos(Expr::Int(c))) => *c,
+                                _ => 64,
+                            };
 
-                                vm_debug!("DEBUG: Injected task_type='{}' capacity=64 for Task.spawn", task_type_str);
+                            // init args = call.args[2..], pushed right-to-left so the
+                            // shim pops field 0 first.
+                            // Push capacity (above task_type).
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(capacity_val);
+                            // Push init args right-to-left (so field 0 ends on top).
+                            let init_args: Vec<&crate::ast::Arg> = call.args.args.iter()
+                                .enumerate()
+                                .filter(|(i, _)| *i >= 2)
+                                .map(|(_, a)| a)
+                                .collect();
+                            for arg in init_args.iter().rev() {
+                                if let crate::ast::Arg::Pos(expr) = arg {
+                                    self.compile_expr(expr)?;
+                                }
                             }
+                            // Push n_init count (top) — self-describing.
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(init_args.len() as i32);
+
+                            skip_task_spawn_user_args = true;
+                            vm_debug!("DEBUG: Task.spawn '{}' capacity={} init_args={}", task_type_str, capacity_val, init_args.len());
                         }
                     }
 
@@ -7524,7 +7552,7 @@ impl Codegen {
 
                     // Compile arguments (left-to-right)
                     // Plan 088 Phase 4: Smart parameter passing for native functions
-                    if !call.args.is_empty() {
+                    if !call.args.is_empty() && !skip_task_spawn_user_args {
                         let func_name_for_params =
                             func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                         let is_assert_msg = func_name_for_params == "assert_eq"

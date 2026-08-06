@@ -5872,7 +5872,19 @@ pub fn shim_task_spawn_vm(
     task: &mut crate::vm::task::AutoTask,
     vm: &crate::vm::engine::AutoVM,
 ) -> Result<(), crate::vm::engine::VMError> {
-    // Stack layout (pushed left-to-right by codegen): task_type_str, capacity
+    // Plan 390 §5 Phase A (M1): stack layout (pushed bottom→top by codegen):
+    //   [task_type_str, capacity, n_init, initN, ..., init0]
+    // Pop order (top first): n_init count, then n_init values (rev → field 0 first),
+    // then capacity, then task_type.
+    let n_init = task.ram.pop_i32() as usize;
+    let mut init_values: Vec<auto_val::NanoValue> = Vec::with_capacity(n_init);
+    for _ in 0..n_init {
+        init_values.push(task.ram.pop_nv());
+    }
+    // Popped values are in reverse declaration order (top was field 0); reverse
+    // to get declaration order (field 0 first) for positional state_vars write.
+    init_values.reverse();
+
     let capacity = task.ram.pop_i32();
     let ram_size = if capacity <= 0 { 8192 } else { (capacity as usize) * 64 };
 
@@ -5894,19 +5906,33 @@ pub fn shim_task_spawn_vm(
     let start_offset = vm.flash.exports_by_name.get(&start_key).copied().unwrap_or(0) as usize;
 
     // Spawn an AutoVM task starting at the start hook.
-    // We do NOT lock the task here — tokio Mutex blocking_lock panics inside
-    // the async runtime (CALL_NAT runs during run_one_instruction). The task
-    // is created Ready by spawn_task; its task_type_name is set later by the
-    // TASK_LOOP opcode (engine.rs:5434) which runs at the end of the start hook.
-    // Messages sent before TASK_LOOP park accumulate in pending_messages and
-    // are drained once the task enters Waiting/message_loop.
     let task_id = vm.spawn_task(start_offset, ram_size);
 
-    // Create the mailbox for this task (DashMap<task_id, Mutex<Vec<Value>>>).
-    // Sent messages accumulate here until the task parks in message_loop.
+    // Plan 390 M1: write the init args into the spawned task's state_vars
+    // BEFORE its #start hook runs the STORE_STATE_FIELD default initializers,
+    // and lock those fields so the defaults are skipped (injected value wins).
+    if !init_values.is_empty() {
+        if let Some(task_arc) = vm.tasks.get(&task_id) {
+            // try_lock (non-blocking): the task was just spawned Ready and has
+            // not been stepped yet, so nothing else holds its lock. blocking_lock
+            // would panic inside the async runtime.
+            if let Ok(mut spawned) = task_arc.try_lock() {
+                if spawned.state_vars.len() < n_init {
+                    spawned.state_vars.resize(n_init, auto_val::encode_i32(0));
+                }
+                for (i, v) in init_values.into_iter().enumerate() {
+                    if i < spawned.state_vars.len() {
+                        spawned.state_vars[i] = v;
+                    }
+                }
+            }
+        }
+    }
+
+    // Create the mailbox for this task (DashMap<task_id, Mutex<Vec<Value>>).
     vm.task_mailboxes.insert(task_id, std::sync::Mutex::new(Vec::new()));
 
-    vm_debug!("DEBUG shim_task_spawn_vm: spawned task_id={} for type {} at offset {}", task_id, task_type, start_offset);
+    vm_debug!("DEBUG shim_task_spawn_vm: spawned task_id={} for type {} at offset {} (init_args={})", task_id, task_type, start_offset, n_init);
 
     // Return the AutoVM task id as the handle (send uses it directly).
     task.ram.push_i32(task_id as i32);

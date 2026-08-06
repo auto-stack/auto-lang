@@ -2,7 +2,7 @@
 plan: 392
 title: a2r-codegen-fixes-from-musk
 affects: [auto-lang/a2r, auto-lang/trans-rust]
-status: draft # draft | in-progress | complete
+status: in-progress # E4+E5 闭环, E1/E2/E3 待续 # draft | in-progress | complete
 ---
 
 # Plan 392: a2r codegen 五项修复 — 来自 auto-musk 变通复审
