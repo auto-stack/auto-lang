@@ -1,0 +1,51 @@
+name: http-e2e
+
+# Plan 317 §11 Phase 11: HTTP e2e regression gate.
+#
+# Runs the 7 HTTP e2e tests (formerly #[ignore]) that start a real TCP HTTP
+# server and validate the full #[api] → serve_async → handler → response
+# pipeline (struct JSON, path params, SSE, concurrent SSE, CRUD). Gated behind
+# the `test-http-e2e` feature. Run via `cargo th` locally (nextest alias).
+#
+# IMPORTANT — known flakiness profile:
+#   - The 4 non-SSE tests (struct/int-path/notes-crud/notes-list) are 100%
+#     stable in isolation and in-suite.
+#   - The 3 SSE tests (generator/indirect/concurrent) expose a scheduling
+#     sensitivity in serve_async's spawn_local + yield_now path: under heavy
+#     machine load (many concurrent processes / loaded CI runner), a connection
+#     can hit the 5s read-timeout before all SSE frames flush. This is a real
+#     nondeterminism in the cooperative schedule, NOT a server correctness bug.
+#   - Mitigation: nextest runs each test in its OWN process (full isolation,
+#     no detached-server-thread accumulation across tests), serially
+#     (--test-threads 1), and we retry transient flakes (--retries 2). An
+#     isolated CI runner with no competing load makes the flakes vanishingly
+#     rare. If this job flakes repeatedly, the deeper fix is a controlled
+#     serve_async shutdown (see plan-317 §11 Phase 11 "follow-up").
+#
+# Kept separate from auto-lsp-ci.yml (which only tests auto-lsp) so SSE
+# scheduling sensitivity can't break the core build.
+
+on:
+  pull_request:
+    paths:
+      - 'crates/auto-lang/src/vm/ffi/http_server.rs'
+      - 'crates/auto-lang/src/vm/ffi/stdlib.rs'
+      - 'crates/auto-lang/src/vm/engine.rs'
+      - 'crates/auto-lang/src/lib.rs'
+      - 'crates/auto-lang/Cargo.toml'
+      - '.github/workflows/http-e2e-ci.yml'
+  push:
+    branches: [master]
+
+jobs:
+  http-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install nextest
+        run: cargo install cargo-nextest --locked || true
+      - name: Run HTTP e2e tests (serial, process-isolated, retry flakes)
+        run: cargo nextest run -p auto-lang --lib --features test-http-e2e http_e2e --test-threads 1 --retries 2

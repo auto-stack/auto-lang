@@ -5,6 +5,7 @@
 #   cargo tt         - transpiler tests
 #   cargo tb         - book listing tests (slow: ~5-7s each)
 #   cargo ta         - all tests (VM + trans + book)
+#   cargo th         - HTTP e2e tests (real TCP servers; serial only)
 #
 # Requires: cargo install cargo-nextest
 
@@ -30,3 +31,7 @@ tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"
 ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-book"
+# Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
+# nextest runs each test in its own process, which is ideal here — each test's
+# detached server thread is reaped on process exit, giving full isolation.
+th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"

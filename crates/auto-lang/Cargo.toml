@@ -17,6 +17,10 @@ default = ["with-file-history"]
 test-vm-files = []
 test-trans = []
 test-book = []
+# Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
+# Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
+# `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
+test-http-e2e = []
 # Plan 289: Examples are opt-in to avoid 23 linker processes consuming ~46GB memory
 build-examples = []
 with-file-history = []

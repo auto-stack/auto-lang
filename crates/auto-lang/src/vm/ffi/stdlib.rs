@@ -2581,6 +2581,21 @@ pub fn get_http_routes() -> Vec<(String, String, String)> {
     HTTP_ROUTES.lock().map(|t| t.clone()).unwrap_or_default()
 }
 
+/// Plan 317 §11 Phase 11: Clear the global HTTP routes table.
+///
+/// Needed for HTTP e2e test isolation: each test calls `crate::run(&code)`,
+/// which calls `register_http_routes` (overwrite semantics) — but a server
+/// thread from a *previous* test may still be alive (detached) and reading the
+/// global table via `serve_async`'s `get_routes()` snapshot. Clearing before
+/// each test's run eliminates cross-test route contamination that caused
+/// `e2e_sse_indirect_generator` to intermittently return an empty body (404
+/// from a stale route snapshot). Test-only helper; production never clears.
+pub fn clear_http_routes() {
+    if let Ok(mut table) = HTTP_ROUTES.lock() {
+        table.clear();
+    }
+}
+
 // Thread-local storage for TCP listeners
 thread_local! {
     static TCP_LISTENERS: std::cell::RefCell<std::collections::HashMap<u64, StdTcpListener>> =
