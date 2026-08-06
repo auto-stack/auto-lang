@@ -221,7 +221,8 @@ impl<'a> AuraViewBuilder<'a> {
         let val = self.resolve_expr_to_value(&expr, bindings)?;
         match val {
             auto_val::Value::Array(arr) => Some(arr.iter().cloned().collect()),
-            auto_val::Value::Int(id) if id >= 2_000_000 => {
+            // Plan 390 §15 H3b: arrays are ListData<Value> in heap_objects (4M+).
+            auto_val::Value::Int(id) if id >= 4_000_000 => {
                 // Heap array id — deref via bridge
                 Some(self.bridge.index_list_all(id as usize))
             }
@@ -2185,7 +2186,8 @@ impl<'a> AuraViewBuilder<'a> {
                         // GET_FIELD needs the raw id to do heap_objects lookup.
                         self.bridge.index_list(r.id, *i)
                     }
-                    (Value::Int(id), Value::Int(i)) if *id >= 2_000_000 => {
+                    // Plan 390 §15 H3b: arrays are ListData<Value> in heap_objects (4M+).
+                    (Value::Int(id), Value::Int(i)) if *id >= 4_000_000 => {
                         self.bridge.index_list(*id as usize, *i)
                     }
                     _ => None,
