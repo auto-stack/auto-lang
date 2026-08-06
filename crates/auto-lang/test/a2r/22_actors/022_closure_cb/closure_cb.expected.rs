@@ -5,10 +5,9 @@
 use a2r_std;
 use a2r_std::*;
 
-#[derive(Clone, Debug)]
 struct Sink {
     log: String,
-    cb: Box<dyn Fn(String)>,
+    cb: Box<dyn Fn(String) + Send + Sync>,
 }
 
 impl Sink {
@@ -30,7 +29,7 @@ impl Sink {
     pub async fn handle_msg(&mut self, msg: String, reply_tx: a2r_std::task::NopReply) -> Result<(), Box<dyn std::error::Error>> {
         match msg.as_str() {
             ev => {
-                self.cb(ev);
+                (self.cb)(ev);
                 self.log = ev;
                 println!("{}", self.log);
             }
@@ -42,7 +41,7 @@ impl Sink {
     }
 }
 
-pub fn spawn_sink_with(log: String, cb: Box<dyn Fn(String)>) -> a2r_std::task::TaskRef<String> {
+pub fn spawn_sink_with(log: String, cb: Box<dyn Fn(String) + Send + Sync>) -> a2r_std::task::TaskRef<String> {
     let (taskref, mut rx) = a2r_std::task::channel::<String>();
     let join = tokio::spawn(async move {
         let mut actor = Sink { log: log, cb: cb };

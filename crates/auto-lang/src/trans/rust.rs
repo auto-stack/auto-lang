@@ -1273,6 +1273,11 @@ impl RustTrans {
                     if let Some(arg_ty) = inst.args.first() {
                         match arg_ty {
                             Type::Spec(spec) => {
+                                // Plan 395-followup: bare `Box<Fn>` → `Box<dyn Fn + Send + Sync>`
+                                // (Send for tokio::spawn'd actors; rust-ref parity).
+                                if spec.borrow().name == "Fn" {
+                                    return format!("{}<dyn Fn + Send + Sync>", base);
+                                }
                                 return format!("{}<dyn {}>", base, spec.borrow().name);
                             }
                             Type::Fn(params, ret) => {
@@ -1282,7 +1287,11 @@ impl RustTrans {
                                 } else {
                                     format!(" -> {}", self.rust_type_name(ret))
                                 };
-                                return format!("{}<dyn Fn({}){}>", base, param_str.join(", "), ret_str);
+                                // Plan 395-followup: `+ Send + Sync` — closure fields/params may be moved
+                                // into a tokio::spawn'd actor (future must be Send); rust-ref uses
+                                // `Arc<dyn Fn(...) + Send + Sync>`. Generated closures capture only
+                                // fn-pointers/Copy values, so they satisfy the bounds.
+                                return format!("{}<dyn Fn({}){} + Send + Sync>", base, param_str.join(", "), ret_str);
                             }
                             _ => {}
                         }
@@ -1476,6 +1485,11 @@ impl RustTrans {
                     if let Some(arg_ty) = inst.args.first() {
                         match arg_ty {
                             Type::Spec(spec) => {
+                                // Plan 395-followup: bare `Box<Fn>` → `Box<dyn Fn + Send + Sync>`
+                                // (Send for tokio::spawn'd actors; rust-ref parity).
+                                if spec.borrow().name == "Fn" {
+                                    return format!("{}<dyn Fn + Send + Sync>", base);
+                                }
                                 return format!("{}<dyn {}>", base, spec.borrow().name);
                             }
                             Type::Fn(params, ret) => {
@@ -1485,7 +1499,11 @@ impl RustTrans {
                                 } else {
                                     format!(" -> {}", self.rust_type_name(ret))
                                 };
-                                return format!("{}<dyn Fn({}){}>", base, param_str.join(", "), ret_str);
+                                // Plan 395-followup: `+ Send + Sync` — closure fields/params may be moved
+                                // into a tokio::spawn'd actor (future must be Send); rust-ref uses
+                                // `Arc<dyn Fn(...) + Send + Sync>`. Generated closures capture only
+                                // fn-pointers/Copy values, so they satisfy the bounds.
+                                return format!("{}<dyn Fn({}){} + Send + Sync>", base, param_str.join(", "), ret_str);
                             }
                             _ => {}
                         }
@@ -6891,7 +6909,12 @@ impl RustTrans {
             let obj_needs_parens = matches!(object.as_ref(),
                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
             ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
-            if obj_needs_parens { write!(out, "(")?; }
+            // Plan 395-followup: calling a task-state FIELD (`(self.cb)(ev)`)
+            // needs parens — `self.cb(ev)` parses as a method call (E0599
+            // "field, not a method"). The parser drops the source parens, so
+            // re-add them around `self.cb` for known task state fields.
+            let is_task_state_field = self.task_state_fields.contains(method_name.as_str());
+            if obj_needs_parens || is_task_state_field { write!(out, "(")?; }
             // Plan 264: When object is a known module name and this is a type chain,
             // output crate::module instead of bare module name
             if obj_is_type_chain {
@@ -6913,6 +6936,7 @@ impl RustTrans {
             }
             if obj_needs_parens { write!(out, ")")?; }
             write!(out, "{}{}", if obj_is_type_chain { "::" } else { "." }, method_name)?;
+            if is_task_state_field { write!(out, ")")?; }
             // Plan 395: explicit generic type args → Rust turbofish
             self.emit_turbofish_args(call, out)?;
             write!(out, "(")?;
@@ -8944,8 +8968,15 @@ impl RustTrans {
 
     /// Emit `struct Name { state_fields }`.
     fn emit_task_struct(&mut self, td: &TaskDef, sink: &mut Sink) -> AutoResult<()> {
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "#[derive(Clone, Debug)]")?;
+        // Plan 395-followup: a task with a Box<dyn Fn(...)> state field (closure
+        // default) can't derive Clone/Debug — `dyn Fn` implements neither. The
+        // actor is moved into the spawned task (no Clone/Debug needed), so emit
+        // no derive for such structs.
+        let has_closure_field = td.state.iter().any(|(_f, _m, init)| matches!(init, Expr::Closure(_)));
+        if !has_closure_field {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "#[derive(Clone, Debug)]")?;
+        }
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "struct {} {{", name_of(&td.name))?;
         self.indent();
