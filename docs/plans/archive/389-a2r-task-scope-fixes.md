@@ -121,7 +121,7 @@ task 体结束 `pop_scope`。这样 on-handler / start / stop hook 里的裸字�
 - **协作说明**：实施期间用户并行提交了 `d896d263`（Plan 043 dot 语句栈溢出修复），
   worktree 已快进合并该提交后在其上落盘，无冲突。
 
-## §6 风险与注意
+## §7 风险与注意
 
 - **R1/R3 的 scope 注册**是 parser 级改动，`check_symbol` 的 false-positive 风险：
   绑定名泄漏到 task 外（用 scope push/pop 防）；与 `skip_check` 的既有豁免路径不冲突。
