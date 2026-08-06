@@ -4526,31 +4526,10 @@ impl VueGenerator {
                     }
                 }
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
-                    // Plan 346: conditional style → Vue :class ternary.
-                    if let Some(branch) = if_stmt.branches.first() {
-                        let cond_str = self.expr_to_vue_bound_value(&branch.cond).unwrap_or_else(|_| "false".to_string());
-                        // Extract string from body: check Stmt::Return(Expr::Str),
-                        // Stmt::Expr(Expr::Str), or bare Expr::Str
-                        let extract_str = |stmts: &[crate::ast::Stmt]| -> String {
-                            for st in stmts {
-                                match st {
-                                    crate::ast::Stmt::Return(e) => {
-                                        if let crate::ast::Expr::Str(s) = e.as_ref() { return s.to_string(); }
-                                    }
-                                    crate::ast::Stmt::Expr(e) => {
-                                        if let crate::ast::Expr::Str(s) = e { return s.to_string(); }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            String::new()
-                        };
-                        let then_str = extract_str(&branch.body.stmts);
-                        let else_str = if_stmt.else_.as_ref()
-                            .map(|body| extract_str(&body.stmts))
-                            .unwrap_or_default();
-                        dynamic_binding = Some(format!("{} ? '{}' : '{}'", cond_str, then_str, else_str));
-                    }
+                    // Plan 346 + 043 M5 #tag-coloring: conditional style →
+                    // Vue :class ternary. Full if/else-if/else chains become
+                    // nested ternaries (if_expr_to_style_ternary).
+                    dynamic_binding = Some(self.if_expr_to_style_ternary(if_stmt));
                 }
                 _ => {}
             }
@@ -8233,6 +8212,66 @@ impl VueGenerator {
         (attrs, slot_content, slot_children)
     }
 
+    /// Convert an `if` / `else if` / `else` chain used as a `style:`/`class:`
+    /// value into a Vue `:class` ternary binding string.
+    ///
+    /// `if a { "x" } else if b { "y" } else { "z" }` →
+    /// `a ? 'x' : (b ? 'y' : 'z')`. Plan 043 M5 #tag-coloring: the previous
+    /// implementation only read `branches.first()` + the final `else`, so
+    /// else-if chains silently dropped every branch after the first.
+    fn if_expr_to_style_ternary(&self, if_stmt: &crate::ast::If) -> String {
+        self.build_style_ternary(&if_stmt.branches, &if_stmt.else_)
+    }
+
+    fn build_style_ternary(
+        &self,
+        branches: &[crate::ast::Branch],
+        else_: &Option<crate::ast::Body>,
+    ) -> String {
+        if let Some((first, rest)) = branches.split_first() {
+            let cond = self
+                .expr_to_vue_bound_value(&first.cond)
+                .unwrap_or_else(|_| "false".to_string());
+            let then = Self::style_branch_str(&first.body.stmts);
+            let else_part = self.build_style_ternary(rest, else_);
+            if else_part.is_empty() {
+                format!("{} ? '{}' : ''", cond, then)
+            } else if else_part.starts_with('\'') {
+                // Leaf else string — emit directly, no parens.
+                format!("{} ? '{}' : {}", cond, then, else_part)
+            } else {
+                // Nested ternary from an else-if chain — parenthesize.
+                format!("{} ? '{}' : ({})", cond, then, else_part)
+            }
+        } else {
+            else_
+                .as_ref()
+                .map(|b| format!("'{}'", Self::style_branch_str(&b.stmts)))
+                .unwrap_or_default()
+        }
+    }
+
+    /// Extract the string payload of an `if` branch body: `{ "cls" }` or
+    /// `{ return "cls" }` → `"cls"`; anything else → empty.
+    fn style_branch_str(stmts: &[crate::ast::Stmt]) -> String {
+        for st in stmts {
+            match st {
+                crate::ast::Stmt::Return(e) => {
+                    if let crate::ast::Expr::Str(s) = e.as_ref() {
+                        return s.to_string();
+                    }
+                }
+                crate::ast::Stmt::Expr(e) => {
+                    if let crate::ast::Expr::Str(s) = e {
+                        return s.to_string();
+                    }
+                }
+                _ => {}
+            }
+        }
+        String::new()
+    }
+
     /// Extract the `style`/`class` prop into template attributes for
     /// shadcn-mapped elements (generate_shadcn_attrs).
     ///
@@ -8245,36 +8284,7 @@ impl VueGenerator {
         if let Some(value) = self.get_style_class(props) {
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
-                    if let Some(branch) = if_stmt.branches.first() {
-                        let cond_str = self
-                            .expr_to_vue_bound_value(&branch.cond)
-                            .unwrap_or_else(|_| "false".to_string());
-                        let extract_str = |stmts: &[crate::ast::Stmt]| -> String {
-                            for st in stmts {
-                                match st {
-                                    crate::ast::Stmt::Return(e) => {
-                                        if let crate::ast::Expr::Str(s) = e.as_ref() {
-                                            return s.to_string();
-                                        }
-                                    }
-                                    crate::ast::Stmt::Expr(e) => {
-                                        if let crate::ast::Expr::Str(s) = e {
-                                            return s.to_string();
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            String::new()
-                        };
-                        let then_str = extract_str(&branch.body.stmts);
-                        let else_str = if_stmt
-                            .else_
-                            .as_ref()
-                            .map(|body| extract_str(&body.stmts))
-                            .unwrap_or_default();
-                        attrs.push(format!(":class=\"{}\"", format!("{} ? '{}' : '{}'", cond_str, then_str, else_str)));
-                    }
+                    attrs.push(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)));
                 }
                 _ => {
                     let class = self.extract_string_value(value).unwrap_or("");
@@ -10644,6 +10654,32 @@ view fn RenderT(a Any) {
         assert!(
             sfc.contains(":class=") && sfc.contains("idx == 0 ?"),
             "conditional style with loop index in view fn:\n{}",
+            sfc
+        );
+    }
+
+    #[test]
+    fn test_conditional_style_else_if_chain_nested_ternary() {
+        // Plan 043 M5 #tag-coloring: `style: if a {x} else if b {y} else {z}`
+        // must become a NESTED ternary — previously every branch after the
+        // first was silently dropped (only branches.first() was read).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget W {
+    model { var kind str = "" }
+    view {
+        col {
+            text "hi" {
+                style: if .kind == "Dir" { "text-sky-400" } else if .kind == "CodeAtRs" { "text-emerald-400" } else if .kind == "Config" { "text-amber-300" } else { "text-foreground" }
+            }
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains(":class=\"kind == 'Dir' ? 'text-sky-400' : (kind == 'CodeAtRs' ? 'text-emerald-400' : (kind == 'Config' ? 'text-amber-300' : 'text-foreground'))\""),
+            "else-if chain → nested ternary:\n{}",
             sfc
         );
     }
