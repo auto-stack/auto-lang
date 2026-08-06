@@ -125,6 +125,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                         args: crate::ast::Args { args: new_args },
                         ret: Type::Void,
                         type_args: Vec::new(),
+                        generic_args: Vec::new(),
                         pos: None,
                     });
                     return;
@@ -1261,6 +1262,7 @@ mod tests {
             args: Args { args: vec![Arg::Pos(Expr::Int(1))] },
             ret: Type::Unknown,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         }));
         let fields = make_state_fields(&["notes"]);

@@ -734,6 +734,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         })
     }
@@ -864,6 +865,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         });
         let mut out = Vec::new();

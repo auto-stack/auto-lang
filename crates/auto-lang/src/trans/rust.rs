@@ -3514,6 +3514,25 @@ impl RustTrans {
         }
     }
 
+    /// Plan 395: emit `::<T1, T2>` turbofish for a call's explicit generic type
+    /// args (`expr.method<Type>(args)` → `expr.method::<Type>(args)`). Types are
+    /// rendered through rust_type_name (uint→u32, str→String, User → name, …).
+    /// a2r has no bridge signature registry, so it can't know whether the Rust
+    /// method is actually generic — `<T>` in .at is an explicit author assertion
+    /// and always becomes turbofish (a non-generic callee fails in Rust).
+    fn emit_turbofish_args(&self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        if !call.generic_args.is_empty() {
+            let args_str = call
+                .generic_args
+                .iter()
+                .map(|t| self.rust_type_name(t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            write!(out, "::<{}>", args_str)?;
+        }
+        Ok(())
+    }
+
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // Detect Rust macro patterns: name!("...") was parsed as name.collect()("...")
         // because '!' is the eager collection operator in Auto.
@@ -6414,7 +6433,10 @@ impl RustTrans {
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
                 if obj_parens { write!(out, ")")?; }
-                write!(out, ".{}(", rust_name)?;
+                write!(out, ".{}", rust_name)?;
+                // Plan 395: explicit generic type args → Rust turbofish
+                self.emit_turbofish_args(call, out)?;
+                write!(out, "(")?;
                 // Auto-borrow string args for pattern-matching and map lookup methods
                 if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with" | "split") {
                     for (i, arg) in call.args.args.iter().enumerate() {
@@ -6890,7 +6912,10 @@ impl RustTrans {
                 self.expr(object, out)?;
             }
             if obj_needs_parens { write!(out, ")")?; }
-            write!(out, "{}{}(", if obj_is_type_chain { "::" } else { "." }, method_name)?;
+            write!(out, "{}{}", if obj_is_type_chain { "::" } else { "." }, method_name)?;
+            // Plan 395: explicit generic type args → Rust turbofish
+            self.emit_turbofish_args(call, out)?;
+            write!(out, "(")?;
             // Add `move` for thread::spawn closures (captured locals need 'static)
             if obj_is_type_chain && method_name == "spawn"
                 && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
@@ -7337,6 +7362,8 @@ impl RustTrans {
             }
         }
         self.expr(&call.name, out)?;
+        // Plan 395: explicit generic type args → Rust turbofish
+        self.emit_turbofish_args(call, out)?;
         write!(out, "(")?;
 
         // Look up str-param flags for auto-borrow at call sites

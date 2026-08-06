@@ -1073,6 +1073,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         };
 

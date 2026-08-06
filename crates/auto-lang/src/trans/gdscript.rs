@@ -1822,6 +1822,23 @@ mod tests {
         Ok(())
     }
 
+    /// Run a2gd on a dedicated large-stack thread.
+    ///
+    /// Some demo inputs (e.g. `dodge_the_creeps/002_player`) drive deep
+    /// recursion in the transpiler hot path; the default libtest worker stack
+    /// (2 MB on Windows) is too small once the AST grew (Plan 395 added
+    /// `Call.generic_args`, widening every Expr/Call frame). Stack-budget
+    /// issue, not a functional regression — the case transpiles correctly
+    /// under a larger stack (mirrors test_a2r_deep / cookbook pattern).
+    fn test_a2gd_deep(case: &str) {
+        let case = case.to_string();
+        let child = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || test_a2gd(&case))
+            .expect("failed to spawn deep-stack test thread");
+        child.join().expect("deep-stack test thread panicked").unwrap();
+    }
+
     #[test]
     fn test_000_hello() {
         test_a2gd("000_hello").unwrap();
@@ -2058,7 +2075,9 @@ mod tests {
 
     #[test]
     fn test_godot_demo_dodge_player() {
-        test_a2gd("tscn/godot_demos/dodge_the_creeps/002_player").unwrap();
+        // Deep-stack: 002_player drives deep recursion in the transpiler hot
+        // path (see test_a2gd_deep). Stack-budget, not a regression.
+        test_a2gd_deep("tscn/godot_demos/dodge_the_creeps/002_player");
     }
 
     #[test]

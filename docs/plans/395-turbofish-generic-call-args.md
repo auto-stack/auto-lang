@@ -279,25 +279,66 @@ match node.deserialize::<ClientScalars>() {
 
 ---
 
-## §7 后续（auto-ai 侧，本计划完成 + 重建 auto.exe 之后）
+## §7 后续（auto-ai 侧）→ ✅ 消费迁移已完成（2026-08-06）
 
 - `loader.at` / `role_config.at`：`is node.deserialize<ClientScalars>()` 等替换
   `is node.deserialize()`，**删除** ai-config/auto-ai-agent 两个 retranspile.sh 的
   turbofish sed（`client_node/daemon_node/provider_node` 锚定的 3 条 + `RoleDecl` 1 条）。
+  **已闭环**：用本 worktree 的 auto.exe 重跑 retranspile，三转译 crate 0 错 +
+  workspace 全绿 + 测试全绿；生成的 loader.rs/role_config.rs 为原生 `::<T>`（无 sed 痕迹）。
 - 可选：`json.decode[T](text)` 迁移为 `json.decode<Type>(text)`（rust.rs:3569 特判
-  改为读 `generic_args`）。
-- 验证：auto-ai 三个转译 crate 0 错 + workspace 全绿 + rust-ref 测试全绿。
+  改为读 `generic_args`）。**未做**（auto-ai 仅 auto-ai-client/lib.at:107 一处使用，
+  Index hack 仍工作；迁移需改 a2r 特判，留作 follow-up）。
+- 验证：auto-ai 三个转译 crate 0 错 + workspace 全绿 + rust-ref 测试全绿。**✅**
 
 ---
 
-## §8 实施记录（待实施，沿用 393 的闭环格式）
+## §8 实施记录（2026-08-06，worktree `plan-395/turbofish-call-args` @ `D:/autostack/auto-lang-395`）
 
-### Phase 1 — ✅/⏳ （日期）
-（实施后填写：commit、回归结果）
+### Phase 1 — ✅ 闭环
+`Call` 加 `generic_args: Vec<Type>` 字段（ast/call.rs），25 处构造点加
+`generic_args: Vec::new()`（parser 4 + infer 1 + handler_codegen 2 + ark 5 + kotlin 2 +
+ts 5 + vm/codegen 2 + tests_closures 1 + ast/call.rs 3），Display/ToNode 补输出。
+`cargo check` 0 错。
 
-### Phase 2 — ⏳
-### Phase 3 — ⏳
-### Phase 4 — ⏳
+### Phase 2 — ✅ 闭环
+- Parser 加 `pending_generic_args: Vec<Type>` 字段（3 个构造器初始化）。
+- `expr_pratt_with_left` 循环顶部 `<` 拦截（callable lhs + 单 token 前瞻守卫 +
+  克隆式回溯）：`is_callable_lhs` + `try_parse_call_generic_args`。
+- Lexer 加 `LexerState` + `save_state()`/`restore_state()`（`chars` 迭代器位置 +
+  计数器 + buffer 全量快照，`buffer` 私有字段不可直接访问）。
+- LParen 臂挂载 `generic_args`；`node_or_call_expr` GenName 分支扩展
+  （`>` 后跟 `(` 时路由泛型调用，`List<str>` 作值仍 GenName）。
+- 手验：`"42".parse<uint>()` / `node.deserialize<ClientScalars>()` /
+  `pair<int, str>(1, "a")` / `a < b` 消解 / `List<str>` 值 全部正确。
+
+### Phase 3 — ✅ 闭环
+`emit_turbofish_args` 辅助 + **三个**发射点（计划写的是两个，实施发现方法调用有
+remap/非-remap 两条路径）：
+1. `rust.rs` Dot remap 路径（`.{rust_name}` 后）——remap 表命中的方法。
+2. `rust.rs` Dot 通用 fallback（`.{method_name}` 后，6867 区）——**非-remap 方法
+   （`deserialize`/`parse` 等）实际走这里**，计划 §3.4 的"两发射点"漏了这条。
+3. `rust.rs` 自由调用 fall-through（7284-7285）。
+类型经 `rust_type_name` 映射（uint→u32、str→String、User→名称）。
+
+### Phase 4 — ✅ 闭环
+- 新 golden：`test/a2r/05_expressions/012_turbofish`（方法/自由调用/用户类型/
+  多实参/`a < b` 消解/`List<str>` 值，6 覆盖点全验）。
+- `src/tests/a2r_tests.rs` 注册 `test_05_expressions_012_turbofish`。
+- 回归：a2r golden **330/0**（含新用例）；gdscript **63/0**；tscn **12/0**；
+  全量 lib **2829/22——与基线逐项一致（22 个失败为既有，零新增）**。
+
+### 附：实施中发现的两个计划外问题
+1. **`Expr` 枚举 +24B 栈帧税**（`generic_args` 使 Call/Expr 变大）：深递归转译路径
+   （dodge_player 的 gdscript + tscn 两测试）从 2MB 默认栈溢出。按代码库既有模式
+   （`test_a2r_deep`）加 `test_a2gd_deep`/`test_a2tscn_deep`（16MB 线程）修复，
+   非功能回归（大栈下 0.01s 通过）。
+2. **crossbeam_spawn 栈溢出为既有问题**（干净基线 f3ab1632 同样溢出，与 Plan 395
+   无关），回归时以 `--skip` 排除。
 
 ### 验收
-（实施后填写：a2r golden 基线、a2c/VM 无回归、动机场景手验、auto-ai 消费迁移闭环）
+- a2r golden 330/0（含 012_turbofish）；gdscript 63/0；tscn 12/0；
+  全量 lib 与基线逐项一致（零新增失败）。
+- 动机场景手验：`is node.deserialize<ClientScalars>() { Ok(s) -> ... }` →
+  `match node.deserialize::<ClientScalars>()` ✓。
+- **待办（本计划完成后的 auto-ai 消费迁移，见 §7）**：重建 auto.exe → 改 .at 删 sed。

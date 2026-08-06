@@ -17,6 +17,21 @@ pub struct Lexer<'a> {
     fstr_note: char,
 }
 
+/// Plan 395: Opaque lexer-state snapshot for speculative-parse rollback
+/// (turbofish `<T>(` lookahead in the parser). Captures the char-iterator
+/// position + line/pos counters + buffered tokens, so re-lexing after a
+/// restore reproduces exactly the same tokens (and source positions).
+#[derive(Clone)]
+pub struct LexerState<'a> {
+    chars: Peekable<Chars<'a>>,
+    line: usize,
+    pos: usize,
+    at: usize,
+    byte_pos: usize,
+    buffer: VecDeque<Token>,
+    last: Option<Token>,
+}
+
 impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Self {
         Lexer {
@@ -114,6 +129,33 @@ impl<'a> Lexer<'a> {
     /// This is used for lookahead operations where tokens need to be restored.
     pub fn push_token(&mut self, token: Token) {
         self.buffer.push_front(token);
+    }
+
+    /// Plan 395: Snapshot the full lexer state (char position + counters +
+    /// buffered tokens) so the parser can roll back a speculative parse.
+    pub fn save_state(&self) -> LexerState<'a> {
+        LexerState {
+            chars: self.chars.clone(),
+            line: self.line,
+            pos: self.pos,
+            at: self.at,
+            byte_pos: self.byte_pos,
+            buffer: self.buffer.clone(),
+            last: self.last.clone(),
+        }
+    }
+
+    /// Plan 395: Restore a previously saved state, rewinding the char iterator
+    /// and counters. The parser must separately restore its `cur`/`prev` tokens
+    /// (and any error/warning growth) for a complete rollback.
+    pub fn restore_state(&mut self, state: LexerState<'a>) {
+        self.chars = state.chars;
+        self.line = state.line;
+        self.pos = state.pos;
+        self.at = state.at;
+        self.byte_pos = state.byte_pos;
+        self.buffer = state.buffer;
+        self.last = state.last;
     }
 
     /// Capture raw source text up to and including the `}` that matches the

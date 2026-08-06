@@ -353,6 +353,10 @@ ext Store {
 #[test] fn test_05_expressions_009_comprehensive() { test_a2r("05_expressions/009_comprehensive").unwrap(); }
 #[test] fn test_05_expressions_010_or_keyword() { test_a2r("05_expressions/010_or_keyword").unwrap(); }
 #[test] fn test_05_expressions_011_no_left_shift() { test_a2r("05_expressions/011_no_left_shift").unwrap(); }
+// Plan 395: explicit generic type args on calls (turbofish) — `<Type>` on
+// method/free calls transpiles to Rust `::<T>`; `a < b` comparisons and
+// `List<str>` GenName values are unaffected.
+#[test] fn test_05_expressions_012_turbofish() { test_a2r("05_expressions/012_turbofish").unwrap(); }
 
 // === 06_pattern_matching ===
 #[test] fn test_06_pattern_matching_001_enum_pattern() { test_a2r("06_pattern_matching/001_enum_pattern").unwrap(); }

@@ -198,6 +198,7 @@ mod borrow_check_tests {
                 },
                 ret: Type::Unknown,
                 type_args: vec![],
+                generic_args: Vec::new(),
                 pos: None,
             })),
             is_move: false,
