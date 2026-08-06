@@ -1772,6 +1772,55 @@ impl RustTrans {
 
     /// Escape Rust reserved keywords used as identifiers.
     /// Only applies to variable/parameter binding contexts, NOT type names or module paths.
+    /// Plan 391 §7 follow-up: extract a dotted path from a chain of
+    /// `Expr::Dot` rooted at an `Expr::Ident` (e.g. `std::env::var` parses as
+    /// `Dot(Dot(Ident("std"), "env"), "var")` → `Some("std.env.var")`).
+    ///
+    /// Returns `None` if the chain isn't a pure ident-rooted dot chain (e.g. a
+    /// real `obj.field` where `obj` is a call/local). Used to detect module
+    /// paths created by the parser's `::` → `Dot` normalization (parser.rs
+    /// Plan 391 D4) so codegen can emit `::` between module segments instead of
+    /// `.` — `std.env.var(...)` would be invalid Rust; it must be
+    /// `std::env::var(...)`.
+    fn dot_chain_path(expr: &Expr) -> Option<String> {
+        // Walk the Dot chain collecting segments right-to-left, requiring the
+        // root to be a bare Ident.
+        let mut segs: Vec<&str> = Vec::new();
+        let mut cur = expr;
+        loop {
+            match cur {
+                Expr::Dot(inner, field) => {
+                    segs.push(field.as_str());
+                    cur = inner;
+                }
+                Expr::Ident(name) => {
+                    segs.push(name.as_str());
+                    segs.reverse();
+                    return Some(segs.join("."));
+                }
+                _ => return None,
+            }
+        }
+    }
+
+    /// Plan 391 §7 follow-up: does `path` (a dotted path like "std.env" or
+    /// "std.env.var") correspond to a known `use.rust` import? Matches if any
+    /// use-path equals `path` (with `.` → `::`) or starts with it as a module
+    /// prefix — so `std.env` matches `use.rust std::env` (the import is
+    /// "std::env"), and `std.env.var` also matches (the fn lives under that
+    /// module). This is what lets a Dot chain be recognized as a module path
+    /// rather than object field access.
+    fn path_matches_use_rust(&self, path: &str) -> bool {
+        // Convert dotted path to `::` form once for prefix comparisons.
+        let path_colon = path.replace('.', "::");
+        self.uses.iter().any(|u| {
+            let u_str = u.as_str();
+            u_str == path_colon                     // use.rust std::env  matches "std.env"
+                || u_str == path                    // defensive: use stored as dotted
+                || u_str.starts_with(&format!("{}::", path_colon)) // use.rust std::env::var matches "std.env" (prefix)
+        })
+    }
+
     fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
         // Note: self, super, crate are NOT included — they are path segments
         // that must not be escaped. "Self" (uppercase) is also not escaped
@@ -3150,6 +3199,25 @@ impl RustTrans {
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
+                // Plan 391 §7 follow-up: a `::`-separated module path (e.g.
+                // `std::env::var`) is parsed as a Dot chain (parser.rs Plan 391
+                // D4 normalizes `::` to `Dot`). When such a chain is a known
+                // use.rust module path, emit it with `::` separators — not `.`.
+                // This early-return covers ALL value-position Dot emits (the
+                // object of a method call, a bare path in let RHS, etc.), so
+                // `std.env` → `std::env` and the whole `std::env::var` renders
+                // correctly. Without this, multi-segment paths emitted invalid
+                // Rust like `std.env.var(...)`.
+                //
+                // Only fire when the FULL chain (including this `field`) is a
+                // known module path — `obj.field` (a real field access) never
+                // matches use.rust, so it falls through unchanged.
+                if let Some(path) = Self::dot_chain_path(&Expr::Dot(object.clone(), field.clone())) {
+                    if self.path_matches_use_rust(&path) {
+                        write!(out, "{}", path.replace('.', "::"))?;
+                        return Ok(());
+                    }
+                }
                 // **Phase 1.1: Pointer Operators (test: 005_pointer)**
                 // Handle @ (address-of) and * (dereference) as special field names
                 match field.as_str() {
@@ -6840,7 +6908,13 @@ impl RustTrans {
                     )
                 }
                 Expr::Dot(il, _) => {
-                    matches!(il.as_ref(), Expr::Ident(id) if {
+                    // Plan 391 §7 follow-up: a multi-segment `::` path like
+                    // `std::env::var` parses as Dot(Dot(Ident("std"),"env"),"var").
+                    // The old check only inspected the root ident `std`, which
+                    // is lowercase and doesn't match use "std::env" as a suffix
+                    // → emitted `std.env.var` (invalid Rust). Now also test the
+                    // full dotted path of `object` against use.rust imports.
+                    let root_is_typeish = matches!(il.as_ref(), Expr::Ident(id) if {
                         let name = id.as_str();
                         name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                             || self.uses.iter().any(|u| {
@@ -6848,7 +6922,16 @@ impl RustTrans {
                                 u_str == name || u_str.ends_with(&format!("::{}", name))
                             })
                             || self.module_types.contains_key(name) // Plan 264
-                    })
+                    });
+                    if root_is_typeish {
+                        true
+                    } else if let Some(path) = Self::dot_chain_path(object.as_ref()) {
+                        // object is Dot(Dot(Ident("std"),"env")) → "std.env";
+                        // match against use.rust imports (std::env).
+                        self.path_matches_use_rust(&path)
+                    } else {
+                        false
+                    }
                 }
                 Expr::Bina(il, Op::Dot, _) => {
                     matches!(il.as_ref(), Expr::Ident(id) if {

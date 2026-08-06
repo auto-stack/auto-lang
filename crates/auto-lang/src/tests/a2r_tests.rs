@@ -236,6 +236,34 @@ ext Store {
     );
 }
 
+/// Plan 391 §7 follow-up: a multi-segment `::` module path like
+/// `std::env::var(...)` must transpile with `::` separators, not `.`. The
+/// parser (Plan 391 D4) normalizes `::` to `Expr::Dot` so method chains work,
+/// but that made multi-segment paths indistinguishable from `obj.field`
+/// access — codegen emitted `std.env.var(...)` (invalid Rust). This test pins
+/// the codegen fix (rust.rs `dot_chain_path` + `path_matches_use_rust`) that
+/// recognizes Dot chains rooted at a use.rust module and emits `::`.
+#[test]
+fn test_a2r_multi_segment_module_path() {
+    let src = "\
+use.rust std::env
+fn main() {
+    let v = std::env::var(\"HOME\").ok()
+    print(v)
+}
+";
+    let mut rcode = transpile_rust("test", src).unwrap();
+    let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
+    assert!(
+        code.contains("std::env::var"),
+        "multi-segment module path must use :: separators, got:\n{}", code
+    );
+    assert!(
+        !code.contains("std.env.var"),
+        "must NOT emit dotted module path (std.env.var), got:\n{}", code
+    );
+}
+
 /// W2 (Plan 018 §14): a `var guard = X.lock().unwrap()` followed by
 /// `is guard.get(k) { None -> {} }` must `drop(guard)` after the match when
 /// the guard isn't used later — a2r's match (unlike hw's `if let` NLL) keeps

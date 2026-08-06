@@ -232,7 +232,7 @@ status: complete # draft | in-progress | complete
 | D1 | `.len()` 宽类型(u64/i64/usize)抑制 as i32 cast | `492a93a6` | wiki build_tree file size 真实化 ✅ |
 | D2 | `let v: Option<T> = m.get(k)` 标注改写为 `Option<&T>` | `492a93a6` | task_plan dfs graph.get 加标注 ✅ |
 | D3 | `List<str>` + split() 跳过强制 `Vec<String>` 标注 | `3ba03b56` | task_plan validate_handoff_path 加标注 ✅ |
-| D4 | 表达式位置 `::` 路径分隔符(`env::var(x).ok()`) | `492a93a6` | app_config env 覆盖待接线侧改动 |
+| D4 | 表达式位置 `::` 路径分隔符(`env::var(x).ok()`) | `492a93a6` | app_config env 覆盖 ✅（Plan 021 B1 闭环：effective_daemon_url 读 `env::var("AAID_URL")`） |
 | D5 | `()` → Type::Void(类型) + Expr::Tuple([])(表达式) | `6f8162f6`+`492a93a6` | handoff_store save Result<(),str> ✅ |
 | D6 | `impl Trait for Type` 清晰错误(不误伤 ext for) | `3ba03b56`+`c4dff6dd` | task_plan trait impl 维持 static fn |
 
@@ -245,6 +245,28 @@ auto-musk 12 真实文件 re-transpile 零回归；全量测试全绿。
 **教训**：转译测试须用干净空目录，不能放在 /tmp 大目录下。
 
 **已知局限**（非本计划范围，记录于 auto-musk KNOWN-DEBT-AND-RISKS.md）：
-- 多段路径 codegen：`std::env::var`（多段 `::`）parser 可解析但 codegen 发点。
-- wiki modified 仍 None（`duration_since` 方法链，闭包内 `.len()` 仍 cast）。
-- Auto trait impl 是语言设计决策（D6 仅清晰报错，未加语法支持）。
+- ~~多段路径 codegen：`std::env::var`（多段 `::`）parser 可解析但 codegen 发点。~~ **✅ 已修复（2026-08-07，见 §8 follow-up）**
+- ~~wiki modified 仍 None（`duration_since` 方法链，闭包内 `.len()` 仍 cast）。~~ **✅ 已由 Plan 021 闭环（2026-08-07，B2）**——wiki `file_modified(entry)` 取真实 mtime，parity_wiki_http 逐键比对含 modified。
+- Auto trait impl 是语言设计决策（D6 仅清晰报错，未加语法支持）——**保留，非缺陷**。
+
+---
+
+## §8 Follow-up：多段路径 codegen 修复（2026-08-07，已完成）
+
+**问题**：§7 记录的"多段路径 codegen"——`std::env::var("X")` parser 可解析（Plan 391 D4 把 `::` 归一化为 `Expr::Dot` 以支持 `env::var(x).ok()` 方法链），但 codegen 把 `Dot(Dot(Ident("std"),"env"),"var")` 当 `obj.field` 访问，emit 成 `std.env.var(...)`（无效 Rust）。
+
+**根因**：parser 的 D4 修复（parser.rs:2127-2146）刻意把 `::` 编译成 `Dot`，使多段路径与 `obj.field` 在 AST 里无法区分。codegen 的 `obj_is_type_chain` 判定（rust.rs:6842）只看 root ident（`std`），小写且不匹配 `use.rust std::env` 的后缀 → 判否 → emit `.`。
+
+**修复**（rust.rs，3 处）：
+1. 新增 `dot_chain_path(expr)` 静态辅助：从 `Dot(Dot(...(Ident(root),seg1),seg2),...)` 提取点路径串（`"std.env.var"`）。
+2. 新增 `path_matches_use_rust(path)` 实例方法：把点路径转 `::` 形式，比对 `self.uses`（`use.rust` 导入表），支持全等与前缀匹配。
+3. `obj_is_type_chain` 的 `Expr::Dot(il,_)` 分支（rust.rs:6842）增加 fallback：root 不像 type 时，用 `dot_chain_path(object)` 拿全路径，`path_matches_use_rust` 命中则判真（emit `::`）。
+4. `Expr::Dot` 的值位 emit（rust.rs:3201）顶部加 early-return：若该 Dot 链是已知 use.rust 模块路径，直接 emit `::` 形式（覆盖方法调用的 object、let RHS 等所有值位）。
+
+**对照**：真实 `obj.field`（如 `self.count`、`note.title`）的点路径永不匹配 use.rust 导入表，正常 fall through 不受影响。
+
+**验收**：
+- 新测试 `test_a2r_multi_segment_module_path`（a2r_tests.rs）：`std::env::var("HOME").ok()` → 输出含 `std::env::var`、不含 `std.env.var`。
+- a2r golden 回归：335 passed / 0 failed / 19 ignored（跳过 1 个 pre-existing stack-overflow：`test_cookbook_concurrency_008_crossbeam_spawn`，与本修复无关，master 上同样 overflow）。
+
+**改动文件**：`crates/auto-lang/src/trans/rust.rs`（dot_chain_path + path_matches_use_rust + obj_is_type_chain fallback + Expr::Dot early-return）、`crates/auto-lang/src/tests/a2r_tests.rs`（回归测试）、本文档（§6 D4 + §7 回填）。
