@@ -21,8 +21,7 @@ ext Reg {
     }
     pub mut fn register(tool Tool) void {
         let n = tool.name()
-        let a = Arc(tool)
-        self.tools.set(n, a)
+        self.tools.set(n, Arc(tool))
     }
 }
 

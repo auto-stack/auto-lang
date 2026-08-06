@@ -3092,6 +3092,8 @@ impl<'a> Parser<'a> {
         // tokens. Without this, atom() rejected them → "Expected term".
         if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
             let name = self.cur.text.clone();
+            if name == "Arc" || name == "Box" {
+            }
             self.next(); // consume the identifier
 
             // Check if this is a generic type instance (followed by <)
@@ -10509,6 +10511,31 @@ impl<'a> Parser<'a> {
         // Parse identifier or generic type instance (e.g., List or List<int>)
         let name = self.cur.text.clone();
         self.next(); // skip the identifier
+
+        // Plan 390 §14 L1: Smart pointer constructors Box(expr) and Arc(expr)
+        // must be recognized in argument position too. `args()` routes Ident
+        // args through this fn (not atom), so without this check `set(k, Arc(v))`
+        // parses Arc(v) as a plain Expr::Call (→ "Arc(v)" in Rust) instead of
+        // Expr::ArcExpr (→ "Arc::new(v)"). Mirrors atom()'s Box/Arc recognition.
+        match name.as_str() {
+            "Box" => {
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(Expr::BoxExpr(Box::new(value)));
+                }
+            }
+            "Arc" => {
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(Expr::ArcExpr(Box::new(value)));
+                }
+            }
+            _ => {}
+        }
 
         // Check if this is a generic type instance (e.g., List<int>, Heap<T>)
         let mut ident = if self.is_kind(TokenKind::Lt) && self.next_token_is_type() {
