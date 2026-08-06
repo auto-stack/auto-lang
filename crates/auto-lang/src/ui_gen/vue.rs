@@ -4866,6 +4866,35 @@ impl VueGenerator {
                 let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
             }
+            // Plan 043 M5: if/else-if/else in expression position (e.g. a
+            // `computed { status_glyph => if ... else if ... else ... }`)
+            // → IIFE so it evaluates to a value. Previously Expr::If fell
+            // through to the catch-all and emitted `undefined`, so status
+            // glyphs/classes silently vanished from generated components.
+            Expr::If(if_expr) => {
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+                    .with_props(self.prop_names.iter().cloned().collect())
+                    .with_refs(self.template_refs.iter().cloned().collect());
+                if !self.project_api_functions.is_empty() {
+                    ctx = ctx.with_api_functions(self.project_api_functions.clone());
+                }
+                let mut out = String::from("(() => { ");
+                for (i, branch) in if_expr.branches.iter().enumerate() {
+                    let kw = if i == 0 { "if" } else { "else if" };
+                    out.push_str(&format!("{} (", kw));
+                    out.push_str(&self.expr_to_js(&branch.cond)?);
+                    out.push_str(") { ");
+                    out.push_str(crate::ui_gen::ts_adapter::transpile_handler_body(&branch.body.stmts, &ctx).trim());
+                    out.push_str(" }");
+                }
+                if let Some(else_body) = &if_expr.else_ {
+                    out.push_str(" else { ");
+                    out.push_str(crate::ui_gen::ts_adapter::transpile_handler_body(&else_body.stmts, &ctx).trim());
+                    out.push_str(" }");
+                }
+                out.push_str(" })()");
+                Ok(out)
+            }
             _ => Ok("undefined".to_string()),
         }
     }
@@ -11624,6 +11653,59 @@ widget App {
             "string concat must infer string:\n{}",
             sfc
         );
+    }
+
+    /// Plan 043 M5: if/else-if/else in a computed block must transpile to an
+    /// IIFE. Previously Expr::If fell through expr_to_js's catch-all and
+    /// emitted `undefined`, so status glyphs/classes silently vanished
+    /// (generated `computed<any>(() => undefined)`).
+    #[test]
+    fn test_computed_if_chain_transpiles_to_iife() {
+        use crate::ast::{Body, Branch, Expr, If as IfExpr, Stmt};
+        use auto_val::Op;
+        let kind_dot = |field: &str| {
+            Expr::Dot(
+                Box::new(Expr::Dot(Box::new(Expr::Ident("self".into())), "status".into())),
+                field.into(),
+            )
+        };
+        let branch = |expected: &str, glyph: &str| Branch {
+            cond: Expr::Bina(
+                Box::new(kind_dot("kind")),
+                Op::Eq,
+                Box::new(Expr::Str(expected.into())),
+            ),
+            body: Body {
+                stmts: vec![Stmt::Expr(Expr::Str(glyph.into()))],
+                has_new_line: false,
+                source_lines: vec![],
+            },
+        };
+        let else_body = Body {
+            stmts: vec![Stmt::Expr(Expr::Str("…".into()))],
+            has_new_line: false,
+            source_lines: vec![],
+        };
+        let widget = widget_with_computed(
+            vec![],
+            vec![crate::aura::AuraComputed {
+                name: "glyph".to_string(),
+                expr: Expr::If(IfExpr {
+                    branches: vec![branch("Success", "✓"), branch("Failed", "✗")],
+                    else_: Some(else_body),
+                }),
+            }],
+        );
+
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).unwrap();
+
+        assert!(
+            sfc.contains("const glyph = computed<any>(() => (() => { if (status.kind === 'Success') { '✓'; }else if (status.kind === 'Failed') { '✗'; } else { '…'; } })())"),
+            "computed if chain must be an IIFE:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("=> undefined"), "Expr::If must not fall through to undefined:\n{}", sfc);
     }
 
     /// Bug: bare identifiers (`lang => language`) and plain function calls
