@@ -6,7 +6,7 @@ status: complete # draft | in-progress | complete
 # auto-lang 侧范围完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地）；Phase D 在 auto-ai 仓推进。
 # 2026-08-07 二次复审：L1 根因已修（剩 auto-ai workaround 回收）、L3/L5 已闭环；
 # L2 双层包装已转正（§15.11，Arc<dyn Tool> 单层 + Arc::from）；
-# 剩余开放项：L4 a2r 闭包字面量推导（workaround 在用）；
+# 剩余开放项：L4 a2r 闭包字面量推导（task field 已覆盖，普通 let 移交 Plan 242 Item #8）；
 # 闭包类型机制已交付（§15.10，Box<Fn> → Box<dyn Fn> 含带签名 + 闭包值路径）；
 # 剩 auto-ai EventSink 换闭包落地（Plan 021 Phase 6.6）。详见 §14。
 ---
@@ -616,7 +616,7 @@ auto-lang 侧实质工作全部完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地
 | **L1** | ~~a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷~~ → **根因已修（1317d91c）**：parser `node_or_call_expr` 补 Arc/Box 识别 → `Arc::new(x)`。**workaround 已回收（auto-ai cfa1515）**：`tool.at` 已直写 `self.tools.set(n, Arc(tool))` | a2r 转译器 bug（已修）+ workaround 已回收 | `trans/rust.rs` + `auto-ai/tool.at:106` | 中 | ✅ 完全闭环（根因修 + workaround 回收） |
 | **L2** | ~~`Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>`~~ → **已转正（§15.11，2026-08-07）**：Box/Arc 特判推广到所有 spec（`Arc<Tool>` → `Arc<dyn Tool>`）+ 值侧 spec-bound `Arc(role)` → `Arc::from(role)` 单层转换；derive post-pass 扩展 Arc 感知。golden：`12_specs/008_arc_dyn_spec`。**待 auto-ai retranspile 生效** | 设计偏差（已转正） | auto-ai tool.at 存储（§448）| 低 | ✅ 已转正（生成侧 retranspile 后生效） |
 | **L3** | ~~WithBindings 多字段消息绑定未实现~~ → **已闭环（§15 H2/H4 + G2-refactor）**：`actor_withbindings_multi_field`/`actor_withbindings_deep_expr_three_fields` 测试通过（含多次 send 不 stale、深表达式不穿透） | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs` | 低 | ✅ 已解决 |
-| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs` | 低 | ⚠️ 开放（EventSink 用 `noop_event` 命名函数绕过，`agent.at:154`） |
+| **L4** | a2r 闭包字面量类型推导：`infer_type_from_expr`（rust.rs:8028）缺 `Expr::Closure` 分支，闭包字面量落到 `Type::Unknown`。**§15.10 已覆盖 task state field 路径**（`emit_task_struct`/`emit_task_spawn_helper` 显式拦截 `Expr::Closure` → `closure_field_rust_type` → `Box<dyn Fn(params) -> ret>`，golden `022_closure_cb` 实证无 `/* unknown */`，EventSink `cb` 字段已工作）。**剩余**：普通 `let` 局部变量赋闭包（非 task field）仍 `/* unknown */` —— 根因与剩余范围详记于 Plan 242 Item #8（8a 子节），移交该 tracker 跟踪 | a2r 类型推导（task field 已覆盖；普通 let 待 Plan 242 #8）| `trans/rust.rs`（`infer_type_from_expr`）| 低 | ⚠️ 移交 Plan 242 Item #8 |
 | **L5** | ~~`fn(params){}` 闭包参数不 bind~~ → **已修（f40b404c）**：parser.rs `fn(params){}` 路径加 `bind_var`（镜像 `=>` 路径）。**注**：修完暴露更深缺口——Auto/a2r 缺 `Box<dyn Fn>`/`impl Fn` 闭包类型表达，闭包不能 coerce 成 fn 指针（§15 H.5，阻塞 Plan 021 Phase 6.6 流式转发） | parser bug（已修）+ 语言级缺口（新） | `parser.rs` + a2r 闭包类型 | 中→高（流式转发） | ✅ 参数绑定已修；⏳ 闭包类型属新计划 |
 
 **EventSink VM 端到端未验证**（§5.10/§G2 验收）：EventSink 的生产路径是 a2r（Phase B 交付），

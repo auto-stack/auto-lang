@@ -126,12 +126,39 @@ This tracker serves as a **living document** that inventories all outstanding a2
 
 ### 8. Complex Closure Type Inference
 **Current state**: Simple closures may work; closures passed as arguments to higher-order functions often require explicit type annotations.
-**Desired state**: Closure signatures are inferred from the expected type of the call site (e.g., `.map(|x| x * 2)` infers `x` type from the iterable).
-**Files likely touched**: `type_checker.rs`, `ast.rs`
+**Desired state**: Closure signatures are inferred from the expected type of the call site (e.g., `.map(|x| x * 2)` infers `x` type from the iterable), or from explicit closure-literal parameter types.
+**Files likely touched**: `trans/rust.rs` (`infer_type_from_expr` + `closure_field_rust_type`), `ast/fun.rs` (`Closure`), potentially `type_checker.rs`
 **Acceptance criteria**:
 - [ ] Closures passed to `map`/`filter`/`reduce` infer parameter types
 - [ ] Multi-parameter closures infer correctly
 - [ ] Generic closures with trait bounds are handled or produce clear errors
+
+#### 8a. 根因调查记录（2026-08-07，来自 Plan 390 §14 L4 复审）
+
+**根因**：`trans/rust.rs` 的 `infer_type_from_expr`（约 8028 行）**缺少 `Expr::Closure` 分支** ——
+闭包字面量直接落到 `_ => Type::Unknown`（约 8187 行），所以 `let f = fn(e StreamEvent) {...}`
+推导为 `/* unknown */`，而非 `Box<dyn Fn(StreamEvent)>`。
+
+**已部分修复（Plan 390 §15.10，2026-08-07）**：task state field 默认值路径已绕过该缺陷 ——
+`emit_task_struct`（约 8928）和 `emit_task_spawn_helper`（约 9288）**显式拦截 `Expr::Closure`**，
+调用 `closure_field_rust_type`（约 8953）直接构造 `Box<dyn Fn(params) -> ret>`，不经过
+`infer_type_from_expr`。实证：golden `22_actors/022_closure_cb` 渲染
+`cb: Box<dyn Fn(String)>` + 默认值 `Box::new(move |e: String| ...)`，**无 `/* unknown */`**。
+EventSink 的 `cb = fn(e StreamEvent) {}` 正是 task state field，走此路径，**已工作**。
+
+**剩余范围（本 Item 待解决）**：`infer_type_from_expr` 的 9 处调用点中，task-struct 两处已特判覆盖；
+其余调用点（普通 `let` 局部变量赋闭包 `let f = fn(e) {...}`，约 9522/9922 行）仍会得到 `/* unknown */`。
+
+**根治方向**：在 `infer_type_from_expr` 补 `Expr::Closure` 分支，复用 `closure_field_rust_type` 的
+构造逻辑（`Box<dyn Fn(params) -> ret>`），统一所有路径。但有两个约束：
+1. 闭包参数若**无显式类型**（`fn(e) {...}` vs `fn(e StreamEvent) {...}`），params 为 `Unknown`，
+   需闭包体类型回推（从 `e` 的用法反推），属类型推导引擎工作。
+2. `infer_type_from_expr` 是 9 处调用的核心函数，改其返回值需充分回归（lib 基线 2832/22）。
+
+**workaround**：task state field 路径（§15.10 已交付）；普通局部变量可用具名函数引用
+（`fn noop_event(...)`，Plan 389 R2 已支持 `fn_param_types` 推导）替代闭包字面量。
+
+**关联**：Plan 390 §14 L4（移交本 Item 跟踪）；Plan 159（原始闭包支持计划）。
 
 ---
 
@@ -286,6 +313,7 @@ Build-time codegen and memory-mapped I/O bridging — unblocks the last Cookbook
 |------|--------|--------|
 | 2026-05-09 | Initial tracker created from plan-indices / plan-reports audit | — |
 | 2026-07-14 | Item #14 (Cookbook suite) marked ✅ Done — Plan 240 core complete & archived; DB/async stubs handed to #10/#12; new item #17 (cc codegen + memmap2) added from Plan 240 Phase 13 | — |
+| 2026-08-07 | Item #8 补根因调查记录（8a 子节）— 来自 Plan 390 §14 L4 复审：`infer_type_from_expr` 缺 `Expr::Closure` 分支；§15.10 已覆盖 task-struct 路径；剩余普通 let-闭包推导待本 Item 解决 | — |
 
 ---
 
