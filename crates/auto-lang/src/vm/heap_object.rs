@@ -133,6 +133,12 @@ pub enum TypeTag {
     /// Object literal / struct instance stored as HashMap<ValueKey, Value>.
     /// Migrated from the standalone `objects` registry to `heap_objects`.
     ObjectData,
+
+    // Plan 390 §15 Phase H3a: Node (CREATE_NODE/POP_ACCUM-produced config nodes)
+    /// Config node (mold templates / device.at manifests) stored as
+    /// `auto_val::Node`. Migrated from the standalone `nodes` registry to
+    /// `heap_objects`.
+    Node,
 }
 
 impl TypeTag {
@@ -161,6 +167,7 @@ impl TypeTag {
             TypeTag::CustomType => "CustomType".into(),
             TypeTag::RustStdlib(name) => name.clone().into(),
             TypeTag::ObjectData => "ObjectData".into(),
+            TypeTag::Node => "Node".into(),
         }
     }
 
@@ -244,6 +251,21 @@ impl BigIntData {
 
 impl HeapObject for BigIntData {
     fn type_tag(&self) -> TypeTag { TypeTag::BigInt }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+// ============================================================================
+// Plan 390 §15 H3a: Node 迁入统一 heap_objects registry。
+//
+// orphan rule 允许本地 trait impl 外部类型（auto_val::Node）——Node 所有字段
+// （AutoStr/usize/Args/Obj/Kids）都是 owned 数据，无 Rc/RefCell/裸指针，
+// 自动满足 HeapObject: Send + Sync。CREATE_NODE/POP_ACCUM/inject_value 改存
+// heap_objects 后，GET_FIELD / pop_auto_value / extract_value_from_vm 统一经
+// get_heap_object + downcast 取回。
+// ============================================================================
+impl HeapObject for auto_val::Node {
+    fn type_tag(&self) -> TypeTag { TypeTag::Node }
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }

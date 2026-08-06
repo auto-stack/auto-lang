@@ -834,12 +834,106 @@ H3 统一简化时一并改严谨。
 
 **遗留**：`handler_frame_base` 字段（task.rs）在方案 B 后不再使用（park_ip 取代），保留字段待 H3 一并清理。
 
-**H3 待办（明确推迟）**：
-- CREATE_ARRAY/CREATE_NODE/POP_ACCUM/SLICE 仍 `push_i32`（arrays/nodes 物理存储 + 栈编码均不动）。
-- 删除 objects/arrays/nodes 字段 + id_gen + 所有 `>= 4_000_000`/`>= 1_000_000` 魔数判断。
-- `decode_tagged_nv` 的 `i >= 4000000` 简化为单一 `is_object`。
-- `get_any_object` 真正接管所有消费者；IS_OK/UNWRAP_*/STR_CAT/LT 回退改严谨。
-- `CREATE_OBJ`/`CREATE_ARRAY`/`CREATE_NODE` 改 `insert_heap_object`（物理迁移）。
+**H3 分批（2026-08-07 立项，分两阶段，详见 §15.9）**：
+- **H3a（已交付 ✅）**：nodes 物理迁移（TypeTag::Node + impl HeapObject + CREATE_NODE/POP_ACCUM/inject_value 改 insert_heap_object + encode_object + 删 nodes registry）。见 §15.9 实施记录。
+- **H3b（待实施 ⏳）**：arrays+objects 物理迁移 + 删魔数 + `get_any_object` 接管 + IS_OK/UNWRAP_*/STR_CAT/LT 严谨化。清单见 §15.9。
+
+---
+
+## §15.9 Phase H3 — arrays/nodes 物理迁移到 heap_objects + 删魔数（H3a/H3b 分批）
+
+> **2026-08-07 立项**。H2 只统一了**栈编码**（所有对象引用 → `encode_object`），但 4 套 registry
+> 的**物理存储**仍未统一（objects 1M+/arrays 2M+/nodes 3M+ 仍是独立 DashMap，heap_objects 4M+）。
+> H3 做物理迁移 + 删魔数清理。分两阶段实施：**H3a（nodes，小而干净）先验证 orphan impl 模式 →
+> H3b（arrays，大而机械）跟进**。objects 的物理迁移（CREATE_OBJ 改 insert_heap_object）并入 H3b
+> 末尾（它与 arrays 同属"本地类型迁移"，且 H1 已让 ObjectData impl HeapObject）。
+> 每阶段独立 commit + 独立回归验证。
+
+### §15.9.1 调研结论（关键事实）
+
+- **Node 是 Send+Sync**：所有字段（AutoStr/usize/Args/Obj/Kids）都是 owned 数据，无 Rc/RefCell/裸指针。
+  `impl HeapObject for auto_val::Node`（orphan rule 合法：本地 trait + 外部类型）可直接写，
+  **无需包装、无需下沉 trait**。
+- **arrays 必须 `ListData<Value>` 包装**：orphan rule 禁止 `impl HeapObject for Vec<Value>`
+  （Vec 外部 + Value 跨 crate，无本地类型参数）。但 `ListData<Value>` 的 HeapObject impl
+  **已存在**（types.rs:284，TypeTag::ListValue）。CREATE_ARRAY 改存 `ListData { elems, storage: None }`。
+- **ObjectData impl 已存在**（types.rs:173，H1 交付）——objects 物理迁移零新增 trait 工作，仅改存储路径。
+- **段位 break 差异**：nodes 迁移后 0 个段位判断 break（所有魔数都是 `>= 4_000_000`，node id 迁到
+  4M+ 正好命中）；arrays 迁移后 6 个 `>= 2_000_000` 判断会 break。
+
+### §15.9.2 H3a — nodes 物理迁移（小，先做）✅ 已交付（分支 `plan-390/h3a-nodes-migration`）
+
+**H3a.1 新增 TypeTag::Node + impl HeapObject for Node**（heap_object.rs）：
+- TypeTag enum 加 `Node` 变体（ObjectData 之后）；`name()` 加 `TypeTag::Node => "Node"`。
+- 新增 `impl HeapObject for auto_val::Node`（type_tag/as_any/as_any_mut）。
+
+**H3a.2 改 3 个 producer**（storage + 栈编码）：
+- `CREATE_NODE`（engine.rs）→ `let id = self.insert_heap_object(node)` + `push_nv(encode_object(id))`。
+- `POP_ACCUM` → 同上。`inject_value` Node 分支 → `insert_heap_object(cloned)` + `encode_object`。
+
+**H3a.3 改 3 个 consumer**（查 heap_objects + downcast Node）：
+- `GET_FIELD` node 分支：`self.nodes.get(&obj_id)` → `self.get_heap_object(obj_id)` +
+  `downcast_ref::<auto_val::Node>()`，get_prop + id/name/text fallback **逐行保留**（mold 模板
+  `app.id`/`dep.at` 依赖）。
+- `pop_auto_value`：**is_object 分支（主路径，实施时补的遗漏）** objects 查不到后加 heap_objects
+  Node 回退；i32 分支 node 段保留作回退（改 get_heap_object + downcast）。
+- `lib.rs extract_value_from_vm`：`vm.nodes.get(&id)` → `vm.get_heap_object(id)` + downcast Node。
+
+**H3a.4 删 nodes registry**：engine.rs 删 `nodes` 字段 + `node_id_gen` + 构造初始化；
+`autovm_persistent.rs` 删 `self.vm.nodes.clear()`（heap_objects.clear 已覆盖）。
+`get_any_object` 的 `>= 4_000_000` 分支现在也覆盖 node id——保留（H3b 后 objects/arrays 并入时再简化）。
+
+**H3a.5 注释更新**：materialize_value 注释"Array/Node still use raw i32"→"Array still uses raw i32 (H3b)；Node 已迁移"。
+
+### §15.9.3 H3b — arrays + objects 物理迁移（大，后做）⏳ 待实施
+
+- **H3b.1 改 7 个 array producer**（存 ListData<Value> + encode_object）：CREATE_ARRAY、inject_value Array、
+  SLICE、native.rs 三个 HOF/alloc helper、http_server.rs 测试 fixture。`Vec<Value>` → `ListData { elems, storage: None }`，
+  `array_id_gen` → `insert_heap_object`，`push_i32` → `encode_object`。
+- **H3b.2 改 ~40 个 array consumer**（查 heap_objects + downcast ListData<Value>）。统一模式（先例 GET_ELEM、ARRAY_LEN）：
+  `get_heap_object(id)` → `guard.as_any().downcast_ref::<ListData<Value>>()` → `list.elems`。涉及 9 个文件：
+  engine.rs（12 处）、native.rs（12 处）、ffi/http_server.rs（3）、ffi/convert.rs（1）、lib.rs（3）、
+  ui/vm_bridge.rs（4）、autovm_persistent.rs（1 显示 + .len/.clear）、interpreter/vm_interpreter.rs（1）、
+  ui/aura_view_builder.rs（2）。分文件 commit，每批跑回归。
+- **H3b.3 修 6 个段位 break**（`>= 2_000_000` → tag/contains 判断）：autovm_persistent.rs、vm_interpreter.rs、
+  vm_bridge.rs（3 处）、aura_view_builder.rs（2 处）。
+- **H3b.4 objects 物理迁移**（CREATE_OBJ 改 insert_heap_object）：CREATE_OBJ + inject_value Obj 分支存储改
+  `insert_heap_object`（栈编码 H2 已是 encode_object 不变）；GET_FIELD/SET_FIELD objects 分支改
+  `get_heap_object` + downcast ObjectData；删 `objects` 字段 + `object_id_gen`；http_server.rs/stdlib.rs
+  直接读 `vm.objects` 改 downcast ObjectData。
+- **H3b.5 删 arrays registry + array_id_gen**。
+- **H3b.6 简化魔数 + decode_tagged_nv**：删所有 `>= 4_000_000`/`>= 1_000_000`/`>= 2_000_000` 段位判断（~12 处）；
+  decode_tagged_nv 的 `i >= 4000000` 分支删除（所有 id 现在都是 is_object）；`get_any_object` 简化为
+  `self.get_heap_object(id)`（不再段位路由）；IS_OK/UNWRAP_OK/UNWRAP_ERR 改严谨（is_object/decode_object，
+  不再靠 decode_i32 低 32 位巧合）；STR_CAT/LT 回退加 is_object 分支。
+
+**不在范围**：interpreter/vm_interpreter.rs（tree-walker）不重写架构（仅修段位判断）；a2c/a2ts `#[ignore]`
+conformance 测试不强制开。
+
+### §15.9.4 H3a 实施记录（2026-08-07，分支 `plan-390/h3a-nodes-migration`）✅ 已交付
+
+**实施（5 处改动）**：
+- `heap_object.rs`：TypeTag 加 `Node` 变体 + `name()` match + `impl HeapObject for auto_val::Node`
+  （孤儿规则合法，Node 全 owned 字段自动 Send+Sync）。
+- `engine.rs`：删 `nodes` 字段 + `node_id_gen` + 构造初始化；3 个 producer（CREATE_NODE/POP_ACCUM/
+  inject_value Node 分支）改 `insert_heap_object` + `push_nv(encode_object(id))`。
+- **consumers 改 get_heap_object + downcast**：GET_FIELD 重构为「objects → heap_objects{Node →
+  GenericInstance → RustStdlib}」合并链（id 段位不相交，行为等价）；`pop_auto_value` 的 is_object
+  分支加 heap_objects Node 回退（**实施中发现主路径——nodes 现在 encode_object 编码，ACCUM_NODE 走此
+  分支**，粘贴细节只列了 i32 回退分支）+ i32 分支 node 段改 get_heap_object；lib.rs `extract_value_from_vm`
+  node 分支改 get_heap_object + downcast Node。
+- `autovm_persistent.rs`：删 `self.vm.nodes.clear()`（heap_objects.clear 已覆盖）。
+- `get_any_object` 代码不动（4M+ 段现覆盖 node id），仅更新注释；materialize_value 注释同步。
+
+**验证**：
+- `cargo build -p auto-lang`（debug）✅；config 专项 40 passed / 0 failed（含
+  `test_config_for_over_runtime_array`/`test_config_pair_value_is_node_with_block`/
+  `test_config_object_field_access`）✅。
+- 全量 `cargo test -p auto-lang --lib`：**2823 passed / 22 failed**（基线 22，零新增——
+  22 个均为预存 dstr/ark/vue/codegen_if/route-discovery）。✅
+- a2r 回归 `cargo test -p auto-man --lib`：**179 passed / 0 failed**（基线一致）。✅
+
+**遗留**：objects(1M+)/arrays(2M+) 物理存储未迁移——H3b 承接（§15.9.3）。
 
 ---
 

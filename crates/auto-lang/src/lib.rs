@@ -3122,11 +3122,15 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
     }
 
     // 2. Check if it's a node ID
-    if let Some(node_ref) = vm.nodes.get(&id) {
-        let node_data = node_ref.value().read().unwrap();
-        let result = Value::Node(extract_node_deep(vm, &node_data, visited));
-        visited.remove(&id);
-        return result;
+    // Plan 390 §15 H3a: nodes live in heap_objects — resolve via
+    // get_heap_object + downcast instead of the deleted `nodes` registry.
+    if let Some(node_ref) = vm.get_heap_object(id) {
+        let node_data = node_ref.read().unwrap();
+        if let Some(node) = node_data.as_any().downcast_ref::<Node>() {
+            let result = Value::Node(extract_node_deep(vm, node, visited));
+            visited.remove(&id);
+            return result;
+        }
     }
 
     // 3. Check if it's an array ID
