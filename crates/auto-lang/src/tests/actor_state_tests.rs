@@ -149,7 +149,7 @@ fn main() {
 /// handler call). Previously `n` was unbound ("Undefined variable: n"); an initial
 /// codegen-only fix worked for a single send but went stale on the 2nd because the
 /// handler reuses the task's bp=0 frame with no per-invocation reset. The runtime
-/// fix (handler_frame_base sp reset on RET) makes each invocation clean.
+/// fix (§15.8 方案 B：真 bp 帧 + park_ip 重 park) makes each invocation clean.
 #[test]
 fn actor_bound_var_handler_multi_send() {
     let code = r#"
