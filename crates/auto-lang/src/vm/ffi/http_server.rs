@@ -95,6 +95,41 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
     None
 }
 
+/// Plan 349 步骤 7/8 (W5): CORS origin for the AutoVM server. Reads `AUTO_CORS_ORIGIN`
+/// (default `*`) so deployments can lock down the allowed origin via env var,
+/// mirroring the `AUTO_*` convention used by the a2r HTTP client (Plan 388).
+fn cors_origin() -> String {
+    std::env::var("AUTO_CORS_ORIGIN").unwrap_or_else(|_| "*".to_string())
+}
+
+/// Plan 349 步骤 7/8 (W5): static CORS response-header block (CRLF-terminated, no
+/// trailing blank line) appended to every server response so browser clients
+/// can read the body. Origin is read once per call to honor env overrides.
+pub(crate) fn cors_headers() -> String {
+    let origin = cors_origin();
+    format!(
+        "Access-Control-Allow-Origin: {}\r\n\
+         Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type, Authorization\r\n\
+         Access-Control-Max-Age: 86400\r\n",
+        origin
+    )
+}
+
+/// Plan 349 步骤 7/8 (W5): write a CORS preflight (OPTIONS) response and return true if
+/// the request is an OPTIONS method; returns false otherwise so the caller can
+/// continue normal routing. Used by both blocking and async servers.
+pub(crate) fn handle_cors_preflight(method: &str) -> Option<String> {
+    if method.eq_ignore_ascii_case("OPTIONS") {
+        Some(format!(
+            "HTTP/1.1 204 No Content\r\n{}\r\n",
+            cors_headers()
+        ))
+    } else {
+        None
+    }
+}
+
 /// Plan 346: Simple URL-decode (percent-encoding).
 fn url_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
@@ -901,11 +936,19 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         }
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() < 2 {
-            let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+            let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
+            let _ = stream.write_all(resp.as_bytes());
             continue;
         }
         let req_method = parts[0].to_uppercase();
         let req_path = parts[1].to_string();
+
+        // Plan 349 步骤 7/8 (W5): CORS preflight short-circuit — respond before reading
+        // the body since preflight requests have no body.
+        if let Some(preflight) = handle_cors_preflight(&req_method) {
+            let _ = stream.write_all(preflight.as_bytes());
+            continue;
+        }
 
         // Read headers
         let mut content_length = 0usize;
@@ -932,7 +975,7 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         let route_match = match match_route(&routes, &req_method, &req_path) {
             Some(m) => m,
             None => {
-                let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
+                let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n{}\r\nNot Found", cors_headers());
                 let _ = stream.write_all(resp.as_bytes());
                 continue;
             }
@@ -988,7 +1031,8 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                             // values from the iterator as SSE data frames.
                             drop(ht);
                             let sse_response = format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n{}\r\n",
+                                cors_headers()
                             );
                             let _ = stream.write_all(sse_response.as_bytes());
                             let _ = stream.flush();
@@ -1066,8 +1110,8 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
             None => ("500 Internal Server Error", "{}".to_string()),
         };
         let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            status, body_json.len(), body_json
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+            status, body_json.len(), cors_headers(), body_json
         );
         let _ = stream.write_all(response.as_bytes());
     }
@@ -1154,11 +1198,19 @@ async fn handle_connection_async(
     };
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
-        let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n").await;
+        let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
+        let _ = stream.write_all(resp.as_bytes()).await;
         return;
     }
     let req_method = parts[0].to_uppercase();
     let req_path = parts[1].to_string();
+
+    // Plan 349 步骤 7/8 (W5): CORS preflight short-circuit — respond before parsing the
+    // body since preflight requests have no body.
+    if let Some(preflight) = handle_cors_preflight(&req_method) {
+        let _ = stream.write_all(preflight.as_bytes()).await;
+        return;
+    }
 
     // Parse body (after blank line) if Content-Length present.
     let mut content_length = 0usize;
@@ -1181,7 +1233,7 @@ async fn handle_connection_async(
             // Plan 346 stage 5: Request body size limit (default 10MB).
             const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
             if content_length > MAX_BODY_SIZE {
-                let resp = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"error\":\"body too large\"}";
+                let resp = format!("HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n{}\r\n{{\"error\":\"body too large\"}}", cors_headers());
                 let _ = stream.write_all(resp.as_bytes()).await;
                 eprintln!("[HTTP] {} {} → 413 (body {} > {})", req_method, req_path, content_length, MAX_BODY_SIZE);
                 return;
@@ -1208,7 +1260,7 @@ async fn handle_connection_async(
     let route_match = match match_route(routes, &req_method, &req_path) {
         Some(rm) => rm,
         None => {
-            let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
             let _ = stream.write_all(resp.as_bytes()).await;
             return;
         }
@@ -1370,8 +1422,8 @@ async fn handle_connection_async(
         // Middleware short-circuited — return its response directly.
         eprintln!("[HTTP] {} {} → MW ({}ms)", req_method, req_path, 0);
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            mw_resp.len(), mw_resp
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+            mw_resp.len(), cors_headers(), mw_resp
         );
         let _ = stream.write_all(response.as_bytes()).await;
         return;
@@ -1390,7 +1442,7 @@ async fn handle_connection_async(
                 eprintln!("[HTTP] {} {} → 500 (task lock failed, {}ms)",
                     req_method, req_path, request_start.elapsed().as_millis());
                 vm.tasks.remove(&handler_task_id);
-                let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"error\":\"internal error\"}";
+                let resp = format!("HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 27\r\nConnection: close\r\n{}\r\n{{\"error\":\"internal error\"}}", cors_headers());
                 let _ = stream.write_all(resp.as_bytes()).await;
                 return;
             }
@@ -1405,7 +1457,7 @@ async fn handle_connection_async(
                         eprintln!("[HTTP] {} {} → 200 SSE ({}ms)",
                             req_method, req_path, request_start.elapsed().as_millis());
                         drop(ht);
-                        let sse_header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n";
+                        let sse_header = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n{}\r\n", cors_headers());
                         let _ = stream.write_all(sse_header.as_bytes()).await;
                         let _ = stream.flush().await;
                         // Pull generator values and write SSE frames. After each
@@ -1465,8 +1517,8 @@ async fn handle_connection_async(
                 req_method, req_path, request_start.elapsed().as_millis());
         }
         let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            status, result_json.len(), result_json
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+            status, result_json.len(), cors_headers(), result_json
         );
         let _ = stream.write_all(response.as_bytes()).await;
     }

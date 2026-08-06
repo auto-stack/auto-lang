@@ -683,10 +683,15 @@ fn parse_api_module(project_dir: &Path) -> Option<ApiModule> {
 /// Set AUTO_TLS_SKIP_VERIFY=1 to skip certificate verification (dev/test);
 /// set AUTO_TLS_CA_CERT=/path/to/ca.pem to add a custom CA (PEM). The client is
 /// built once (OnceLock) and reused; per-call cloning is cheap (Arc-backed).
+/// Plan 349 步骤 7/8 (W6): AUTO_COOKIE_STORE=1 / AUTO_GZIP=1 / AUTO_BROTLI=1 enable
+/// cookie persistence and response decompression, mirroring the VM-side
+/// RequestBuilder.cookie_store/gzip/brotli flags.
 fn generate_http_client_helper() -> String {
     r#"// Plan 349/388: TLS-aware reqwest blocking client helper.
 // Set AUTO_TLS_SKIP_VERIFY=1 to skip certificate verification (dev/test).
 // Set AUTO_TLS_CA_CERT=/path/to/ca.pem to add a custom CA (PEM).
+// Plan 349 步骤 7/8 (W6): Set AUTO_COOKIE_STORE=1 / AUTO_GZIP=1 / AUTO_BROTLI=1 to
+// enable cookie persistence and response decompression.
 fn _tls_skip_verify() -> bool {
     std::env::var("AUTO_TLS_SKIP_VERIFY").as_deref() == Ok("1")
 }
@@ -705,6 +710,16 @@ fn _http_client() -> reqwest::blocking::Client {
                     builder = builder.add_root_certificate(cert);
                 }
             }
+        }
+        // Plan 349 步骤 7/8 (W6): cookie store + compression, env-driven (default off).
+        if std::env::var("AUTO_COOKIE_STORE").as_deref() == Ok("1") {
+            builder = builder.cookie_store(true);
+        }
+        if std::env::var("AUTO_GZIP").as_deref() == Ok("1") {
+            builder = builder.gzip(true);
+        }
+        if std::env::var("AUTO_BROTLI").as_deref() == Ok("1") {
+            builder = builder.brotli(true);
         }
         // Fall back to a plain client only if the builder itself fails (e.g. a
         // malformed PEM): failures are then *stricter* (verification stays on,
@@ -1643,7 +1658,7 @@ default = ["ui-iced", "auto-lang/default"]
 [dependencies]
 auto-lang.workspace = true
 serde_json.workspace = true
-reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart"] }}
+reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart", "cookies", "gzip", "brotli"] }}
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
 tokio.workspace = true
@@ -2466,5 +2481,31 @@ pub struct Timer {
         // (close flag → socket dropped), not just sever the send path.
         assert!(ws.contains("close_reader.load"), "reader must check the close flag");
         assert!(ws.contains("conn.close.store(true"), "ws_close must set the close flag");
+    }
+
+    #[test]
+    fn test_w6_helper_emits_cookie_gzip_brotli_env() {
+        // Plan 349 步骤 7/8 (W6): the generated _http_client() helper must wire cookie
+        // store + gzip + brotli behind env flags, mirroring the VM-side
+        // RequestBuilder.cookie_store/gzip/brotli flags. Defaults stay off so
+        // existing behavior is unchanged.
+        let helper = generate_http_client_helper();
+        assert!(helper.contains("AUTO_COOKIE_STORE"), "missing cookie env flag");
+        assert!(helper.contains("cookie_store(true)"), "cookie_store not wired");
+        assert!(helper.contains("AUTO_GZIP"), "missing gzip env flag");
+        assert!(helper.contains(".gzip(true)"), "gzip not wired");
+        assert!(helper.contains("AUTO_BROTLI"), "missing brotli env flag");
+        assert!(helper.contains(".brotli(true)"), "brotli not wired");
+    }
+
+    #[test]
+    fn test_w6_cargo_toml_has_compression_cookie_features() {
+        // Plan 349 步骤 7/8 (W6): generated Cargo.toml must declare the reqwest features
+        // the helper relies on (cookies + gzip + brotli), alongside the
+        // pre-existing blocking/json/multipart.
+        let toml = generate_cargo_toml("test_proj", std::path::Path::new("/tmp/test"));
+        assert!(toml.contains("\"cookies\""), "missing cookies feature: [{}]", toml);
+        assert!(toml.contains("\"gzip\""), "missing gzip feature: [{}]", toml);
+        assert!(toml.contains("\"brotli\""), "missing brotli feature: [{}]", toml);
     }
 }

@@ -1714,7 +1714,7 @@ impl AutoVM {
                     }
                 }
 
-                // Plan 349 step 7 / Plan 353 stage 6: Wake source 5 — async HTTP/IO completed.
+                // Plan 349 step 7 / Plan 353 stage 6 / Plan 349 步骤 7/8 (W1): Wake source 5 — async HTTP/IO completed.
                 if let Some(req_id) = task.waiting_http_request_id {
                     let ready = crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS
                         .lock()
@@ -1730,9 +1730,33 @@ impl AutoVM {
                                     map.get(&req_id).map(|opt| opt.is_some())
                                 })
                         })
+                        .or_else(|| {
+                            // Plan 349 步骤 7/8 (W1a/W1b): handle-returning async HTTP.
+                            crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS_HANDLE
+                                .lock()
+                                .ok()
+                                .and_then(|map| {
+                                    map.get(&req_id).map(|opt| opt.is_some())
+                                })
+                        })
+                        .or_else(|| {
+                            // Plan 349 步骤 7/8 (W1c): auth-bearing async HTTP.
+                            crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS_AUTH
+                                .lock()
+                                .ok()
+                                .and_then(|map| {
+                                    map.get(&req_id).map(|opt| opt.is_some())
+                                })
+                        })
                         .unwrap_or(true); // Entry gone → wake (error fallback)
                     if ready {
-                        task.waiting_http_request_id = None;
+                        // NOTE: do NOT clear waiting_http_request_id here. The
+                        // shim's re-entry branch needs it to look up the result
+                        // in ASYNC_HTTP_RESULTS*. The shim itself clears the
+                        // field once it has consumed the result. Clearing it
+                        // prematurely makes the re-entry take the first-call
+                        // path and pop args that are no longer on the stack
+                        // (Stack Underflow). Plan 349 步骤 7.
                         task.status = TaskStatus::Ready;
                     } else {
                         alive_count += 1;
