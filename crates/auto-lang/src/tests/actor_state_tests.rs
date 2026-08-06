@@ -173,3 +173,31 @@ fn main() {
     assert!(s.contains("12"), "bound-var msg2 (total=12): stdout={:?} result={:?}", s, r);
     assert!(s.contains("15"), "bound-var msg3 (total=15): stdout={:?} result={:?}", s, r);
 }
+
+/// Plan 390 §14 L3: WithBindings multi-field variant message. `on { Add(a int, b int) -> }`
+/// matches a structured message sent as `h.send(Add(3, 5))`. The codegen constructs a
+/// Value::Obj {__variant:"Add", a:3, b:5}, send delivers the VmRef, the wake path pushes
+/// it back, and the handler DUP+GET_FIELDs each binding into a named local. This was
+/// completely unsupported before (send only carried i32; WithBindings handler was never
+/// invoked because the matcher expects Value::Obj/Str for variant patterns).
+#[test]
+fn actor_withbindings_multi_field() {
+    let code = r#"
+task Calculator {
+    total = 0
+    on { Add(a int, b int) -> {
+        total = total + a + b
+        print(total)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Calculator", 16)
+    h.send(Add(3, 5))
+    h.send(Add(10, 20))
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // 0+3+5=8, 8+10+20=38
+    assert!(s.contains("8"), "multi-field msg1 (total=8): stdout={:?} result={:?}", s, r);
+    assert!(s.contains("38"), "multi-field msg2 (total=38): stdout={:?} result={:?}", s, r);
+}

@@ -5974,15 +5974,28 @@ pub fn shim_task_send_vm(
     vm: &crate::vm::engine::AutoVM,
 ) -> Result<(), crate::vm::engine::VMError> {
     // Stack: handle_id, msg (msg on top)
-    let msg = task.ram.pop_i32();
+    // Plan 390 §14 L3: msg can be either a scalar i32 (legacy/TypeBinding/
+    // Literal patterns) or an object VmRef (WithBindings variant messages built
+    // by codegen's task-variant constructor). Decode the tag to decide.
+    let msg_nv = task.ram.pop_nv();
     let handle_id = task.ram.pop_i32() as u64;
+    let msg_value = if auto_val::is_object(msg_nv) {
+        // Structured message: preserve the object reference so the wake path can
+        // push it back and the handler can GET_FIELD each binding.
+        let id = auto_val::decode_object(msg_nv) as u64;
+        auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
+    } else {
+        // Scalar message (i32/bool/etc): encode as Value::Int for backward compat
+        // with Literal/TypeBinding/Simple patterns.
+        auto_val::Value::Int(auto_val::decode_i32(msg_nv))
+    };
 
     // Plan 317 Phase 1: use the DashMap mailbox (std Mutex, safe in sync native).
     // Lazily create the mailbox entry if missing.
     if let Some(mailbox) = vm.task_mailboxes.get(&handle_id) {
         if let Ok(mut q) = mailbox.lock() {
-            q.push(auto_val::Value::Int(msg));
-            vm_debug!("DEBUG shim_task_send_vm: delivered msg {} to task {}", msg, handle_id);
+            q.push(msg_value);
+            vm_debug!("DEBUG shim_task_send_vm: delivered msg to task {}", handle_id);
             task.ram.push_i32(1); // success
             return Ok(());
         }

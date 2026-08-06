@@ -622,6 +622,124 @@ L1/L4 是 a2r bug（workaround 已有）；L5 经实证重新定性为 parser bu
 
 ---
 
+## §15 Phase H — L3 WithBindings 多字段消息 + VM 对象 registry 统一（方案 B）
+
+> **2026-08-07 立项**。L3（WithBindings 多字段）实施中发现 VM 有 **4 套对象 registry** 且栈编码
+> 不一致，阻塞多字段消息的 send→mailbox→handler 全链路。经评估，新增 `WRAP_MSG` opcode（补丁）
+> 会加深技术债；**统一 4 套 registry（方案 B）是更合理的长期方向**。本 Phase 同时解决 L3 功能缺口
+> 和 registry 统一两个目标。
+
+### §15.1 现状：4 套对象 registry（调研实证 2026-08-07）
+
+| Registry | 定义 | id 段位 | 栈编码 | 存什么 |
+|---|---|---|---|---|
+| `objects` | engine.rs:260 `DashMap<u64, Arc<RwLock<ObjectData>>>` | 1,000,000+ | `push_i32(id)` **裸 i32** | CREATE_OBJ 产出的 ObjectData |
+| `arrays` | engine.rs:264 `DashMap<u64, Arc<RwLock<Vec<Value>>>>` | 2,000,000+ | `push_i32(id)` | CREATE_ARRAY |
+| `nodes` | engine.rs:268 `DashMap<u64, Arc<RwLock<Node>>>` | 3,000,000+ | `push_i32(id)` | CREATE_NODE |
+| `heap_objects` | engine.rs:273 `DashMap<u64, Arc<RwLock<dyn HeapObject>>>` | 4,000,000+ | `encode_object(id)` **TAG_OBJECT** | List/Map/GenericInstance/RustStdlib/BigInt |
+
+**核心问题**：
+- 栈上 `push_i32(obj_id)` 与 scalar i32 无法区分 → 消费端靠**魔数判断**（`>= 4_000_000`，见
+  engine.rs:474/2438/2764/3505/3547/3981）+ **试探探测**（`objects.get(&id)` 试一下，engine.rs:920/4926）。
+- `match_message_pattern_vm` 期望 `Value::Obj`（内联），但 CREATE_OBJ 产出的是 i32 引用 →
+  WithBindings handler 永远不被匹配（L3 阻塞根因）。
+- ~15 个 producer push i32，~8 个消费者**仅假设 i32**（无 is_object 回退，统一后会坏），
+  ~15 个消费者做了**双解码**（is_object + is_i32，可简化）。
+
+### §15.2 方案 B：统一到 heap_objects（单一 registry + encode_object 编码）
+
+**目标**：4 套 registry → 1 套 `heap_objects`；所有对象引用栈编码统一为 `encode_object(id)`；
+删除所有魔数判断和试探探测。
+
+**为什么保留 heap_objects**：它是 `dyn HeapObject` trait 对象（类型开放、可 downcast、有 TypeTag），
+已有 8+ 类类型适配（List/Map/GenericInstance/RustStdlib/BigInt），有完整封装 API
+（insert/get/remove/contains），是事实上的主 registry。其它 3 套是固定类型的裸 DashMap。
+
+**迁移**：
+- `ObjectData` impl HeapObject（新增 TypeTag::ObjectData）→ objects 合入 heap_objects
+- `Vec<Value>` 用 ListData<Value> 包装（或新建 ArrayData tag）→ arrays 合入
+- `Node` impl HeapObject（tag Node）→ nodes 合入
+
+### §15.3 实施路线（3 Phase，渐进式）
+
+#### Phase H1 — 统一查询 API + ObjectData impl HeapObject（零行为变更）
+
+- 给 `ObjectData`（types.rs:147）impl HeapObject（tag ObjectData）。
+- 新增 `get_any_object(id) -> Option<Arc<RwLock<dyn HeapObject>>>`：按 id 段路由到 4 个 registry，
+  返回统一的 trait 对象。所有 GET_FIELD/SET_FIELD/CALL_METHOD 消费者改用此 API（替代直接查 objects/heap_objects）。
+- **不改栈编码**（仍是 push_i32 / encode_object 混用），不改 id 段位。
+- **验证**：全量回归零新增失败（行为不变）。
+
+#### Phase H2 — 栈编码统一为 encode_object（行为变更，高风险）
+
+- **所有 producer**（~15 处）的 `push_i32(obj_id)` → `push_nv(encode_object(obj_id as u32))`：
+  - CREATE_OBJ (2242)、CREATE_ARRAY (2293)、CREATE_NODE (2042)
+  - CREATE_OK/CREATE_ERR (3133/3142)、CREATE_LIST_* (3238-3287)、NEW_INSTANCE (3328)
+  - CONSTRUCT_INSTANCE (3478)、CREATE_TUPLE (3866)、slice-result (3837)
+  - inject_value Obj/Array/Node/VmRef (532/544/555/559)
+  - GET_FIELD/GET_ELEM VmRef 结果 (4346/4392/4035/4078)
+- **仅假设 i32 的消费者**（~8 处）加 is_object 回退：
+  - ARRAY_LEN (2340)、SET_ELEM (4110)、CONSTRUCT_INSTANCE (3348)、GET_TUPLE_FIELD (3874)
+  - CREATE_ERR 值 pop (3139)、CALL_SPEC 类型名 is_i32 分支 (4910)
+- **双解码消费者**（~15 处）简化：删除 `>= 4_000_000` 魔数，合并成单一 `is_object -> decode_object`。
+- **验证**：全量回归 + 专门的对象字段访问测试（struct/enum/List/Map 字段读写）。
+
+#### Phase H3 — 删除旧 registry + 魔数（清理）
+
+- `CREATE_OBJ`/`CREATE_ARRAY`/`CREATE_NODE` 改为 `insert_heap_object`（走 heap_object_id_gen）。
+- 删除 `objects`/`arrays`/`nodes` 字段 + `object_id_gen`/`array_id_gen`/`node_id_gen`。
+- 删除所有 `>= 1_000_000`/`>= 4_000_000` 魔数判断（engine.rs:474/2438/2764/3505/3547/3981）。
+- `get_any_object` 简化为单一 `get_heap_object`（不再路由）。
+- **验证**：全量回归零新增失败。
+
+#### Phase H4 — L3 WithBindings 多字段消息（依赖 H2 完成后栈编码统一）
+
+H2 完成后，L3 的全链路自然打通（producer 统一 encode_object → send 用 is_object 区分 →
+mailbox 存 VmRef → wake push encode_object → handler GET_FIELD 绑定）。已完成的代码（Step 1-4）
+在 H2 后即可工作。测试见 §15.4。
+
+### §15.4 测试用例
+
+**Phase H1-H3（registry 统一）回归测试**（确保行为不变）：
+1. 对象字段访问：`let p = Point{x:1, y:2}; print(p.x)` — 验证 GET_FIELD 跨 registry 统一查询。
+2. enum variant 字段：`let a = Atom.Int(42); print(a.value)` — GenericInstance。
+3. List 元素：`let l = List.new([1,2,3]); print(l.len())` — ListData。
+4. Map 字段：`let m = Map.new(); m.set("k", 5); print(m.get("k"))` — AutoVMHashMap。
+5. HTTP RequestBuilder 链式：`http.request("GET", url).header("k","v")` — RustStdlibObject。
+6. 消息传递（TypeBinding）：`h.send(5)` → `on { n int -> }` — 不回归（G2 已验证）。
+
+**Phase H4（L3 多字段）功能测试**：
+7. 单字段 WithBindings：`h.send(Add(3))` → `on { Add(val int) -> print(val) }` → 输出 3。
+8. 多字段 WithBindings：`h.send(Add(3, 5))` → `on { Add(a int, b int) -> print(a+b) }` → 输出 8。
+9. 多次 send 多字段：`h.send(Add(1,2)); h.send(Add(3,4))` → handler 每次看到正确的 a/b（不 stale）。
+10. Simple variant：`h.send(Reset)` → `on { Reset -> print("reset") }` → 输出 reset。
+11. 混合 pattern：task 同时有 `on { Add(a,b) -> }` + `on { n int -> }` + `on { Reset -> }`。
+
+### §15.5 风险与缓解
+
+| 风险 | 等级 | 缓解 |
+|---|---|---|
+| Phase H2 栈编码切换破坏 ~8 个"仅假设 i32"消费者 | 高 | 逐个加 is_object 回退；全量回归 + 专门字段访问测试 |
+| id 段位迁移期间 object_id_gen (1M) 和 heap_object_id_gen (4M) 并存 | 中 | H1 的 get_any_object 按 id 段路由；H3 统一后删除段位 |
+| encode_object 的 u32 payload 限制（id 超 u32::MAX 截断） | 低 | 加 debug_assert(id <= u32::MAX)；当前 id 远未达到 |
+| inject_value/decode_tagged_nv 的双解码路径（879-927） | 中 | H2 统一后简化为单一 is_object 路径 |
+| matcher 期望 Value::Obj 内联 vs registry 引用 | 中 | H2 后 send 存 VmRef，wake 时 decode_tagged_nv 重建 Value::Obj 给 matcher |
+
+### §15.6 已完成的 L3 代码（Step 1-4，待 H2 后生效）
+
+以下代码已落盘（plan-390/l3-withbindings-multi-field 分支），在 Phase H2 栈编码统一后即可工作：
+
+- **Step 1**（codegen）：TaskDef 收集 `task_variants` map + `Add(3,5)` 在 Expr::Call 识别为
+  variant 构造，emit CREATE_OBJ 产出 `Obj{__variant, fields}`。
+- **Step 2**（send shim）：`shim_task_send_vm` 用 `pop_nv` + `is_object` 区分 Obj/scalar，
+  Obj 存为 `Value::VmRef`。
+- **Step 3**（handler codegen）：WithBindings 遍历 bindings，DUP+GET_FIELD+STORE_LOC 绑定每个字段。
+- **Step 4**（wake）：消息唤醒 VmRef push `encode_object`。
+- **阻塞点**：CREATE_OBJ 产出 `push_i32(obj_id)` 而非 `encode_object` → send 的 `is_object` 检测
+  失败。Phase H2 统一栈编码后此阻塞自动解除。
+
+---
+
 ## §15 Phase H — `fn(params){}` 闭包参数绑定修复（L5，parser）
 
 > **2026-08-07 追加**。L5 经实证重新定性：不是"闭包不能捕获外部变量"（捕获工作正常），

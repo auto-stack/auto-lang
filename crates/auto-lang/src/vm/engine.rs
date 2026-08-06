@@ -1650,13 +1650,20 @@ impl AutoVM {
                     if let Some(msg) = drained {
                         let task_type = task.task_type_name.clone().unwrap_or_default();
                         if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
-                            let msg_i32 = match &msg {
-                                auto_val::Value::Int(i) => *i,
-                                auto_val::Value::Uint(u) => *u as i32,
-                                auto_val::Value::Bool(b) => if *b { 1 } else { 0 },
-                                _ => 0,
-                            };
-                            task.ram.push_i32(msg_i32);
+                            // Plan 390 §14 L3: structured messages (Value::VmRef
+                            // from a WithBindings variant constructor) are pushed
+                            // as object refs so the handler can GET_FIELD each
+                            // binding. Scalar messages stay as i32 for backward
+                            // compat with Literal/TypeBinding patterns.
+                            match &msg {
+                                auto_val::Value::VmRef(vmref) => {
+                                    task.ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                                }
+                                auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
+                                auto_val::Value::Uint(u) => { task.ram.push_i32(*u as i32); }
+                                auto_val::Value::Bool(b) => { task.ram.push_i32(if *b {1} else {0}); }
+                                _ => { task.ram.push_i32(0); }
+                            }
                             // Plan 390 §G2.2: record the sp just BEFORE the message
                             // was pushed as the handler's frame base. The handler RET
                             // path resets sp here so handler locals (the bound pattern

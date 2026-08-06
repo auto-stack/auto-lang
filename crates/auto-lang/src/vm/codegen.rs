@@ -328,6 +328,12 @@ pub struct Codegen {
     /// Stores handler metadata for each task type
     pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
 
+    /// Plan 390 §14 L3: task_name -> set of (variant_name, binding_names) for
+    /// WithBindings patterns. Populated during TaskDef codegen so that a send
+    /// call-site `h.send(Add(3, 5))` can recognize `Add(3,5)` as a variant
+    /// constructor for the receiver's task and build a Value::Obj message.
+    pub task_variants: HashMap<String, Vec<(String, Vec<String>)>>,
+
     /// Enum variant values: maps "EnumName.Variant" -> i32 value
     pub enum_values: HashMap<String, i32>,
 
@@ -469,6 +475,7 @@ impl Codegen {
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
+            task_variants: HashMap::new(), // Plan 390 §14 L3
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
@@ -778,6 +785,7 @@ impl Codegen {
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
+            task_variants: HashMap::new(), // Plan 390 §14 L3
             current_type_members: None, // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
@@ -3618,6 +3626,25 @@ impl Codegen {
                 // Plan 127: Create handler table for this task type
                 let mut handler_table = crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
 
+                // Plan 390 §14 L3: collect variant definitions (WithBindings +
+                // Simple) so send call-sites can construct Value::Obj messages.
+                let mut variants: Vec<(String, Vec<String>)> = Vec::new();
+                for (pattern, _guard, _body) in &task_def.on_block.handlers {
+                    match pattern {
+                        crate::ast::TaskMsgPattern::WithBindings { variant, bindings } => {
+                            let bind_names: Vec<String> = bindings.iter()
+                                .map(|(n, _)| n.to_string()).collect();
+                            variants.push((variant.to_string(), bind_names));
+                        }
+                        crate::ast::TaskMsgPattern::Simple(name) => {
+                            variants.push((name.to_string(), Vec::new()));
+                        }
+                        _ => {}
+                    }
+                }
+                if !variants.is_empty() {
+                    self.task_variants.insert(task_name.clone(), variants);
+                }
                 // Plan 317: Register state fields so bare identifier references
                 // inside hooks/handlers resolve to LOAD/STORE_STATE_FIELD. Each
                 // field gets a stable idx (0, 1, 2, ...).
@@ -3721,6 +3748,36 @@ impl Codegen {
                                 self.code.push(slot as u8);
                             }
                         }
+                    } else if let crate::ast::TaskMsgPattern::WithBindings { bindings, .. } = pattern {
+                        // Plan 390 §14 L3: multi-field variant message. The wake
+                        // path pushed a VmRef to the Obj {__variant, <fields>}.
+                        // For each binding, DUP the VmRef, GET_FIELD(<name>),
+                        // STORE_LOC into the binding's slot. The VmRef is
+                        // consumed by a final POP.
+                        let emit_store = |codegen: &mut Self, slot: usize| {
+                            match slot {
+                                0 => codegen.emit(OpCode::STORE_LOC_0),
+                                1 => codegen.emit(OpCode::STORE_LOC_1),
+                                _ => {
+                                    codegen.emit(OpCode::STORE_LOCAL);
+                                    codegen.code.push(slot as u8);
+                                }
+                            }
+                        };
+                        for (bind_name, _) in bindings {
+                            self.emit(OpCode::DUP);
+                            let field_str_idx = {
+                                let idx = self.strings.len();
+                                self.strings.push(bind_name.as_str().to_string().into_bytes());
+                                idx as u16
+                            };
+                            self.emit(OpCode::GET_FIELD);
+                            self.code.extend_from_slice(&field_str_idx.to_le_bytes());
+                            let slot = self.add_var(bind_name.as_str());
+                            emit_store(self, slot);
+                        }
+                        // Consume the remaining VmRef on the stack.
+                        self.emit(OpCode::POP);
                     }
 
                     // Compile handler body
@@ -6186,6 +6243,64 @@ impl Codegen {
                 }
             }
             Expr::Call(call) => {
+                // Plan 390 §14 L3: Task variant constructor in expression position.
+                // `Add(3, 5)` where Add is a WithBindings variant of some task →
+                // build a Value::Obj {__variant:"Add", <binding0>:3, <binding1>:5}
+                // via CREATE_OBJ, mirroring Expr::Object codegen. This lets
+                // `h.send(Add(3, 5))` carry a structured multi-field message.
+                if let Expr::Ident(variant_name) = call.name.as_ref() {
+                    let vname = variant_name.to_string();
+                    // Search all tasks for a variant with this name. Clone the
+                    // binding names out to release the immutable borrow of self
+                    // before we start emitting code (mutable borrows).
+                    let matched: Option<Vec<String>> = self.task_variants.values()
+                        .find_map(|vs| vs.iter().find(|(vn, _)| *vn == vname))
+                        .map(|(_, bn)| bn.clone());
+                    if let Some(bind_names) = matched {
+                        // Build pairs: [__variant: "Add", <b0>: arg0, <b1>: arg1, ...]
+                        // __variant is a string constant.
+                        let variant_str_idx = {
+                            let idx = self.strings.len();
+                            self.strings.push(vname.clone().into_bytes());
+                            idx as u16
+                        };
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&variant_str_idx.to_le_bytes());
+
+                        // Push each arg value (compile the Call's positional args).
+                        let n_args = call.args.args.len().min(bind_names.len());
+                        for i in 0..n_args {
+                            if let crate::ast::Arg::Pos(e) = &call.args.args[i] {
+                                self.compile_expr(e)?;
+                            }
+                        }
+
+                        // Build object_keys: ["__variant", bind_names[0], ...]
+                        let keys: Vec<auto_val::ValueKey> = std::iter::once(
+                            auto_val::ValueKey::Str(auto_val::AutoStr::from("__variant"))
+                        ).chain(bind_names[..n_args].iter().map(|n| {
+                            auto_val::ValueKey::Str(auto_val::AutoStr::from(n.as_str()))
+                        })).collect();
+                        let key_index = self.object_keys.len() as u16;
+                        // Types: __variant is String; args inferred.
+                        let mut types = vec![ObjectType::String];
+                        for i in 0..n_args {
+                            if let crate::ast::Arg::Pos(e) = &call.args.args[i] {
+                                types.push(self.infer_object_type(e));
+                            }
+                        }
+                        self.object_types.push(types.clone());
+                        self.object_keys.push(keys);
+
+                        let field_count = (1 + n_args) as u8; // __variant + args
+                        self.emit(OpCode::CREATE_OBJ);
+                        self.code.extend_from_slice(&key_index.to_le_bytes());
+                        self.code.push(field_count);
+                        self.last_expr_type = ObjectType::NestedObject;
+                        return Ok(());
+                    }
+                }
+
                 // Plan 087 Phase 2: Check if this is a generic constructor call (e.g., Pair.new(1, "a"))
                 // IMPORTANT: Skip inline construction if the type has a user-defined new() method
                 let is_generic_constructor = if let Expr::Dot(obj, method) = call.name.as_ref() {
