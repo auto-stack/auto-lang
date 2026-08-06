@@ -7359,7 +7359,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
         ("Writer", "serialize") => {
-            // Pop object handle (from vm.objects, ID >= 1_000_000)
+            // Pop object handle (ObjectData lives in heap_objects, H3b)
             let obj_nv = task.ram.pop_nv();
             let obj_id = if auto_val::is_object(obj_nv) {
                 auto_val::decode_object(obj_nv) as u64
@@ -7369,18 +7369,20 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let writer_handle = task.ram.pop_i32() as u64;
             // Extract fields from ObjectData and serialize as CSV record
             let mut record_map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
-            if let Some(obj_arc) = vm.objects.get(&obj_id) {
+            if let Some(obj_arc) = vm.get_heap_object(obj_id) {
                 let obj_guard = obj_arc.read().unwrap();
-                for (key, val) in &obj_guard.fields {
-                    let key_str = format!("{:?}", key);
-                    let val_str = match val {
-                        auto_val::Value::Str(s) => s.to_string(),
-                        auto_val::Value::Int(n) => n.to_string(),
-                        auto_val::Value::Float(f) => f.to_string(),
-                        auto_val::Value::Bool(b) => b.to_string(),
-                        _ => format!("{:?}", val),
-                    };
-                    record_map.insert(key_str, val_str);
+                if let Some(od) = obj_guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    for (key, val) in &od.fields {
+                        let key_str = format!("{:?}", key);
+                        let val_str = match val {
+                            auto_val::Value::Str(s) => s.to_string(),
+                            auto_val::Value::Int(n) => n.to_string(),
+                            auto_val::Value::Float(f) => f.to_string(),
+                            auto_val::Value::Bool(b) => b.to_string(),
+                            _ => format!("{:?}", val),
+                        };
+                        record_map.insert(key_str, val_str);
+                    }
                 }
             }
             let record: Vec<String> = record_map.into_values().collect();

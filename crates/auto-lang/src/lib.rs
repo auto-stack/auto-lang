@@ -216,18 +216,22 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
         Value::Str(s) => format!("\"{}\"", s.as_str()),
         Value::Nil => "nil".to_string(),
         Value::VmRef(vm_ref) => {
-            // Recursively format VmRef values
+            // Recursively format VmRef values.
+            // Plan 390 §15 H3b: objects/arrays/nodes all live in heap_objects.
             let id = vm_ref.id as u64;
-            if let Some(obj_arc) = vm.objects.get(&id) {
+            if let Some(obj_arc) = vm.get_heap_object(id) {
                 let obj = obj_arc.read().unwrap();
-                let fields: Vec<String> = obj.fields.iter().map(|(k, v)| {
-                    format!("{}: {}", k, format_value_for_display(vm, v))
-                }).collect();
-                format!("{{{}}}", fields.join(", "))
-            } else if let Some(arr_arc) = vm.arrays.get(&id) {
-                let arr = arr_arc.read().unwrap();
-                let items: Vec<String> = arr.iter().map(|v| format_value_for_display(vm, v)).collect();
-                format!("[{}]", items.join(", "))
+                if let Some(obj) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    let fields: Vec<String> = obj.fields.iter().map(|(k, v)| {
+                        format!("{}: {}", k, format_value_for_display(vm, v))
+                    }).collect();
+                    format!("{{{}}}", fields.join(", "))
+                } else if let Some(arr) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                    let items: Vec<String> = arr.elems.iter().map(|v| format_value_for_display(vm, v)).collect();
+                    format!("[{}]", items.join(", "))
+                } else {
+                    format!("<ref:{}>", id)
+                }
             } else {
                 format!("<ref:{}>", id)
             }
@@ -1946,40 +1950,33 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
                     let result = task.ram.pop_i32();
                     let result_u64 = result as u64;
 
-                    // Check arrays registry
-                    if let Some(arr_arc) = vm.arrays.get(&result_u64) {
-                        let arr = arr_arc.read().unwrap();
-                        let strings = vm.strings.read().unwrap();
-                        let formatted: Vec<String> = arr.iter().map(|v| {
-                            if let auto_val::Value::Int(bits) = v {
-                                if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
-                                    let str_idx = (-bits - 1) as usize;
-                                    if let Some(bytes) = strings.get(str_idx) {
-                                        return format!("\"{}\"", String::from_utf8_lossy(bytes));
-                                    }
-                                }
-                            }
-                            v.repr().to_string()
-                        }).collect();
-                        format!("[{}]", formatted.join(", "))
-                    }
-                    // Check heap objects
-                    else if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
+                    // Check heap objects (arrays are ListData<Value> here too,
+                    // Plan 390 §15 H3b)
+                    if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
                         let obj = obj_arc.read().unwrap();
                         if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                             let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
                             format!("[{}]", formatted.join(", "))
+                        } else if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                            let strings = vm.strings.read().unwrap();
+                            let formatted: Vec<String> = list.elems.iter().map(|v| {
+                                if let auto_val::Value::Int(bits) = v {
+                                    if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
+                                        let str_idx = (-bits - 1) as usize;
+                                        if let Some(bytes) = strings.get(str_idx) {
+                                            return format!("\"{}\"", String::from_utf8_lossy(bytes));
+                                        }
+                                    }
+                                }
+                                v.repr().to_string()
+                            }).collect();
+                            format!("[{}]", formatted.join(", "))
                         } else if let Some(sb) = obj.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
                             sb.buffer.clone()
-                        } else {
-                            format!("{}", result)
-                        }
-                    }
-                    // Check objects registry
-                    else if result >= 1000000 && result < 2000000 {
-                        if let Some(obj_arc) = vm.objects.get(&result_u64) {
-                            let obj = obj_arc.read().unwrap();
-                            let mut fields: Vec<(&auto_val::ValueKey, &Value)> = obj.fields.iter().collect();
+                        } else if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                            // Plan 390 §15 H3b: obj literals are ObjectData in
+                            // heap_objects.
+                            let mut fields: Vec<(&auto_val::ValueKey, &Value)> = od.fields.iter().collect();
                             fields.sort_by(|(k1, _), (k2, _)| k1.to_string().cmp(&k2.to_string()));
                             let formatted: Vec<String> = fields.iter().map(|(k, v)| {
                                 let key_str = k.to_string();
@@ -3109,16 +3106,19 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
         return Value::Nil;
     }
 
-    // 1. Check if it's an object ID
-    if let Some(obj_ref) = vm.objects.get(&id) {
-        let obj_data = obj_ref.value().read().unwrap();
-        let mut result_obj = Obj::new();
-        for (key, val) in &obj_data.fields {
-            let extracted = extract_auto_val_value(vm, val, visited);
-            result_obj.set(key.clone(), extracted);
+    // 1. Check if it's an object ID (Plan 390 §15 H3b: ObjectData in
+    // heap_objects).
+    if let Some(obj_ref) = vm.get_heap_object(id) {
+        let obj_guard = obj_ref.read().unwrap();
+        if let Some(obj_data) = obj_guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+            let mut result_obj = Obj::new();
+            for (key, val) in &obj_data.fields {
+                let extracted = extract_auto_val_value(vm, val, visited);
+                result_obj.set(key.clone(), extracted);
+            }
+            visited.remove(&id);
+            return Value::Obj(result_obj);
         }
-        visited.remove(&id);
-        return Value::Obj(result_obj);
     }
 
     // 2. Check if it's a node ID
@@ -3133,15 +3133,18 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
         }
     }
 
-    // 3. Check if it's an array ID
-    if let Some(array_ref) = vm.arrays.get(&id) {
-        let array_data = array_ref.value().read().unwrap();
-        let mut items = Vec::new();
-        for val in array_data.iter() {
-            items.push(extract_auto_val_value(vm, val, visited));
+    // 3. Check if it's an array ID (Plan 390 §15 H3b: ListData<Value> in
+    // heap_objects — same storage as CREATE_ARRAY).
+    if let Some(list_ref) = vm.get_heap_object(id) {
+        let array_data = list_ref.read().unwrap();
+        if let Some(list) = array_data.as_any().downcast_ref::<crate::vm::types::ListData<Value>>() {
+            let mut items = Vec::new();
+            for val in list.elems.iter() {
+                items.push(extract_auto_val_value(vm, val, visited));
+            }
+            visited.remove(&id);
+            return Value::Array(Array::from_vec(items));
         }
-        visited.remove(&id);
-        return Value::Array(Array::from_vec(items));
     }
 
     visited.remove(&id);
