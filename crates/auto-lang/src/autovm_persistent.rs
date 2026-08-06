@@ -914,7 +914,8 @@ impl AutovmReplSession {
         self.vm.heap_objects.clear();
         self.vm.arrays.clear();
         self.vm.objects.clear();
-        self.vm.nodes.clear();
+        // Plan 390 §15 H3a: nodes registry deleted (nodes live in
+        // heap_objects, cleared above).
 
         // Plan 300 Phase 2: Clear Python FFI bridge
         #[cfg(feature = "python")]
