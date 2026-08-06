@@ -6,6 +6,11 @@
 > **更新（2026-08-06，H2 已完成）**：H2 + H4 在分支 `plan-390/h2-registry-unify` 落地
 > （commits `14103b51`/`9f2fba50`/`250faf64`），L3 多字段消息打通，回归零新增。详见 §四'
 > 及计划文档 §15.7。**剩余：H3（arrays/nodes 物理迁移 + 删魔数）**。
+>
+> **更新（2026-08-07，H3a 已完成）**：H3 已分批（H3a/H3b，见计划 §15.9）。H3a（nodes 物理迁移）
+> 在分支 `plan-390/h3a-nodes-migration` 落地并合并 master：TypeTag::Node + impl HeapObject +
+> CREATE_NODE/POP_ACCUM/inject_value 改 insert_heap_object + encode_object，删 nodes registry。
+> **剩余：H3b（arrays+objects 物理迁移 + 删魔数）**。
 
 ## 一、背景（为什么做这个）
 
