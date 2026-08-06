@@ -68,12 +68,6 @@ pub struct AutoTask {
     /// the spawn-injected values. Cleared at TASK_LOOP so handler writes are
     /// unaffected.
     pub locked_state_fields: std::collections::HashSet<u8>,
-    /// Plan 390 §G2.2: saved value-stack pointer at message-wake, before the
-    /// handler's local frame. On handler RET (bp==0 + in_message_loop), the
-    /// engine resets sp to this base so handler locals (the bound pattern var,
-    /// plus any body locals) don't carry stale values across message invocations.
-    /// None when not in a handler dispatch.
-    pub handler_frame_base: Option<usize>,
     /// Plan 390 §15 G2-refactor (方案 B): stable re-park ip captured when
     /// TASK_LOOP yields (the RET after TASK_LOOP in #start). On handler RET,
     /// the RET-catch resets task.ip here so the actor cleanly re-parks for
@@ -193,7 +187,6 @@ impl AutoTask {
             current_msg_context: None,
             state_vars: Vec::new(), // Plan 317: actor state fields
             locked_state_fields: std::collections::HashSet::new(),
-            handler_frame_base: None,
             park_ip: None,
             current_line: 0,
             current_source: None,

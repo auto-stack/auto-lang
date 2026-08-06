@@ -1761,9 +1761,6 @@ impl AutoVM {
                                 auto_val::Value::Bool(b) => { task.ram.push_i32(if *b {1} else {0}); }
                                 _ => { task.ram.push_i32(0); }
                             }
-                            // 方案 B：bp 帧自带 unwind 信息（old_bp/ret_ip），不再需要
-                            // handler_frame_base 字段做 sp 复位（RET 的标准 unwind 已完成）。
-                            task.handler_frame_base = None;
                             task.ip = body_offset as usize;
                             task.current_handler_has_context = has_context;
                             task.status = TaskStatus::Ready;
