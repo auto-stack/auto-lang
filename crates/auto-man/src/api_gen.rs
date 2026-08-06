@@ -1201,7 +1201,11 @@ pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
     Some(module)
 }
 
-/// Parse type fields from a string like "id: int\nname: str"
+/// Parse type fields from a string like "id: int\nname: str" or the
+/// space-separated form "id int\nname str" (Plan 317 supports both).
+/// Plan 043 M5 B-4: colon-less fields (e.g. `commands []ToolEntry`,
+/// `rows [][]RenderedCell`) were previously dropped, so the generated
+/// interface silently lost fields and callers failed with TS2339.
 fn parse_fields(fields_str: &str) -> Vec<ApiField> {
     fields_str
         .lines()
@@ -1209,20 +1213,28 @@ fn parse_fields(fields_str: &str) -> Vec<ApiField> {
             let line = line.trim();
             if line.is_empty() { return None; }
 
-            // Split on ':' to get name and type
+            // Split on ':' to get name and type (canonical form)
             let parts: Vec<&str> = line.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                let name = parts[0].trim().to_string();
-                let ty = parts[1].trim().to_string();
-                Some(ApiField {
-                    name,
-                    ty,
-                    optional: false,
-                    default: None,
-                })
+            let (name, ty) = if parts.len() == 2 && !parts[1].trim().is_empty() {
+                (parts[0].trim(), parts[1].trim())
             } else {
-                None
+                // Colon-less "name type" form: split on the first whitespace.
+                // A bare name (no type) is skipped, matching the colon path.
+                let mut ws = line.splitn(2, char::is_whitespace);
+                match (ws.next(), ws.next()) {
+                    (Some(n), Some(t)) => (n, t.trim()),
+                    _ => return None,
+                }
+            };
+            if name.is_empty() {
+                return None;
             }
+            Some(ApiField {
+                name: name.to_string(),
+                ty: ty.to_string(),
+                optional: false,
+                default: None,
+            })
         })
         .collect()
 }
@@ -1277,6 +1289,44 @@ pub type CreateUserRequest = {
         assert_eq!(module.types[0].fields[0].name, "id");
         assert_eq!(module.types[0].fields[0].ty, "int");
         assert_eq!(module.types[1].name, "CreateUserRequest");
+    }
+
+    #[test]
+    fn test_extract_api_lenient_colonless_fields() {
+        // Plan 043 M5 B-4: colon-less `name type` fields (valid Auto syntax,
+        // e.g. `commands []ToolEntry` / `rows [][]RenderedCell`) must survive
+        // lenient extraction — previously only `name: type` lines were kept,
+        // silently dropping the rest from the generated interface (TS2339).
+        let content = r#"
+pub type RenderedOutput = {
+    kind: str
+    text: str
+    rows [][]RenderedCell
+    code_lines [][]CodeSpan
+}
+
+pub type BootSnapshot = {
+    cwd: str
+    home: str
+    commands []ToolEntry
+    smart_commands []SmartCommandEntry
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+        assert_eq!(module.types.len(), 2);
+
+        let ro = &module.types[0];
+        assert_eq!(ro.name, "RenderedOutput");
+        let field_names: Vec<&str> = ro.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(field_names, vec!["kind", "text", "rows", "code_lines"]);
+        assert_eq!(ro.fields[2].ty, "[][]RenderedCell");
+        assert_eq!(ro.fields[3].ty, "[][]CodeSpan");
+
+        let snap = &module.types[1];
+        assert_eq!(snap.name, "BootSnapshot");
+        let snap_names: Vec<&str> = snap.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(snap_names, vec!["cwd", "home", "commands", "smart_commands"]);
+        assert_eq!(snap.fields[2].ty, "[]ToolEntry");
     }
 
     #[test]

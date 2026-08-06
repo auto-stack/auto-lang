@@ -13005,7 +13005,13 @@ impl<'a> Parser<'a> {
                     // Standalone .field -> this.field
                     parts.push(format!("this.{}", name));
                 }
-                prev_was_ident = false;
+                // Plan 043 M5 B-5: after emitting `this.field`, the next `.name`
+                // in `this.field.name` is a property access, NOT another
+                // `this.` prefix. Without this, `.c.name` parsed as
+                // `this.c` + `this.name` = `this.cthis.name`, and the Vue
+                // backend's `this.`-strip turned it into the bogus identifier
+                // `cthis` (undefined — the v-for binds `c`).
+                prev_was_ident = true;
             } else if self.is_kind(TokenKind::FStrNote) {
                 // `$event` (and `$event.field`) — the DOM event object, mapped
                 // verbatim to Vue's `$event` template variable by the Vue
@@ -13517,6 +13523,47 @@ mod tests {
         assert_eq!(col_events[0].name, "onwheel.document.capture");
         assert_eq!(col_events[0].handler, ".Lock");
         assert_eq!(col_events[0].params, vec!["$event.key".to_string()]);
+    }
+
+    #[test]
+    fn test_view_event_arg_nested_self_dot() {
+        // Plan 043 M5 B-5: `.c.name` inside an event arg must parse as
+        // `this.c.name` (one `this.` prefix + property access), NOT
+        // `this.c` + `this.name` = `this.cthis.name`. The Vue backend strips
+        // the `this.` prefix and would otherwise emit the bogus identifier
+        // `cthis` while the v-for binds `c`.
+        let code = concat!(
+            "widget ToolSidebar {\n",
+            "  model { var commands List<ToolEntry> = [] }\n",
+            "  view {\n",
+            "    for c in .commands {\n",
+            "      button { onclick: .Pick(.c.name) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let root = &widget.view.as_ref().unwrap().root;
+        let for_loop = match root {
+            ViewNode::ForLoop { body, .. } => &body[0],
+            other => panic!("expected for loop root, got {:?}", other),
+        };
+        let btn_events = match for_loop {
+            ViewNode::Element { events, .. } => events,
+            other => panic!("expected button element, got {:?}", other),
+        };
+        assert_eq!(btn_events[0].handler, ".Pick");
+        assert_eq!(btn_events[0].params, vec!["this.c.name".to_string()]);
     }
 
     #[test]
