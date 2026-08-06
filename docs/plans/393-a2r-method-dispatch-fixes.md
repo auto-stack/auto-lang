@@ -110,3 +110,35 @@ Plan 392 E1 的守卫加错了分支（5057 在 dead-code 块），所以没生�
 1. `-o` 参数让 trans 静默退出 0 产生空文件——看默认产物 `<name>.a2r.rs`。
 2. `/tmp` 残留 .at 致 CLI 递归扫描爆内存——复现样例放干净空目录。
 3. **dead-code 陷阱**：方法分发修 5127 的 `Expr::Dot` 块（含 6318），不是 5057 的 `Expr::Bina`。
+
+---
+
+## §6 实施记录（2026-08-06）
+
+### E3 — ✅ 闭环（commit `21201342`，已合并 master）
+if_stmt 的 if/else 分支 `Stmt::Expr` 尾表达式改为一律 `;\n`。12 个 golden expected
+同步更新（if/else 尾 `println!()`/赋值表达式加 `;`，Rust 仍编译）。golden 328/0。
+
+### E1 — ⏳ 待续（关键新发现）
+调查报告（invest/a2r-method-dispatch worktree）认为发射点是 6318 的 generic remap，
+但实施时实证发现：**`updated.append(msg)` 根本不走 `fn call()`（3462）**！在
+`fn call()` 入口加 debug（`call.name` 含 append）无任何输出，说明该方法调用的
+AST 不是 `Expr::Call { name: Expr::Dot(..), .. }`，或它的发射入口不是 `fn call()`。
+
+**下一步**：用 `eprintln!` 在 `fn expr()`（1689）的 `Expr::Call` 分支 + `Expr::Bina`
+分支 + `Expr::Dot` 分支入口加 debug，确认 `updated.append(msg)` 的 AST 形态和实际
+发射入口。可能 parser 把 `obj.method(args)` 解析成了非 `Expr::Call` 的形式（如
+`Expr::Bina(Expr::Call(append, args), Dot, updated)` 或方法调用内联在 expr 层）。
+
+**已排除**：
+- 5127 的 `Expr::Dot` dispatch（debug 无输出，未进入）
+- 4736 的 `maybe_module_method` 块（Bina-Dot debug 无输出）
+- 6314/6328 的 generic remap 守卫（debug 无输出）
+- `fn call()` 3462 入口（debug 无输出）
+
+所以发射点在**以上所有都不经过**的某条路径——需从 `fn expr()` 重新追踪。
+
+### E2 — ⏳ 待续（方案清晰，未实施）
+`fix_result_none_unit`（15959）的 `content.replace("Ok(None)", "Ok(())")` 全局替换。
+方案 A（推荐）：重写为先扫描 fn 签名收集 `Result<(), _>` 函数集，再逐函数（brace-depth
+tracking）只在这些函数体内替换。参考 `fix_fn_field_calls`（15965）的扫描模式。
