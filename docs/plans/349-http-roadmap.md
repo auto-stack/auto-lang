@@ -193,8 +193,10 @@ wake source 4 双表 match → 单表；native.rs 流迭代器 2 段 `.or_else` 
 - Plan 344 的 AWAIT_FUTURE 通用 future 架构（FutureValue.external_result / execute_future_body
   语义分叉 / codegen async call site）。调研结论：复杂度中-大，触及 VM 核心——`execute_future_body`
   的「同步内联」语义与「外部挂起」在 body 内嵌套 await 时根本不兼容，需续点机制。收益是「用户态
-  async block 组合 native async」/ `Future.all/race`，当前无此需求，留独立 plan。本 roadmap 的
-  re-entry yield 范式 + 全局表收敛是其务实替代。
+  async block 组合 native async」/ `Future.all/race`，当前无此需求。
+  **已立项为 [Plan 394](./394-await-future-external-architecture.md)**——含完整的长远最优方案设计
+  （续点机制 AsyncFrame 栈 / FutureValue 二态分叉 / Phase A-D 路线 / 触发条件），待业务需求出现时启动。
+  本 roadmap 的 re-entry yield 范式 + 全局表收敛是其务实替代。
 
 ### 步骤 8：易用性增强 — ✅ landed
 
