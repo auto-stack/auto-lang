@@ -1,7 +1,9 @@
 # HTTP 库扩展 Roadmap
 
-> **状态**：规划文档（持续更新）
-> **关联计划**：Plan 344（统一通讯架构）、Plan 350（WebSocket）
+> **状态**：✅ 已完成并归档（2026-08-06）。步骤 1-8 全部 landed；唯一的残留（Plan 344
+> AWAIT_FUTURE 通用架构）已立项为 [Plan 394](../394-await-future-external-architecture.md)。
+> **关联计划**：Plan 344（统一通讯架构，archive）、Plan 350（WebSocket，archive）、
+> Plan 388（a2r HTTP 适配，archive，承接步骤 1-6）、Plan 394（AWAIT_FUTURE 通用架构，draft）。
 
 ## 当前能力矩阵（v0.4.1 + Plan 349/350）
 

@@ -11,7 +11,7 @@ status: complete # draft | in-progress | complete
 > - 构建/测试命令：`cargo test -p auto-lang`（回归）、`cargo test -p auto-man`（codegen 相关，若有测试）、
 >   `cargo test -p a2r-std`（runtime 单测）、生成代码手动编译运行验证。
 > - 前置：Plan 349（HTTP Roadmap，VM 侧已完成，本计划是其 a2r 适配的正式化）、Plan 350（WebSocket VM 侧）。
-> - 来源：`docs/plans/349-http-roadmap.md` "待实现步骤 1-8" 的 a2r 部分（步骤 1-4/6）。
+> - 来源：`docs/plans/archive/349-http-roadmap.md` "待实现步骤 1-8" 的 a2r 部分（步骤 1-4/6）。
 > - **Out of scope**：步骤 7（普通 HTTP 异步化 = VM engine AWAIT_FUTURE 外部 future，Plan 344 路径 B，VM 侧改动）；
 >   步骤 8（Cookie/重试/压缩/CORS 易用性）；VM 侧 native 已有能力不重写。
 
@@ -99,7 +99,7 @@ HTTP server 侧（Plan 328 已覆盖）。
 
 ## §7 关联 / References
 
-- **Plan 349**（active，roadmap）：VM 侧已完成；本计划的 a2r 部分形式化
+- **Plan 349**（archive，roadmap）：VM 侧已完成；本计划的 a2r 部分形式化
 - **Plan 350**（archive）：WebSocket VM 侧实现
 - **Plan 344**：普通 HTTP 异步化设计（步骤 7，本计划 out of scope）
 - **Plan 328**（archive）：a2r HTTP server 架构（AxumGenerator）

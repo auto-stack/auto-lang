@@ -4310,7 +4310,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     drop(builder_data);
     drop(guard);
 
-    // Spawn a detached worker thread; result lands in ASYNC_HTTP_RESULTS_HANDLE.
+    // Spawn a detached worker thread; result lands in ASYNC_RESULTS (Structured).
     let req_id = alloc_async_id();
     std::thread::spawn(move || {
         let result = (|| -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
@@ -5363,7 +5363,7 @@ fn backoff_sleep(attempt: u32) {
 
 /// Spawn a handle-returning async HTTP request (plain GET/POST/PUT/DELETE with
 /// optional JSON body). Mirrors `simple_http_request`'s reqwest logic but runs
-/// detached and writes structured result into ASYNC_HTTP_RESULTS_HANDLE.
+/// detached and writes the structured result into ASYNC_RESULTS (Structured).
 /// Plan 349 步骤 7 (W1a).
 fn spawn_async_http_handle(
     method: String,
@@ -5605,7 +5605,7 @@ fn check_async_http_result_auth(
 }
 
 /// Spawn an auth-bearing async HTTP request (x-api-key style, for Anthropic).
-/// Writes `(status, body)` into ASYNC_HTTP_RESULTS_AUTH on completion.
+/// Writes `(status, body)` into ASYNC_RESULTS (Auth variant) on completion.
 /// Plan 349 步骤 7/8 (W1c).
 fn spawn_async_http_auth(
     method: String,
