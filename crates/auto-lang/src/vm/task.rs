@@ -68,6 +68,12 @@ pub struct AutoTask {
     /// the spawn-injected values. Cleared at TASK_LOOP so handler writes are
     /// unaffected.
     pub locked_state_fields: std::collections::HashSet<u8>,
+    /// Plan 390 §G2.2: saved value-stack pointer at message-wake, before the
+    /// handler's local frame. On handler RET (bp==0 + in_message_loop), the
+    /// engine resets sp to this base so handler locals (the bound pattern var,
+    /// plus any body locals) don't carry stale values across message invocations.
+    /// None when not in a handler dispatch.
+    pub handler_frame_base: Option<usize>,
     // Plan 199: Source line tracking for debugging
     pub current_line: u32,
     pub current_source: Option<String>,
@@ -180,6 +186,7 @@ impl AutoTask {
             current_msg_context: None,
             state_vars: Vec::new(), // Plan 317: actor state fields
             locked_state_fields: std::collections::HashSet::new(),
+            handler_frame_base: None,
             current_line: 0,
             current_source: None,
             call_stack: Vec::new(),

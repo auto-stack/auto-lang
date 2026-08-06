@@ -142,3 +142,34 @@ fn main() {
     // Injected count=100 wins over default 5; handler +1 → 101.
     assert!(s.contains("101"), "spawn init arg overrides default (100 → +1 = 101): stdout={:?} result={:?}", s, r);
 }
+
+/// Plan 390 §G2: VM bound-variable message handler. `on { n int -> }` binds the
+/// message payload to `n` so the body can read it. Verified across MULTIPLE sends:
+/// each invocation must see its own message (not a stale value from the previous
+/// handler call). Previously `n` was unbound ("Undefined variable: n"); an initial
+/// codegen-only fix worked for a single send but went stale on the 2nd because the
+/// handler reuses the task's bp=0 frame with no per-invocation reset. The runtime
+/// fix (handler_frame_base sp reset on RET) makes each invocation clean.
+#[test]
+fn actor_bound_var_handler_multi_send() {
+    let code = r#"
+task Adder {
+    total = 0
+    on { n int -> {
+        total = total + n
+        print(total)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Adder", 16)
+    h.send(5)
+    h.send(7)
+    h.send(3)
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // total: 0+5=5, 5+7=12, 12+3=15. Each n is the current message (5,7,3).
+    assert!(s.contains("5"), "bound-var msg1 (total=5): stdout={:?} result={:?}", s, r);
+    assert!(s.contains("12"), "bound-var msg2 (total=12): stdout={:?} result={:?}", s, r);
+    assert!(s.contains("15"), "bound-var msg3 (total=15): stdout={:?} result={:?}", s, r);
+}

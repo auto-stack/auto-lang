@@ -486,10 +486,10 @@ state 从 0 起。
 `actor_spawn_init_arg_overrides_now_working_default`）；11 actor 测试全绿；回归 22 failed
 （master 23，**零新增，反而修了一个 flaky perf benchmark**）。
 
-### §G2 — VM bound-variable handler ⏳ 待实施（需 runtime 栈帧重构）
+### §G2 — VM bound-variable handler ✅ 落地（2026-08-06，`fix/vm-bound-var-handler` worktree）
 
 **Bug**：`on { n int -> ... }` 的绑定变量 `n` 报 "Undefined variable: n"。message payload
-（运行时已 push 到 value 栈）未被绑定到 pattern 变量名。
+（运行时已 push 到 value 栈）未被绑定到 pattern 变量名。**已修**——见下方"实施"。
 
 **根因**（已实证定位）：两层缺陷——
 
@@ -572,3 +572,26 @@ WithBindings 留后续。
 **风险**：runtime 栈帧重构触及 `run_task_loop` / RET 语义，可能影响既有 actor 测试。
 方案 A（handler_frame_base）改动最小（仅 sp 复位），方案 B（真 bp 帧）语义最干净但改动大。
 建议先试 A，失败再 B。
+
+**实施结果（2026-08-06，方案 A 落地）**：
+
+- **G2.1 codegen 绑定**（`vm/codegen.rs` handler 循环）：`add_handler` 后、编译 body 前，
+  `push_scope` + 若 `pattern.binding_name()` 存在则 `add_var(name)` + 发 `STORE_LOC_0/1/LOCAL`
+  把栈上 message pop 入命名 local；body 后 `pop_scope`。
+- **G2.2 runtime 帧复位**（`vm/engine.rs` + `vm/task.rs`，方案 A——`handler_frame_base`）：
+  - `vm/task.rs`：`AutoTask` 加 `handler_frame_base: Option<usize>` + 构造初始化 `None`。
+  - `vm/engine.rs` 消息唤醒（~1659）：`task.handler_frame_base = Some(task.ram.sp - 1)`
+    （记录 message push 前的 sp 作帧基）。
+  - `vm/engine.rs` handler RET 复位（~1764，`Terminated && in_message_loop` 分支）：
+    `if let Some(base) = task.handler_frame_base.take() { task.ram.sp = base; }`
+    —— 清除 handler 局部区，下次 message 调用从干净帧起。
+  - bp 仍为 0（task 不变），但 handler local 区（bp+1..）每次 RET 后复位，跨调用不残留。
+
+**实证**（`vmbv2.at`：`total=0`, send 5, 7）：msg1 `total=0,n=5→5`；msg2 `total=5,n=7→12` ✅。
+
+**验证**：新增 VM 测试 `actor_bound_var_handler_multi_send`（send 5/7/3 → total 5/12/15）✅；
+VM actor 测试 12 passed（11 既有 + 1 新增）；`cargo test --features test-trans` 22 failed
+（与 master 逐字节一致，**零新增失败**）。
+
+**遗留（留后续）**：WithBindings 多字段消息（`on { Add(a,b) -> }` 需 DUP + 多 STORE_LOC）；
+方案 B（真 bp 帧）未采用——方案 A 已足够。

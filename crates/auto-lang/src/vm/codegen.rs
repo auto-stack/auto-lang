@@ -3703,12 +3703,33 @@ impl Codegen {
                     #[allow(unused_variables)]
                     let pattern_idx = handler_table.add_handler(pattern, handler_offset, has_context);
 
+                    // Plan 390 §G2.1: bind the message payload to the handler's pattern
+                    // variable. The runtime pushes the message value onto the value
+                    // stack at handler entry (engine.rs run_task_loop), but previously
+                    // nothing stored it into a named local — so a TypeBinding pattern
+                    // like `n int` left `n` unbound ("Undefined variable: n"). Here we
+                    // open a scope, claim a local slot for the binding name, and emit
+                    // STORE_LOC to pop the on-stack message into it before the body.
+                    self.push_scope();
+                    if let Some(bind_name) = pattern.binding_name() {
+                        let slot = self.add_var(bind_name.as_str());
+                        match slot {
+                            0 => self.emit(OpCode::STORE_LOC_0),
+                            1 => self.emit(OpCode::STORE_LOC_1),
+                            _ => {
+                                self.emit(OpCode::STORE_LOCAL);
+                                self.code.push(slot as u8);
+                            }
+                        }
+                    }
+
                     // Compile handler body
                     // The handler receives message value on stack
                     // If has_context, also receives context id
                     for stmt in &body.stmts {
                         self.compile_stmt(stmt)?;
                     }
+                    self.pop_scope();
 
                     // Handler must return - emit RET
                     self.emit(OpCode::RET);

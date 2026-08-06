@@ -1657,6 +1657,13 @@ impl AutoVM {
                                 _ => 0,
                             };
                             task.ram.push_i32(msg_i32);
+                            // Plan 390 §G2.2: record the sp just BEFORE the message
+                            // was pushed as the handler's frame base. The handler RET
+                            // path resets sp here so handler locals (the bound pattern
+                            // var + body locals) don't carry stale values across
+                            // message invocations (the task reuses bp=0 and never
+                            // re-establishes a frame on its own).
+                            task.handler_frame_base = Some(task.ram.sp - 1);
                             task.ip = body_offset as usize;
                             task.current_handler_has_context = has_context;
                             task.status = TaskStatus::Ready;
@@ -1755,6 +1762,16 @@ impl AutoVM {
                         // next message. Without this, the actor dies after its
                         // first handler returns.
                         if new_status == TaskStatus::Terminated && task.in_message_loop {
+                            // Plan 390 §G2.2: a handler just RET'd. Reset the value
+                            // stack to the handler's frame base (captured at message-
+                            // wake, before the message was pushed) so handler locals
+                            // (bound pattern var + body locals) don't carry stale
+                            // values into the NEXT message invocation. The task reuses
+                            // bp=0 across all handler dispatches, so without this the
+                            // local region at bp+1.. persists.
+                            if let Some(base) = task.handler_frame_base.take() {
+                                task.ram.sp = base;
+                            }
                             task.status = TaskStatus::Waiting("message_loop".to_string());
                         } else {
                             task.status = new_status;
