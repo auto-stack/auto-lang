@@ -13408,6 +13408,12 @@ impl RustTrans {
             write!(sink.body, ">")?;
         }
 
+        // Plan 397: supertrait bounds — `spec Tool: Send + Sync { }` → `trait Tool: Send + Sync { }`.
+        // Bounds are opaque identifier strings from the .at source, emitted verbatim.
+        if !spec_decl.bounds.is_empty() {
+            write!(sink.body, ": {}", spec_decl.bounds.join(" + "))?;
+        }
+
         writeln!(sink.body, " {{")?;
         self.indent();
 
