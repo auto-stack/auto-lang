@@ -274,9 +274,13 @@ app 直接 `sink.set_cb(v)` 同步调用。**不推荐**——破坏 actor 的�
   VM actor 测试 9 passed（8 既有 + 1 新增）。
 
 **遗留（pre-existing，非本计划引入）**：
-- VM `#start` state 默认初始化坏（`count = 5` 不生效，state 从 0 起）—— 独立 VM bug。
-- VM bound-variable handler（`on { n int -> }`）报 Undefined variable —— Plan 043 范畴。
-  这两项修复后，EventSink 这类带绑定变量 + 默认值的 actor 可在 VM 完整跑通。
+- ~~VM `#start` state 默认初始化坏（`count = 5` 不生效，state 从 0 起）—— 独立 VM bug~~
+  → **✅ 已修（Phase G1 / commit `6195ae4c`，2026-08-06）**。根因：codegen 把 `#start`
+  块 gate 在 `start_hook.is_some()`，无 `fn start()` 的 task 既不发 STORE_STATE_FIELD
+  初始化也不注册 `#start`。修复后与 Phase A spawn init args 共存需 `locked_state_fields`
+  机制（shim 注入时 lock → #start STORE_STATE_FIELD 跳过 → TASK_LOOP 清除）。
+- VM bound-variable handler（`on { n int -> }`）报 Undefined variable —— **Phase G2 承接**
+  （见 §G2，需 runtime handler 栈帧重构）。
 
 实施中发现 §11.2 的根因描述需补强——实际缺陷比"三处"更广，且方法调用走的是
 **独立的 arg 发射循环**（非 §11.2 假设的 free-fn 循环）。修正后的完整修复：
@@ -446,3 +450,125 @@ if is_spec_param {
 
 **遗留（KNOWN-DEBT Plan 021）**：a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷（仅 let 位正确）。
 `register` 体用 `let a = Arc(tool)` 绕过；a2r 根因修复后可去 let 绑定直写。
+
+---
+
+## §13 Phase G — VM actor 两个 pre-existing bug 修复
+
+> **2026-08-06 追加**。Phase A 实施时发现两个 VM 既有缺陷（§8.3 遗留），本 Phase 收尾。
+> 两者都阻塞 EventSink 这类带绑定变量 + 默认值的 actor 在 VM 完整跑通（但 EventSink 走
+> a2r 路径，Phase B 已交付，不依赖 VM 侧）。worktree：`fix/vm-actor-state-bugs`。
+
+### §G1 — VM state 默认初始化 ✅ 落地（commit `6195ae4c`，已合并 master）
+
+**Bug**：task 有 state 字段但无 `fn start()` 时，声明的默认值（`count = 5`）被静默丢弃——
+state 从 0 起。
+
+**根因**：`vm/codegen.rs` `Stmt::TaskDef` 把整个 `#start` 块（STORE_STATE_FIELD 初始化 +
+`#start` export 注册 + TASK_LOOP）gate 在 `start_hook.is_some()` 上。无 `fn start()` 的 task：
+(a) 不发初始化字节码；(b) 不注册 `#start` → `shim_task_spawn_vm`（`vm/ffi/stdlib.rs` ~5906）
+的 `exports_by_name.get("{task}#start")` 返回 None，`unwrap_or(0)` 让 ip 指向 offset 0
+（模块入口），声明默认值丢失。
+
+**修复**（`vm/codegen.rs` ~3632）：gate 改为 `task_def.start_hook.is_some() || !task_def.state.is_empty()`；
+无 `fn start()` 时也发初始化 + TASK_LOOP + `#start` export；`fn start()` body 单独用内层
+`if let Some(ref start_hook)` 条件化。
+
+**与 Phase A 共存**：默认初始化现在生效后会覆盖 spawn 注入值，故恢复 `locked_state_fields`
+机制（初版 Phase A 因默认坏而移除，现在必须保留）：
+- `vm/task.rs`：`AutoTask` 加 `locked_state_fields: HashSet<u8>` + 构造函数初始化。
+- `vm/ffi/stdlib.rs shim_task_spawn_vm`：注入 init arg 时 `spawned.locked_state_fields.insert(i as u8)`。
+- `vm/engine.rs STORE_STATE_FIELD`：`if !task.locked_state_fields.contains(&field_idx)` 才写
+  （#start 默认初始化跳过注入字段）。
+- `vm/engine.rs TASK_LOOP`：`task.locked_state_fields.clear()`（#start 跑完后清除，handler 自由写）。
+
+**验证**：新增 2 VM 测试（`actor_state_default_init_without_fn_start`、
+`actor_spawn_init_arg_overrides_now_working_default`）；11 actor 测试全绿；回归 22 failed
+（master 23，**零新增，反而修了一个 flaky perf benchmark**）。
+
+### §G2 — VM bound-variable handler ⏳ 待实施（需 runtime 栈帧重构）
+
+**Bug**：`on { n int -> ... }` 的绑定变量 `n` 报 "Undefined variable: n"。message payload
+（运行时已 push 到 value 栈）未被绑定到 pattern 变量名。
+
+**根因**（已实证定位）：两层缺陷——
+
+| 层 | 缺陷 | 位置 |
+|---|---|---|
+| codegen | handler codegen 从未把栈上 message 存入命名 local（`pattern.binding_name()` 存在但 codegen 不调用） | `vm/codegen.rs ~3698`（handler 循环，`add_handler` 后直接编译 body，无 `push_scope`/`add_var`/`STORE_LOC`） |
+| runtime | **handler 无独立栈帧**——复用 task bp（=0），从不重建 frame；多 `send` 时 local 跨调用残留 | `vm/engine.rs ~1650`（`run_task_loop` 消息唤醒：`push_i32(msg)` + `ip=body_offset`，无 bp/sp 帧建立） |
+
+**实证**（初版尝试，已 revert）：
+- codegen 加 `push_scope` + `add_var(name)` + `STORE_LOC_0`（pop 栈上 message 入 local）：
+  **单次调用通过**（`count=10 + n=5 → 15`）。
+- 多次调用 stale：第二次 `n` 读到 15（上次的 count 值）而非新 message 7 → `15+15=30`。
+  尝试 runtime sp-reset（`task.ram.sp = bp+1` 后 push message）失败：count/n 槽位冲突
+  （count 的 #start 默认值残留在 bp+1）。
+
+**完整修复方案**（Phase G2，auto-lang worktree）：
+
+**G2.1 codegen 绑定（已验证单次调用）**：
+`vm/codegen.rs` handler 循环，`add_handler` 后、编译 body 前：
+```rust
+self.push_scope();
+if let Some(bind_name) = pattern.binding_name() {
+    let slot = self.add_var(bind_name.as_str());
+    match slot {
+        0 => self.emit(OpCode::STORE_LOC_0),
+        1 => self.emit(OpCode::STORE_LOC_1),
+        _ => { self.emit(OpCode::STORE_LOCAL); self.code.push(slot as u8); }
+    }
+}
+// compile body...
+self.pop_scope();
+```
+
+**G2.2 runtime 栈帧重构（关键，解决多次调用 stale）**：
+`vm/engine.rs ~1650` `run_task_loop` 消息唤醒路径，建立 handler 独立帧：
+```rust
+// 方案 A（推荐）：handler prologue 建立 bp 帧
+// 消息唤醒时：记录当前 sp 作 handler 帧基，push message，handler RET 时恢复。
+let handler_frame_sp = task.ram.sp;  // 帧前 sp
+task.ram.push_i32(msg_i32);
+task.ip = body_offset as usize;
+task.handler_frame_base = Some(handler_frame_sp);  // 新增 AutoTask 字段
+```
+配合 handler 的 RET（`vm/engine.rs ~5762` 区域）：
+```rust
+// 检测 handler RET（bp==0 且 in_message_loop）：恢复 sp 到 handler_frame_base，
+// 重新 TASK_LOOP 等下一消息。
+if task.bp == 0 && task.in_message_loop {
+    if let Some(base) = task.handler_frame_base.take() {
+        task.ram.sp = base;  // 清除 handler 局部区，下次调用干净
+    }
+}
+```
+- **`vm/task.rs`**：`AutoTask` 加 `handler_frame_base: Option<usize>` + 构造初始化 `None`。
+- **关键**：bp 仍为 0（task 不变），但 handler local 区（bp+1..）每次调用从
+  `handler_frame_base` 起干净——`STORE_LOC_0` 写 bp+1，`LOAD_LOC_0` 读 bp+1，跨调用不残留
+  （因为 RET 时 sp 复位清除了残留）。
+
+**G2.3 替代方案 B（若方案 A 的 bp 语义复杂）**：handler 建立真正的 bp 帧（CALL 风格）：
+唤醒时 push 老 bp、设 bp=sp、push message；handler RET 时恢复老 bp、sp。改动更大但语义最干净
+（与函数 CALL 一致）。需评估与现有 `task.bp`（spawn 时设 0）的兼容。
+
+**G2.4 WithBindings 多字段消息**：`on { Add(a int, b int) -> }`（`WithBindings` pattern）
+需 DUP message + 多次 STORE_LOC（每个 binding 一个槽）。本 Phase 先做 TypeBinding（单字段），
+WithBindings 留后续。
+
+**实施任务（Phase G2）**：
+- [ ] G2.1 codegen handler 绑定（`vm/codegen.rs`）—— 单次调用已验证
+- [ ] G2.2 runtime 栈帧重构（`vm/engine.rs` + `vm/task.rs`）—— 解决多次调用 stale
+- [ ] G2.3 选择方案 A（handler_frame_base）或 B（真 bp 帧），实证多 send 场景
+- [ ] G2.5 VM 测试：多 send 绑定变量（`actor_bound_var_multi_send`），期望每次 n = 当前 message
+- [ ] G2.6 回归：`cargo test --features test-trans` 零新增失败；VM actor 测试全绿
+- [ ] G2.7 WithBindings（多字段消息）—— 若范围允许，否则留后续
+
+**验收（Phase G2）**：
+- [ ] `on { n int -> }` 单次 + 多次 send：每次 n = 当前 message（不 stale）
+- [ ] EventSink 形态 actor（fn 指针 state + 绑定变量 handler）在 VM 端到端跑通
+- [ ] 现有 VM actor 测试零回归；a2r 路径不受影响
+
+**风险**：runtime 栈帧重构触及 `run_task_loop` / RET 语义，可能影响既有 actor 测试。
+方案 A（handler_frame_base）改动最小（仅 sp 复位），方案 B（真 bp 帧）语义最干净但改动大。
+建议先试 A，失败再 B。
