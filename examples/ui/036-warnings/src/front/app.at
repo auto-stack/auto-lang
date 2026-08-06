@@ -1,0 +1,74 @@
+// 036 — Plan 012 Batch A: silent-emission warnings.
+// One widget exercising all six P0 gaps; `auto build` prints the new
+// warnings (R008/R010), `--strict` turns them into hard failures.
+widget App {
+    use {
+        composable: useRecentFiles from "src/front/composables/useRecentFiles.ts"
+    }
+
+    msg Msg { Del(int), FacadeDel(int), DoOpen }
+
+    model {
+        var items []str = ["one", "two", "three"]
+        var draft_name str = "draft.md"
+        var cls str = "text-emerald-600"
+        var open bool = true
+    }
+
+    computed {
+        // gap 47: loose null semantics (covers undefined too)
+        has_draft => .draft_name != null
+        // gap 44: computed referencing another computed must use .value
+        is_expanded => .open
+        body_text => if .is_expanded { "expanded" } else { "collapsed" }
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "036 — codegen warnings" { class: "text-xl font-bold" }
+
+            // gap 30: the stray comma below is skipped with an R008 warning
+            // (previously it emitted a junk empty <div /> spacer).
+            text f"computed-in-computed: ${.body_text}"
+            ,
+            // gap 20: dynamic class expression — now a :class binding
+            // (previously dropped silently).
+            span {
+                class: .cls
+                text f"has_draft: ${.has_draft}"
+            }
+
+            row {
+                class: "space-x-2",
+                button "items.remove(0)" {
+                    class: "px-2 py-1 bg-blue-600 text-white rounded text-sm",
+                    onclick: .Del(0)
+                }
+                button "recentFiles.remove(0)" {
+                    class: "px-2 py-1 bg-gray-600 text-white rounded text-sm",
+                    onclick: .FacadeDel(0)
+                }
+                button "openerRef.Open(draft)" {
+                    class: "px-2 py-1 bg-green-600 text-white rounded text-sm",
+                    onclick: .DoOpen
+                }
+            }
+
+            text f"items: ${.items}" { class: "text-sm" }
+
+            EntryOpener { ref: "openerRef" }
+        }
+    }
+
+    on {
+        // gap 19a: .remove on a proven []str state keeps the splice mapping.
+        .Del(i) -> { .items.remove(i) }
+        // gap 19b: .remove on a facade composable passes through unchanged
+        // (R010 Info note) — the facade's own method is called.
+        .FacadeDel(i) -> { .recentFiles.remove(i) }
+        // gap 45: the child's exposed parameterized handler exists now.
+        .DoOpen -> { .openerRef.Open(.draft_name) }
+    }
+}

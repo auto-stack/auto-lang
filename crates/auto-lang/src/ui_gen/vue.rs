@@ -797,6 +797,18 @@ pub struct VueGenerator {
     /// Warnings from the last validate_sfc run (Plan 361).
     pub last_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning>,
 
+    /// Plan 012 Batch A: warnings raised DURING generation (dropped/degraded/
+    /// passed-through codegen behavior). RefCell because the expression
+    /// transpilers (`expr_to_js`, ts_adapter contexts) only hold `&self`.
+    /// Drained into `last_validation_warnings` at the end of `generate_sfc`
+    /// so every caller surfaces them through the single validation channel.
+    codegen_warnings: std::cell::RefCell<Vec<crate::ui_gen::validators::ValidationWarning>>,
+
+    /// Names of the current widget's `computed { ... }` properties. Set at
+    /// the start of script generation; used to unwrap computed refs
+    /// (`.c` → `c.value`) in script expressions (Plan 012 Batch A, gap 44).
+    computed_names: std::collections::HashSet<String>,
+
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
@@ -1006,6 +1018,8 @@ impl VueGenerator {
             store_deps: Vec::new(),
             uses_autodown: false,
             last_validation_warnings: Vec::new(),
+            codegen_warnings: std::cell::RefCell::new(Vec::new()),
+            computed_names: std::collections::HashSet::new(),
             handlers: Vec::new(),
             emit_events: Vec::new(),
             has_emit: false,
@@ -1228,6 +1242,8 @@ impl VueGenerator {
         // NOTE: project_api_functions is NOT cleared on reset — it's config-level,
         // loaded once from AUTO_API_FUNCTIONS env var, and persists across widget generation.
         self.used_handlers.clear();
+        self.computed_names.clear();
+        self.codegen_warnings.borrow_mut().clear();
         self.has_dark_mode = false;
         self.dark_mode_var = None;
         self.use_theme_toggle = false;
@@ -1493,6 +1509,13 @@ impl VueGenerator {
             self.state_types.insert(state.name.clone(), Self::auto_type_to_ts_type(&state.type_info));
         }
 
+        // Plan 012 Batch A (gap 44): register computed names so script-side
+        // expressions can unwrap computed refs (`.c` → `c.value`), matching
+        // the template side's auto-unwrap.
+        for computed_prop in &widget.computed {
+            self.computed_names.insert(computed_prop.name.clone());
+        }
+
         // Register prop names (props are NOT refs — no .value suffix in script)
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
@@ -1590,9 +1613,35 @@ impl VueGenerator {
             strict: false,
         };
         let warnings = crate::ui_gen::validate_sfc(&sfc, &widget.name, &ctx);
-        self.last_validation_warnings = warnings;
+        // Plan 012 Batch A: codegen-time warnings (dropped/degraded/passed-through
+        // behavior detected while generating) share the same channel. Dedup by
+        // (rule, message) — handler bodies are transpiled more than once
+        // (route pre-analysis + real generation), so R010 notes repeat.
+        let mut all_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+        let mut seen: std::collections::HashSet<(&'static str, String)> = std::collections::HashSet::new();
+        for w in self.codegen_warnings.borrow_mut().drain(..).chain(warnings.into_iter()) {
+            if seen.insert((w.rule, w.message.clone())) {
+                all_warnings.push(w);
+            }
+        }
+        self.last_validation_warnings = all_warnings;
 
         Ok(sfc)
+    }
+
+    /// Plan 012 Batch A: record a codegen warning through the unified channel.
+    /// Usable from `&self` contexts (expression transpilers). Warnings are
+    /// surfaced via `last_validation_warnings` after `generate_sfc` finishes.
+    fn warn(
+        &self,
+        rule: &'static str,
+        severity: crate::ui_gen::validators::Severity,
+        message: impl Into<String>,
+    ) {
+        let widget = self.current_widget.clone().unwrap_or_else(|| "?".to_string());
+        self.codegen_warnings.borrow_mut().push(
+            crate::ui_gen::validators::ValidationWarning::new(rule, severity, &widget, message),
+        );
     }
 
     /// Generate <script setup> content
@@ -1912,9 +1961,26 @@ impl VueGenerator {
         // treated as used even when the template never references them — the
         // parent calls them through a template ref (defineExpose below).
         // Marked before defineEmits so their emit() payloads are declared.
+        //
+        // Plan 012 Batch A (gap 45): match by BASE pattern, not exact key.
+        // Parameterized handlers are keyed ".Open(entry)" (Plan 374) and
+        // quoted emit names sanitize to different fn names — an exact-key
+        // lookup missed them, so the handler was never generated and
+        // `defineExpose({ Open })` silently resolved to a GLOBAL at runtime
+        // (`window.open`!), with vue-tsc passing clean.
         for name in &widget.exposes {
-            if widget.handlers.contains_key(&format!(".{}", name)) {
-                self.used_handlers.insert(name.clone());
+            let trimmed = name.trim_matches('"').trim_start_matches('.');
+            for pattern in widget.handlers.keys() {
+                let fn_name = self.pattern_to_handler_name(pattern);
+                let base = Self::base_pattern(pattern)
+                    .trim_start_matches('.')
+                    .trim_matches('"');
+                if base == trimmed
+                    || fn_name == trimmed
+                    || fn_name == Self::sanitize_ident(trimmed)
+                {
+                    self.used_handlers.insert(fn_name);
+                }
             }
         }
 
@@ -2540,12 +2606,96 @@ impl VueGenerator {
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
-                Ok(crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx))
+                // Plan 012 Batch A (gap 19): proven array/string receivers for
+                // the .remove/.contains method-mapping gate.
+                let (arrays, strings) = self.typed_collection_names();
+                ctx = ctx.with_typed_collections(arrays, strings)
+                    .with_facade_names(self.facade_local_names());
+                let body = crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx);
+                self.drain_ctx_warnings(&ctx);
+                Ok(body)
             }
             LogicPayload::Bytecode(_) => {
                 Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
             }
         }
+    }
+
+    /// Plan 012 Batch A (gap 19): split known state/prop names into proven
+    /// array / string receivers for the ts_adapter method-mapping gate.
+    fn typed_collection_names(
+        &self,
+    ) -> (std::collections::HashSet<String>, std::collections::HashSet<String>) {
+        let mut arrays = std::collections::HashSet::new();
+        let mut strings = std::collections::HashSet::new();
+        for (name, ty) in self.state_types.iter().chain(self.prop_types.iter()) {
+            if ty.ends_with("[]") {
+                arrays.insert(name.clone());
+            }
+            if ty == "string" {
+                strings.insert(name.clone());
+            }
+        }
+        (arrays, strings)
+    }
+
+    /// Plan 012 Batch A: forward ts_adapter passthrough notes into the
+    /// unified codegen warning channel (R010, advisory).
+    fn drain_ctx_warnings(&self, ctx: &crate::ui_gen::ts_adapter::AuraTsContext) {
+        for w in ctx.take_warnings() {
+            self.warn("R010", crate::ui_gen::validators::Severity::Info, w);
+        }
+    }
+
+    /// Plan 012 Batch A (gap 19 audit): expr_to_js-side receiver classifier
+    /// for the `.contains → .includes` gate, mirroring
+    /// `ts_adapter::method_map_decision` but driven by the generator's TS
+    /// type maps (state_types/prop_types).
+    fn method_map_decision_for_expr(
+        &self,
+        object: &crate::ast::Expr,
+    ) -> crate::ui_gen::ts_adapter::MethodMapDecision {
+        use crate::ui_gen::ts_adapter::MethodMapDecision as D;
+        let ty_of = |field: &str| {
+            self.state_types.get(field).or_else(|| self.prop_types.get(field))
+        };
+        // `.field` / `self.field` receiver.
+        if let crate::ast::Expr::Dot(obj, field) = object {
+            if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") {
+                return match ty_of(field.as_str()) {
+                    Some(ty) if ty.ends_with("[]") || ty == "string" => D::Map,
+                    Some(_) => D::PassWarn, // typed non-array member (facade)
+                    None if self.is_ext_composable_local(field.as_str()) => D::PassWarn,
+                    None => D::Map,         // unknown member — legacy behavior
+                };
+            }
+        }
+        // `store.*` facade chain.
+        fn chain_root(object: &crate::ast::Expr) -> Option<&str> {
+            match object {
+                crate::ast::Expr::Ident(n) => Some(n.as_str()),
+                crate::ast::Expr::Dot(obj, _) => chain_root(obj),
+                _ => None,
+            }
+        }
+        match chain_root(object) {
+            Some("store") => D::PassWarn,
+            Some(root) if self.is_ext_composable_local(root) => D::PassWarn,
+            _ => D::Map,
+        }
+    }
+
+    /// Plan 012 Batch A (gap 19): is `name` a `use { composable: ... }`
+    /// local (a facade object, e.g. `recentFilesStore`)? Such receivers
+    /// never get the `.remove → .splice` mapping.
+    fn is_ext_composable_local(&self, name: &str) -> bool {
+        self.ext_composables.iter().any(|(local, _)| local == name)
+    }
+
+    /// Plan 012 Batch A (gap 19): local names of `use { composable: ... }`
+    /// imports, for the ts_adapter facade gate.
+    fn facade_local_names(&self) -> std::collections::HashSet<String> {
+        self.ext_composables.iter().map(|(local, _)| local.clone()).collect()
     }
 
     /// Generate <template> content from view tree
@@ -2819,6 +2969,23 @@ impl VueGenerator {
 
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
+                // Plan 012 Batch A (gap 30): a stray comma between view children
+                // parses as an element with the literal tag "," and used to fall
+                // through to the unknown-tag `<div />` fallback — silently
+                // emitting junk spacer divs. Skip it and warn through the
+                // unified codegen warning channel.
+                if tag == "," {
+                    self.warn(
+                        "R008",
+                        crate::ui_gen::validators::Severity::Warning,
+                        "Stray comma between view children ignored. Commas are not \
+                         valid separators between elements in a view block; the comma \
+                         used to emit a junk `<div />` spacer into the template."
+                            .to_string(),
+                    );
+                    return Ok(String::new());
+                }
+
                 // Special handling for previewcard element (supports both previewcard and preview-card)
                 if tag == "previewcard" || tag == "preview-card" {
                     return self.generate_previewcard_html(props, events, children, indent);
@@ -4644,6 +4811,26 @@ impl VueGenerator {
                         classes.push(s.to_string());
                     }
                 }
+                // Plan 012 Batch A (gap 20): a NON-literal `class:` expression
+                // (`class: .cls`, `class: if ...`) used to be silently dropped
+                // here (`_ => {}`), emitting the bare element with no class at
+                // all. Bind it dynamically instead — same treatment as the
+                // dynamic `style:` prop (ternary for If, :class expr otherwise).
+                AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
+                    let ternary = self.if_expr_to_style_ternary(if_stmt);
+                    dynamic_binding = Some(match dynamic_binding {
+                        Some(existing) => format!("[{}, {}]", existing, ternary),
+                        None => ternary,
+                    });
+                }
+                AuraPropValue::Expr(other_expr) => {
+                    if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
+                        dynamic_binding = Some(match dynamic_binding {
+                            Some(existing) => format!("[{}, {}]", existing, expr_str),
+                            None => expr_str,
+                        });
+                    }
+                }
                 _ => {}
             }
         }
@@ -4786,11 +4973,33 @@ impl VueGenerator {
                     Ok(format!("props.{}", resolved))
                 } else if self.state_names.contains(&resolved.to_string()) {
                     Ok(format!("{}.value", resolved))
+                } else if self.computed_names.contains(resolved) {
+                    // Plan 012 Batch A (gap 44): computed refs need .value in
+                    // script expressions (template side auto-unwraps already).
+                    Ok(format!("{}.value", resolved))
                 } else {
                     Ok(resolved.to_string())
                 }
             }
+            // Plan 012 Batch A (gap 47): Auto `null`/`nil` in script expressions
+            // must emit JS `null`, not fall through to the catch-all's
+            // `undefined` (which also broke `!= null` comparisons).
+            Expr::Null | Expr::Nil | Expr::None => Ok("null".to_string()),
             Expr::Bina(left, op, right) => {
+                // Plan 012 Batch A (gap 47): `x != null` / `x == null` in the DSL
+                // means "has a value" / "is absent" — JS loose null check
+                // (`!= null` covers both null and undefined). Strict `!== null`
+                // would let `undefined` through; `!== undefined` (the old output)
+                // flipped semantics when a parent explicitly passes null.
+                let nullish = |e: &crate::ast::Expr| {
+                    matches!(e, Expr::Null | Expr::Nil | Expr::None)
+                };
+                if matches!(op, Op::Eq | Op::Neq) && (nullish(left) || nullish(right)) {
+                    let other = if nullish(left) { right } else { left };
+                    let other_js = self.expr_to_js(other)?;
+                    let op_js = if matches!(op, Op::Eq) { "==" } else { "!=" };
+                    return Ok(format!("{} {} null", other_js, op_js));
+                }
                 let left_js = self.expr_to_js(left)?;
                 let right_js = self.expr_to_js(right)?;
                 let op_js = Self::op_to_js(op);
@@ -4819,12 +5028,29 @@ impl VueGenerator {
                             return Ok(format!("props.{}", field_name));
                         } else if self.state_names.contains(&field_name.to_string()) {
                             return Ok(format!("{}.value", field_name));
+                        } else if self.computed_names.contains(field_name) {
+                            // Plan 012 Batch A (gap 44): a computed referenced
+                            // from another computed (or any script expression)
+                            // must be unwrapped — a bare ref is always truthy,
+                            // silently killing boolean conditions.
+                            return Ok(format!("{}.value", field_name));
                         } else {
-                            // Computed props and locals are plain consts in
-                            // <script setup>; computed refs need .value, but
-                            // without widget context here the bare name is the
-                            // least-wrong fallback (matches ts_adapter).
+                            // Locals are plain consts in <script setup>; the
+                            // bare name is the least-wrong fallback
+                            // (matches ts_adapter).
                             return Ok(field_name.to_string());
+                        }
+                    }
+                }
+                // Plan 012 Batch A (gap 44): idempotence guard for the legacy
+                // workaround — users who wrote `.c.value` explicitly must not
+                // get `c.value.value` now that `.c` auto-unwraps.
+                if field.as_str() == "value" {
+                    if let Expr::Dot(inner_obj, inner_field) = object.as_ref() {
+                        if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
+                            && self.computed_names.contains(inner_field.as_str())
+                        {
+                            return Ok(format!("{}.value", inner_field));
                         }
                     }
                 }
@@ -4882,6 +5108,28 @@ impl VueGenerator {
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
+                    // Plan 012 Batch A (gap 19 audit): gate `.contains →
+                    // .includes` on proven string/array receivers, mirroring
+                    // the ts_adapter policy. Facade/store receivers pass
+                    // through unchanged with an R010 note.
+                    if method.as_str() == "contains" {
+                        match self.method_map_decision_for_expr(object) {
+                            crate::ui_gen::ts_adapter::MethodMapDecision::Map => {}
+                            decision => {
+                                if matches!(decision, crate::ui_gen::ts_adapter::MethodMapDecision::PassWarn) {
+                                    self.warn(
+                                        "R010",
+                                        crate::ui_gen::validators::Severity::Info,
+                                        format!(
+                                            "`.contains()` on `{}` passed through unchanged: the receiver is not a proven string/array, so the `.includes` mapping no longer applies. If this IS a string/array, declare it with that type; if it's a facade/ext object, its own `.contains` method is now called as intended.",
+                                            object_js
+                                        ),
+                                    );
+                                }
+                                return Ok(format!("{}.contains({})", object_js, args_js.join(", ")));
+                            }
+                        }
+                    }
                     match method.as_str() {
                         "len" => Ok(format!("{}.length", object_js)),
                         // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
@@ -4962,7 +5210,11 @@ impl VueGenerator {
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
+                let (arrays, strings) = self.typed_collection_names();
+                ctx = ctx.with_typed_collections(arrays, strings)
+                    .with_facade_names(self.facade_local_names());
                 let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                self.drain_ctx_warnings(&ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
             }
             // Plan 043 M5: if/else-if/else in expression position (e.g. a
@@ -4977,6 +5229,9 @@ impl VueGenerator {
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
+                let (arrays, strings) = self.typed_collection_names();
+                ctx = ctx.with_typed_collections(arrays, strings)
+                    .with_facade_names(self.facade_local_names());
                 let mut out = String::from("(() => { ");
                 for (i, branch) in if_expr.branches.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "else if" };
@@ -4995,6 +5250,7 @@ impl VueGenerator {
                     out.push_str(" }");
                 }
                 out.push_str(" })()");
+                self.drain_ctx_warnings(&ctx);
                 Ok(out)
             }
             _ => Ok("undefined".to_string()),
@@ -9451,6 +9707,15 @@ export function cn(...inputs: ClassValue[]) {
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
     /// `useXxxStore()` function returning state refs and action functions.
     pub fn generate_store_composable(store: &crate::aura::AuraStore) -> String {
+        Self::generate_store_composable_full(store).0
+    }
+
+    /// Plan 012 Batch A: `generate_store_composable` + the codegen warnings
+    /// raised along the way (R010 method-mapping passthrough notes), so the
+    /// unified entry point can surface them through the validation channel.
+    pub fn generate_store_composable_full(
+        store: &crate::aura::AuraStore,
+    ) -> (String, Vec<crate::ui_gen::validators::ValidationWarning>) {
         use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
 
         let mut code = String::new();
@@ -9482,10 +9747,24 @@ export function cn(...inputs: ClassValue[]) {
         // Build ctx for handler transpilation (state_names → .value emission).
         let state_names: std::collections::HashSet<String> =
             store.state_vars.iter().map(|s| s.name.clone()).collect();
+        // Plan 012 Batch A (gap 19): proven array/string receivers for the
+        // .remove/.contains method-mapping gate.
+        let mut typed_arrays: std::collections::HashSet<String> = Default::default();
+        let mut typed_strings: std::collections::HashSet<String> = Default::default();
+        for sv in &store.state_vars {
+            let ty = Self::auto_type_to_ts_type(&sv.type_info);
+            if ty.ends_with("[]") {
+                typed_arrays.insert(sv.name.clone());
+            }
+            if ty == "string" {
+                typed_strings.insert(sv.name.clone());
+            }
+        }
         // Pass API imports so ts_adapter adds `await` to API calls.
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
-            .with_api_functions(store.api_imports.clone());
+            .with_api_functions(store.api_imports.clone())
+            .with_typed_collections(typed_arrays, typed_strings);
 
         // Plan 360: detect accent_color state so we can inject the palette
         // helpers and expose `accent_names` as a computed getter.
@@ -9674,7 +9953,22 @@ export function cn(...inputs: ClassValue[]) {
             );
         }
 
-        code
+        // Plan 012 Batch A: drain ts_adapter passthrough notes into the
+        // unified validation warning channel (R010, advisory).
+        let warnings: Vec<crate::ui_gen::validators::ValidationWarning> = ctx
+            .take_warnings()
+            .into_iter()
+            .map(|msg| {
+                crate::ui_gen::validators::ValidationWarning::new(
+                    "R010",
+                    crate::ui_gen::validators::Severity::Info,
+                    &store.name,
+                    msg,
+                )
+            })
+            .collect();
+
+        (code, warnings)
     }
 
     /// Plan 360: JS code injected into the store composable when `accent_color`
@@ -13799,6 +14093,319 @@ widget CodeView {
             sfc.contains(":style=\"'color: rgb(' + span.r + ',' + span.g + ',' + span.b + ')'\""),
             "dynamic style concat must render as :style binding:\n{}",
             sfc
+        );
+    }
+
+    // ====================================================================
+    // Plan 012 Batch A — silent-emission guards (gaps 19/20/30/44/45/47)
+    // Every test drives the REAL parse path (Parser → extract → generate);
+    // hand-built ASTs caused fake-green tests before.
+    // ====================================================================
+
+    /// Same as gen_sfc_from_widget_src, but also returns the warnings
+    /// collected through the unified codegen warning channel.
+    fn gen_sfc_and_warnings(
+        src: &str,
+    ) -> (String, Vec<crate::ui_gen::validators::ValidationWarning>) {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new();
+        let sfc = gen.generate(&widget).expect("generate SFC");
+        (sfc, gen.last_validation_warnings.clone())
+    }
+
+    fn warnings_for_rule<'w>(
+        warnings: &'w [crate::ui_gen::validators::ValidationWarning],
+        rule: &str,
+    ) -> Vec<&'w crate::ui_gen::validators::ValidationWarning> {
+        warnings.iter().filter(|w| w.rule == rule).collect()
+    }
+
+    // --- gap 30: stray comma between view children -----------------------
+
+    #[test]
+    fn test_gap30_stray_comma_warns_and_emits_nothing() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget CommaProbe {
+    view {
+        col {
+            button "a"
+            ,
+            button "b",
+        }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("<div />"),
+            "stray commas must not emit junk spacer divs:\n{sfc}"
+        );
+        let r008 = warnings_for_rule(&warnings, "R008");
+        assert!(
+            !r008.is_empty(),
+            "a stray comma must produce an R008 warning, got: {warnings:?}"
+        );
+        assert!(
+            r008.iter().all(|w| w.message.contains("comma")),
+            "R008 message should name the stray comma: {r008:?}"
+        );
+        // Both buttons still render.
+        assert!(sfc.contains(">a</button>"), "button a missing:\n{sfc}");
+        assert!(sfc.contains(">b</button>"), "button b missing:\n{sfc}");
+    }
+
+    // --- gap 20: dynamic class: expression on plain element --------------
+
+    #[test]
+    fn test_gap20_dynamic_class_ref_is_bound() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ClassProbe {
+    model { var cls str = "x" }
+    view {
+        col {
+            span {
+                class: .cls
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":class=\"cls\""),
+            "dynamic class: .cls must emit a :class binding (template auto-unwraps refs):\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_gap20_dynamic_class_if_emits_ternary() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ClassIfProbe {
+    model { var done bool = false }
+    view {
+        col {
+            span {
+                class: if .done { "line-through" } else { "text-muted" }
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":class=")
+                && sfc.contains("line-through")
+                && sfc.contains("text-muted"),
+            "class: if-expr must emit a :class ternary keeping both branches:\n{sfc}"
+        );
+    }
+
+    // --- gap 44: computed referencing another computed -------------------
+
+    #[test]
+    fn test_gap44_computed_ref_unwrapped_in_computed() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ComputedProbe {
+    model { var open bool = false }
+    computed {
+        is_expanded => .open
+        show_body => if .is_expanded { "yes" } else { "no" }
+    }
+    view { col { text "x" } }
+}
+"#);
+        assert!(
+            sfc.contains("is_expanded.value"),
+            "computed referencing another computed must use .value:\n{sfc}"
+        );
+        // The bare-ref bug emitted `is_expanded ? ...` (always truthy).
+        assert!(
+            !sfc.contains("(is_expanded ?"),
+            "bare computed ref would be always-truthy:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_gap44_explicit_value_suffix_not_doubled() {
+        // The pre-fix workaround (writing `.c.value` by hand) must keep
+        // compiling to `c.value`, not degrade to `c.value.value`.
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ComputedWorkaroundProbe {
+    model { var open bool = false }
+    computed {
+        is_expanded => .open
+        show_body => if .is_expanded.value { "yes" } else { "no" }
+    }
+    view { col { text "x" } }
+}
+"#);
+        assert!(
+            sfc.contains("is_expanded.value"),
+            "explicit .value workaround must still resolve:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("is_expanded.value.value"),
+            "explicit .value must not be doubled:\n{sfc}"
+        );
+    }
+
+    // --- gap 45: expose {} with parameterized handlers --------------------
+
+    #[test]
+    fn test_gap45_exposed_parameterized_handler_generated() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ExposeProbe {
+    msg Msg { Open(str) }
+    view { col { text "x" } }
+    on {
+        .Open(entry) -> { }
+    }
+    expose {
+        .Open
+    }
+}
+"#);
+        assert!(
+            sfc.contains("function Open(entry"),
+            "exposed parameterized handler must be generated as a local fn:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("defineExpose({ Open })"),
+            "expose must reference the generated handler:\n{sfc}"
+        );
+    }
+
+    // --- gap 19: .remove/.contains receiver gating ------------------------
+
+    const GAP19_SRC: &str = r#"
+widget RemoveProbe {
+    use { composable: useRecentFilesStore from "src/front/composables/useRecentFilesStore.ts" }
+    msg Msg { Del(int), FacadeDel(int), ExtDel(int), Check(int) }
+    model {
+        var items []int = []
+        var name str = ""
+        var has_x bool = false
+    }
+    view {
+        col {
+            button "del" { onclick: .Del(0) }
+            button "fdel" { onclick: .FacadeDel(0) }
+            button "xdel" { onclick: .ExtDel(0) }
+            button "check" { onclick: .Check(0) }
+        }
+    }
+    on {
+        .Del(i) -> { .items.remove(i) }
+        .FacadeDel(i) -> { store.facade.remove(i) }
+        .ExtDel(i) -> { .recentFilesStore.remove(i) }
+        .Check(i) -> { .has_x = .name.contains("x") }
+    }
+}
+"#;
+
+    #[test]
+    fn test_gap19_typed_array_remove_keeps_splice() {
+        let (sfc, warnings) = gen_sfc_and_warnings(GAP19_SRC);
+        assert!(
+            sfc.contains("items.value.splice(i, 1)"),
+            ".remove on a proven []int state must keep the splice mapping:\n{sfc}"
+        );
+        assert!(
+            warnings_for_rule(&warnings, "R010")
+                .iter()
+                .all(|w| !w.message.contains("`items`")),
+            "no passthrough note for a proven array receiver: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn test_gap19_store_facade_remove_passes_through() {
+        let (sfc, warnings) = gen_sfc_and_warnings(GAP19_SRC);
+        assert!(
+            sfc.contains("store.facade.remove(i)"),
+            "store.facade.remove must pass through unchanged:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("store.facade.splice"),
+            "facade receiver must not get the splice mapping:\n{sfc}"
+        );
+        assert!(
+            warnings_for_rule(&warnings, "R010")
+                .iter()
+                .any(|w| w.message.contains("store.facade")),
+            "facade passthrough must be noted (R010): {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn test_gap19_ext_composable_facade_remove_passes_through() {
+        let (sfc, warnings) = gen_sfc_and_warnings(GAP19_SRC);
+        assert!(
+            sfc.contains("recentFilesStore.remove(i)"),
+            "ext-composable facade .remove must pass through unchanged:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("recentFilesStore.splice"),
+            "ext-composable facade must not get the splice mapping:\n{sfc}"
+        );
+        assert!(
+            warnings_for_rule(&warnings, "R010")
+                .iter()
+                .any(|w| w.message.contains("recentFilesStore")),
+            "facade passthrough must be noted (R010): {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn test_gap19_typed_string_contains_maps_to_includes() {
+        let (sfc, warnings) = gen_sfc_and_warnings(GAP19_SRC);
+        assert!(
+            sfc.contains("name.value.includes('x')"),
+            ".contains on a proven str state must map to .includes:\n{sfc}"
+        );
+        assert!(
+            warnings_for_rule(&warnings, "R010")
+                .iter()
+                .all(|w| !w.message.contains("`name`")),
+            "no passthrough note for a proven string receiver: {warnings:?}"
+        );
+    }
+
+    // --- gap 47: != null / == null semantics ------------------------------
+
+    #[test]
+    fn test_gap47_null_checks_are_loose() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget NullProbe {
+    model { var x str = "" }
+    computed {
+        has_x => .x != null
+        no_x => .x == null
+    }
+    view { col { text "x" } }
+}
+"#);
+        assert!(
+            sfc.contains("x.value != null"),
+            "`.x != null` must compile to a loose null check (covers undefined):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("x.value == null"),
+            "`.x == null` must compile to a loose null check:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("!== undefined") && !sfc.contains("!== null"),
+            "strict undefined/null checks would change semantics:\n{sfc}"
         );
     }
 }

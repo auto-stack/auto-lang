@@ -4299,6 +4299,10 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
         .map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
 
+    // Plan 012 Batch A: surface codegen validation warnings on the build path
+    // (deduplicated — auto-man pre-scans each file before the real pass).
+    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
+
     // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
@@ -4363,6 +4367,9 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
+
+    // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
+    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
 
     // Write output if specified (legacy behavior)
     if let Some(out_dir) = output {

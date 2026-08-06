@@ -53,7 +53,9 @@ pub struct ValidationWarning {
 }
 
 impl ValidationWarning {
-    fn new(rule: &'static str, severity: Severity, widget: &str, message: impl Into<String>) -> Self {
+    /// Create a warning (pub since Plan 012 Batch A: generators outside this
+    /// module raise codegen warnings through the same channel).
+    pub fn new(rule: &'static str, severity: Severity, widget: &str, message: impl Into<String>) -> Self {
         Self {
             rule,
             severity,
@@ -63,7 +65,7 @@ impl ValidationWarning {
         }
     }
 
-    fn with_hint(mut self, hint: impl Into<String>) -> Self {
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
         self.fix_hint = Some(hint.into());
         self
     }
@@ -89,6 +91,56 @@ pub struct ValidationContext {
 }
 
 // ============================================================================
+// Plan 012 Batch A: unified warning channel — strict mode + print-once
+// ============================================================================
+
+/// Process-wide strict flag. When set, any non-Info validation warning makes
+/// the build fail (see `generate_component_from_file`). Set by
+/// `auto build --strict`; read by every codegen path that goes through the
+/// unified entry point.
+static STRICT_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Enable/disable strict mode (warning escalation to build failure).
+pub fn set_strict(strict: bool) {
+    STRICT_MODE.store(strict, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether strict mode is active.
+pub fn strict_enabled() -> bool {
+    STRICT_MODE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// True when the warning list contains anything that should fail a strict
+/// build (Warning or Error severity; Info is advisory only).
+pub fn has_blocking_warnings(warnings: &[ValidationWarning]) -> bool {
+    warnings.iter().any(|w| w.severity != Severity::Info)
+}
+
+/// Print warnings to stderr, deduplicated process-wide per
+/// (file, rule, widget, message). Used by build drivers whose pipeline calls
+/// the generator more than once for the same file (e.g. auto-man's
+/// sub-widget pre-scan + real pass) so each distinct warning prints once per
+/// process instead of twice.
+pub fn print_warnings_once(file_tag: &str, warnings: &[ValidationWarning]) {
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    let mut fresh: Vec<ValidationWarning> = Vec::new();
+    {
+        let mut seen = seen.lock().unwrap();
+        for w in warnings {
+            let key = format!("{}|{}|{}|{}", file_tag, w.rule, w.widget, w.message);
+            if seen.insert(key) {
+                fresh.push(w.clone());
+            }
+        }
+    }
+    if !fresh.is_empty() {
+        eprintln!("{}", format_warnings(&fresh));
+    }
+}
+
+// ============================================================================
 // 入口：对单个 SFC 跑所有规则
 // ============================================================================
 
@@ -105,6 +157,7 @@ pub fn validate_sfc(sfc: &str, widget_name: &str, ctx: &ValidationContext) -> Ve
     warnings.extend(r005_emit_without_declaration(sfc, widget_name));
     warnings.extend(r006_v_for_without_key(sfc, widget_name));
     warnings.extend(r007_autodown_dual_instance(sfc, widget_name));
+    warnings.extend(r009_define_expose_undefined(sfc, widget_name));
     warnings
 }
 
@@ -548,6 +601,81 @@ fn r007_autodown_dual_instance(sfc: &str, widget: &str) -> Vec<ValidationWarning
 }
 
 // ============================================================================
+// R009: defineExpose references a name not defined in <script setup>
+// ============================================================================
+
+/// R009: `defineExpose({ X })` 中的 X 在 script 里没有对应定义。
+///
+/// Plan 012 Batch A (gap 45): an exposed `on` handler that was never generated
+/// (e.g. parameterized handler not counted as used) leaves `defineExpose({ Open })`
+/// pointing at nothing — the reference silently resolves to a GLOBAL at runtime
+/// (`window.open`!), and vue-tsc does not flag it. This rule is the safety net:
+/// every exposed name must have a `function X` / `const X` / `let X` definition
+/// or appear in an import statement.
+fn r009_define_expose_undefined(sfc: &str, widget: &str) -> Vec<ValidationWarning> {
+    let script = extract_script(sfc);
+    if script.is_empty() {
+        return vec![];
+    }
+
+    // Find defineExpose({ ... }) — single or multi-line object literal.
+    let expose_re = regex_lite(r"(?s)defineExpose\s*\(\s*\{(.*?)\}\s*\)");
+    let Some(cap) = expose_re.captures(&script) else {
+        return vec![];
+    };
+    let body = cap.group(1);
+
+    // Exposed names: comma-separated identifiers (shorthand entries).
+    let name_re = regex_lite(r"[a-zA-Z_$][\w$]*");
+    let mut names: Vec<String> = Vec::new();
+    for nc in name_re.captures_iter(body) {
+        names.push(nc.group(0).to_string());
+    }
+    if names.is_empty() {
+        return vec![];
+    }
+
+    let mut warnings = Vec::new();
+    for name in names {
+        // Defined as a function, a const/let, destructured from defineProps,
+        // or brought in by an import statement?
+        let def_re = regex_lite(&format!(
+            r"(?:\bfunction\s+{0}\b)|(?:\bconst\s+(?:\{{\s*[^}}]*\b{0}\b|\b{0}\b))|(?:\blet\s+{0}\b)",
+            regex_escape(&name)
+        ));
+        if def_re.is_match(&script) {
+            continue;
+        }
+        let import_re = regex_lite(&format!(
+            r"(?m)^\s*import\s+[^;]*\b{0}\b[^;]*from",
+            regex_escape(&name)
+        ));
+        if import_re.is_match(&script) {
+            continue;
+        }
+        warnings.push(
+            ValidationWarning::new(
+                "R009",
+                Severity::Warning,
+                widget,
+                format!(
+                    "defineExpose references '{}' but no `function {}`, `const {}`, or import \
+                     defines it in <script setup>. At runtime the reference silently resolves \
+                     to a global binding (e.g. `open` → window.open) — the parent calling this \
+                     exposed member hits the wrong function or undefined.",
+                    name, name, name
+                ),
+            )
+            .with_hint(
+                "Expose only members the widget actually defines: an `on` handler, a model \
+                 var, a computed, a template ref, or a `use { fn: ... }` import.",
+            ),
+        );
+    }
+    warnings
+}
+
+// ============================================================================
 // 极简正则工具
 // ============================================================================
 
@@ -685,6 +813,54 @@ function Foo() { store.notes = []; }"#,
         let ctx = ValidationContext::default();
         let ws = r002_store_usage_without_import(&sfc, "Test", &ctx);
         assert_eq!(ws.len(), 0);
+    }
+
+    // --- R009 define-expose-undefined (Plan 012 Batch A, gap 45) ---
+
+    #[test]
+    fn r009_detects_undefined_exposed_name() {
+        // `defineExpose({ Open })` with no `function Open` / import — the
+        // runtime reference would silently resolve to a global (window.open).
+        let sfc = make_sfc(
+            "",
+            r#"const msg = ref('')
+defineExpose({ Open })"#,
+        );
+        let ws = r009_define_expose_undefined(&sfc, "Test");
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].rule, "R009");
+        assert_eq!(ws[0].severity, Severity::Warning);
+        assert!(ws[0].message.contains("Open"));
+    }
+
+    #[test]
+    fn r009_ok_when_exposed_name_is_defined() {
+        let sfc = make_sfc(
+            "",
+            r#"function Open(entry: string): void { console.log(entry) }
+defineExpose({ Open })"#,
+        );
+        let ws = r009_define_expose_undefined(&sfc, "Test");
+        assert!(ws.is_empty(), "defined function must not warn: {ws:?}");
+    }
+
+    #[test]
+    fn r009_ok_when_exposed_name_is_imported() {
+        let sfc = make_sfc(
+            "",
+            r#"import { useClock } from './useClock'
+const clock = useClock()
+defineExpose({ useClock })"#,
+        );
+        let ws = r009_define_expose_undefined(&sfc, "Test");
+        assert!(ws.is_empty(), "imported name must not warn: {ws:?}");
+    }
+
+    #[test]
+    fn r009_ignores_sfc_without_define_expose() {
+        let sfc = make_sfc("", r#"const msg = ref('')"#);
+        let ws = r009_define_expose_undefined(&sfc, "Test");
+        assert!(ws.is_empty());
     }
 
     // --- R003 autodown-css-missing ---

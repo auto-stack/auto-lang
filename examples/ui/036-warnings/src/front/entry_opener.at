@@ -1,0 +1,28 @@
+// Plan 012 Batch A (gap 45): a child widget exposing a PARAMETERIZED
+// handler. Before the fix, `expose { .Open }` did not count `.Open(entry)`
+// as used, so the handler was never generated and `defineExpose({ Open })`
+// silently resolved to the global `window.open` at runtime (R009 catches
+// any residual case).
+widget EntryOpener {
+    msg Msg { Open(str) }
+
+    model {
+        var last_opened str = ""
+    }
+
+    view {
+        col {
+            text f"last opened: ${.last_opened}" { class: "text-xs text-gray-500" }
+        }
+    }
+
+    on {
+        .Open(entry) -> {
+            .last_opened = entry
+        }
+    }
+
+    expose {
+        .Open
+    }
+}

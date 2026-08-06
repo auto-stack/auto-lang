@@ -1298,6 +1298,10 @@ export default router
                                     for comp in &comp_names {
                                         all_shadcn_components.insert(comp.clone());
                                     }
+                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                        &app_at.display().to_string(),
+                                        &gen.last_validation_warnings,
+                                    );
                                     all_components.push(("".to_string(), widget.name.to_lowercase(), widget_code, widget.name.clone()));
                                 }
                                 Err(e) => {
@@ -1308,6 +1312,11 @@ export default router
                     }
                 }
                 Err(e) => {
+                    // Plan 012 Batch A: in strict mode a codegen failure (e.g.
+                    // escalated validation warnings) must fail the whole build.
+                    if auto_lang::ui_gen::validators::strict_enabled() {
+                        return Err(format!("Failed to compile app.at: {}", e).into());
+                    }
                     println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
                 }
             }
@@ -1358,6 +1367,9 @@ export default router
                             all_store_files.extend(stores);
                         }
                         Err(e) => {
+                            if auto_lang::ui_gen::validators::strict_enabled() {
+                                return Err(format!("Failed to compile {}: {}", path.display(), e));
+                            }
                             println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
                         }
                     }
@@ -1418,6 +1430,10 @@ export default router
                                     for comp in &comp_names {
                                         all_shadcn_components.insert(comp.clone());
                                     }
+                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                        &path.display().to_string(),
+                                        &gen.last_validation_warnings,
+                                    );
                                     let stem = path.file_stem()
                                         .and_then(|s| s.to_str())
                                         .unwrap_or("component");
@@ -1430,6 +1446,9 @@ export default router
                         }
                     }
                     Err(e) => {
+                        if auto_lang::ui_gen::validators::strict_enabled() {
+                            return Err(format!("Failed to compile {}: {}", path.display(), e).into());
+                        }
                         println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
                     }
                 }
@@ -2762,6 +2781,12 @@ fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
 
+    // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
+    auto_lang::ui_gen::validators::print_warnings_once(
+        &at_path.display().to_string(),
+        &result.validation_warnings,
+    );
+
     // Validate API imports against the manifest (auto-man-specific)
     if !result.detected_api_imports.is_empty() {
         validate_api_imports(&result.detected_api_imports, root_dir)?;
@@ -2783,6 +2808,11 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
     };
     let result = generate_component_from_file(at_path, opts)
         .map_err(|e| format!("{}", e))?;
+
+    auto_lang::ui_gen::validators::print_warnings_once(
+        &at_path.display().to_string(),
+        &result.validation_warnings,
+    );
 
     if !result.detected_api_imports.is_empty() {
         validate_api_imports(&result.detected_api_imports, root_dir)?;
