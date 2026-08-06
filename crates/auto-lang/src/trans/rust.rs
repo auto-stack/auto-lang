@@ -1280,6 +1280,27 @@ impl RustTrans {
                                 }
                                 return format!("{}<dyn {}>", base, spec.borrow().name);
                             }
+                            Type::User(usr) => {
+                                // Plan 390 §15.11-followup (cross-module spec): a spec
+                                // IMPORTED via `use mod: Spec` reaches here as Type::User
+                                // (not Type::Spec — that's only for same-module declarations).
+                                // The §15.11 single-wrap (Arc<dyn T>) only matched Type::Spec,
+                                // so cross-module `Arc<Tool>` rendered `Arc<Box<dyn Tool>>`
+                                // (the inner User→Box<dyn T> fallback, then Arc-wrapped) — a
+                                // double-wrap mismatching same-module single-wrap storage.
+                                // Mirror the Type::Spec branch: if the User name is a known spec
+                                // (spec_decls covers same-module + sibling imports), render single
+                                // Arc<dyn T>. (Fn handled above via Type::Spec; a cross-module Fn
+                                // spec also lands here — give it the same + Send + Sync treatment.)
+                                let name = usr.name.to_string();
+                                if self.spec_decls.contains_key(name.as_str()) {
+                                    if name == "Fn" {
+                                        return format!("{}<dyn Fn + Send + Sync>", base);
+                                    }
+                                    return format!("{}<dyn {}>", base, name);
+                                }
+                                // Not a known spec — fall through to default rendering below.
+                            }
                             Type::Fn(params, ret) => {
                                 let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
                                 let ret_str = if matches!(&**ret, Type::Void) {
@@ -1491,6 +1512,22 @@ impl RustTrans {
                                     return format!("{}<dyn Fn + Send + Sync>", base);
                                 }
                                 return format!("{}<dyn {}>", base, spec.borrow().name);
+                            }
+                            Type::User(usr) => {
+                                // Plan 390 §15.11-followup (cross-module spec): see the
+                                // matching block in rust_type_name (return position variant).
+                                // A spec IMPORTED via `use mod: Spec` is Type::User here, not
+                                // Type::Spec; without this branch `Arc<Tool>` (Tool imported)
+                                // rendered `Arc<Box<dyn Tool>>` (double-wrap). Render single-wrap
+                                // Arc<dyn T> when the User name is a known spec.
+                                let name = usr.name.to_string();
+                                if self.spec_decls.contains_key(name.as_str()) {
+                                    if name == "Fn" {
+                                        return format!("{}<dyn Fn + Send + Sync>", base);
+                                    }
+                                    return format!("{}<dyn {}>", base, name);
+                                }
+                                // Not a known spec — fall through.
                             }
                             Type::Fn(params, ret) => {
                                 let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
