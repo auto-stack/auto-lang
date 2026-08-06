@@ -20,8 +20,7 @@ impl Reg {
     }
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         let n = tool.name();
-        let a = Arc::new(tool);
-        self.tools.insert(n, a);
+        self.tools.insert(n, Arc::new(tool));
     }
 }
 
