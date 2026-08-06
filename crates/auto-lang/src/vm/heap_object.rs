@@ -128,6 +128,11 @@ pub enum TypeTag {
     /// Opaque Rust stdlib type wrapper (Instant, Duration, PathBuf, etc.)
     /// String stores the Rust type name for dynamic dispatch
     RustStdlib(String),
+
+    // Plan 390 §15 Phase H1: ObjectData (CREATE_OBJ-produced key-value objects)
+    /// Object literal / struct instance stored as HashMap<ValueKey, Value>.
+    /// Migrated from the standalone `objects` registry to `heap_objects`.
+    ObjectData,
 }
 
 impl TypeTag {
@@ -155,6 +160,7 @@ impl TypeTag {
             TypeTag::SpecializedPair(name) => format!("[Specialized:{}]", name).into(),
             TypeTag::CustomType => "CustomType".into(),
             TypeTag::RustStdlib(name) => name.clone().into(),
+            TypeTag::ObjectData => "ObjectData".into(),
         }
     }
 

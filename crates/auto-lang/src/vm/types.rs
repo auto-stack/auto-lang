@@ -167,6 +167,17 @@ impl Default for ObjectData {
     fn default() -> Self { Self::new() }
 }
 
+/// Plan 390 §15 Phase H1: impl HeapObject so ObjectData can live in the
+/// unified `heap_objects` registry alongside List/Map/GenericInstance/etc.
+/// This is the first step of the 4-registry → 1-registry consolidation.
+impl crate::vm::heap_object::HeapObject for ObjectData {
+    fn type_tag(&self) -> crate::vm::heap_object::TypeTag {
+        crate::vm::heap_object::TypeTag::ObjectData
+    }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+
 // ============================================================================
 // VmRefData
 // ============================================================================
