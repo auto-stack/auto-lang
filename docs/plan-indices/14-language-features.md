@@ -32,9 +32,10 @@ Plans covering core language syntax additions and enhancements, from the ext sta
 | 207 | Enum Multi-Field Destructuring | ✅ | Multi-binding destructuring and named arg construction for enum variants |
 | 208 | Result Heap Object | ✅ | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
 | 228 | Hetero Enum Tuple Syntax | ✅ | Parser requires `(T, T)` for multi-field variants |
+| 395 | 调用泛型实参 (turbofish) | ⏳ | Generic type args on calls — `expr.method<Type>(args)` 语法 → a2r turbofish `::<T>`；消除 auto-ai 的 sed workaround |
 
 ## Status Summary
-- Completed: 9 | Partial: 2 | Planned: 12 | Deprecated: 1
+- Completed: 9 | Partial: 2 | Planned: 13 | Deprecated: 1
 
 ## Key Achievements
 - `ext` statement (Plan 035) enables idiomatic OOP-style API design, completed in just 2 days
