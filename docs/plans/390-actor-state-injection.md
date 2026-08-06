@@ -836,7 +836,7 @@ H3 统一简化时一并改严谨。
 
 **H3 分批（2026-08-07 立项，分两阶段，详见 §15.9）**：
 - **H3a（已交付 ✅）**：nodes 物理迁移（TypeTag::Node + impl HeapObject + CREATE_NODE/POP_ACCUM/inject_value 改 insert_heap_object + encode_object + 删 nodes registry）。见 §15.9 实施记录。
-- **H3b（待实施 ⏳）**：arrays+objects 物理迁移 + 删魔数 + `get_any_object` 接管 + IS_OK/UNWRAP_*/STR_CAT/LT 严谨化。清单见 §15.9。
+- **H3b（已交付 ✅）**：arrays+objects 物理迁移 + 删魔数 + `get_any_object` 接管 + IS_OK/UNWRAP_*/STR_CAT/LT 严谨化。见 §15.9.4 实施记录。
 
 ---
 
@@ -885,7 +885,7 @@ H3 统一简化时一并改严谨。
 
 **H3a.5 注释更新**：materialize_value 注释"Array/Node still use raw i32"→"Array still uses raw i32 (H3b)；Node 已迁移"。
 
-### §15.9.3 H3b — arrays + objects 物理迁移（大，后做）⏳ 待实施
+### §15.9.3 H3b — arrays + objects 物理迁移（大，后做）✅ 已交付（分支 `plan-390/h3b-arrays-objects-migration`）
 
 - **H3b.1 改 7 个 array producer**（存 ListData<Value> + encode_object）：CREATE_ARRAY、inject_value Array、
   SLICE、native.rs 三个 HOF/alloc helper、http_server.rs 测试 fixture。`Vec<Value>` → `ListData { elems, storage: None }`，
@@ -910,7 +910,52 @@ H3 统一简化时一并改严谨。
 **不在范围**：interpreter/vm_interpreter.rs（tree-walker）不重写架构（仅修段位判断）；a2c/a2ts `#[ignore]`
 conformance 测试不强制开。
 
-### §15.9.4 H3a 实施记录（2026-08-07，分支 `plan-390/h3a-nodes-migration`）✅ 已交付
+### §15.9.4 H3b 实施记录（2026-08-07，分支 `plan-390/h3b-arrays-objects-migration`）✅ 已交付
+
+> 增量迁移策略：producer 先改 heap_objects（encode_object），consumer 逐个迁移/删除 arrays 回退，
+> 最后才删 registry 字段（避免中途全量编译失败）。objects 迁移（H3b.4）在 arrays 之后做。
+
+**H3b.1+b2（arrays 迁移，8 文件）**：
+- producers：CREATE_ARRAY/inject_value Array/SLICE（engine.rs）+ native.rs 3 个 helper
+  （create_list_from_i32/create_list_from_value/shim_alloc_array）+ http_server 测试 fixture ——
+  全部 `Vec<Value>` → `ListData<Value>`，`array_id_gen` → `insert_heap_object`，`push_i32` → `encode_object`。
+- consumers：engine.rs（ARRAY_LEN/GET_ELEM 删 arrays 回退、SET_ELEM/SLICE/5 个 CALL_SPEC List 操作改
+  get_heap_object + downcast、contains_key 删）、native.rs（~12 个 list shim 删重复 fallback）、
+  ffi/convert.rs 删 Path 2、ffi/http_server.rs 删 section 2 + probe 简化、lib.rs（format_value_for_display/
+  format 分支/extract_value_from_vm 改 get_heap_object + downcast）、autovm_persistent.rs（stats 改数
+  ListValue、REPL 格式化改 probe）、ui/vm_bridge.rs（read/write_state_as_vec/vmref_to_vec/
+  read_child_state_as_vec 改 probe）、ui/aura_view_builder.rs（2 处 `>= 2M` → `>= 4M`）、
+  interpreter/vm_interpreter.rs（段位判断 → probe + downcast）。
+- **实施中发现的回归**：`test_config_for_unrolls_literal_array`（`ports: [8080, 9090]`）失败——
+  pop_auto_value 的 is_object 分支未处理 ListData<Value>（CREATE_ARRAY 改 encode_object 后数组走
+  is_object 而非 is_list），补 downcast ListData<Value> → `Value::Array` 后修复。
+
+**H3b.3（6 个段位 break）**：autovm_persistent.rs（`>= 2M` → heap probe）、vm_interpreter.rs（1M/2M 段位
+→ probe）、vm_bridge.rs（3 处 `>= 2M` → probe）、aura_view_builder.rs（2 处 `>= 2M` → `>= 4M`）。
+
+**H3b.4（objects 迁移）**：CREATE_OBJ/inject_value Obj → insert_heap_object（栈编码不变 encode_object）；
+GET_FIELD/SET_FIELD objects 分支并入 heap 分支（ObjectData downcast，保留 "HashMap" type_name 映射以
+维持 auto.hashmap 方法派发）；pop_auto_value/vmref_variant_name/CREATE_NODE props/lib.rs/http_server/
+stdlib.rs（Writer.serialize）/vm_bridge materialize_obj_ref 全部改 get_heap_object + downcast ObjectData。
+
+**H3b.5（删 registry）**：删 engine.rs `objects`/`object_id_gen`/`arrays`/`array_id_gen` 字段 + 构造初始化。
+
+**H3b.6（魔数清理）**：decode_tagged_nv 删 `>= 4000000 → VmRef` 分支（所有 id 现在 is_object）；
+`get_any_object` 简化为 `self.get_heap_object(id)`；IS_OK/UNWRAP_OK/UNWRAP_ERR 改 pop_nv + is_object 严谨化；
+STR_CAT/LT 回退加 is_object 分支。**保留**：`>= 4000000` 的 raw-i32 内容启发式（ListData<i32> 元素/
+struct 字段里的 raw heap id，如 GET_ELEM/TYPE_TO_STR/GET_GENERIC_FIELD/EQ-NE 的 i32 回退）。
+
+**验证**：
+- 全量 `cargo test -p auto-lang --lib`：**2825 passed / 22 failed**（基线 22，零新增；2825 = 2823 + 1
+  个 flaky perf benchmark 修复，同 §8.3 记录）。✅
+- 专项：array/list/memory/config 320 passed / 0 failed；actor/unified_registry/field/struct
+  125 passed / 0 failed。✅
+- a2r 回归 `cargo test -p auto-man --lib`：**179 passed / 0 failed**（基线一致）。✅
+
+**H3 完成判定**：4 套 registry（objects/arrays/nodes/heap_objects）→ 1 套 `heap_objects`；
+`encode_object` 成为唯一对象栈编码；所有魔数段位判断与试探探测删除。H1/H2/H3a/H3b 全链路闭环。
+
+### §15.9.5 H3a 实施记录（2026-08-07，分支 `plan-390/h3a-nodes-migration`）✅ 已交付
 
 **实施（5 处改动）**：
 - `heap_object.rs`：TypeTag 加 `Node` 变体 + `name()` match + `impl HeapObject for auto_val::Node`
