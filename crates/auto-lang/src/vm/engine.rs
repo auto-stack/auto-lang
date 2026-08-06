@@ -1720,24 +1720,33 @@ impl AutoVM {
                     if let Some(msg) = drained {
                         let task_type = task.task_type_name.clone().unwrap_or_default();
                         if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg) {
-                            // Plan 390 §15 H2 (handler-frame fix): a handler runs
-                            // with bp=0 (the task never re-establishes a frame), so
-                            // its locals live at bp+1..bp+N and the on-stack message
-                            // + expression temporaries must sit ABOVE that region or
-                            // they alias the same low slots. #start does not emit a
-                            // RESERVE_STACK for the task frame, and the G2.2 RET path
-                            // resets sp to the previous handler_frame_base (which can
-                            // be 0/1), so without reserving here a single-var handler
-                            // only works by luck and a WithBindings handler with >=2
-                            // bindings corrupts its locals (DUP/GET_FIELD temporaries
-                            // overwrite the binding slots). Reserve a safe band of
-                            // slots for the handler locals before pushing the message,
-                            // anchoring handler_frame_base above the reserved region.
-                            const HANDLER_LOCALS_BAND: usize = 16;
-                            let band_top = task.bp + 1 + HANDLER_LOCALS_BAND;
-                            while task.ram.sp < band_top {
+                            // Plan 390 §15 G2-refactor (方案 B): 给 handler 建立真正的
+                            // bp 栈帧（CALL 风格），根治 G2 方案 A（H2 的 HANDLER_LOCALS_BAND
+                            // 预留固定 16 槽）的 handler locals 与 message/表达式临时值重叠
+                            // 问题。深嵌套表达式或多字段 WithBindings 会穿透固定预留带。
+                            //
+                            // 帧布局（低 → 高）:
+                            //   [ret_ip, old_bp, <locals 区 16 槽>, message, <表达式临时值>]
+                            //    bp 指向 old_bp；handler locals 在 bp+1..bp+16；message 与
+                            //    临时值在 locals 之上，永不重叠。
+                            //
+                            // ret_ip = actor park 时的 ip（#start 里 TASK_LOOP 之后的 RET）。
+                            // handler RET 把 ip 恢复成 ret_ip → 执行那条 RET → bp 已恢复为
+                            // old_bp(=0) → engine.rs RET 的 bp==0 短路 Terminated → 下方
+                            // in_message_loop catch 把 Terminate 转回 Waiting（重 park）。
+                            // 无需特殊 ret_ip 哨兵，复用 #start 尾部 RET。
+                            const HANDLER_LOCALS_SLOTS: usize = 16;
+                            let saved_ip = task.ip;   // park 时 ip（TASK_LOOP 后的 RET）
+                            let saved_bp = task.bp;   // 0（parked actor）
+                            // 1. CALL 风格建帧：push ret_ip, push old_bp, bp = sp - 1
+                            task.ram.push_i32(saved_ip as i32);
+                            task.ram.push_i32(saved_bp as i32);
+                            task.bp = task.ram.sp - 1;
+                            // 2. 预留 locals 区（bp+1 .. bp+HANDLER_LOCALS_SLOTS）
+                            for _ in 0..HANDLER_LOCALS_SLOTS {
                                 task.ram.push_i32(0);
                             }
+                            // 3. push message（在 locals 区之上）
                             // Plan 390 §14 L3: structured messages (Value::VmRef
                             // from a WithBindings variant constructor) are pushed
                             // as object refs so the handler can GET_FIELD each
@@ -1752,12 +1761,9 @@ impl AutoVM {
                                 auto_val::Value::Bool(b) => { task.ram.push_i32(if *b {1} else {0}); }
                                 _ => { task.ram.push_i32(0); }
                             }
-                            // Plan 390 §G2.2 + H2: record the sp just BEFORE the
-                            // message was pushed as the handler's frame base. The
-                            // handler RET path resets sp here so the reserved local
-                            // band + pushed message are discarded cleanly before the
-                            // next invocation (no stale locals across sends).
-                            task.handler_frame_base = Some(task.ram.sp - 1);
+                            // 方案 B：bp 帧自带 unwind 信息（old_bp/ret_ip），不再需要
+                            // handler_frame_base 字段做 sp 复位（RET 的标准 unwind 已完成）。
+                            task.handler_frame_base = None;
                             task.ip = body_offset as usize;
                             task.current_handler_has_context = has_context;
                             task.status = TaskStatus::Ready;
@@ -1856,15 +1862,13 @@ impl AutoVM {
                         // next message. Without this, the actor dies after its
                         // first handler returns.
                         if new_status == TaskStatus::Terminated && task.in_message_loop {
-                            // Plan 390 §G2.2: a handler just RET'd. Reset the value
-                            // stack to the handler's frame base (captured at message-
-                            // wake, before the message was pushed) so handler locals
-                            // (bound pattern var + body locals) don't carry stale
-                            // values into the NEXT message invocation. The task reuses
-                            // bp=0 across all handler dispatches, so without this the
-                            // local region at bp+1.. persists.
-                            if let Some(base) = task.handler_frame_base.take() {
-                                task.ram.sp = base;
+                            // Plan 390 §15 G2-refactor (方案 B): handler RET 已通过真 bp 帧
+                            // 的标准 unwind 恢复 sp/bp（old_bp=0）。但 RET 恢复的 ip 指向
+                            // #start 尾部 RET，那条 RET 执行时会读 n_args 字节推进 ip，
+                            // 污染下次 wake 的 saved_ip。故这里把 ip 重置到 TASK_LOOP 时
+                            // 记录的稳定 park_ip，使 actor 干净等待下一条消息。
+                            if let Some(park) = task.park_ip {
+                                task.ip = park;
                             }
                             task.status = TaskStatus::Waiting("message_loop".to_string());
                         } else {
@@ -6477,6 +6481,11 @@ impl AutoVM {
 
                     // Set task to waiting state (will be woken when messages arrive)
                     task.status = TaskStatus::Waiting("message_loop".to_string());
+                    // Plan 390 §15 G2-refactor (方案 B): 记录稳定的重 park ip（TASK_LOOP
+                    // 之后的 RET）。handler RET 后的 RET-catch 会把 ip 重置到这里，使
+                    // actor 干净地等待下一条消息，不依赖 handler RET 恢复的 ip（那个 ip
+                    // 指向 #start 尾部 RET，执行后会推进 ip 污染下次 wake 的 saved_ip）。
+                    task.park_ip = Some(task.ip);
 
                     if crate::is_vm_debug() {
                         eprintln!("[TASK_LOOP] Task {} entering message loop for type {}",

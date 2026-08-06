@@ -790,7 +790,49 @@ H3 统一简化时一并改严谨。
 1. **H1 漏交 `get_any_object`**：H1 commit 只做 ObjectData impl HeapObject，未补统一查询 helper（H2 补上）。
 2. **G2 handler 帧结构性 bug**：交接文档假设「H2 栈编码统一后 L3 Step 1-4 自然打通」，但实测 G2 的方案 A
    （handler_frame_base 仅复位 sp，bp=0）在 WithBindings ≥2 bindings 时 handler locals 与临时值重叠，
-   需在唤醒路径预留 HANDLER_LOCALS_BAND。此修复对单变量 G2 行为不变（预留 0 不改变已有通过的测试）。
+   需在唤醒路径预留 HANDLER_LOCALS_BAND（H2 的临时补丁）。**此补丁是启发式（固定 16 槽），深表达式/多字段
+   仍可能穿透 → 已在 §15.8 用方案 B（真 bp 帧）根治。**
+
+### §15.8 Phase G2-refactor — handler 帧根治（方案 B：真 bp 帧）✅ 落地（2026-08-06，分支 `plan-390/g2-handler-frame-b`）
+
+> 把 H2 临时引入的 `HANDLER_LOCALS_BAND=16` 启发式补丁换成**真正的 bp 栈帧**（CALL 风格），
+> 根治 G2 handler 帧的结构性问题。语义统一到函数调用的栈帧模型：handler locals（bp+1..bp+N）
+> 永远在 message/表达式临时值之上，不再靠「预留固定带」回避冲突。
+
+**实施（4 处改动）**：
+- **唤醒路径建真帧**（engine.rs `run_task_loop`）：替换 HANDLER_LOCALS_BAND 预留块，改为 mirror CALL 的
+  三步建帧：`push(ret_ip=saved_ip)` → `push(old_bp=saved_bp)` → `bp = sp - 1`，再预留 `HANDLER_LOCALS_SLOTS=16`
+  槽作 locals 区（bp+1..bp+16），最后 push message（在 locals 之上）。帧布局：
+  `[ret_ip, old_bp, <locals 16>, message, <temps>]`。
+- **handler RET 跟 n_args=0 字节**（codegen.rs:3792/3808）：handler 现运行在真 bp 帧（bp≠0），RET 会执行
+  `new_sp = bp - n_args`；裸 RET（不跟操作数字节）会读到下一条字节码当 n_args。改 `emit(RET); push(0)`，
+  对照普通函数 RET（codegen.rs:1422-1423）。
+- **`park_ip` 字段**（task.rs + TASK_LOOP）：TASK_LOOP yield 时记录稳定重 park ip（#start 尾部 RET 地址）。
+  handler RET 把 ip 恢复成 ret_ip（= #start RET），那条 RET 执行时读 n_args 字节推进 ip，会污染下次 wake
+  的 saved_ip。RET-catch 把 ip 重置到 park_ip，使 actor 干净等待下一条消息。
+- **RET-catch 简化**（engine.rs）：保留 `in_message_loop + Terminated → Waiting` 转换，但删方案 A 的
+  sp 手动复位（bp 帧的标准 unwind 已恢复 sp/bp）；新增 `ip = park_ip` 重置。
+
+**实施中实证发现的关键陷阱**（方案 B 的「暗礁」）：
+- **RET 的 n_args 字节**：RET 恒读 1 字节操作数（engine.rs RET 处理器），bp≠0 时 `new_sp = bp - n_args`。
+  handler codegen 原本裸 `emit(RET)`，靠 bp==0 短路才没崩；方案 B 给 handler 真 bp 后必须显式跟 n_args 字节。
+- **ret_ip 重 park 污染**：handler RET 恢复 ip=ret_ip（#start 尾部 RET），那条 RET 执行后 ip 推进到 RET 之后，
+  下次 wake 的 saved_ip 捕获到污染值（实测 saved_ip 11→13→20→28 漂移，actor 反复重入 handler 产生重复输出）。
+  park_ip 字段根治此问题。
+
+**不在范围（明确不做）**：
+- PROPAGATE_MAY（`?`）路径：Auto task handler 语法（`on { msg -> }`）目前不支持 `?`，codegen 不在 handler
+  内 emit PROPAGATE_MAY。未来若支持需同步给 handler 帧处理 `?` 的 unwind。
+- `current_msg_context` / REPLY：唤醒路径从不设 current_msg_context（独立遗留），方案 B 不修不破。
+- `#start` 加帧：#start 不用 LOAD_LOC/STORE_LOC（state 走 STORE_STATE_FIELD，bp 无关），bp=0 安全，不触动。
+
+**验证**：
+- 新增边界测试 `actor_withbindings_deep_expr_three_fields`：3 字段 WithBindings + 深嵌套表达式
+  `((a+b)*(a+c))-(b*c)`（验证 locals 不被表达式临时值穿透）→ 通过。
+- 13 actor 测试全绿（单变量 G2 + L3 多字段 + 新边界）；全量 `cargo test -p auto-lang --lib`：
+  **2823 passed / 22 failed**（基线 22，零新增）；a2r `cargo test -p auto-man --lib`：**179 passed / 0 failed**。
+
+**遗留**：`handler_frame_base` 字段（task.rs）在方案 B 后不再使用（park_ip 取代），保留字段待 H3 一并清理。
 
 **H3 待办（明确推迟）**：
 - CREATE_ARRAY/CREATE_NODE/POP_ACCUM/SLICE 仍 `push_i32`（arrays/nodes 物理存储 + 栈编码均不动）。

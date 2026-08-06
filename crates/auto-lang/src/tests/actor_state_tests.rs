@@ -201,3 +201,31 @@ fn main() {
     assert!(s.contains("8"), "multi-field msg1 (total=8): stdout={:?} result={:?}", s, r);
     assert!(s.contains("38"), "multi-field msg2 (total=38): stdout={:?} result={:?}", s, r);
 }
+
+/// Plan 390 §15 G2-refactor (方案 B) 边界测试：3 字段 WithBindings + 深嵌套表达式。
+/// 方案 A 的 HANDLER_LOCALS_BAND=16 预留带在「多字段 + 深表达式临时值」下可能被穿透
+/// （handler locals 与 DUP/GET_FIELD/算术临时值重叠）。方案 B 的真 bp 帧使 locals
+/// （bp+1..bp+16）永远在 message/临时值之上，根治此问题。
+/// `Add3(a,b,c)` 三字段 + `((a+b)*(a+c))-(b*c)` 深表达式 → 验证字段不串、表达式不串。
+#[test]
+fn actor_withbindings_deep_expr_three_fields() {
+    let code = r#"
+task Calc3 {
+    total = 0
+    on { Add3(a int, b int, c int) -> {
+        total = total + ((a + b) * (a + c)) - (b * c)
+        print(total)
+    } }
+}
+fn main() {
+    let h = Task.spawn("Calc3", 16)
+    h.send(Add3(2, 3, 5))
+    h.send(Add3(1, 1, 1))
+}
+"#;
+    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    // msg1: ((2+3)*(2+5))-(3*5) = (5*7)-15 = 35-15 = 20; total = 0+20 = 20
+    // msg2: ((1+1)*(1+1))-(1*1) = (2*2)-1 = 3; total = 20+3 = 23
+    assert!(s.contains("20"), "deep-expr msg1 (total=20): stdout={:?} result={:?}", s, r);
+    assert!(s.contains("23"), "deep-expr msg2 (total=23): stdout={:?} result={:?}", s, r);
+}
