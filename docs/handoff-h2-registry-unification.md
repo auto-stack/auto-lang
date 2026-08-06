@@ -2,6 +2,10 @@
 
 > **创建**：2026-08-07。承接 Plan 390 §15 Phase H（`docs/plans/390-actor-state-injection.md`）。
 > H1 已完成并 push（`23422b97`）；本交接覆盖 H2（核心高风险步骤）+ H3（清理）+ H4（L3 打通）。
+>
+> **更新（2026-08-06，H2 已完成）**：H2 + H4 在分支 `plan-390/h2-registry-unify` 落地
+> （commits `14103b51`/`9f2fba50`/`250faf64`），L3 多字段消息打通，回归零新增。详见 §四'
+> 及计划文档 §15.7。**剩余：H3（arrays/nodes 物理迁移 + 删魔数）**。
 
 ## 一、背景（为什么做这个）
 
@@ -133,7 +137,35 @@ cargo test -p auto-man --lib
 cargo test -p auto-lang --lib actor_withbindings_multi_field
 ```
 
-## 五、待实施：Phase H3（清理，H2 验证通过后）
+## 四'、H2 完成纪要（2026-08-06，分支 `plan-390/h2-registry-unify`）
+
+H2 + H4 已落地，L3 多字段消息打通。**实际实施与本文档原计划的两点偏差**（详见计划 §15.7）：
+
+1. **H1 漏交 `get_any_object`**：H1 commit `23422b97` 只做了 `impl HeapObject for ObjectData`，
+   本文档 §四"H2.1"列的 `get_any_object` 并不存在。H2 Step 0 补上（engine.rs:734，按 id 段路由，
+   当前仅覆盖 heap_objects 4M+ 段；objects/arrays/nodes 待 H3 物理迁移后并入）。
+2. **G2 handler 帧结构性 bug**：本文档假设"H2 栈编码统一后 L3 Step 1-4 自然打通"。实测 G2 方案 A
+   （handler_frame_base 仅复位 sp、bp=0）在 WithBindings ≥2 bindings 时 handler locals（bp+1..）
+   与 message/表达式临时值重叠 → `Add(3,5)` 算出 10 而非 8。修复：消息唤醒前预留
+   `HANDLER_LOCALS_BAND=16` 槽位（engine.rs `run_task_loop`），handler_frame_base 锚定其上。
+   对单变量 G2 行为不变（已通过测试不受影响）。
+
+**实施批次**（每批改 → 编译 → 回归）：
+| Commit | 内容 | 回归 |
+|---|---|---|
+| `14103b51` | H2.1 objects 栈编码统一 + matcher VmRef 重水化 + handler 帧修复（解锁 L3） | 22 failed（基线 23，L3 转为通过，零新增）|
+| `9f2fba50` | H2.2 heap_objects producer 统一（Result/List/Instance/Tuple）+ 受影响消费者 | 22 failed（零新增）|
+| `250faf64` | H2.3 VmRef re-push 统一（GET_ELEM/GET_FIELD 6 处）+ inject_value VmRef | 22 failed（零新增）|
+
+**未改（H3 推迟）**：CREATE_ARRAY/CREATE_NODE/POP_ACCUM/SLICE 仍 `push_i32`（arrays/nodes 物理存储 +
+栈编码均不动）；所有 `>= 4_000_000`/`>= 1_000_000` 魔数判断保留；`decode_tagged_nv` 双路径保留；
+IS_OK/UNWRAP_*/STR_CAT/LT 回退保留。
+
+**H3 入口**（清理，H2 验证通过后）：见本文档 §五原计划，加两项 H2 实施时确认的收尾——
+- `get_any_object` 接管所有消费者（替代显式查 objects/arrays/nodes）。
+- IS_OK/UNWRAP_OK/UNWRAP_ERR 改严谨（当前靠 decode_i32(encode_object(id)) 低 32 位 == id 巧合工作）。
+
+
 
 - `CREATE_OBJ`/`CREATE_ARRAY`/`CREATE_NODE` 改为 `insert_heap_object`（走 heap_object_id_gen）。
 - 删除 `objects`/`arrays`/`nodes` 字段 + `object_id_gen`/`array_id_gen`/`node_id_gen`。

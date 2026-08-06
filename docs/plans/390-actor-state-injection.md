@@ -738,6 +738,67 @@ mailbox 存 VmRef → wake push encode_object → handler GET_FIELD 绑定）。
 - **阻塞点**：CREATE_OBJ 产出 `push_i32(obj_id)` 而非 `encode_object` → send 的 `is_object` 检测
   失败。Phase H2 统一栈编码后此阻塞自动解除。
 
+### §15.7 Phase H2 + H4 实施记录（✅ 落地，2026-08-06，分支 `plan-390/h2-registry-unify`）
+
+> 范围限定 **objects + heap_objects** 两套 registry 的栈编码统一；arrays/nodes 物理存储 + 栈编码
+> 均保留，留 H3。完成后 L3（WithBindings 多字段）自动打通。
+
+**Step 0 — 补 H1 遗漏的 `get_any_object`（engine.rs:734）**：交接文档称 H1 应交付此统一查询 helper，
+实测 H1（commit `23422b97`）只做了 `impl HeapObject for ObjectData`，helper 缺失。补上一个按 id 段
+路由的 trait 对象查询入口（当前仅覆盖 heap_objects 4M+ 段；objects/arrays/nodes 待 H3 物理迁移后并入）。
+H2 的消费者改动仍显式查各自 registry（物理存储未变），helper 为 H3 铺路。
+
+**Step 1 — objects 栈编码统一 + matcher VmRef 重水化 + handler 帧修复（解锁 L3，commit `14103b51`）**：
+- CREATE_OBJ（engine.rs）/ inject_value Obj 分支：`push_i32`/`encode_i32` → `encode_object`。
+- **matcher 关键修复**：`match_message_pattern_vm` 的 Simple/WithBindings 分支原只认 `Value::Obj`，
+  但 send shim 把结构化消息存为 `Value::VmRef`（registry 引用），matcher 永不匹配 → actor 不唤醒。
+  新增 `vmref_variant_name()` 从 objects registry 重水化 `__variant` 字段供 matcher 比对。
+- **handler 帧结构性 bug 修复（G2 遗留，在 WithBindings ≥2 bindings 显现）**：#start 不发 RESERVE_STACK、
+  bp=0、G2.2 RET 把 sp 复位到小值（0/1），handler locals（bp+1..）与 message/表达式临时值重叠。
+  单变量（G2 测试）靠运气通过；双变量 DUP/GET_FIELD 临时值覆盖 binding 槽位 → a/b 错位（`Add(3,5)` 算出 10）。
+  修复：消息唤醒前预留 `HANDLER_LOCALS_BAND=16` 槽位，使 handler locals 不与临时值重叠；
+  handler_frame_base 锚定在预留区上方，RET 复位一并清除。
+
+**Step 2 — heap_objects producer 统一（commit `9f2fba50`）**：CREATE_OK/CREATE_ERR/CREATE_LIST_*
+（6 处）/NEW_INSTANCE/CREATE_TUPLE 全部 `push_i32 → encode_object`；CONSTRUCT_INSTANCE 三处配对
+（pop instance_id 改双解码 + push-back 改 encode_object）。受影响「仅假设 i32」消费者加 is_object
+回退：GET_TUPLE_FIELD、SET_ELEM、ARRAY_LEN。IS_OK/UNWRAP_OK/UNWRAP_ERR 巧合仍工作
+（decode_i32(encode_object(id)) 低 32 位 == id，`value > 0` + get_heap_object(value) 命中），
+H3 统一简化时一并改严谨。
+- 更新 `plan326_array_struct_return_raw_repr` 测试预期：struct id 现为 TAG_OBJECT（渲染 `<vmref>`）
+  而非裸 i32（4000000）—— 这正是 Plan 326 HTTP 序列化 bug 的根源，H2 修复后 repr 变更属预期。
+
+**Step 3 — VmRef re-push 统一 + inject_value VmRef（commit `250faf64`）**：GET_ELEM/GET_FIELD 的
+6 处 VmRef 结果 re-push（List<Value>/arrays 元素、node prop、objects/heap 字段、opaque native dispatch）
++ inject_value VmRef 分支 + materialize_value 镜像同步（decode 改 is_object/decode_object 双路径，
+兼容 Obj 的 encode_object 与 Array/Node 的 encode_i32）。
+
+**Step 4 — http_server.rs / stdlib.rs 审查（无需改）**：`nv_to_json`（http_server.rs:199）已有 is_object
+分支，H2 后正确路由 TAG_OBJECT；stdlib.rs Writer.serialize（:7364）已用 is_object/decode_i32 双解码。
+`value_to_json` 的 Value::VmRef 分支（:361）直接用 r.id。
+
+**Step 5 — 专项消费者加固（部分推迟 H3）**：TO_STR 已有 is_object 分支（:3078）正确渲染。STR_CAT/LT
+的 raw decode_i32 回退仅影响「把对象引用当数字拼串/比较」的病态程序，回归绿，推迟 H3。
+
+**Step 6 — 验证**：
+- L3 `actor_withbindings_multi_field` 通过（`h.send(Add(3,5))`→8，`h.send(Add(10,20))`→38）。
+- 13 actor 测试全绿（含单变量 G2）；专项 object/field/struct/enum/list/map/tuple/result 487 passed / 0 failed。
+- `cargo test -p auto-lang --lib`：**2820 passed / 22 failed**（基线 23，L3 转为通过 → 22，零新增）。
+- `cargo test -p auto-man --lib`（a2r 回归）：**179 passed / 0 failed**。
+
+**H2 期间发现的、原计划未预见的两项**：
+1. **H1 漏交 `get_any_object`**：H1 commit 只做 ObjectData impl HeapObject，未补统一查询 helper（H2 补上）。
+2. **G2 handler 帧结构性 bug**：交接文档假设「H2 栈编码统一后 L3 Step 1-4 自然打通」，但实测 G2 的方案 A
+   （handler_frame_base 仅复位 sp，bp=0）在 WithBindings ≥2 bindings 时 handler locals 与临时值重叠，
+   需在唤醒路径预留 HANDLER_LOCALS_BAND。此修复对单变量 G2 行为不变（预留 0 不改变已有通过的测试）。
+
+**H3 待办（明确推迟）**：
+- CREATE_ARRAY/CREATE_NODE/POP_ACCUM/SLICE 仍 `push_i32`（arrays/nodes 物理存储 + 栈编码均不动）。
+- 删除 objects/arrays/nodes 字段 + id_gen + 所有 `>= 4_000_000`/`>= 1_000_000` 魔数判断。
+- `decode_tagged_nv` 的 `i >= 4000000` 简化为单一 `is_object`。
+- `get_any_object` 真正接管所有消费者；IS_OK/UNWRAP_*/STR_CAT/LT 回退改严谨。
+- `CREATE_OBJ`/`CREATE_ARRAY`/`CREATE_NODE` 改 `insert_heap_object`（物理迁移）。
+
 ---
 
 ## §15 Phase H — `fn(params){}` 闭包参数绑定修复（L5，parser）
