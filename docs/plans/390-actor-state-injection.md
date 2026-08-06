@@ -613,7 +613,7 @@ auto-lang 侧实质工作全部完成（Phase A/B/E/F/G1/G2/H1/H2/H3a/H3b 落地
 
 | # | 遗留 | 性质 | 位置 | 严重度 | 状态 |
 |---|---|---|---|---|---|
-| **L1** | ~~a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷~~ → **根因已修（1317d91c）**：parser `node_or_call_expr` 补 Arc/Box 识别 → `Arc::new(x)`。**剩 auto-ai workaround 回收**：`tool.at` 的 `let a = Arc(tool)` 可改直写 `self.tools.set(n, Arc(tool))` | a2r 转译器 bug（已修）+ 回收待做 | `trans/rust.rs` + `auto-ai/tool.at:100` | 中 | ✅ 根因已修；⏳ workaround 回收 |
+| **L1** | ~~a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷~~ → **根因已修（1317d91c）**：parser `node_or_call_expr` 补 Arc/Box 识别 → `Arc::new(x)`。**workaround 已回收（auto-ai cfa1515）**：`tool.at` 已直写 `self.tools.set(n, Arc(tool))` | a2r 转译器 bug（已修）+ workaround 已回收 | `trans/rust.rs` + `auto-ai/tool.at:106` | 中 | ✅ 完全闭环（根因修 + workaround 回收） |
 | **L2** | ~~`Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>`~~ → **已转正（§15.11，2026-08-07）**：Box/Arc 特判推广到所有 spec（`Arc<Tool>` → `Arc<dyn Tool>`）+ 值侧 spec-bound `Arc(role)` → `Arc::from(role)` 单层转换；derive post-pass 扩展 Arc 感知。golden：`12_specs/008_arc_dyn_spec`。**待 auto-ai retranspile 生效** | 设计偏差（已转正） | auto-ai tool.at 存储（§448）| 低 | ✅ 已转正（生成侧 retranspile 后生效） |
 | **L3** | ~~WithBindings 多字段消息绑定未实现~~ → **已闭环（§15 H2/H4 + G2-refactor）**：`actor_withbindings_multi_field`/`actor_withbindings_deep_expr_three_fields` 测试通过（含多次 send 不 stale、深表达式不穿透） | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs` | 低 | ✅ 已解决 |
 | **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs` | 低 | ⚠️ 开放（EventSink 用 `noop_event` 命名函数绕过，`agent.at:154`） |
