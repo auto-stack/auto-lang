@@ -607,14 +607,77 @@ auto-lang 侧实质工作全部完成（Phase A/B/E/G1/G2/F 落地；Phase D 属
 | **L1** | a2r 实参位 `Arc(x)`/`Box(x)` 渲染缺陷 —— 只有 let 位正确，实参位不渲染 `::new` | a2r 转译器 bug | `trans/rust.rs`（§451 KNOWN-DEBT Plan 021）| 中 | 当前用 `let a = Arc(tool)` workaround 绕过（§439）；a2r 根因修复后可去 let 绑定直写 |
 | **L2** | `Arc<Box<dyn Tool>>` 双层包装 —— 存储类型是双层，rust-ref 是单层 `Arc<dyn Tool>` | 设计偏差 | auto-ai tool.at 存储（§448）| 低 | Deref 链功能可用；转正时若要对齐 rust-ref 单层，另立 a2r spec 返回位/存储位推导计划 |
 | **L3** | WithBindings 多字段消息绑定未实现 —— `on { Add(a int, b int) -> }` 的多字段绑定 | VM 功能缺口 | `vm/codegen.rs` + `vm/engine.rs`（§G2.7）| 低 | 当前只支持单字段 TypeBinding（`on { n int -> }`）；多字段需 DUP + 多 STORE_LOC。罕见场景，单字段够用 |
-| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs`（Phase 6.5 实施时发现）| 低 | 当前 EventSink 用具名 `noop_event` 函数绕过（`agent.at:146`）；a2r 修复后可用闭包字面量 |
-| **L5** | **Auto 闭包不能捕获外部变量** —— `fn(ev) { forward(ev, outer_cb) }` 报 "Variable ev not defined"。阻塞 auto-ai Plan 021 Phase 6.6（driver Delta/Tool → PipelineEvent 转发）：EventSink cb 单参数无法持 `on_event`，rust-ref 用 `Arc<dyn Fn>` 闭包捕获，Auto 无等价 | **语言级限制（非 a2r bug）** | `parser.rs` / 闭包语义（§KNOWN-DEBT Plan 021）| **高**（阻塞 driver 流式转发） | 需 Auto 支持 `Arc<dyn Fn>` 闭包捕获，或非 actor 流式架构，或 EventSink 能持额外上下文。**driver 非流式事件已正常工作**，仅流式 Delta/Tool 受阻 |
+| **L4** | a2r 闭包字面量作 task state 字段默认值时类型推导失败（`/* unknown */`）—— 具名函数引用（`cb = noop`）正确推导，闭包字面量（`cb = fn(e) {...}`）推导不出 | a2r 转译器 bug（Plan 389 R2 延伸）| `trans/rust.rs`（Phase 6.5 实施时发现）| 低 | 当前 EventSink 用具名 `noop_event` 函数绕过（`agent.at:146`）；a2r 修复后可用闭包字面量。**注**：根因与 L5 同源——`fn(params){}` 解析路径不 bind 参数 |
+| **L5** | ~~Auto 闭包不能捕获外部变量~~ → **重新定性（2026-08-07 实证）**：捕获从来不是问题（`(ev) => fwd(ev, outer_cb)` 正常捕获 outer_cb）。真因是 `fn(params){}` 解析路径（`parser.rs:3043-3069`）**不 bind 闭包参数**（另两条路径 `x => ...` 和 `(a,b) => ...` 都 bind）。`fn(ev){...}` 报 "Variable ev not defined" 是因 `ev` 自身未入 scope，非捕获 `outer_cb` 失败 | **parser bug（非语言级限制）** | `parser.rs:3043-3069`（`atom()` 内 `fn(params){}` 路径缺 `bind_var`）| **中**（仍阻塞 driver 流式转发，但修复是 ~6 行） | **Phase H 承接**（§15）：`fn(params){}` 路径加 `bind_var` 循环，镜像 `parser.rs:3842-3847`。a2r 闭包捕获（`rust.rs:3017` + escape analyzer）+ VM 捕获（`codegen.rs:11044`）均已就绪，仅此 parser 路径漏 bind |
 
 **EventSink VM 端到端未验证**（§5.10/§G2 验收）：EventSink 的生产路径是 a2r（Phase B 交付），
 VM 侧 spawn-with-args + bound-var handler 机制均已就绪（Phase A + G2），但 EventSink 完整形态
 （fn 指针 state + 绑定变量 handler 组合）未在 VM 跑通端到端。非阻塞——EventSink 不走 VM 路径。
 
-**auto-lang 侧范围判定：完成**。剩余 Phase D（§5.12-5.15）在 auto-ai 仓推进。
-L1/L4 是 a2r bug（workaround 已有）；L5 是语言级限制（影响 driver 流式转发，需独立语言增强计划）。
-**Plan 021 缺口 3（serde derive 转译）不属本计划范畴** —— 它阻塞于 a2r 的 `#[derive(Deserialize)]`
-+ `#[serde(deserialize_with)]` 注解转译，与 actor 无关，留在 Plan 021 Phase 4 独立推进。
+**auto-lang 侧范围判定**：Phase A/B/E/G1/G2/F 落地；L5 的 parser 修复（Phase H）是收尾。
+L1/L4 是 a2r bug（workaround 已有）；L5 经实证重新定性为 parser bug（非语言级限制，§15 Phase H）。
+**Plan 021 缺口 3（serde derive 转译）经实证已不阻塞** —— a2r 已支持 `#[derive(Deserialize)]` +
+`#[serde(deserialize_with)]` 注解透传（实证见 Plan 021 缺口 3 章节）；缺口在 auto-ai 侧 `.at`
+源码未迁移到 derive 风格，留 Plan 021 Phase 4 独立推进。
+
+---
+
+## §15 Phase H — `fn(params){}` 闭包参数绑定修复（L5，parser）
+
+> **2026-08-07 追加**。L5 经实证重新定性：不是"闭包不能捕获外部变量"（捕获工作正常），
+> 而是 `fn(params){}` 解析路径漏 bind 参数。阻塞 auto-ai Plan 021 Phase 6.6（driver Delta/Tool 转发）。
+
+### §15.1 实证（2026-08-07）
+
+```auto
+fn outer_cb(p str) void { print(p) }
+fn fwd(ev str, cb fn(str) void) void { cb(ev) }
+// (1) => 形式：捕获正常
+let a = (ev str) => fwd(ev, outer_cb)   // → |ev: String| fwd(ev.as_str(), outer_cb)  ✅
+// (2) fn(params){} 形式：失败
+let b = fn(ev str) void { fwd(ev, outer_cb) }  // → "Variable 'ev' is not defined"  ❌
+```
+
+`=>` 形式（`(ev) => ...` / `x => ...`）的两条解析路径都 `bind_var` 参数；`fn(params){}` 路径不 bind。
+错误是闭包**自身参数** `ev` 未入 scope，非捕获 `outer_cb` 失败。
+
+### §15.2 根因
+
+| 解析路径 | 位置 | bind 参数？ |
+|---|---|---|
+| `x => body` | `parser.rs:1999-2002` | ✅ `bind_var` |
+| `(a,b) => body` | `parser.rs:3842-3847` | ✅ `bind_var` |
+| **`fn(params){ body }`** | **`parser.rs:3043-3069`** | **❌ 不 bind** |
+
+`check_symbol`（`parser.rs:10091`）查 `infer_ctx.lookup_type(name)`；`fn(params){}` 路径解析参数后
+不 `bind_var`，导致 body 内引用参数名时 `exists()` 返回 false → `NameError::undefined_variable`。
+
+### §15.3 修复方案（~6 行，parser.rs）
+
+`fn(params){}` 路径（`parser.rs:3043-3069`），解析参数后、解析 body 前，加 `bind_var` 循环
+（镜像 `parser.rs:3842-3847`）：
+```rust
+for p in &params {
+    self.infer_ctx.bind_var(
+        crate::ast::Name::from(p.name.as_str()),
+        p.ty.clone().unwrap_or(crate::ast::Type::Unknown),
+    );
+}
+```
+body 解析后配合 `push_scope`/`pop_scope` 防绑定泄漏（镜像 `parse_closure`）。a2r 闭包捕获
+（`rust.rs:3017` + escape analyzer）+ VM 捕获（`codegen.rs:11044`）均已就绪，无需改。
+
+### §15.4 实施任务（Phase H，auto-lang worktree）
+
+- [ ] H.1 worktree：`fix/parser-fn-closure-params`
+- [ ] H.2 `parser.rs:3043-3069`：`fn(params){}` 路径加 `bind_var` 循环 + scope push/pop
+- [ ] H.3 新增 a2r 测试：`fn(ev Type) { forward(ev, outer_cb) }` 形式（含外部 fn 捕获），
+       期望转译为 `|ev: T| forward(ev, outer_cb)` ✅
+- [ ] H.4 回归：`cargo test --features test-trans` 零新增失败；现有 `=>` 闭包测试不受影响
+- [ ] H.5 回 auto-ai：重建 auto.exe → 解锁 Plan 021 Phase 6.6（driver Delta/Tool 转发）
+
+### §15.5 验收（Phase H）
+
+- [ ] `fn(ev str) void { fwd(ev, outer_cb) }` 转译为 `|ev: String| fwd(ev.as_str(), outer_cb)`，捕获外部 fn
+- [ ] `(ev) => fwd(ev, outer_cb)` 仍工作（向后兼容）
+- [ ] 现有闭包测试零回归
