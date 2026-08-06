@@ -1,8 +1,8 @@
 # Plan 317: VM 真异步调度统一 — 调研报告 + 实施提案
 
 > 原编号 327；2026-07-23 因编号冲突改为 317（原号保留给 327-015-notes-vm-render）
-> **Status**: ✅ **Phase 1-4 全部完成**(2026-08-06 核查回填);✅ **Phase 5/7/8 遗留债已修复**(§11);⏳ Phase 6/11 待做(死代码清理 + CI 接入)。调研完成(2026-06-18);Phase 1(actor handler 执行引擎,路径 B VM 内置调度)+Phase 3(lazy yield/SSE)于 2026-06-18 完成;Phase 2(`~{}`.await 取值)由 **Plan 348 Task 22** 顺手修复(CREATE_FUTURE 重写为 out-of-line 真字节码);Phase 4(HTTP 异步 server `serve_async`)已实施并接入 `lib.rs:1250` 活路径。**遗留债核实与修复计划见 §11(Phase 5-11)**。
-> **实测状态(2026-08-06 核查)**: ✅ Phase 1-4 全闭环。Phase 1(`actor_tests`+`actor_state_tests` 13 测试绿)+Phase 3(lazy yield/SSE)+Phase 4(`serve_async` 并发,间接 generator SSE 路径已补测试)经测试验证;Phase 2(`~{42}.await`→42)经 `plan348_concurrency_tests::test_task22_*` 3 测试验证。**遗留债逐条核实见 §11 速览表**:P2/P3/P4'(Phase 5/7/8)已修复并补回归测试;P1(scheduler.rs 死代码)待清理;P7(SSE 测试 #[ignore])待 CI 接入;P5/P6 决议不做。
+> **Status**: ✅ **Phase 1-4 全部完成**(2026-08-06 核查回填);✅ **Phase 5/7/8 遗留债已修复**(§11);🟢 **Phase 6 决议不做**(路径 A 非死代码);⏳ Phase 11 待讨论(CI 接入需先重构测试隔离)。调研完成(2026-06-18);Phase 1(actor handler 执行引擎,路径 B VM 内置调度)+Phase 3(lazy yield/SSE)于 2026-06-18 完成;Phase 2(`~{}`.await 取值)由 **Plan 348 Task 22** 顺手修复(CREATE_FUTURE 重写为 out-of-line 真字节码);Phase 4(HTTP 异步 server `serve_async`)已实施并接入 `lib.rs:1250` 活路径。**遗留债核实与修复计划见 §11(Phase 5-11)**。
+> **实测状态(2026-08-06 核查)**: ✅ Phase 1-4 全闭环。Phase 1(`actor_tests`+`actor_state_tests` 13 测试绿)+Phase 3(lazy yield/SSE)+Phase 4(`serve_async` 并发,间接 generator SSE 路径已补测试)经测试验证;Phase 2(`~{42}.await`→42)经 `plan348_concurrency_tests::test_task22_*` 3 测试验证。**遗留债逐条核实见 §11 速览表**:P2/P3/P4'(Phase 5/7/8)已修复并补回归测试;P1(Phase 6)决议不做(路径 A 活,scheduler.rs 有 7 测试 + 3 示例);P7(Phase 11)待讨论(需先修测试隔离);P5/P6 决议不做。
 > **背景**: 用户期望 `yield`/`~Iter`、`~{}`/`~T`/await、Task/Msg actor 三套异步机制能在 AutoVM 里统一工作,以支撑 HTTP 异步服务(SSE、并发)。本报告用最小 reproducer 敲定了每个机制的真实状态。
 > **关联**: Plan 312(HTTP server MVP,同步 std::net)、Plan 313(SSE Phase 3 未做)、Plan 321(yield/Iter,§5 明确不做异步)、Plan 121(Task/Msg 数据结构)、Plan 224(`~{}`/await codegen)
 
@@ -284,7 +284,7 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 
 | 编号 | 遗留项 | 文档自述 | 实测结论(2026-08-06) |
 |---|---|---|---|
-| **P1** | scheduler.rs 死代码 | §9 #3"本计划不动" | 🟡 部分死代码:`execute_handler_fully`/`task_loop`/`SystemCommand` 无外部调用者(路径 A 被 run_task_loop 路径 B 取代);但 `GlobalMeta`/`TaskContext` 仍被 `task_system.rs` 用(`TaskSystem.start` 路径,文档 §2 断点 4b 已知挂死)。需谨慎拆分,非纯删除。 |
+| **P1** | scheduler.rs 死代码 | §9 #3"本计划不动" | 🟢 **决议不做(Phase 6 下调)**。深入核实推翻原假设:路径 A 不是死代码——`TaskSystem.start()` 是活 native 2305,3 个 .at 示例调用,scheduler.rs 有 7 个测试全绿。真正零引用的 `Linker::bootstrap()` 和 `AutoVM.task_registry` 字段都是 `pub` API,删它们是破坏性变更且收益极小。路径 A 的"清理"需先决策 `TaskSystem.start` 是否废弃(产品决策),单独立项。 |
 | **P2** | task state field 读取(print/let RHS) | §9 #1"报 undefined variable" | ✅ **已修复(Phase 5)**。实测 `print(count)`→"1"、`let c = count`→"1" 全部正常(`Expr::Ident` codegen.rs:5113 已检查 `current_task_state_fields`)。加回归测试固化。 |
 | **P3** | infinite generator(`for { yield x }`) | §10 #1"卡死,栈不平衡累积" | ✅ **已修复(Phase 7)**。真根因非栈下溢,而是 run_task_loop 退出条件:被 break 抛弃的 generator 任务(Waiting("generator_suspended"))计入 alive_count → VM 永不退出。修复:排除该状态不计 alive_count。 |
 | **P4** | producer/consumer 跨 actor | §9 #2"未验证" | ✅ **已修复(Phase 8)**。多 actor 共存 + 各自收发(P4a)本就正常;发现更深的 P4':**无 `fn start()` 且无 state field 的 task,payload binding 绑到 0**(`h.send(42)` → handler 里 `n` 是 0)。根因=`#start` 未 emit,shim fallback 到 ip=0。修复:有 on handlers 就 emit `#start`。 |
@@ -308,18 +308,24 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 
 ---
 
-### Phase 6(P1)— scheduler.rs 死代码清理 [需谨慎分析]
+### Phase 6(P1)— scheduler.rs 死代码清理 [🔴 范围下调:原"删路径 A"前提被推翻,仅做无风险小清理]
 
-**目标**:移除路径 A 的真死代码,保留仍被引用的类型。
+**目标**(原):移除路径 A 的真死代码。
 
-**核实**:路径 A(tokio `task_loop` + `execute_handler_fully`)被路径 B(`run_task_loop` + `shim_task_spawn_vm`)完全取代,但:
-- **可删**:`execute_handler_fully`(`_ => skip unknown opcodes` 占位,无外部调用者)、`execute_handler_with_vm`(同)、`SystemCommand`(无外部用)、`try_match_pattern`(仅 scheduler 内部)、`task_loop`(仅 task_system.rs 调,但 task_system.rs 自身是否还活需先确认)、`TaskContext` 大部分方法。
-- **保留**:`GlobalMeta`(task_system.rs:78 / loader.rs:12 用)、`TaskContext` 结构(若 task_system.rs 仍活)。
-- **前置确认**:`task_system.rs` 的 `start_scheduler`/`TaskSystem.start` 路径是否还有任何活调用(文档 §2 断点 4b 称其挂死;stdlib.rs:6291 `shim_task_system_start` 仍注册为 native 2305)。若 `TaskSystem.start` 是死路径,可连带清理 task_system.rs 的 tokio 调度部分,只留 `TaskRegistry`/`TaskHandle`(路径 B 复用)。
+**核实结论(2026-08-06 深入调查,推翻原假设)**:**路径 A 不是死代码,是并存的有测试/有文档/被示例使用的另一套调度器**。具体证据:
+- `TaskSystem.start()` 仍是 native 2305(VM 初始化时 wire),且有 **3 个真实 .at 示例**调用:`examples/async_showcase.at:251`、`examples/async_showcase_minimal.at:102`、`examples/scheduler_test.at:27`(后者注释明确 "Press Ctrl+C to stop"——印证 §2 断点 4b 的"阻塞挂死"是其设计行为,非 bug)。
+- `scheduler.rs` 有 **7 个 `#[test]` 全绿**(`test_global_meta_*` / `test_task_context_new` / `test_execute_handler_fully_returns_on_ret` / `test_task_loop_processes_messages` / `test_spawn_task_creates_context` / `test_scheduler_daemon_handles_stop`),覆盖路径 A 的核心组件。
+- 因此 `execute_handler_fully`(`_ => skip` 占位,§2 断点 4 的根因)、`SystemCommand`、`try_match_pattern`、`spawn_task`、`run_scheduler_daemon`、`task_loop`、`TaskContext`、`GlobalMeta`、`create_task_context`、`start_scheduler` **全部不是死代码**——它们被自己的 tests 或 native 2305 路径引用。
 
-**风险**:`TaskSystem.start` 可能有用户代码依赖(虽挂死)。先标记 `#[deprecated]` + 保留,或彻底删。需先 grep examples/parity 确认无 .at 用例。
+**真正可清理的(零外部引用)**:
+- `Linker::bootstrap()`(`loader.rs:120`,构造 `GlobalMeta` 的唯一生产者,全 crate 0 调用者;`shim_task_system_start` 用的是 `GlobalMeta::from_components`,不经 bootstrap)。
+- `AutoVM.task_registry: Arc<TaskRegistry>`(`engine.rs:268` 字段 + `:398` 初始化,**全 crate 只写不读**)。
 
-**验收**:删除后 `cargo build` + 全量测试零新失败;`TaskSystem.start` 若删,确认无 `.at` 例程调用。
+**但两者都是 `pub` API**:删除是破坏性变更,可能影响 crates/ 之外的下游消费者(a2r/auto binary 等,无法穷尽核查)。收益极小(一个方法 + 一个字段)。
+
+**决议**:**不删 pub API**。本 Phase 范围下调为"记录核实结论 + 不做破坏性删除"。路径 A 的真正"清理"(若要做)需要先决策:`TaskSystem.start` 是否废弃?——这是产品/语言设计决策(废弃一套有示例的 API),超出"遗留债清理"范畴,应单独立项(候选:与 Plan 069 M:N 调度复活,或新建"actor 模型统一"计划)。
+
+**改动**:仅文档(本节)。无代码变更。
 
 ---
 
@@ -395,8 +401,8 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
 1. ✅ **Phase 5**(P2 回归测试)——已完成(2026-08-06)。
 2. ✅ **Phase 7**(P3 infinite generator)——已完成(2026-08-06)。真根因与初判不同(run_task_loop 退出条件,非栈下溢)。
 3. ✅ **Phase 8**(P4' payload binding)——已完成(2026-08-06)。
-4. ⏳ **Phase 11**(P7 CI 接入)——待做。中价值(防回归),改动中等。
-5. ⏳ **Phase 6**(P1 死代码清理)——待做。低风险但需谨慎分析。
+4. 🟢 **Phase 6**(P1 死代码清理)——**决议不做**(2026-08-06)。深入核实推翻原假设:路径 A 是活的(3 示例 + 7 测试 + native 2305),非死代码;真正零引用项都是 `pub` API,删除是破坏性变更,收益极小。路径 A 的废弃属产品决策,单独立项。
+5. ⏳ **Phase 11**(P7 CI 接入)——待做。中价值(防回归),但实测发现需先重构测试隔离(7 个 #[ignore] 测试因全局路由表污染无法共存),属测试基建,工作量大。**待讨论**。
 6. Phase 9/10 —— 不做(已记录决议:范围外/不必要)。
 
-每个 Phase 独立可验收,单独提交。Phase 5/7/8 已闭环。
+每个 Phase 独立可验收,单独提交。Phase 5/7/8 已闭环(3 个真 bug + 6 回归测试,零回归)。
