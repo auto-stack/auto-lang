@@ -2556,6 +2556,16 @@ impl<'a> Parser<'a> {
                                     // Simple field access: object.field
                                     lhs = Expr::Dot(Box::new(lhs), field_name);
                                 }
+                                // Plan 043: numeric tuple/element index access, e.g.
+                                // `field.0`, `pair.1`. The RHS is an integer literal;
+                                // render as `Expr::Dot(lhs, "<n>")` so downstream
+                                // codegen emits `field.0` (valid JS/TS tuple index).
+                                Expr::Int(n) => {
+                                    lhs = Expr::Dot(Box::new(lhs), Name::from(n.to_string()));
+                                }
+                                Expr::Uint(n) => {
+                                    lhs = Expr::Dot(Box::new(lhs), Name::from(n.to_string()));
+                                }
                                 Expr::Call(call) => {
                                     // Method call: object.method(args)
                                     // The RHS is a Call like: Call { name: Ident("push"), args: [...] }

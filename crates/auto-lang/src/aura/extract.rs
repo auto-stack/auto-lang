@@ -356,7 +356,13 @@ fn expr_to_string(expr: &Expr) -> String {
                 }
             }
             let obj_str = expr_to_string(obj);
-            format!("{}.{}", obj_str, field.as_str())
+            // Plan 043: numeric field (tuple index, e.g. `field.0`) → `field[0]`
+            // for valid TypeScript (`.0` is a property access, not a tuple index).
+            if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                format!("{}[{}]", obj_str, field.as_str())
+            } else {
+                format!("{}.{}", obj_str, field.as_str())
+            }
         }
         Expr::Object(pairs) => {
             let parts: Vec<String> = pairs.iter()

@@ -338,3 +338,34 @@ list_notes()
     // serialization (Plan 326) and WithBindings matching (Plan 390 L3).
     assert_eq!(result.trim(), "[<vmref>, <vmref>]", "array struct return raw repr: got {:?}", result);
 }
+
+// =============================================================================
+// Plan 043: numeric tuple/element index access (field.0, pair.1)
+// =============================================================================
+
+/// Plan 043: numeric dot-field access (`x.0`) must parse as a Dot node whose
+/// field is the stringified integer (NOT be rejected as "Invalid field name").
+/// This enables tuple-element access in view bodies and handlers (e.g. iterating
+/// `(key, cell)` tuple arrays: `field.0`/`field.1`).
+#[test]
+fn plan043_numeric_dot_field_parses() {
+    use crate::{Parser, session::CompilerSession};
+    let code = "fn f() {\n    x.0\n    x.1\n}\n";
+    let mut parser = Parser::from(code).with_session(CompilerSession::default());
+    let ast = parser.parse().expect("numeric dot-field should parse");
+    // Find the two Dot expressions in the body and assert their field names.
+    let mut found_0 = false;
+    let mut found_1 = false;
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::Fn(fd) = stmt {
+            for s in &fd.body.stmts {
+                if let crate::ast::Stmt::Expr(crate::ast::Expr::Dot(_, field)) = s {
+                    if field.as_str() == "0" { found_0 = true; }
+                    if field.as_str() == "1" { found_1 = true; }
+                }
+            }
+        }
+    }
+    assert!(found_0, "x.0 should parse as Dot(_, \"0\")");
+    assert!(found_1, "x.1 should parse as Dot(_, \"1\")");
+}

@@ -4105,6 +4105,15 @@ impl VueGenerator {
         final_result = final_result.replace("length ( )", "length");
         final_result = final_result.replace("length ()", "length");
 
+        // Plan 043: numeric tuple index in conditions, e.g. `field.1.Text` →
+        // `field[1].Text`. parse_condition_expr renders `field.1.Text` as a
+        // space-tokenized string; convert `.digit` (preceded by an identifier
+        // char, not a space) to `[digit]` for valid TypeScript tuple access.
+        // (Plain `.5` number literals are preserved — they follow a digit, not ident.)
+        if let Ok(re) = regex::Regex::new(r"([A-Za-z_$\]\)])\.(\d+)") {
+            final_result = re.replace_all(&final_result, "$1[$2]").to_string();
+        }
+
         final_result
     }
 
@@ -4734,7 +4743,15 @@ impl VueGenerator {
                     }
                 }
                 let object_js = self.expr_to_js(object)?;
-                Ok(format!("{}.{}", object_js, field))
+                // Plan 043: numeric field (tuple/element index, e.g. `field.0`)
+                // must render as `field[0]` — `field.0` is valid JS but invalid
+                // TypeScript in Vue templates (TS treats `.0` as a property, not
+                // a tuple index).
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                    Ok(format!("{}[{}]", object_js, field))
+                } else {
+                    Ok(format!("{}.{}", object_js, field))
+                }
             }
             Expr::Call(call) => {
                 // The call's name may be a Dot(object, method) — a method call.
@@ -5105,7 +5122,13 @@ impl VueGenerator {
                     }
                 }
                 let object_str = self.expr_to_vue_text_raw(object)?;
-                Ok(format!("{}.{}", object_str, field))
+                // Plan 043: numeric field (tuple index, e.g. `field.0`) → `field[0]`
+                // for valid TypeScript in Vue templates.
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                    Ok(format!("{}[{}]", object_str, field))
+                } else {
+                    Ok(format!("{}.{}", object_str, field))
+                }
             }
             Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_text_raw(target)?;
@@ -5223,7 +5246,12 @@ impl VueGenerator {
                     }
                 }
                 let obj_str = self.expr_to_vue_bound_value(object)?;
-                Ok(format!("{}.{}", obj_str, field))
+                // Plan 043: numeric field (tuple index) → bracket form for valid TS.
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                    Ok(format!("{}[{}]", obj_str, field))
+                } else {
+                    Ok(format!("{}.{}", obj_str, field))
+                }
             }
             Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_bound_value(target)?;
@@ -5994,6 +6022,17 @@ impl VueGenerator {
                         attrs.push(format!("v-model=\"{}\"", model));
                     } else if let Some(int_val) = self.extract_int_value(value) {
                         attrs.push(format!(":model-value=\"{}\"", int_val));
+                    } else {
+                        // Plan 043: dynamic expression (e.g. a tuple-cell text like
+                        // field[1].Text) — render the expr and bind to :model-value.
+                        // Progress's model-value expects a number; the expression may
+                        // be a string cell (e.g. "42"), so wrap in Number(...) to
+                        // satisfy vue-tsc and coerce at runtime.
+                        if let AuraPropValue::Expr(expr) = value {
+                            if let Ok(expr_str) = self.expr_to_vue_bound_value(expr) {
+                                attrs.push(format!(":model-value=\"Number({})\"", expr_str));
+                            }
+                        }
                     }
                 }
                 // max
