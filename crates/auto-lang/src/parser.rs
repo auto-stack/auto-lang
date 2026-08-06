@@ -3059,6 +3059,18 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RParen)?;
             // Optional return type
             if self.is_type_name() { let _ = self.parse_type()?; }
+            // Plan 390 §15 Phase H (L5): Register all parameters in scope so the
+            // body can reference them. The other two closure parse paths
+            // (`x => ...` at ~1999, `(a,b) => ...` at ~3842) already do this;
+            // this `fn(params){}` path omitted it, so `fn(ev str){ ev }` reported
+            // "Variable 'ev' is not defined in this scope". Capture of external
+            // variables already works in a2r + VM — this only fixes param binding.
+            for param in &params {
+                self.infer_ctx.bind_var(
+                    crate::ast::Name::from(param.name.as_str()),
+                    param.ty.clone().unwrap_or(crate::ast::Type::Unknown),
+                );
+            }
             // Body
             self.skip_empty_lines();
             let body = if self.is_kind(TokenKind::LBrace) {

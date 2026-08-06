@@ -1,0 +1,16 @@
+// Plan 390 §15 Phase H (L5): the `fn(params){ body }` anonymous-fn form must
+// bind its parameters in scope (the `x =>` and `(a,b) =>` forms already do).
+// This test also confirms capture of an external fn works through this form.
+fn helper(ev str, cb fn(str) void) void {
+    cb(ev)
+}
+fn sink(p str) void {
+    print(p)
+}
+fn main() {
+    // fn(params){} form: ev (param) bound, sink (external fn) captured.
+    let f = fn(ev str) void {
+        helper(ev, sink)
+    }
+    f("hi")
+}
