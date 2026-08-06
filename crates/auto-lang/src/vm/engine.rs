@@ -1750,7 +1750,13 @@ impl AutoVM {
                         })
                         .unwrap_or(true); // Entry gone → wake (error fallback)
                     if ready {
-                        task.waiting_http_request_id = None;
+                        // NOTE: do NOT clear waiting_http_request_id here. The
+                        // shim's re-entry branch needs it to look up the result
+                        // in ASYNC_HTTP_RESULTS*. The shim itself clears the
+                        // field once it has consumed the result. Clearing it
+                        // prematurely makes the re-entry take the first-call
+                        // path and pop args that are no longer on the stack
+                        // (Stack Underflow). Plan 349 步骤 7.
                         task.status = TaskStatus::Ready;
                     } else {
                         alive_count += 1;

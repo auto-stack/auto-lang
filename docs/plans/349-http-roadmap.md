@@ -153,52 +153,35 @@
 - 扩展测试：验证生成的 Rust 代码包含 TLS/multipart/download/ws 函数
 - 检查 `Cargo.toml` 依赖是否正确
 
-### 步骤 7：普通 HTTP 请求异步化（Plan 344 路径 B） — ⚠️ 部分落地
+### 步骤 7：普通 HTTP 请求异步化（Plan 344 路径 B） — ✅ landed
 
-**目标**：普通 GET/POST 也支持真异步（AWAIT_FUTURE 外部 future 挂起），消除 UI 冻结。
+**目标**：普通 GET/POST 也支持真异步（消除 UI 冻结）。
 
-**改动**（Plan 344 原设计）：
-- engine.rs FutureValue 加 external_result 字段
-- AutoTask 加 waiting_future_id 字段
-- AWAIT_FUTURE Pending 分支分外部/内部两条路
-- run_task_loop 加 future-wake 轮询
-- 见 Plan 344 详细设计
+> **落地说明**：实际实现走 **re-entry yield 范式**（非 Plan 344 原设计的 AWAIT_FUTURE
+> 通用 future 架构，后者仍是 TODO）。所有 HTTP native（含方法语法 `http.get()`/
+> `RequestBuilder.send()`/`http.post_sync()`）经 CALL_NAT 分发，第一次调用 spawn OS
+> 线程 + 设 `waiting_http_request_id` + yield（IP 回退），`run_task_loop` wake source 5
+> 轮询结果就绪后重入 native 取结果。Plan 344 的 AWAIT_FUTURE 通用架构留独立 plan。
 
-#### 落地情况
+#### 落地的 native（8 个，全部 re-entry yield 异步化）
 
-- ✅ **`*_json` 系列（`#[api]` codegen 路径，走 CALL_NAT）已异步化**——真异步
-  re-entry yield 范式（spawn OS 线程 → `ASYNC_HTTP_RESULTS` → CALL_NAT IP 回退 →
-  `run_task_loop` wake source 5 轮询）。`#[api]` codegen 全部走 `*_json`
-  （codegen.rs:4106-4110），**核心 UI 冻结问题已解决**。
-- ⚠️ **方法语法 native 保持同步**：`http.get()`/`RequestBuilder.send()`/
-  `http.post_sync()` 等经 CALL_SPEC 分发，其栈清理契约（engine.rs:5034-5054）假定
-  shim 同步返回值，无法容忍 re-entry yield。详见下方"步骤 7 技术债"。
-- Plan 344 的 AWAIT_FUTURE 通用 future 架构仍是 TODO（未落地）。
+- `shim_http_get/post/put/delete`（handle 变体）→ `ASYNC_HTTP_RESULTS_HANDLE` + `spawn_async_http_handle`。
+- `shim_request_builder_send`（含 TLS/cookie/gzip/brotli/multipart + retry）→ `ASYNC_HTTP_RESULTS_HANDLE`。
+- `shim_http_post_sync/post_bearer/get_sync`（LLM auth）→ `ASYNC_HTTP_RESULTS_AUTH` +
+  `spawn_async_http_auth`/`_bearer`。
 
-#### 步骤 7 技术债：CALL_SPEC re-entry（方法语法 HTTP native 异步化）
+#### 关键修复：wake source 5 误清 `waiting_http_request_id`
 
-**问题**：`http.get(url)`/`RequestBuilder.send()` 等方法语法经 CALL_SPEC 分发
-（engine.rs:4836+）。CALL_SPEC 的栈契约（5034-5054）在 shim 返回后无条件做栈清理
-（pop 返回值 + pop arg_count+1），假定 shim **同步返回值**。re-entry yield 范式要求
-shim 第一次调用设 `waiting_http_request_id` 并 return（不推返回值），与该契约冲突。
-重入时 receiver_pos（4853-4860）计算也需要 receiver+args 仍在栈上，但第一次调用已
-消费 args。
+`run_task_loop` 的 wake source 5（engine.rs:1717+）在结果就绪时曾错误地
+`task.waiting_http_request_id = None`——这会让 re-entry 的 shim 走"第一次调用"分支
+重新 pop 已不在栈上的 args，导致 Stack Underflow。修复：wake 时**不清空**该字段
+（shim 的就绪分支自己清空）。此 bug 此前也影响 `*_json` 系列，只是无 re-entry 测试覆盖。
 
-**两条解决路径**（留后续 plan）：
-1. **codegen 改 CALL_NAT**（推荐）：让 `http.get()` 编译成 `auto.http.get`（全限定
-   CALL_NAT），复用现有 `*_json` 的 re-entry 范式。已保留的异步基础设施即可直接启用。
-   改动集中在 codegen.rs，风险低、复用多。
-2. **CALL_SPEC re-entry 机制**：在 CALL_SPEC native 分支加 `waiting_http_request_id`
-   检查，yield 时回退 IP + 跳过栈清理。需精确处理 receiver_pos 与 args 生命周期，复杂度高。
+#### 残留 TODO（非阻塞）
 
-**保留的异步基础设施**（`#[allow(dead_code)]`，待路径 1 启用）：
-- `ASYNC_HTTP_RESULTS_HANDLE` / `ASYNC_HTTP_RESULTS_AUTH` 全局表（stdlib.rs lazy_static）。
-- `spawn_async_http_handle` / `spawn_async_http_auth` / `spawn_async_http_bearer`。
-- `check_async_http_result_handle` / `check_async_http_result_auth` / `push_auth_result`。
-- engine.rs wake source 5 的 `.or_else()` 分支（查上述两表）。
-
-方法语法 native 现保持同步（`blocking_http_handle`/`blocking_http_auth`，spawn + join），
-但复用步骤 8 的 `send_with_retry`，retry/compression 改进统一生效。
+- Plan 344 的 AWAIT_FUTURE 通用 future 架构（FutureValue.external_result / codegen async
+  call site）——独立 plan，本步骤的 re-entry 范式是其务实替代。
+- 全局结果表收敛（`ASYNC_HTTP_RESULTS`/_HANDLE/_AUTH 合并为泛化 future registry）。
 
 ### 步骤 8：易用性增强 — ✅ landed
 

@@ -4030,47 +4030,101 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
 }
 
 /// Perform a GET request (simple HTTP client). Returns a response handle.
-/// Plan 349 步骤 7/8 (W1): these method-syntax natives (`http.get(url)`) dispatch via
-/// CALL_SPEC, whose stack-cleanup contract assumes the shim returns a value
-/// synchronously — it cannot tolerate the re-entry-yield pattern used by the
-/// CALL_NAT `*_json` family. They therefore stay blocking here; async-ification
-/// requires either a codegen change to emit CALL_NAT (`auto.http.get`) or a
-/// CALL_SPEC re-entry mechanism (tracked as Plan 349 步骤 7 技术债 tech debt). The shared
-/// `send_with_retry` helper is still used so retry/compression improvements
-/// apply uniformly.
+/// Perform a GET request (simple HTTP client). Returns a response handle.
+/// Plan 349 步骤 7: non-blocking via re-entry yield (same pattern as
+/// `shim_http_get_json`). `http.get(url)` dispatches via CALL_NAT (nat#2230),
+/// so the engine's `waiting_http_request_id` IP-rewind works here exactly as
+/// it does for the `*_json` family. On re-entry the args were already popped
+/// on the first call, so we check the pending request BEFORE popping.
 pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_handle(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let result = blocking_http_handle("GET", &url, None);
-    push_handle_result(task, result)
+    let req_id = alloc_async_id();
+    spawn_async_http_handle("GET".into(), url, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
-/// Perform a POST request. Plan 349 步骤 7/8 (W1): blocking (see shim_http_get note).
+/// Perform a POST request. Plan 349 步骤 7: non-blocking re-entry yield.
 pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_handle(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let result = blocking_http_handle("POST", &url, Some(&body));
-    push_handle_result(task, result)
+    let req_id = alloc_async_id();
+    spawn_async_http_handle("POST".into(), url, Some(body), req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
-/// Perform a PUT request. Plan 349 步骤 7/8 (W1): blocking (see shim_http_get note).
+/// Perform a PUT request. Plan 349 步骤 7: non-blocking re-entry yield.
 pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_handle(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let result = blocking_http_handle("PUT", &url, Some(&body));
-    push_handle_result(task, result)
+    let req_id = alloc_async_id();
+    spawn_async_http_handle("PUT".into(), url, Some(body), req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
-/// Perform a DELETE request. Plan 349 步骤 7/8 (W1): blocking (see shim_http_get note).
+/// Perform a DELETE request. Plan 349 步骤 7: non-blocking re-entry yield.
 pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_handle(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let result = blocking_http_handle("DELETE", &url, None);
-    push_handle_result(task, result)
+    let req_id = alloc_async_id();
+    spawn_async_http_handle("DELETE".into(), url, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 // ============================================================================
@@ -4205,11 +4259,22 @@ pub fn shim_request_builder_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 
 /// Send RequestBuilder and return Response handle
 /// request_builder_send(rb) -> Response handle
+/// Plan 349 步骤 7: non-blocking re-entry yield. The heap object is consumed
+/// on first entry (pop + remove + clone all fields); subsequent re-entries
+/// only check the pending result and push the handle when ready. Retry (W3)
+/// and brotli (W4) run inside the detached worker thread.
 pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    // Plan 349 步骤 7/8 (W1b): this native dispatches via CALL_SPEC (method syntax
-    // `.send()`), which cannot tolerate the re-entry-yield pattern (see
-    // shim_http_get). It stays blocking; the worker thread + send_with_retry
-    // unify the former TLS/no-TLS split and now honor retry/brotli (W3/W4).
+    // Re-entry check BEFORE popping the rb handle (the handle was popped on
+    // the first call and the heap object already removed).
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_handle(req_id) {
+            task.waiting_http_request_id = None;
+            return push_handle_result(task, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
+
     let rb_handle: i64 = task.ram.pop_i32() as i64;
     let heap_id = rb_handle as u64;
 
@@ -4235,77 +4300,82 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let mp_files = builder_data.multipart_files.clone();
     let mp_texts = builder_data.multipart_texts.clone();
     let cookie_store = builder_data.cookie_store;
-    let retry_count = builder_data.retry_count; // Plan 349 步骤 7/8 (W3): now honored.
+    let retry_count = builder_data.retry_count; // Plan 349 步骤 8 (W3): now honored.
     let gzip = builder_data.gzip;
-    let brotli = builder_data.brotli; // Plan 349 步骤 7/8 (W4)
+    let brotli = builder_data.brotli; // Plan 349 步骤 8 (W4)
     drop(builder_data);
     drop(guard);
 
-    // Run on a dedicated OS thread (avoids tokio runtime conflicts) and join.
-    let result = std::thread::spawn(move || -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
-        let mut client_builder = reqwest::blocking::Client::builder();
-        if skip_verify {
-            client_builder = client_builder.danger_accept_invalid_certs(true);
-        }
-        if let Some(ref ca_path) = ca_cert_path {
-            if let Ok(pem) = std::fs::read(ca_path) {
-                if let Ok(cert) = reqwest::Certificate::from_pem(&pem) {
-                    client_builder = client_builder.add_root_certificate(cert);
+    // Spawn a detached worker thread; result lands in ASYNC_HTTP_RESULTS_HANDLE.
+    let req_id = alloc_async_id();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
+            let mut client_builder = reqwest::blocking::Client::builder();
+            if skip_verify {
+                client_builder = client_builder.danger_accept_invalid_certs(true);
+            }
+            if let Some(ref ca_path) = ca_cert_path {
+                if let Ok(pem) = std::fs::read(ca_path) {
+                    if let Ok(cert) = reqwest::Certificate::from_pem(&pem) {
+                        client_builder = client_builder.add_root_certificate(cert);
+                    }
                 }
             }
-        }
-        if let (Some(ref cert_path), Some(ref _key_path)) = (client_cert, client_key) {
-            // Plan 350: mTLS client cert requires PKCS12 + native-tls/rustls-tls
-            // feature; API registered, impl deferred until feature added.
-            let _ = cert_path;
-        }
-        if let Some(ms) = timeout_ms {
-            client_builder = client_builder.timeout(std::time::Duration::from_millis(ms));
-        }
-        if cookie_store { client_builder = client_builder.cookie_store(true); }
-        if gzip { client_builder = client_builder.gzip(true); }
-        if brotli { client_builder = client_builder.brotli(true); }
-        let client = client_builder.build().map_err(|e| e.to_string())?;
-        // Plan 349 步骤 7/8 (W3): retry loop rebuilds the request each attempt so
-        // consumed multipart forms can be reconstructed.
-        send_with_retry(
-            |c| {
-                let mut builder = match method.as_str() {
-                    "POST" => c.post(&url),
-                    "PUT" => c.put(&url),
-                    "DELETE" => c.delete(&url),
-                    _ => c.get(&url),
-                };
-                for (k, v) in &headers {
-                    builder = builder.header(k.as_str(), v.as_str());
-                }
-                if !mp_files.is_empty() || !mp_texts.is_empty() {
-                    let mut form = reqwest::blocking::multipart::Form::new();
-                    for (name, value) in &mp_texts {
-                        form = form.text(name.clone(), value.clone());
+            if let (Some(ref cert_path), Some(ref _key_path)) = (client_cert, client_key) {
+                // Plan 350: mTLS client cert requires PKCS12 + native-tls/rustls-tls
+                // feature; API registered, impl deferred until feature added.
+                let _ = cert_path;
+            }
+            if let Some(ms) = timeout_ms {
+                client_builder = client_builder.timeout(std::time::Duration::from_millis(ms));
+            }
+            if cookie_store { client_builder = client_builder.cookie_store(true); }
+            if gzip { client_builder = client_builder.gzip(true); }
+            if brotli { client_builder = client_builder.brotli(true); }
+            let client = client_builder.build().map_err(|e| e.to_string())?;
+            // Plan 349 步骤 8 (W3): retry loop rebuilds the request each attempt so
+            // consumed multipart forms can be reconstructed.
+            send_with_retry(
+                |c| {
+                    let mut builder = match method.as_str() {
+                        "POST" => c.post(&url),
+                        "PUT" => c.put(&url),
+                        "DELETE" => c.delete(&url),
+                        _ => c.get(&url),
+                    };
+                    for (k, v) in &headers {
+                        builder = builder.header(k.as_str(), v.as_str());
                     }
-                    for (name, path) in &mp_files {
-                        if let Ok(file_part) = reqwest::blocking::multipart::Part::file(path) {
-                            form = form.part(name.clone(), file_part);
+                    if !mp_files.is_empty() || !mp_texts.is_empty() {
+                        let mut form = reqwest::blocking::multipart::Form::new();
+                        for (name, value) in &mp_texts {
+                            form = form.text(name.clone(), value.clone());
                         }
+                        for (name, path) in &mp_files {
+                            if let Ok(file_part) = reqwest::blocking::multipart::Part::file(path) {
+                                form = form.part(name.clone(), file_part);
+                            }
+                        }
+                        builder = builder.multipart(form);
+                    } else if let Some(ref b) = body {
+                        builder = builder.header("Content-Type", "application/json").body(b.clone());
                     }
-                    builder = builder.multipart(form);
-                } else if let Some(ref b) = body {
-                    builder = builder.header("Content-Type", "application/json").body(b.clone());
-                }
-                builder
-            },
-            client,
-            retry_count,
-        )
-    })
-    .join();
-
-    let result = match result {
-        Ok(r) => r,
-        Err(_) => Err("RequestBuilder.send thread panicked".to_string()),
-    };
-    push_handle_result(task, result)
+                    builder
+                },
+                client,
+                retry_count,
+            )
+        })();
+        if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+            map.insert(req_id, Some(result));
+        }
+    });
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+        map.insert(req_id, None); // Mark pending.
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+    Ok(())
 }
 
 // ============================================================================
@@ -5209,14 +5279,7 @@ fn spawn_async_http(method: String, url: String, body: Option<String>, request_i
 /// completed. Returns `Some(Ok((status, headers, body)))` or `Some(Err(msg))`
 /// on completion, `None` while still pending. The entry is `.take()`n so the
 /// caller (re-entry branch) owns the data and inserts it into the calling
-/// thread's HTTP_RESPONSES thread_local.
-///
-/// Plan 349 步骤 7 技术债: currently unused — the method-syntax HTTP natives dispatch via
-/// CALL_SPEC and cannot use re-entry yield (see `shim_http_get`). Retained for
-/// the follow-up that either emits CALL_NAT for `http.*` or adds a CALL_SPEC
-/// re-entry mechanism; the matching wake-source-5 branch in `run_task_loop`
-/// and the `ASYNC_HTTP_RESULTS_HANDLE` table are kept for the same reason.
-#[allow(dead_code)]
+/// thread's HTTP_RESPONSES thread_local. Plan 349 步骤 7.
 fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
@@ -5289,8 +5352,7 @@ fn backoff_sleep(attempt: u32) {
 /// Spawn a handle-returning async HTTP request (plain GET/POST/PUT/DELETE with
 /// optional JSON body). Mirrors `simple_http_request`'s reqwest logic but runs
 /// detached and writes structured result into ASYNC_HTTP_RESULTS_HANDLE.
-/// Plan 349 步骤 7/8 (W1a). (§9: retained for future CALL_NAT re-entry.)
-#[allow(dead_code)]
+/// Plan 349 步骤 7 (W1a).
 fn spawn_async_http_handle(
     method: String,
     url: String,
@@ -5325,103 +5387,6 @@ fn spawn_async_http_handle(
             map.insert(request_id, Some(result));
         }
     });
-}
-
-/// Plan 349 步骤 7/8 (W1): blocking handle-returning HTTP request for the method-syntax
-/// natives (http.get/post/put/delete) that dispatch via CALL_SPEC and cannot
-/// use the async re-entry pattern. Runs `send_with_retry` on a dedicated OS
-/// thread (to avoid tokio runtime conflicts) and `.join()`s, preserving the
-/// pre-W1 blocking behavior while sharing the retry/compression plumbing.
-fn blocking_http_handle(
-    method: &str,
-    url: &str,
-    body: Option<&str>,
-) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
-    let method = method.to_string();
-    let url = url.to_string();
-    let body = body.map(|s| s.to_string());
-    std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
-        let m = method.clone();
-        let u = url.clone();
-        let b = body.clone();
-        send_with_retry(
-            |c| {
-                let builder = match m.as_str() {
-                    "POST" => c.post(&u),
-                    "PUT" => c.put(&u),
-                    "DELETE" => c.delete(&u),
-                    _ => c.get(&u),
-                };
-                if let Some(ref body_str) = b {
-                    builder
-                        .header("Content-Type", "application/json")
-                        .body(body_str.clone())
-                } else {
-                    builder
-                }
-            },
-            client,
-            0,
-        )
-    })
-    .join()
-    .map_err(|_| "HTTP thread panicked".to_string())?
-}
-
-/// Plan 349 步骤 7/8 (W1c): blocking auth-bearing HTTP request (x-api-key for Anthropic
-/// when `bearer=false`, Bearer for OpenAI when `bearer=true`). Returns
-/// `(status, body_text)`; blocking because these natives dispatch via CALL_SPEC.
-fn blocking_http_auth(
-    method: &str,
-    url: &str,
-    body: Option<&str>,
-    api_key: Option<&str>,
-    bearer: bool,
-) -> (i32, String) {
-    let method = method.to_string();
-    let url = url.to_string();
-    let body = body.map(|s| s.to_string());
-    let api_key = api_key.map(|s| s.to_string());
-    let result = std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::new();
-        let mut builder = match method.as_str() {
-            "POST" => client.post(&url),
-            "PUT" => client.put(&url),
-            "DELETE" => client.delete(&url),
-            _ => client.get(&url),
-        };
-        builder = builder.header("Content-Type", "application/json");
-        if !bearer {
-            builder = builder.header("anthropic-version", "2023-06-01");
-        }
-        if let Some(ref key) = api_key {
-            if !key.is_empty() {
-                if bearer {
-                    builder = builder.header("Authorization", format!("Bearer {}", key));
-                } else {
-                    builder = builder.header("x-api-key", key);
-                }
-            }
-        }
-        if let Some(b) = body {
-            builder = builder.body(b);
-        }
-        match builder.send() {
-            Ok(response) => {
-                let status = response.status().as_u16() as i32;
-                let body_text = response.text().unwrap_or_default();
-                Ok((status, body_text))
-            }
-            Err(e) => Err(format!("HTTP error: {}", e)),
-        }
-    })
-    .join();
-    match result {
-        Ok(Ok((status, body_text))) => (status, body_text),
-        Ok(Err(e)) => (0, e),
-        Err(_) => (0, "HTTP thread panicked".to_string()),
-    }
 }
 
 /// Push a response-handle result onto the stack: allocate a NET_HANDLE_COUNTER
@@ -5615,8 +5580,6 @@ thread_local! {
 /// Check whether a spawned auth-bearing async HTTP request has completed.
 /// Returns `Some(Ok((status, body)))` / `Some(Err(msg))` on completion, `None`
 /// while pending. Plan 349 步骤 7/8 (W1c).
-/// (Plan 349 步骤 7 技术债: retained for future CALL_NAT re-entry.)
-#[allow(dead_code)]
 fn check_async_http_result_auth(
     request_id: u64,
 ) -> Option<Result<(i32, String), String>> {
@@ -5628,8 +5591,6 @@ fn check_async_http_result_auth(
 /// Spawn an auth-bearing async HTTP request (x-api-key style, for Anthropic).
 /// Writes `(status, body)` into ASYNC_HTTP_RESULTS_AUTH on completion.
 /// Plan 349 步骤 7/8 (W1c).
-/// (Plan 349 步骤 7 技术债: retained for future CALL_NAT re-entry.)
-#[allow(dead_code)]
 fn spawn_async_http_auth(
     method: String,
     url: String,
@@ -5672,8 +5633,6 @@ fn spawn_async_http_auth(
 
 /// Spawn an auth-bearing async HTTP request (Bearer style, for OpenAI).
 /// Plan 349 步骤 7/8 (W1c).
-/// (Plan 349 步骤 7 技术债: retained for future CALL_NAT re-entry.)
-#[allow(dead_code)]
 fn spawn_async_http_bearer(
     method: String,
     url: String,
@@ -5714,8 +5673,6 @@ fn spawn_async_http_bearer(
 
 /// Push an auth result: set LAST_HTTP_STATUS and push the body String (or an
 /// error message). Plan 349 步骤 7/8 (W1c).
-/// (Plan 349 步骤 7 技术债: retained for future CALL_NAT re-entry.)
-#[allow(dead_code)]
 fn push_auth_result(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -5731,9 +5688,17 @@ fn push_auth_result(
 }
 
 /// HTTP POST with auth — returns body string directly, stores status code.
-/// Plan 349 步骤 7/8 (W1c): blocking (CALL_SPEC dispatch — see shim_http_get note).
+/// Plan 349 步骤 7: non-blocking re-entry yield (x-api-key style for Anthropic).
 /// Stack: [url, body, api_key] -> [response_body_str]
 pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_auth(req_id) {
+            task.waiting_http_request_id = None;
+            return push_auth_result(task, vm, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let api_key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
@@ -5741,16 +5706,28 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
-    let (status, resp_body) = blocking_http_auth("POST", &url, Some(&body), key_opt.as_deref(), false);
-    LAST_HTTP_STATUS.with(|s| s.set(status));
-    super::convert::VMConvertible::push_to_stack(&resp_body, task, vm)?;
+    let req_id = alloc_async_id();
+    spawn_async_http_auth("POST".into(), url, Some(body), key_opt, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
 }
 
 /// HTTP POST with Bearer auth — for OpenAI-compatible APIs.
-/// Plan 349 步骤 7/8 (W1c): blocking (CALL_SPEC dispatch — see shim_http_get note).
+/// Plan 349 步骤 7: non-blocking re-entry yield.
 /// Stack: [url, body, api_key] -> [response_body_str]
 pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_auth(req_id) {
+            task.waiting_http_request_id = None;
+            return push_auth_result(task, vm, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let api_key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
@@ -5758,9 +5735,13 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
-    let (status, resp_body) = blocking_http_auth("POST", &url, Some(&body), key_opt.as_deref(), true);
-    LAST_HTTP_STATUS.with(|s| s.set(status));
-    super::convert::VMConvertible::push_to_stack(&resp_body, task, vm)?;
+    let req_id = alloc_async_id();
+    spawn_async_http_bearer("POST".into(), url, Some(body), key_opt, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
 }
 
@@ -5773,14 +5754,26 @@ pub fn shim_http_last_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 }
 
 /// Synchronous HTTP GET — returns response body as string.
-/// Plan 349 步骤 7/8 (W1c): blocking (CALL_SPEC dispatch — see shim_http_get note).
+/// Plan 349 步骤 7: non-blocking re-entry yield.
 /// Stack: [url] -> [response_body_str]
 pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    if let Some(req_id) = task.waiting_http_request_id {
+        if let Some(result) = check_async_http_result_auth(req_id) {
+            task.waiting_http_request_id = None;
+            return push_auth_result(task, vm, result);
+        }
+        task.status = crate::vm::task::TaskStatus::Waiting("http".into());
+        return Ok(());
+    }
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let (status, resp_body) = blocking_http_auth("GET", &url, None, None, false);
-    LAST_HTTP_STATUS.with(|s| s.set(status));
-    super::convert::VMConvertible::push_to_stack(&resp_body, task, vm)?;
+    let req_id = alloc_async_id();
+    spawn_async_http_auth("GET".into(), url, None, None, req_id);
+    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+        map.insert(req_id, None);
+    }
+    task.waiting_http_request_id = Some(req_id);
+    task.status = crate::vm::task::TaskStatus::Waiting("http".into());
     Ok(())
 }
 
