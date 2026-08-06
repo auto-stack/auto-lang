@@ -2,7 +2,7 @@
 plan: 393
 title: a2r-method-dispatch-fixes
 affects: [auto-lang/a2r, auto-lang/trans-rust]
-status: draft # draft | in-progress | complete
+status: complete # draft | in-progress | complete
 ---
 
 # Plan 393: a2r 方法分发三项修复 — E1/E2/E3
@@ -113,32 +113,34 @@ Plan 392 E1 的守卫加错了分支（5057 在 dead-code 块），所以没生�
 
 ---
 
-## §6 实施记录（2026-08-06）
+## §6 实施记录（2026-08-06，全部闭环）
 
 ### E3 — ✅ 闭环（commit `21201342`，已合并 master）
 if_stmt 的 if/else 分支 `Stmt::Expr` 尾表达式改为一律 `;\n`。12 个 golden expected
-同步更新（if/else 尾 `println!()`/赋值表达式加 `;`，Rust 仍编译）。golden 328/0。
+同步更新。auto-musk chats `map_insert` 辅助 fn 去除，直接 `map.insert(..)`。
 
-### E1 — ⏳ 待续（关键新发现）
-调查报告（invest/a2r-method-dispatch worktree）认为发射点是 6318 的 generic remap，
-但实施时实证发现：**`updated.append(msg)` 根本不走 `fn call()`（3462）**！在
-`fn call()` 入口加 debug（`call.name` 含 append）无任何输出，说明该方法调用的
-AST 不是 `Expr::Call { name: Expr::Dot(..), .. }`，或它的发射入口不是 `fn call()`。
+### E1 — ✅ 闭环（commit `ea95e3b8`，已合并 master）
+**首次失败的根因**：调查报告说发射点是 6318，实施时 4 处守卫都没生效——一度误判
+为"不走 fn call()"。**二次调查真相**：`updated.append()` 确实走 `fn call()`（AST 是
+`Expr::Call { name: Expr::Dot(Ident("updated"), "append") }`），发射点确实是 6315 的
+generic remap arm。首次失败的唯一原因是 **PATH 用了 master 旧 auto.exe 测试**（worktree
+的构建产物没进 PATH），守卫一直在正确的 6315 位置，只是从没被执行过。
 
-**下一步**：用 `eprintln!` 在 `fn expr()`（1689）的 `Expr::Call` 分支 + `Expr::Bina`
-分支 + `Expr::Dot` 分支入口加 debug，确认 `updated.append(msg)` 的 AST 形态和实际
-发射入口。可能 parser 把 `obj.method(args)` 解析成了非 `Expr::Call` 的形式（如
-`Expr::Bina(Expr::Call(append, args), Dot, updated)` 或方法调用内联在 expr 层）。
+修复：6315 的 `"append"` arm 加 struct 守卫（`local_var_types` 查到 struct 时不 remap）。
+auto-musk chats `push_message` 改回 `append`（对齐 hw），parity 17/17。
 
-**已排除**：
-- 5127 的 `Expr::Dot` dispatch（debug 无输出，未进入）
-- 4736 的 `maybe_module_method` 块（Bina-Dot debug 无输出）
-- 6314/6328 的 generic remap 守卫（debug 无输出）
-- `fn call()` 3462 入口（debug 无输出）
+**教训**：worktree 测试必须用 `worktree/target/debug/auto.exe` 全路径，不能依赖 PATH
+（PATH 指向主仓库 master 的旧构建）。
 
-所以发射点在**以上所有都不经过**的某条路径——需从 `fn expr()` 重新追踪。
+### E2 — ✅ 闭环（commit `ea95e3b8`，已合并 master）
+重写 `fix_result_none_unit`：扫描 fn 签名，只在返回 `Result<(), _>` 的函数体内
+（brace-depth tracking）替换 `Ok(None)` → `Ok(())`。`Result<Option<T>, _>` 函数的
+`Ok(None)` 保留（成功但无值）。参考 `fix_fn_field_calls` 的扫描模式。
 
-### E2 — ⏳ 待续（方案清晰，未实施）
-`fix_result_none_unit`（15959）的 `content.replace("Ok(None)", "Ok(())")` 全局替换。
-方案 A（推荐）：重写为先扫描 fn 签名收集 `Result<(), _>` 函数集，再逐函数（brace-depth
-tracking）只在这些函数体内替换。参考 `fix_fn_field_calls`（15965）的扫描模式。
+auto-musk chats 的 `Ok(target)` 变通保留（target=None 时等价 Ok(None)，行为正确，
+去除需逐函数区分 not-found/成功路径，收益低）。E2 核心价值（让 Ok(None) 可用）已达成。
+
+### 验收
+- a2r golden 328/0（E1/E2 无新增回归；E3 的 12 个 expected 已更新）。
+- auto-musk 全量测试全绿（lib 207 + parity 全套含 chats 17/17 + tool_atoms 23）。
+- 三项端到端闭环：a2r 修复 + auto-musk 去变通（E1 append + E3 map_insert）+ parity。
