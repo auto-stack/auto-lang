@@ -3204,7 +3204,17 @@ impl VueGenerator {
                             self.used_handlers.insert(handler_name);
                             continue;
                         }
-                        let vue_event = self.auto_event_to_vue(event);
+                        let vue_event = if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                            // PascalCase tag — a custom component rendered via
+                            // map_tag's fallback (Phase 1 front files have no
+                            // known_sub_widgets, so sibling sub-widgets land
+                            // here). It emits its msg variant names, so `on_*`
+                            // callback props must bind to `@Pascal` just like
+                            // known sub-widgets (Plan 043 M5 R4).
+                            self.sub_widget_event_to_vue(event)
+                        } else {
+                            self.auto_event_to_vue(event)
+                        };
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -13532,6 +13542,52 @@ widget PromptBar(cwd: str, on_run: msg, on_clear: msg, on_exit: msg) {
             child.contains("Run: [string]"),
             "child still declares the Run emit with payload:\n{}",
             child
+        );
+    }
+
+    #[test]
+    fn test_pascalcase_fallback_element_on_prop_binds_pascal_emit_name() {
+        // Phase 1 front files compile WITHOUT known_sub_widgets — a sibling
+        // sub-widget (`use prompt_bar: HistorySearch`) renders via map_tag's
+        // PascalCase fallback (plain-element path). Its `on_*` callback props
+        // must still bind to the Pascal msg-variant name (`@Run`), not the DOM
+        // fallback `@_run` — the child emits `Run`.
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Panel(history: []str) {
+    msg Msg { Run(str), Close }
+    model { var open bool = false }
+    view {
+        col {
+            HistorySearch(
+                history: .history,
+                open: .open,
+                on_run: .Run,
+                on_close: .Close
+            )
+        }
+    }
+    on {
+        .Run(cmd) -> { }
+        .Close -> { }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("@Run=\"Run\""),
+            "on_run → @Run on PascalCase fallback element:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@Close=\"Close\""),
+            "on_close → @Close on PascalCase fallback element:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("@_run") && !sfc.contains("@_close"),
+            "no DOM-fallback @_* bindings on PascalCase components:\n{}",
+            sfc
         );
     }
 }
