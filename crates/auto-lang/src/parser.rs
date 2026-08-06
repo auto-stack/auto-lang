@@ -189,6 +189,13 @@ pub struct Parser<'a> {
     /// Prevents `store` (contextual keyword) from being misinterpreted as a
     /// store declaration when it's actually a variable reference (store.action()).
     in_on_body: bool,
+    /// Plan 043 M5: true while parsing the RHS of a Dot expression
+    /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
+    /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
+    /// would otherwise parse `Text{` as a Node and swallow the element's
+    /// props brace ("Expected term, got RBrace"). Struct literals are always
+    /// standalone `Type{...}`, never `obj.Field{...}`.
+    in_dot_rhs: bool,
     /// 方言表：按 session 装配，语句派发时按优先级查询。
     /// PR-1 阶段初始为空（无方言注册），行为与现状一致。
     /// PR-2 将把 UI 关键字迁入 UiDialect 并在 build_dialects 中注册。
@@ -272,6 +279,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -338,6 +346,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -387,6 +396,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
             skip_check: false,
@@ -2394,7 +2404,18 @@ impl<'a> Parser<'a> {
                         }
                         continue;
                     }
+                    // Plan 043 M5: the RHS of a Dot is a FIELD/METHOD name —
+                    // suppress struct-literal widening so `cell.Text { }` keeps
+                    // the `{` for the element's props instead of parsing
+                    // `Text{...}` as a Node (see in_dot_rhs). Only Dot (not
+                    // Asn/other infix ops) sets the flag, so `x = Type{...}`
+                    // still widens.
+                    let saved_dot_rhs = self.in_dot_rhs;
+                    if matches!(op, Op::Dot) {
+                        self.in_dot_rhs = true;
+                    }
                     let rhs = self.expr_pratt(power.r)?;
+                    self.in_dot_rhs = saved_dot_rhs;
                     match op {
                         Op::Range => {
                             lhs = Expr::Range(Range {
@@ -3159,6 +3180,7 @@ impl<'a> Parser<'a> {
                 // must not be reinterpreted as struct construction — doing so
                 // overflowed the parser stack on godot scene files.
                 self.is_ui_scenario()
+                    && !self.in_dot_rhs
                     && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
                     && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
             };
@@ -14207,6 +14229,111 @@ mod tests {
             node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "command")),
             "command field present as named arg, got {:?}",
             node.args.args
+        );
+    }
+
+    #[test]
+    fn test_dot_rhs_field_access_not_struct_construction() {
+        // Plan 043 M5: `text cell.Text { }` in a view fn — the PascalCase
+        // field `Text` is immediately followed by the element's props brace.
+        // The struct-literal widening (any PascalCase ident + `{`) must NOT
+        // fire for the RHS of a Dot: it would parse `Text{...}` as a Node,
+        // swallow the props brace, and desync → "Expected term, got RBrace".
+        // Struct literals are standalone `Type{...}` (`x = Block{...}`), never
+        // `obj.Field{...}`.
+        let code = concat!(
+            "widget W {\n",
+            "    view {\n",
+            "        col {\n",
+            "            RenderT(a: .a)\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "view fn RenderT(a Any) {\n",
+            "    col {\n",
+            "        for cell in a {\n",
+            "            text cell.Text { }\n",
+            "            if cell.Tagged != nil {\n",
+            "                text cell.Tagged.text { }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("widget view with PascalCase fields parses");
+        // RenderT's view body must contain the for loop with the text element.
+        use crate::ast::Stmt;
+        let view_fn = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::ViewFragmentDecl(vf) if vf.name.as_str() == "RenderT" => Some(vf),
+                _ => None,
+            })
+            .expect("RenderT view fn decl");
+        let root = view_fn.body.clone();
+        // Root → col element → for loop → text element with a Dot primary prop.
+        fn collect_text_primary(
+            node: &crate::ast::ui::ViewNode,
+            out: &mut Vec<crate::ast::Expr>,
+        ) {
+            use crate::ast::ui::ViewNode;
+            match node {
+                ViewNode::Element { tag, props, children, .. } => {
+                    if tag == "text" {
+                        for p in props {
+                            if p.name == "text" {
+                                if let crate::ast::ui::ViewPropValue::Expr(e) = &p.value {
+                                    out.push(e.clone());
+                                }
+                            }
+                        }
+                    }
+                    for c in children {
+                        collect_text_primary(c, out);
+                    }
+                }
+                ViewNode::ForLoop { body, .. } => {
+                    for c in body {
+                        collect_text_primary(c, out);
+                    }
+                }
+                ViewNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body.iter().chain(else_body.iter().flatten()) {
+                        collect_text_primary(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut primaries = Vec::new();
+        collect_text_primary(&root, &mut primaries);
+        assert!(
+            primaries.iter().any(|e| matches!(
+                e,
+                crate::ast::Expr::Dot(obj, f)
+                    if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "cell")
+                        && f.as_str() == "Text"
+            )),
+            "cell.Text parsed as field access (Dot), got: {:?}",
+            primaries
+        );
+        assert!(
+            primaries.iter().any(|e| matches!(
+                e,
+                crate::ast::Expr::Dot(inner, f)
+                    if f.as_str() == "text"
+                        && matches!(
+                            inner.as_ref(),
+                            crate::ast::Expr::Dot(o, ff)
+                                if ff.as_str() == "Tagged"
+                                    && matches!(o.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "cell")
+                        )
+            )),
+            "cell.Tagged.text parsed as nested Dot, got: {:?}",
+            primaries
         );
     }
 
