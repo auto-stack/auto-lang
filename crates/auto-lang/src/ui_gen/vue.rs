@@ -891,6 +891,13 @@ pub struct VueGenerator {
     /// Maps handler name → loop variable name (e.g., "SelectNote" → "i").
     loop_param_handlers: HashMap<String, String>,
 
+    /// Current widget's msg variants: handler name → payload arity (Plan 043 H2).
+    /// Used to decide whether a sub-widget event binding forwards the child's
+    /// EMIT payload (`$event`) or the for-loop variable. When the parent's msg
+    /// variant takes a payload (e.g. `.Rerun(str)`), the child emit carries the
+    /// value and the binding must pass `$event`, not the loop var.
+    msg_payload_arities: HashMap<String, usize>,
+
     /// Whether to generate handleChildDelete function (auto-wired when sub-widget emits Delete)
     needs_child_delete_handler: bool,
 
@@ -1036,6 +1043,7 @@ impl VueGenerator {
             current_loop_var_is_index: false,
             widget_key_counter: 0,
             loop_param_handlers: HashMap::new(),
+            msg_payload_arities: HashMap::new(),
             needs_child_delete_handler: false,
             explicit_api_imports: false,
             global_listeners: Vec::new(),
@@ -1449,6 +1457,16 @@ impl VueGenerator {
         // Widget `use { ... }` external imports — must be registered before
         // template generation so view tags resolve to external components.
         self.register_ext_imports(widget);
+
+        // Plan 043 H2: index this widget's msg variants (handler name → payload
+        // arity) so sub-widget event bindings can decide between forwarding the
+        // child's emit payload ($event) vs the for-loop variable.
+        for msg in &widget.messages {
+            for variant in &msg.variants {
+                let handler_name = Self::sanitize_ident(&variant.name);
+                self.msg_payload_arities.insert(handler_name, variant.payload.len());
+            }
+        }
 
         // Detect dark mode: check widget state vars, view tree, or handler names
         self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark" || s.name == "dark_mode");
@@ -2607,7 +2625,11 @@ impl VueGenerator {
             attrs.push(format!("class=\"{}\"", static_classes));
         }
         if let Some(dynamic) = dynamic_classes {
-            attrs.push(format!(":class=\"{}\"", dynamic));
+            if let Some(style_expr) = dynamic.strip_prefix("__style__") {
+                attrs.push(format!(":style=\"{}\"", style_expr));
+            } else {
+                attrs.push(format!(":class=\"{}\"", dynamic));
+            }
         }
 
         // Remaining props as v-bind attributes
@@ -2644,8 +2666,20 @@ impl VueGenerator {
             // doesn't already have explicit params.
             if let Some(ref loop_var) = self.current_loop_var {
                 if aura_event.params.is_empty() {
-                    handler_fn = format!("{}({})", handler_fn, loop_var);
-                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                    // Plan 043 H2: if the handler's msg variant takes a payload,
+                    // forward the DOM event's value via $event rather than the
+                    // loop var (parity with the sub-widget path above).
+                    let handler_takes_payload = self
+                        .msg_payload_arities
+                        .get(&handler_name)
+                        .map(|n| *n > 0)
+                        .unwrap_or(false);
+                    if handler_takes_payload {
+                        handler_fn = format!("{}($event)", handler_fn);
+                    } else {
+                        handler_fn = format!("{}({})", handler_fn, loop_var);
+                        self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                    }
                 }
             }
             self.used_handlers.insert(handler_name);
@@ -2981,12 +3015,29 @@ impl VueGenerator {
                         // Only append if handler doesn't already have params from aura_event
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
-                                handler_fn = format!("{}({})", handler_fn, loop_var);
-                                // Plan 345: only register as a loop-param handler when we
-                                // actually auto-pass the loop var. A handler with explicit
-                                // args (e.g. .SelectNote(note.id)) must keep its declared
-                                // param name, not be renamed to the loop variable.
-                                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                // Plan 043 H2: decide what to auto-pass as the handler arg.
+                                // If the parent's msg variant for this handler takes a PAYLOAD
+                                // (e.g. `.Rerun(str)`), the child emits the value and the
+                                // binding must forward `$event` — NOT the loop var (which would
+                                // clobber the emitted command/path with the block object).
+                                // If the variant takes no payload (e.g. `.Stop`, or index-based
+                                // `.SelectNote(i)` where the loop var IS the intended arg), fall
+                                // back to the legacy loop-var behavior.
+                                let handler_takes_payload = self
+                                    .msg_payload_arities
+                                    .get(&handler_name)
+                                    .map(|n| *n > 0)
+                                    .unwrap_or(false);
+                                if handler_takes_payload {
+                                    handler_fn = format!("{}($event)", handler_fn);
+                                } else {
+                                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                                    // Plan 345: only register as a loop-param handler when we
+                                    // actually auto-pass the loop var. A handler with explicit
+                                    // args (e.g. .SelectNote(note.id)) must keep its declared
+                                    // param name, not be renamed to the loop variable.
+                                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                }
                             }
                         }
                         self.used_handlers.insert(handler_name);
@@ -3072,7 +3123,14 @@ impl VueGenerator {
                         attrs.push(format!("class=\"{}\"", static_classes));
                     }
                     if let Some(dynamic) = dynamic_classes {
-                        attrs.push(format!(":class=\"{}\"", dynamic));
+                        // Plan 043 H5: a "__style__"-prefixed dynamic binding is a
+                        // CSS-string expression (e.g. "color: rgb(...)") → :style,
+                        // not a class condition.
+                        if let Some(style_expr) = dynamic.strip_prefix("__style__") {
+                            attrs.push(format!(":style=\"{}\"", style_expr));
+                        } else {
+                            attrs.push(format!(":class=\"{}\"", dynamic));
+                        }
                     }
 
                     // Auto-add type attribute for checkbox (native HTML needs type="checkbox")
@@ -3222,12 +3280,29 @@ impl VueGenerator {
                         // pass the loop variable's .id as argument (e.g., SelectNote(note.id))
                         if let Some(ref loop_var) = self.current_loop_var {
                             if aura_event.params.is_empty() {
-                                handler_fn = format!("{}({})", handler_fn, loop_var);
-                                // Plan 345: only register as a loop-param handler when we
-                                // actually auto-pass the loop var. A handler with explicit
-                                // args (e.g. .SelectNote(note.id)) must keep its declared
-                                // param name, not be renamed to the loop variable.
-                                self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                // Plan 043 H2: decide what to auto-pass as the handler arg.
+                                // If the parent's msg variant for this handler takes a PAYLOAD
+                                // (e.g. `.Rerun(str)`), the child emits the value and the
+                                // binding must forward `$event` — NOT the loop var (which would
+                                // clobber the emitted command/path with the block object).
+                                // If the variant takes no payload (e.g. `.Stop`, or index-based
+                                // `.SelectNote(i)` where the loop var IS the intended arg), fall
+                                // back to the legacy loop-var behavior.
+                                let handler_takes_payload = self
+                                    .msg_payload_arities
+                                    .get(&handler_name)
+                                    .map(|n| *n > 0)
+                                    .unwrap_or(false);
+                                if handler_takes_payload {
+                                    handler_fn = format!("{}($event)", handler_fn);
+                                } else {
+                                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                                    // Plan 345: only register as a loop-param handler when we
+                                    // actually auto-pass the loop var. A handler with explicit
+                                    // args (e.g. .SelectNote(note.id)) must keep its declared
+                                    // param name, not be renamed to the loop variable.
+                                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                }
                             }
                         }
                         self.used_handlers.insert(handler_name);
@@ -4540,6 +4615,17 @@ impl VueGenerator {
                     // nested ternaries (if_expr_to_style_ternary).
                     dynamic_binding = Some(self.if_expr_to_style_ternary(if_stmt));
                 }
+                AuraPropValue::Expr(other_expr) => {
+                    // Plan 043 H5: a dynamic style expression that is neither a
+                    // string literal nor a conditional — e.g. a string concat
+                    // like `"color: rgb(" + span.r + "," + ...`. These produce a
+                    // CSS declaration string at runtime; emit as a dynamic
+                    // binding via the special "__style__" marker so the caller
+                    // renders `:style="<expr>"` instead of `:class`.
+                    if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
+                        dynamic_binding = Some(format!("__style__{}", expr_str));
+                    }
+                }
                 _ => {}
             }
         }
@@ -4897,12 +4983,15 @@ impl VueGenerator {
                     out.push_str(&format!("{} (", kw));
                     out.push_str(&self.expr_to_js(&branch.cond)?);
                     out.push_str(") { ");
-                    out.push_str(crate::ui_gen::ts_adapter::transpile_handler_body(&branch.body.stmts, &ctx).trim());
+                    // Plan 043 H1: branch bodies must RETURN their value so the
+                    // IIFE evaluates to the expression (e.g. status_glyph '✓'),
+                    // not undefined.
+                    out.push_str(crate::ui_gen::ts_adapter::transpile_body_as_return(&branch.body.stmts, &ctx).trim());
                     out.push_str(" }");
                 }
                 if let Some(else_body) = &if_expr.else_ {
                     out.push_str(" else { ");
-                    out.push_str(crate::ui_gen::ts_adapter::transpile_handler_body(&else_body.stmts, &ctx).trim());
+                    out.push_str(crate::ui_gen::ts_adapter::transpile_body_as_return(&else_body.stmts, &ctx).trim());
                     out.push_str(" }");
                 }
                 out.push_str(" })()");
@@ -8324,6 +8413,24 @@ impl VueGenerator {
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     attrs.push(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)));
+                }
+                AuraPropValue::Expr(other_expr) => {
+                    // Plan 043 H5: a dynamic style expression that is neither a
+                    // string literal nor a conditional — e.g. a string concat
+                    // like `"color: rgb(" + span.r + "," + ...`. It produces a
+                    // CSS declaration string at runtime; emit as :style (not a
+                    // Tailwind class). Falls back to no attr if the expr can't
+                    // be rendered.
+                    if let crate::ast::Expr::Str(_) = other_expr {
+                        // Plain string literal → static class (Tailwind classes).
+                        if let Some(s) = self.extract_string_value(value) {
+                            if !s.is_empty() {
+                                attrs.push(format!("class=\"{}\"", s));
+                            }
+                        }
+                    } else if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
+                        attrs.push(format!(":style=\"{}\"", expr_str));
+                    }
                 }
                 _ => {
                     let class = self.extract_string_value(value).unwrap_or("");
@@ -11809,9 +11916,12 @@ widget App {
         let mut gen = VueGenerator::new();
         let sfc = gen.generate(&widget).unwrap();
 
+        // Plan 043 H1: the IIFE must RETURN each branch's value (previously the
+        // branches were bare expression statements, so the IIFE evaluated to
+        // undefined and the computed — e.g. a status glyph — silently vanished).
         assert!(
-            sfc.contains("const glyph = computed<any>(() => (() => { if (status.kind === 'Success') { '✓'; }else if (status.kind === 'Failed') { '✗'; } else { '…'; } })())"),
-            "computed if chain must be an IIFE:\n{}",
+            sfc.contains("const glyph = computed<any>(() => (() => { if (status.kind === 'Success') { return '✓'; }else if (status.kind === 'Failed') { return '✗'; } else { return '…'; } })())"),
+            "computed if chain must be an IIFE that RETURNS each branch's value:\n{}",
             sfc
         );
         assert!(!sfc.contains("=> undefined"), "Expr::If must not fall through to undefined:\n{}", sfc);
@@ -13617,6 +13727,77 @@ widget Panel(history: []str) {
         assert!(
             !sfc.contains("@_run") && !sfc.contains("@_close"),
             "no DOM-fallback @_* bindings on PascalCase components:\n{}",
+            sfc
+        );
+    }
+
+    // ====================================================================
+    // Plan 043 §5.9 parity fixes (H1/H2/H5) — codegen parity with hand-written
+    // ====================================================================
+
+    /// H2: inside a for-loop, a sub-widget event whose parent msg variant takes
+    /// a PAYLOAD must forward the child's emit value via `$event`, NOT the loop
+    /// variable (which would clobber e.g. a Rerun(command) with the block object).
+    #[test]
+    fn test_loop_sub_widget_payload_event_forwards_dollar_event() {
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
+widget BlockList {
+    msg Msg { Rerun(str), Stop }
+    view {
+        col {
+            for b in .blocks {
+                BlockItem(on_rerun: .Rerun, on_stop: .Stop)
+            }
+        }
+    }
+    on {
+        .Rerun(cmd) -> { }
+        .Stop -> { }
+    }
+}
+"#,
+            &["BlockItem"],
+        );
+        // Rerun(str) takes a payload → forward $event.
+        assert!(
+            sfc.contains("@Rerun=\"Rerun($event)\""),
+            "payload handler must forward $event:\n{}",
+            sfc
+        );
+        // Stop takes no payload → legacy loop-var behavior (b).
+        assert!(
+            sfc.contains("@Stop=\"Stop(b)\""),
+            "no-payload handler still passes loop var:\n{}",
+            sfc
+        );
+    }
+
+    /// H5: a dynamic style expression (string concat like "color: rgb(r,g,b)")
+    /// on a text element must render as `:style="<expr>"`, not be silently
+    /// dropped. Previously push_style_class only handled Str literals and
+    //  Expr::If, dropping Expr::Bina concatenations.
+    #[test]
+    fn test_text_dynamic_style_concat_renders_style_binding() {
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
+widget CodeView {
+    view {
+        col {
+            for span in .spans {
+                text span.text {
+                    style: "color: rgb(" + span.r + "," + span.g + "," + span.b + ")"
+                }
+            }
+        }
+    }
+}
+"#,
+            &[],
+        );
+        assert!(
+            sfc.contains(":style=\"'color: rgb(' + span.r + ',' + span.g + ',' + span.b + ')'\""),
+            "dynamic style concat must render as :style binding:\n{}",
             sfc
         );
     }
