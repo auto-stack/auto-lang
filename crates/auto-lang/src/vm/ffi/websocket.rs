@@ -53,7 +53,7 @@ pub fn shim_ws_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 
     // Register the async stream for on_message iteration.
     let stream_id = alloc_async_id();
-    if let Ok(mut streams) = super::stdlib::ASYNC_HTTP_STREAMS.lock() {
+    if let Ok(mut streams) = super::stdlib::ASYNC_STREAMS.lock() {
         streams.insert(stream_id, msg_handle.clone());
     }
     // Register the connection.
@@ -221,7 +221,7 @@ pub fn shim_ws_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         conns.remove(&(handle as u64));
     }
     // Also remove from async streams.
-    if let Ok(mut streams) = super::stdlib::ASYNC_HTTP_STREAMS.lock() {
+    if let Ok(mut streams) = super::stdlib::ASYNC_STREAMS.lock() {
         streams.remove(&(handle as u64));
     }
 

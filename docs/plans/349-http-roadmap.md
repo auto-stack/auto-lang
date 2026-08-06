@@ -177,11 +177,24 @@
 重新 pop 已不在栈上的 args，导致 Stack Underflow。修复：wake 时**不清空**该字段
 （shim 的就绪分支自己清空）。此 bug 此前也影响 `*_json` 系列，只是无 re-entry 测试覆盖。
 
-#### 残留 TODO（非阻塞）
+#### 全局表收敛 — ✅ landed（Plan 349 收敛 phase）
 
-- Plan 344 的 AWAIT_FUTURE 通用 future 架构（FutureValue.external_result / codegen async
-  call site）——独立 plan，本步骤的 re-entry 范式是其务实替代。
-- 全局结果表收敛（`ASYNC_HTTP_RESULTS`/_HANDLE/_AUTH 合并为泛化 future registry）。
+原 6 张特化 `lazy_static!` 表收敛为 2 张：
+- `ASYNC_STREAMS`（合并 `ASYNC_HTTP_STREAMS` + `IO_STREAMS`，value 同型 `Arc<AsyncStreamHandle>`）。
+- `ASYNC_RESULTS: HashMap<u64, Option<Result<AsyncResult, String>>>`（合并 `ASYNC_HTTP_RESULTS`
+  + `_HANDLE` + `_AUTH` + `ASYNC_IO_RESULTS`，用 `AsyncResult` enum 区分 Body/Structured/Auth 变体）。
+
+收益：engine.rs wake source 5 从 4 段 `.or_else()`（33 行，最坏锁 4 次）→ 1 次查找（3 行）；
+wake source 4 双表 match → 单表；native.rs 流迭代器 2 段 `.or_else` → 单次；锁竞争减少；
+类型安全增强（enum 穷尽 match）。req_id 全局唯一（`alloc_async_id`/`NET_HANDLE_COUNTER`）保证合表无 key 冲突。
+
+#### 残留 TODO（独立后续计划）
+
+- Plan 344 的 AWAIT_FUTURE 通用 future 架构（FutureValue.external_result / execute_future_body
+  语义分叉 / codegen async call site）。调研结论：复杂度中-大，触及 VM 核心——`execute_future_body`
+  的「同步内联」语义与「外部挂起」在 body 内嵌套 await 时根本不兼容，需续点机制。收益是「用户态
+  async block 组合 native async」/ `Future.all/race`，当前无此需求，留独立 plan。本 roadmap 的
+  re-entry yield 范式 + 全局表收敛是其务实替代。
 
 ### 步骤 8：易用性增强 — ✅ landed
 

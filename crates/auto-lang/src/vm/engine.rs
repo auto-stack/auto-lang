@@ -1680,13 +1680,16 @@ impl AutoVM {
                     continue;
                 }
 
-                // Plan 348: Wake source 4 — SSE/IO stream data available.
+                // Plan 348/353/349: Wake source 4 — SSE/IO stream data available.
                 // Task yielded with Waiting("sse") because the async channel
-                // had no data. Check if data has arrived since then.
-                // Plan 353: Also check IO_STREAMS for io.lines/io.chunks.
+                // had no data. Check if data has arrived since then. HTTP and IO
+                // streams now share the unified ASYNC_STREAMS table (Plan 349
+                // table consolidation); stream_id is globally unique.
                 if let Some(stream_id) = task.waiting_sse_stream_id {
-                    let check_stream = |map: &std::sync::Mutex<std::collections::HashMap<u64, Arc<crate::vm::ffi::stdlib::AsyncStreamHandle>>>| -> Option<bool> {
-                        map.lock().ok().and_then(|m| {
+                    let has_data = crate::vm::ffi::stdlib::ASYNC_STREAMS
+                        .lock()
+                        .ok()
+                        .and_then(|m| {
                             m.get(&stream_id).map(|handle| {
                                 let done = handle.done.load(std::sync::atomic::Ordering::SeqCst);
                                 let has_recv = handle.rx.lock()
@@ -1695,16 +1698,7 @@ impl AutoVM {
                                 has_recv || done
                             })
                         })
-                    };
-                    // Check HTTP streams first, then IO streams. If neither has
-                    // the stream_id, the stream is gone → wake up (push -1 sentinel).
-                    let has_data = match check_stream(&crate::vm::ffi::stdlib::ASYNC_HTTP_STREAMS) {
-                        Some(found) => found,
-                        None => match check_stream(&crate::vm::ffi::stdlib::IO_STREAMS) {
-                            Some(found) => found,
-                            None => true, // Stream gone → wake up
-                        }
-                    };
+                        .unwrap_or(true); // Stream gone → wake up (push -1 sentinel).
                     if has_data {
                         task.waiting_sse_stream_id = None;
                         task.status = TaskStatus::Ready;
@@ -1714,45 +1708,23 @@ impl AutoVM {
                     }
                 }
 
-                // Plan 349 step 7 / Plan 353 stage 6 / Plan 349 步骤 7/8 (W1): Wake source 5 — async HTTP/IO completed.
+                // Plan 349 step 7 / Plan 353: Wake source 5 — async HTTP/IO completed.
+                // Plan 349 table consolidation: the former 4 specialized tables
+                // (ASYNC_HTTP_RESULTS / _HANDLE / _AUTH / ASYNC_IO_RESULTS) are now
+                // a single ASYNC_RESULTS table, so this collapses from a 4-deep
+                // .or_else() chain to one lookup. req_id is globally unique.
                 if let Some(req_id) = task.waiting_http_request_id {
-                    let ready = crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS
+                    let ready = crate::vm::ffi::stdlib::ASYNC_RESULTS
                         .lock()
                         .ok()
                         .and_then(|map| {
                             map.get(&req_id).map(|opt| opt.is_some())
                         })
-                        .or_else(|| {
-                            crate::vm::ffi::stdlib::ASYNC_IO_RESULTS
-                                .lock()
-                                .ok()
-                                .and_then(|map| {
-                                    map.get(&req_id).map(|opt| opt.is_some())
-                                })
-                        })
-                        .or_else(|| {
-                            // Plan 349 步骤 7/8 (W1a/W1b): handle-returning async HTTP.
-                            crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS_HANDLE
-                                .lock()
-                                .ok()
-                                .and_then(|map| {
-                                    map.get(&req_id).map(|opt| opt.is_some())
-                                })
-                        })
-                        .or_else(|| {
-                            // Plan 349 步骤 7/8 (W1c): auth-bearing async HTTP.
-                            crate::vm::ffi::stdlib::ASYNC_HTTP_RESULTS_AUTH
-                                .lock()
-                                .ok()
-                                .and_then(|map| {
-                                    map.get(&req_id).map(|opt| opt.is_some())
-                                })
-                        })
                         .unwrap_or(true); // Entry gone → wake (error fallback)
                     if ready {
                         // NOTE: do NOT clear waiting_http_request_id here. The
                         // shim's re-entry branch needs it to look up the result
-                        // in ASYNC_HTTP_RESULTS*. The shim itself clears the
+                        // in ASYNC_RESULTS. The shim itself clears the
                         // field once it has consumed the result. Clearing it
                         // prematurely makes the re-entry take the first-call
                         // path and pop args that are no longer on the stack

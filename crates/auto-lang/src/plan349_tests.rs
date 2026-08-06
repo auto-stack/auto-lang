@@ -446,4 +446,37 @@ print("ok")
             resp
         );
     }
+
+    // ------------------------------------------------------------------
+    // 全局表收敛 phase：ASYNC_RESULTS 单表驱动 re-entry（Structured 变体）
+    // ------------------------------------------------------------------
+
+    /// After the table consolidation, http.get (handle-returning) must still
+    /// drive its re-entry through the unified ASYNC_RESULTS table. This
+    /// smoke-tests the Structured variant path end-to-end: a mock server
+    /// responds, the shim spawns → ASYNC_RESULTS[req_id] = Structured{...},
+    /// wake source 5 fires on the single table, the re-entry branch takes the
+    /// result and pushes a handle. If the consolidation broke the re-entry
+    /// (e.g. wrong variant unwrap, wake source querying a removed table), the
+    /// task would hang or underflow — run_with_capture would fail.
+    #[test]
+    fn test_consolidated_table_drives_handle_reentry() {
+        let port = spawn_mock_server(r#"{"consolidated":true}"#);
+        let url = format!("http://127.0.0.1:{}/api/data", port);
+        let code = format!(
+            r#"
+let resp = http.get("{}")
+print("handle_reentry_ok")
+"#,
+            url
+        );
+        let result = run_with_capture(&code);
+        assert!(result.is_ok(), "get should run via consolidated table: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(
+            stdout.contains("handle_reentry_ok"),
+            "expected handle re-entry to complete after consolidation, got: [{}]",
+            stdout
+        );
+    }
 }

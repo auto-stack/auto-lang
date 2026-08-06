@@ -628,7 +628,7 @@ pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         })
         .expect("spawn io-lines thread");
 
-    if let Ok(mut map) = IO_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -696,7 +696,7 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         })
         .expect("spawn io-chunks thread");
 
-    if let Ok(mut map) = IO_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -787,7 +787,7 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         })
         .expect("spawn fs-entries thread");
 
-    if let Ok(mut map) = IO_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -1105,7 +1105,7 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         })
         .expect("spawn io-scanner thread");
 
-    if let Ok(mut map) = IO_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -1124,10 +1124,23 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // Plan 349 step7's async HTTP)
 // ============================================================================
 
-lazy_static::lazy_static! {
-    /// Plan 353 stage 6: Async IO results (request_id → Option<Result<json_str>>).
-    pub(crate) static ref ASYNC_IO_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
+/// Plan 349 table consolidation: payload shape for the unified ASYNC_RESULTS
+/// table. Each variant corresponds to a former specialized table.
+pub(crate) enum AsyncResult {
+    /// Body string (former ASYNC_HTTP_RESULTS / ASYNC_IO_RESULTS).
+    Body(String),
+    /// Structured HTTP response (former ASYNC_HTTP_RESULTS_HANDLE).
+    Structured {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    },
+    /// Auth-bearing HTTP response (former ASYNC_HTTP_RESULTS_AUTH).
+    /// status is i32 to match LAST_HTTP_STATUS.
+    Auth {
+        status: i32,
+        body: String,
+    },
 }
 
 /// `io.read_text_async(path: String) -> String`
@@ -1138,10 +1151,10 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     // popped on the first call. Popping again would eat the wrong stack value
     // and underflow. (Same fix as Plan 340's HTTP shims.)
     if let Some(req_id) = task.waiting_http_request_id {
-        let result = ASYNC_IO_RESULTS.lock()
+        let result = ASYNC_RESULTS.lock()
             .ok()
             .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
-        if let Some(Ok(content)) = result {
+        if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
             let idx = {
                 let mut strings = _vm.strings.write().unwrap();
@@ -1177,11 +1190,11 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
         let result = std::fs::read_to_string(&path_for_thread)
             .map(|s| s)
             .map_err(|e| e.to_string());
-        if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
-            map.insert(req_id, Some(result));
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(req_id, Some(result.map(AsyncResult::Body)));
         }
     });
-    if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -1196,7 +1209,7 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
     // HTTP shims for rationale: the engine rewinds IP on yield, so args were
     // already popped on the first call).
     if let Some(req_id) = task.waiting_http_request_id {
-        let result = ASYNC_IO_RESULTS.lock()
+        let result = ASYNC_RESULTS.lock()
             .ok()
             .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
         if let Some(result) = result {
@@ -1220,11 +1233,11 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         let result = std::fs::write(&path_t, &content_t)
             .map(|_| "ok".to_string())
             .map_err(|e| e.to_string());
-        if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
-            map.insert(req_id, Some(result));
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(req_id, Some(result.map(AsyncResult::Body)));
         }
     });
-    if let Ok(mut map) = ASYNC_IO_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -2919,26 +2932,20 @@ pub struct AsyncStreamHandle {
     pub done: std::sync::atomic::AtomicBool,
 }
 
-// Plan 341: 全局异步流注册表。key = stream_id（从 NET_HANDLE_COUNTER 分配）。
+// Plan 341/353/349: 统一异步流注册表（原 ASYNC_HTTP_STREAMS + IO_STREAMS 合并）。
+// key = stream_id（从 NET_HANDLE_COUNTER 分配，全局唯一，故 HTTP 流与 IO 流合表无冲突）。
 // 用 Mutex<HashMap> 而非 thread_local，因为 tokio::spawn 的 future 与 VM
 // task 可能在不同异步上下文（虽同线程，但 Mutex 更稳妥）。
 lazy_static::lazy_static! {
-    pub(crate) static ref ASYNC_HTTP_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
+    pub(crate) static ref ASYNC_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
-    pub(crate) static ref ASYNC_HTTP_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
-    // Plan 349 步骤 7/8 (W1): Async results for handle-returning HTTP natives
-    // (shim_http_get/post/put/delete, shim_request_builder_send). Unlike
-    // ASYNC_HTTP_RESULTS (body String), this stores structured response data
-    // (status, headers, body bytes) so the re-entry branch can allocate a
-    // NET_HANDLE_COUNTER id and insert into the *calling thread's*
-    // HTTP_RESPONSES thread_local. Vec<u8>/Vec<(String,String)> are Send.
-    pub(crate) static ref ASYNC_HTTP_RESULTS_HANDLE: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>>>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
-    // Plan 349 步骤 7/8 (W1): Async results for auth-bearing HTTP natives
-    // (shim_http_post_sync/post_bearer/get_sync). Stores (status, body) so the
-    // re-entry branch can push the body String and set LAST_HTTP_STATUS.
-    pub(crate) static ref ASYNC_HTTP_RESULTS_AUTH: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<(i32, String), String>>>> =
+    // Plan 349 table consolidation: a single unified async-result table replaces
+    // the former ASYNC_HTTP_RESULTS / _HANDLE / _AUTH / ASYNC_IO_RESULTS. The
+    // variant discriminates the payload shape so each re-entry branch can
+    // dispatch to the right push_* helper. req_id is globally unique
+    // (alloc_async_id / NET_HANDLE_COUNTER), so HTTP and IO results share one
+    // table without key collisions.
+    pub(crate) static ref ASYNC_RESULTS: std::sync::Mutex<std::collections::HashMap<u64, Option<Result<AsyncResult, String>>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
     // Plan 352: Session storage (in-memory, process-lifetime).
     pub(crate) static ref SESSIONS: std::sync::Mutex<std::collections::HashMap<String, String>> =
@@ -2948,9 +2955,6 @@ lazy_static::lazy_static! {
         std::sync::Mutex::new(Vec::new());
     // Plan 352: Template engine — compiled templates (name → template string).
     pub(crate) static ref TEMPLATES: std::sync::Mutex<std::collections::HashMap<String, String>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
-    // Plan 353: IO stream channel registry (for io.lines / io.chunks).
-    pub(crate) static ref IO_STREAMS: std::sync::Mutex<std::collections::HashMap<u64, Arc<AsyncStreamHandle>>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
@@ -4049,7 +4053,7 @@ pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("GET".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -4073,7 +4077,7 @@ pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("POST".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -4097,7 +4101,7 @@ pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("PUT".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -4119,7 +4123,7 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("DELETE".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -4366,11 +4370,12 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                 retry_count,
             )
         })();
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
-            map.insert(req_id, Some(result));
+        let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(req_id, Some(wrapped));
         }
     });
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None); // Mark pending.
     }
     task.waiting_http_request_id = Some(req_id);
@@ -4679,7 +4684,7 @@ pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Res
     let stream_id = alloc_async_id();
     let handle = spawn_download_with_progress(url, file_path, stream_id);
 
-    if let Ok(mut map) = ASYNC_HTTP_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -4996,7 +5001,7 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let handle = spawn_async_sse_stream(url, stream_id);
 
     // Register the async stream handle.
-    if let Ok(mut map) = ASYNC_HTTP_STREAMS.lock() {
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
         map.insert(stream_id, handle);
     }
 
@@ -5254,19 +5259,23 @@ fn escape_json(s: &str) -> String {
 /// `auto.http.get_json(url) -> String` — GET, return body as string.
 /// Helper: check if a previously spawned async HTTP request has completed.
 /// Returns Some(body_string) if ready, None if still pending.
+/// Plan 349: reads from the unified ASYNC_RESULTS table (Body variant).
 fn check_async_http_result(request_id: u64) -> Option<String> {
-    ASYNC_HTTP_RESULTS.lock().ok().and_then(|mut map| {
+    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
         map.get_mut(&request_id).and_then(|opt| opt.take())
-    }).and_then(|result| result.ok())
+    }).and_then(|result| result.ok()).and_then(|ar| match ar {
+        AsyncResult::Body(s) => Some(s),
+        _ => None,
+    })
 }
 
 /// Helper: spawn an async HTTP request on a dedicated thread.
-/// Result is stored in ASYNC_HTTP_RESULTS[request_id].
+/// Result is stored in ASYNC_RESULTS[request_id] as the Body variant.
 fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
     std::thread::spawn(move || {
         let result = simple_http_json(&method, &url, body.as_deref());
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
-            map.insert(request_id, Some(Ok(result)));
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(request_id, Some(Ok(AsyncResult::Body(result))));
         }
     });
 }
@@ -5283,9 +5292,12 @@ fn spawn_async_http(method: String, url: String, body: Option<String>, request_i
 fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
-    ASYNC_HTTP_RESULTS_HANDLE.lock().ok().and_then(|mut map| {
+    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
         map.get_mut(&request_id).and_then(|opt| opt.take())
-    })
+    }).map(|r| r.and_then(|ar| match ar {
+        AsyncResult::Structured { status, headers, body } => Ok((status, headers, body)),
+        _ => Err("expected Structured async result".to_string()),
+    }))
 }
 
 /// Decide whether a reqwest error is worth retrying. Connection failures,
@@ -5383,8 +5395,9 @@ fn spawn_async_http_handle(
             client,
             0, // plain handle natives have no retry config; RequestBuilder path carries it
         );
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS_HANDLE.lock() {
-            map.insert(request_id, Some(result));
+        let wrapped = result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body });
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(request_id, Some(wrapped));
         }
     });
 }
@@ -5441,7 +5454,7 @@ pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
     let req_id = alloc_async_id();
     spawn_async_http("GET".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None); // Mark as pending.
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5468,7 +5481,7 @@ pub fn shim_http_post_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 
     let req_id = alloc_async_id();
     spawn_async_http("POST".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5495,7 +5508,7 @@ pub fn shim_http_put_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
     let req_id = alloc_async_id();
     spawn_async_http("PUT".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5520,7 +5533,7 @@ pub fn shim_http_delete_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
     let req_id = alloc_async_id();
     spawn_async_http("DELETE".into(), url, None, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5552,7 +5565,7 @@ pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 
     let req_id = alloc_async_id();
     spawn_async_http("PATCH".into(), url, Some(body), req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5583,9 +5596,12 @@ thread_local! {
 fn check_async_http_result_auth(
     request_id: u64,
 ) -> Option<Result<(i32, String), String>> {
-    ASYNC_HTTP_RESULTS_AUTH.lock().ok().and_then(|mut map| {
+    ASYNC_RESULTS.lock().ok().and_then(|mut map| {
         map.get_mut(&request_id).and_then(|opt| opt.take())
-    })
+    }).map(|r| r.and_then(|ar| match ar {
+        AsyncResult::Auth { status, body } => Ok((status, body)),
+        _ => Err("expected Auth async result".to_string()),
+    }))
 }
 
 /// Spawn an auth-bearing async HTTP request (x-api-key style, for Anthropic).
@@ -5625,8 +5641,9 @@ fn spawn_async_http_auth(
             }
             Err(e) => Err(format!("HTTP error: {}", e)),
         };
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
-            map.insert(request_id, Some(result));
+        let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(request_id, Some(wrapped));
         }
     });
 }
@@ -5665,8 +5682,9 @@ fn spawn_async_http_bearer(
             }
             Err(e) => Err(format!("HTTP error: {}", e)),
         };
-        if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
-            map.insert(request_id, Some(result));
+        let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
+        if let Ok(mut map) = ASYNC_RESULTS.lock() {
+            map.insert(request_id, Some(wrapped));
         }
     });
 }
@@ -5708,7 +5726,7 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
     let req_id = alloc_async_id();
     spawn_async_http_auth("POST".into(), url, Some(body), key_opt, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5737,7 +5755,7 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
     let req_id = alloc_async_id();
     spawn_async_http_bearer("POST".into(), url, Some(body), key_opt, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
@@ -5769,7 +5787,7 @@ pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_auth("GET".into(), url, None, None, req_id);
-    if let Ok(mut map) = ASYNC_HTTP_RESULTS_AUTH.lock() {
+    if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
     task.waiting_http_request_id = Some(req_id);
