@@ -12047,6 +12047,7 @@ mod tests {
             },
             ret: crate::ast::Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         });
 
@@ -12462,6 +12463,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         })
     }

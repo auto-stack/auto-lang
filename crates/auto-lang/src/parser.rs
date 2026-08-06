@@ -209,6 +209,12 @@ pub struct Parser<'a> {
     /// Plan 312: Pending #[api] attributes from the most recent parse_fn_annotations
     /// call, consumed by fn_decl_stmt_with_annotations when building the Fn AST.
     pending_api_attrs: Option<crate::ast::ApiAttrs>,
+    /// Plan 395: Explicit generic type args (`<T1, T2>`) parsed right before a
+    /// call's `(` in expr_pratt_with_left. The `<`-intercept stores them here and
+    /// the very next loop iteration's LParen arm mounts them onto the Call.
+    /// Sequential-only: the intercept REQUIRES `(` to immediately follow
+    /// `<types>`, so no nesting can interleave a stale pending value.
+    pending_generic_args: Vec<Type>,
     /// Maximum number of errors to collect before aborting
     pub error_limit: usize,
     /// Current type parameters being parsed (for generic type definitions)
@@ -286,6 +292,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -353,6 +360,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -403,6 +411,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             warnings: Vec::new(), // Plan 122: Warnings collection
             pending_api_attrs: None, // Plan 312
+            pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
@@ -1990,6 +1999,91 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
+    /// Plan 395: is `expr` a plausible call target — a name, a method chain
+    /// (`a.b.c`), or a path (`env::var`)? Only these can carry `<Type>` generic
+    /// args. Backtracking (in try_parse_call_generic_args) guards the rest.
+    fn is_callable_lhs(expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(_) => true,
+            Expr::Dot(_, _) => true,
+            Expr::Bina(_, op, _) if matches!(op, Op::Dot) => true,
+            _ => false,
+        }
+    }
+
+    /// Plan 395: speculatively parse `<T1, T2>` generic type args on a call
+    /// (turbofish). Returns:
+    /// - `Some(types)` — the full `<types>(` shape parsed; caller must set
+    ///   `pending_generic_args` (the `(` is still the current token).
+    /// - `None` — not a generic-args call; the lexer/parser state has been
+    ///   rolled back so the `<` can be re-consumed as a comparison operator.
+    fn try_parse_call_generic_args(&mut self) -> AutoResult<Option<Vec<Type>>> {
+        // Cheap guard (no state to roll back): the token after `<` must look
+        // like a type start. Mirrors next_token_is_type's token set.
+        let after_lt_is_type = match self.lexer.next() {
+            Ok(tok) => {
+                let is_type = matches!(
+                    tok.kind,
+                    TokenKind::Ident
+                        | TokenKind::Question
+                        | TokenKind::LSquare
+                        | TokenKind::Star
+                        | TokenKind::Lt
+                );
+                self.lexer.push_token(tok);
+                is_type
+            }
+            Err(_) => false,
+        };
+        if !after_lt_is_type {
+            return Ok(None);
+        }
+
+        // Speculative parse with full rollback on any failure.
+        let lex_state = self.lexer.save_state();
+        let saved_cur = self.cur.clone();
+        let saved_prev = self.prev.clone();
+        let saved_errors_len = self.errors.len();
+        let saved_warnings_len = self.warnings.len();
+        let mut rollback = |slf: &mut Self| {
+            slf.lexer.restore_state(lex_state);
+            slf.cur = saved_cur.clone();
+            slf.prev = saved_prev.clone();
+            slf.errors.truncate(saved_errors_len);
+            slf.warnings.truncate(saved_warnings_len);
+        };
+
+        self.next(); // consume '<'
+        let mut types = Vec::new();
+        match self.parse_type() {
+            Ok(t) => types.push(t),
+            Err(_) => {
+                rollback(self);
+                return Ok(None);
+            }
+        }
+        while self.is_kind(TokenKind::Comma) {
+            self.next();
+            match self.parse_type() {
+                Ok(t) => types.push(t),
+                Err(_) => {
+                    rollback(self);
+                    return Ok(None);
+                }
+            }
+        }
+        if !self.is_kind(TokenKind::Gt) {
+            rollback(self);
+            return Ok(None);
+        }
+        self.next(); // consume '>'
+        if !self.is_kind(TokenKind::LParen) {
+            rollback(self);
+            return Ok(None);
+        }
+        Ok(Some(types))
+    }
+
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
         // Plan 060: Check for single-param closure:  x => expr
         // If lhs is an identifier and next token is =>, parse as closure
@@ -2048,6 +2142,17 @@ impl<'a> Parser<'a> {
                     self.next(); // consume second ':'
                     let segment = self.parse_name()?;
                     lhs = Expr::Dot(Box::new(lhs), segment);
+                    continue;
+                }
+            }
+            // Plan 395: turbofish-style generic type args on calls —
+            // `obj.method<Type>(args)` or `fn<Type>(args)`. This is a
+            // speculative parse: `a < b` comparisons (b not a type-start) and
+            // `x < Foo > y` chains (no `(` after `>`) roll back to the plain
+            // `<` comparison below. Only callable-shaped lhs can carry args.
+            if self.is_kind(TokenKind::Lt) && Self::is_callable_lhs(&lhs) {
+                if let Some(types) = self.try_parse_call_generic_args()? {
+                    self.pending_generic_args = types;
                     continue;
                 }
             }
@@ -2209,7 +2314,16 @@ impl<'a> Parser<'a> {
                     // Call or Node Instance
                     Op::LParen => {
                         let args = self.args()?;
-                        lhs = self.call(lhs, args)?;
+                        // Plan 395: mount explicit generic args (`<T>` turbofish)
+                        // parsed by the loop-top intercept / node_or_call_expr.
+                        let generic_args = std::mem::take(&mut self.pending_generic_args);
+                        let mut expr = self.call(lhs, args)?;
+                        if !generic_args.is_empty() {
+                            if let Expr::Call(call) = &mut expr {
+                                call.generic_args = generic_args;
+                            }
+                        }
+                        lhs = expr;
                         continue;
                     }
                     // Pair
@@ -2245,6 +2359,7 @@ impl<'a> Parser<'a> {
                             args: crate::ast::Args::new(),
                             ret: crate::ast::Type::Unknown,
                             type_args: Vec::new(),
+                            generic_args: Vec::new(),
                             pos: Some(self.prev.pos),
                         });
                         continue;
@@ -2396,6 +2511,7 @@ impl<'a> Parser<'a> {
                                 args,
                                 ret: Type::Unknown,
                                 type_args: Vec::new(),
+                                generic_args: Vec::new(),
                                 pos: Some(self.prev.pos),
                             });
                         } else {
@@ -2462,6 +2578,7 @@ impl<'a> Parser<'a> {
                                         args: call.args,
                                         ret: call.ret,
                                         type_args: Vec::new(), // Plan 061: No type args for method calls yet
+                                        generic_args: Vec::new(), // Plan 395: explicit turbofish args
                                         pos: call.pos,
                                     });
                                 }
@@ -10652,15 +10769,25 @@ impl<'a> Parser<'a> {
 
             self.expect(TokenKind::Gt)?;
 
-            // Generate descriptive name: "List<int>", "Heap<T>", etc.
-            let args_str = args
-                .iter()
-                .map(|t| t.unique_name().to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let generic_name = format!("{}<{}>", name, args_str);
+            // Plan 395: if a call `(` immediately follows `>`, this is a generic
+            // CALL (`foo<Bar>(x)` turbofish), not a GenName type-instance value
+            // (`List<int>`). Set pending_generic_args and return the bare ident —
+            // the Pratt LParen arm (reached via expr_pratt_with_left below) builds
+            // the Call with generic_args. `List<int>` (no paren) stays GenName.
+            if self.is_kind(TokenKind::LParen) {
+                self.pending_generic_args = args;
+                Expr::Ident(name)
+            } else {
+                // Generate descriptive name: "List<int>", "Heap<T>", etc.
+                let args_str = args
+                    .iter()
+                    .map(|t| t.unique_name().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let generic_name = format!("{}<{}>", name, args_str);
 
-            Expr::GenName(generic_name.into())
+                Expr::GenName(generic_name.into())
+            }
         } else {
             // Regular identifier
             Expr::Ident(name)
@@ -10936,6 +11063,7 @@ impl<'a> Parser<'a> {
             args,
             ret: ret_type,
             type_args: Vec::new(), // Plan 061: Will be filled in during type inference
+            generic_args: Vec::new(), // Plan 395: explicit turbofish args
             pos: Some(call_pos),
         });
         self.check_symbol(expr)

@@ -1,0 +1,22 @@
+// Plan 395: explicit generic type args on calls (turbofish).
+// `expr.method<Type>(args)` → Rust `expr.method::<Type>(args)`;
+// `fn<Type1, Type2>(args)` → `fn::<Type1, Type2>(args)`.
+// Unaffected: `a < b` comparisons and `List<str>` type-instance values.
+
+type ClientScalars {
+    default_provider str
+}
+
+pub fn main() {
+    // method turbofish: Auto uint → Rust u32
+    let n = "42".parse<uint>()
+    // free-call turbofish, multi-arg: int→i32, str→String
+    let m = pair<int, str>(1, "a")
+    // user type turbofish (the deserialize use case)
+    let node = Node("x")
+    let s = node.deserialize<ClientScalars>()
+    // disambiguation: `<` stays a comparison
+    let c = a < b
+    // GenName type-instance value stays GenName
+    let t = List<str>
+}

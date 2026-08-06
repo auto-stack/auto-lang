@@ -12,6 +12,11 @@ pub struct Call {
     /// Plan 061: Type argument bindings (generic param name -> concrete type)
     /// E.g., for `duplicate(42)`, this might contain [("T", Int)]
     pub type_args: Vec<(Name, Type)>,
+    /// Plan 395: Explicit generic type args on a call (turbofish) — user-supplied
+    /// `<Type, ...>` in Auto source (`foo<Bar>(x)`), transpiled to Rust `::<Bar>`.
+    /// Distinct from `type_args` (Plan 061 inference bindings): this is source
+    /// syntax, not inference output.
+    pub generic_args: Vec<Type>,
     /// Source position of the call site (the opening parenthesis)
     pub pos: Option<Pos>,
 }
@@ -300,6 +305,16 @@ impl AtomWriter for Call {
             _ => self.name.to_atom_str(),
         };
         write!(f, "call {}", name_str)?;
+        // Plan 395: explicit generic type args (turbofish) — `<T1, T2>`
+        if !self.generic_args.is_empty() {
+            let types_str = self
+                .generic_args
+                .iter()
+                .map(|t| t.to_atom().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            write!(f, "<{}>", types_str)?;
+        }
         // Output arguments in parentheses with space before (
         write!(f, " (")?;
         for (i, arg) in self.args.args.iter().enumerate() {
@@ -334,6 +349,15 @@ impl ToNode for Call {
                 type_arg_node.set_prop("param", Value::str(param_name.as_str()));
                 type_arg_node.set_prop("type", Value::str(&*concrete_type.to_atom()));
                 node.add_kid(type_arg_node);
+            }
+        }
+
+        // Plan 395: Add explicit generic args (turbofish) if present (debugging)
+        if !self.generic_args.is_empty() {
+            for concrete_type in &self.generic_args {
+                let mut gen_arg_node = AutoNode::new("generic_arg");
+                gen_arg_node.set_prop("type", Value::str(&*concrete_type.to_atom()));
+                node.add_kid(gen_arg_node);
             }
         }
 
@@ -395,6 +419,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         };
         let atom = call.to_atom();
@@ -408,6 +433,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Int,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         };
         let atom = call.to_atom();
@@ -425,6 +451,7 @@ mod tests {
             args,
             ret: Type::Unknown,
             type_args: Vec::new(),
+            generic_args: Vec::new(),
             pos: None,
         };
         let atom = call.to_atom();

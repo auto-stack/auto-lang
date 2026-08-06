@@ -564,6 +564,18 @@ mod tests {
         Ok(())
     }
 
+    /// Run a2tscn on a dedicated large-stack thread (deep scene-tree recursion
+    /// in the demo files tips the 2 MB libtest stack once the AST grew — Plan
+    /// 395 widened Expr/Call frames; mirrors test_a2gd_deep).
+    fn test_a2tscn_deep(case: &str) {
+        let case = case.to_string();
+        let child = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || test_a2tscn(&case).map_err(|e| e.to_string()))
+            .expect("failed to spawn deep-stack test thread");
+        child.join().expect("deep-stack test thread panicked").unwrap();
+    }
+
     #[test]
     fn test_tscn_001_hello() {
         test_a2tscn("001_hello").unwrap();
@@ -612,7 +624,8 @@ mod tests {
 
     #[test]
     fn test_godot_demo_dodge_player_scene() {
-        test_a2tscn("godot_demos/dodge_the_creeps/002_player").unwrap();
+        // Deep-stack: deep scene-tree recursion (see test_a2tscn_deep).
+        test_a2tscn_deep("godot_demos/dodge_the_creeps/002_player");
     }
 
     /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and

@@ -1119,6 +1119,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         })
     }
@@ -1129,6 +1130,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         })
     }
@@ -1197,6 +1199,7 @@ mod tests {
             args: Args::new(),
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         })
     }
@@ -1292,6 +1295,7 @@ mod tests {
             },
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         });
         let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
@@ -1316,6 +1320,7 @@ mod tests {
             args: Args { args: vec![Arg::Pos(Expr::Array(vec![]))] },
             ret: Type::Unknown,
             type_args: vec![],
+            generic_args: Vec::new(),
             pos: None,
         });
         let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
