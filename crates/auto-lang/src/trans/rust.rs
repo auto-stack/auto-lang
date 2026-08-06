@@ -13602,7 +13602,7 @@ impl RustTrans {
             Expr::Call(call) => {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
                     let mut_methods = ["push", "pop", "insert", "remove", "clear",
-                        "extend", "truncate", "retain", "sort", "reverse",
+                        "extend", "truncate", "retain", "sort", "sort_by", "reverse",
                         "dedup", "swap", "splice", "drain", "append", "resize"];
                     if mut_methods.contains(&method.as_str()) && Self::is_self_dot(obj) {
                         return true;
@@ -15016,7 +15016,7 @@ impl RustTrans {
                 let direct_pat = format!(r"\b{}\s*=[^=]", var_name);
                 // Methods that take &mut self (require mut binding)
                 let mut_methods = ["push", "pop", "insert", "remove", "clear", "extend",
-                    "truncate", "retain", "sort", "reverse", "dedup", "swap", "splice",
+                    "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice",
                     "drain", "append", "resize"];
                 if let Some(re) = cached_regex(&assign_pat) {
                     for future_line in lines.iter().skip(i + 1) {
@@ -15095,7 +15095,7 @@ impl RustTrans {
     /// and prefix the declaration with `mut `.
     fn fix_mutable_params(content: &mut String) {
         let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear",
-            "extend", "truncate", "retain", "sort", "reverse", "dedup", "swap",
+            "extend", "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap",
             "splice", "drain", "append", "resize", "set", "update", "merge"];
         let lines: Vec<&str> = content.lines().collect();
         let mut result: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
