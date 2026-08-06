@@ -1,8 +1,8 @@
 # Plan 317: VM 真异步调度统一 — 调研报告 + 实施提案
 
 > 原编号 327；2026-07-23 因编号冲突改为 317（原号保留给 327-015-notes-vm-render）
-> **Status**: 调研完成(2026-06-18);**Phase 1 已完成并合并**(actor handler 执行引擎,路径 B VM 内置调度);Phase 2-4 待实施
-> **实测状态（2026-08-04）**: 🟡 Phase 1/3/4 已做（actor handler + generator yield + HTTP async server）；Phase 2（~{}.await 取值）显式跳过（需 codegen body 隔离重构）。保留为后续。
+> **Status**: ✅ **Phase 1-4 全部完成**(2026-08-06 核查回填);🟡 **Phase 5-11 遗留债修复进行中**(§11)。调研完成(2026-06-18);Phase 1(actor handler 执行引擎,路径 B VM 内置调度)+Phase 3(lazy yield/SSE)于 2026-06-18 完成;Phase 2(`~{}`.await 取值)由 **Plan 348 Task 22** 顺手修复(CREATE_FUTURE 重写为 out-of-line 真字节码);Phase 4(HTTP 异步 server `serve_async`)已实施并接入 `lib.rs:1250` 活路径。**遗留债核实与修复计划见 §11(Phase 5-11)**。
+> **实测状态(2026-08-06 核查)**: ✅ Phase 1-4 全闭环。Phase 1(`actor_tests`+`actor_state_tests` 13 测试绿)+Phase 3(lazy yield/SSE)+Phase 4(`serve_async` 并发,间接 generator SSE 路径已补测试)经测试验证;Phase 2(`~{42}.await`→42)经 `plan348_concurrency_tests::test_task22_*` 3 测试验证。**原 2026-08-04 自述"Phase 2 跳过"有误**——实际 Plan 348 Task 22 已修复,本文档此前未回填;Phase 4"待实施"亦已落地为 `serve_async`。**遗留债逐条核实见 §11 速览表**(P2 已解决 / P3 仍复现 / P4 精炼出 P4' 真 bug / P5 不做 / P6 范围外 / P7 待 CI 接入)。
 > **背景**: 用户期望 `yield`/`~Iter`、`~{}`/`~T`/await、Task/Msg actor 三套异步机制能在 AutoVM 里统一工作,以支撑 HTTP 异步服务(SSE、并发)。本报告用最小 reproducer 敲定了每个机制的真实状态。
 > **关联**: Plan 312(HTTP server MVP,同步 std::net)、Plan 313(SSE Phase 3 未做)、Plan 321(yield/Iter,§5 明确不做异步)、Plan 121(Task/Msg 数据结构)、Plan 224(`~{}`/await codegen)
 
@@ -220,13 +220,17 @@
 3. **scheduler.rs 路径未清理**:旧的 task_system mailbox + execute_handler_fully 占位路径仍在(dead code),本计划不动(避免扩大范围)。
 4. **并发性**:run_task_loop 单线程协作式,actor 交错执行非真并发。对 MVP 足够。
 
-### 下一步(Phase 2-4)
+### 下一步(Phase 2-4) — ✅ 全部完成(2026-08-06 回填)
 
-Phase 1 解锁了 actor 执行。后续:
-- **Phase 2**(跳过):`~{}` async block 的 await 取值——需 codegen 重构(body 隔离),
-  超出小修复范围,不阻塞主路径。
-- **Phase 3**(已完成,见 §10):真异步 generator(lazy yield)
-- **Phase 4**:HTTP 异步 server 接入(actor 处理请求 / handler 返回 ~Stream 做 SSE)
+Phase 1 解锁了 actor 执行。后续各 Phase 的真实归宿:
+- **Phase 2**(✅ 已完成,由 Plan 348 Task 22 修复):`~{}` async block 的 await 取值。
+  原判断"需 codegen 重构(body 隔离)、超出小修复"被 Plan 348 Task 22 推翻——它把
+  `Expr::AsyncBlock` body 编译为 out-of-line 真字节码(像闭包),喂给 CREATE_FUTURE
+  真实 body 地址,`~{42}.await`→42。见 `codegen.rs:8617`、`plan348_concurrency_tests::test_task22_*`。
+- **Phase 3**(✅ 已完成,见 §10):真异步 generator(lazy yield)
+- **Phase 4**(✅ 已完成):HTTP 异步 server 接入——`serve_async`(`http_server.rs:1125`)
+  用 tokio `spawn_local`+`yield_now` 实现并发 + 交错 SSE,接入 `lib.rs:1250` 活路径。
+  间接 generator SSE 路径(原 §10 已知遗留 2)已补 `e2e_sse_indirect_generator` 测试。
 
 ---
 
@@ -267,3 +271,142 @@ body 收集所有 yield 到 stack_snapshot,销毁 task)改为 **lazy**(每次 ne
    足够)。独立变体是未来增强。
 4. **yield/await 仍不同步**:generator next() 是 lazy 但同步 pull。真"yield 返回
    future 让出"是更大的异步调度改造,不在 Phase 3。
+
+---
+
+## §11 遗留债核实与修复 Phase(2026-08-06 起调查,Phase 5-11)
+
+> 本节是对前述"已知遗留/限制"的逐条**实测核实 + 根因定位 + 修复计划**。
+> 核实方法:用临时 `plan317_debt_probe` 测试(已删除)对每条遗留跑最小 reproducer,
+> 区分"已自然解决/仍有缺陷/范围外"。核实结论可能推翻前述文档的自述。
+
+### 核实结论速览
+
+| 编号 | 遗留项 | 文档自述 | 实测结论(2026-08-06) |
+|---|---|---|---|
+| **P1** | scheduler.rs 死代码 | §9 #3"本计划不动" | 🟡 部分死代码:`execute_handler_fully`/`task_loop`/`SystemCommand` 无外部调用者(路径 A 被 run_task_loop 路径 B 取代);但 `GlobalMeta`/`TaskContext` 仍被 `task_system.rs` 用(`TaskSystem.start` 路径,文档 §2 断点 4b 已知挂死)。需谨慎拆分,非纯删除。 |
+| **P2** | task state field 读取(print/let RHS) | §9 #1"报 undefined variable" | ✅ **已自然解决**。`print(count)`→"1"、`let c = count`→"1" 全部正常。`Expr::Ident` 分支(codegen.rs:5113)已正确检查 `current_task_state_fields`。仅需写回归测试固化。 |
+| **P3** | infinite generator(`for { yield x }`) | §10 #1"卡死,栈不平衡累积" | ❌ **仍复现**(测试挂死超时)。根因已精确定位(见 Phase 7)。 |
+| **P4** | producer/consumer 跨 actor | §9 #2"未验证" | 🟡 **部分解决,根因被精炼**。多 actor 共存 + 各自收发(P4a)正常;cross-actor 互发 handle 未测(语法限制)。但发现更深的 P4':**无 `fn start()` 且无 state field 的 task,payload binding 绑到 0**(`h.send(42)` → handler 里 `n` 是 0,不是 42)。这是跨 actor 通信的隐性阻塞,见 Phase 8。 |
+| **P5** | `~Stream<T>` 独立 Iterator 变体 | §10 #3"装饰性" | 🟢 **确认不必要**。parser 已识别 `~Stream<T>`(parser.rs:10268),engine 折叠到 `Iterator::Generator`,lazy 后语义足够。降级为"不做",见 Phase 9。 |
+| **P6** | yield↔await 真异步互通 | §10 #4"大改造" | 🟢 **范围外**。lazy generator SSE 已满足当前 HTTP 需求;真"yield 返回 future"需重写调度器,单独立项。本计划不做,见 Phase 10。 |
+| **P7** | Phase 4 SSE/concurrent 测试 `#[ignore]` | 未列 | 🟡 实测存在:`e2e_sse_*`、`e2e_concurrent_sse`、`e2e_notes_crud` 等均 `#[ignore]`(起真实 TCP),常规 `cargo test` 不跑,回归风险无门禁。见 Phase 11。 |
+
+---
+
+### Phase 5(P2)— state field 读取回归测试 [低风险,纯加测试]
+
+**状态**:遗留已自然解决,本 Phase 仅固化。
+
+**改动**:
+- 在 `crates/auto-lang/src/tests/actor_state_tests.rs` 新增 2 测试:
+  - `actor_state_field_print_direct`:`print(count)`(state field 作 intrinsic 参数)
+  - `actor_state_field_let_rhs`:`let c = count`(state field 作 let RHS)
+- 断言两者输出正确递增值(覆盖 §9 #1 的两个具体场景)。
+
+**验收**:2 新测试绿;全量回归零新失败。
+
+---
+
+### Phase 6(P1)— scheduler.rs 死代码清理 [需谨慎分析]
+
+**目标**:移除路径 A 的真死代码,保留仍被引用的类型。
+
+**核实**:路径 A(tokio `task_loop` + `execute_handler_fully`)被路径 B(`run_task_loop` + `shim_task_spawn_vm`)完全取代,但:
+- **可删**:`execute_handler_fully`(`_ => skip unknown opcodes` 占位,无外部调用者)、`execute_handler_with_vm`(同)、`SystemCommand`(无外部用)、`try_match_pattern`(仅 scheduler 内部)、`task_loop`(仅 task_system.rs 调,但 task_system.rs 自身是否还活需先确认)、`TaskContext` 大部分方法。
+- **保留**:`GlobalMeta`(task_system.rs:78 / loader.rs:12 用)、`TaskContext` 结构(若 task_system.rs 仍活)。
+- **前置确认**:`task_system.rs` 的 `start_scheduler`/`TaskSystem.start` 路径是否还有任何活调用(文档 §2 断点 4b 称其挂死;stdlib.rs:6291 `shim_task_system_start` 仍注册为 native 2305)。若 `TaskSystem.start` 是死路径,可连带清理 task_system.rs 的 tokio 调度部分,只留 `TaskRegistry`/`TaskHandle`(路径 B 复用)。
+
+**风险**:`TaskSystem.start` 可能有用户代码依赖(虽挂死)。先标记 `#[deprecated]` + 保留,或彻底删。需先 grep examples/parity 确认无 .at 用例。
+
+**验收**:删除后 `cargo build` + 全量测试零新失败;`TaskSystem.start` 若删,确认无 `.at` 例程调用。
+
+---
+
+### Phase 7(P3)— infinite generator 的 Yield 后误 POP 下溢 [高优先,根因已定位]
+
+**症状**:`fn counter() ~Iter<int> { var i = 0; for { yield i; i = i + 1 } }` 在 lazy generator 模式下,`for n in counter() { ... break }` 挂死/下溢。
+
+**根因(实测定位)**:`Expr::Yield` codegen(codegen.rs:8823)emit `compile_expr(inner)` + `YIELD_VAL`(YIELD_VAL pop 掉 yield 值)。但 `yield i` 作为 `Stmt::Expr` 时,`compile_stmt`(codegen.rs:948)的 `needs_pop = should_pop_expr_result && !last_was_native_void` 为真(`for{}` body 设 `should_pop_expr_result=true`),于是又 emit 一个 `POP`。该 POP 吃掉 YIELD_VAL 之下的栈值(净消耗 1 槽/迭代)。finite generator 有 RET 清栈不暴露;infinite 跨 next() 恢复时累积下溢 → 卡死。
+
+**对照**:文档原述"循环栈不平衡累积"方向正确,但精确定位是 **`Expr::Yield` 未把 `last_expr_type` 设为不需要 POP 的标记**(或 `Stmt::Expr` 未识别 yield 已自平衡)。
+
+**修复方案**(择一,实施时定):
+- A. `Expr::Yield` 分支末尾设 `self.last_expr_type = ObjectType::Void`(yield 不留值,Stmt::Expr 不该再 POP)—— 但 Void 仍走 POP 分支(950 行只对 Double/Uint 走 POP_N)。需改为 yield 路径设一个 `self.last_was_self_balanced = true` 标志,Stmt::Expr 据此跳过 POP。
+- B. `Stmt::Expr` 在 `compile_expr` 后检查:若刚编译的是 `Expr::Yield`,不 emit POP。
+- 推荐 A(加 `last_was_self_balanced` 标志,与 `last_was_native_void` 并列,语义清晰,可复用于其他自平衡 expr 如未来 `Expr::Go`)。
+
+**改动文件**:`vm/codegen.rs`(Expr::Yield 设标志 + Stmt::Expr 检查标志)。
+
+**验收**:
+- 新测试 `generator_infinite_break`:跑 `for n in counter() { sum+=n; if sum>=6 break }` → 输出 "6"(或正确累计值),不挂死。
+- Plan 326 generator_tests 3 测试仍绿(finite 不回归)。
+- plan348_concurrency_tests 全绿。
+- 全量回归零新失败。
+
+---
+
+### Phase 8(P4')— 无 `#start` 导出的 task 的 payload binding 失效 [高优先]
+
+**症状**:`task Solo { on { n int -> { print(n) } } }; let h = Task.spawn("Solo", 0); h.send(42)` → 输出 "0"(应为 42)。加 `fn start()!` 或 state field 后正常。
+
+**根因(实测定位)**:
+1. codegen.rs:3667 — `#start` 导出仅在 `start_hook.is_some() || has_state` 时 emit。无 `fn start()` 且无 state field 的 task 不生成 `#start` 导出。
+2. stdlib.rs:`shim_task_spawn_vm` 的 `start_offset = vm.flash.exports_by_name.get(&start_key).copied().unwrap_or(0)` —— 缺 `#start` 时 fallback 到 **0**(程序入口,错误)。
+3. 任务从 offset 0 起跑,`in_message_loop` 未正确建立,handler 唤醒路径(engine.rs:1698)的帧/payload 推送与 binding STORE_LOC 错位 → `n` 读到 0。
+
+**修复方案**:让无 `fn start()` 的 task 也生成一个最小 `#start` 导出(只含 state 初始化 + TASK_LOOP,无用户 body),使 `shim_task_spawn_vm` 拿到正确 `start_offset`。具体:放宽 codegen.rs:3667 的条件为"有 on handlers 就 emit `#start`(含 TASK_LOOP)",或 shim fallback 到 task 的 TASK_LOOP offset 而非 0。
+
+**改动文件**:`vm/codegen.rs`(TaskDef 的 #start emit 条件)、可能 `vm/ffi/stdlib.rs`(shim_task_spawn_vm fallback)。
+
+**验收**:
+- 新测试 `actor_no_start_no_state_binds_payload`:`task Solo { on { n int -> print(n) } }` + send(42) → "42"。
+- `actor_bound_var_handler_multi_send` 等既有测试仍绿。
+- 全量回归零新失败。
+- P4 跨 actor(P4a)已有验证,本 Phase 修复后 cross-actor 互发 handle 可作延伸验证(若语法支持把 handle 当 Value 传递)。
+
+---
+
+### Phase 9(P5)— `~Stream<T>` 独立变体 [降级:不做]
+
+**结论**:核实后确认不必要。`~Stream<T>` 在 parser 已识别,engine 统一折叠到 `Iterator::Generator`,lazy 后 SSE 语义完整。独立变体仅是类型层"装饰",无功能收益,徒增维护面。
+
+**决议**:不做。文档记录此结论即可。
+
+---
+
+### Phase 10(P6)— yield↔await 真异步互通 [范围外:独立计划]
+
+**结论**:真"yield 返回 future 让出调度"需重写 engine 调度模型(把 generator 从同步 pull 改为 future-based push),是架构级改动。当前 lazy generator + `serve_async` 的交错 SSE 已满足 HTTP 异步服务需求。
+
+**决议**:本计划不做。若未来需要"generator 内 await I/O"或"yield 让出到其他 task",单独立项(候选:Plan 069 M:N 调度复活,或新建)。
+
+---
+
+### Phase 11(P7)— Phase 4 SSE/concurrent 测试去 `#[ignore]` 接入 CI [中优先]
+
+**现状**:`http_server.rs` 的 `plan326_tests` 模块里 `e2e_sse_generator_handler`、`e2e_sse_indirect_generator`、`e2e_concurrent_sse`、`e2e_notes_crud`、`e2e_notes_list_generic` 均 `#[ignore]`(起真实 TCP 监听,有端口冲突/挂死风险)。CI(`auto-lsp-ci.yml` 只跑 `cargo test -p auto-lsp`,且未 `--ignored`)从不覆盖,Phase 4 的并发 SSE 回归无门禁。
+
+**修复方案**:
+- 给这组测试分配**动态端口**(每测试取一个空闲端口,或用 `portpicker` crate),消除端口冲突。
+- 加超时防护(测试自身 `tokio::time::timeout` 包裹,防 server 挂死)。
+- 新建 feature `http-e2e`(默认关),在 CI 加一个 job:`cargo test -p auto-lang --features http-e2e -- --ignored` 专跑这组(与常规测试隔离,避免日常 `cargo test` 拖慢)。
+- 或:把 server 起在专用线程 + 短超时,直接去 `#[ignore]`(若能证明不拖慢/不冲突)。
+
+**改动文件**:`vm/ffi/http_server.rs`(测试改造)、`Cargo.toml`(feature)、`.github/workflows/auto-lsp-ci.yml`(新 job,可选)。
+
+**验收**:`cargo test --features http-e2e -- --ignored plan326_tests::` 全绿;常规 `cargo test` 不受影响。
+
+---
+
+### §11 实施顺序
+
+按价值/风险/依赖排:
+1. **Phase 5**(P2 回归测试)——零风险,先固化已解决的。
+2. **Phase 7**(P3 infinite generator)——高价值(解锁常见 generator 模式),根因已定位,改动小。
+3. **Phase 8**(P4' payload binding)——高价值(修真 bug),根因已定位,改动小。
+4. **Phase 11**(P7 CI 接入)——中价值(防回归),改动中等。
+5. **Phase 6**(P1 死代码清理)——低风险但需谨慎分析,最后做。
+6. Phase 9/10 —— 不做(记录决议)。
+
+每个 Phase 独立可验收,单独提交。Phase 7/8 是核心(真 bug 修复),优先做。
