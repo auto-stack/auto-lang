@@ -2409,7 +2409,7 @@ impl AutoVM {
                     task.ram.push_i32(-1000000 + range_id);
                 }
                 OpCode::ARRAY_LEN => {
-                    // Stack: array_id
+                    // Stack: array_id (raw i32 for legacy arrays, TAG_OBJECT for heap lists)
                     {
                         let nv = task.ram.pop_nv();
                         if auto_val::is_string(nv) {
@@ -2420,10 +2420,15 @@ impl AutoVM {
                                 .map(|b| b.len() as i32)
                                 .unwrap_or(0);
                             task.ram.push_i32(len);
-                        } else if auto_val::is_i32(nv) {
-                            let val = auto_val::decode_i32(nv);
+                        } else if auto_val::is_i32(nv) || auto_val::is_object(nv) {
+                            // Plan 390 §15 H2: accept both raw i32 (legacy arrays)
+                            // and TAG_OBJECT (heap List from CREATE_LIST_*).
+                            let array_id = if auto_val::is_object(nv) {
+                                auto_val::decode_object(nv) as u64
+                            } else {
+                                auto_val::decode_i32(nv) as u64
+                            };
                             // Check arrays/heap_objects
-                            let array_id = val as u64;
                             if let Some(array_ref) = self.arrays.get(&array_id) {
                                 let guard = array_ref.read().unwrap();
                                 task.ram.push_i32(guard.len() as i32);
@@ -3213,7 +3218,7 @@ impl AutoVM {
                     };
                     let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
                     let instance_id = self.insert_heap_object(instance);
-                    task.ram.push_i32(instance_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 120: Result type constructor - Err(message)
                 // Plan 208: Wrap error value in a Result.Err heap object
@@ -3222,7 +3227,7 @@ impl AutoVM {
                     let err_val = task.ram.pop_i32();
                     let instance = GenericInstanceData::new("Result.Err".to_string(), vec![auto_val::Value::Int(err_val)]);
                     let instance_id = self.insert_heap_object(instance);
-                    task.ram.push_i32(instance_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 120: Check if Option is Some
                 OpCode::IS_SOME => {
@@ -3318,7 +3323,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_STR => {
                     // Plan 077 Phase 5: Create List<String> in unified registry
@@ -3327,7 +3332,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_BOOL => {
                     // Plan 077 Phase 5: Create List<bool> in unified registry
@@ -3336,7 +3341,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
                 // Plan 076 Phase 4: InlineInt64 storage variants
                 OpCode::CREATE_LIST_INT_INLINE => {
@@ -3347,7 +3352,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_STR_INLINE => {
                     // Plan 077 Phase 5: Create List<String> with InlineInt64 storage in unified registry
@@ -3357,7 +3362,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_BOOL_INLINE => {
                     // Plan 077 Phase 5: Create List<bool> with InlineInt64 storage in unified registry
@@ -3367,7 +3372,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_i32(list_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
                 }
 
                 // === Plan 087 Phase 2: Generic Instance Support ===
@@ -3408,7 +3413,7 @@ impl AutoVM {
 
                     // Push instance ID onto stack
                     vm_debug!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
-                    task.ram.push_i32(instance_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
                 }
                 OpCode::CONSTRUCT_INSTANCE => {
                     // Plan 087 Phase 2: Populate fields of a generic instance
@@ -3428,7 +3433,14 @@ impl AutoVM {
                     );
 
                     // Pop instance_id (next on stack)
-                    let instance_id = task.ram.pop_i32() as u64;
+                    // Plan 390 §15 H2: NEW_INSTANCE now pushes the id as a
+                    // TAG_OBJECT-encoded value, so decode either tag form (the
+                    // i32 path is retained for any legacy producer/inline test).
+                    let instance_id = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
+                        else { auto_val::decode_i32(nv) as u64 }
+                    };
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
                         instance_id
                     );
@@ -3558,7 +3570,7 @@ impl AutoVM {
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
                         instance_id
                     );
-                    task.ram.push_i32(instance_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
                         task.ram.sp
                     );
@@ -3946,7 +3958,7 @@ impl AutoVM {
                         let _ = data.set_field(i, val);
                     }
                     let instance_id = self.insert_heap_object(data);
-                    task.ram.push_i32(instance_id as i32);
+                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 200: Get tuple field by index
                 // Stack: tuple_id -> value (field_index from bytecode)
@@ -3954,7 +3966,12 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     let field_index = self.flash.read_u8(task.ip);
                     task.ip += 1;
-                    let tuple_id = task.ram.pop_i32() as u64;
+                    // Plan 390 §15 H2: tuple id may be TAG_OBJECT-encoded now.
+                    let tuple_id = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
+                        else { auto_val::decode_i32(nv) as u64 }
+                    };
                     if let Some(lock) = self.get_heap_object(tuple_id) {
                         let guard = lock.read().unwrap();
                         if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
@@ -4189,8 +4206,13 @@ impl AutoVM {
                     // Stack: value, array_id, index (compiled in this order by codegen)
                     // Pop index first (top of stack)
                     let index = task.ram.pop_i32() as usize;
-                    // Pop array_id
-                    let array_id = task.ram.pop_i32() as u64;
+                    // Pop array_id. arrays still push raw i32 (H3 will migrate),
+                    // but accept TAG_OBJECT too in case a heap List id reaches here.
+                    let array_id = {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
+                        else { auto_val::decode_i32(nv) as u64 }
+                    };
                     // Pop value (bottom of stack)
                     let value = task.ram.pop_i32();
 

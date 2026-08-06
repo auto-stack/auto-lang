@@ -331,8 +331,10 @@ fn list_notes() []Note {
 list_notes()
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    // Root cause: array of struct returns Vec<Value> where each element is a
-    // heap object ID stored as Value::Int(4000000+). HTTP serialization must
-    // detect this and recurse into the struct fields.
-    assert_eq!(result.trim(), "[4000000, 4000001]", "array struct return raw repr: got {:?}", result);
+    // Plan 390 §15 H2: struct instance ids are now TAG_OBJECT-encoded (not raw
+    // i32), so each array element renders as a VmRef (`<vmref>`) instead of a
+    // bare number like 4000000. This is the intended H2 outcome — the old
+    // `Value::Int(4000000+)` raw repr was the very ambiguity that broke HTTP
+    // serialization (Plan 326) and WithBindings matching (Plan 390 L3).
+    assert_eq!(result.trim(), "[<vmref>, <vmref>]", "array struct return raw repr: got {:?}", result);
 }
