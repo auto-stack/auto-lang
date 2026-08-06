@@ -8499,6 +8499,21 @@ impl<'a> Parser<'a> {
         // Plan 057: Parse generic parameters - e.g., spec Storage<T>, spec Storage<T, N u32>
         let generic_params = self.parse_generic_params()?;
 
+        // Plan 397: Parse optional supertrait bounds — `spec Name<T>: Bound1 + Bound2 { }`.
+        // Bounds are opaque identifier strings (Send/Sync/etc. are not Auto types);
+        // emitted verbatim by a2r. `:` sits after generics, before `{`.
+        let mut bounds: Vec<String> = Vec::new();
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // skip ':'
+            let b = self.parse_name()?;
+            bounds.push(b.to_string());
+            while self.is_kind(TokenKind::Add) {
+                self.next(); // skip '+'
+                let b = self.parse_name()?;
+                bounds.push(b.to_string());
+            }
+        }
+
         // Plan 057: Populate type parameter scope for use in method signatures
         for param in &generic_params {
             if let GenericParam::Type(tp) = param {
@@ -8541,11 +8556,13 @@ impl<'a> Parser<'a> {
         }
 
         // Plan 057: Use SpecDecl::with_generic_params if we have generic params
-        let spec_decl = if generic_params.is_empty() {
+        let mut spec_decl = if generic_params.is_empty() {
             SpecDecl::new(name, methods)
         } else {
             SpecDecl::with_generic_params(name, generic_params, methods)
         };
+        // Plan 397: attach supertrait bounds (parsed above)
+        spec_decl.bounds = bounds;
 
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));

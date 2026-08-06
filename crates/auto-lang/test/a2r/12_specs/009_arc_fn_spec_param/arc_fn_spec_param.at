@@ -1,0 +1,16 @@
+// Plan 397: Arc<Fn(...)> as a spec METHOD parameter.
+// Plan 390 §15.10 delivered Box<Fn>/Arc<dyn Fn> types in all positions, but the
+// spec-method-parameter position was only proven via shared codegen (no golden).
+// This golden locks the combination: `pub spec` method taking Arc<Fn(T)> param.
+
+spec Fn {
+}
+
+pub spec Handler {
+    fn run(cb Arc<Fn(i32)>) void
+    fn on_event(ev Arc<Fn(i32) str>) str
+}
+
+fn main() {
+    let x = 42
+}

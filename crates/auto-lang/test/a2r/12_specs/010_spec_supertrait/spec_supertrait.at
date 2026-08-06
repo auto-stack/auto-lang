@@ -1,0 +1,14 @@
+// Plan 397: spec supertrait bounds — `spec Name: Send + Sync { }`.
+// a2r emits `trait Name: Send + Sync { }`. Bounds are opaque identifiers verbatim.
+
+pub spec Tool: Send + Sync {
+    fn name() str
+}
+
+spec Clone: Send {
+    fn clone_self() void
+}
+
+fn main() {
+    let x = 42
+}

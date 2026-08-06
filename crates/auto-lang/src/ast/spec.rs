@@ -19,6 +19,10 @@ pub struct SpecDecl {
     pub generic_params: Vec<GenericParam>,  // Plan 057: Generic parameters
     pub methods: Vec<SpecMethod>,
     pub is_pub: bool,
+    /// Plan 397: supertrait bounds, e.g. `spec Tool: Send + Sync { }` → ["Send", "Sync"].
+    /// Stored as opaque identifier strings (verbatim output); `Send`/`Sync` etc. are
+    /// not Auto types, so no marker-trait concept is introduced.
+    pub bounds: Vec<String>,
 }
 
 impl SpecDecl {
@@ -28,6 +32,7 @@ impl SpecDecl {
             generic_params: Vec::new(),
             methods,
             is_pub: false,
+            bounds: Vec::new(),
         }
     }
 
@@ -37,6 +42,7 @@ impl SpecDecl {
             generic_params,
             methods,
             is_pub: false,
+            bounds: Vec::new(),
         }
     }
 
@@ -84,6 +90,16 @@ impl fmt::Display for SpecDecl {
                 }
             }
             write!(f, ">")?;
+        }
+        // Plan 397: supertrait bounds, e.g. ": Send + Sync"
+        if !self.bounds.is_empty() {
+            write!(f, ": ")?;
+            for (i, b) in self.bounds.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " + ")?;
+                }
+                write!(f, "{}", b)?;
+            }
         }
         write!(f, " {{")?;
         for method in &self.methods {

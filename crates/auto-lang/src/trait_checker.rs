@@ -261,6 +261,7 @@ mod tests {
             generic_params: Vec::new(), // Plan 057
             methods,
             is_pub: false,
+            bounds: Vec::new(), // Plan 397
         }
     }
 
@@ -432,6 +433,7 @@ mod tests {
             })],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
+            bounds: Vec::new(), // Plan 397
         };
 
         // Create a type that implements the spec with correct type args
@@ -495,6 +497,7 @@ mod tests {
             ],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
+            bounds: Vec::new(), // Plan 397
         };
 
         // Create a type that implements the spec with wrong number of type args
@@ -553,6 +556,7 @@ mod tests {
                 create_spec_method("set", vec![], Type::Void),
             ],
             is_pub: false,
+            bounds: Vec::new(), // Plan 397
         };
 
         // Create a type that implements the spec but is missing a method
