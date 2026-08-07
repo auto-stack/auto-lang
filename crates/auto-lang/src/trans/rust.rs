@@ -10573,7 +10573,11 @@ impl RustTrans {
         write!(sink.body, " ")?;
 
         // Plan 321: Generator functions wrap body in async_stream::stream! {}
-        if is_generator_fn {
+        // Plan musk-022: only wrap when the body actually yields. A `~Stream<T>`
+        // function written as `return <expr>` (no yield) is a stream consumer
+        // and must NOT be wrapped (return inside the macro wouldn't produce a stream).
+        let body_yields = Self::scan_body_has_yield(&fn_decl.body);
+        if is_generator_fn && body_yields {
             write!(sink.body, "{{ async_stream::stream! {{")?;
         }
 
@@ -10598,11 +10602,50 @@ impl RustTrans {
         self.main_actor_epilogue = None;
 
         // Plan 321: Close async_stream::stream! wrapper
-        if is_generator_fn {
+        if is_generator_fn && body_yields {
             write!(sink.body, " }} }}")?;
         }
 
         Ok(())
+    }
+
+    /// Plan musk-022: does this function body contain a `yield` expression?
+    fn scan_body_has_yield(body: &Body) -> bool {
+        body.stmts.iter().any(Self::stmt_has_yield)
+    }
+
+    fn stmt_has_yield(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(e) => Self::expr_has_yield(e),
+            Stmt::Return(e) => Self::expr_has_yield(e),
+            Stmt::If(iff) => iff.branches.iter().any(|br| {
+                Self::expr_has_yield(&br.cond) || Self::scan_body_has_yield(&br.body)
+            }) || iff.else_.as_ref().map_or(false, |b| Self::scan_body_has_yield(b)),
+            Stmt::For(f) => Self::expr_has_yield(&f.range) || Self::scan_body_has_yield(&f.body),
+            Stmt::Block(b) => Self::scan_body_has_yield(b),
+            _ => false,
+        }
+    }
+
+    fn expr_has_yield(expr: &Expr) -> bool {
+        match expr {
+            Expr::Yield(_) => true,
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e)
+            | Expr::Unary(_, e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
+            | Expr::ErrorPropagate(e) | Expr::BoxExpr(e) | Expr::ArcExpr(e) => Self::expr_has_yield(e),
+            Expr::Bina(lhs, _, rhs) => Self::expr_has_yield(lhs) || Self::expr_has_yield(rhs),
+            Expr::NullCoalesce(a, b) => Self::expr_has_yield(a) || Self::expr_has_yield(b),
+            Expr::Dot(receiver, _) => Self::expr_has_yield(receiver),
+            Expr::Call(call) => Self::expr_has_yield(&call.name)
+                || call.args.args.iter().any(|arg| match arg {
+                    crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Self::expr_has_yield(e),
+                    _ => false,
+                }),
+            Expr::Index(t, i) => Self::expr_has_yield(t) || Self::expr_has_yield(i),
+            Expr::Array(elems) | Expr::Tuple(elems) => elems.iter().any(Self::expr_has_yield),
+            Expr::Await { expr: e } | Expr::Go { expr: e } => Self::expr_has_yield(e),
+            _ => false,
+        }
     }
 
     /// Plan 204 Phase 1D: Emit all statements in a loop body.

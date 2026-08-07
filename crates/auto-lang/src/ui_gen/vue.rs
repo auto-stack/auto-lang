@@ -2143,6 +2143,18 @@ impl VueGenerator {
             } else {
                 None
             };
+            // Plan musk-022 callback-relay fix: rewrite any `props.on_xxx(args)`
+            // calls in the body to `emit('<Pascal>', args)` for real callback
+            // props. The parent binds `@Pascal` (never `:on_xxx`), so the raw
+            // `props.on_xxx()` would be undefined at runtime.
+            for cb_snake in Self::real_callback_prop_snakes(widget) {
+                let props_call = format!("props.on_{}(", cb_snake);
+                if body.contains(&props_call) {
+                    let pascal = Self::snake_to_pascal(&cb_snake);
+                    let emit_call = format!("emit('{}', ", pascal);
+                    body = body.replace(&props_call, &emit_call);
+                }
+            }
             if let Some(emit_name) = emit_name {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
@@ -9262,6 +9274,22 @@ impl VueGenerator {
             }
         }
         false
+    }
+
+    /// Plan musk-022 callback-relay fix: the snake_names of `on_xxx` callback
+    /// props that ARE in defineProps (not emitted-callback-skipped). A handler
+    /// body calling these as `props.on_xxx(...)` must be rewritten to
+    /// `emit('<Pascal>', ...)` so the parent's `@<Pascal>` binding fires — the
+    /// prop is never passed as `:on_xxx` by the parent (it binds `@Pascal`).
+    fn real_callback_prop_snakes(widget: &AuraWidget) -> Vec<String> {
+        widget.props.iter()
+            .filter_map(|p| {
+                if !p.name.starts_with("on_") { return None; }
+                // Only props that are NOT emitted-callbacks (i.e. they're in defineProps).
+                if Self::prop_is_emitted_callback(p, widget) { return None; }
+                p.name.strip_prefix("on_").map(|s| s.to_string())
+            })
+            .collect()
     }
 
     /// Collect api.ts interface names referenced by an Auto type, recursing
