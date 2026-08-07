@@ -1496,19 +1496,36 @@ impl RustGenerator {
             }
 
             // Generate getter method.
-            // Plan 374: Use Vec<serde_json::Value> as return type and .collect()
-            // for iterator-chain computed properties.
+            // a2r fix: infer return type from the computed expression.
+            // - If expr has .iter()/.filter()/.map() → Vec<serde_json::Value> + collect
+            // - If expr is a string literal or str field access → String
+            // - If expr is a self.field that's typed String → String
+            // - Otherwise default to String (safer than Vec for scalar computed).
             let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
-            let return_type = "Vec<serde_json::Value>";
-            let final_expr = if needs_collect && !expr_rust.contains(".collect(") {
-                // .iter() produces &Value — add .cloned() to get owned Values
-                if expr_rust.contains(".iter().") {
-                    format!("{}.cloned().collect::<Vec<_>>()", expr_rust)
+            let is_string_expr = !needs_collect && (
+                expr_rust.contains("\"")  // string literal
+                || expr_rust.contains(".to_string()")
+                || expr_rust.contains("+ \"")  // string concatenation
+                || self.state_types.iter().any(|(k, v)|
+                    v == "String" && expr_rust.contains(&format!("self.{}", k)))
+            );
+            let (return_type, final_expr) = if needs_collect {
+                let rt = "Vec<serde_json::Value>";
+                let fe = if !expr_rust.contains(".collect(") {
+                    if expr_rust.contains(".iter().") {
+                        format!("{}.cloned().collect::<Vec<_>>()", expr_rust)
+                    } else {
+                        format!("{}.collect::<Vec<_>>()", expr_rust)
+                    }
                 } else {
-                    format!("{}.collect::<Vec<_>>()", expr_rust)
-                }
+                    expr_rust.clone()
+                };
+                (rt, fe)
+            } else if is_string_expr {
+                ("String", expr_rust.clone())
             } else {
-                expr_rust
+                // Default: String for scalar computed (int/bool/str).
+                ("String", expr_rust.clone())
             };
             code.push_str(&format!("    pub fn {}(&self) -> {} {{\n", method_name, return_type));
             code.push_str(&format!("        {}\n", final_expr));
@@ -4033,8 +4050,15 @@ impl RustGenerator {
             Expr::Dot(obj, field) => {
                 let field_str = field.as_str();
                 // Plan 374 Task 2: store.field → self.store.field
+                // EDGE-01/a2r fix: if field is a computed property, use method-call
+                // syntax () — computed generates as fn, not a struct field.
+                let is_computed = self.computed_names.contains(field_str)
+                    || STORE_COMPUTED_NAMES.with(|sn| sn.borrow().contains(field_str));
                 if let Expr::Ident(name) = obj.as_ref() {
                     if name.as_str() == "store" {
+                        if is_computed {
+                            return format!("self.store.{}()", field_str);
+                        }
                         return format!("self.store.{}", field_str);
                     }
                 }

@@ -313,6 +313,32 @@ fn resolve_action_from_view(
                 state_value: Some(auto_val::Value::str("")),
             })
         }
+
+        UiActionType::Submit => {
+            // Valid for Input — submit triggers onsubmit/onenter (Enter key).
+            // ash-gui M1: command prompt 回车执行。
+            if target.kind != "Input" && target.kind != "Textarea" {
+                return Err(ActionError::InvalidAction {
+                    action: action.clone(),
+                    component_kind: target.kind.clone(),
+                });
+            }
+
+            let handler = target.actions.iter()
+                .find(|a| a.name == "submit")
+                .map(|a| a.handler.trim_start_matches('.').to_string())
+                .ok_or(ActionError::NoHandler {
+                    action: action.clone(),
+                    element_id: target.id,
+                })?;
+
+            Ok(ResolvedAction {
+                event_name: handler,
+                needs_state_write: false,
+                state_field: None,
+                state_value: None,
+            })
+        }
     }
 }
 

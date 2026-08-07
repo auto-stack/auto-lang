@@ -2130,6 +2130,456 @@ fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
     })
 }
 
+// =====================================================================
+// Shell SSE → iced subscription bridge (ash-gui-native M1)
+// =====================================================================
+// 让 iced 原生路径消费后端 `~Stream<ShellEvent>` 契约。两条路径共用本桥:
+//
+//   - **merged (in-process)** 模式(ash-gui vm 默认):UI VM 无法执行系统进程,
+//     本桥在 renderer 侧起一个 Rust 执行器线程跑 std::process::Command,通过
+//     `tokio::sync::mpsc` 把 command_output / command_result 事件回流。
+//   - **HTTP** 模式(`AUTO_BACKEND=http://host:port`):执行器线程改为拉起一个
+//     reqwest 异步客户端连后端 `/api/stream`,逐帧 SSE 解析后推同一 mpsc。
+//
+// VM 限制:`push_value` 对 struct 参数只推占位 0(vm_bridge.rs:929),store 的
+// `.RunResult(result)` / `.RunOutput(output)` 无法直接收 struct 参数。故 update
+// 闭包先把事件字段 write_state 到 store 的「预置字段」(`__sse_*`),再以**无参**
+// 触发对应 handler —— handler body 读预置字段(见 ash-gui shell_store.at)。
+//
+// 事件契约对齐 ash-server 的 ShellEvent(`types.rs:115-122`):
+//   {"event":"command_output","block_id":N,"chunk":"..."}
+//   {"event":"command_result","CommandResult":{block_id,cwd,status,output,duration_ms}}
+
+/// 一条回流到 iced 的事件(执行器线程 / HTTP 客户端 → subscription)。
+/// `event` 取 "command_output" | "command_result"。`payload` 是完整 JSON
+/// (update 闭包按字段解析后写预置字段)。
+struct ShellStreamEvent {
+    event: String,
+    payload_json: String,
+}
+
+/// 待执行的命令(merged 模式:由 update 闭包在 `.RunCommand` 后写入队列)。
+#[derive(Clone)]
+struct PendingShellCommand {
+    block_id: i64,
+    cmd: String,
+    cwd: String,
+}
+
+/// 执行器线程的共享句柄:命令队列 + 取消标志 + HTTP 后端地址(若为 HTTP 模式)。
+struct ShellExecutorHandle {
+    queue: std::collections::VecDeque<PendingShellCommand>,
+    /// block_id → cancel flag。Cancel 时插入 true;执行器轮询后清除。
+    cancel_flags: std::collections::HashMap<i64, bool>,
+    /// HTTP 模式后端 base URL(如 "http://127.0.0.1:3000");None = merged 模式。
+    http_backend: Option<String>,
+}
+
+/// 执行器线程的事件回流 receiver(全局,subscription poll)。仿 MCP_ACTION_RX。
+static SHELL_EVENT_RX: std::sync::OnceLock<
+    std::sync::Mutex<Option<std::sync::mpsc::Receiver<ShellStreamEvent>>>,
+> = std::sync::OnceLock::new();
+
+/// 执行器线程的共享句柄(全局,update 闭包提交命令 / 标记取消)。仿 MCP_ACTION_RX。
+static SHELL_EXEC_HANDLE: std::sync::OnceLock<
+    std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+> = std::sync::OnceLock::new();
+
+/// 启动 shell 执行器线程(merged + HTTP 双模式)。在 `run_dynamic_iced` 里调用一次。
+/// 返回事件 receiver,由调用方塞进 `SHELL_EVENT_RX` 全局量供 subscription poll。
+fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
+    let (tx, rx) = std::sync::mpsc::channel::<ShellStreamEvent>();
+    let handle = std::sync::Arc::new(std::sync::Mutex::new(ShellExecutorHandle {
+        queue: std::collections::VecDeque::new(),
+        cancel_flags: std::collections::HashMap::new(),
+        http_backend: std::env::var("AUTO_BACKEND").ok().filter(|s| !s.is_empty()),
+    }));
+    // 注册全局句柄,供 update 闭包提交命令 / 标记取消。
+    {
+        let guard = SHELL_EXEC_HANDLE.get_or_init(|| handle.clone());
+        let _ = guard; // 已初始化则保留旧值(启动只调一次,正常路径是新初始化)
+    }
+
+    let exec_handle = handle.clone();
+    let event_tx = tx.clone();
+    std::thread::spawn(move || {
+        // 执行器线程内建 current_thread tokio runtime(reqwest 异步 + 阻塞 IO 复用)。
+        // 仿 mcp_server.rs:387 的建法。
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+        let is_http = exec_handle.lock().unwrap().http_backend.is_some();
+        if is_http {
+            // HTTP 模式:连后端 /api/stream,逐帧推事件。
+            rt.block_on(http_sse_loop(exec_handle.clone(), event_tx));
+        } else {
+            // merged 模式:轮询本地命令队列,用 std::process 执行。
+            rt.block_on(merged_exec_loop(exec_handle.clone(), event_tx));
+        }
+    });
+
+    rx
+}
+
+/// merged 模式执行循环:从队列取命令 → std::process::Command 执行 → 推流式 + 结果事件。
+async fn merged_exec_loop(
+    handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+    tx: std::sync::mpsc::Sender<ShellStreamEvent>,
+) {
+    use std::io::Read;
+    loop {
+        // 取一条命令(队列空则短歇,避免忙等)。
+        let pending = {
+            let mut h = handle.lock().unwrap();
+            h.queue.pop_front()
+        };
+        let pending = match pending {
+            Some(p) => p,
+            None => {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                continue;
+            }
+        };
+        let block_id = pending.block_id;
+        let cmd = pending.cmd;
+        let cwd = pending.cwd;
+
+        // 跨平台:Windows 用 cmd /C,Unix 用 sh -c。对齐 ash-server 的执行语义
+        // (外部命令经 shell 解析,支持管道/重定向)。
+        let (program, args) = if cfg!(windows) {
+            ("cmd", vec!["/C".to_string(), cmd.clone()])
+        } else {
+            ("sh", vec!["-c".to_string(), cmd.clone()])
+        };
+        let mut child = match std::process::Command::new(program)
+            .args(&args)
+            .current_dir(if cwd.is_empty() { "." } else { &cwd })
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                // spawn 失败 → Failed。
+                let _ = tx.send(ShellStreamEvent {
+                    event: "command_result".to_string(),
+                    payload_json: serde_json::json!({
+                        "block_id": block_id,
+                        "cwd": cwd,
+                        "status": {"Failed": format!("spawn failed: {}", e)},
+                        "output": null,
+                        "duration_ms": 0,
+                    })
+                    .to_string(),
+                });
+                continue;
+            }
+        };
+
+        // 逐块读 stdout 推 command_output。为支持取消,每读一块检查 cancel flag。
+        let t0 = std::time::Instant::now();
+        let mut stdout = child.stdout.take();
+        let mut stderr = child.stderr.take();
+        let mut cancelled = false;
+        let mut buf = [0u8; 4096];
+        loop {
+            // 取消检查。
+            if let Some(true) = handle.lock().unwrap().cancel_flags.get(&block_id).copied() {
+                cancelled = true;
+                let _ = child.kill();
+                break;
+            }
+            let read_guard = stdout.as_mut();
+            let n = match read_guard.and_then(|r| r.read(&mut buf).ok()) {
+                Some(0) => break, // EOF
+                Some(n) => n,
+                None => break,
+            };
+            if n > 0 {
+                let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = tx.send(ShellStreamEvent {
+                    event: "command_output".to_string(),
+                    payload_json: serde_json::json!({
+                        "block_id": block_id,
+                        "chunk": chunk,
+                    })
+                    .to_string(),
+                });
+            }
+        }
+        // 收 stderr(失败时作为 Failed 消息)。
+        let mut err_text = String::new();
+        if let Some(mut e) = stderr.take() {
+            let _ = e.read_to_string(&mut err_text);
+        }
+        let status_code = child.wait().ok().and_then(|s| s.code());
+        let duration_ms = t0.elapsed().as_millis() as u64;
+
+        // 清除取消标志(已处理)。
+        handle.lock().unwrap().cancel_flags.remove(&block_id);
+
+        if cancelled {
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": cwd,
+                    "status": "Cancelled",
+                    "output": null,
+                    "duration_ms": duration_ms,
+                })
+                .to_string(),
+            });
+            continue;
+        }
+
+        // 对齐 ash-server CommandStatus:Success(裸串)| Failed(msg)(对象)。
+        // output 我们暂只支持 Text 变体(把累积 stdout 作文本)。
+        // 完整 RenderedOutput 渲染留给 a2r/HTTP(真后端 ash-server 走 /api/run_smart
+        // 已有 Table/Record 等渲染)。merged mock 路径 Text 足以验证闭环。
+        let success = matches!(status_code, Some(0));
+        let (status_val, output_val) = if success {
+            // stdout 已流式推过;结果事件带一份完整文本(供 store 切到 Success 分支)。
+            // 这里复用:不再读 stdout(已耗尽),用空串占位 —— store 的 RunResult
+            // 在 merged 模式下保留 streamed_text?不:RunResult 会清空 streamed_text
+            // 并设 output。为避免空 output,执行器在流推期间累积一份完整 stdout。
+            // (下方用 ACCUMULATED_STDOUT 线程局部?复杂化 —— 改为:merged 模式下
+            //  RunResult 不清空 streamed_text,而是把它提升为 output.Text。)
+            // 简化:output.Text = "" 让 store 用 streamed_text 作 output(见 store 注释)。
+            (serde_json::Value::String("Success".to_string()), serde_json::Value::Null)
+        } else {
+            let msg = if err_text.is_empty() {
+                format!("exit code {:?}", status_code)
+            } else {
+                err_text
+            };
+            (serde_json::json!({"Failed": msg}), serde_json::Value::Null)
+        };
+        let _ = tx.send(ShellStreamEvent {
+            event: "command_result".to_string(),
+            payload_json: serde_json::json!({
+                "block_id": block_id,
+                "cwd": cwd,
+                "status": status_val,
+                "output": output_val,
+                "duration_ms": duration_ms,
+            })
+            .to_string(),
+        });
+    }
+}
+
+/// HTTP 模式:连后端 `/api/stream` SSE,逐帧 JSON 解析后推 ShellStreamEvent。
+/// 命令提交 / 取消走 HTTP POST。本函数假设后端是 ash-server(契约见 ash-server/types.rs)。
+async fn http_sse_loop(
+    handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+    tx: std::sync::mpsc::Sender<ShellStreamEvent>,
+) {
+    let base = match handle.lock().unwrap().http_backend.clone() {
+        Some(b) => b,
+        None => return,
+    };
+    let client = reqwest::Client::new();
+    let stream_url = format!("{}/api/stream", base.trim_end_matches('/'));
+    let post_url = format!("{}/api/run_command", base.trim_end_matches('/'));
+    let cancel_url = format!("{}/api/cancel", base.trim_end_matches('/'));
+
+    // 后台:轮询本地命令队列 → POST 到后端(后端执行后经 SSE 回流)。
+    let h2 = handle.clone();
+    let post_url_c = post_url.clone();
+    let client_c = client.clone();
+    let _poster = tokio::spawn(async move {
+        loop {
+            let pending = { h2.lock().unwrap().queue.pop_front() };
+            if let Some(p) = pending {
+                let _ = client_c
+                    .post(&post_url_c)
+                    .json(&serde_json::json!({"block_id": p.block_id, "cmd": p.cmd}))
+                    .send()
+                    .await;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            // 取消标志 → POST /api/cancel。
+            let cancels: Vec<i64> = {
+                let mut h = h2.lock().unwrap();
+                let keys: Vec<i64> = h.cancel_flags.drain().filter(|(_, v)| *v).map(|(k, _)| k).collect();
+                keys
+            };
+            if !cancels.is_empty() {
+                let _ = client_c.post(&cancel_url).send().await;
+            }
+        }
+    });
+
+    // 主:循环连 SSE(断线重连)。
+    loop {
+        match client.get(&stream_url).send().await {
+            Ok(resp) => {
+                use futures::StreamExt;
+                let mut byte_stream = resp.bytes_stream();
+                let mut acc = String::new();
+                while let Some(chunk_res) = byte_stream.next().await {
+                    match chunk_res {
+                        Ok(bytes) => {
+                            acc.push_str(&String::from_utf8_lossy(&bytes));
+                            // 按 SSE 帧边界 "\n\n" 切分。
+                            while let Some(idx) = acc.find("\n\n") {
+                                let frame = acc[..idx].to_string();
+                                acc = acc[idx + 2..].to_string();
+                                // 提取 `data:` 行。
+                                let data: String = frame
+                                    .lines()
+                                    .filter_map(|l| l.strip_prefix("data:").map(|s| s.trim_start().to_string()))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                if data.is_empty() {
+                                    continue;
+                                }
+                                // 解析 JSON,取 event 字段判别。
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                                    let event = v
+                                        .get("event")
+                                        .and_then(|e| e.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    if event == "command_output" || event == "command_result" {
+                                        let _ = tx.send(ShellStreamEvent {
+                                            event,
+                                            payload_json: v.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+        // 断线后等一会再重连。
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+}
+
+/// Update a block in store.blocks by block_id from a shell event (ash-gui M1).
+/// Called from the update closure's command_output/command_result branch.
+/// VM RunOutput/RunResult handlers can't read renderer-written Value::Array
+/// blocks (type mismatch), so we update directly in Rust. Returns true if a
+/// block was found and modified.
+fn update_block_in_state(
+    component: &mut DynamicComponent,
+    block_id: i64,
+    event: &str,
+    payload: &serde_json::Value,
+) -> bool {
+    // Read blocks as Value::Array (renderer wrote it that way). Fall back to
+    // read_state_as_vec for VM-native List, then write back the same way.
+    let raw = match component.read_state("blocks") {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let mut blocks_vec: Vec<auto_val::Value> = match &raw {
+        auto_val::Value::Array(arr) => arr.values.clone(),
+        auto_val::Value::Nil => Vec::new(),
+        _ => match component.read_state_as_vec("blocks") {
+            Ok(v) => v,
+            Err(_) => return false,
+        },
+    };
+    let mut found = false;
+    for b in &mut blocks_vec {
+        if let auto_val::Value::Obj(obj) = b {
+            let id_matches = obj.get("id")
+                .map(|v| v.as_int() as i64 == block_id)
+                .unwrap_or(false);
+            if !id_matches {
+                continue;
+            }
+            found = true;
+            if event == "command_output" {
+                // Append chunk to streamed_text.
+                let chunk = payload.get("chunk").and_then(|x| x.as_str()).unwrap_or("");
+                let cur = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                obj.set("streamed_text", auto_val::Value::str(&format!("{}{}", cur, chunk)));
+            } else {
+                // command_result: set status / output / duration_ms / clear streamed_text.
+                let status_str = match payload.get("status") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(obj @ serde_json::Value::Object(_)) => {
+                        // {"Failed": msg} → 取 Failed 消息
+                        obj.get("Failed").and_then(|m| m.as_str()).unwrap_or("Failed").to_string()
+                    }
+                    _ => "Failed".to_string(),
+                };
+                let (kind, message) = if status_str == "Success" {
+                    ("Success".to_string(), String::new())
+                } else if status_str == "Cancelled" {
+                    ("Cancelled".to_string(), String::new())
+                } else {
+                    ("Failed".to_string(), status_str)
+                };
+                let dur = payload.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
+                // output:merged 模式下 payload output 为 null,用 streamed_text 作 output.Text。
+                let output_text = payload.get("output")
+                    .and_then(|o| o.get("Text"))
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default()
+                    });
+                let mut status = auto_val::Obj::new();
+                status.set("kind", auto_val::Value::str(&kind));
+                status.set("message", auto_val::Value::str(&message));
+                obj.set("status", auto_val::Value::Obj(status));
+                let mut out = auto_val::Obj::new();
+                out.set("Text", auto_val::Value::str(&output_text));
+                obj.set("output", auto_val::Value::Obj(out));
+                obj.set("streamed_text", auto_val::Value::str(""));
+                obj.set("duration_ms", auto_val::Value::Int(dur));
+            }
+            break;
+        }
+    }
+    if found {
+        // Write back the same type we read.
+        let _ = match &raw {
+            auto_val::Value::Array(_) | auto_val::Value::Nil => {
+                component.write_state("blocks", auto_val::Value::Array(auto_val::Array { values: blocks_vec }))
+            }
+            _ => component.write_state_vec("blocks", blocks_vec),
+        };
+    }
+    found
+}
+
+/// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
+/// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
+fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
+    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        let Some(rx) = lock.as_mut() else {
+            return None;
+        };
+        // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
+        match rx.try_recv() {
+            Ok(ev) => Some(IcedMessage {
+                widget: "ShellStore".to_string(),
+                event: ev.event,
+                input_value: Some(ev.payload_json),
+            }),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        }
+    })
+}
+
 /// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
 ///
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
@@ -2590,6 +3040,15 @@ fn compare_pngs(
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         *lock = Some(mcp_action_rx);
+    }
+
+    // Start shell executor (merged in-process / HTTP SSE bridge, ash-gui M1).
+    // Returns the event receiver; stash it in SHELL_EVENT_RX for the subscription.
+    {
+        let shell_rx = start_shell_executor();
+        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        *lock = Some(shell_rx);
     }
 
     // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
@@ -3170,6 +3629,29 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────
+        // subscription 把 command_output/command_result 事件送成 IcedMessage
+        // (widget="ShellStore",input_value=完整 JSON)。VM 无法收 struct 参
+        // (push_value 对 Obj 推占位 0),故此处先 write_state 预置字段,
+        // 再以**无参**触发 ShellStore 的 RunOutput/RunResult handler —— handler
+        // body 读预置字段(shell_store.at 的 `__sse_*`)。
+        if msg.event == "command_output" || msg.event == "command_result" {
+            if let Some(json) = &msg.input_value {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                    // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms}
+                    // M1:VM 的 RunOutput/RunResult handler 读 .blocks 读不到 renderer 写的
+                    // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
+                    // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
+                    let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
+                    let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
+                    if updated {
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+            return iced::Task::none();
+        }
+
         let event_name = {
             let name = msg.event.trim_start_matches('.');
             if let Some(pos) = name.rfind("::") { &name[pos + 2..] } else { name }
@@ -3187,6 +3669,9 @@ fn compare_pngs(
 
         // Plan 320: route event to the correct widget's handler (single VM).
         let widget_name = &msg.widget;
+        // Save input_value before it's moved into on_with_input_for (ash-gui M1
+        // emit simulation below reads it).
+        let saved_input_value = msg.input_value.clone();
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // After handler runs, clear input_values for OTHER inputs whose state
@@ -3199,6 +3684,173 @@ fn compare_pngs(
             ev_name == &event_name
                 || !input_map.contains_key(ev_name)
         });
+
+        // ── Shell bridge:emit 模拟(ash-gui M1) ──────────────────────────
+        // vm 模式 handler_codegen 剥离子组件的 callback prop 调用(handler_codegen.rs
+        // :996 Plan 370 D-GAP-4),故 PromptBar.Run 清 input 后的自动 emit('Run',cmd)
+        // → App.RunCommand 在 vm 不发生。这里模拟该 emit:PromptBar.Run 执行后,若它
+        // 带了 cmd 值(submit 传入的 input 当前值),直接触发 store.RunCommand(cmd)。
+        // 这是 ash-gui 特定知识(widget=PromptBar,event=Run),而非通用 emit 修复。
+        if widget_name == "PromptBar" && event_name == "Run" {
+            if let Some(cmd) = saved_input_value.as_deref() {
+                let cmd = cmd.trim();
+                if !cmd.is_empty() {
+                    // 触发 store 级 RunCommand(cmd)。on_with_input_for 把 input_value
+                    // 作为字符串参数传给 handler(cmd 参数)。store 只记 pending
+                    // {block_id, cmd}(VM 嵌套 struct 赋值会崩),block 在下方构造。
+                    state.component.on_with_input_for(
+                        "ShellStore",
+                        "RunCommand",
+                        Some(cmd.to_string()),
+                    );
+                    // store.RunCommand 已写 __pending_command_{id,str}。在此(Rust 侧)
+                    // 构造完整 Running block push 进 store.blocks,并提交执行器。
+                    let bid = state.component.read_state("__pending_command_id")
+                        .map(|v| v.as_int() as i64).unwrap_or(0);
+                    let cwd = state.component.read_state("cwd")
+                        .map(|v| v.as_str().to_string()).unwrap_or_default();
+                    if bid >= 0 {
+                        let mut status = auto_val::Obj::new();
+                        status.set("kind", auto_val::Value::str("Running"));
+                        status.set("message", auto_val::Value::str(""));
+                        let mut block = auto_val::Obj::new();
+                        block.set("id", auto_val::Value::Int(bid as i32));
+                        block.set("command", auto_val::Value::str(cmd));
+                        block.set("cwd", auto_val::Value::str(&cwd));
+                        block.set("status", auto_val::Value::Obj(status));
+                        block.set("streamed_text", auto_val::Value::str(""));
+                        block.set("duration_ms", auto_val::Value::Int(0));
+                        // blocks 字段可能初始为 nil(vm List 初始化问题)。先尝试
+                        // read_state_as_vec(对已初始化 List);失败则直接 write_state
+                        // 一个含新 block 的 Value::Array(覆盖 nil)。
+                        if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                            blocks.push(auto_val::Value::Obj(block));
+                            let _ = state.component.write_state_vec("blocks", blocks);
+                        } else {
+                            let _ = state.component.write_state(
+                                "blocks",
+                                auto_val::Value::Array(auto_val::Array {
+                                    values: vec![auto_val::Value::Obj(block)],
+                                }),
+                            );
+                        }
+                        if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                            if let Ok(mut h) = handle.lock() {
+                                h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                                    block_id: bid,
+                                    cmd: cmd.to_string(),
+                                    cwd,
+                                });
+                            }
+                        }
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+
+        // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
+        // 'clear' 给 App → App.ClearScreen → store.ClearScreen,但 vm 剥离 callback
+        // emit(同 Run)。这里直接触发 store.ClearScreen(归档所有 blocks)。
+        if widget_name == "PromptBar" && event_name == "OnCtrlL" {
+            let _ = state.component.on_with_input_for("ShellStore", "ClearScreen", None);
+            *state.view_dirty.borrow_mut() = true;
+        }
+
+        // ── Shell bridge:RunCommand 后备路径(ash-gui M1) ──
+        // 当 store.RunCommand 从 App.RunCommand 直接触发(非 emit 模拟路径,
+        // 如 Rerun/侧栏),event_name=="RunCommand"。此路径下 store 也只记 pending,
+        // block 构造 + 执行器提交同上。emit 模拟路径(PromptBar.Run)已在上方处理。
+        if event_name == "RunCommand" {
+            let bid = state.component.read_state("__pending_command_id")
+                .map(|v| v.as_int() as i64).unwrap_or(0);
+            let cmd = state.component.read_state("__pending_command_str")
+                .map(|v| v.as_str().to_string()).unwrap_or_default();
+            let cwd = state.component.read_state("cwd")
+                .map(|v| v.as_str().to_string()).unwrap_or_default();
+            if !cmd.is_empty() && bid >= 0 {
+                let mut status = auto_val::Obj::new();
+                status.set("kind", auto_val::Value::str("Running"));
+                status.set("message", auto_val::Value::str(""));
+                let mut block = auto_val::Obj::new();
+                block.set("id", auto_val::Value::Int(bid as i32));
+                block.set("command", auto_val::Value::str(&cmd));
+                block.set("cwd", auto_val::Value::str(&cwd));
+                block.set("status", auto_val::Value::Obj(status));
+                block.set("streamed_text", auto_val::Value::str(""));
+                block.set("duration_ms", auto_val::Value::Int(0));
+                if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                    blocks.push(auto_val::Value::Obj(block));
+                    let _ = state.component.write_state_vec("blocks", blocks);
+                }
+                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                    if let Ok(mut h) = handle.lock() {
+                        h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                            block_id: bid,
+                            cmd,
+                            cwd,
+                        });
+                    }
+                }
+                *state.view_dirty.borrow_mut() = true;
+            }
+        }
+        if event_name == "Cancel" {
+            // CMD-06:只停首个 Running block(对齐 Vue useShellTauri.ts:112 .find,
+            // 非 filter)。blocks 由 renderer 管(Value::Array),在此用 Rust 读 blocks
+            // 找首个 Running:标 cancel_flags(执行器进程 kill)+ 更新其 status=Cancelled。
+            let raw = state.component.read_state("blocks").ok();
+            let blocks_vec: Vec<auto_val::Value> = match &raw {
+                Some(auto_val::Value::Array(arr)) => arr.values.clone(),
+                Some(auto_val::Value::Nil) | None => Vec::new(),
+                _ => state.component.read_state_as_vec("blocks").unwrap_or_default(),
+            };
+            let mut first_running_id: Option<i64> = None;
+            let mut blocks_vec = blocks_vec;
+            for b in &blocks_vec {
+                if let auto_val::Value::Obj(obj) = b {
+                    let kind = obj.get("status")
+                        .and_then(|s| if let auto_val::Value::Obj(so) = s {
+                            so.get("kind").map(|k| k.as_str().to_string())
+                        } else { None })
+                        .unwrap_or_default();
+                    if kind == "Running" {
+                        first_running_id = Some(obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0));
+                        break;
+                    }
+                }
+            }
+            if let Some(bid) = first_running_id {
+                // 通知执行器 kill 进程。
+                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                    if let Ok(mut h) = handle.lock() {
+                        h.cancel_flags.insert(bid, true);
+                    }
+                }
+                // 更新该 block status → Cancelled(CMD-06 只首个)。
+                let mut changed = false;
+                for b in blocks_vec.iter_mut() {
+                    if let auto_val::Value::Obj(obj) = b {
+                        let id_match = obj.get("id").map(|v| v.as_int() as i64 == bid).unwrap_or(false);
+                        if id_match {
+                            let mut status = auto_val::Obj::new();
+                            status.set("kind", auto_val::Value::str("Cancelled"));
+                            status.set("message", auto_val::Value::str(""));
+                            obj.set("status", auto_val::Value::Obj(status));
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+                if changed {
+                    let _ = state.component.write_state(
+                        "blocks",
+                        auto_val::Value::Array(auto_val::Array { values: blocks_vec }),
+                    );
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
 
         // Post-process Lap: format lap entries with "Lap N: time" prefix.
         // The bytecode handler already shifts lap3=lap2, lap2=lap1, lap1=time.
@@ -3396,6 +4048,9 @@ fn compare_pngs(
             subs.push(keyboard_subscription(_state.component.key_bindings()));
             // MCP action channel — polls for injected actions from AI agent (Plan 278)
             subs.push(mcp_action_subscription());
+            // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
+            // dispatches command_output/command_result to ShellStore handlers.
+            subs.push(shell_event_subscription());
             // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
             // app while an agent is connected. Only ticks when MCP is active.
             if _state.mcp_shared.is_some() {
@@ -3481,7 +4136,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // makes the returned probe a disabled no-op (zero probe overhead here).
         let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
-        mcp.update(view, id_map, state_vals, input_map, view_template);
+        mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();
         let iced::Size { width, height } = *ws;
@@ -7733,5 +8388,94 @@ mod tests {
             }
             _ => panic!("convert_view_messages dropped the Grid (hit the _ => Empty wildcard)"),
         }
+    }
+
+    // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────────
+    // 验证执行器线程的命令执行 + 事件回流闭环,不依赖 VM/UI。
+    // 这覆盖 M1 的 Rust 核心逻辑:队列提交 → std::process 执行 → command_output/
+    // command_result 事件经 mpsc channel 产出。VM 侧的预置字段派发由 smoke 测试
+    // + 端到端测试(M3,需先修 view_template 不展开 Component 的 MCP 缺陷)覆盖。
+    //
+    // 注意:执行器用 OnceLock 全局量(SHELL_EXEC_HANDLE / SHELL_EVENT_RX),进程
+    // 生命期只初始化一次。测试间共享同一执行器线程 + receiver,故合并到一个测试
+    // 函数里顺序提交两条命令,避免全局量二次初始化导致命令丢进无人读的队列。
+
+    #[test]
+    fn test_shell_executor_success_and_failure() {
+        let rx = start_shell_executor();
+
+        // ── 成功路径:echo ──
+        {
+            let handle = SHELL_EXEC_HANDLE.get().expect("executor handle registered");
+            let mut h = handle.lock().unwrap();
+            h.queue.push_back(PendingShellCommand {
+                block_id: 42,
+                cmd: "echo hello_m1_bridge".to_string(),
+                cwd: ".".to_string(),
+            });
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut got_success = false;
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(ev) if ev.event == "command_result" => {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&ev.payload_json).expect("result is JSON");
+                    assert_eq!(v["block_id"], 42, "success block_id matches");
+                    assert_eq!(
+                        v["status"], "Success",
+                        "echo should succeed: {}",
+                        ev.payload_json
+                    );
+                    got_success = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("executor channel disconnected before success result");
+                }
+            }
+        }
+        assert!(got_success, "executor emitted Success result for echo");
+
+        // ── 失败路径:nonexistent command ──
+        {
+            let handle = SHELL_EXEC_HANDLE.get().unwrap();
+            let mut h = handle.lock().unwrap();
+            h.queue.push_back(PendingShellCommand {
+                block_id: 7,
+                cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
+                cwd: ".".to_string(),
+            });
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut got_failed = false;
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(ev) if ev.event == "command_result" => {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&ev.payload_json).expect("result is JSON");
+                    assert_eq!(v["block_id"], 7, "failure block_id matches");
+                    assert!(
+                        v["status"].is_object(),
+                        "nonexistent command should fail: {}",
+                        ev.payload_json
+                    );
+                    assert!(
+                        v["status"]["Failed"].is_string(),
+                        "Failed variant carries a message"
+                    );
+                    got_failed = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("executor channel disconnected before failure result");
+                }
+            }
+        }
+        assert!(got_failed, "executor emitted Failed result for bad command");
     }
 }

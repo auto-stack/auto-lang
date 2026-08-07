@@ -106,6 +106,10 @@ pub enum UiActionType {
     SetValue,
     /// Clear an input/textarea (Plan 299)
     Clear,
+    /// Submit an input (triggers onsubmit/onenter — e.g. pressing Enter in a
+    /// command prompt). Plan 371 续篇 / ash-gui M1:needed because the keyboard
+    /// tool dispatches a global key handler, not the iced input's on_submit.
+    Submit,
 }
 
 impl fmt::Display for UiActionType {
@@ -117,6 +121,7 @@ impl fmt::Display for UiActionType {
             UiActionType::SelectOption => write!(f, "select_option"),
             UiActionType::SetValue => write!(f, "set_value"),
             UiActionType::Clear => write!(f, "clear"),
+            UiActionType::Submit => write!(f, "submit"),
         }
     }
 }

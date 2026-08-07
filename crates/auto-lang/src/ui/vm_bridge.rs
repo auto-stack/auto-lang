@@ -203,7 +203,7 @@ impl VmBridge {
         let mut field_values = Vec::with_capacity(widget.state_vars.len());
         for state_var in &widget.state_vars {
             field_names.push(state_var.name.clone());
-            field_values.push(eval_expr_to_value(&state_var.initial));
+            field_values.push(eval_expr_to_value(&state_var.initial, &mut vm));
         }
 
         let mono_name = format!("{}_State", widget_name);
@@ -296,7 +296,7 @@ impl VmBridge {
         let mut field_values = Vec::with_capacity(model_fields.len());
         for field in model_fields {
             field_names.push(field.name.to_string());
-            field_values.push(eval_expr_to_value(&field.init));
+            field_values.push(eval_expr_to_value(&field.init, &mut vm));
         }
 
         // Plan 370 D-GAP-4: merge store state fields into root state object.
@@ -317,7 +317,7 @@ impl VmBridge {
                     let name = sf.name.to_string();
                     if !field_names.contains(&name) {
                         field_names.push(name.clone());
-                        field_values.push(eval_expr_to_value(&sf.init));
+                        field_values.push(eval_expr_to_value(&sf.init, &mut vm));
                     }
                 }
             }
@@ -946,7 +946,7 @@ fn push_value(ram: &mut crate::vm::virt_memory::VirtualRAM, value: &Value) {
 /// Phase 3: replaces the old `eval_aura_expr_to_value` (which consumed the now-
 /// eliminated `AuraExpr`). Handles the common literal types; complex
 /// expressions default to Nil.
-fn eval_expr_to_value(expr: &Expr) -> Value {
+fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
     match expr {
         Expr::Int(i) => Value::Int(*i),
         Expr::I64(i) => Value::Int(*i as i32),
@@ -971,7 +971,7 @@ fn eval_expr_to_value(expr: &Expr) -> Value {
         // Binary expressions in initial values: simple cases only.
         Expr::Bina(_, _, _) => Value::Int(0),
         Expr::Unary(op, operand) => {
-            let val = eval_expr_to_value(operand);
+            let val = eval_expr_to_value(operand, vm);
             match op {
                 Op::Sub => match val {
                     Value::Int(i) => Value::Int(-i),
@@ -989,7 +989,7 @@ fn eval_expr_to_value(expr: &Expr) -> Value {
         Expr::Array(elements) => {
             // Array literals: evaluate each element
             let values: Vec<Value> = elements.iter()
-                .map(eval_expr_to_value)
+                .map(|e| eval_expr_to_value(e, vm))
                 .collect();
             Value::Array(auto_val::Array::from(values))
         }
@@ -998,13 +998,100 @@ fn eval_expr_to_value(expr: &Expr) -> Value {
             let mut obj = auto_val::Obj::new();
             for pair in pairs {
                 let key = pair.key.to_astr();
-                obj.set(key, eval_expr_to_value(&pair.value));
+                obj.set(key, eval_expr_to_value(&pair.value, vm));
             }
             Value::Obj(obj)
+        }
+        // EDGE-04 fix: type literal `Type{ field: val, ... }` (parsed as
+        // Expr::Node) must be materialized to a GenericInstanceData on the VM
+        // heap and returned as Value::VmRef. Previously fell into _ => Nil,
+        // so store model fields like `var git_info PromptContext = PromptContext{...}`
+        // were initialized to Nil — downstream `.git_status.staged` then hit
+        // "Field index out of bounds for primitive" (GET_GENERIC_FIELD on Nil).
+        // Field extraction mirrors vm codegen (codegen.rs:4817-4845): args
+        // (Pos/Pair) + body stmts (Expr::Pair). Nested type literals recurse.
+        Expr::Node(node) => {
+            materialize_type_literal(node, vm)
+        }
+        // Function-style type constructor Type(...) — also materialize if the
+        // callee is a registered type (same as codegen.rs:6562 Expr::Call path).
+        Expr::Call(call) => {
+            if let crate::ast::Expr::Ident(type_name) = call.name.as_ref() {
+                let tn = type_name.to_string();
+                if vm.generic_registry.has_template(&tn) {
+                    // Build a synthetic Node from the call args and materialize.
+                    let synthetic = crate::ast::Node {
+                        name: type_name.clone(),
+                        id: crate::ast::Name::new(),
+                        num_args: call.args.args.len(),
+                        args: call.args.clone(),
+                        body: crate::ast::Body::new(),
+                        typ: auto_val::shared(crate::ast::Type::Unknown),
+                        doc: None,
+                    };
+                    materialize_type_literal(&synthetic, vm)
+                } else {
+                    Value::Nil
+                }
+            } else {
+                Value::Nil
+            }
         }
         // Complex expressions default to Nil for safety
         _ => Value::Nil,
     }
+}
+
+/// Materialize a type literal (`Type{ field: val, ... }`) into a
+/// GenericInstanceData on the VM heap. Used by `eval_expr_to_value` for store
+/// model field initialization (EDGE-04). Returns Value::VmRef(heap_id), or
+/// Value::Nil if the type isn't registered / has no fields.
+fn materialize_type_literal(node: &crate::ast::Node, vm: &mut AutoVM) -> Value {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let type_name = node.name.to_string();
+    // Look up the ClassType to get mono_name + field count + field names.
+    let class_type = match vm.generic_registry.get_or_create_type(&type_name, Vec::new()) {
+        Ok(ct) => ct,
+        Err(_) => return Value::Nil,
+    };
+    let mono_name = class_type.mono_name.clone();
+    let field_defs = class_type.fields();
+    let field_count = field_defs.len();
+
+    // Collect field values from args (Pos/Pair) + body stmts (Expr::Pair),
+    // mirroring codegen.rs:4817-4845.
+    let mut field_exprs: Vec<&crate::ast::Expr> = Vec::new();
+    for arg in &node.args.args {
+        match arg {
+            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => field_exprs.push(e),
+            crate::ast::Arg::Name(_) => {} // skip; will be filled with default below
+        }
+    }
+    for stmt in &node.body.stmts {
+        if let crate::ast::Stmt::Expr(crate::ast::Expr::Pair(pair)) = stmt {
+            field_exprs.push(&pair.value);
+        }
+    }
+
+    // Evaluate each field (recursively materializing nested type literals).
+    let mut field_values: Vec<Value> = Vec::with_capacity(field_count);
+    for i in 0..field_count {
+        if let Some(expr) = field_exprs.get(i) {
+            field_values.push(eval_expr_to_value(expr, vm));
+        } else {
+            // Field not provided in the literal — default by type.
+            field_values.push(Value::Int(0));
+        }
+    }
+
+    let field_names: Vec<String> = field_defs.iter().map(|f| f.name.clone()).collect();
+    let instance = if !field_names.is_empty() && field_values.len() == field_names.len() {
+        GenericInstanceData::new_with_names(mono_name, field_values, field_names)
+    } else {
+        GenericInstanceData::new(mono_name, field_values)
+    };
+    let heap_id = vm.insert_heap_object(instance);
+    Value::VmRef(auto_val::VmRef { id: heap_id as usize })
 }
 
 /// Extract a clean handler name from an event pattern.
@@ -1345,16 +1432,20 @@ mod tests {
 
     #[test]
     fn test_eval_expr() {
-        assert_eq!(eval_expr_to_value(&Expr::Int(42)), Value::Int(42));
-        assert_eq!(eval_expr_to_value(&Expr::Double(3.14, "".into())), Value::Double(3.14f64));
-        assert_eq!(eval_expr_to_value(&Expr::Bool(true)), Value::Bool(true));
-        assert_eq!(eval_expr_to_value(&Expr::Str("hi".into())), Value::str("hi"));
+        let flash = crate::vm::virt_memory::VirtualFlash::new(64);
+        let mut vm = AutoVM::new(flash, 64);
+        assert_eq!(eval_expr_to_value(&Expr::Int(42), &mut vm), Value::Int(42));
+        assert_eq!(eval_expr_to_value(&Expr::Double(3.14, "".into()), &mut vm), Value::Double(3.14f64));
+        assert_eq!(eval_expr_to_value(&Expr::Bool(true), &mut vm), Value::Bool(true));
+        assert_eq!(eval_expr_to_value(&Expr::Str("hi".into()), &mut vm), Value::str("hi"));
     }
 
     #[test]
     fn test_eval_expr_array() {
+        let flash = crate::vm::virt_memory::VirtualFlash::new(64);
+        let mut vm = AutoVM::new(flash, 64);
         let expr = Expr::Array(vec![Expr::Int(1), Expr::Int(2)]);
-        let val = eval_expr_to_value(&expr);
+        let val = eval_expr_to_value(&expr, &mut vm);
         match val {
             Value::Array(arr) => {
                 assert_eq!(arr.len(), 2);

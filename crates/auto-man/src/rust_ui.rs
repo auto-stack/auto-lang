@@ -1452,9 +1452,46 @@ fn wrap_example(project_name: &str, components: &str) -> String {
     let main_msg = format!("{}Msg", main_widget);
 
     // Strip duplicate imports — RustGenerator already emits them
-    let cleaned = components.trim()
+    let mut cleaned = components.trim()
         .replace("use auto_lang::ui::{Component, View};\n", "")
         .replace("use auto_lang::ui::{Component, View};", "");
+
+    // a2r fix: computed properties are generated as methods (fn name(&self)),
+    // but all code accesses them as fields. Scan for `pub fn NAME(&self)` to
+    // discover all computed methods, then add () to field-style accesses.
+    // This runs at file level so cross-widget computed (store.history accessed
+    // from App) is caught regardless of widget generation order.
+    let computed_methods: Vec<String> = {
+        let mut names = Vec::new();
+        for line in cleaned.lines() {
+            let trimmed = line.trim();
+            // Match: pub fn NAME(&self) -> ... {
+            if trimmed.starts_with("pub fn ") && trimmed.contains("(&self)") {
+                if let Some(name) = trimmed
+                    .strip_prefix("pub fn ")
+                    .and_then(|s| s.split('(').next())
+                {
+                    // Skip obvious non-computed methods (view, on, new, state_snapshot, etc.)
+                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name) {
+                        names.push(name.to_string());
+                    }
+                }
+            }
+        }
+        names
+    };
+    for cname in &computed_methods {
+        for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
+            let with_call = format!("{}()", prefix);
+            if cleaned.contains(&with_call) {
+                continue;
+            }
+            cleaned = cleaned.replace(&format!("{}.", prefix), &format!("{}().", with_call));
+            cleaned = cleaned.replace(&format!("{},", prefix), &format!("{},", with_call));
+            cleaned = cleaned.replace(&format!("{})", prefix), &format!("{})", with_call));
+            cleaned = cleaned.replace(&format!("{} ", prefix), &format!("{} ", with_call));
+        }
+    }
 
     // Detect async init: look for __InitLoaded variant in generated code
     let async_init_func = extract_init_api_func(cleaned.trim());
@@ -1722,14 +1759,28 @@ pub fn get_rust_workspace_dir() -> PathBuf {
 
 /// Compute the relative path from the shared workspace dir to auto-lang crate.
 fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
-    // Walk up from project_dir to find the workspace root (has crates/auto-lang)
+    // Walk up from project_dir to find the workspace root (has crates/auto-lang).
+    // Also check sibling directories at each level — auto-lang may live in a
+    // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
+        // Direct: this dir has crates/auto-lang
         if dir.join("crates").join("auto-lang").exists() {
             let auto_lang_abs = dir.join("crates").join("auto-lang");
             let workspace_dir = get_rust_workspace_dir();
-            // Compute relative path from workspace_dir to auto_lang_abs
             return compute_relative_path(&workspace_dir, &auto_lang_abs);
+        }
+        // Sibling: a sibling dir (e.g. ../auto-lang) has crates/auto-lang.
+        // This covers the common layout where <project> and auto-lang are
+        // sibling repos under a common parent (autostack/).
+        if let Some(parent) = dir.parent() {
+            for sibling in ["auto-lang"] {
+                let candidate = parent.join(sibling).join("crates").join("auto-lang");
+                if candidate.exists() {
+                    let workspace_dir = get_rust_workspace_dir();
+                    return compute_relative_path(&workspace_dir, &candidate);
+                }
+            }
         }
         if !dir.pop() {
             break;
