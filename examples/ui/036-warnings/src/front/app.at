@@ -41,6 +41,27 @@ widget App {
                 text f"has_draft: ${.has_draft}"
             }
 
+            // P0#13: the three formerly-broken `class:` forms.
+            // static + dynamic `class:` props on one element merge into a
+            // single :class array (previously the second silently
+            // overrode the first).
+            span {
+                class: "px-2 py-1 rounded"
+                class: .open ? "bg-emerald-600 text-white" : "bg-gray-200"
+                text "merged class props"
+            }
+            // map form quotes non-identifier keys (previously emitted
+            // `{line-through: done}` — a JS syntax error).
+            span {
+                class: { "line-through": .open }
+                text "map form"
+            }
+            // concat form binds a string-concat expr.
+            span {
+                class: "text-" + .cls
+                text "concat form"
+            }
+
             row {
                 class: "space-x-2",
                 button "items.remove(0)" {
