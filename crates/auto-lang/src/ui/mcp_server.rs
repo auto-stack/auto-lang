@@ -167,6 +167,9 @@ pub struct SharedState {
     styled_vtree: Option<StyledNodeSnapshot>,
     /// Pending screenshot request from MCP thread (Plan 285).
     screenshot_request: Option<ScreenshotRequest>,
+    /// EDGE-01: key bindings (including element-attribute onkeydown.*) for
+    /// tool_keyboard lookup. Set by renderer each view() via update().
+    key_bindings: HashMap<String, String>,
 }
 
 /// Screenshot request stored in SharedState for the iced thread to pick up (Plan 285).
@@ -240,6 +243,7 @@ impl SharedState {
             layout_bounds: HashMap::new(),
             styled_vtree: None,
             screenshot_request: None,
+            key_bindings: HashMap::new(),
         }
     }
 
@@ -331,11 +335,13 @@ impl SharedState {
         state: HashMap<String, auto_val::Value>,
         input_state_map: HashMap<String, String>,
         view_template: Option<AuraNode>,
+        key_bindings: HashMap<String, String>,
     ) {
         self.view = Some(view);
         self.id_map = Some(id_map);
         self.state = state;
         self.input_state_map = input_state_map;
+        self.key_bindings = key_bindings;
         if view_template.is_some() {
             self.view_template = view_template.map(SendViewTemplate);
         }
@@ -1519,15 +1525,52 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
             value: None,
         }
     } else {
-        // Other keys: forward as a key_binding action message.
-        let handler = format!("key_{}", key.to_lowercase());
-        ActionMessage {
-            target: ActionTarget::Event {
-                widget: widget_name,
-                event: handler,
-            },
-            action: UiActionType::Press,
-            value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+        // EDGE-01: Build the key_str the same way keyboard_subscription does
+        // (renderer.rs:2621-2653) and look up the handler in key_bindings
+        // (which now includes element-attribute onkeydown.* bindings collected
+        // by collect_onkeydown_bindings_with_registry). If found, dispatch the
+        // handler directly; otherwise fall back to the legacy key_<lower>.
+        let has_ctrl = _modifiers.iter().any(|m| m.eq_ignore_ascii_case("ctrl"));
+        let has_alt = _modifiers.iter().any(|m| m.eq_ignore_ascii_case("alt"));
+        let key_str = if has_ctrl || has_alt {
+            let mut prefix = String::new();
+            if has_ctrl { prefix.push_str("Ctrl+"); }
+            if has_alt { prefix.push_str("Alt+"); }
+            // For ctrl+r, key is "r"; first char lowercased.
+            let c = key.chars().next().unwrap_or(' ').to_ascii_lowercase();
+            format!("{}{}", prefix, c)
+        } else {
+            key.to_string()
+        };
+        // Look up in key_bindings (ArrowUp / Ctrl+r / Tab / etc).
+        if let Some(handler_entry) = shared.key_bindings.get(&key_str) {
+            // handler_entry is "WidgetName.HandlerName" (EDGE-01 format) or
+            // plain "HandlerName" (bind-block format). Split on '.' to get
+            // (widget, event). If no '.', dispatch to root widget.
+            let (kb_widget, kb_event) = if let Some(dot) = handler_entry.find('.') {
+                (&handler_entry[..dot], &handler_entry[dot + 1..])
+            } else {
+                (widget_name.as_str(), handler_entry.as_str())
+            };
+            ActionMessage {
+                target: ActionTarget::Event {
+                    widget: kb_widget.to_string(),
+                    event: kb_event.to_string(),
+                },
+                action: UiActionType::Press,
+                value: None,
+            }
+        } else {
+            // Fallback: legacy key_<lower> handler name.
+            let handler = format!("key_{}", key.to_lowercase());
+            ActionMessage {
+                target: ActionTarget::Event {
+                    widget: widget_name,
+                    event: handler,
+                },
+                action: UiActionType::Press,
+                value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+            }
         }
     };
 

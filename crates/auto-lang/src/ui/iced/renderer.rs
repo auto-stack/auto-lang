@@ -4136,7 +4136,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // makes the returned probe a disabled no-op (zero probe overhead here).
         let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
-        mcp.update(view, id_map, state_vals, input_map, view_template);
+        mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();
         let iced::Size { width, height } = *ws;

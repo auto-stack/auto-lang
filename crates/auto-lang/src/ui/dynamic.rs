@@ -227,6 +227,12 @@ impl DynamicComponent {
         // 3. Extract input-to-state mapping for text input handling
         let input_state_map = extract_input_state_map_with_registry(view.view_tree, &registry);
 
+        // EDGE-01: merge element-attribute onkeydown.* bindings into key_bindings.
+        let mut key_bindings = view.key_bindings.clone();
+        for (k, v) in collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name) {
+            key_bindings.entry(k).or_insert(v);
+        }
+
         Ok(Self {
             bridge,
             view_template,
@@ -238,7 +244,7 @@ impl DynamicComponent {
             input_state_map,
             tick_interval: view.tick_interval,
             span_map: view.span_map.clone(),
-            key_bindings: view.key_bindings.clone(),
+            key_bindings,
             widget_registry: registry,
         })
     }
@@ -280,6 +286,12 @@ impl DynamicComponent {
         let widget_name = view_widget.name.clone();
         let input_state_map = extract_input_state_map_with_registry(view.view_tree, &registry);
 
+        // EDGE-01: merge element-attribute onkeydown.* bindings into key_bindings.
+        let mut key_bindings = view.key_bindings.clone();
+        for (k, v) in collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name) {
+            key_bindings.entry(k).or_insert(v);
+        }
+
         Ok(Self {
             bridge,
             view_template,
@@ -291,7 +303,7 @@ impl DynamicComponent {
             input_state_map,
             tick_interval: view.tick_interval,
             span_map: view.span_map.clone(),
-            key_bindings: view.key_bindings.clone(),
+            key_bindings,
             widget_registry: registry,
         })
     }
@@ -922,6 +934,118 @@ fn extract_input_state_map_with_registry(
     }
     map
 }
+
+/// EDGE-01: collect `onkeydown.<suffix>` element-attribute bindings from the
+/// view tree + all child widgets, returning a key→handler map keyed by the
+/// **normalized key name** (matching keyboard_subscription's key_str format).
+///
+/// The `.at` source uses `onkeydown.up: .HistoryOlder`. The event key in
+/// AuraNode.events is "onkeydown.up". We extract the suffix "up" and normalize
+/// it to the iced key name ("ArrowUp") so keyboard_subscription (renderer.rs)
+/// and MCP keyboard (mcp_server.rs) can look it up the same way as `bind {}`
+/// block entries.
+///
+/// Normalization map (suffix → iced key_str):
+///   up → ArrowUp, down → ArrowDown, left → ArrowLeft, right → ArrowRight
+///   enter → Enter, escape → Escape, tab → Tab, backspace → Backspace
+///   ctrl.r → Ctrl+r, ctrl.l → Ctrl+l, ctrl.c → Ctrl+c, ctrl.d → Ctrl+d
+///   (single chars pass through as-is)
+fn collect_onkeydown_bindings_with_registry(
+    view_tree: &crate::aura::AuraNode,
+    registry: &crate::ui::widget_registry::WidgetRegistry,
+    root_widget_name: &str,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    scan_node_for_onkeydown(view_tree, root_widget_name, &mut map);
+    for child in registry.all() {
+        scan_node_for_onkeydown(&child.view_tree, &child.name, &mut map);
+    }
+    map
+}
+
+/// Normalize an onkeydown suffix (e.g. "up", "ctrl.r", "tab") to the key_str
+/// format used by keyboard_subscription (e.g. "ArrowUp", "Ctrl+r", "Tab").
+fn normalize_keydown_suffix(suffix: &str) -> Option<String> {
+    let s = suffix.trim();
+    // Modifier-prefixed: ctrl.x / alt.x / shift.x
+    if let Some(rest) = s.strip_prefix("ctrl.") {
+        let c = rest.chars().next()?;
+        return Some(format!("Ctrl+{}", c));
+    }
+    if let Some(rest) = s.strip_prefix("alt.") {
+        let c = rest.chars().next()?;
+        return Some(format!("Alt+{}", c));
+    }
+    // Named keys
+    let named = match s {
+        "up" => "ArrowUp",
+        "down" => "ArrowDown",
+        "left" => "ArrowLeft",
+        "right" => "ArrowRight",
+        "enter" => "Enter",
+        "escape" | "esc" => "Escape",
+        "tab" => "Tab",
+        "backspace" => "Backspace",
+        "delete" => "Delete",
+        "home" => "Home",
+        "end" => "End",
+        "space" => " ",
+        _ => return None,
+    };
+    Some(named.to_string())
+}
+
+/// Strip a trailing `.prevent`/`.stop` modifier from an onkeydown event key.
+/// "onkeydown.tab.prevent" → suffix "tab".
+fn onkeydown_suffix(event_key: &str) -> Option<&str> {
+    let rest = event_key.strip_prefix("onkeydown.")?;
+    // Take the first segment before any modifier dot (tab.prevent → tab).
+    Some(rest.split('.').next()?)
+}
+
+fn scan_node_for_onkeydown(node: &crate::aura::AuraNode, widget_name: &str, map: &mut HashMap<String, String>) {
+    match node {
+        crate::aura::AuraNode::Element { events, children, .. } => {
+            for (key, ev) in events {
+                if let Some(rest) = key.strip_prefix("onkeydown.") {
+                    let parts: Vec<&str> = rest.split('.').collect();
+                    let suffix = if parts.len() >= 2 && (parts[0] == "ctrl" || parts[0] == "alt") {
+                        format!("{}.{}", parts[0], parts[1])
+                    } else {
+                        parts[0].to_string()
+                    };
+                    if let Some(norm) = normalize_keydown_suffix(&suffix) {
+                        let handler = ev.handler.trim_start_matches('.').to_string();
+                        // Store as "WidgetName.HandlerName" so tool_keyboard can
+                        // dispatch to the correct widget (e.g. PromptBar.ToggleHistorySearch).
+                        map.entry(norm).or_insert(format!("{}.{}", widget_name, handler));
+                    }
+                }
+            }
+            for child in children {
+                scan_node_for_onkeydown(child, widget_name, map);
+            }
+        }
+        crate::aura::AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                scan_node_for_onkeydown(child, widget_name, map);
+            }
+        }
+        crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                scan_node_for_onkeydown(child, widget_name, map);
+            }
+            if let Some(else_children) = else_body {
+                for child in else_children {
+                    scan_node_for_onkeydown(child, widget_name, map);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+
 
 fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
     use crate::ast::Expr;
