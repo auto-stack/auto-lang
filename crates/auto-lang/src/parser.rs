@@ -9380,44 +9380,38 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::RSquare) {
             self.next(); // consume `]`
 
-            // Parse element type
-            let type_name = self.parse_ident()?;
-            match type_name {
-                Expr::Ident(name) => {
-                    let elem_ty = self.lookup_type(&name).borrow().clone();
-                    let slice_ty_name = format!("[]{}", name);
+            // Plan 398 §12: Parse element type recursively via parse_type (not
+            // parse_ident). This allows nested slice types like `[][]RenderedCell`
+            // (slice of slices) and `[](str, RenderedCell)` (slice of tuples) as
+            // pub type fields — needed by ash-gui's back/api.at for the VM path
+            // (Core scenario). Previously parse_ident only accepted a single
+            // identifier, so `[][]T` / `[](tuple)` failed with "Expected term,
+            // got RBrace", silently dropping the whole module's symbols.
+            let elem_ty = self.parse_type()?;
+            let slice_ty_name = elem_ty.unique_name().to_string();
 
-                    // Check if slice type already exists
-                    let slice_meta = self.lookup_meta(&slice_ty_name);
-                    match slice_meta {
-                        Some(meta) => {
-                            if let Meta::Type(slice_ty) = meta.as_ref() {
-                                return Ok(slice_ty.clone());
-                            } else {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Expected slice type, got {:?}", meta),
-                                    span: pos_to_span(self.cur.pos),
-                                }
-                                .into());
-                            }
+            // Check if slice type already exists
+            let slice_meta = self.lookup_meta(&format!("[]{}", slice_ty_name));
+            match slice_meta {
+                Some(meta) => {
+                    if let Meta::Type(slice_ty) = meta.as_ref() {
+                        return Ok(slice_ty.clone());
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Expected slice type, got {:?}", meta),
+                            span: pos_to_span(self.cur.pos),
                         }
-                        None => {
-                            // Create new slice type
-                            use crate::ast::SliceType;
-                            let slice_ty = Type::Slice(SliceType {
-                                elem: Box::new(elem_ty.clone()),
-                            });
-                            // Plan 091: Removed Universe.define_type() - type is returned directly
-                            return Ok(slice_ty);
-                        }
+                        .into());
                     }
                 }
-                _ => {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Expected type identifier, got {:?}", type_name),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into());
+                None => {
+                    // Create new slice type
+                    use crate::ast::SliceType;
+                    let slice_ty = Type::Slice(SliceType {
+                        elem: Box::new(elem_ty),
+                    });
+                    // Plan 091: Removed Universe.define_type() - type is returned directly
+                    return Ok(slice_ty);
                 }
             }
         }
@@ -9438,26 +9432,16 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RSquare)?; // skip `]`
 
             // Parse element type
-            let type_name = self.parse_ident()?;
-            match type_name {
-                Expr::Ident(name) => {
-                    let elem_ty = self.lookup_type(&name).borrow().clone();
+            // Plan 398 §12: use parse_type (recursive) instead of parse_ident,
+            // so runtime arrays can have nested/tuple element types too.
+            let elem_ty = self.parse_type()?;
 
-                    // Create RuntimeArrayType
-                    use crate::ast::RuntimeArrayType;
-                    return Ok(Type::RuntimeArray(RuntimeArrayType {
-                        elem: Box::new(elem_ty),
-                        size_expr: Box::new(size_expr),
-                    }));
-                }
-                _ => {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Expected type identifier, got {:?}", type_name),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into());
-                }
-            }
+            // Create RuntimeArrayType
+            use crate::ast::RuntimeArrayType;
+            return Ok(Type::RuntimeArray(RuntimeArrayType {
+                elem: Box::new(elem_ty),
+                size_expr: Box::new(size_expr),
+            }));
         }
 
         // Parse static array: [N]T (constant size)
@@ -9505,40 +9489,30 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RSquare)?; // skip `]`
 
         // parse array elem type
-        let type_name = self.parse_ident()?;
-        match type_name {
-            Expr::Ident(name) => {
-                let ty = self.lookup_type(&name).borrow().clone();
-                let array_ty_name = format!("[{}]{}", array_size, name);
-                let arry_meta = self.lookup_meta(&array_ty_name);
-                match arry_meta {
-                    Some(meta) => {
-                        if let Meta::Type(array_ty) = meta.as_ref() {
-                            return Ok(array_ty.clone());
-                        } else {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Expected array type, got {:?}", meta),
-                                span: pos_to_span(self.cur.pos),
-                            }
-                            .into());
-                        }
+        // Plan 398 §12: use parse_type (recursive) instead of parse_ident,
+        // so static arrays can have nested/tuple element types too.
+        let ty = self.parse_type()?;
+        let array_ty_name = format!("[{}]{}", array_size, ty.unique_name());
+        let arry_meta = self.lookup_meta(&array_ty_name);
+        match arry_meta {
+            Some(meta) => {
+                if let Meta::Type(array_ty) = meta.as_ref() {
+                    return Ok(array_ty.clone());
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected array type, got {:?}", meta),
+                        span: pos_to_span(self.cur.pos),
                     }
-                    None => {
-                        let array_ty = Type::Array(ArrayType {
-                            elem: Box::new(ty.clone()),
-                            len: array_size,
-                        });
-                        // Plan 091: Removed Universe.define_type() - type is returned directly
-                        return Ok(array_ty);
-                    }
+                    .into());
                 }
             }
-            _ => {
-                return Err(SyntaxError::Generic {
-                    message: format!("Expected type, got ident {:?}", type_name),
-                    span: pos_to_span(self.cur.pos),
-                }
-                .into());
+            None => {
+                let array_ty = Type::Array(ArrayType {
+                    elem: Box::new(ty.clone()),
+                    len: array_size,
+                });
+                // Plan 091: Removed Universe.define_type() - type is returned directly
+                return Ok(array_ty);
             }
         }
     }
