@@ -4,7 +4,7 @@ fn main() {
     let mut list = Vec::new();
 
 
-    let len = (list.len() as i32);
+    let len = (list.len() as i64);
     let is_empty = list.is_empty();
 
 
@@ -12,5 +12,5 @@ fn main() {
     list.push(20);
     list.push(30);
 
-    let new_len = (list.len() as i32);
+    let new_len = (list.len() as i64);
 }

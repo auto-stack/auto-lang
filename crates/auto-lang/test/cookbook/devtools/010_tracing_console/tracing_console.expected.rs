@@ -4,7 +4,7 @@ use tracing::info;
 use tracing::debug;
 fn main() {
     info!("application started");
-    let count: i32 = 10;
+    let count: i64 = 10;
     debug!("processing $count items");
     assert!(count == 10);
 }

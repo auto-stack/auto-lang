@@ -2,7 +2,7 @@
 
 fn main() {
 
-    let x: i32 = 10;
+    let x: i64 = 10;
 
     match x {
         0 => println!("X is ZERO"),

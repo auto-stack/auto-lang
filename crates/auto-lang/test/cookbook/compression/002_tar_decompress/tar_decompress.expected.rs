@@ -5,9 +5,9 @@ fn main() {
     entries.push("file1.txt".to_string());
     entries.push("file2.txt".to_string());
     entries.push("subdir/file3.txt".to_string());
-    assert!((entries.len() as i32) == 3);
+    assert!((entries.len() as i64) == 3);
 
-    let mut count: i32 = 0;
+    let mut count: i64 = 0;
     for entry in &entries {
         count = count + 1;
     }

@@ -2,18 +2,18 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Point {
-    pub x: i32,
-    pub y: i32,
+    pub x: i64,
+    pub y: i64,
 }
 
 impl Point {
-    fn modulus(&self) -> i32 {
+    fn modulus(&self) -> i64 {
         self.x * self.x + self.y * self.y
     }
 }
 
 fn main() {
     let p = Point { x: 3, y: 4 };
-    let m: i32 = p.modulus();
+    let m: i64 = p.modulus();
     println!("Modulus: {}", m);
 }

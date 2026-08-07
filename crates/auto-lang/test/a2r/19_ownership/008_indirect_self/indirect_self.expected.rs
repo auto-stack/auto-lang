@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Tree {
-    pub value: i32,
+    pub value: i64,
     pub children: Vec<Tree>,
 }
 

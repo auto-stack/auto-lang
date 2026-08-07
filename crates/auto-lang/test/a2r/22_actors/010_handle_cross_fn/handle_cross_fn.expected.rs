@@ -39,7 +39,7 @@ impl Counter {
     }
 }
 
-pub fn spawn_counter_with(count: i32) -> a2r_std::task::TaskRef<i64> {
+pub fn spawn_counter_with(count: i64) -> a2r_std::task::TaskRef<i64> {
     let (taskref, mut rx) = a2r_std::task::channel::<i64>();
     let join = tokio::spawn(async move {
         let mut actor = Counter { count: count };

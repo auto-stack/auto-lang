@@ -4,7 +4,7 @@ use clap::Parser;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Args {
     pub name: String,
-    pub count: i32,
+    pub count: i64,
 }
 
 fn main() {

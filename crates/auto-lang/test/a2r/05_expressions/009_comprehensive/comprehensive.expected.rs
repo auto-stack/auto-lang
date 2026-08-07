@@ -2,11 +2,11 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Math {
-    pub value: i32,
+    pub value: i64,
 }
 
 impl Math {
-    fn square(&self, x: i32) -> i32 {
+    fn square(&self, x: i64) -> i64 {
         x * x
     }
 }
@@ -27,6 +27,6 @@ fn main() {
         _ => println!("Square is not 25"),
     };
 
-    let arr: Vec<i32> = vec![1, 2, 3];
+    let arr: Vec<i64> = vec![1, 2, 3];
     println!("Array: {:?}", arr);
 }

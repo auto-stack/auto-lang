@@ -4,7 +4,7 @@ use rand;
 use rand::Rng;
 fn main() {
     let mut rng = rand::thread_rng();
-    let n: i32 = rng.gen_range(0..100);
+    let n: i64 = rng.gen_range(0..100);
     let in_range: bool = n >= 0;
     assert!(in_range);
 }

@@ -2,11 +2,11 @@
 
 
 pub trait Handler {
-    fn run(&self, cb: Arc<dyn Fn(i32) + Send + Sync>);
-    fn on_event(&self, ev: Arc<dyn Fn(i32) -> String + Send + Sync>) -> String;
+    fn run(&self, cb: Arc<dyn Fn(i64) + Send + Sync>);
+    fn on_event(&self, ev: Arc<dyn Fn(i64) -> String + Send + Sync>) -> String;
 }
 
 
 fn main() {
-    let x: i32 = 42;
+    let x: i64 = 42;
 }

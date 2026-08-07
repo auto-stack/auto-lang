@@ -6,7 +6,7 @@ fn main() {
     let path: String = "test_temp.txt".to_string();
     File::write_text(path.as_str(), content.as_str());
     let lines = File::read_text(path.as_str());
-    let mut line_count: i32 = 0;
+    let mut line_count: i64 = 0;
     for line in lines.lines() {
         line_count += 1;
     }

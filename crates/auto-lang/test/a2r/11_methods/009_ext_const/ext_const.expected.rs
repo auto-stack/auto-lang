@@ -7,7 +7,7 @@ pub struct Registry {
 
 impl Registry {
     pub const DEFAULT: &str = "superpowers";
-    const MAX_MODES: i32 = 16;
+    const MAX_MODES: i64 = 16;
     pub fn names(&self) -> Vec<String> {
         return self.modes.clone();
     }
@@ -15,7 +15,7 @@ impl Registry {
 
 pub const APP_NAME: &str = "auto-musk";
 
-const MAX_RETRIES: i32 = 3;
+const MAX_RETRIES: i64 = 3;
 
 /// The default mode name.
 /// Max modes (private associated const).

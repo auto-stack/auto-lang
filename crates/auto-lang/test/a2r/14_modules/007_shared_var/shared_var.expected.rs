@@ -3,7 +3,7 @@
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-static COUNTER: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
+static COUNTER: Lazy<Mutex<i64>> = Lazy::new(|| Mutex::new(0));
 
 static APP_NAME: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("AutoLang"));
 

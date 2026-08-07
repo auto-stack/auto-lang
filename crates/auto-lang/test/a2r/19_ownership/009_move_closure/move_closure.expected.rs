@@ -2,10 +2,10 @@
 
 fn main() {
     let name: String = "cosmic".to_string();
-    let count: i32 = 3;
+    let count: i64 = 3;
 
 
-    let f = move |n: i32| { println!("{}", n); };
+    let f = move |n: i64| { println!("{}", n); };
     f(count);
 
 

@@ -3,7 +3,7 @@
 fn main() {
     let data: String = "name;age\nAlice;30\nBob;25".to_string();
     let mut parts = data.split(";").collect::<Vec<_>>();
-    assert!((parts.len() as i32) >= 2);
+    assert!((parts.len() as i64) >= 2);
     println!("Name: Alice, Age: 30");
     println!("Name: Bob, Age: 25");
 }

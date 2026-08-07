@@ -2,14 +2,14 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Foo {
-    pub value: i32,
+    pub value: i64,
 }
 
 impl Foo {
-    fn new(v: i32) -> Foo {
+    fn new(v: i64) -> Foo {
         return Foo { value: v };
     }
-    fn get_value(&self) -> i32 {
+    fn get_value(&self) -> i64 {
         return self.value;
     }
 }

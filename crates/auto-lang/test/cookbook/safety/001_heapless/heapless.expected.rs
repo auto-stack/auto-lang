@@ -6,5 +6,5 @@ fn main() {
     buf.push(1);
     buf.push(2);
     buf.push(3);
-    assert!((buf.len() as i32) == 3);
+    assert!((buf.len() as i64) == 3);
 }

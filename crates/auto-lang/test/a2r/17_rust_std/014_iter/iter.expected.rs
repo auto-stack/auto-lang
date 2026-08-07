@@ -2,7 +2,7 @@
 
 use std::iter::Iterator;
 fn main() {
-    let nums: Vec<i32> = vec![1, 2, 3];
+    let nums: Vec<i64> = vec![1, 2, 3];
     let doubled = nums.iter().map(|x| x * 2);
     let total = nums.iter().fold(0, |acc, x| acc + x);
 }

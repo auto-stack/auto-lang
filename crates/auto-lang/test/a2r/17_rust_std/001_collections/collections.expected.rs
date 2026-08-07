@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet, BTreeMap, VecDeque};
 fn main() {
-    let mut scores: HashMap<String, i32> = HashMap::new();
+    let mut scores: HashMap<String, i64> = HashMap::new();
     scores.insert("alice".to_string(), 100);
     scores.insert("bob".to_string(), 95);
     let alice_score = scores.get("alice");
@@ -11,11 +11,11 @@ fn main() {
     visited.insert("home".to_string());
     visited.insert("about".to_string());
 
-    let mut timeline: BTreeMap<i32, String> = BTreeMap::new();
+    let mut timeline: BTreeMap<i64, String> = BTreeMap::new();
     timeline.insert(1, "start".to_string());
     timeline.insert(2, "middle".to_string());
 
-    let mut queue: VecDeque<i32> = VecDeque::new();
+    let mut queue: VecDeque<i64> = VecDeque::new();
     queue.push_back(1);
     queue.push_back(2);
     let front = queue.pop_front();

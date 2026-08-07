@@ -2,7 +2,7 @@
 
 fn main() {
     let name: String = "World".to_string();;
-    let age: i32 = 25;;
+    let age: i64 = 25;;
     let msg: String = format!("Hello {},
 you are {} years old.", name, age);;
     println!("{}", msg);

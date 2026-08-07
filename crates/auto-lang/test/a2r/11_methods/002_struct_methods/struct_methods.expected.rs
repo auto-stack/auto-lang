@@ -2,14 +2,14 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Calculator {
-    pub value: i32,
+    pub value: i64,
 }
 
 impl Calculator {
-    fn add(&self, a: i32, b: i32) -> i32 {
+    fn add(&self, a: i64, b: i64) -> i64 {
         a + b
     }
-    fn multiply(&self, a: i32, b: i32) -> i32 {
+    fn multiply(&self, a: i64, b: i64) -> i64 {
         a * b
     }
 }

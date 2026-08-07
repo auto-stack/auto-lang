@@ -2,7 +2,7 @@
 
 fn parse_parts(s: &str) {
     let mut parts = s.split(",").collect::<Vec<_>>();
-    assert!((parts.len() as i32) == 2);
+    assert!((parts.len() as i64) == 2);
 }
 
 fn main() {

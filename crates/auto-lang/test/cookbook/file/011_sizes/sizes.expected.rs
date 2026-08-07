@@ -2,12 +2,12 @@
 
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut total: i32 = 0;
+    let mut total: i64 = 0;
     let entries = fs::read_dir(".")?;
     for entry in &entries {
         let entry = entry?;
         let meta = entry.metadata()?;
-        total = total + (meta.len() as i32);
+        total = total + (meta.len() as i64);
     }
     assert!(total >= 0)
 }

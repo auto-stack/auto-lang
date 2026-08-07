@@ -5,5 +5,5 @@ fn main() {
     let re = Regex::new("ERROR: .+").unwrap();
     let log: String = "INFO: started\nERROR: file not found\nWARN: retrying\nERROR: disk full".to_string();
     let matches = re.captures_iter(log);
-    assert!((matches.len() as i32) == 2);
+    assert!((matches.len() as i64) == 2);
 }

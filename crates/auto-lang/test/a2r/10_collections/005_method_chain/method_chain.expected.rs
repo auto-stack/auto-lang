@@ -5,5 +5,5 @@ fn main() {
     let upper = s.to_uppercase();
     let trimmed = "  hello  ".trim().to_string();
     let parts = "a,b,c".split(",").collect::<Vec<_>>();
-    let x: i32 = 42;
+    let x: i64 = 42;
 }

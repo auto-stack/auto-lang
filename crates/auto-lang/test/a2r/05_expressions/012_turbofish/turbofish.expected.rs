@@ -9,7 +9,7 @@ pub fn main() {
 
     let n = "42".parse::<u32>();
 
-    let m = pair::<i32, String>(1, "a");
+    let m = pair::<i64, String>(1, "a");
 
     let node = Node("x");
     let s = node.deserialize::<ClientScalars>();

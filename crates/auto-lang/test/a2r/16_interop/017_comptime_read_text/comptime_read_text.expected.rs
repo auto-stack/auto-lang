@@ -4,7 +4,7 @@ fn banner() -> String {
     return "Hello from comptime!";
 }
 
-fn answer() -> i32 {
+fn answer() -> i64 {
     return 42;
 }
 

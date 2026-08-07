@@ -5,7 +5,7 @@ fn main() {
     entries.push("backup/file1.txt".to_string());
     entries.push("backup/file2.txt".to_string());
     entries.push("backup/subdir/file3.txt".to_string());
-    assert!((entries.len() as i32) == 3);
+    assert!((entries.len() as i64) == 3);
 
     assert!(entries[0 as usize].clone() == "backup/file1.txt");
     assert!(entries[2 as usize].clone() == "backup/subdir/file3.txt");

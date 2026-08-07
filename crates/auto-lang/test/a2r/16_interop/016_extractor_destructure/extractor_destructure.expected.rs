@@ -12,6 +12,6 @@ fn multi(Path(id): Path<String>, Json(data): Json<String>) {
     return id;
 }
 
-fn normal(name: &str, count: i32) {
+fn normal(name: &str, count: i64) {
     return name.to_string();
 }
