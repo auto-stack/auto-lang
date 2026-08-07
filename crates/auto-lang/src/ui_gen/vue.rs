@@ -10743,6 +10743,60 @@ mod tests {
     use crate::aura::{AuraMessage, AuraMsgVariant, AuraStateDef};
     use std::collections::HashMap;
 
+    /// Plan musk-022 Phase 3: golden-test helper for the a2vue codegen.
+    fn test_a2vue(case: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let src_path = d.join(format!("test/a2vue/{}/input.at", case));
+        let src = std::fs::read_to_string(&src_path)
+            .map_err(|e| format!("read {}: {}", src_path.display(), e))?;
+
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse()?;
+
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)?;
+                widgets.push(aura_widget);
+            }
+        }
+        if widgets.is_empty() {
+            return Err("No widget declarations found in input file".into());
+        }
+
+        let mut gen = VueGenerator::new();
+        let output = gen.generate_sfc(&widgets[0])?;
+
+        let exp_path = d.join(format!("test/a2vue/{}/input.expected.vue", case));
+        let expected = if exp_path.is_file() {
+            std::fs::read_to_string(&exp_path)?
+        } else {
+            String::new()
+        };
+
+        let output_n = normalize_vue_output(&output);
+        let expected_n = normalize_vue_output(&expected);
+        if output_n != expected_n {
+            let wrong_path = d.join(format!("test/a2vue/{}/input.wrong.vue", case));
+            std::fs::write(&wrong_path, &output)?;
+            return Err(format!(
+                "a2vue mismatch for '{}'. See input.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                case, expected_n, output_n
+            ).into());
+        }
+        Ok(())
+    }
+
+    fn normalize_vue_output(s: &str) -> String {
+        s.lines()
+            .map(|line| line.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim_end()
+            .to_string()
+    }
+
     #[test]
     fn test_vue_generator_creation() {
         let gen = VueGenerator::new();
@@ -14745,5 +14799,10 @@ widget NullProbe {
             !sfc.contains("!== undefined") && !sfc.contains("!== null"),
             "strict undefined/null checks would change semantics:\n{sfc}"
         );
+    }
+
+    #[test]
+    fn test_a2vue_counter() {
+        test_a2vue("001_counter").expect("a2vue counter golden mismatch");
     }
 }

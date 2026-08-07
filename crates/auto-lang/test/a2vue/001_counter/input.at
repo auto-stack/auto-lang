@@ -1,0 +1,17 @@
+// a2vue golden case 001 — minimal interactive counter widget.
+// Verifies: model (ref), msg (defineEmits), handler (on), view (button/text).
+widget Counter {
+    msg Msg { Inc, Dec }
+    model { var count int = 0 }
+    view {
+        col {
+            style: "p-4"
+            text f"Count: ${.count}"
+            button "+" { onclick: .Inc }
+        }
+    }
+    on {
+        .Inc -> { .count = .count + 1 }
+        .Dec -> { .count = .count - 1 }
+    }
+}
