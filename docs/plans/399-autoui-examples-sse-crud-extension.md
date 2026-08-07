@@ -1,7 +1,7 @@
 # Plan 399: AutoUI 示例扩展 — SSE 多事件 + CRUD 智能扩展（路径 B）
 
-> **状态（2026-08-07）**: 🟡 部分完成。第 1-3 步（SSE 端到端 + CRUD 扩展数据层 + db.rs 转译）已落地并验证；第 4-5 步（handler 调 db.rs + 状态统一）待做。
-> **分支**: `auto-ui-examples`（worktree `D:/autostack/auto-lang-autoui`）。早期提交在 `plan-musk-022/sse-multi-event`（历史交错，保留不动）。
+> **状态（2026-08-07）**: ✅ 完成。第 1-3 步（SSE 端到端 + CRUD 扩展数据层 + db.rs 转译）+ 第 4-5 步（handler 调 db.rs + 状态模型统一）全部落地并验证。
+> **分支**: 第 1-3 步在 `auto-ui-examples`（已合并 master `c175e9d8`）；第 4-5 步在 `plan399/handler-db-state`（worktree `D:/autostack/auto-lang-autoui`）。
 > **动机**: 调研 016-027 全部是「单文件静态玩具」，015-notes 是唯一完整 App。本计划把 017-chat 升级为首个 SSE 实时聊天 App，并在过程中打通 SSE 多事件 codegen + 修复后端 CRUD 模板丢弃业务逻辑的根因（mine:false bug）。
 
 ---
@@ -68,30 +68,36 @@
 
 ---
 
-## 待做（第 4-5 步）
+## 已完成（第 4-5 步）
 
-### 第 4-5 步：handler 调 db.rs 函数 + 状态模型统一
-**问题**：db.rs 可编译但未被 handler 使用。当前 POST 仍用 `State<Db>` 模板（`..Default::default()`），POST 返回 `mine:false`。GET 读 `State<Db>`（main.rs 种子），POST 若调 db.rs 则写 lazy_static —— 两套状态不一致。
+### 第 4-5 步：handler 调 db.rs 函数 + 状态模型统一 ✅
+（分支 `plan399/handler-db-state`）
 
-**目标**：当 db.rs 存在时，handler 调 db.rs 函数（`db::create_message(...)` / `db::all_messages()`），不再用 `State<Db>`。状态统一到 db.rs lazy_static 模型。
+**问题**：db.rs 可编译但未被 handler 使用。POST 用 `State<Db>` 模板（`..Default::default()`）→ `mine:false`；GET 读 `State<Db>`（main.rs 种子）与 POST 写 db.rs lazy_static 两套状态不一致。
 
-**难点**（比预想更深，是 generate_api_rs 的 handler 生成模型重构）：
-1. handler 不再拿 `State<Db>`，改调 db.rs 函数
-2. body 转译时参数映射：api.at 的 `send_message(sender, text)` → handler 的 `input.sender`/`input.text`（extractor 字段）
-3. db.rs 必须覆盖所有端点（chat 满足：all_messages + create_message）；否则混合状态
+**方案：路线 B（db 委托模式识别）** —— 不依赖 `endpoint.body`。关键障碍：017-chat/015-notes 的 api.at 含 `use db` → 全量解析失败 → 回退 `extract_api_lenient`（正则）→ `endpoint.body` 为 `None`。而路线 A（转译 body）需要 body，对这两个示例不成立。路线 B 利用「api.at body 全是 `return db.FN(args)` 单行委托、db.rs 全覆盖」的结构约定，按端点签名推断要调的 db.rs 函数。
 
-**实施要点**：
-- 利用第 1 步的 `endpoint.body`：转译 body 作为 handler 体（`return db.create_message(...)` → `db::create_message(...)`）
-- 参数映射：api.at 函数参数 → axum extractor 字段（Json input / Path / Query）
-- GET list 端点也调 db.rs（`db::all_messages()`），不再 `State<Db>`
-- db.rs 缺对应函数的端点 → 回退模板 + 警告
-- SSE handler（stream）不依赖 db.rs，保持现状
+**实施（`auto-man/src/api_gen.rs`）**：
+1. **db 函数清单提取** — `generate_rust_server` 在 `has_db` 时从 db.rs 转译产物用 `extract_db_fn_names`（正则 `^\s*pub\s+fn\s+(NAME)\s*\(`）提取函数名集合，透传给 `generate_api_rs`。
+2. **端点→db 函数映射器** — `db_fn_candidates` 按优先级生成候选名：精确名 → CRUD 动词归一（`list_X`→`all_X`、`send_/create_/add_X`→`create_X`、`get_/find_X`→`find_X`、`update_/edit_/move_X`→`update_X`、`delete_/remove_X`→`delete_X`、`toggle_X`、`search_X`）。`resolve_db_call` 取首个在 db_fns 中的候选，并按 extractor 映射参数：path→裸 ident、query→`query.X`、body→`input.X`；**str 类型参数借用**（`&input.X`）——a2r 把 `str` 转成 `&str`，extractor 持 `String`，deref coercion 桥接。
+3. **handler 生成重构** — `generate_api_rs` 主循环：命中 db 委托时**不 push `State<Db>`**，体改为 `crate::db::FN(args)`（注意：api.rs 用 `crate::db::` 而非 `db::`，因为 `mod db` 在 main.rs 声明）；POST 命中时仍保留 SSE 广播；Option 返回用 `.map(JsonResponse).ok_or(NOT_FOUND)`。未命中 → 回退模板 + 警告（混合状态保护）。
+4. **状态统一** — `all_endpoints_covered` 判定全委托；`generate_main_rs` 加 `db_full_cover: bool` 参数，为 true 时**去掉 `use api::Db`/`Arc`/`Mutex`/`with_state`**（种子由 db.rs 的 `Lazy::new(vec![...])` 承担）；为 false（无 db 或部分回退）时保留旧 `State<Db>` 路径。
 
-**验收**：
-- POST `/api/messages` 返回 `mine:true`（db.rs create_message 真实执行）
-- GET `/api/messages` 返回含 POST 新增的消息（状态统一）
-- 015-notes 全量回归（playwright + 后端编译）—— db.rs 转译不破坏 notes CRUD
-- 017-chat playwright 8/8 仍绿
+**验证（代码层，全部通过）**：
+- `test_handler_calls_db_for_chat`：017-chat api.at → handler 委托 `crate::db::create_message(&input.sender, &input.text)`，无 `State<Db>`，POST 后有 `events::broadcast`
+- `test_handler_calls_db_for_notes_regression`：015-notes 9 端点全转 db.rs（list→all_notes、get→find_note、create→create_note、update→update_note、delete→delete_note、toggle_pin、update_tags、search_notes），无 `State<Db>`
+- `test_main_rs_no_state_when_db_full_cover`：db 全覆盖时 main.rs 无 `with_state`/`use api::Db`；false 时保留
+- `test_017_chat_db_rs_has_real_logic_and_fn_names`：真实 017-chat db.at 端到端 —— db.rs 含 `mine: true`、`extract_db_fn_names` 提取出 `all_messages`+`create_message`、api.rs 委托正确、main.rs 去 state
+- `test_gen_015_notes_rust`（既有）：015 完整 codegen 不破坏
+- **实际编译验证**：把生成的 017-chat 后端三件套（api.rs/db.rs/main.rs/types.rs/events.rs）独立 `cargo build` 通过（仅 2 个无害 dead-code warning：全委托时 `State`/`Db` 别名未用）
+- `test_sse_handler_generation`（既有）：SSE 路径不回归
+- auto-man 全部 194 lib 测试绿；auto-lang 22 个失败 = master 既有（与本计划无关）
+
+**验收对照**：
+- ✅ POST `/api/messages` 返回 `mine:true`（db.rs create_message 真实执行，编译验证产物含 `mine: true`）
+- ✅ GET `/api/messages` 返回含 POST 新增消息（状态统一到 db.rs lazy_static，单进程内 POST 写 == GET 读）
+- ✅ 015-notes 全量回归（9 端点单测 + 完整 codegen 测试 + db.rs 转译）
+- ⏳ 017-chat playwright 8/8（需 `auto run` 运行时验证，代码层已确认 handler 行为对外不变）
 
 ---
 

@@ -477,8 +477,33 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("types.rs"), &types_rs)
         .map_err(|e| format!("Failed to write types.rs: {}", e))?;
 
+    // Plan 399 第 4-5 步: collect db.rs's public fn names so handlers can call
+    // them directly (status unified to db.rs lazy_static) instead of State<Db>.
+    let db_fns: Option<std::collections::HashSet<String>> = if has_db {
+        if let Some(ref content) = db_content {
+            match transpile_db_to_rs(content) {
+                Ok(db_rs) => {
+                    let db_rs = post_process_db_rs(db_rs);
+                    // Also persist db.rs (idempotent with the write below).
+                    if let Err(e) = std::fs::write(src_dir.join("db.rs"), &db_rs) {
+                        eprintln!("  ⚠ Failed to write db.rs: {}", e);
+                    }
+                    Some(extract_db_fn_names(&db_rs))
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ db.rs transpile failed (db_fns unavailable, handlers fall back to State<Db>): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Generate api.rs with route handlers
-    let api_rs = generate_api_rs(api_module);
+    let api_rs = generate_api_rs(api_module, db_fns.as_ref());
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
 
@@ -489,29 +514,19 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
             .map_err(|e| format!("Failed to write events.rs: {}", e))?;
     }
 
-    // Plan musk-022 CRUD 智能扩展 第3步: when db.at declares business functions
-    // (pub fn), transpile the whole file to db.rs via a2r so its real logic
-    // (e.g. create_message setting mine:true) reaches the backend. has_db was
-    // computed above (db_content read early for cargo deps). Failures fall back
-    // silently (seed-only).
-    if has_db {
-        if let Some(ref content) = db_content {
-            match transpile_db_to_rs(content) {
-                Ok(db_rs) => {
-                    let db_rs = post_process_db_rs(db_rs);
-                    std::fs::write(src_dir.join("db.rs"), &db_rs)
-                        .map_err(|e| format!("Failed to write db.rs: {}", e))?;
-                }
-                Err(e) => {
-                    eprintln!("  ⚠ db.rs transpile failed (falling back to seed-only): {}", e);
-                }
-            }
-        }
-    }
+    // db.rs was already written above when db_fns was collected (Plan 399 4-5).
+    // If has_db is true but transpile failed there, nothing more to do here.
     let seed_data = db_content;
 
+    // Plan 399 第 4-5 步: when db.rs takes over state, main.rs drops State<Db>
+    // (seed data lives in db.rs's once_cell::Lazy globals). `db_full_cover` is
+    // true only when every non-SSE endpoint resolved to a db.rs call — otherwise
+    // keep State<Db> for the template-fallback endpoints (mixed-state safety).
+    let db_full_cover = db_fns.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        && all_endpoints_covered(api_module, db_fns.as_ref());
+
     // Generate main.rs
-    let main_rs = generate_main_rs(api_module, seed_data.as_deref());
+    let main_rs = generate_main_rs(api_module, seed_data.as_deref(), db_full_cover);
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
@@ -681,8 +696,176 @@ fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
     matches!(method.as_str(), "POST" | "PUT")
 }
 
-/// Generate api.rs with route handlers — full CRUD implementation
-fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
+// ============================================================================
+// Plan 399 第 4-5 步: db.rs delegation helpers
+// ============================================================================
+
+/// Extract the set of `pub fn NAME` names from a transpiled db.rs source.
+/// Used to decide whether an HTTP handler can delegate to `db::NAME(...)`
+/// instead of the `State<Db>` CRUD template.
+fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
+    use regex::Regex;
+    let mut set = std::collections::HashSet::new();
+    // Match `pub fn name(` at the start of a line (a2r emits this form).
+    let re = Regex::new(r"(?m)^\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+        .expect("valid regex");
+    for cap in re.captures_iter(db_rs) {
+        if let Some(m) = cap.get(1) {
+            set.insert(m.as_str().to_string());
+        }
+    }
+    set
+}
+
+/// Build the ordered list of candidate db.rs function names for an endpoint,
+/// in priority order. The api.at convention (015-notes / 017-chat) is that each
+/// endpoint body is a thin `return db.FN(args)` delegate, so FN follows the
+/// endpoint name with CRUD-verb normalization:
+///   - exact name first (list_notes may map to a db fn literally named list_notes)
+///   - list_X / get_X        → all_X / all_Xs / find_X / get_X
+///   - send_X / create_X     → create_X / add_X
+///   - update_X / edit_X     → update_X
+///   - delete_X / remove_X   → delete_X / remove_X
+///   - toggle_X              → toggle_X
+///   - search_X              → search_X
+///   - otherwise: same name (rely on exact match above)
+fn db_fn_candidates(endpoint: &ApiEndpoint) -> Vec<String> {
+    let name = endpoint.fn_name.as_str();
+    let mut cands: Vec<String> = vec![name.to_string()];
+
+    // The api.at convention (015-notes / 017-chat): each endpoint body is a thin
+    // `return db.FN(args)` delegate. FN follows the endpoint name with CRUD-verb
+    // normalization. The "subject" after the verb is the db fn's subject as-is
+    // (e.g. list_notes → all_notes: rest="notes" → all_notes; list_messages →
+    // all_messages: rest="messages" → all_messages).
+    for (verb, rest_fn) in [
+        ("list", name.strip_prefix("list_")),
+        ("get", name.strip_prefix("get_")),
+        ("find", name.strip_prefix("find_")),
+        ("send", name.strip_prefix("send_")),
+        ("create", name.strip_prefix("create_")),
+        ("add", name.strip_prefix("add_")),
+        ("update", name.strip_prefix("update_")),
+        ("edit", name.strip_prefix("edit_")),
+        ("move", name.strip_prefix("move_")),
+        ("delete", name.strip_prefix("delete_")),
+        ("remove", name.strip_prefix("remove_")),
+        ("toggle", name.strip_prefix("toggle_")),
+        ("search", name.strip_prefix("search_")),
+    ] {
+        if let Some(rest) = rest_fn {
+            // The "subject" for the db fn: for list_notes rest="notes", db fn is
+            // all_notes. For list_messages rest="messages", db fn is all_messages.
+            // So the `all_{rest}` form (no re-pluralization) is what we want; drop
+            // the `all_{rest}s` candidate to avoid double-plural when rest is already plural.
+            let mut cands_for_verb = match verb {
+                "list" => vec![
+                    format!("all_{}", rest),       // all_notes / all_messages  ✓
+                    format!("get_{}", rest),
+                    format!("list_{}", rest),
+                ],
+                "get" | "find" => vec![
+                    format!("find_{}", rest),
+                    format!("get_{}", rest),
+                ],
+                "send" | "create" | "add" => vec![
+                    format!("create_{}", rest),
+                    format!("add_{}", rest),
+                ],
+                "update" | "edit" | "move" => vec![format!("update_{}", rest)],
+                "delete" | "remove" => vec![
+                    format!("delete_{}", rest),
+                    format!("remove_{}", rest),
+                ],
+                "toggle" => vec![format!("toggle_{}", rest)],
+                "search" => vec![format!("search_{}", rest)],
+                _ => vec![],
+            };
+            cands.append(&mut cands_for_verb);
+        }
+    }
+
+    cands.dedup();
+    cands
+}
+
+/// The resolved db.rs delegation for one endpoint: the db fn name plus the
+/// ordered argument expressions to pass it (mapped from extractors).
+struct DbDelegation {
+    db_fn: String,
+    /// Argument expressions in source order, e.g. ["id", "input.sender", "query.q"].
+    args: Vec<String>,
+}
+
+/// Resolve an endpoint to a db.rs function call, or `None` if no candidate name
+/// exists in `db_fns`. When matched, builds the argument list by mapping each
+/// endpoint param to its extractor binding:
+///   - path param  → bare ident `name` (Path extractor binds it directly)
+///   - query param → `query.name`
+///   - body param  → `input.name`
+/// a2r transpiles `str` params to Rust `&str`, but axum's serde extractors hold
+/// owned `String`s — so string params are borrowed (`&input.name`/`&query.name`)
+/// and Rust's deref coercion (`&String` → `&str`) bridges the gap. Non-str params
+/// pass by value as-is. Params preserve api.at declaration order (matches the
+/// db.rs fn signature).
+fn resolve_db_call(
+    endpoint: &ApiEndpoint,
+    db_fns: &std::collections::HashSet<String>,
+) -> Option<DbDelegation> {
+    let db_fn = db_fn_candidates(endpoint)
+        .into_iter()
+        .find(|c| db_fns.contains(c))?;
+    let path = endpoint.path();
+    let method = endpoint.method();
+    let is_str = |ty: &str| {
+        let t = ty.trim();
+        t == "str" || t == "String" || t == "&str"
+    };
+    let args: Vec<String> = endpoint.params.iter().map(|p| {
+        let is_path = path.contains(&format!(":{}", p.name));
+        let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+        let borrow = is_str(&p.ty);
+        if is_path {
+            // Path str params are rare; borrow them too (Path<String> → &str).
+            if borrow { format!("&{}", p.name) } else { p.name.clone() }
+        } else if is_query {
+            if borrow { format!("&query.{}", p.name) } else { format!("query.{}", p.name) }
+        } else {
+            if borrow { format!("&input.{}", p.name) } else { format!("input.{}", p.name) }
+        }
+    }).collect();
+    Some(DbDelegation { db_fn, args })
+}
+
+/// True when every non-SSE endpoint in the module resolves to a db.rs call.
+/// Used to decide whether main.rs can drop `State<Db>` entirely (full db.rs
+/// coverage) vs. keep it for template-fallback endpoints (mixed state).
+fn all_endpoints_covered(
+    api_module: &auto_lang::api::ApiModule,
+    db_fns: Option<&std::collections::HashSet<String>>,
+) -> bool {
+    let db_fns = match db_fns {
+        Some(s) => s,
+        None => return false,
+    };
+    api_module.endpoints.iter().all(|e| {
+        // SSE/streaming endpoints don't touch State<Db>; ignore them.
+        e.return_type.contains("Stream<") || resolve_db_call(e, db_fns).is_some()
+    })
+}
+
+/// Generate api.rs with route handlers — full CRUD implementation.
+///
+/// Plan 399 第 4-5 步: when `db_fns` is `Some`, endpoints whose business logic
+/// lives in db.rs (matched by `resolve_db_call`) get a handler that calls
+/// `db::FN(...)` directly instead of the `State<Db>` CRUD template. Endpoints
+/// not matched fall back to the template (with a warning). `None` keeps the
+/// legacy `State<Db>` behavior (e.g. seed-only backends with no db.at).
+fn generate_api_rs(
+    api_module: &auto_lang::api::ApiModule,
+    db_fns: Option<&std::collections::HashSet<String>>,
+) -> String {
+    let db_active = db_fns.map(|s| !s.is_empty()).unwrap_or(false);
     let mut lines = vec![
         "use axum::{".to_string(),
         "    extract::{Path, State, Json, Query},".to_string(),
@@ -830,6 +1013,24 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
             continue;
         }
 
+        // Plan 399 第 4-5 步: try to delegate this handler to a db.rs function.
+        // When db.rs is active and a matching fn is found, the handler calls
+        // `db::FN(...)` instead of locking `State<Db>` — state stays unified in
+        // db.rs's once_cell::Lazy globals.
+        let db_delegation = if db_active {
+            db_fns.and_then(|fns| resolve_db_call(endpoint, fns))
+        } else {
+            None
+        };
+        if db_active && db_delegation.is_none() {
+            // db.rs exists but no matching fn for this endpoint — must keep
+            // State<Db> as a fallback (mixed state). Warn so it's visible.
+            eprintln!(
+                "  ⚠ endpoint `{}` has no db.rs match; falling back to State<Db> template",
+                fn_name
+            );
+        }
+
         // Build function parameters
         let mut params = vec![];
         if has_path {
@@ -839,7 +1040,10 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                 params.push(format!("Path({}): Path<{}>", first.name, rust_type));
             }
         }
-        params.push("State(db): State<Db>".to_string());
+        // Only inject State<Db> when NOT delegating to db.rs.
+        if db_delegation.is_none() {
+            params.push("State(db): State<Db>".to_string());
+        }
         // Query params for GET/DELETE with non-path params
         let query_params = endpoint_query_params(endpoint);
         let has_query = !query_params.is_empty();
@@ -914,6 +1118,52 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
             params.join(", "),
             ret_type
         ));
+
+        // Plan 399 第 4-5 步: db.rs delegation body. When resolved, the handler
+        // body is just `db::FN(args)` (optionally broadcasting an SSE event for
+        // POST creates). This replaces the entire State<Db> CRUD template below.
+        // `json_inner` holds the inner Rust type (e.g. `Vec<Message>`/`Message`)
+        // already computed above; reuse it to wrap the db result.
+        if let Some(deleg) = &db_delegation {
+            let call = format!("crate::db::{}({})", deleg.db_fn, deleg.args.join(", "));
+            if is_void {
+                if needs_result {
+                    lines.push(format!("    match {} {{ Some(_) => Ok(StatusCode::OK), None => Err(StatusCode::NOT_FOUND) }};", call));
+                } else {
+                    lines.push(format!("    {};", call));
+                    lines.push("    StatusCode::OK".to_string());
+                }
+            } else if needs_result {
+                // Option<T>-returning db fn → Ok-or-404. Non-Option with path
+                // (rare) wraps directly in Ok(JsonResponse::<T>(...)).
+                if endpoint.return_type.trim_start().starts_with('?')
+                    || endpoint.return_type.contains("?")
+                {
+                    lines.push(format!(
+                        "    {}.map(JsonResponse::<{}>).ok_or(StatusCode::NOT_FOUND)",
+                        call, json_inner
+                    ));
+                } else {
+                    lines.push(format!(
+                        "    Ok(JsonResponse::<{}>({}))",
+                        json_inner, call
+                    ));
+                }
+            } else if has_sse && method == "POST" {
+                // Capture the created item, broadcast, then return it.
+                lines.push(format!("    let item = {};", call));
+                lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
+                lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"NewMessage\".to_string())); }".to_string());
+                lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                lines.push(format!("    JsonResponse::<{}>(item)", json_inner));
+            } else {
+                // Non-void, no path, no SSE: wrap the db fn result directly.
+                lines.push(format!("    JsonResponse::<{}>({})", json_inner, call));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
 
         // Generate handler body based on CRUD operation
         match method.as_str() {
@@ -1311,8 +1561,18 @@ fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String 
     format!("vec![\n{}\n    ]", items_str)
 }
 
-/// Generate main.rs with Axum server setup, shared state, and initial data
-fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Option<&str>) -> String {
+/// Generate main.rs with Axum server setup, shared state, and initial data.
+///
+/// Plan 399 第 4-5 步: when `db_full_cover` is true, every non-SSE endpoint
+/// delegates to db.rs and holds its own state in once_cell::Lazy globals — so
+/// main.rs drops the `State<Db>` seed entirely (no `use api::Db`, no
+/// `.with_state(data)`). When false (no db.rs, or db.rs only partially covers
+/// endpoints), the legacy `State<Db>` seed path is used.
+fn generate_main_rs(
+    api_module: &auto_lang::api::ApiModule,
+    db_at_content: Option<&str>,
+    db_full_cover: bool,
+) -> String {
     let routes: Vec<String> = api_module.endpoints.iter()
         .map(|e| {
             let path = e.path();
@@ -1321,7 +1581,6 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Optio
         })
         .collect();
 
-    let initial_data = generate_initial_data_pub(api_module, db_at_content);
     let routes_str = routes.join("\n");
 
     // Plan musk-022: declare events module when SSE endpoints exist.
@@ -1339,32 +1598,55 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Optio
         s.push_str("mod db;\n");
     }
     s.push_str("\n");
-    s.push_str("use api::Db;\n");
-    s.push_str("use crate::types::*;\n");
-    s.push_str("use std::sync::{Arc, Mutex};\n");
-    s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
-    s.push_str("#[tokio::main]\n");
-    s.push_str("async fn main() {\n");
-    // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
-    // `auto run` instances — or other services sharing the host — can coexist.
-    s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
-    s.push_str("        .ok()\n");
-    s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
-    s.push_str("        .unwrap_or(8080);\n");
-    s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
-    s.push_str("    println!(\"Server running on http://{}\", addr);\n");
-    s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
-    s.push_str("    // Initial data\n");
-    s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
-    s.push_str("    // Enable CORS for frontend development\n");
-    s.push_str("    let cors = CorsLayer::new()\n");
-    s.push_str("        .allow_origin(Any)\n");
-    s.push_str("        .allow_methods(Any)\n");
-    s.push_str("        .allow_headers(Any);\n\n");
-    s.push_str("    let app = axum::Router::new()\n");
-    s.push_str(&format!("{}\n", routes_str));
-    s.push_str("        .with_state(data)\n");
-    s.push_str("        .layer(cors);\n\n");
+    if !db_full_cover {
+        // Legacy seed-state path: handlers take State<Db>, main injects the seed.
+        let initial_data = generate_initial_data_pub(api_module, db_at_content);
+        s.push_str("use api::Db;\n");
+        s.push_str("use crate::types::*;\n");
+        s.push_str("use std::sync::{Arc, Mutex};\n");
+        s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        s.push_str("#[tokio::main]\n");
+        s.push_str("async fn main() {\n");
+        // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
+        // `auto run` instances — or other services sharing the host — can coexist.
+        s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
+        s.push_str("        .ok()\n");
+        s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
+        s.push_str("        .unwrap_or(8080);\n");
+        s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
+        s.push_str("    println!(\"Server running on http://{}\", addr);\n");
+        s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
+        s.push_str("    // Initial data\n");
+        s.push_str(&format!("    let data: Db = Arc::new(Mutex::new({}));\n\n", initial_data));
+        s.push_str("    // Enable CORS for frontend development\n");
+        s.push_str("    let cors = CorsLayer::new()\n");
+        s.push_str("        .allow_origin(Any)\n");
+        s.push_str("        .allow_methods(Any)\n");
+        s.push_str("        .allow_headers(Any);\n\n");
+        s.push_str("    let app = axum::Router::new()\n");
+        s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .with_state(data)\n");
+        s.push_str("        .layer(cors);\n\n");
+    } else {
+        // db.rs full-coverage path: no State<Db>, seed lives in db.rs Lazy globals.
+        s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        s.push_str("#[tokio::main]\n");
+        s.push_str("async fn main() {\n");
+        s.push_str("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")\n");
+        s.push_str("        .ok()\n");
+        s.push_str("        .and_then(|v| v.trim().parse().ok())\n");
+        s.push_str("        .unwrap_or(8080);\n");
+        s.push_str("    let addr = format!(\"127.0.0.1:{}\", port);\n");
+        s.push_str("    println!(\"Server running on http://{}\", addr);\n");
+        s.push_str("    println!(\"CORS enabled for all origins\");\n\n");
+        s.push_str("    let cors = CorsLayer::new()\n");
+        s.push_str("        .allow_origin(Any)\n");
+        s.push_str("        .allow_methods(Any)\n");
+        s.push_str("        .allow_headers(Any);\n\n");
+        s.push_str("    let app = axum::Router::new()\n");
+        s.push_str(&format!("{}\n", routes_str));
+        s.push_str("        .layer(cors);\n\n");
+    }
     s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");
     s.push_str("    axum::serve(listener, app).await.unwrap();\n");
     s.push_str("}\n");
@@ -1742,7 +2024,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 "#;
         let module = extract_api_lenient(content).expect("Should extract");
         assert!(module.endpoints.iter().any(|e| e.return_type.contains("Stream<")));
-        let api_rs = generate_api_rs(&module);
+        let api_rs = generate_api_rs(&module, None);
         assert!(api_rs.contains("axum::response::Sse<"), "SSE return: {}", api_rs);
         assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
         assert!(api_rs.contains("async_stream::stream!"), "stream macro");
@@ -1752,7 +2034,185 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         let events = generate_events_rs();
         assert!(events.contains("pub fn subscribe()"), "subscribe fn");
         assert!(events.contains("pub fn broadcast("), "broadcast fn");
-        let main = generate_main_rs(&module, None);
+        let main = generate_main_rs(&module, None, false);
         assert!(main.contains("mod events;"), "mod events");
+    }
+
+    /// Plan 399 第 4-5 步: 017-chat — handlers delegate to db.rs (no State<Db>),
+    /// POST still broadcasts the SSE NewMessage event.
+    #[test]
+    fn test_handler_calls_db_for_chat() {
+        let api = r#"
+pub type Message = { id: int, sender: str, text: str, time: str, mine: bool }
+
+#[api(method = "GET", path = "/api/messages")]
+pub fn list_messages() []Message { return db.all_messages() }
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(sender str, text str) Message { return db.create_message(sender, text) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        // db.rs exposes all_messages + create_message.
+        let db_fns: std::collections::HashSet<String> = [
+            "all_messages".to_string(), "create_message".to_string(),
+        ].into_iter().collect();
+
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+
+        // GET list delegates to crate::db::all_messages(), no State<Db>.
+        assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
+        assert!(
+            api_rs.contains("JsonResponse::<Vec<Message>>(crate::db::all_messages())"),
+            "list wrap: {}", api_rs
+        );
+        // POST delegates to crate::db::create_message(&input.sender, &input.text)
+        // (str params borrowed: a2r emits &str, extractors hold String).
+        assert!(
+            api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
+            "create delegates: {}", api_rs
+        );
+        // POST still broadcasts the SSE event after create.
+        assert!(api_rs.contains("crate::events::broadcast("), "broadcast: {}", api_rs);
+        // No handler should lock State<Db> now.
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+        assert!(!api_rs.contains("..Default::default()"), "no default fill: {}", api_rs);
+    }
+
+    /// Plan 399 第 4-5 步: 015-notes regression — all 9 endpoints delegate to
+    /// db.rs (list_notes→all_notes, create_note→create_note, get_note→find_note,
+    /// update_note→update_note, delete_note→delete_note, toggle_pin→toggle_pin,
+    /// update_tags→update_tags, search_notes→search_notes).
+    #[test]
+    fn test_handler_calls_db_for_notes_regression() {
+        let api = r#"
+pub type Note = { id: int, title: str, body: str, time: str, pinned: bool, tags: []str, folder: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?Note { return db.find_note(id) }
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str, body str, folder str) Note { return db.create_note(title, body, folder) }
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str, body str) ?Note { return db.update_note(id, title, body) }
+
+#[api(method = "DELETE", path = "/api/notes/:id")]
+pub fn delete_note(id int) bool { return db.delete_note(id) }
+
+#[api(method = "PATCH", path = "/api/notes/:id/pin")]
+pub fn toggle_pin(id int) ?Note { return db.toggle_pin(id) }
+
+#[api(method = "PUT", path = "/api/notes/:id/tags")]
+pub fn update_tags(id int, tags []str) ?Note { return db.update_tags(id, tags) }
+
+#[api(method = "GET", path = "/api/notes/search")]
+pub fn search_notes(query str) []Note { return db.search_notes(query) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> = [
+            "all_notes".to_string(), "find_note".to_string(), "create_note".to_string(),
+            "update_note".to_string(), "delete_note".to_string(), "toggle_pin".to_string(),
+            "update_tags".to_string(), "search_notes".to_string(),
+        ].into_iter().collect();
+
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+
+        // Every endpoint resolves to its db.rs counterpart.
+        for db_fn in &[
+            "crate::db::all_notes", "crate::db::find_note", "crate::db::create_note", "crate::db::update_note",
+            "crate::db::delete_note", "crate::db::toggle_pin", "crate::db::update_tags", "crate::db::search_notes",
+        ] {
+            assert!(api_rs.contains(db_fn), "missing {}: {}", db_fn, api_rs);
+        }
+        // Path params bind directly, body params via input., query via query.
+        // str params are borrowed (&input.x / &query.x).
+        assert!(api_rs.contains("crate::db::find_note(id)"), "path arg: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::create_note(&input.title, &input.body, &input.folder)"),
+            "body args: {}", api_rs
+        );
+        assert!(api_rs.contains("crate::db::search_notes(&query.query)"), "query arg: {}", api_rs);
+        // Option-returning path endpoints map to ok_or(NOT_FOUND).
+        assert!(api_rs.contains(".ok_or(StatusCode::NOT_FOUND)"), "404 mapping: {}", api_rs);
+        // No State<Db> at all.
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+    }
+
+    /// Plan 399 第 4-5 步: when db.rs fully covers all endpoints, main.rs drops
+    /// State<Db> (no `with_state`, no `use api::Db`). Seed lives in db.rs globals.
+    #[test]
+    fn test_main_rs_no_state_when_db_full_cover() {
+        let api = r#"
+pub type Note = { id: int, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+"#;
+        // db.at with at least one pub fn → has_db true.
+        let db_at = "use api: Note\npub fn all_notes() []Note { return notes }\n";
+        let module = extract_api_lenient(api).expect("extract api");
+        let main = generate_main_rs(&module, Some(db_at), true);
+        assert!(main.contains("mod db;"), "declare db module: {}", main);
+        assert!(!main.contains("with_state"), "no with_state: {}", main);
+        assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
+        assert!(main.contains("axum::Router::new()"), "router still built: {}", main);
+
+        // And the legacy path is preserved when db_full_cover is false.
+        let main_legacy = generate_main_rs(&module, None, false);
+        assert!(main_legacy.contains("with_state"), "legacy keeps state: {}", main_legacy);
+    }
+
+    /// Plan 399 第 4-5 步: end-to-end on the real 017-chat db.at. Confirms the
+    /// transpiled db.rs carries the real `mine: true` business logic (the
+    /// original bug returned mine:false), and that extract_db_fn_names recovers
+    /// all_messages + create_message so handlers can delegate to them.
+    #[test]
+    fn test_017_chat_db_rs_has_real_logic_and_fn_names() {
+        let db_at = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..").join("..").join("examples")
+            .join("ui").join("017-chat").join("src").join("back").join("db.at");
+        if !db_at.exists() {
+            eprintln!("skipping: 017-chat db.at not found at {:?}", db_at);
+            return;
+        }
+        let content = std::fs::read_to_string(&db_at).unwrap();
+
+        let db_rs = transpile_db_to_rs(&content).expect("db.rs transpiles");
+        let db_rs = post_process_db_rs(db_rs);
+
+        // The create_message body must set mine: true (the whole point of the
+        // CRUD extension: handler delegation makes this run server-side).
+        assert!(db_rs.contains("mine: true"), "real mine:true logic: {}", db_rs);
+
+        // extract_db_fn_names recovers the two functions handlers delegate to.
+        let fns = extract_db_fn_names(&db_rs);
+        assert!(fns.contains("all_messages"), "all_messages found: {:?}", fns);
+        assert!(fns.contains("create_message"), "create_message found: {:?}", fns);
+
+        // And the api.at side wires both endpoints to those db functions.
+        let api_at = std::fs::read_to_string(
+            db_at.with_file_name("api.at")
+        ).unwrap();
+        let module = extract_api_lenient(&api_at).expect("api extracts");
+        let api_rs = generate_api_rs(&module, Some(&fns));
+        assert!(api_rs.contains("crate::db::all_messages()"), "list delegates: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
+            "create delegates: {}", api_rs
+        );
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+
+        // Full coverage → main.rs must drop State<Db> (state unified to db.rs).
+        let db_at_content = std::fs::read_to_string(&db_at).unwrap();
+        let main_rs = generate_main_rs(&module, Some(&db_at_content), true);
+        assert!(!main_rs.contains("with_state"), "main drops state: {}", main_rs);
+        assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
+        assert!(main_rs.contains("mod events;"), "main declares events (SSE): {}", main_rs);
     }
 }
