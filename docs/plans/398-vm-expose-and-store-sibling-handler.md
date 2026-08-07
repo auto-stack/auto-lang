@@ -2,7 +2,7 @@
 plan: 398
 title: vm-expose-and-store-sibling-handler
 affects: [auto-lang/ui/handler_codegen, auto-lang/ui/vm_bridge, auto-lang/ui/dynamic]
-status: in-progress # draft | in-progress | complete
+status: complete # 核心 VM 修复完成(§12 parser + §2/§3 sibling-handler + §11 log);后续增强见 §14
 ---
 
 # Plan 398: VM 兼容性修复 — expose 生效 + store handler 互调
@@ -300,10 +300,27 @@ workaround 可回退。
 ## §13 进度跟踪（修正后）
 
 - [x] §11 真根因诊断(parse 错误被静默 + 两个 .at parse 问题 + 真正 BUG-C 定位)
-- [x] §11.1 lib.rs:2290 parse 错误改 log::warn(本 commit)
-- [ ] §11.2 ash-gui .at 修两个 parse 问题(api.at [][]/tuple → [];shell_store git_status)
-- [ ] §2 BUG-C 修 <Child>_State.<Handler> 符号查找(让 expose 生效)
-- [ ] §3 BUG-B 修 store handler 互调(优先级降)
-- [ ] §12(可选)Core parser 支持 [][]T / [](tuple)
-- [ ] ash-gui vm 完整启动 → 回 ash-gui-native-plan M0.5
+- [x] §11.1 lib.rs:2290 parse 错误改 log::warn(commit 25642f91)
+- [x] §11.2 ash-gui .at 修两个 parse 问题:
+      - shell_store git_status: None → 内联全零 GitStatusInfo(auto-shell commit 455b02e)
+      - api.at [][]/[](tuple) → **改为修 Core parser(§12),不动 .at 语义**(见下)
+- [x] §12 Core parser 支持 [][]T / [](tuple)(commit 883b13cf)
+      parse_array_type 三条路径(slice/runtime/static)元素类型改用 parse_type(递归)。
+      api.at 原始 [][]RenderedCell / [](str,RenderedCell) 语法保留,无需 .at workaround。
+- [x] §2 BUG-C + §3 BUG-B:sibling handler 调用正确 rewrite(commit cba655c8)
+      一处修复覆盖两类:rewrite_expr 新增 `.X()` (self receiver + msg variant) →
+      handler_<Widget>_X(__state, args)。修通 PromptBar_State.Exit(BUG-C)与
+      ShellStore_State.RefreshGit(BUG-B)。
+- [x] **ash-gui vm 完整启动!** AutoUI MCP: first state sync,12 工具可调,
+      autoui_snapshot 返回 App 树。
+- [x] 回归 015-notes / 013-todo vm 启动正常;015 desktop_mcp.py 8 pass / 2 预存 fail
+      (NavTree FALLBACK + notes VmRef,均非本 plan 引入)。
+
+### §14 待办(plan 核心已闭环,这些是后续增强)
+
+- [ ] parser fix + sibling-handler fix 加 Rust 单元测试(回归保护,handler_codegen tests 模块)
+- [ ] synthesize_widget_module(AuraWidget 路径)同样补 set_current_widget(当前只修了
+      synthesize_from_decl / WidgetDecl 路径;若有 AuraWidget-vm 用例再补)
+- [ ] 回 ash-gui-native-plan M0.5:MCP 连通已证 → 搭测试骨架(conftest/desktop_mcp/test_smoke)
+- [ ] ash-gui-native M1:in-process 后端(shell.at mock)+ SSE 桥
 
