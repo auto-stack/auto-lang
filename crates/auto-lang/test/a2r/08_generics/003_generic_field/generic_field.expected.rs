@@ -7,9 +7,9 @@ struct Box<T> {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Container {
-    pub data: Box<i32>,
+    pub data: Box<i64>,
 }
 
 fn main() {
-    let x: i32 = 42;
+    let x: i64 = 42;
 }

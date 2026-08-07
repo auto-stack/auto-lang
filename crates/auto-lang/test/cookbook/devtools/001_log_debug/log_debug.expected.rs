@@ -5,7 +5,7 @@ use log::info;
 fn main() {
     env_logger::init();
     debug!("starting operation");
-    let value: i32 = 42;
+    let value: i64 = 42;
     debug!("value = {}", value);
     assert!(value == 42);
 }

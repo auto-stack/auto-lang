@@ -8,16 +8,16 @@ trait Tool {
 
 #[allow(dead_code)]
 pub struct Callback {
-    pub on_ev: Box<dyn Fn(i32) + Send + Sync>,
+    pub on_ev: Box<dyn Fn(i64) + Send + Sync>,
     pub on_done: Box<dyn Fn + Send + Sync>,
-    pub on_named: Box<dyn Fn(i32) -> String + Send + Sync>,
+    pub on_named: Box<dyn Fn(i64) -> String + Send + Sync>,
 }
 
-pub fn set_cb(cb: Box<dyn Fn(i32) + Send + Sync>) {
+pub fn set_cb(cb: Box<dyn Fn(i64) + Send + Sync>) {
     println!("set");
 }
 
-pub fn get_cb() -> Box<dyn Fn(i32) + Send + Sync> {
+pub fn get_cb() -> Box<dyn Fn(i64) + Send + Sync> {
     return Callback { on_ev: None, on_done: None, on_named: None }.on_ev;
 }
 

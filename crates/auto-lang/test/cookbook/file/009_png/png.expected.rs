@@ -8,5 +8,5 @@ use a2r_std::*;
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let content = a2r_std::fs::read_to_string("png.at")?;
-    assert!((content.len() as i32) > 0)
+    assert!((content.len() as i64) > 0)
 }

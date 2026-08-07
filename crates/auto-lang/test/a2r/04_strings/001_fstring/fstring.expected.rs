@@ -2,7 +2,7 @@
 
 fn main() {
     let name: String = "AutoLang".to_string();
-    let age: i32 = 1;
+    let age: i64 = 1;
 
 
     let greeting: String = format!("Hello, {}", name);
@@ -13,8 +13,8 @@ fn main() {
     println!("{}", info);
 
 
-    let x: i32 = 10;
-    let y: i32 = 20;
+    let x: i64 = 10;
+    let y: i64 = 20;
     let result: String = format!("Result: {}", x + y);
     println!("{}", result);
 
@@ -26,7 +26,7 @@ fn main() {
     println!("Direct: {} is {} years old", name, age);
 
 
-    let a: i32 = 5;
-    let b: i32 = 3;
+    let a: i64 = 5;
+    let b: i64 = 3;
     println!("Sum: {}, Product: {}", a + b, a * b);
 }

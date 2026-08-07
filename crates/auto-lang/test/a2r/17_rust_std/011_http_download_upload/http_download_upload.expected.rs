@@ -6,12 +6,12 @@ use a2r_std;
 use a2r_std::*;
 
 fn main() {
-    let mut status: i32 = a2r_std::http::download("https://example.com/file.txt", "/tmp/file.txt");
+    let mut status: i64 = a2r_std::http::download("https://example.com/file.txt", "/tmp/file.txt");
     println!("{}", status);
 
-    let mut up_status: i32 = a2r_std::http::upload("https://example.com/upload", "/tmp/file.txt");
+    let mut up_status: i64 = a2r_std::http::upload("https://example.com/upload", "/tmp/file.txt");
     println!("{}", up_status);
 
-    let mut resume_status: i32 = a2r_std::http::download_resume("https://example.com/large.bin", "/tmp/large.bin", 1024);
+    let mut resume_status: i64 = a2r_std::http::download_resume("https://example.com/large.bin", "/tmp/large.bin", 1024);
     println!("{}", resume_status);
 }

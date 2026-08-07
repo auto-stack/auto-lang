@@ -4,8 +4,8 @@ use rand;
 use rand::Rng;
 fn main() {
     let mut rng = rand::thread_rng();
-    let x: i32 = rng.gen_range(0..5);
-    let y: i32 = rng.gen_range(10..20);
+    let x: i64 = rng.gen_range(0..5);
+    let y: i64 = rng.gen_range(10..20);
     let x_ok: bool = x >= 0;
     let y_ok: bool = y >= 10;
     assert!(x_ok);

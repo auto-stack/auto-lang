@@ -5,5 +5,5 @@ fn main() {
     let chars = text.chars();
     let count = chars.count();
     assert!(count == 5);
-    assert!((text.len() as i32) == 5);
+    assert!((text.len() as i64) == 5);
 }

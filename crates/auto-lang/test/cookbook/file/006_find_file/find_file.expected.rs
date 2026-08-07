@@ -3,7 +3,7 @@
 use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entries = fs::read_dir(".")?;
-    let mut count: i32 = 0;
+    let mut count: i64 = 0;
     for entry in &entries {
         let entry = entry?;
         count += 1;

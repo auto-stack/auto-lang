@@ -7,5 +7,5 @@ fn main() {
     let encoded = STANDARD::encode(original.as_str());
     assert!(encoded == "aGVsbG8gd29ybGQ=");
     let decoded = STANDARD::decode(encoded).unwrap();
-    assert!((decoded.len() as i32) > 0);
+    assert!((decoded.len() as i64) > 0);
 }

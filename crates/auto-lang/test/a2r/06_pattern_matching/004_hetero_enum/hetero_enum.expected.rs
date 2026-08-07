@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq)]
 enum Atom {
-    Int(i32),
+    Int(i64),
     Char(char),
     Float(f64),
 }

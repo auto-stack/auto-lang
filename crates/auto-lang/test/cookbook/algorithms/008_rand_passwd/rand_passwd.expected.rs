@@ -7,8 +7,8 @@ fn main() {
     let charset: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()".to_string();
     let mut password: String = "".to_string();
     for _ in 0..16 {
-        let idx = rng.gen_range(0..(charset.len() as i32));
-        password = format!("{}{}", password, charset.chars().nth((idx) as usize).unwrap_or('\0') as i32);
+        let idx = rng.gen_range(0..(charset.len() as i64));
+        password = format!("{}{}", password, charset.chars().nth((idx) as usize).unwrap_or('\0') as i64);
     }
-    assert!((password.len() as i32) == 16);
+    assert!((password.len() as i64) == 16);
 }

@@ -5,5 +5,5 @@ fn main() {
     let re = Regex::new("#\\w+").unwrap();
     let text: String = "Love #rust and #programming!".to_string();
     let matches = re.captures_iter(text);
-    assert!((matches.len() as i32) == 2);
+    assert!((matches.len() as i64) == 2);
 }

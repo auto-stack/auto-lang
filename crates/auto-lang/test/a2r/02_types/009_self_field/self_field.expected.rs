@@ -2,14 +2,14 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Counter {
-    pub count: i32,
+    pub count: i64,
 }
 
 impl Counter {
     pub fn increment(&mut self) {
         self.count() = self.count() + 1;
     }
-    pub fn get(&self) -> i32 {
+    pub fn get(&self) -> i64 {
         return self.count();
     }
 }

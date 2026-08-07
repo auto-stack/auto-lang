@@ -7,7 +7,7 @@ use a2r_std::*;
 
 use std::collections::HashMap;
 fn main() {
-    let mut map: HashMap<String, i32> = HashMap::new();
+    let mut map: HashMap<String, i64> = HashMap::new();
     map.insert("a".to_string(), 1);
     map.insert("b".to_string(), 2);
     let val = map.get("a");

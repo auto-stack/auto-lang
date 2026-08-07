@@ -8,7 +8,7 @@ fn main() {
     println!("Query string: {}", query);
 
     let query = url.query();
-    let mut pair_count: i32 = 0;
+    let mut pair_count: i64 = 0;
     for pair in url.query_pairs() {
         pair_count += 1;
     }

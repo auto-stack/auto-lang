@@ -3,12 +3,12 @@
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Message {
     Quit,
-    Move(i32),
+    Move(i64),
     Write(String),
 }
 
 
-fn handle(msg: Message) -> i32 {
+fn handle(msg: Message) -> i64 {
     match msg {
         Message::Quit => 0,
         Message::Move(dist) => {
@@ -18,7 +18,7 @@ fn handle(msg: Message) -> i32 {
         },
         Message::Write(text) => {
             println!("{}", text);
-            return (text.len() as i32);
+            return (text.len() as i64);
         },
     }
 }

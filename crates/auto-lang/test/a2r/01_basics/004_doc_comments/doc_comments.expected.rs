@@ -2,7 +2,7 @@
 
 /// This is a test function
 /// With multiple lines
-fn test_func(x: i32) -> i32 {
+fn test_func(x: i64) -> i64 {
     x + 1
 }
 

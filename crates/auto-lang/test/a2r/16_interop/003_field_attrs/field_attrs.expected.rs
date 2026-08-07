@@ -3,7 +3,7 @@
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Role {
     #[serde(rename = "role_id")]
-    pub id: i32,
+    pub id: i64,
     #[serde(rename = "role_name")]
     pub name: String,
 }

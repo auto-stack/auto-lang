@@ -3,9 +3,9 @@
 fn main() {
     let data: String = "name,age\nAlice,30\nBob,25\nCharlie,35".to_string();
     let mut lines = data.split("\n").collect::<Vec<_>>();
-    assert!((lines.len() as i32) == 4);
+    assert!((lines.len() as i64) == 4);
 
-    let mut filtered_count: i32 = 0;
+    let mut filtered_count: i64 = 0;
     if 30 > 28 {
         filtered_count += 1;
     }

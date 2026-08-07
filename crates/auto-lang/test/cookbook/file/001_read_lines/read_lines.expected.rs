@@ -3,7 +3,7 @@
 fn main() {
     File::write_text("lines.txt", "Rust\nFun\nAuto");
     let data = File::read_text("lines.txt");
-    assert!((data.len() as i32) == 13);
+    assert!((data.len() as i64) == 13);
     assert!(data == "Rust\nFun\nAuto");
     File::delete("lines.txt");
 }

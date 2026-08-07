@@ -5,5 +5,5 @@ fn main() {
     let output = Command::new("ls").args(vec!["-la".to_string()]).output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    assert!((stdout.len() as i32) > 0);
+    assert!((stdout.len() as i64) > 0);
 }

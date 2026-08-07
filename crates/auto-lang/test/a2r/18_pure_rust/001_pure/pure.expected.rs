@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 fn main() {
-    let x: i32 = 42;
-    let y: i32 = x + 8;
+    let x: i64 = 42;
+    let y: i64 = x + 8;
     println!("Answer: {}", y);
 
-    let mut scores: HashMap<String, i32> = HashMap::new();
+    let mut scores: HashMap<String, i64> = HashMap::new();
     scores.insert("alice".to_string(), 100);
     scores.insert("bob".to_string(), 95);
 

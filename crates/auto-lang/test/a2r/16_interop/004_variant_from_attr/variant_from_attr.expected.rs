@@ -2,7 +2,7 @@
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ForeignErr {
-    pub code: i32,
+    pub code: i64,
 }
 
 #[derive(Debug)]
@@ -36,5 +36,5 @@ impl std::error::Error for MyErr {}
 
 /// Human-readable message.
 fn main() {
-    let x: i32 = 42;
+    let x: i64 = 42;
 }

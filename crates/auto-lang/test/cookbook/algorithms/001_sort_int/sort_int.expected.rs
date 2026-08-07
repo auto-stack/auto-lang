@@ -2,7 +2,7 @@
 
 use std::vec::Vec;
 fn main() {
-    let mut vec: Vec<i32> = vec![1, 5, 10, 2, 15];
+    let mut vec: Vec<i64> = vec![1, 5, 10, 2, 15];
     vec.sort();
     assert!(vec[0].clone() == 1);
     assert!(vec[1].clone() == 2);

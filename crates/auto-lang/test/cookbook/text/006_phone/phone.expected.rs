@@ -4,7 +4,7 @@ use regex::Regex;
 fn main() {
     let re = Regex::new("\\d{3}-\\d{3}-\\d{4}").unwrap();
     let text: String = "Call 555-123-4567 or 555-987-6543".to_string();
-    let mut phone_count: i32 = 0;
+    let mut phone_count: i64 = 0;
     for cap in re.find_iter(text) {
         phone_count += 1;
     }

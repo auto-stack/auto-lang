@@ -3,11 +3,11 @@
 #[derive(Clone, Debug, PartialEq)]
 struct Config {
     pub env: std::collections::HashMap<String, String>,
-    pub ports: Vec<i32>,
+    pub ports: Vec<i64>,
 }
 
 fn main() {
     let headers: std::collections::HashMap<String, String> = {Authorization: "Bearer xxx", Content-Type: "application/json"};
-    let counts: std::collections::HashMap<String, i32> = {hello: 3, world: 5};
-    let x: i32 = 42;
+    let counts: std::collections::HashMap<String, i64> = {hello: 3, world: 5};
+    let x: i64 = 42;
 }

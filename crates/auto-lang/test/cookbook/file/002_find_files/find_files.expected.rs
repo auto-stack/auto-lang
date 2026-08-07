@@ -2,7 +2,7 @@
 
 use walkdir;
 fn main() {
-    let mut count: i32 = 0;
+    let mut count: i64 = 0;
     for entry in walkdir::WalkDir::new("src") {
         let entry = entry.unwrap();
         count += 1;

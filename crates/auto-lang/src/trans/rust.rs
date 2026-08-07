@@ -1130,11 +1130,11 @@ impl RustTrans {
         if let Some(ret_ty) = &self.current_fn_ret_type {
             let expr_ty = self.infer_type_from_expr(expr);
             let need_cast = match (ret_ty, &expr_ty) {
-                (Type::Int, Type::Uint) => Some(" as i32"),
+                (Type::Int, Type::Uint) => Some(" as i64"),
                 (Type::Uint, Type::Int) => Some(" as u32"),
                 (Type::USize, Type::Int) => Some(" as usize"),
                 (Type::USize, Type::Uint) => Some(" as usize"),
-                (Type::Int, Type::USize) => Some(" as i32"),
+                (Type::Int, Type::USize) => Some(" as i64"),
                 (Type::Uint, Type::USize) => Some(" as u32"),
                 _ => None,
             };
@@ -1159,7 +1159,11 @@ impl RustTrans {
 
     fn rust_type_name(&self, ty: &Type) -> String {        match ty {
             Type::Byte => "u8".to_string(),
-            Type::Int => "i32".to_string(),
+            // Plan 399 Phase 11.1: Auto `int` → Rust `i64` (was i64). The HTTP
+            // backend's types.rs uses i64 (auto_type_to_rust), so a2r emitting i32
+            // caused db.rs/types.rs type mismatches (post_process_db_rs patched
+            // with a blunt code.replace("i32","i64")). Now unified at the source.
+            Type::Int => "i64".to_string(),
             Type::Uint => "u32".to_string(),
             Type::USize => "usize".to_string(),
             Type::Float | Type::Double => "f64".to_string(),
@@ -3426,11 +3430,11 @@ impl RustTrans {
                     Type::Int => {
                         if matches!(expr.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                             self.expr(expr, out)?;
-                            write!(out, ".parse::<i32>().unwrap()")?;
+                            write!(out, ".parse::<i64>().unwrap()")?;
                         } else {
                             write!(out, "(")?;
                             self.expr(expr, out)?;
-                            write!(out, " as i32)")?;
+                            write!(out, " as i64)")?;
                         }
                     }
                     Type::Float | Type::Double => {
@@ -4075,7 +4079,7 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("http", "last_status") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status() as i32")?;
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status() as i64")?;
                         return Ok(());
                     }
                     ("http", "post_bearer") => {
@@ -4694,7 +4698,7 @@ impl RustTrans {
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
-                                write!(out, ") as i32")?;
+                                write!(out, ") as i64")?;
                                 return Ok(());
                             }
                             "is_null" => {
@@ -4753,7 +4757,7 @@ impl RustTrans {
                             "as_int" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                                write!(out, ") as i32")?;
+                                write!(out, ") as i64")?;
                                 return Ok(());
                             }
                             "as_bool" => {
@@ -4831,7 +4835,7 @@ impl RustTrans {
                             "as_int" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                                write!(out, ") as i32")?;
+                                write!(out, ") as i64")?;
                                 return Ok(());
                             }
                             "is_null" => {
@@ -5112,7 +5116,7 @@ impl RustTrans {
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, ") as i32))")?;
+                            write!(out, ") as i64))")?;
                             return Ok(());
                         }
                         "shl" => {
@@ -5122,7 +5126,7 @@ impl RustTrans {
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, ") as u32) as i32")?;
+                            write!(out, ") as u32) as i64")?;
                             return Ok(());
                         }
                         "shr" => {
@@ -5134,7 +5138,7 @@ impl RustTrans {
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, ") as u32)) as i32")?;
+                            write!(out, ") as u32)) as i64")?;
                             return Ok(());
                         }
                         "sar" => {
@@ -5145,7 +5149,7 @@ impl RustTrans {
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, ") as u32)) as i32")?;
+                            write!(out, ") as u32)) as i64")?;
                             return Ok(());
                         }
                         "not" => {
@@ -5169,7 +5173,7 @@ impl RustTrans {
                             if let Some(Arg::Pos(arg)) = call.args.args.first() {
                                 self.expr(arg, out)?;
                             }
-                            write!(out, ") as usize).unwrap_or('\\0') as i32")?;
+                            write!(out, ") as usize).unwrap_or('\\0') as i64")?;
                             return Ok(());
                         }
                         "sub" => {
@@ -5348,7 +5352,7 @@ impl RustTrans {
                         }
                         write!(out, ")")?;
                         if needs_i32_cast_1 && !self.len_i32_cast_suppressed {
-                            write!(out, " as i32")?;
+                            write!(out, " as i64")?;
                         }
                         // trim/trim_start/trim_end return &str, auto-convert to String
                         // Plan 380: skip when the callee `trim` returns void
@@ -5445,7 +5449,7 @@ impl RustTrans {
                 // actually emits for method calls (the `Expr::Bina` match
                 // above is dead code kept for completeness).
                 "and" | "or" | "xor" => {
-                    // val.and(mask) -> ((val & mask) as i32), etc.
+                    // val.and(mask) -> ((val & mask) as i64), etc.
                     // Cast to i32 mirrors Auto's int type after the bitwise op.
                     let op = match method_name.as_str() {
                         "and" => "&",
@@ -5458,23 +5462,23 @@ impl RustTrans {
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, ") as i32)")?;
+                    write!(out, ") as i64)")?;
                     return Ok(());
                 }
                 "shl" => {
-                    // val.shl(n) -> (val.wrapping_shl(n as u32) as i32) (wrapping)
+                    // val.shl(n) -> (val.wrapping_shl(n as u32) as i64) (wrapping)
                     write!(out, " (")?;
                     self.expr(object, out)?;
                     write!(out, ".wrapping_shl(")?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, " as u32) as i32)")?;
+                    write!(out, " as u32) as i64)")?;
                     return Ok(());
                 }
                 "shr" => {
                     // val.shr(n) -> LOGICAL (unsigned) right shift:
-                    // ((val as u32).wrapping_shr(n as u32) as i32)
+                    // ((val as u32).wrapping_shr(n as u32) as i64)
                     // Casting to u32 first makes wrapping_shr unsigned (logical),
                     // matching Auto's `shr` semantics.
                     write!(out, " ((")?;
@@ -5483,19 +5487,19 @@ impl RustTrans {
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, " as u32) as i32)")?;
+                    write!(out, " as u32) as i64)")?;
                     return Ok(());
                 }
                 "sar" => {
                     // val.sar(n) -> ARITHMETIC (signed) right shift:
-                    // (val.wrapping_shr(n as u32) as i32)
+                    // (val.wrapping_shr(n as u32) as i64)
                     write!(out, " (")?;
                     self.expr(object, out)?;
                     write!(out, ".wrapping_shr(")?;
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, " as u32) as i32)")?;
+                    write!(out, " as u32) as i64)")?;
                     return Ok(());
                 }
                 "not" => {
@@ -5546,7 +5550,7 @@ impl RustTrans {
                     if let Some(Arg::Pos(arg)) = call.args.args.first() {
                         self.expr(arg, out)?;
                     }
-                    write!(out, ") as usize).unwrap_or('\\0') as i32")?;
+                    write!(out, ") as usize).unwrap_or('\\0') as i64")?;
                     return Ok(());
                 }
                 "sub" => {
@@ -5645,7 +5649,7 @@ impl RustTrans {
                         write!(out, ")")?;
                     } else {
                         self.expr(object, out)?;
-                        write!(out, ".parse::<i32>().ok()")?;
+                        write!(out, ".parse::<i64>().ok()")?;
                     }
                     return Ok(());
                 }
@@ -6076,12 +6080,12 @@ impl RustTrans {
                                 self.a2r_std_used.set(true);
                                 write!(out, "(a2r_std::json::len_str(")?;
                                 self.expr_as_str(expr, out)?;
-                                write!(out, ") as i32)")?;
+                                write!(out, ") as i64)")?;
                             } else {
                                 self.a2r_std_used.set(true);
                                 write!(out, "(a2r_std::json::len(&")?;
                                 self.expr(expr, out)?;
-                                write!(out, ") as i32)")?;
+                                write!(out, ") as i64)")?;
                             }
                         }
                         return Ok(());
@@ -6125,7 +6129,7 @@ impl RustTrans {
                         } else {
                             write!(out, "a2r_std::json::as_int_str(")?;
                             if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                            write!(out, ") as i32")?;
+                            write!(out, ") as i64")?;
                         }
                         return Ok(());
                     }
@@ -6376,7 +6380,7 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ".get(&")?;
                     self.arg(&call.args.args[0], out)?;
-                    write!(out, ".to_string()).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0))")?;
+                    write!(out, ".to_string()).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0))")?;
                     return Ok(());
                 }
                 "insert_str" => {
@@ -6717,7 +6721,7 @@ impl RustTrans {
                 }
                 write!(out, ")")?;
                 if needs_i32_cast && !self.len_i32_cast_suppressed {
-                    write!(out, " as i32)")?;
+                    write!(out, " as i64)")?;
                 }
                 // trim/trim_start/trim_end return &str, auto-convert to String
                 // Plan 380: skip when the callee `trim` returns void (a struct
@@ -7898,7 +7902,7 @@ impl RustTrans {
 
             // Enum→i32 cast for int-expecting params
             if needs_enum_cast {
-                write!(out, " as i32")?;
+                write!(out, " as i64")?;
             }
 
             // Plan 376E: Broad type-aware argument conversion using local_var_types.
@@ -7923,7 +7927,7 @@ impl RustTrans {
                             }
                             // i32 param, u32 arg: cast
                             else if matches!(pt, Type::Int) && matches!(aty, Type::Uint) {
-                                write!(out, " as i32")?;
+                                write!(out, " as i64")?;
                             }
                             // usize param, i32/u32 arg: cast
                             else if matches!(pt, Type::USize) && (matches!(aty, Type::Int) || matches!(aty, Type::Uint)) {
@@ -10128,7 +10132,7 @@ impl RustTrans {
                     if let Expr::Ident(name) = obj.as_ref() {
                         if name == "json" && method == "as_int" {
                             if matches!(store.ty, Type::Int) {
-                                write!(out, " as i32")?;
+                                write!(out, " as i64")?;
                             } else {
                                 write!(out, " as u32")?;
                             }
@@ -10159,11 +10163,11 @@ impl RustTrans {
             // Get the expression's inferred type
             let expr_ty = self.infer_type_from_expr(&store.expr);
             let need_cast = match (&store.ty, &expr_ty) {
-                (Type::Int, Type::Uint) => Some(" as i32"),
+                (Type::Int, Type::Uint) => Some(" as i64"),
                 (Type::Uint, Type::Int) => Some(" as u32"),
                 (Type::USize, Type::Int) => Some(" as usize"),
                 (Type::USize, Type::Uint) => Some(" as usize"),
-                (Type::Int, Type::USize) => Some(" as i32"),
+                (Type::Int, Type::USize) => Some(" as i64"),
                 (Type::Uint, Type::USize) => Some(" as u32"),
                 _ => None,
             };
@@ -15033,8 +15037,8 @@ impl RustTrans {
     }
 
     /// Fix u32/i32 cast mismatches:
-    /// 1. `let ... : u32 = (... as i32)` → `as u32`
-    /// 2. `while var < (... as i32)` where var was declared as u32 → `as u32`
+    /// 1. `let ... : u32 = (... as i64)` → `as u32`
+    /// 2. `while var < (... as i64)` where var was declared as u32 → `as u32`
     fn fix_u32_i32_casts(content: &mut String) {
         use std::collections::HashMap;
         // Build a map of variable names declared as u32
@@ -15049,7 +15053,7 @@ impl RustTrans {
         };
         if u32_vars.is_empty() { return; }
 
-        // Pattern 1: `let ... : u32 = (... as i32)` → `as u32`
+        // Pattern 1: `let ... : u32 = (... as i64)` → `as u32`
         if let Some(re) = cached_regex(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)") {
             let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
                 let prefix = caps.get(1).unwrap().as_str();
@@ -15059,7 +15063,7 @@ impl RustTrans {
             *content = new;
         }
 
-        // Pattern 2: `while var < (... as i32)` where var is a u32 var → `as u32`
+        // Pattern 2: `while var < (... as i64)` where var is a u32 var → `as u32`
         for var_name in u32_vars.keys() {
             let pattern = format!(
                 r"(while\s+{}\s*<\s*\()(.+?)\s+as\s+i32\)",
@@ -15076,7 +15080,7 @@ impl RustTrans {
             }
         }
 
-        // Pattern 3: struct field assignment `self.field: u32 = (... as i32)` for known u32 fields
+        // Pattern 3: struct field assignment `self.field: u32 = (... as i64)` for known u32 fields
         // Detected via struct field declarations: `pub field_name: u32,`
         let u32_fields: Vec<String> = {
             let mut fields = Vec::new();
@@ -15088,7 +15092,7 @@ impl RustTrans {
             fields
         };
         for field_name in &u32_fields {
-            // `self.field_name = (... as i32)` → `as u32`
+            // `self.field_name = (... as i64)` → `as u32`
             let pattern = format!(
                 r"(self\.{}\s*=\s*\()(.+?)\s+as\s+i32\)",
                 regex::escape(field_name)
@@ -15321,7 +15325,7 @@ impl RustTrans {
             vars
         };
 
-        // Fix comparison operators: u32_var op (expr as i32) -> u32_var op (expr as u32)
+        // Fix comparison operators: u32_var op (expr as i64) -> u32_var op (expr as u32)
         for var in &u32_vars {
             for op in &["<=", ">=", "<", ">"] {
                 let pattern = format!(r"{}\s*{}\s*\((.+?)\s+as\s+i32\)", regex::escape(var), regex::escape(op));
@@ -15376,7 +15380,7 @@ impl RustTrans {
                 let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(var));
                 if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i32)", variant, var)
+                        format!("::{}({} as i64)", variant, var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
@@ -15392,7 +15396,7 @@ impl RustTrans {
                 let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(&self_var));
                 if let Some(re) = cached_regex(&pat) {
                     let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i32)", variant, self_var)
+                        format!("::{}({} as i64)", variant, self_var)
                     }).to_string();
                     if new != *content { *content = new; }
                 }
@@ -16295,7 +16299,7 @@ impl RustTrans {
     /// Plan 373: lower Auto-VM numeric conversion methods to Rust casts.
     /// `expr.to_float()` → `(expr as f64)`
     /// `expr.to_uint()`  → `(expr as u32)`
-    /// `expr.to_int()`   → `(expr as i32)`
+    /// `expr.to_int()`   → `(expr as i64)`
     /// (Rust ints/floats have no `.to_float()`/`.to_uint()` methods.)
     fn fix_numeric_conversion_methods(content: &mut String) {
         // Match a receiver that is either an identifier or a method chain we can
@@ -19080,9 +19084,9 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     let mut content = String::from_utf8(std::mem::take(body)).unwrap();
 
     // === fix_cross_file.py ===
-    // int_to_str(kind) -> int_to_str(kind as i32): partially at AST level (needs_enum_cast)
+    // int_to_str(kind) -> int_to_str(kind as i64): partially at AST level (needs_enum_cast)
     // Still needed as fallback for cases where local_var_types has User(NodeKind) instead of Enum
-    content = content.replace("int_to_str(kind)", "int_to_str(kind as i32)");
+    content = content.replace("int_to_str(kind)", "int_to_str(kind as i64)");
     // String + String: (output + int_to_str(val)) -> (output + &int_to_str(val))
     content = content.replace("(output + int_to_str(val))", "(output + &int_to_str(val))");
     // prefix + a2r_expr(...) -> prefix + &a2r_expr(...)
@@ -19398,11 +19402,11 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     );
 
     // === Fix parser_new tokens move (E0382) ===
-    // Parser { tokens: tokens, pos: 0, token_count: (tokens.len() as i32) }
+    // Parser { tokens: tokens, pos: 0, token_count: (tokens.len() as i64) }
     // tokens moved, then tokens.len() used -> swap order or clone
     content = content.replace(
-        "Parser { tokens: tokens, pos: 0, token_count: (tokens.len() as i32) }",
-        "Parser { pos: 0, token_count: (tokens.len() as i32), tokens: tokens }",
+        "Parser { tokens: tokens, pos: 0, token_count: (tokens.len() as i64) }",
+        "Parser { pos: 0, token_count: (tokens.len() as i64), tokens: tokens }",
     );
 
     // === Fix ASTNode: Default not satisfied (E0277) ===
@@ -19484,8 +19488,8 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // === Fix path move into str_substr (E0382) ===
     // str_substr(path, 0, 5) -> str_substr(&path, 0, 5) to avoid moving path
     content = content.replace("str_substr(path, 0, 5)", "str_substr(&path, 0, 5)");
-    content = content.replace("str_substr(path, 5, (path.len() as i32))", "str_substr(&path, 5, (path.len() as i32))");
-    content = content.replace("a2r_path_to_rust(str_substr(&path, 5, (path.len() as i32)).as_str())", "a2r_path_to_rust(&str_substr(&path, 5, (path.len() as i32)))");
+    content = content.replace("str_substr(path, 5, (path.len() as i64))", "str_substr(&path, 5, (path.len() as i64))");
+    content = content.replace("a2r_path_to_rust(str_substr(&path, 5, (path.len() as i64)).as_str())", "a2r_path_to_rust(&str_substr(&path, 5, (path.len() as i64)))");
 
     // === Fix state borrow conflict (E0502) ===
     // let s = state.get(X); ... state.insert(Y, Z);

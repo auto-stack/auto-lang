@@ -5,11 +5,11 @@ fn get_headers() -> std::collections::HashMap<String, String> {
     return h;
 }
 
-fn process(data: std::collections::HashMap<String, i32>) -> i32 {
+fn process(data: std::collections::HashMap<String, i64>) -> i64 {
     return 0;
 }
 
 fn main() {
-    let m: std::collections::HashMap<String, i32> = {count: 10, total: 100};
+    let m: std::collections::HashMap<String, i64> = {count: 10, total: 100};
     let result = process(m.clone());
 }
