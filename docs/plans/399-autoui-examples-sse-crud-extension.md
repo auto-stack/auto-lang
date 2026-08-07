@@ -155,8 +155,9 @@
 `endpoint_has_body` 纳入 PATCH（有 body_params 时），带 body 的 PATCH 端点（如 `set_pinned(id, pinned bool)`）现在正确生成 `Json(input)` 提取器。回归测试 `test_patch_with_body_gets_json_extractor`。
 
 ### §10 🟡 混合状态（部分回退）运行时状态分裂
-### §10 🟡 混合状态（部分回退）运行时状态分裂 → 详见 Phase 13
-当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum **0.7**（仓库实际版本，`examples/rust-workspace/Cargo.toml:29`；原文误写 0.8，两者 `Handler`/`with_state` 行为一致）下能编译，但运行时同一资源的读写会不一致。**已深入调研，根治方案见 Phase 13**（推荐方案 A：生成期硬检查 + escape hatch）。当前示例全委托不触发。
+### §10 ✅ 混合状态（部分回退）生成期硬检查（Phase 13 已落地）
+当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum **0.7**（仓库实际版本；原文误写 0.8，两者 `Handler`/`with_state` 行为一致）下能编译，但运行时同一资源的读写会不一致。
+**Phase 13 落地方案 A**：`generate_rust_server` 在 `has_db && !db_full_cover` 时 `return Err`（列出未覆盖端点名），而非静默回退。escape hatch `AUTO_ALLOW_PARTIAL_DB=1` 供渐进迁移。测试 `test_mixed_state_detection_collects_uncovered`。015/017 全覆盖不受影响。
 
 ---
 

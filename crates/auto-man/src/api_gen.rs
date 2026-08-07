@@ -636,6 +636,40 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     let db_full_cover = db_fns.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
         && all_endpoints_covered(api_module, db_fns.as_ref());
 
+    // Plan 399 Phase 13 (§10): mixed state (some endpoints delegate to db.rs
+    // Lazy, others lock State<Db>) silently diverges — writes to one store are
+    // invisible to the other. Fail fast at generation time instead of emitting
+    // a server that compiles but corrupts data. Escape hatch for incremental
+    // db.at migration: AUTO_ALLOW_PARTIAL_DB=1 keeps the old mixed behavior.
+    if has_db && db_fns.as_ref().map(|s| !s.is_empty()).unwrap_or(false) && !db_full_cover {
+        let allow_partial = std::env::var("AUTO_ALLOW_PARTIAL_DB")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let uncovered: Vec<&str> = api_module.endpoints.iter()
+            .filter(|e| !e.return_type.contains("Stream<"))
+            .filter(|e| match db_fns.as_ref() {
+                Some(fns) => resolve_db_call(*e, fns).is_none(),
+                None => true,
+            })
+            .map(|e| e.fn_name.as_str())
+            .collect();
+        if allow_partial {
+            eprintln!(
+                "  ⚠ PARTIAL db.rs coverage (AUTO_ALLOW_PARTIAL_DB=1): endpoints {:?} \
+                 fall back to State<Db> — state WILL diverge (db.rs Lazy ≠ State<Db> seed).",
+                uncovered
+            );
+        } else {
+            return Err(format!(
+                "db.rs exists but endpoints {:?} have no matching db.rs function. \
+                 This produces a mixed-state server (db.rs Lazy vs State<Db>) whose writes \
+                 silently diverge. Either (a) add db.rs functions for these endpoints, or \
+                 (b) set AUTO_ALLOW_PARTIAL_DB=1 to accept the mixed state during migration.",
+                uncovered
+            ).into());
+        }
+    }
+
     // Generate main.rs
     let main_rs = generate_main_rs(api_module, seed_data.as_deref(), db_full_cover);
     std::fs::write(src_dir.join("main.rs"), &main_rs)
@@ -2511,6 +2545,42 @@ pub fn lookup(id int) ?User { return db.find_user(id) }
             "synonym endpoint delegates via body: {}", api_rs
         );
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+    }
+
+    /// Plan 399 Phase 13 (§10): mixed-state detection. When db.rs exists but
+    /// doesn't cover all endpoints, `all_endpoints_covered` returns false and
+    /// the uncovered endpoints can be collected (generate_rust_server then
+    /// hard-errors unless AUTO_ALLOW_PARTIAL_DB=1). This test exercises the
+    /// detection logic without the full generate_api write path.
+    #[test]
+    fn test_mixed_state_detection_collects_uncovered() {
+        let api = r#"
+pub type Note = { id: int, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str) Note { return db.create_note(title) }
+
+#[api(method = "POST", path = "/api/notes/duplicate")]
+pub fn duplicate(id int) Note { return db.clone_note(id) }
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        // db.rs has all_notes + create_note but NOT clone_note (duplicate's body).
+        let db_fns: std::collections::HashSet<String> = [
+            "all_notes".to_string(), "create_note".to_string(),
+        ].into_iter().collect();
+        // Not full cover — duplicate is uncovered.
+        assert!(!all_endpoints_covered(&module, Some(&db_fns)),
+            "duplicate endpoint should make coverage partial");
+        // Collect uncovered (same logic as generate_rust_server's hard check).
+        let uncovered: Vec<&str> = module.endpoints.iter()
+            .filter(|e| !e.return_type.contains("Stream<"))
+            .filter(|e| resolve_db_call(e, &db_fns).is_none())
+            .map(|e| e.fn_name.as_str())
+            .collect();
+        assert_eq!(uncovered, vec!["duplicate"], "only duplicate is uncovered: {:?}", uncovered);
     }
 
     /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and
