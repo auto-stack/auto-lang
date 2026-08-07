@@ -5906,6 +5906,10 @@ impl VueGenerator {
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
         let normalized_tag = tag.replace('-', "_").to_lowercase();
 
+        // Plan 012 Batch D: snapshot so the post-match choke point can tell
+        // which attrs the arm itself pushed (see below).
+        let attrs_before_match = attrs.len();
+
         match normalized_tag.as_str() {
             // === Button ===
             "button" => {
@@ -8638,6 +8642,25 @@ impl VueGenerator {
             }
         }
 
+        // Plan 012 Batch D (P0#11 leftover): forward `class:`/`style:` on the
+        // shadcn arms that never looked at it (DialogTitle, Sidebar*, overlay
+        // primitives, … — ~130 arms where it was dropped silently). Vue attr
+        // fallthrough applies class/style to components automatically, so the
+        // full plain-path handling (push_native_classes: static class, dynamic
+        // :class, conditional ternary, __style__ CSS-string marker) is safe
+        // for every emitted element. Arms that already consumed the class/
+        // style props pushed a class/:class/:style attr and are skipped here,
+        // so nothing is ever emitted twice. Nothing is dropped anymore, so
+        // R011 never fires from this path.
+        if props.contains_key("class") || props.contains_key("style") {
+            let arm_emitted_class = attrs[attrs_before_match..].iter().any(|a| {
+                a.starts_with("class=") || a.starts_with(":class=") || a.starts_with(":style=")
+            });
+            if !arm_emitted_class {
+                self.push_native_classes(&mut attrs, tag, props);
+            }
+        }
+
         // Add event handlers
         for (event, aura_event) in events {
             // .window/.document modifiers → global listener, no template attr
@@ -9143,8 +9166,10 @@ impl VueGenerator {
             aura_event.params
                 .iter()
                 .map(|p| {
-                    let stripped = p.strip_prefix("this.").unwrap_or(p);
-                    stripped.replace("$event", "e").replace('"', "'")
+                    // Same `this.` stripping as template event args
+                    // (vue_event_param); addEventListener context additionally
+                    // maps `$event` to the listener's argument `e`.
+                    Self::vue_event_param(p).replace("$event", "e").replace('"', "'")
                 })
                 .collect()
         };
@@ -9485,17 +9510,70 @@ impl VueGenerator {
             func_name
         } else {
             // Replace double quotes with single quotes in params to avoid HTML attr quoting issues
-            let safe_params: Vec<String> = params.iter()
-                .map(|p| {
-                    // Plan 345: event-arg parser emits standalone `.field` as
-                    // `this.field` (correct for ArkTS). Vue <script setup> uses
-                    // bare state refs, so strip a leading `this.` here.
-                    let stripped = p.strip_prefix("this.").unwrap_or(p);
-                    stripped.replace('"', "'")
-                })
+            let safe_params: Vec<String> = params
+                .iter()
+                .map(|p| Self::vue_event_param(p).replace('"', "'"))
                 .collect();
             format!("{}({})", func_name, safe_params.join(", "))
         }
+    }
+
+    /// Adapt one event-arg param string for the Vue template.
+    ///
+    /// The event-arg parser renders a standalone `.field` state reference as
+    /// `this.field` (correct for ArkTS). In Vue `<script setup>` templates
+    /// `this` is invalid — state refs are bare setup-scope bindings that Vue
+    /// auto-unwraps — so every `this.` marker is stripped, wherever it sits in
+    /// the param string: leading (`.H(.x)`), inside a map literal
+    /// (`.H({ q: .x })`), or nested in a call (`.H(fmt(.x))`). P0#12: the old
+    /// code stripped only a leading prefix, so map/nested positions emitted
+    /// `this.query` and broke silently at runtime.
+    ///
+    /// A preceding identifier/`.` character guards against mangling member
+    /// access like `obj.this`, and quoted string contents are left untouched.
+    fn vue_event_param(param: &str) -> String {
+        let b = param.as_bytes();
+        let mut out: Vec<u8> = Vec::with_capacity(b.len());
+        let mut i = 0;
+        let mut quote: Option<u8> = None;
+        while i < b.len() {
+            let c = b[i];
+            if let Some(q) = quote {
+                out.push(c);
+                if c == b'\\' && i + 1 < b.len() {
+                    out.push(b[i + 1]);
+                    i += 2;
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == b'"' || c == b'\'' {
+                quote = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if c == b't'
+                && b[i..].starts_with(b"this.")
+                && (i == 0
+                    || !matches!(
+                        b[i - 1],
+                        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'$' | b'.'
+                    ))
+            {
+                i += 5; // skip "this."
+                continue;
+            }
+            out.push(c);
+            i += 1;
+        }
+        // Only ASCII `this.` sequences were removed; everything else was
+        // copied verbatim, so the output is valid UTF-8.
+        String::from_utf8(out).unwrap_or_else(|_| param.to_string())
     }
 
     // ========================================================================
@@ -12834,6 +12912,108 @@ widget Menu {
         assert!(sfc.contains("function Drag(y: any)"), "Drag param:\n{}", sfc);
     }
 
+    /// P0#12: a STATE field reference inside a map-literal event argument
+    /// (`.H({ q: .query, e: $event })`) must emit the bare setup-scope binding
+    /// (`query` — Vue templates auto-unwrap setup refs), NOT `this.query`:
+    /// `this` is invalid in Vue 3 template expressions and breaks silently at
+    /// runtime. Loop variables in the same position pass through untouched.
+    #[test]
+    fn test_map_literal_event_arg_state_field_no_this() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget SearchBar {
+    msg Msg { Search }
+    model { var query str = "" }
+    view {
+        col {
+            input {
+                oninput: .Search({ q: .query, e: $event })
+            }
+        }
+    }
+    on {
+        .Search(payload) -> { .query = "" }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("this."),
+            "template event args must never reference `this` (invalid in Vue 3 templates):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@input=\"Search({ q: query, e: $event })\""),
+            "state field in map-literal arg must emit the bare binding:\n{}",
+            sfc
+        );
+    }
+
+    /// Same bug class, sibling positions: `this.` not at the very start of the
+    /// param string — nested inside a call argument and inside a nested map.
+    #[test]
+    fn test_nested_event_arg_state_field_no_this() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget NestedArgProbe {
+    msg Msg { Apply, Store }
+    model { var raw str = "" }
+    view {
+        col {
+            onclick: .Apply(fmt(.raw)),
+            onblur: .Store({ outer: { inner: .raw } })
+        }
+    }
+    on {
+        .Apply(v) -> { .raw = v }
+        .Store(p) -> { .raw = "" }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("this."),
+            "nested event args must never reference `this`:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@click=\"Apply(fmt(raw))\""),
+            "state field nested in call arg must emit the bare binding:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@blur=\"Store({ outer: { inner: raw } })\""),
+            "state field in nested map must emit the bare binding:\n{}",
+            sfc
+        );
+    }
+
+    /// Global (window/document) listener args go through a separate codegen
+    /// path (`try_register_global_listener`) — same `this.` constraint applies.
+    #[test]
+    fn test_global_listener_map_arg_state_field_no_this() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget GlobalArgProbe {
+    msg Msg { Track }
+    model { var origin str = "" }
+    view {
+        col {
+            onmousemove.window: .Track({ o: .origin, e: $event })
+        }
+    }
+    on {
+        .Track(p) -> { .origin = "" }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("this."),
+            "global listener args must never reference `this`:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("Track({ o: origin, e: e })"),
+            "state field in global listener map arg must emit the bare binding:\n{}",
+            sfc
+        );
+    }
+
     /// window-level mouse listeners: drag tracking outside the element.
     /// - with $event → wrapper function adapting args
     /// - without params → bare function reference
@@ -14455,6 +14635,119 @@ widget SelectProbe {
         assert!(
             sfc.contains("class=\"control-row\""),
             "select must forward its static class on the shadcn path:\n{sfc}"
+        );
+    }
+
+    // --- Plan 012 Batch D (P0#11 leftover): class forwarding on the
+    // remaining shadcn arms ---------------------------------------------
+    // ~130 generate_shadcn_attrs arms never looked at `class:` at all — it
+    // was dropped silently. A post-match choke point now forwards class/
+    // style (static + dynamic) on every arm whose emitted element did not
+    // already consume it (Vue attr fallthrough makes class work on
+    // components automatically). Representative sample from different
+    // families (overlay, sidebar, form, layout), each using a DSL tag that
+    // genuinely dispatches through the widget registry into the arm (a tag
+    // the registry doesn't know would take the plain-element path, where
+    // class always worked — asserting the emitted component tag guards
+    // against that false green).
+
+    #[test]
+    fn test_dialogtitle_forwards_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget DialogTitleProbe {
+    view {
+        col {
+            dialogtitle {
+                class: "text-lg"
+                text "Title"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<DialogTitle") && sfc.contains("class=\"text-lg\""),
+            "DialogTitle (overlay family) must forward its static class via attr fallthrough:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_sidebar_forwards_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SidebarProbe {
+    view {
+        col {
+            sidebar (class: "w-64 border-r") {
+                text "nav"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Sidebar") && sfc.contains("class=\"w-64 border-r\""),
+            "Sidebar (sidebar family) must forward its static class:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_slider_forwards_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SliderProbe {
+    model { var vol int = 0 }
+    view {
+        col {
+            slider (class: "w-48", value: .vol)
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Slider") && sfc.contains("class=\"w-48\""),
+            "Slider (form family) must forward its static class:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_card_forwards_dynamic_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget CardProbe {
+    model { var cls str = "x" }
+    view {
+        col {
+            card (class: .cls) {
+                text "body"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<Card") && sfc.contains(":class=\"cls\""),
+            "Card (layout family) must bind a dynamic class expr as :class:\n{sfc}"
+        );
+    }
+
+    /// No double emission: an arm that already consumed the class (button →
+    /// shadcn Button via push_style_class) must not get a second class attr
+    /// from the choke point.
+    #[test]
+    fn test_button_class_not_duplicated_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget ButtonProbe {
+    view {
+        col {
+            button (class: "px-8") {
+                text "go"
+            }
+        }
+    }
+}
+"#);
+        let occurrences = sfc.matches("class=\"px-8\"").count();
+        assert_eq!(
+            occurrences, 1,
+            "button class must appear exactly once (no choke-point duplicate):\n{sfc}"
         );
     }
 

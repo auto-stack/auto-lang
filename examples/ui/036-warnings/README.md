@@ -14,6 +14,8 @@ exercises all six in one app.
 | 19 | `.remove`/`.contains` mapped to `.splice`/`.includes` on ANY receiver (store facades included) | type-gated: proven arrays/strings map, facades pass through with an **R010 Info** note |
 | 47 | `.x != null` → `!== undefined` (misses `null`) | loose `x.value != null` / `== null` |
 | — | `class:` on schema-registered Form elements routed through the shadcn attrs path (`label`, `select`) silently dropped | static `class` kept, dynamic exprs emit `:class`; unrenderable values raise **R011 Warning** |
+| — | **Batch D**: state field inside a map-literal event arg (`.H({ q: .query })`) emitted `this.query` — invalid in Vue 3 templates, silent runtime break | emits the bare setup binding (`query`) in every event-arg position (map, nested call, global listeners) |
+| — | **Batch D**: ~130 other shadcn sub-component arms (`DialogTitle`, `Sidebar*`, overlay primitives, …) never looked at `class:` at all | `class:`/`style:` forwarded on every arm via attr fallthrough (post-match choke point in `generate_shadcn_attrs`) |
 
 ## Warning channel
 
@@ -45,5 +47,9 @@ auto build --strict  # FAILS on the deliberate stray comma (R008)
   - `<label class="slider-row">` (static class kept on the shadcn path),
   - the second `<label>` carries `:class="cls"` (dynamic class kept),
   - the `<Select>` root keeps `class="control-row"`.
+  - Batch D: `@input="Search({ q: query, e: $event })"` — no `this.` anywhere
+    in the template,
+  - Batch D: `<DialogTitle class="text-lg font-semibold">` (previously the
+    class was dropped silently on this arm).
 - `gen/front/vue/src/components/EntryOpener.vue` contains
   `function Open(entry` and `defineExpose({ Open })`.
