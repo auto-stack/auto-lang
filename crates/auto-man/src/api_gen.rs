@@ -374,8 +374,11 @@ fn post_process_db_rs(mut code: String) -> String {
     code = add_mut_to_let_collections(&code);
     // Plan 399 §3: a2r iterates borrowed (`for note in &*G.lock()`) but moves
     // fields out of the shared reference in struct literals (`tags: note.tags`)
-    // and returns (`return Some(note)`). Add .clone() to `note.X` field reads in
-    // struct-ctor position and to `Some(note)` over a borrow.
+    // and returns (`return Some(note)`).
+    // Plan 399 Phase 11.4: a2r now clones borrowed-iter field reads in struct
+    // ctors (write_expr_for_struct_field). The return-Some(note) case still
+    // needs this post-process (a2r doesn't yet clone bare iter-var returns) —
+    // keep it until that's covered.
     code = append_clone_for_borrowed_fields(&code);
     code
 }
