@@ -13,6 +13,7 @@ exercises all six in one app.
 | 45 | `expose { .Open }` on a parameterized handler → handler not generated, `defineExpose({ Open })` resolved to `window.open` at runtime | handler generated and exposed; **R009** guards residual cases |
 | 19 | `.remove`/`.contains` mapped to `.splice`/`.includes` on ANY receiver (store facades included) | type-gated: proven arrays/strings map, facades pass through with an **R010 Info** note |
 | 47 | `.x != null` → `!== undefined` (misses `null`) | loose `x.value != null` / `== null` |
+| — | `class:` on schema-registered Form elements routed through the shadcn attrs path (`label`, `select`) silently dropped | static `class` kept, dynamic exprs emit `:class`; unrenderable values raise **R011 Warning** |
 
 ## Warning channel
 
@@ -40,6 +41,9 @@ auto build --strict  # FAILS on the deliberate stray comma (R008)
   - `body_text` computed uses `is_expanded.value`,
   - `has_draft` computed uses `draft_name.value != null`,
   - `Del` handler keeps `items.value.splice(i, 1)`,
-  - `FacadeDel` handler calls `recentFiles.remove(i)` unchanged.
+  - `FacadeDel` handler calls `recentFiles.remove(i)` unchanged,
+  - `<label class="slider-row">` (static class kept on the shadcn path),
+  - the second `<label>` carries `:class="cls"` (dynamic class kept),
+  - the `<Select>` root keeps `class="control-row"`.
 - `gen/front/vue/src/components/EntryOpener.vue` contains
   `function Open(entry` and `defineExpose({ Open })`.
