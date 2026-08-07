@@ -173,8 +173,8 @@ impl<M> ActorReceiver<M> {
 /// `send` is non-blocking (unbounded channel) to match VM semantics where
 /// `h.send(msg)` enqueues immediately and returns. `TaskRef` is a first-class
 /// type — it can be stored in struct fields, passed to functions, returned, etc.
-/// (Plan 387 §16 P0-2). It is NOT `Clone`; to share an actor, move the `TaskRef`
-/// or wrap it in `Arc` at the call site.
+/// (Plan 387 §16 P0-2). It is `Clone` (Plan 397 follow-up) — cloning duplicates
+/// the sender handle cheaply, so multiple owners can send to the same mailbox.
 pub struct TaskRef<M: Send + 'static> {
     tx: mpsc::UnboundedSender<M>,
     pending: Arc<AtomicUsize>,
@@ -206,6 +206,22 @@ impl<M: Send + 'static> TaskRef<M> {
 
 // TaskRef's Drop is the default (drops the UnboundedSender, closing the channel
 // if this is the last sender). No custom Drop needed — RAII is automatic.
+
+// Plan 397 follow-up (auto-ai 022): TaskRef is Clone. Both fields are cheaply
+// cloneable (UnboundedSender::clone duplicates the sender; Arc::clone bumps the
+// refcount). This lets a sink be shared between a streaming callback's closure
+// and the surrounding loop body (e.g. Agent.run_inner calls complete_stream
+// with a move closure that forwards SSE deltas to the sink, while the loop
+// continues to send turn/tool events to the same sink). Previously the docs
+// said "wrap in Arc at the call site" — Clone removes that workaround.
+impl<M: Send + 'static> Clone for TaskRef<M> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            pending: self.pending.clone(),
+        }
+    }
+}
 
 impl<M: Send + 'static> std::fmt::Debug for TaskRef<M> {
     /// Handles are move-only; Debug exists so generated structs that hold a
