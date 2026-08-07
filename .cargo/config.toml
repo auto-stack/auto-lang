@@ -17,9 +17,13 @@ linker = "rust-lld.exe"
 
 [build]
 jobs = 8
-# Use sccache to cache rustc compilation units and speed up clean builds.
-# Comment this out if a crate fails to build through the wrapper.
-rustc-wrapper = "sccache.exe"
+# sccache (rustc compile cache) is opt-in via the per-platform wrapper scripts
+# in scripts/sccache-wrap.{sh,cmd}, enabled through the RUSTC_WRAPPER env var
+# (set per-platform in the user shell environment, like PYO3_PYTHON below).
+# This keeps builds working on machines without sccache installed: the wrapper
+# falls back to plain rustc. See scripts/README-sccache.md to enable it.
+# (cargo's rustc-wrapper cannot be per-target or conditional, and build.rs runs
+#  too late to choose the wrapper, so env-var dispatch is the only mechanism.)
 
 # PYO3_PYTHON is set per-platform via the user shell environment
 # (not here, since [env] is global and cannot differ by target).
