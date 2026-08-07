@@ -1,6 +1,6 @@
 # Plan 399: AutoUI 示例扩展 — SSE 多事件 + CRUD 智能扩展（路径 B）
 
-> **状态（2026-08-07）**: 🟡 代码完成 + 017 运行时验证通过，深层调研发现新遗漏。第 1-5 步落地，017-chat playwright 8/8 全绿。但第二轮深挖发现 5 项此前未记录的问题（§6-§10）：Typing 事件死代码、015 后端从未编译验证、db_fn 映射脆弱、PATCH+body 隐性 bug、混合状态分裂。详见「已知遗留与技术债」。
+> **状态（2026-08-08）**: ✅ 核心全部完成。第 1-5 步 + Phase 11.1/11.2/11.3/11.4（a2r 根治）+ Phase 12（typing 端到端 9/9）+ Phase 13（混合状态硬检查）全部落地。017-chat playwright **9/9 全绿**（含 typing）。015 后端 cargo build 通过。a2r 327 测试绿。仅余 P11.5/P11.6（mut/deref，后处理覆盖，根治边际价值低）。
 > **分支**: 第 1-3 步 `auto-ui-examples`（合并 `c175e9d8`）；第 4-5 步 `plan399/handler-db-state`（合并 `45619231`）；收尾 §1-§5 `plan399/cleanup`（合并 `80538fb1`）；深层修复 §6-§10 `plan399/deepfix`（worktree `D:/autostack/auto-lang-autoui`）。
 > **动机**: 调研 016-027 全部是「单文件静态玩具」，015-notes 是唯一完整 App。本计划把 017-chat 升级为首个 SSE 实时聊天 App，并在过程中打通 SSE 多事件 codegen + 修复后端 CRUD 模板丢弃业务逻辑的根因（mine:false bug）。
 
@@ -109,17 +109,15 @@
 ### §2 ✅ 前端 `sender=="You"` mine 兜底清理（收尾完成）
 `message_thread.at` 气泡方向从 `if msg.sender == "You"` 改为 `if msg.mine`（后端 db.rs create_message 设 mine:true，现权威）。`smoke.spec.ts` T3 注释、`acceptance.atd` T3 契约同步更新。改后重跑 playwright 仍 8/8。
 
-### §3 ✅(后处理层) a2r 转译缺陷后处理大幅加固（015 db.rs 26→0 编译错误）
-`post_process_db_rs` 原只覆盖 017 简单情形（硬编码 MESSAGES、i32 只修 id 字段）。015 的复杂 db.at（12 fns + for/if-else + 列表重建 + emoji 种子）暴露 26 个编译错误。本轮在后处理层系统修复（a2r `trans/rust.rs` 根治仍属长远项）：
-- **i32→i64 统一**：a2r 把所有 `int` 转 `i32`，但 types.rs 用 `i64` → db.rs 全 `i32`→`i64`（消 6 E0277 + 多 E0308）。
-- **去 deref 泛化**：`*MESSAGES.lock().push` → 正则 `*\w+.lock().push/insert`（覆盖 NOTES/FOLDERS，消 E0614）。
-- **借用字段 .clone()**：`for note in &*G.lock()` 里 `note.title`/`note.tags` 是共享引用，move 报错 → `append_clone_for_borrowed_fields` 给 struct-ctor 里的 `obj.field` 和 `Some(note)` 加 `.clone()`（消 E0507）。
-- **let → let mut**：`let results = vec![]` 后 `.push()` → `add_mut_to_let_collections` 加 mut（消 E0596）。
-- **str/slice 参数赋字段**：`folder: folder`（&str→String，含尾部 ` }`）+ `tags: tags`（&[String]→Vec 加 `.to_vec()`）；`append_tostring_for_str_fields` 扩展 slice_params + ` }` 结尾。
-- **FOLDERS 返回**：`fix_borrowed_slice_returns` 泛化 `return *VAR.lock()` 正则（消 Folder E0507）。
-- **handler []str 借用**：`resolve_db_call` 的 `[]str` 参数借用 `&input.tags`（&Vec→&\[String] deref）。
-- **验证**：015 后端**实际 cargo build 通过**（Finished，仅 dead-code warning）。`regen_real_015_backend_db_delegation`（#[ignore]）断言全 db 委托 + `&input.tags`。auto-man 196 测试绿。
-- **剩余长远项**：a2r `trans/rust.rs` 的根治（int 类型推断 i64、借用迭代器 clone、str→String 转换、mut 推断）——当前靠后处理，根治应在 a2r 层。
+### §3 ✅ a2r 转译缺陷根治（Phase 11.1/11.2/11.3/11.4 + 后处理加固）
+原 26 个编译错误（015 复杂 db.at）现在大部分由 a2r 层根治（Phase 11），小部分仍靠后处理兜底：
+- **P11.1 ✅ i32→i64**：a2r `rust_type_name` Int→i64 + cast + 黄金同步；后处理 `code.replace("i32","i64")` 已**移除**
+- **P11.2 ✅ str→String**：a2r `Arg::Name` shorthand 补查 struct_field_types
+- **P11.3 ✅ &[T]→Vec + 全局 clone**：a2r `rust_return_type_name` Slice→Vec + `needs_global_clone`；后处理 `fix_borrowed_slice_returns` 已**移除**
+- **P11.4 ✅ 借用迭代器 clone**：a2r `borrowed_iter_vars` + struct 字段/Some(iter_var) clone
+- **P11.5 🟡 mut 推断**：仍靠后处理 `add_mut_to_let_collections`（a2r 根治需 body 预扫描，边际收益低）
+- **P11.6 🟡 去 deref**：仍靠后处理正则（a2r 在 Expr::Ident 层看不到下游，根治回归面广）
+- **仍靠后处理兜底**：use 路径映射、strip_collection_new、str→String（a2r 已部分覆盖）、append_clone（a2r 已部分覆盖）
 
 ### §4 ⚪ `endpoint.body` 标注为路线A预留（收尾完成）
 `ApiEndpoint.body` 生产代码无读取者。路线B（db 委托）不依赖它。已在 `types.rs`/`mod.rs` 加注释明确"路线A预留，路线B未用"，不删除（留作未来转译任意 body 的基建）。
@@ -129,20 +127,20 @@
 1. **单测** `test_store_composable_sse_multi_endpoint`（`vue.rs:13925`）：测试数据 `api_imports` 加 `"events"`，与 Phase 4 的按 fn_name 过滤逻辑一致。
 2. **真实 bug** `examples/ui/017-chat/src/front/chat_store.at`：原 `use back.api: list_messages` 缺 `stream`，致 Phase 4 过滤器（`vue.rs:9900`）丢弃 SSE 接线 → 前端不建 EventSource → T6/T7 失败。改为 `use back.api: list_messages, stream` 并加注释说明。这解释了为何文档原称"第2步 8/8"在当前 codegen 下无法复现。
 
-### §6 🟡→✅(后端) Typing 事件补全（后端链路打通，前端待运行时验证）
-原状：`ChatEvent { NewMessage, Typing }` 只有 NewMessage 可用，Typing 全链路无触发。本轮补全了**后端链路 + 前端源码**：
-- **后端广播泛化**（`api_gen.rs`）：新增 `broadcast_event_name(endpoint, primary_type)` —— POST create 广播 `"New{Type}"`（如 NewMessage），POST fn 名含 `typing` 的 void 端点广播 `"Typing"`。两处广播（db 委托 + fallback）+ void-POST typing 分支（广播 `&input` payload）均改用动态名，不再硬编码 `"NewMessage"`。
-- **typing 端点**：api.at 加 `POST /api/typing` (`set_typing(sender str)`)，db.at 加 `set_typing`（no-op，广播由 handler 做）。
-- **前端触发链路**：composer.at 加 `on_typing` 回调，`InputChanged` 时 emit；app.at 加 `.Typing(name)` msg，调 `set_typing(name)`。
-- **测试**：`test_sse_broadcast_event_name_not_hardcoded` 验证 create 广播 NewMessage、typing 广播 Typing + input payload。
-- **待运行时验证**：前端 store 重生成（type-driven SSE dispatch 已支持 Typing 变体）+ playwright 新增 typing 用例。当前 codegen 层链路完整，需 `auto run` 端到端确认。
+### §6 ✅ Typing 事件端到端打通（Phase 12，playwright 9/9）
+原状：`ChatEvent { NewMessage, Typing }` 只有 NewMessage 可用，Typing 全链路无触发。Phase 12 补全并**运行时验证**：
+- **后端广播泛化**（`broadcast_event_name`）：create→`New{Type}`，typing→`Typing`（`serde_json::json!` + 固定 `name` 字段）
+- **CreateInput 422 修复**：void POST（set_typing）原复用 `CreateMessageInput`（含 text）→ 422；改为每端点独立 CreateInput
+- **vue codegen 吞 oninput 修复**：v-model 优化原吞掉 oninput handler；改为仍生成 `@input`（v-model + @input 共存）
+- **前端**：composer `on_typing`、app `.Typing` msg、chat_store `Typing(TypingEvent)` 读 `evt.name`
+- **验证**：`auto run` 重生成 + playwright T1-T9 全绿，含 T9（B 输入 → A 看到 "You is typing…"）。017-chat 现为真正的多事件 SSE App
 
-### §7 ✅→🟡 015 栈溢出已修复，编译错误转 §3
-015 db.at 转译的两个独立 bug 已修，015 现在能**生成**，但生成的 db.rs 仍有编译错误（属 §3 范围）：
-- **栈溢出（已修）**：根因是 parser 在 Windows 1MB 主线程栈上，对深嵌套（for + if/else + 8 字段结构体字面量 + note.x 字段访问）递归过深（每帧含 `rhs_lookahead_is_node` 的 Vec<Token>）。修复：`transpile_db_to_rs` 内部用 16MB 栈线程（仓库惯例，cf. `run_autovm` lib.rs:341）。注意根因在 **parser**（`parser.rs`）非 a2r。
-- **UTF-8 切片 bug（已修）**：`strip_collection_new`（`api_gen.rs:383`）按字节步进 `i += 1` + `code[i..]` 切片，遇到 015 种子数据的 emoji（📄）panic 在字符中间。修复：按 UTF-8 字符边界步进（`utf8_len` 辅助）。017 无此 bug（全 ASCII）。
-- **验证**：`regen_real_015_backend_db_delegation`（#[ignore]，默认栈）通过——015 完整生成，全 db 委托（无 State<Db>），`crate::db::all_notes`/`create_note`/`update_tags` 委托正确。
-- **剩余（转 §3）**：生成的 015 db.rs 有 26 个编译错误（E0308×14、E0277 i64/i32×6、E0614×2、E0596 mut×2、E0507×1）——都是 a2r 转译复杂 db.at 的缺陷，属 §3 根治范围。015 当前仍用旧 State<Db> 产物运行。
+### §7 ✅ 015 栈溢出 + UTF-8 + 编译错误全部修复（Phase 11 根治）
+015 db.at 转译的三个层次问题全部解决，015 现在**生成 + 编译通过**：
+- **栈溢出（§7）**：parser 深嵌套溢出 → `transpile_db_to_rs` 用 16MB 栈线程
+- **UTF-8 切片（§7）**：`strip_collection_new` 字符边界 → `utf8_len` 辅助
+- **26 个编译错误（原转 §3）**：Phase 11.1（i32→i64）+ 11.3（&[T]→Vec + 全局 clone）+ 11.4（借用字段 clone）根治
+- **验证**：`regen_real_015_backend_db_delegation`（#[ignore]）通过 + **015 后端 cargo build 通过**（移除了 fix_borrowed_slice_returns + i32→i64 两个后处理，仍编译）
 
 ### §8 ✅ db_fn 映射改进（body-based 解析优先于命名启发式）
 原状：`db_fn_candidates` 纯前缀归一（list_→all_ 等 13 动词），无形态学——不规则复数（`list_person`→`all_people` 失败）、同义词（`login`→`find_user`）、`move_X`→`update_X` 语义错配，全部静默回退。
@@ -154,24 +152,19 @@
 ### §9 ✅ PATCH+body 编译 bug（已修，前轮）
 `endpoint_has_body` 纳入 PATCH（有 body_params 时），带 body 的 PATCH 端点（如 `set_pinned(id, pinned bool)`）现在正确生成 `Json(input)` 提取器。回归测试 `test_patch_with_body_gets_json_extractor`。
 
-### §10 🟡 混合状态（部分回退）运行时状态分裂
 ### §10 ✅ 混合状态（部分回退）生成期硬检查（Phase 13 已落地）
 当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum **0.7**（仓库实际版本；原文误写 0.8，两者 `Handler`/`with_state` 行为一致）下能编译，但运行时同一资源的读写会不一致。
 **Phase 13 落地方案 A**：`generate_rust_server` 在 `has_db && !db_full_cover` 时 `return Err`（列出未覆盖端点名），而非静默回退。escape hatch `AUTO_ALLOW_PARTIAL_DB=1` 供渐进迁移。测试 `test_mixed_state_detection_collects_uncovered`。015/017 全覆盖不受影响。
 
 ---
 
-## 后续（超出本计划，详见 Phase 11-13 调研）
+## 后续（超出本计划）
 
-本轮（§7/§6/§3/§8）已完成的：栈溢出修复、Typing 后端补全、a2r 后处理加固（015 编译通过）、db_fn body 解析、PATCH+body 修复。剩余三项长远问题已深入调研，作为独立 Phase 记录在下：
+Phase 11（P11.1/11.2/11.3/11.4）、Phase 12（typing 9/9）、Phase 13（混合状态硬检查）全部落地。剩余：
 
-- **Phase 11**：a2r 转译器根治（`trans/rust.rs`，6 类缺陷，当前靠 post_process 后处理覆盖）
-- **Phase 12**：§6 前端 SSE typing 端到端验证（协议不匹配 bug + store 重生成 + playwright T9）
-- **Phase 13**：§10 混合状态分裂根治（生成期硬检查）
+- **P11.5 mut 推断 / P11.6 去 deref**：仍靠后处理覆盖（a2r 根治边际价值低，见各 Phase 章节）。这些不影响 015/017 编译，属清洁性优化。
 - 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
-
-> 注：§9（PATCH+body）已修复（`endpoint_has_body` 纳入 PATCH + `test_patch_with_body_gets_json_extractor`）。§10 升格为 Phase 13。
 
 ---
 
@@ -179,13 +172,14 @@
 
 > **状态总览**：
 > - **P11.2 ✅ 已落地**（Arg::Name shorthand str→String，`trans/rust.rs:8583`）
-> - **P11.1 / P11.3 / P11.4 / P11.5 / P11.6 🟡 暂缓**——理由：a2r（`trans/rust.rs` 17000+ 行）仅 2 个单元测试，改动主要靠 015/017 端到端编译验证（慢）；而 `post_process_db_rs` 后处理已让 015/017 编译通过，根治的边际价值是「消除后处理的清洁性」非功能正确性。待 a2r 有充分测试覆盖后再逐项根治。
+> - **P11.1 / P11.3 / P11.4 / P11.5 / P11.6 🔄 推进中**
+> - **重要纠正（2026-08-08）**：之前误判"a2r 仅 2 个测试"。**实际 a2r 有 327 个单元测试 + 239 个黄金用例**（`crates/auto-lang/src/tests/a2r_tests.rs` + `test/a2r/`），需 `--features test-trans` 启用（`#[cfg(feature="test-trans")] mod a2r_tests`）。基线 327 passed/0 failed（排除 concurrency 栈溢出，与 §7 同根因）。**测试覆盖充分，根治安全**，之前的暂缓理由作废。
 > - **调研结论**：`rust_type_name`/`rust_param_type_name` 是 `RustTrans` 私有方法，仅 a2r 内部用，**不影响 gdscript/tscn/typescript/javascript/python 等其他转译目标**。axum/tauri targets 有独立的 `to_rust_type`（`api/targets/axum.rs:66`），改 a2r 不影响它们。a2r 已有 `#![allow(unused_mut, unused_parens, ...)]`（`trans/rust.rs:1680`），保守根治策略安全。
 
-### P11.1 int 类型 i32→i64（🟡 暂缓——实际 cast 64 处远超调研估计，无测试保护）
-- **根因**：`trans/rust.rs:1162` `Type::Int => "i32"`（唯一类型映射点）。后端 types.rs 用 i64（`api_gen.rs:750`）。已有 i64 先例：`trans/rust.rs:9160`（task state 字段）。
-- **改动**：(1) `:1162` 改 `i64`；(2) 全文 `as i32`→`as i64`（**实际 64 处**，非调研估计的 ~30，含位运算 `as u32) as i32` 等嵌套 cast）；(3) 删 `api_gen.rs:368` 的 `code.replace("i32","i64")`。
-- **暂缓理由**：64 处 cast 改动需逐个判断语义（位运算中间值 vs 最终 cast），但 a2r 仅 2 个测试，回归靠端到端编译（慢）；后处理 `code.replace("i32","i64")` 已覆盖 015/017。待 a2r 加测试后根治。
+### P11.1 int 类型 i32→i64（✅ 已落地——a2r 327 测试 + 153 黄金同步）
+- **根因**：`trans/rust.rs:1162` `Type::Int => "i32"`。后端 types.rs 用 i64。
+- **改动**：`:1162` 改 `i64` + `as i32`→`as i64`（64 处）+ `parse::<i32>`→`<i64>` + 153 黄金文件同步 + 删后处理 `code.replace("i32","i64")`。
+- **验证**：a2r 327 passed/0 failed；015 cargo build 通过（无 i32→i64 后处理）。
 
 ### P11.2 str→String 字段 to_string（低成本高价值，优先）
 - **根因**：`trans/rust.rs:8583` `Arg::Name(name)` 分支**硬编码 `needs_to_string=false`**，不查 `struct_field_types`（相邻的 `Arg::Pair:8584` 和 `Arg::Pos:8578` 都正确查了）。这是 a2r 已有逻辑的遗漏分支。
