@@ -9868,15 +9868,28 @@ export function cn(...inputs: ClassValue[]) {
         let stream_eps = store.stream_endpoints.clone();
         let wire_sse = !stream_eps.is_empty();
 
+        // Plan musk-022 Phase 4 fix: a streaming endpoint should only wire into
+        // a store that actually imports its function (via `use back.api: <fn>`).
+        // `store.stream_endpoints` is resolved project-globally from back/api.at,
+        // so without this filter EVERY store would get every stream's SSE wiring
+        // (e.g. AuthStore picking up chat_stream's Delta/Thinking dispatchers).
+        // Filter to endpoints whose fn_name appears in this store's api_imports.
+        let active_stream_eps: Vec<crate::aura::StreamEndpoint> = store.stream_endpoints
+            .iter()
+            .filter(|ep| store.api_imports.iter().any(|imp| imp == &ep.fn_name))
+            .cloned()
+            .collect();
+        let wire_sse = wire_sse && !active_stream_eps.is_empty();
+
         // Export function.
         let fn_name = format!("use{}Store", store.name);
         // Module-level guard: every widget calls reactive(useXxxStore()), so
         // without a flag each call would open its own SSE connection. One guard
         // per endpoint (keyed by path) so multi-endpoint stores don't collapse.
         if wire_sse {
-            code.push_str("// Plan 043 stream phase: type-driven SSE. The streaming endpoint's\n");
-            code.push_str("// `~Stream<T>` return type + path drive this EventSource wiring.\n");
-            for ep in &stream_eps {
+            code.push_str("// Plan musk-022 multi-event SSE: one EventSource per streaming\n");
+            code.push_str("// endpoint, dispatched by each variant's wire value.\n");
+            for ep in &active_stream_eps {
                 let guard = stream_guard_var(&ep.path);
                 code.push_str(&format!("let {} = false;\n", guard));
             }
@@ -9936,7 +9949,7 @@ export function cn(...inputs: ClassValue[]) {
         // is empty, fall back to the legacy `command_output`/`command_result`
         // pair so existing ash-gui stores keep working unchanged.
         if wire_sse {
-            for ep in &stream_eps {
+            for ep in &active_stream_eps {
                 let guard = stream_guard_var(&ep.path);
                 code.push_str(&format!("    if (!{}) {{\n", guard));
                 code.push_str(&format!("        {} = true;\n", guard));
