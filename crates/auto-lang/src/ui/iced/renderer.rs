@@ -3749,6 +3749,14 @@ fn compare_pngs(
             }
         }
 
+        // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
+        // 'clear' 给 App → App.ClearScreen → store.ClearScreen,但 vm 剥离 callback
+        // emit(同 Run)。这里直接触发 store.ClearScreen(归档所有 blocks)。
+        if widget_name == "PromptBar" && event_name == "OnCtrlL" {
+            let _ = state.component.on_with_input_for("ShellStore", "ClearScreen", None);
+            *state.view_dirty.borrow_mut() = true;
+        }
+
         // ── Shell bridge:RunCommand 后备路径(ash-gui M1) ──
         // 当 store.RunCommand 从 App.RunCommand 直接触发(非 emit 模拟路径,
         // 如 Rerun/侧栏),event_name=="RunCommand"。此路径下 store 也只记 pending,
@@ -3788,29 +3796,58 @@ fn compare_pngs(
             }
         }
         if event_name == "Cancel" {
-            // store .Cancel handler 把所有 Running block 标 Cancelled(原逻辑保留);
-            // 这里额外通知执行器线程停掉对应进程(merged:标所有队列里的 + 记录)。
-            // 因 store 不带 block_id,简化:标 cancel_flags 里所有当前 Running。
-            // 读 blocks 找 Running 的 id(若可读);否则队列/进程级取消。
-            if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                if let Ok(mut h) = handle.lock() {
-                    // 读 store blocks 找 Running block_id(VM read_state_as_vec)。
-                    if let Ok(blocks) = state.component.read_state_as_vec("blocks") {
-                        for b in &blocks {
-                            // blocks 元素是 Obj;取 .id + .status.kind。
-                            if let auto_val::Value::Obj(obj) = b {
-                                let bid = obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0);
-                                let kind = obj.get("status")
-                                    .and_then(|s| if let auto_val::Value::Obj(so) = s {
-                                        so.get("kind").map(|k| k.as_str().to_string())
-                                    } else { None })
-                                    .unwrap_or_default();
-                                if kind == "Running" && bid != 0 {
-                                    h.cancel_flags.insert(bid, true);
-                                }
-                            }
+            // CMD-06:只停首个 Running block(对齐 Vue useShellTauri.ts:112 .find,
+            // 非 filter)。blocks 由 renderer 管(Value::Array),在此用 Rust 读 blocks
+            // 找首个 Running:标 cancel_flags(执行器进程 kill)+ 更新其 status=Cancelled。
+            let raw = state.component.read_state("blocks").ok();
+            let blocks_vec: Vec<auto_val::Value> = match &raw {
+                Some(auto_val::Value::Array(arr)) => arr.values.clone(),
+                Some(auto_val::Value::Nil) | None => Vec::new(),
+                _ => state.component.read_state_as_vec("blocks").unwrap_or_default(),
+            };
+            let mut first_running_id: Option<i64> = None;
+            let mut blocks_vec = blocks_vec;
+            for b in &blocks_vec {
+                if let auto_val::Value::Obj(obj) = b {
+                    let kind = obj.get("status")
+                        .and_then(|s| if let auto_val::Value::Obj(so) = s {
+                            so.get("kind").map(|k| k.as_str().to_string())
+                        } else { None })
+                        .unwrap_or_default();
+                    if kind == "Running" {
+                        first_running_id = Some(obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0));
+                        break;
+                    }
+                }
+            }
+            if let Some(bid) = first_running_id {
+                // 通知执行器 kill 进程。
+                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                    if let Ok(mut h) = handle.lock() {
+                        h.cancel_flags.insert(bid, true);
+                    }
+                }
+                // 更新该 block status → Cancelled(CMD-06 只首个)。
+                let mut changed = false;
+                for b in blocks_vec.iter_mut() {
+                    if let auto_val::Value::Obj(obj) = b {
+                        let id_match = obj.get("id").map(|v| v.as_int() as i64 == bid).unwrap_or(false);
+                        if id_match {
+                            let mut status = auto_val::Obj::new();
+                            status.set("kind", auto_val::Value::str("Cancelled"));
+                            status.set("message", auto_val::Value::str(""));
+                            obj.set("status", auto_val::Value::Obj(status));
+                            changed = true;
+                            break;
                         }
                     }
+                }
+                if changed {
+                    let _ = state.component.write_state(
+                        "blocks",
+                        auto_val::Value::Array(auto_val::Array { values: blocks_vec }),
+                    );
+                    *state.view_dirty.borrow_mut() = true;
                 }
             }
         }
