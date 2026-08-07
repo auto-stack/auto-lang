@@ -4845,11 +4845,22 @@ impl VueGenerator {
                     });
                 }
                 AuraPropValue::Expr(other_expr) => {
-                    if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
-                        dynamic_binding = Some(match dynamic_binding {
-                            Some(existing) => format!("[{}, {}]", existing, expr_str),
-                            None => expr_str,
-                        });
+                    // Plan 012 P0#13: the catch-all in expr_to_vue_bound_value
+                    // yields literal "null" for expression forms it can't
+                    // render. Never emit that (or drop the prop) silently —
+                    // reject with a loud R011 instead.
+                    match self.expr_to_vue_bound_value(other_expr) {
+                        Ok(expr_str) if expr_str != "null" => {
+                            dynamic_binding = Some(match dynamic_binding {
+                                Some(existing) => format!("[{}, {}]", existing, expr_str),
+                                None => expr_str,
+                            });
+                        }
+                        _ => self.warn(
+                            "R011",
+                            crate::ui_gen::validators::Severity::Warning,
+                            "class: expression form is not supported and was not emitted",
+                        ),
                     }
                 }
                 _ => {}
@@ -5634,7 +5645,10 @@ impl VueGenerator {
                 let pairs_vue: Vec<String> = pairs.iter()
                     .map(|p| {
                         let v_vue = self.expr_to_vue_bound_value(&p.value)?;
-                        Ok(format!("{}: {}", p.key.to_astr(), v_vue))
+                        // Plan 012 P0#13: quote keys that aren't valid JS
+                        // identifiers — `class: { "line-through": .done }`
+                        // used to emit `{line-through: done}`, a syntax error.
+                        Ok(format!("{}: {}", Self::js_obj_key(&p.key.to_astr()), v_vue))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", pairs_vue.join(", ")))
@@ -5703,6 +5717,11 @@ impl VueGenerator {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{}({})", name_str, args_str.join(", ")))
             }
+            // Plan 012 P0#13: a ternary `cond ? "a" : "b"` parses as Expr::If.
+            // In a bound position (e.g. a `class:` array element) it used to
+            // hit the catch-all below and emit literal `null` — silently
+            // broken output. Emit the string ternary instead.
+            Expr::If(if_stmt) => Ok(self.if_expr_to_style_ternary(if_stmt)),
             _ => Ok("null".to_string()),
         }
     }
@@ -14569,6 +14588,143 @@ widget ClassIfProbe {
                 && sfc.contains("line-through")
                 && sfc.contains("text-muted"),
             "class: if-expr must emit a :class ternary keeping both branches:\n{sfc}"
+        );
+    }
+
+    // --- Plan 012 P0#13: the three broken `class:` forms ------------------
+    // Repro of the downstream dynclass probe: static+dynamic duplication,
+    // map form key quoting, `+` concat / array forms emitting `null`.
+
+    /// Form 1: two `class:` props on one element (static string + dynamic
+    /// expr). Vue semantics union them; dropping either is silent data loss.
+    #[test]
+    fn test_p013_duplicate_class_props_merge() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget DupClassProbe {
+    model { var busy bool = false }
+    view {
+        col {
+            span {
+                class: "static-a"
+                class: .busy ? "on" : "off"
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("static-a"),
+            "static class from the first `class:` prop must survive:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":class=") && sfc.contains("busy") && sfc.contains("on"),
+            "dynamic class from the second `class:` prop must be bound:\n{sfc}"
+        );
+    }
+
+    /// Form 2: map form keys must be quoted when they aren't valid JS
+    /// identifiers (`line-through`), mirroring the `style:` StyleBinding path.
+    #[test]
+    fn test_p013_class_map_form_quotes_keys() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget MapClassProbe {
+    model { var done bool = false }
+    view {
+        col {
+            span {
+                class: { "line-through": .done }
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("'line-through': done"),
+            "class: map form must quote non-identifier keys:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("{ line-through: done }"),
+            "unquoted dashed key is a JS syntax error:\n{sfc}"
+        );
+    }
+
+    /// Form 3a: array form with a ternary element used to emit literal `null`.
+    #[test]
+    fn test_p013_class_array_ternary_no_null() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ArrClassProbe {
+    model { var busy bool = false }
+    view {
+        col {
+            span {
+                class: ["static-arr", .busy ? "on" : "off"]
+                text "array form"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("null"),
+            "class: array form must never emit literal null:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("'static-arr'") && sfc.contains("busy ? 'on' : 'off'"),
+            "class: array form must bind both elements:\n{sfc}"
+        );
+    }
+
+    /// Form 3b: string concat `class: "a" + .cls` used to emit literal `null`.
+    #[test]
+    fn test_p013_class_concat_no_null() {
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget ConcatClassProbe {
+    model { var cls str = "x" }
+    view {
+        col {
+            span {
+                class: "base-" + .cls
+                text "concat"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("null"),
+            "class: concat must never emit literal null:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("'base-' + cls"),
+            "class: concat must emit a bound string-concat expr:\n{sfc}"
+        );
+    }
+
+    /// The shadcn choke point (Batch D, push_native_classes) shares
+    /// extract_classes — the array form must be fixed there too.
+    #[test]
+    fn test_p013_class_array_shadcn_choke_point() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget ArrShadcnProbe {
+    model { var busy bool = false }
+    view {
+        col {
+            label (class: ["static-arr", .busy ? "on" : "off"]) {
+                text "depth"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            !sfc.contains("null"),
+            "shadcn choke point must not emit literal null for class arrays:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("'static-arr'") && sfc.contains("busy ? 'on' : 'off'"),
+            "shadcn choke point must bind the class array:\n{sfc}"
         );
     }
 

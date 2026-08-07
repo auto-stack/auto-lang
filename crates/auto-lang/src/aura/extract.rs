@@ -678,27 +678,50 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                     return extract_view_node(&expanded);
                 }
             }
-            let aura_props: HashMap<String, AuraPropValue> = props.iter()
-                .map(|p| {
-                    let value = match &p.value {
-                        ViewPropValue::Expr(expr) => {
-                            AuraPropValue::Expr(expr.clone())
-                        }
-                        ViewPropValue::StyleBinding(bindings) => {
-                            let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
-                                .map(|b| {
-                                    Ok(AuraStyleBinding {
-                                        style_name: b.style_name.clone(),
-                                        condition: b.condition.clone(),
-                                    })
+            let mut aura_props: HashMap<String, AuraPropValue> = HashMap::new();
+            for p in props.iter() {
+                let value = match &p.value {
+                    ViewPropValue::Expr(expr) => {
+                        AuraPropValue::Expr(expr.clone())
+                    }
+                    ViewPropValue::StyleBinding(bindings) => {
+                        let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
+                            .map(|b| {
+                                Ok(AuraStyleBinding {
+                                    style_name: b.style_name.clone(),
+                                    condition: b.condition.clone(),
                                 })
-                                .collect::<ExtractResult<_>>()?;
-                            AuraPropValue::StyleBinding(aura_bindings)
-                        }
-                    };
-                    Ok((p.name.clone(), value))
-                })
-                .collect::<ExtractResult<_>>()?;
+                            })
+                            .collect::<ExtractResult<_>>()?;
+                        AuraPropValue::StyleBinding(aura_bindings)
+                    }
+                };
+                // Plan 012 P0#13: a second `class:` prop on the same element
+                // used to collapse into the HashMap last-wins, silently
+                // dropping the first (e.g. `class: "static"` + a dynamic
+                // `class:` expr). Merge them into an array binding instead —
+                // Vue unions `:class="['static', expr]"` entries, matching
+                // the static+dynamic `class`/`:class` coexistence semantics.
+                if p.name.as_str() == "class" {
+                    if let Some(existing) = aura_props.remove("class") {
+                        let merged = match (existing, value) {
+                            (AuraPropValue::Expr(Expr::Array(mut elems)), AuraPropValue::Expr(e)) => {
+                                elems.push(e);
+                                AuraPropValue::Expr(Expr::Array(elems))
+                            }
+                            (AuraPropValue::Expr(prev), AuraPropValue::Expr(e)) => {
+                                AuraPropValue::Expr(Expr::Array(vec![prev, e]))
+                            }
+                            // Non-expr class values (StyleBinding) can't be
+                            // merged into an array — keep the last one.
+                            (_, v) => v,
+                        };
+                        aura_props.insert("class".to_string(), merged);
+                        continue;
+                    }
+                }
+                aura_props.insert(p.name.clone(), value);
+            }
 
             let aura_events: HashMap<String, AuraEvent> = events.iter()
                 .map(|e| {
