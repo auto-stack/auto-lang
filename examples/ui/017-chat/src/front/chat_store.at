@@ -5,6 +5,10 @@
 // the SSE wiring (T6/T7 regression).
 use back.api: list_messages, stream
 
+// TypingEvent: the SSE payload for a typing signal (Plan 399 Phase 12).
+// Backend broadcasts {"event":"Typing","name":"<user>"}. The store reads .name.
+type TypingEvent { name str }
+
 store ChatStore {
     model {
         var messages []Message = []
@@ -12,7 +16,7 @@ store ChatStore {
         var loading bool = false
     }
 
-    msg Msg { Init, NewMessage(Message), Typing(str), RefreshMessages }
+    msg Msg { Init, NewMessage(Message), Typing(TypingEvent), RefreshMessages }
 
     on {
         .Init -> {
@@ -21,7 +25,7 @@ store ChatStore {
             .loading = false
         }
         .NewMessage(msg) -> { .messages.push(msg) }
-        .Typing(name) -> { .typing_name = name }
+        .Typing(evt) -> { .typing_name = evt.name }
         .RefreshMessages -> { .messages = list_messages() }
     }
 }
