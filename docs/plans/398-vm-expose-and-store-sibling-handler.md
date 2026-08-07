@@ -212,3 +212,98 @@ App 调 `store.X()` 时 store 的 `use back.api: ...` 导入不透传到 App 作
 - 改完 bug 后的续接指南：`D:/autostack/auto-shell/designs/ash-gui-vm-diagnosis-resumption.md`
 - ash-gui-native 总计划：`D:/autostack/auto-shell/designs/ash-gui-native-plan.md`
 - auto-ui-creator skill（BUG-A 文档更新点）：`D:/autostack/skills/auto-ui-creator/SKILL.md`
+
+---
+
+## §11 重大修正（深入诊断后，2026-08-07）— 真根因是"静默 parse 错误"
+
+> §1–§9 的"3 个 VM bug"框架是在**没看到真根因前**的推断。深入诊断（加 eprintln
+> 到 `synthesize_from_decl` + `collect_module_imports`）后真相浮出:**ash-gui 的 vm
+> 启动失败主要是 .at 文件的 parse 错误被静默吞掉**,不是 VM 链接/作用域 bug。
+
+### 真根因(已验证)
+
+**`collect_module_imports`(`lib.rs:2290`)的 `Err(_) => return` 静默吞 parse 错误。**
+当 `back/api.at` 或 `front/shell_store.at` parse 失败,该模块的所有符号(pub fn / type)
+都不进 VM module,下游报 `Undefined symbol: api.X` —— 误导我们去查"VM 链接/作用域",
+而真因是 parse。
+
+**两个 .at parse 错误(已被前面的诊断 eprintln 暴露):**
+
+1. **`back/api.at`**:`[][]T`(嵌套数组,如 `rows: [][]RenderedCell`)与 `[](tuple)`
+   (元组数组,如 `fields: [](str, RenderedCell)`)在 **Core scenario parser** 下不被
+   支持(UI scenario 能 parse,但 back/ 走 Core)。验证:把 `[][]T` → `[]T`、
+   `[](str, RenderedCell)` → `[]str`,api.at 立即 parse 通过(`fns=8 types=19`)。
+   → **.at 层修复**:vm 模式下把这两种类型改成 `[]T`(或定义 wrapper type)。
+   → **可选的 VM/parser 改进**:让 Core parser 也支持 `[][]T` / `[](tuple)`(本计划
+     §12)。
+
+2. **`front/shell_store.at:29`**:`var git_info PromptContext = PromptContext{
+   git_branch: "", git_status: None }` —— `PromptContext.git_status` 类型是
+   `GitStatusInfo`(非可选 struct),`None` 类型不匹配(`FieldMismatch` 错误)。
+   Vue 版 `git_status: null` 能跑是因 TS 宽松;Auto 类型严格。
+   → **.at 层修复**:把 `PromptContext.git_status` 改成 `?GitStatusInfo`(可选),
+     或默认值用一个空 struct(各字段 0)而非 None。
+
+### 真正的 BUG-C(确实存在,但要先修上面两个才暴露)
+
+修了上面两个 parse 错误后,ash-gui 终于前进到真正的 BUG-C:
+`Undefined symbol: PromptBar_State.Exit in module App`(PromptBar 的 expose + 内部
+handler)。§2 的诊断确认 `synthesize_from_decl` **已经为 PromptBar 生成了全部 13 个
+handler**(`.PickCompletion`/`.Exit`/`.AcceptGhost` 等都在),`expose=["Exit"]` 也被
+parser 正确填充 —— 所以 BUG-C 不在 synthesize,而在 **`<Child>_State.<Handler>` 的
+符号查找/命名**(linker 或 vm_bridge 层)。§2 的修复方向(分支 B)成立。
+
+### 对原计划的影响(修正)
+
+| 原判断 | 修正 |
+|---|---|
+| BUG-A 是"store use back.api 不透传" | ❌ 错判。真因是 api.at parse 失败 → api.X 全消失。app.at 加 `use back.api` 的 workaround 无效。 |
+| BUG-B 是当前阻塞 | ❌ 不是当前阻塞。RefreshGit 互调是真 bug 但排在 parse 错误与 BUG-C 之后。 |
+| 19 pub type 触发 link 失败 | ❌ 错判(三轮已证伪,本轮再次确认:简单 type 全 parse OK)。真因是 `[][]T`/`[](tuple)` 两种**类型语法**不被 Core parser 支持。 |
+| 当前阻塞是 BUG-C | ✅ 修了两个 parse 错误后,BUG-C 才是当前阻塞。 |
+
+### 修正后的执行顺序(替换 §7)
+
+1. ✅ **(VM 侧,已做)** `lib.rs:2290` 的 `Err(_) => return` → `log::warn`(parse 错误
+   不再静默,本 commit)。
+2. **(ash-gui .at 层)** 修 `api.at` 的 `[][]T`/`[](tuple)` → `[]T`;修
+   `shell_store.at` 的 `git_status: None` → 空 struct 或 `?GitStatusInfo`。
+3. **(VM 侧,§2 BUG-C)** 修 `<Child>_State.<Handler>` 符号查找(让 expose 生效)。
+   此时 ash-gui 应前进到 PromptBar 之后的下一个问题(或启动)。
+4. **(VM 侧,§3 BUG-B)** 修 store handler 互调(优先级降,workaround 仍可用)。
+5. ash-gui vm 完整启动 → 回 ash-gui-native-plan M0.5。
+
+§12 是可选的 parser 改进(让 Core 也支持 `[][]T`/`[](tuple)`),做完后第 2 步的 .at
+workaround 可回退。
+
+---
+
+## §12（可选）Core parser 支持 `[][]T` 与 `[](tuple)` 类型
+
+### 现象
+- `back/` 模块按 Core scenario 解析(`lib.rs:2280-2284` 路径启发:含 `back` → Core)。
+- Core parser 不支持 `[][]T`(嵌套数组)与 `[](T1, T2)`(元组数组)作为 pub type 字段类型。
+- UI parser 支持(所以 front/ 的同语法没问题;Vue codegen 也没问题)。
+
+### 修复(可选)
+在 Core parser 的类型解析分支补 `[][]T` 与 `[](tuple)`。定位:parser.rs 的 type 解析
+函数(grep `[][]` 或 `ArrayType`)。做完后 ash-gui api.at 可恢复原 `[][]RenderedCell` /
+`[](str, RenderedCell)` 语法,.at 层 workaround 可回退。
+
+### 优先级
+低——.at 层用 `[]T` workaround 已够 vm 跑通。只有当 Vue codegen 也需要这两种语法、
+或多个项目踩同一坑时,才值得修 parser。
+
+---
+
+## §13 进度跟踪（修正后）
+
+- [x] §11 真根因诊断(parse 错误被静默 + 两个 .at parse 问题 + 真正 BUG-C 定位)
+- [x] §11.1 lib.rs:2290 parse 错误改 log::warn(本 commit)
+- [ ] §11.2 ash-gui .at 修两个 parse 问题(api.at [][]/tuple → [];shell_store git_status)
+- [ ] §2 BUG-C 修 <Child>_State.<Handler> 符号查找(让 expose 生效)
+- [ ] §3 BUG-B 修 store handler 互调(优先级降)
+- [ ] §12(可选)Core parser 支持 [][]T / [](tuple)
+- [ ] ash-gui vm 完整启动 → 回 ash-gui-native-plan M0.5
+

@@ -2289,7 +2289,15 @@ fn collect_module_imports(
         Parser::new_with_type_store(code.as_str(), session.type_store()).with_session(parser_session);
     let ast = match parser.parse() {
         Ok(a) => a,
-        Err(_) => return,
+        Err(e) => {
+            // Plan 398: surface parse failures instead of silently dropping the
+            // module. Previously a parse error here caused ALL of the module's
+            // symbols (e.g. every `api.*` fn) to vanish from the VM module,
+            // producing misleading "Undefined symbol: api.X" link errors far
+            // downstream. Log so the real .at parse issue is visible.
+            log::warn!("collect_module_imports: parse failed for {}: {}", module_path.display(), e);
+            return;
+        }
     };
     // Plan 339: derive module name from file path.
     // back/db.at → "db", back/api.at → "api", front/editor.at → "editor"
