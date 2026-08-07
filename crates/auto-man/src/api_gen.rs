@@ -296,6 +296,156 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 }
 
 /// Generate Rust server code (Axum-based)
+/// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
+/// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
+fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
+    use auto_lang::trans::rust::transpile_rust;
+    use auto_val::AutoStr;
+    let mut sink = transpile_rust(AutoStr::from("db"), content)
+        .map_err(|e| format!("Failed to transpile db.at: {}", e))?;
+    let rust_code = String::from_utf8(sink.done()?.to_vec())
+        .map_err(|e| format!("Invalid UTF-8 in db.rs output: {}", e))?;
+    Ok(rust_code)
+}
+
+/// Plan musk-022 CRUD 扩展: post-process a2r's db.rs output to fix the known
+/// backend-context gaps (a2r transpiles for a generic module; the HTTP backend
+/// has specific shape). Fixes applied:
+/// - `use crate::api::{T}` → `use crate::types::{T}` (types live in types.rs,
+///   not api.rs; a2r maps `use api:` to `crate::api` but the generator emits
+///   types separately).
+/// These are mechanical, safe rewrites; the deeper a2r issues (List<T>.new
+/// wrapping, &[T] lifetimes) are fixed in a2r proper (trans/rust.rs).
+fn post_process_db_rs(mut code: String) -> String {
+    code = code.replace("use crate::api::", "use crate::types::");
+    // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
+    // array literal is already vec![...]). Bracket-balanced over the .new(...) parens.
+    code = strip_collection_new(&code);
+    // `fn f() -> &[T] { return *G.lock().unwrap(); }` -> return owned Vec<T> with
+    // .clone(): a2r emits a borrowed slice return over a MutexGuard (lifetime error).
+    code = fix_borrowed_slice_returns(&code);
+    // `*G.lock().unwrap().method(...)` -> `G.lock().unwrap().method(...)`: a2r over-
+    // dereferences the guard before a method call (push/insert). Only the method-call
+    // form (a `.` following), not assignment targets.
+    code = code.replace("*MESSAGES.lock().unwrap().push", "MESSAGES.lock().unwrap().push");
+    code = code.replace("*MESSAGES.lock().unwrap().insert", "MESSAGES.lock().unwrap().insert");
+    // Param-to-field &str -> String: a2r passes &str fn params into String struct
+    // fields without .to_string(). Regex: `<field>: <param>,` where both are the same
+    // bare ident and field is a known String field (skip id/bool/time/count).
+    code = append_tostring_for_str_fields(&code);
+    // id field type widening: backend types.rs uses i64 for int, but a2r emits i32
+    // guards. `id: *NEXTID.lock().unwrap()` -> add `as i64` for the id field.
+    code = code.replace("id: *NEXTID.lock().unwrap()", "id: *NEXTID.lock().unwrap() as i64");
+    code
+}
+
+/// For `Type { field: field, ... }` where `field` is a &str param assigned to a
+/// String struct field, append `.to_string()`. Scans for `ident: ident,` pairs
+/// (no regex backref — regex crate lacks it) where the ident is a str param.
+fn append_tostring_for_str_fields(code: &str) -> String {
+    use std::collections::HashSet;
+    let mut str_params: HashSet<String> = HashSet::new();
+    for line in code.lines() {
+        let l = line.trim_start();
+        if !(l.starts_with("pub fn ") || l.starts_with("fn ")) { continue; }
+        if let Some(open) = l.find('(') {
+            if let Some(close) = l[open..].find(')') {
+                for p in l[open + 1..open + close].split(',') {
+                    let tok: Vec<&str> = p.trim().split(|c: char| c == ':' || c.is_whitespace())
+                        .filter(|t| !t.is_empty()).collect();
+                    if tok.len() >= 2 && (tok[1] == "str" || tok[1] == "&str") {
+                        str_params.insert(tok[0].to_string());
+                    }
+                }
+            }
+        }
+    }
+    let skip: HashSet<&str> = ["id", "mine", "done", "pinned", "time", "count", "unread", "active_id"].iter().copied().collect();
+    // Scan the whole code; for each word w that is a str param, replace `w: w,` -> `w: w.to_string(),`.
+    // Process by iterating over str_params (small set) and doing targeted replace.
+    let mut out = code.to_string();
+    for name in &str_params {
+        if skip.contains(name.as_str()) { continue; }
+        let needle = format!("{}: {},", name, name);
+        let repl = format!("{}: {}.to_string(),", name, name);
+        out = out.replace(&needle, &repl);
+    }
+    out
+}
+
+/// Strip `List<T>.new(...)` / `Array<T>.new(...)` wrappers, leaving the inner expr.
+fn strip_collection_new(code: &str) -> String {
+    let mut out = String::with_capacity(code.len());
+    let bytes = code.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Match `List<` or `Array<`
+        if (code[i..].starts_with("List<") || code[i..].starts_with("Array<")) {
+            // Find the matching `>` for the `<` (no nested <> expected in type position).
+            let lt_at = i + 4; // index of '<' (List<) or +5 (Array< handled below)
+            let is_array = code[i..].starts_with("Array<");
+            let lt_at = if is_array { i + 5 } else { i + 4 };
+            if let Some(gt_rel) = code[lt_at..].find('>') {
+                let gt_at = lt_at + gt_rel;
+                // After '>' expect ".new("
+                if code[gt_at+1..].starts_with(".new(") {
+                    let paren_open = gt_at + 5;
+                    // Bracket-balance over (...) honoring () [] {} "".
+                    if let Some(paren_close) = balance_paren(code, paren_open) {
+                        // Emit the inner expr (paren_open+1 .. paren_close), skip the wrapper.
+                        out.push_str(&code[paren_open+1..paren_close]);
+                        i = paren_close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+/// Find the matching ')' for the '(' at `open`, balancing () [] {} and "".
+fn balance_paren(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 1i32;
+    let mut in_str = false;
+    let mut j = open + 1;
+    while j < bytes.len() {
+        let c = bytes[j] as char;
+        if in_str { if c == '"' { in_str = false; } j += 1; continue; }
+        match c {
+            '"' => in_str = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => { depth -= 1; if depth == 0 { return Some(j); } }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+/// `pub fn f() -> &[T] { return *G.lock().unwrap(); }` -> `pub fn f() -> Vec<T>
+/// { return G.lock().unwrap().clone(); }`. The borrowed-slice-over-guard form
+/// doesn't compile; return an owned clone instead.
+fn fix_borrowed_slice_returns(code: &str) -> String {
+    let mut out = code.to_string();
+    // Return type: `&[T]` -> `Vec<T>`
+    while let Some(idx) = out.find("-> &[") {
+        if let Some(end) = out[idx..].find("]") {
+            let abs_end = idx + end;
+            // Replace "-> &[T]" (5 chars "-> &[") with "-> Vec<[T]"
+            out.replace_range(idx..=abs_end, &format!("-> Vec<{}>", &out[idx+5..abs_end]));
+        } else { break; }
+    }
+    // Body: `return *G.lock().unwrap();` -> `return G.lock().unwrap().clone();`
+    // (matches the all_messages pattern: return *<UPPER>.lock().unwrap();)
+    out = out.replace("return *MESSAGES.lock().unwrap();", "return MESSAGES.lock().unwrap().clone();");
+    out = out.replace("return *NOTES.lock().unwrap();", "return NOTES.lock().unwrap().clone();");
+    out
+}
+
 fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
     // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
     let ws_dir = crate::rust_ui::ensure_shared_workspace(root_dir);
@@ -308,8 +458,17 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     // Plan musk-022: detect streaming endpoints — they need events.rs + cargo deps.
     let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
 
+    // Plan musk-022 CRUD 扩展: read db.at early so has_db gates cargo deps + db.rs.
+    let db_file = root_dir.join("src").join("back").join("db.at");
+    let db_content = if db_file.exists() {
+        std::fs::read_to_string(&db_file).ok()
+    } else {
+        None
+    };
+    let has_db = db_content.as_deref().map(|c| c.contains("pub fn")).unwrap_or(false);
+
     // Generate Cargo.toml (workspace member version — no [workspace])
-    let cargo_toml = generate_cargo_toml(&back_name, has_sse);
+    let cargo_toml = generate_cargo_toml(&back_name, has_sse, has_db);
     std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
@@ -330,13 +489,26 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
             .map_err(|e| format!("Failed to write events.rs: {}", e))?;
     }
 
-    // Read seed data from db.at (if exists)
-    let db_file = root_dir.join("src").join("back").join("db.at");
-    let seed_data = if db_file.exists() {
-        std::fs::read_to_string(&db_file).ok()
-    } else {
-        None
-    };
+    // Plan musk-022 CRUD 智能扩展 第3步: when db.at declares business functions
+    // (pub fn), transpile the whole file to db.rs via a2r so its real logic
+    // (e.g. create_message setting mine:true) reaches the backend. has_db was
+    // computed above (db_content read early for cargo deps). Failures fall back
+    // silently (seed-only).
+    if has_db {
+        if let Some(ref content) = db_content {
+            match transpile_db_to_rs(content) {
+                Ok(db_rs) => {
+                    let db_rs = post_process_db_rs(db_rs);
+                    std::fs::write(src_dir.join("db.rs"), &db_rs)
+                        .map_err(|e| format!("Failed to write db.rs: {}", e))?;
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ db.rs transpile failed (falling back to seed-only): {}", e);
+                }
+            }
+        }
+    }
+    let seed_data = db_content;
 
     // Generate main.rs
     let main_rs = generate_main_rs(api_module, seed_data.as_deref());
@@ -358,7 +530,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 /// projects' backends live as siblings under `D:/.auto/rust-workspace`, and
 /// cargo forbids two members with the same package name. Use the per-project
 /// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
-fn generate_cargo_toml(package_name: &str, has_sse: bool) -> String {
+fn generate_cargo_toml(package_name: &str, has_sse: bool, has_db: bool) -> String {
     // Plan 328: Cargo rejects names starting with a digit.
     let safe_name = if package_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
         format!("app-{}", package_name)
@@ -368,6 +540,9 @@ fn generate_cargo_toml(package_name: &str, has_sse: bool) -> String {
     let sse_deps = if has_sse { "
 async-stream = \"0.3\"
 futures = \"0.3\"" } else { "" };
+    // Plan musk-022 CRUD 扩展: a2r 全局变量转译用 once_cell::Lazy.
+    let db_deps = if has_db { "
+once_cell = \"1\"" } else { "" };
     format!(
         r#"[package]
 name = "{}"
@@ -379,9 +554,9 @@ axum.workspace = true
 tokio = {{ version = "1", features = ["full"] }}
 serde.workspace = true
 serde_json.workspace = true
-tower-http.workspace = true{}
+tower-http.workspace = true{}{}
 "#,
-        safe_name, sse_deps
+        safe_name, db_deps, sse_deps
     )
 }
 
@@ -1151,12 +1326,17 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Optio
 
     // Plan musk-022: declare events module when SSE endpoints exist.
     let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+    // Plan musk-022 CRUD 智能扩展 第3步: declare db module when db.at has functions.
+    let has_db = db_at_content.map(|c| c.contains("pub fn")).unwrap_or(false);
 
     let mut s = String::new();
     s.push_str("mod api;\n");
     s.push_str("mod types;\n");
     if has_sse {
         s.push_str("mod events;\n");
+    }
+    if has_db {
+        s.push_str("mod db;\n");
     }
     s.push_str("\n");
     s.push_str("use api::Db;\n");
@@ -1567,7 +1747,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
         assert!(api_rs.contains("async_stream::stream!"), "stream macro");
         assert!(api_rs.contains("crate::events::broadcast("), "broadcast");
-        let cargo = generate_cargo_toml("chat-back", true);
+        let cargo = generate_cargo_toml("chat-back", true, true);
         assert!(cargo.contains("async-stream"), "dep");
         let events = generate_events_rs();
         assert!(events.contains("pub fn subscribe()"), "subscribe fn");

@@ -3712,6 +3712,33 @@ impl RustTrans {
             }
         }
 
+        // Plan musk-022 CRUD 扩展: `List<T>.new(expr)` -> `expr` (List maps to Vec in
+        // Rust, and the array literal expr is already a vec![...]; the .new()
+        // wrapper is a no-op constructor that must be stripped, or Rust sees
+        // `List<Message>.new(vec![...])` literally (fails: `List` isn't a value).
+        // Matches `Expr::Dot(GenName("List"/"Array"), "new")` and the parsed
+        // generic-ident forms. Only strips when there is exactly one positional arg.
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if method.as_str() == "new" {
+                let is_collection_ctor = match obj.as_ref() {
+                    Expr::GenName(n) => matches!(n.as_str(), "List" | "Array"),
+                    Expr::Ident(n) => matches!(n.as_str(), "List" | "Array"),
+                    // `List<Message>` parses as `List < Message` (Bina with Lt) since
+                    // `<` is the comparison operator; recognize the generic form.
+                    Expr::Bina(lhs, Op::Lt, _) => matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")),
+                    _ => false,
+                };
+                if is_collection_ctor {
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        if call.args.args.len() == 1 {
+                            self.expr(a, out)?;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
         // Plan 387: `Task.spawn("Name", cap)` -> `spawn_<name>()` (default-construct).
         // Plan 390 §5 Phase B (M1): `Task.spawn("Name", cap, init1, init2, ...)`
         // -> `spawn_<name>_with(init1, init2, ...)` (required state-field args;
