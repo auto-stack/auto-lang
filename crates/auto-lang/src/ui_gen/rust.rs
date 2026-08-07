@@ -565,6 +565,27 @@ impl RustGenerator {
         // NOTE: API function stubs are generated at the file level in rust_ui.rs,
         // not per-widget, to avoid duplicate definitions.
 
+        // a2r fix: computed properties are generated as methods (fn name(&self)),
+        // but all code (view, constructor, handler) accesses them as fields.
+        // Post-process the entire widget code to add () for computed accesses.
+        // This catches both self.{name} and self.store.{name} in all contexts.
+        let computed_names: Vec<String> = widget.computed.iter().map(|c| c.name.clone()).collect();
+        // Also include globally-registered store computed names (cross-widget).
+        let mut all_computed = computed_names.clone();
+        let store_cn: Vec<String> = STORE_COMPUTED_NAMES.with(|sn| sn.borrow().iter().cloned().collect());
+        all_computed.extend(store_cn);
+        for cname in &all_computed {
+            for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
+                let with_call = format!("{}()", prefix);
+                if code.contains(&with_call) { continue; } // already method-called
+                // Replace various contexts: .clone() / .field / , / ) / space
+                code = code.replace(&format!("{}.", prefix), &format!("{}().", with_call));
+                code = code.replace(&format!("{},", prefix), &format!("{},", with_call));
+                code = code.replace(&format!("{})", prefix), &format!("{})", with_call));
+                code = code.replace(&format!("{} ", prefix), &format!("{} ", with_call));
+            }
+        }
+
         Ok(code)
     }
 
@@ -4033,8 +4054,15 @@ impl RustGenerator {
             Expr::Dot(obj, field) => {
                 let field_str = field.as_str();
                 // Plan 374 Task 2: store.field → self.store.field
+                // EDGE-01/a2r fix: if field is a computed property, use method-call
+                // syntax () — computed generates as fn, not a struct field.
+                let is_computed = self.computed_names.contains(field_str)
+                    || STORE_COMPUTED_NAMES.with(|sn| sn.borrow().contains(field_str));
                 if let Expr::Ident(name) = obj.as_ref() {
                     if name.as_str() == "store" {
+                        if is_computed {
+                            return format!("self.store.{}()", field_str);
+                        }
                         return format!("self.store.{}", field_str);
                     }
                 }
