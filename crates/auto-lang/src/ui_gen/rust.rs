@@ -565,27 +565,6 @@ impl RustGenerator {
         // NOTE: API function stubs are generated at the file level in rust_ui.rs,
         // not per-widget, to avoid duplicate definitions.
 
-        // a2r fix: computed properties are generated as methods (fn name(&self)),
-        // but all code (view, constructor, handler) accesses them as fields.
-        // Post-process the entire widget code to add () for computed accesses.
-        // This catches both self.{name} and self.store.{name} in all contexts.
-        let computed_names: Vec<String> = widget.computed.iter().map(|c| c.name.clone()).collect();
-        // Also include globally-registered store computed names (cross-widget).
-        let mut all_computed = computed_names.clone();
-        let store_cn: Vec<String> = STORE_COMPUTED_NAMES.with(|sn| sn.borrow().iter().cloned().collect());
-        all_computed.extend(store_cn);
-        for cname in &all_computed {
-            for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
-                let with_call = format!("{}()", prefix);
-                if code.contains(&with_call) { continue; } // already method-called
-                // Replace various contexts: .clone() / .field / , / ) / space
-                code = code.replace(&format!("{}.", prefix), &format!("{}().", with_call));
-                code = code.replace(&format!("{},", prefix), &format!("{},", with_call));
-                code = code.replace(&format!("{})", prefix), &format!("{})", with_call));
-                code = code.replace(&format!("{} ", prefix), &format!("{} ", with_call));
-            }
-        }
-
         Ok(code)
     }
 
@@ -1517,19 +1496,36 @@ impl RustGenerator {
             }
 
             // Generate getter method.
-            // Plan 374: Use Vec<serde_json::Value> as return type and .collect()
-            // for iterator-chain computed properties.
+            // a2r fix: infer return type from the computed expression.
+            // - If expr has .iter()/.filter()/.map() → Vec<serde_json::Value> + collect
+            // - If expr is a string literal or str field access → String
+            // - If expr is a self.field that's typed String → String
+            // - Otherwise default to String (safer than Vec for scalar computed).
             let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
-            let return_type = "Vec<serde_json::Value>";
-            let final_expr = if needs_collect && !expr_rust.contains(".collect(") {
-                // .iter() produces &Value — add .cloned() to get owned Values
-                if expr_rust.contains(".iter().") {
-                    format!("{}.cloned().collect::<Vec<_>>()", expr_rust)
+            let is_string_expr = !needs_collect && (
+                expr_rust.contains("\"")  // string literal
+                || expr_rust.contains(".to_string()")
+                || expr_rust.contains("+ \"")  // string concatenation
+                || self.state_types.iter().any(|(k, v)|
+                    v == "String" && expr_rust.contains(&format!("self.{}", k)))
+            );
+            let (return_type, final_expr) = if needs_collect {
+                let rt = "Vec<serde_json::Value>";
+                let fe = if !expr_rust.contains(".collect(") {
+                    if expr_rust.contains(".iter().") {
+                        format!("{}.cloned().collect::<Vec<_>>()", expr_rust)
+                    } else {
+                        format!("{}.collect::<Vec<_>>()", expr_rust)
+                    }
                 } else {
-                    format!("{}.collect::<Vec<_>>()", expr_rust)
-                }
+                    expr_rust.clone()
+                };
+                (rt, fe)
+            } else if is_string_expr {
+                ("String", expr_rust.clone())
             } else {
-                expr_rust
+                // Default: String for scalar computed (int/bool/str).
+                ("String", expr_rust.clone())
             };
             code.push_str(&format!("    pub fn {}(&self) -> {} {{\n", method_name, return_type));
             code.push_str(&format!("        {}\n", final_expr));

@@ -1452,9 +1452,46 @@ fn wrap_example(project_name: &str, components: &str) -> String {
     let main_msg = format!("{}Msg", main_widget);
 
     // Strip duplicate imports — RustGenerator already emits them
-    let cleaned = components.trim()
+    let mut cleaned = components.trim()
         .replace("use auto_lang::ui::{Component, View};\n", "")
         .replace("use auto_lang::ui::{Component, View};", "");
+
+    // a2r fix: computed properties are generated as methods (fn name(&self)),
+    // but all code accesses them as fields. Scan for `pub fn NAME(&self)` to
+    // discover all computed methods, then add () to field-style accesses.
+    // This runs at file level so cross-widget computed (store.history accessed
+    // from App) is caught regardless of widget generation order.
+    let computed_methods: Vec<String> = {
+        let mut names = Vec::new();
+        for line in cleaned.lines() {
+            let trimmed = line.trim();
+            // Match: pub fn NAME(&self) -> ... {
+            if trimmed.starts_with("pub fn ") && trimmed.contains("(&self)") {
+                if let Some(name) = trimmed
+                    .strip_prefix("pub fn ")
+                    .and_then(|s| s.split('(').next())
+                {
+                    // Skip obvious non-computed methods (view, on, new, state_snapshot, etc.)
+                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name) {
+                        names.push(name.to_string());
+                    }
+                }
+            }
+        }
+        names
+    };
+    for cname in &computed_methods {
+        for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
+            let with_call = format!("{}()", prefix);
+            if cleaned.contains(&with_call) {
+                continue;
+            }
+            cleaned = cleaned.replace(&format!("{}.", prefix), &format!("{}().", with_call));
+            cleaned = cleaned.replace(&format!("{},", prefix), &format!("{},", with_call));
+            cleaned = cleaned.replace(&format!("{})", prefix), &format!("{})", with_call));
+            cleaned = cleaned.replace(&format!("{} ", prefix), &format!("{} ", with_call));
+        }
+    }
 
     // Detect async init: look for __InitLoaded variant in generated code
     let async_init_func = extract_init_api_func(cleaned.trim());
