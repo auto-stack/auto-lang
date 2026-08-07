@@ -1,0 +1,18 @@
+// a2vue golden case 003 — fn 调用作为组件 prop（Plan 022 限制1修复）。
+// 验证 `Comp { items: getList(.msg) }` 生成 `:items="getList(msg)"`（非 null）。
+// 用外部组件（use{component}）触发 is_external_component 的 props 绑定路径。
+widget FnCallProp {
+    use {
+        fn: getList from "src/front/helpers.ts"
+        component: ItemList from "src/front/components/ItemList.vue"
+    }
+    model { var msg str = "" }
+    view {
+        col {
+            ItemList {
+                items: getList(.msg)
+            }
+        }
+    }
+    on { }
+}
