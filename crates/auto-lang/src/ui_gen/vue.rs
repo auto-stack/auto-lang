@@ -10623,7 +10623,6 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraMessage, AuraMsgVariant, AuraStateDef};
     use std::collections::HashMap;
 
     #[test]
@@ -10634,42 +10633,17 @@ mod tests {
 
     #[test]
     fn test_simple_counter() {
-        let widget = AuraWidget {
-            name: "Counter".to_string(),
-            state_vars: vec![AuraStateDef {
-                name: "count".to_string(),
-                type_info: crate::ast::Type::Int,
-                initial: crate::ast::Expr::Int(0),
-                decorators: vec![],
-            }],
-            messages: vec![AuraMessage {
-                name: "Msg".to_string(),
-                variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
-                ],
-            }],
-            view_tree: AuraNode::element("col")
-                .with_child(AuraNode::text("Count: 0")),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        }
-;
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
+        // Real parse path (plan 012 batch C): widget source → parser → aura
+        // extract → generate. No hand-built AST.
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Counter {
+    msg Msg { Inc, Dec }
+    model { var count int = 0 }
+    view { col { text "Count: 0" } }
+}
+"#,
+        );
 
         // Plan 100: Default is now TypeScript, so check for lang="ts"
         assert!(sfc.contains(r#"<script setup lang="ts">"#));
@@ -10683,31 +10657,13 @@ mod tests {
     /// emitted verbatim into a dedicated `<style scoped>` block.
     #[test]
     fn test_widget_style_css_scoped_passthrough() {
+        // Real parse path (plan 012 batch C): the widget-level `style { ... }`
+        // block is captured verbatim by the lexer into `AuraWidget.style_css`.
         let css = "\n.autodown-editor {\n  --ad-border: #333;\n}\n.autodown-editor:hover {\n  border-color: var(--ad-border);\n}\n@media (max-width: 768px) {\n  .autodown-editor {\n    font-size: 12px;\n  }\n}\n";
-        let widget = AuraWidget {
-            name: "Styled".to_string(),
-            state_vars: vec![],
-            messages: vec![],
-            view_tree: AuraNode::element("col")
-                .with_child(AuraNode::text("hi")),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: Some(css.to_string()),
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
+        let src = format!(
+            "widget Styled {{\n    view {{ col {{ text \"hi\" }} }}\n    style {{{css}}}\n}}"
+        );
+        let sfc = gen_sfc_from_widget_src(&src);
 
         assert!(sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
         // The CSS body is byte-for-byte identical inside the scoped block.
@@ -10724,31 +10680,14 @@ mod tests {
     /// and pulls in the `ref` import even without state vars.
     #[test]
     fn test_template_ref_declaration() {
-        let widget = AuraWidget {
-            name: "Menu".to_string(),
-            state_vars: vec![],
-            messages: vec![],
-            view_tree: AuraNode::element("col")
-                .with_prop("ref", crate::ast::Expr::Str("menuEl".into()))
-                .with_child(AuraNode::text("hi")),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
+        // Real parse path (plan 012 batch C).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Menu {
+    view { col(ref: "menuEl") { text "hi" } }
+}
+"#,
+        );
 
         assert!(sfc.contains("import { ref } from 'vue'"), "sfc:\n{}", sfc);
         assert!(
@@ -10762,30 +10701,14 @@ mod tests {
     /// Without a style block, no `<style scoped>` is emitted.
     #[test]
     fn test_no_widget_style_css_no_scoped_block() {
-        let widget = AuraWidget {
-            name: "Plain".to_string(),
-            state_vars: vec![],
-            messages: vec![],
-            view_tree: AuraNode::element("col")
-                .with_child(AuraNode::text("hi")),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
+        // Real parse path (plan 012 batch C).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Plain {
+    view { col { text "hi" } }
+}
+"#,
+        );
         assert!(!sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
     }
 
@@ -10794,46 +10717,23 @@ mod tests {
     /// mapped to @update / @save / @cancel.
     #[test]
     fn test_autodown_editor_rendering() {
-        use crate::ast::Expr;
-        let widget = AuraWidget {
-            name: "NoteEditor".to_string(),
-            state_vars: vec![AuraStateDef {
-                name: "body".to_string(),
-                type_info: crate::ast::Type::StrSlice,
-                initial: Expr::Str("# Welcome".into()),
-                decorators: vec![],
-            }],
-            messages: vec![AuraMessage {
-                name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant {
-                    name: "BodyChanged".to_string(),
-                    payload: vec![],
-                }],
-            }],
-            // autodown_editor { content: .body; onupdate: .BodyChanged; style: "..." }
-            view_tree: AuraNode::element("col").with_child(
-                AuraNode::element("autodown_editor")
-                    .with_prop("content", Expr::Ident(".body".into()))
-                    .with_event("onupdate", ".BodyChanged"),
-            ),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
-        let sfc = gen.generate(&widget).unwrap();
+        // Real parse path (plan 012 batch C): the previous version hand-built
+        // `Expr::Ident(".body")` — a shape the real parser never produces
+        // (dot_item yields Dot(Ident("self"), name)).
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget NoteEditor {
+    msg Msg { BodyChanged }
+    model { var body str = "# Welcome" }
+    view {
+        col {
+            autodown_editor {
+                content: .body
+                onupdate: .BodyChanged
+            }
+        }
+    }
+}
+"##);
 
         // Renders as PascalCase component, not <div> or <autodown_editor>.
         assert!(sfc.contains("<AutoDownEditor"), "tag is AutoDownEditor:\n{}", sfc);
@@ -10862,49 +10762,25 @@ mod tests {
 
     #[test]
     fn test_autodown_editor_props_camelcase_and_events() {
-        use crate::ast::Expr;
+        // Real parse path (plan 012 batch C).
         // Verify bool literals map through and onsave/oncancel events resolve.
-        let widget = AuraWidget {
-            name: "NoteEditor".to_string(),
-            state_vars: vec![AuraStateDef {
-                name: "note_body".to_string(),
-                type_info: crate::ast::Type::StrSlice,
-                initial: Expr::Str("".into()),
-                decorators: vec![],
-            }],
-            messages: vec![AuraMessage {
-                name: "Msg".to_string(),
-                variants: vec![
-                    AuraMsgVariant { name: "Save".to_string(), payload: vec![] },
-                    AuraMsgVariant { name: "Cancel".to_string(), payload: vec![] },
-                ],
-            }],
-            view_tree: AuraNode::element("col").with_child(
-                AuraNode::element("autodown_editor")
-                    .with_prop("content", Expr::Ident(".note_body".into()))
-                    .with_prop("can_edit", Expr::Bool(false))
-                    .with_prop("show_actions", Expr::Bool(true))
-                    .with_event("onsave", ".Save")
-                    .with_event("oncancel", ".Cancel"),
-            ),
-            handlers: HashMap::new(),
-            props: vec![],
-            computed: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
-        let sfc = gen.generate(&widget).unwrap();
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget NoteEditor {
+    msg Msg { Save, Cancel }
+    model { var note_body str = "" }
+    view {
+        col {
+            autodown_editor {
+                content: .note_body
+                can_edit: false
+                show_actions: true
+                onsave: .Save
+                oncancel: .Cancel
+            }
+        }
+    }
+}
+"#);
 
         // Field-access content binding: .note_body → note_body.
         assert!(sfc.contains(":content=\"note_body\""), "field access content:\n{}", sfc);
@@ -10966,6 +10842,14 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
     fn test_custom_type_import_in_define_props() {
         // B-2: a container-nested custom type (List<Block>) must still import
         // from api.ts even after R4 drops emitted-callback props.
+        //
+        // KEEP hand-built (plan 012 batch C): this test injects a fully
+        // RESOLVED `Type::User(Block)` — a state the standalone parse path
+        // cannot produce (type resolution needs the project type_store;
+        // parsing `widget Child(blocks: []Block)` alone yields `any[]`, which
+        // is what test_msg_prop_signature_and_custom_type_import asserts).
+        // The `blocks: Block[]` assertion below locks the post-resolution
+        // behavior, so the struct literal stays.
         use crate::ast::{Type, TypeDecl, TypeDeclKind};
         let user = |name: &str| Type::User(TypeDecl {
             consts: Vec::new(),
@@ -11416,68 +11300,84 @@ widget W {
         assert_eq!(registry.primary_component("toggle"), Some("Switch"));
     }
 
+    // NOTE (plan 012 batch C): the remaining literal-only
+    // `test_generate_shadcn_attrs_*` tests below call the internal
+    // attr-mapper directly with hand-built literal props (Expr::Str/Int/Bool).
+    // That carries no fake-green risk — the parser produces byte-identical
+    // Expr nodes for literals — so they stay as unit tests of the internal
+    // API. Every test that referenced STATE via `Expr::Ident` (a shape the
+    // real parser never produces; dot_item yields Dot(Ident("self"), name))
+    // has been converted to the real parse path (see area/bar/line/donut
+    // charts, input, checkbox, tabs-with-model, radiogroup).
+
     #[test]
     fn test_generate_shadcn_attrs_area_chart() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
-        props.insert("data".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("monthlyRevenue".into())));
-        props.insert("categories".to_string(), AuraPropValue::Expr(crate::ast::Expr::Array(vec![
-            crate::ast::Expr::Str("desktop".into()),
-            crate::ast::Expr::Str("mobile".into()),
-        ])));
-        props.insert("index".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("month".into())));
-        props.insert("show-x-axis".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(false)));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("area-chart", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains(":data=\"monthlyRevenue\"")));
-        assert!(attrs.iter().any(|a| a.contains(":categories=")));
-        assert!(attrs.iter().any(|a| a.contains("index=\"month\"")));
-        assert!(attrs.iter().any(|a| a.contains(":show-x-axis=\"false\"")));
+        // Real parse path (plan 012 batch C): `data: .monthlyRevenue` parses
+        // to Dot(Ident("self"), "monthlyRevenue"), not a bare Ident.
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var monthlyRevenue list = [] }
+    view {
+        area-chart(data: .monthlyRevenue, categories: ["desktop", "mobile"], index: "month", show-x-axis: false)
+    }
+}
+"#);
+        assert!(sfc.contains(":data=\"monthlyRevenue\""), "data binding:\n{}", sfc);
+        assert!(sfc.contains(":categories="), "categories bound:\n{}", sfc);
+        assert!(sfc.contains("index=\"month\""), "index attr:\n{}", sfc);
+        assert!(sfc.contains(":show-x-axis=\"false\""), "show-x-axis bound:\n{}", sfc);
     }
 
     #[test]
     fn test_generate_shadcn_attrs_bar_chart() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
-        props.insert("data".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("quarterlySales".into())));
-        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("stacked".into())));
-        props.insert("rounded-corners".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("bar-chart", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains(":data=\"quarterlySales\"")));
-        assert!(attrs.iter().any(|a| a.contains("type=\"stacked\"")));
-        assert!(attrs.iter().any(|a| a.contains(":rounded-corners=\"true\"")));
+        // Real parse path (plan 012 batch C).
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var quarterlySales list = [] }
+    view {
+        bar-chart(data: .quarterlySales, type: "stacked", rounded-corners: true)
+    }
+}
+"#);
+        assert!(sfc.contains(":data=\"quarterlySales\""), "data binding:\n{}", sfc);
+        assert!(sfc.contains("type=\"stacked\""), "type attr:\n{}", sfc);
+        assert!(sfc.contains(":rounded-corners=\"true\""), "rounded-corners bound:\n{}", sfc);
     }
 
     #[test]
     fn test_generate_shadcn_attrs_line_chart_with_curve() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
-        props.insert("curve-type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("monotone".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("line-chart", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains(":curve-type=\"CurveType.MonotoneX\"")));
-        assert!(gen.use_curve_type);
+        // Real parse path (plan 012 batch C): also locks the observable effect
+        // of the internal `use_curve_type` flag — the CurveType import.
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var d list = [] }
+    view {
+        line-chart(data: .d, curve-type: "monotone")
+    }
+}
+"#);
+        assert!(sfc.contains(":curve-type=\"CurveType.MonotoneX\""), "curve-type:\n{}", sfc);
+        assert!(
+            sfc.contains("import { CurveType } from '@unovis/ts'"),
+            "CurveType import (use_curve_type effect):\n{}",
+            sfc
+        );
     }
 
     #[test]
     fn test_generate_shadcn_attrs_donut_chart() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
-        props.insert("category".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("source".into())));
-        props.insert("value-formatter".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("formatValue".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("donut-chart", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains("category=\"source\"")));
-        assert!(attrs.iter().any(|a| a.contains(":value-formatter=\"formatValue\"")));
+        // Real parse path (plan 012 batch C): `value-formatter: .formatValue`
+        // parses to Dot(Ident("self"), "formatValue"), not a bare Ident.
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var d list = [] }
+    view {
+        donut-chart(data: .d, category: "source", value-formatter: .formatValue)
+    }
+}
+"#);
+        assert!(sfc.contains("category=\"source\""), "category attr:\n{}", sfc);
+        assert!(sfc.contains(":value-formatter=\"formatValue\""), "value-formatter bound:\n{}", sfc);
     }
 
     #[test]
@@ -11539,30 +11439,33 @@ widget W {
 
     #[test]
     fn test_generate_shadcn_attrs_input() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
-        // Test input with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("name".into())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter name".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("input", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains("v-model=\"name\"")));
-        assert!(attrs.iter().any(|a| a.contains("placeholder=\"Enter name\"")));
+        // Real parse path (plan 012 batch C): `value: .name` on a state field
+        // must fold to v-model (Dot path, not the fake bare Ident).
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var name str = "" }
+    view {
+        input(value: .name, placeholder: "Enter name")
+    }
+}
+"#);
+        assert!(sfc.contains("v-model=\"name\""), "input v-model:\n{}", sfc);
+        assert!(sfc.contains("placeholder=\"Enter name\""), "placeholder:\n{}", sfc);
     }
 
     #[test]
     fn test_generate_shadcn_attrs_checkbox() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
+        // Real parse path (plan 012 batch C).
         // Test checkbox with v-model (reka-ui uses modelValue, not checked)
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains("v-model=\"done\"")));
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var done bool = false }
+    view {
+        checkbox(checked: .done)
+    }
+}
+"#);
+        assert!(sfc.contains("v-model=\"done\""), "checkbox v-model:\n{}", sfc);
     }
 
     #[test]
@@ -11623,15 +11526,19 @@ widget W {
 
     #[test]
     fn test_generate_shadcn_attrs_tabs_with_model() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
+        // Real parse path (plan 012 batch C).
         // Test tabs with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("activeTab".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains("v-model=\"activeTab\"")));
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var activeTab str = "a" }
+    view {
+        tabs(value: .activeTab) {
+            tab(value: "a", text: "A")
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("v-model=\"activeTab\""), "tabs v-model:\n{}", sfc);
     }
 
     #[test]
@@ -11928,17 +11835,20 @@ widget App {
 
     #[test]
     fn test_generate_shadcn_attrs_radiogroup() {
-        let mut gen = VueGenerator::new_shadcn();
-        let mut props = HashMap::new();
-        let events = HashMap::new();
-
+        // Real parse path (plan 012 batch C).
         // Test radiogroup with v-model
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("selectedOption".into())));
-        props.insert("name".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("options".into())));
-        let (attrs, _, _) = gen.generate_shadcn_attrs("radiogroup", &props, &events);
-
-        assert!(attrs.iter().any(|a| a.contains("v-model=\"selectedOption\"")));
-        assert!(attrs.iter().any(|a| a.contains("name=\"options\"")));
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget W {
+    model { var selectedOption str = "" }
+    view {
+        radiogroup(value: .selectedOption, name: "options") {
+            radio(value: "option1", label: "Option 1")
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("v-model=\"selectedOption\""), "radiogroup v-model:\n{}", sfc);
+        assert!(sfc.contains("name=\"options\""), "name attr:\n{}", sfc);
     }
 
     #[test]
@@ -12053,105 +11963,44 @@ widget App {
 
     #[test]
     fn test_button_with_text_full_widget() {
-        use crate::aura::AuraWidget;
-        use crate::aura::AuraNode;
-        use std::collections::HashMap;
-
-        // Create a simple Button element node
-        let button_node = AuraNode::Element {
-            tag: "Button".to_string(),
-            props: {
-                let mut map = HashMap::new();
-                map.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Click Me".into())));
-                map.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("px-4 py-2 bg-blue-500".into())));
-                map
-            },
-            events: HashMap::new(),
-            children: vec![],
-            span: None,
-            debug_id: None,
-        };
-
-        let widget = AuraWidget {
-            name: "Test".to_string(),
-            state_vars: vec![],
-            computed: vec![],
-            messages: vec![],
-            view_tree: button_node,
-            handlers: HashMap::new(),
-            props: vec![],
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        };
-
-        let mut gen = VueGenerator::new_shadcn();
-        let vue_code = gen.generate(&widget).unwrap();
+        // Real parse path (plan 012 batch C): the previous version hand-built
+        // `AuraNode::Element { tag: "Button" }` — a tag the parser never
+        // produces (DSL tags are lowercase; "Button" would be a sub-widget
+        // reference) — and had been FAILING on that unreachable input. The
+        // DSL `button "Click Me"` routes to the shadcn <Button> component.
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget Test {
+    view {
+        button "Click Me"
+    }
+}
+"#);
 
         // Check that the button is NOT self-closing and has text content
-        assert!(vue_code.contains("<Button") && vue_code.contains("Click Me"));
+        assert!(sfc.contains("<Button") && sfc.contains("Click Me"), "sfc:\n{}", sfc);
         // Should NOT be self-closing (should have >Click Me< pattern)
-        assert!(vue_code.contains("Click Me") && vue_code.contains("</Button>"));
+        assert!(sfc.contains("Click Me") && sfc.contains("</Button>"), "sfc:\n{}", sfc);
     }
 
     // ------------------------------------------------------------------
     // Widget `computed` regressions (AutoDown editor Phase 0 findings)
     // ------------------------------------------------------------------
 
-    fn widget_with_computed(props: Vec<crate::aura::AuraProp>, computed: Vec<crate::aura::AuraComputed>) -> AuraWidget {
-        AuraWidget {
-            name: "Icon".to_string(),
-            state_vars: vec![],
-            computed,
-            messages: vec![],
-            view_tree: AuraNode::element("div"),
-            handlers: HashMap::new(),
-            props,
-            routes: None,
-            lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-        }
-    }
-
-    fn str_prop(name: &str) -> crate::aura::AuraProp {
-        crate::aura::AuraProp {
-            name: name.to_string(),
-            type_info: crate::ast::Type::StrSlice,
-            default: None,
-        }
-    }
-
     /// Bug: `.language` (prop dot-ref) in a computed block was generated as
     /// `self.language`. It must resolve to `props.language`.
     #[test]
     fn test_computed_prop_dot_ref_uses_props_not_self() {
-        use crate::ast::Expr;
-        let widget = widget_with_computed(
-            vec![str_prop("language")],
-            vec![crate::aura::AuraComputed {
-                name: "label".to_string(),
-                expr: Expr::Dot(Box::new(Expr::Ident("self".into())), "language".into()),
-            }],
+        // Real parse path (plan 012 batch C).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Icon(language: str) {
+    computed {
+        label => .language
+    }
+    view { div { text "hi" } }
+}
+"#,
         );
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
 
         assert!(
             sfc.contains("const label = computed<string>(() => props.language)"),
@@ -12165,22 +12014,17 @@ widget App {
     /// `computed<number>`. `"data:" + .language` must be `computed<string>`.
     #[test]
     fn test_computed_string_concat_infers_string() {
-        use crate::ast::Expr;
-        use auto_val::Op;
-        let widget = widget_with_computed(
-            vec![str_prop("language")],
-            vec![crate::aura::AuraComputed {
-                name: "full".to_string(),
-                expr: Expr::Bina(
-                    Box::new(Expr::Str("data:".into())),
-                    Op::Add,
-                    Box::new(Expr::Dot(Box::new(Expr::Ident("self".into())), "language".into())),
-                ),
-            }],
+        // Real parse path (plan 012 batch C).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Icon(language: str) {
+    computed {
+        full => "data:" + .language
+    }
+    view { div { text "hi" } }
+}
+"#,
         );
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
 
         assert!(
             sfc.contains("const full = computed<string>(() => 'data:' + props.language)"),
@@ -12195,50 +12039,25 @@ widget App {
     /// (generated `computed<any>(() => undefined)`).
     #[test]
     fn test_computed_if_chain_transpiles_to_iife() {
-        use crate::ast::{Body, Branch, Expr, If as IfExpr, Stmt};
-        use auto_val::Op;
-        let kind_dot = |field: &str| {
-            Expr::Dot(
-                Box::new(Expr::Dot(Box::new(Expr::Ident("self".into())), "status".into())),
-                field.into(),
-            )
-        };
-        let branch = |expected: &str, glyph: &str| Branch {
-            cond: Expr::Bina(
-                Box::new(kind_dot("kind")),
-                Op::Eq,
-                Box::new(Expr::Str(expected.into())),
-            ),
-            body: Body {
-                stmts: vec![Stmt::Expr(Expr::Str(glyph.into()))],
-                has_new_line: false,
-                source_lines: vec![],
-            },
-        };
-        let else_body = Body {
-            stmts: vec![Stmt::Expr(Expr::Str("…".into()))],
-            has_new_line: false,
-            source_lines: vec![],
-        };
-        let widget = widget_with_computed(
-            vec![],
-            vec![crate::aura::AuraComputed {
-                name: "glyph".to_string(),
-                expr: Expr::If(IfExpr {
-                    branches: vec![branch("Success", "✓"), branch("Failed", "✗")],
-                    else_: Some(else_body),
-                }),
-            }],
+        // Real parse path (plan 012 batch C): `status` is now a real prop, so
+        // the accessor is `props.status.kind` — the previous hand-built widget
+        // had NO props/state, an undeclared-ref shape the DSL cannot express.
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget StatusIcon(status: Any) {
+    computed {
+        glyph => if .status.kind == "Success" { "✓" } else if .status.kind == "Failed" { "✗" } else { "…" }
+    }
+    view { div { text "hi" } }
+}
+"#,
         );
-
-        let mut gen = VueGenerator::new();
-        let sfc = gen.generate(&widget).unwrap();
 
         // Plan 043 H1: the IIFE must RETURN each branch's value (previously the
         // branches were bare expression statements, so the IIFE evaluated to
         // undefined and the computed — e.g. a status glyph — silently vanished).
         assert!(
-            sfc.contains("const glyph = computed<any>(() => (() => { if (status.kind === 'Success') { return '✓'; }else if (status.kind === 'Failed') { return '✗'; } else { return '…'; } })())"),
+            sfc.contains("const glyph = computed<any>(() => (() => { if (props.status.kind === 'Success') { return '✓'; }else if (props.status.kind === 'Failed') { return '✗'; } else { return '…'; } })())"),
             "computed if chain must be an IIFE that RETURNS each branch's value:\n{}",
             sfc
         );
@@ -13736,35 +13555,17 @@ widget Counter {
     /// array inits render as `[]`).
     #[test]
     fn test_store_composable_no_notes_no_all_tags() {
-        use crate::aura::{AuraStore, AuraStateDef};
-        use crate::ast::Expr;
-        use std::collections::HashMap;
-
-        let store = AuraStore {
-            name: "ShellStore".to_string(),
-            state_vars: vec![
-                AuraStateDef {
-                    name: "blocks".to_string(),
-                    type_info: crate::ast::Type::Unknown,
-                    initial: Expr::Array(vec![]),
-                    decorators: vec![],
-                },
-                AuraStateDef {
-                    name: "cwd".to_string(),
-                    type_info: crate::ast::Type::Unknown,
-                    initial: Expr::Str("".into()),
-                    decorators: vec![],
-                },
-            ],
-            messages: vec![],
-            handlers: HashMap::new(),
-            handler_params: HashMap::new(),
-            computed: vec![],
-            api_imports: vec![],
-            stream_endpoints: vec![],
-        };
-
-        let code = VueGenerator::generate_store_composable(&store);
+        // Real parse path (plan 012 batch C).
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store ShellStore {
+    model {
+        var blocks list = []
+        var cwd str = ""
+    }
+}
+"#,
+        ));
 
         // Array init rendered as [].
         assert!(
@@ -13786,6 +13587,26 @@ widget Counter {
         );
     }
 
+    /// Parse a store source and extract its AuraStore (real parse path,
+    /// plan 012 batch C). NOTE: the standalone parse path does NOT populate
+    /// `api_imports` / `stream_endpoints` — the full build fills those from
+    /// project type info (the `consume ~Stream<T>` pattern) — so the two SSE
+    /// tests below legitimately keep hand-built AuraStore literals.
+    fn store_from_src(src: &str) -> crate::aura::AuraStore {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("store source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::StoreDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("store decl");
+        crate::aura::extract_store_from_decl(decl).expect("extract store")
+    }
+
     /// Plan 043 M5 G1: a store that imports `stream` and declares
     /// RunOutput/RunResult (the "consume ~Stream<T>" pattern) must wire a
     /// single EventSource('/api/stream') that dispatches command_output /
@@ -13793,6 +13614,10 @@ widget Counter {
     /// never reach the UI.
     #[test]
     fn test_store_composable_wires_sse_stream() {
+        // KEEP hand-built (plan 012 batch C): this test needs
+        // `stream_endpoints` + `api_imports` populated, which the standalone
+        // parse path cannot do (extract_store_from_decl leaves both empty;
+        // the full build fills them from project type info).
         use crate::aura::{AuraStore, AuraStateDef};
         use crate::ast::Expr;
         use std::collections::HashMap;
@@ -13848,23 +13673,22 @@ widget Counter {
     /// no stream API must stay plain).
     #[test]
     fn test_store_composable_no_sse_without_stream_api() {
-        use crate::aura::{AuraStore};
-        use std::collections::HashMap;
-
-        let store = AuraStore {
-            name: "PlainStore".to_string(),
-            state_vars: vec![],
-            messages: vec![],
-            handlers: HashMap::from([
-                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-            ]),
-            handler_params: HashMap::new(),
-            api_imports: vec!["run_command".to_string()],
-            stream_endpoints: vec![],
-            computed: vec![],
-        };
-
-        let code = VueGenerator::generate_store_composable(&store);
+        // Real parse path (plan 012 batch C): a store declaring the
+        // RunOutput/RunResult consume-pattern handlers but no stream
+        // endpoint stays plain. (The previous version also hand-set
+        // `api_imports: ["run_command"]` — the standalone parse path cannot
+        // populate api_imports, but the asserted contract is unchanged.)
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store PlainStore {
+    msg Msg { RunOutput(output), RunResult(result) }
+    on {
+        .RunOutput(output) -> { }
+        .RunResult(result) -> { }
+    }
+}
+"#,
+        ));
 
         assert!(!code.contains("EventSource"), "no EventSource without stream api:\n{}", code);
         assert!(!code.contains("__streamConnected"), "no guard without stream api:\n{}", code);
@@ -13876,6 +13700,9 @@ widget Counter {
     /// import to be literally named "stream".
     #[test]
     fn test_store_composable_sse_type_driven() {
+        // KEEP hand-built (plan 012 batch C): needs `stream_endpoints`
+        // populated with a custom fn name/path — internal-only state that
+        // the standalone parse path cannot produce (see store_from_src).
         use crate::aura::{AuraStore, StreamEndpoint};
         use std::collections::HashMap;
 
