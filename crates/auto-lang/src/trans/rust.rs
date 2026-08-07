@@ -1118,6 +1118,21 @@ impl RustTrans {
         // Plan 013 (B1/BUG2): returning `self.field` of an owned non-Copy type
         // from a &self method needs `.clone()` (E0507 otherwise).
         let needs_self_clone = Self::is_self_dot(expr) && self.ret_type_is_owned_noncopy();
+        // Plan 399 Phase 11.3: returning a global var emits `G.lock().unwrap()`
+        // .clone()` directly (skip self.expr which prepends `*`, avoiding the
+        // `*guard.clone()` precedence trap — MutexGuard isn't Clone).
+        let global_ret_name = match expr {
+            Expr::Ident(name) if self.is_global_var(name) && self.ret_type_is_owned_noncopy() => {
+                Some(name.clone())
+            }
+            _ => None,
+        };
+        if let Some(name) = &global_ret_name {
+            let static_name = self.global_var_static_name(name);
+            write!(out, "return {}.lock().unwrap().clone()", static_name)?;
+            if add_semi { out.write(b";")?; }
+            return Ok(());
+        }
         out.write(b"return ")?;
         self.expr(expr, out)?;
         if needs_to_string {
@@ -1642,6 +1657,14 @@ impl RustTrans {
                 } else {
                     self.rust_type_name(ty)
                 }
+            }
+            // Plan 399 Phase 11.3: []T in return position → Vec<T> (owned), not
+            // &[T] (borrowed). rust_type_name emits &[T] for slices (correct for
+            // params/fields), but a fn returning &[T] over a MutexGuard can't
+            // outlive the guard → use owned Vec<T> in return position. byte/Spec
+            // already become Vec<u8>/Vec<Box<dyn>> in rust_type_name.
+            Type::Slice(slice) => {
+                format!("Vec<{}>", self.rust_type_name(&slice.elem))
             }
             // All other types delegate to rust_type_name
             _ => self.rust_type_name(ty),
@@ -8945,6 +8968,24 @@ impl RustTrans {
                 // non-Copy type from a &self method needs `.clone()`.
                 let needs_self_clone = Self::is_self_dot(expr)
                     && self.ret_type_is_owned_noncopy();
+                // Plan 399 Phase 11.3: returning a global var (Lazy<Mutex<Vec<T>>>)
+                // emits `*G.lock().unwrap()` — the Vec is borrowed from a temporary
+                // guard. To return an owned Vec, emit `G.lock().unwrap().clone()`
+                // (no `*`: Deref on the guard forwards .clone() to the Vec). Doing
+                // it inline (skipping self.expr which prepends `*`) avoids the
+                // `*guard.clone()` precedence trap (MutexGuard isn't Clone).
+                let global_ret_name = match expr.as_ref() {
+                    Expr::Ident(name) if self.is_global_var(name) && self.ret_type_is_owned_noncopy() => {
+                        Some(name.clone())
+                    }
+                    _ => None,
+                };
+                if let Some(name) = &global_ret_name {
+                    let static_name = self.global_var_static_name(name);
+                    write!(sink.body, "{}.lock().unwrap().clone()", static_name)?;
+                    sink.body.write(b";")?;
+                    return Ok(true);
+                }
                 self.expr(expr, &mut sink.body)?;
                 if needs_to_string {
                     sink.body.write(b".to_string()")?;
