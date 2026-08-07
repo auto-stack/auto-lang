@@ -1722,14 +1722,28 @@ pub fn get_rust_workspace_dir() -> PathBuf {
 
 /// Compute the relative path from the shared workspace dir to auto-lang crate.
 fn compute_auto_lang_rel_path(project_dir: &Path) -> String {
-    // Walk up from project_dir to find the workspace root (has crates/auto-lang)
+    // Walk up from project_dir to find the workspace root (has crates/auto-lang).
+    // Also check sibling directories at each level — auto-lang may live in a
+    // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
+        // Direct: this dir has crates/auto-lang
         if dir.join("crates").join("auto-lang").exists() {
             let auto_lang_abs = dir.join("crates").join("auto-lang");
             let workspace_dir = get_rust_workspace_dir();
-            // Compute relative path from workspace_dir to auto_lang_abs
             return compute_relative_path(&workspace_dir, &auto_lang_abs);
+        }
+        // Sibling: a sibling dir (e.g. ../auto-lang) has crates/auto-lang.
+        // This covers the common layout where <project> and auto-lang are
+        // sibling repos under a common parent (autostack/).
+        if let Some(parent) = dir.parent() {
+            for sibling in ["auto-lang"] {
+                let candidate = parent.join(sibling).join("crates").join("auto-lang");
+                if candidate.exists() {
+                    let workspace_dir = get_rust_workspace_dir();
+                    return compute_relative_path(&workspace_dir, &candidate);
+                }
+            }
         }
         if !dir.pop() {
             break;
