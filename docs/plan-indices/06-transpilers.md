@@ -42,9 +42,14 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 241 | a2r String Type Cleanup | ✅ | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if |
 | 264 | a2r Dot to Double Colon | ✅ | module_types mapping, qualify_type_name(), use stmt path handling for `.` → `::` |
 | 364 | a2r COSMIC Replication Readiness | ⏳ | Dotted attribute-macro annotations, multi-bound `#[with(T as A + B)]`, move closures, full `~{}` statements, stream parity — closing a2r gaps for COSMIC desktop replication |
+| 391 | a2r Parity Debt from Musk | ✅ | D1-D6 六项 a2r 限制修复（.len() cast、Option<&T> 标注、List<str> split、:: 路径、() 类型、trait impl 错误）+ §8 多段路径 codegen（std::env::var 用 ::） |
+| 392 | a2r Codegen Fixes from Musk | ✅ | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 Plan 393） |
+| 393 | a2r Method Dispatch Fixes | ✅ | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
+| 395 | Turbofish Generic Call Args | ✅ | 调用泛型实参 `method<Type>(args)` / `fn<Type>(args)` → Rust `::<T>`，AST 字段 + parser 回溯 + 3 发射点 + golden |
+| 397 | Spec Supertrait + Arc<Fn> Spec-Param | ✅ | `pub spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> spec-param golden 确认 |
 
 ## Status Summary
-- Completed: 15 | Partial: 3 | Planned: 13 | Deprecated: 0
+- Completed: 20 | Partial: 3 | Planned: 13 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)

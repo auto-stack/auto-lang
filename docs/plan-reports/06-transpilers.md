@@ -42,6 +42,11 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 240 | Rust Cookbook a2r Tests | Complete | Systematic a2r test suite — 163 `.at` files across all Cookbook chapters, all assert-based (Phase 14), de-stubbed for non-architecture-blocked files (Phase 15), FAIL-driven fix loop (Phase 16); 124/124 a2r + 236/236 transpiler pass. DB/async/cc stubs handed off to Plan 242 tracker #10/#12/#17 |
 | 241 | a2r String Type Cleanup | Complete | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if, Add operator variable detection |
 | 264 | a2r Dot to Double Colon | Complete | module_types mapping, qualify_type_name(), expression path handling, use stmt `.` → `::` for cross-module types |
+| 391 | a2r Parity Debt from Musk | Complete | D1-D6 六项 a2r 限制修复 + §8 多段路径 codegen（std::env::var 用 ::） |
+| 392 | a2r Codegen Fixes from Musk | Complete | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 393） |
+| 393 | a2r Method Dispatch Fixes | Complete | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
+| 395 | Turbofish Generic Call Args | Complete | 调用泛型实参 `::<T>`，AST 字段 + parser 回溯 + 3 发射点 + golden |
+| 397 | Spec Supertrait + Arc<Fn> Spec-Param | Complete | `spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> golden |
 
 ## Status
 
@@ -112,7 +117,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 397.
 
 - [204-a2r-transpiler-completeness.md](../plans/archive/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
@@ -125,3 +130,8 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [241-a2r-string-type-cleanup.md](../plans/archive/241-a2r-string-type-cleanup.md)
 - [264-a2r-dot-to-double-colon.md](../plans/archive/264-a2r-dot-to-double-colon.md)
 - [240-rust-cookbook-a2r-tests.md](../plans/archive/240-rust-cookbook-a2r-tests.md)
+- [391-a2r-parity-debt-from-musk.md](../plans/archive/391-a2r-parity-debt-from-musk.md)
+- [392-a2r-codegen-fixes-from-musk.md](../plans/archive/392-a2r-codegen-fixes-from-musk.md)
+- [393-a2r-method-dispatch-fixes.md](../plans/archive/393-a2r-method-dispatch-fixes.md)
+- [395-turbofish-generic-call-args.md](../plans/archive/395-turbofish-generic-call-args.md)
+- [397-send-sync-supertrait-and-arc-fn-spec-param.md](../plans/archive/397-send-sync-supertrait-and-arc-fn-spec-param.md)
