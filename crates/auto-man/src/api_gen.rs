@@ -301,11 +301,27 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
     use auto_lang::trans::rust::transpile_rust;
     use auto_val::AutoStr;
-    let mut sink = transpile_rust(AutoStr::from("db"), content)
-        .map_err(|e| format!("Failed to transpile db.at: {}", e))?;
-    let rust_code = String::from_utf8(sink.done()?.to_vec())
-        .map_err(|e| format!("Invalid UTF-8 in db.rs output: {}", e))?;
-    Ok(rust_code)
+    // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
+    // (for + if/else + multi-field struct literals) overflows Windows's 1MB
+    // main-thread stack (parser frames are large; cf. run_autovm lib.rs:341).
+    // This mirrors the repo's established pattern. UTF-8-safety fixes in
+    // strip_collection_new (post_process) handle the second §7 bug separately.
+    // Error is converted to String inside the thread (AutoError is !Send).
+    let content = content.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || -> Result<String, String> {
+            let mut sink = transpile_rust(AutoStr::from("db"), &content)
+                .map_err(|e| format!("Failed to transpile db.at: {}", e))?;
+            let rust_code = String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
+                .map_err(|e| format!("Invalid UTF-8 in db.rs output: {}", e))?;
+            Ok(rust_code)
+        })
+        .map_err(|e| format!("Failed to spawn db.rs transpile thread: {}", e))?;
+    handle
+        .join()
+        .map_err(|_| "db.rs transpile thread panicked".to_string())?
+        .map_err(|e| e.into())
 }
 
 /// Plan musk-022 CRUD 扩展: post-process a2r's db.rs output to fix the known
@@ -380,25 +396,25 @@ fn append_tostring_for_str_fields(code: &str) -> String {
 }
 
 /// Strip `List<T>.new(...)` / `Array<T>.new(...)` wrappers, leaving the inner expr.
+/// Plan 399 §7: made UTF-8 safe — `List</Array<` are ASCII so byte-indexing for
+/// matching is fine, but the byte cursor must skip whole UTF-8 sequences when
+/// it lands on a non-ASCII lead byte (e.g. emoji in seed data like 📄), else
+/// `code[i..]` slices into a multi-byte char and panics.
 fn strip_collection_new(code: &str) -> String {
     let mut out = String::with_capacity(code.len());
     let bytes = code.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        // Match `List<` or `Array<`
-        if (code[i..].starts_with("List<") || code[i..].starts_with("Array<")) {
-            // Find the matching `>` for the `<` (no nested <> expected in type position).
-            let lt_at = i + 4; // index of '<' (List<) or +5 (Array< handled below)
+        // Only attempt the List/Array match at an ASCII lead byte — landing mid
+        // multi-byte char means we just copy the byte run through.
+        if bytes[i] < 0x80 && (code[i..].starts_with("List<") || code[i..].starts_with("Array<")) {
             let is_array = code[i..].starts_with("Array<");
             let lt_at = if is_array { i + 5 } else { i + 4 };
             if let Some(gt_rel) = code[lt_at..].find('>') {
                 let gt_at = lt_at + gt_rel;
-                // After '>' expect ".new("
-                if code[gt_at+1..].starts_with(".new(") {
+                if code.get(gt_at+1..).map_or(false, |s| s.starts_with(".new(")) {
                     let paren_open = gt_at + 5;
-                    // Bracket-balance over (...) honoring () [] {} "".
                     if let Some(paren_close) = balance_paren(code, paren_open) {
-                        // Emit the inner expr (paren_open+1 .. paren_close), skip the wrapper.
                         out.push_str(&code[paren_open+1..paren_close]);
                         i = paren_close + 1;
                         continue;
@@ -406,10 +422,21 @@ fn strip_collection_new(code: &str) -> String {
                 }
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        // Advance one whole UTF-8 char so the cursor stays on a char boundary.
+        let ch_len = utf8_len(bytes[i]);
+        out.push_str(&code[i..i + ch_len]);
+        i += ch_len;
     }
     out
+}
+
+/// Byte length of the UTF-8 char whose lead byte is `b`. Plan 399 §7.
+fn utf8_len(b: u8) -> usize {
+    if b < 0x80 { 1 }
+    else if b < 0xC0 { 1 } // continuation byte (shouldn't be a lead, stay safe)
+    else if b < 0xE0 { 2 }
+    else if b < 0xF0 { 3 }
+    else { 4 }
 }
 
 /// Find the matching ')' for the '(' at `open`, balancing () [] {} and "".
@@ -2270,38 +2297,48 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
         assert!(toggle_sig.contains("Path(id)"), "PATCH no-body has Path: {}", toggle_sig);
     }
 
-    /// Plan 399 §7: probe the REAL 015-notes backend codegen path. Marked
-    /// #[ignore] — currently DOCUMENTS a known a2r stack overflow on 015's
-    /// complex db.at (12 fns + list-rebuild loops), so 015's backend cannot be
-    /// generated via the Plan399 db.rs route today. 017 (2 simple fns) works.
-    /// When the a2r overflow is fixed, flip this to a real assertion test.
+    /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and
+    /// assert it now uses full db-delegation. Marked #[ignore] because it
+    /// writes the shared workspace on disk. Previously this overflowed; the fix
+    /// (transpile_db_to_rs runs on a 16MB stack + strip_collection_new UTF-8
+    /// safe) makes 015's complex db.at (12 fns + for/if-else + emoji seeds)
+    /// transpile and generate cleanly.
     #[test]
     #[ignore]
-    fn regen_real_015_backend_probe() {
+    fn regen_real_015_backend_db_delegation() {
         let project = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..").join("..").join("examples").join("ui").join("015-notes");
         if !project.exists() {
             eprintln!("skip: 015-notes not found");
             return;
         }
+        // stage A: api.at extracts (default stack — parse_api is shallow).
         let api_content = std::fs::read_to_string(project.join("src").join("back").join("api.at"))
             .expect("api.at");
         let module = try_full_parse(&api_content)
             .or_else(|| extract_api_lenient(&api_content))
             .expect("api extracts");
-        eprintln!("stage A ok: {} endpoints", module.endpoints.len());
+        assert!(module.endpoints.len() >= 8, "8 endpoints: {}", module.endpoints.len());
 
-        let db_content = std::fs::read_to_string(project.join("src").join("back").join("db.at"))
-            .expect("db.at");
-        eprintln!("stage B1: transpile_db_to_rs (a2r on 015 db.at, 12 fns)");
-        match transpile_db_to_rs(&db_content) {
-            Ok(db_rs) => {
-                eprintln!("stage B1 ok ({} bytes) — a2r overflow FIXED, upgrade this test", db_rs.len());
-                eprintln!("stage B2: generate_api full path");
-                generate_api(&project, "rust").expect("generate_api 015 ok");
-                eprintln!("stage B2 ok — 015 backend regenerates successfully now");
-            }
-            Err(e) => panic!("stage B1 failed (non-overflow): {}", e),
-        }
+        // stage B: full generate (transpile_db_to_rs has its own 16MB stack).
+        generate_api(&project, "rust").expect("generate_api 015 ok");
+
+        let ws = crate::rust_ui::ensure_shared_workspace(&project);
+        let back = crate::rust_ui::back_member_name(&project);
+        let api_rs = std::fs::read_to_string(ws.join(&back).join("src").join("api.rs"))
+            .expect("api.rs exists");
+        let main_rs = std::fs::read_to_string(ws.join(&back).join("src").join("main.rs"))
+            .expect("main.rs exists");
+        // Full db-delegation (no State<Db>).
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+        assert!(api_rs.contains("crate::db::all_notes"), "list delegates: {}", api_rs);
+        assert!(api_rs.contains("crate::db::create_note"), "create delegates: {}", api_rs);
+        // []str param (update_tags) — value, not borrow.
+        assert!(
+            api_rs.contains("crate::db::update_tags(id, input.tags)"),
+            "[]str param not borrowed: {}", api_rs
+        );
+        assert!(!main_rs.contains("with_state"), "main no with_state: {}", main_rs);
+        assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
     }
 }

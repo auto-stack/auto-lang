@@ -128,13 +128,12 @@
 - **后果**：前端 `chat_store.at` 的 `.Typing(name)` handler 永远不会被调用。"首个 SSE 多事件 App"实际只是单事件（NewMessage）。
 - **修复需 4 处**：(1) 后端加 typing 触发端点或 POST 分支按变体广播；(2) `api_gen.rs` 让 broadcast 读 `ChatEvent` 变体而非硬编码；(3) composer 输入时发 typing；(4) 重生成 store。属功能补全，非 bug 修复——当前作为「声明但未实现」记录。
 
-### §7 🔴 015-notes 后端 a2r 转译栈溢出（无法用 Plan399 路径生成）
-015 是回归基线（文档曾称"9 端点全委托"），但深挖发现**015 的 db.at 根本无法用 Plan399 的 db.rs 转译路径生成**：
-- **实测栈溢出**：`transpile_db_to_rs(015 db.at)`（a2r 转译）触发 `STATUS_STACK_OVERFLOW (0xc00000fd)`。stage A（api.at 解析）正常出 8 端点，溢出发生在 stage B1（a2r 转译 db.at）。
-- **根因**：015 db.at 比 017 复杂得多——12 个 pub fn + 多处 `var new_notes List<Note>.new([])` + `for note in notes { if/else ... }` 列表重建循环 + `Note { ... }` 结构体构造嵌套。a2r（`trans/rust.rs`）转译这种深度嵌套时递归过深。017 的 db.at 只有 2 个简单函数（`all_messages` 直接返回、`create_message` 线性逻辑），所以第3步"db.rs 编译通过"只验证了简单情形。
-- **文档此前的不实声明**：原 §7 说"015 全量回归（9 端点单测 + 完整 codegen 测试 + db.rs 转译）"——但 `test_gen_015_notes_rust` 调的是**前端**生成器 `generate_rust_ui`（不生成后端），`test_handler_calls_db_for_notes_regression` 是**内联简化文本**单测（不触发真实 db.at 转译）。015 的真实 db.at 转译从未跑过。
-- **影响**：015 的 Plan399 后端路径（db.rs 转译）当前不可用。015 仍能用旧的 `State<Db>` 模板路径运行（stale 产物 `examples/rust-workspace/015-notes-back/`），但拿不到 db.rs 的真实业务逻辑。
-- **根治**：修 a2r 的递归深度（`trans/rust.rs`，可能是 expr/stmt 转译的递归未用迭代栈）。属 a2r 层 bug，非 Plan399 codegen 逻辑问题。测试 `regen_real_015_backend_probe`（#[ignore]）记录现状，a2r 修好后升级为真实断言。
+### §7 ✅→🟡 015 栈溢出已修复，编译错误转 §3
+015 db.at 转译的两个独立 bug 已修，015 现在能**生成**，但生成的 db.rs 仍有编译错误（属 §3 范围）：
+- **栈溢出（已修）**：根因是 parser 在 Windows 1MB 主线程栈上，对深嵌套（for + if/else + 8 字段结构体字面量 + note.x 字段访问）递归过深（每帧含 `rhs_lookahead_is_node` 的 Vec<Token>）。修复：`transpile_db_to_rs` 内部用 16MB 栈线程（仓库惯例，cf. `run_autovm` lib.rs:341）。注意根因在 **parser**（`parser.rs`）非 a2r。
+- **UTF-8 切片 bug（已修）**：`strip_collection_new`（`api_gen.rs:383`）按字节步进 `i += 1` + `code[i..]` 切片，遇到 015 种子数据的 emoji（📄）panic 在字符中间。修复：按 UTF-8 字符边界步进（`utf8_len` 辅助）。017 无此 bug（全 ASCII）。
+- **验证**：`regen_real_015_backend_db_delegation`（#[ignore]，默认栈）通过——015 完整生成，全 db 委托（无 State<Db>），`crate::db::all_notes`/`create_note`/`update_tags` 委托正确。
+- **剩余（转 §3）**：生成的 015 db.rs 有 26 个编译错误（E0308×14、E0277 i64/i32×6、E0614×2、E0596 mut×2、E0507×1）——都是 a2r 转译复杂 db.at 的缺陷，属 §3 根治范围。015 当前仍用旧 State<Db> 产物运行。
 
 ### §8 🟡 db_fn 映射脆弱（命名偏离即静默回退）
 `db_fn_candidates`（`api_gen.rs:738`）是纯字符串前缀归一（list_→all_ 等 13 个动词），**无形态学推理**：
