@@ -1108,20 +1108,46 @@ fn generate_api_rs(
     lines.push(format!("pub type Db = Arc<Mutex<Vec<{}>>>;", primary_type));
     lines.push("".to_string());
 
-    // Generate CreateInput struct for POST endpoints with body fields
+    // Generate CreateInput struct(s) for POST endpoints with body fields.
+    // Plan 399 Phase 12: each unique body-param set gets its own struct (was:
+    // only one CreateInput per primary type, so a void POST like set_typing
+    // with different params than the create POST got the wrong struct → 422).
+    // Mirrors the UpdateInput dedup logic below.
+    let mut seen_create_sets: Vec<String> = Vec::new();
+    let mut create_struct_for_sig: Vec<(String, String)> = Vec::new(); // (param_sig, struct_name)
     for endpoint in &api_module.endpoints {
         if endpoint.method() == "POST" {
             let body_params = endpoint_body_params(endpoint);
             if !body_params.is_empty() {
+                let param_sig: String = body_params.iter()
+                    .map(|p| format!("{}:{}", p.name, p.ty))
+                    .collect::<Vec<_>>().join(",");
+                if seen_create_sets.contains(&param_sig) {
+                    continue;
+                }
+                seen_create_sets.push(param_sig.clone());
+                let ep_fn_name = &endpoint.fn_name;
+                let struct_name = if seen_create_sets.len() == 1 {
+                    format!("Create{}Input", primary_type)
+                } else {
+                    let suffix: String = ep_fn_name.split('_').map(|s| {
+                        let mut c = s.chars();
+                        match c.next() {
+                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                            None => String::new(),
+                        }
+                    }).collect::<String>();
+                    format!("Create{}{}Input", primary_type, suffix)
+                };
+                create_struct_for_sig.push((param_sig, struct_name.clone()));
                 lines.push("#[derive(serde::Deserialize)]".to_string());
-                lines.push(format!("pub struct Create{}Input {{", primary_type));
+                lines.push(format!("pub struct {} {{", struct_name));
                 for param in &body_params {
                     let rust_type = auto_type_to_rust(&param.ty);
                     lines.push(format!("    pub {}: {},", param.name, rust_type));
                 }
                 lines.push("}".to_string());
                 lines.push("".to_string());
-                break; // Only one CreateInput per primary type
             }
         }
     }
@@ -1269,7 +1295,16 @@ fn generate_api_rs(
             if method == "POST" {
                 let body_params = endpoint_body_params(endpoint);
                 if !body_params.is_empty() {
-                    params.push(format!("Json(input): Json<Create{}Input>", primary_type));
+                    // Plan 399 Phase 12: pick the CreateInput struct matching this
+                    // endpoint's body-param signature (was: always Create{Type}Input).
+                    let param_sig: String = body_params.iter()
+                        .map(|p| format!("{}:{}", p.name, p.ty))
+                        .collect::<Vec<_>>().join(",");
+                    let struct_name = create_struct_for_sig.iter()
+                        .find(|(sig, _)| sig == &param_sig)
+                        .map(|(_, name)| name.clone())
+                        .unwrap_or_else(|| format!("Create{}Input", primary_type));
+                    params.push(format!("Json(input): Json<{}>", struct_name));
                 } else {
                     params.push(format!("Json(input): Json<{}>", primary_type));
                 }

@@ -91,6 +91,29 @@ test('T6: SSE NewMessage 推送（跨标签页）', async ({ browser }) => {
   await ctxB.close()
 })
 
+test('T9: typing 指示器跨标签页（B 输入 → A 看到 "You is typing…"）', async ({ browser }) => {
+  const ctxA = await browser.newContext()
+  const pageA = await ctxA.newPage()
+  await waitForApp(pageA)
+
+  const ctxB = await browser.newContext()
+  const pageB = await ctxB.newPage()
+  await waitForApp(pageB)
+
+  // B 输入触发 oninput → on_typing("You") → POST /api/typing → SSE Typing 广播
+  await pageB.locator('input').fill('hello-typing')
+
+  // A 通过 SSE 收到 Typing 事件，typing_name = "You"（Phase 12 协议: evt.name）
+  // 回归守护: 若后端回退到广播整个 input(字段 sender) 或前端读整个对象,
+  // typing_name 会变成 [object Object], 断言失败。
+  await expect.poll(
+    async () => (await pageA.locator('body').innerText()).includes('You is typing'),
+    { timeout: 8000, message: '标签页A应通过SSE看到 "You is typing…"' }
+  ).toBe(true)
+  await ctxA.close()
+  await ctxB.close()
+})
+
 test('T8: 控制台无实质错误', async ({ page }) => {
   const errors: string[] = []
   page.on('console', (m) => {
