@@ -147,6 +147,10 @@ pub struct ExtImport {
     pub symbols: Vec<Name>,
     /// Import source: npm package specifier or project-relative file path.
     pub path: AutoStr,
+    /// Plan 022: 可选调用参数（仅 composable 消费）。语法：
+    /// `composable: useX(.arg) from "..."` → call_args = [Expr::Dot(...)]。
+    /// fn/component 声明忽略此字段。空 Vec = 无参调用（向后兼容）。
+    pub call_args: Vec<Expr>,
 }
 
 // ============================================================================

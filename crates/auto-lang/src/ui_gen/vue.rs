@@ -948,7 +948,7 @@ pub struct VueGenerator {
 
     /// Composables from `use { composable: ... }` to call once at
     /// `<script setup>` top level: (local const name, callee name).
-    ext_composables: Vec<(String, String)>,
+    ext_composables: Vec<(String, String, String)>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -1351,9 +1351,16 @@ impl VueGenerator {
                         format!("import {{ {} }} from '{}'\n", symbols.join(", "), specifier),
                     ));
                     if imp.kind == crate::ast::ExtImportKind::Composable {
+                        // Plan 022: composable 调用参数 → JS 字符串（逗号分隔）。
+                        // 空 call_args 生成 ""（→ 无参调用 useX()，向后兼容）。
+                        let args_js = imp.call_args.iter()
+                            .map(|a| self.expr_to_vue_bound_value(a))
+                            .collect::<Result<Vec<_>, _>>()
+                            .unwrap_or_default()
+                            .join(", ");
                         for sym in &symbols {
                             self.ext_composables
-                                .push((Self::ext_composable_local_name(sym), sym.clone()));
+                                .push((Self::ext_composable_local_name(sym), sym.clone(), args_js.clone()));
                         }
                     }
                 }
@@ -1785,8 +1792,10 @@ impl VueGenerator {
         // Widget `use { composable: ... }` — call each composable once at
         // <script setup> top level, binding the return value to a local
         // const (`useMenuBounds` → `menuBounds`) reachable from handlers.
-        for (local, callee) in &self.ext_composables {
-            script.push_str(&format!("const {} = {}()\n", local, callee));
+        for (local, callee, args) in &self.ext_composables {
+            // Plan 022: 空 args 生成 useX()（向后兼容无参 store composable），
+            // 有 args 生成 useX(arg1, arg2)（支持有参 composable 如 useStreamingDocument(.source)）。
+            script.push_str(&format!("const {} = {}({})\n", local, callee, args));
         }
         if !self.ext_composables.is_empty() {
             script.push('\n');
@@ -2701,13 +2710,13 @@ impl VueGenerator {
     /// local (a facade object, e.g. `recentFilesStore`)? Such receivers
     /// never get the `.remove → .splice` mapping.
     fn is_ext_composable_local(&self, name: &str) -> bool {
-        self.ext_composables.iter().any(|(local, _)| local == name)
+        self.ext_composables.iter().any(|(local, _, _)| local == name)
     }
 
     /// Plan 012 Batch A (gap 19): local names of `use { composable: ... }`
     /// imports, for the ts_adapter facade gate.
     fn facade_local_names(&self) -> std::collections::HashSet<String> {
-        self.ext_composables.iter().map(|(local, _)| local.clone()).collect()
+        self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect()
     }
 
     /// Generate <template> content from view tree
@@ -5679,6 +5688,20 @@ impl VueGenerator {
                 }
                 out.push('`');
                 Ok(out)
+            }
+            // Plan 022: fn 调用作为绑定值（如组件 props: Comp { items: getList(.msg) }）。
+            // 复用 expr_to_vue_text_raw:5550-5559 的简单调用模板。此前 Expr::Call 落到
+            // _ => "null"，导致 fn 调用 prop 被丢弃（getQuestions(.msg) → null）。
+            Expr::Call(call) => {
+                let name_str = self.expr_to_vue_bound_value(&call.name)?;
+                let args_str: Vec<String> = call.args.args.iter()
+                    .filter_map(|a| match a {
+                        crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                        _ => None,
+                    })
+                    .map(|a| self.expr_to_vue_bound_value(&a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("{}({})", name_str, args_str.join(", ")))
             }
             _ => Ok("null".to_string()),
         }
@@ -14671,5 +14694,79 @@ widget NullProbe {
                 expected_n, output_n
             );
         }
+    }
+
+    /// Plan 022 限制1: fn 调用作为组件 prop（expr_to_vue_bound_value 的 Expr::Call 分支）。
+    /// 验证 `ItemList { items: getList(.msg) }` 生成 `:items="getList(msg)"`（非 null）。
+    #[test]
+    fn test_a2vue_fn_call_prop() {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let src_path = d.join("test/a2vue/003_fn_call_prop/input.at");
+        let src = std::fs::read_to_string(&src_path).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("no widget in 003_fn_call_prop input");
+        let mut gen = VueGenerator::new();
+        let output = gen.generate_sfc(&widget).unwrap();
+        let exp_path = d.join("test/a2vue/003_fn_call_prop/input.expected.vue");
+        let expected = std::fs::read_to_string(&exp_path).unwrap_or_default();
+        let output_n = normalize_vue_output(&output);
+        let expected_n = normalize_vue_output(&expected);
+        if output_n != expected_n {
+            let wrong_path = d.join("test/a2vue/003_fn_call_prop/input.wrong.vue");
+            std::fs::write(&wrong_path, &output).unwrap();
+            panic!(
+                "a2vue fn_call_prop mismatch. See input.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                expected_n, output_n
+            );
+        }
+    }
+
+    /// Plan 022 限制2: composable 带参调用。验证
+    /// `composable: useStreamingDocument(.source) from "..."` 生成
+    /// `const streamingDocument = useStreamingDocument(source)`，
+    /// 且无参 composable 仍是 `useX()`（向后兼容）。
+    #[test]
+    fn test_composable_with_args() {
+        let src = r#"
+widget CompWithComposable {
+    use {
+        composable: useStreamingDocument(.source) from "src/front/useStreamingDocument.ts"
+        composable: useClock from "src/front/useClock.ts"
+    }
+    model { var source str = "" }
+    view { col { text "hi" } }
+    on { }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("no widget");
+        let mut gen = VueGenerator::new();
+        let output = gen.generate_sfc(&widget).unwrap();
+        // 带参：useStreamingDocument(source)
+        assert!(
+            output.contains("const streamingDocument = useStreamingDocument(source)"),
+            "带参 composable 应生成 useStreamingDocument(source)，实际:\n{}", output
+        );
+        // 无参默认：useClock()（向后兼容）
+        assert!(
+            output.contains("const clock = useClock()"),
+            "无参 composable 应仍是 useClock()，实际:\n{}", output
+        );
     }
 }

@@ -11437,6 +11437,27 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            // Plan 022: 可选调用参数（仅 composable 实际消费）：
+            // `composable: useX(.arg) from "..."`。符号列表之后、from 之前，
+            // 若跟 `(` 则解析参数列表。fn/component 声明也允许此语法但不消费。
+            let mut call_args: Vec<crate::ast::Expr> = Vec::new();
+            if self.is_kind(TokenKind::LParen) {
+                self.next();
+                self.skip_empty_lines();
+                while !self.is_kind(TokenKind::RParen) {
+                    self.skip_empty_lines();
+                    if self.is_kind(TokenKind::RParen) {
+                        break;
+                    }
+                    let arg = self.parse_expr()?;
+                    call_args.push(arg);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+            }
+
             self.expect_ident("from")?;
             if !self.is_kind(TokenKind::Str) {
                 return Err(SyntaxError::Generic {
@@ -11451,7 +11472,7 @@ impl<'a> Parser<'a> {
             let path = self.cur.text.clone();
             self.next();
 
-            imports.push(ExtImport { kind, symbols, path });
+            imports.push(ExtImport { kind, symbols, path, call_args });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
