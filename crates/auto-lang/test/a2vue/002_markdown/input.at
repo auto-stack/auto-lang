@@ -1,0 +1,17 @@
+// a2vue golden case 002 — markdown tag content prop binding.
+// Verifies plan 022 Phase 7c fix for §10: `markdown { content: .body }` must
+// generate <MarkdownRender :content="body"> (bound), NOT leak `content: .body`
+// as literal text into the tag body.
+widget DocView {
+    model { var body str = "" }
+    view {
+        col {
+            style: "doc-wrap"
+            markdown {
+                content: .body
+                style: "doc-content"
+            }
+        }
+    }
+    on { }
+}

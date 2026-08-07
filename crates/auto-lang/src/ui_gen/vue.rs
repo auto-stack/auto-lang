@@ -6139,6 +6139,29 @@ impl VueGenerator {
                 // are attached by the generic event loop at the end of this fn.
             }
 
+            // === Markdown (Plan 022 Phase 7c — fixes plan 022 §10) ===
+            // Streaming markdown renderer (markstream-vue). Maps the AURA
+            // `content` prop to <MarkdownRender :content="..."> (bound) or
+            // <MarkdownRender content="..."> (literal string). Mirrors the
+            // autodown_editor content handling above.
+            "markdown" => {
+                match props.get("content") {
+                    Some(AuraPropValue::Expr(expr)) => {
+                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":content=\"{}\"", js_expr));
+                        }
+                    }
+                    Some(value) => {
+                        // Literal string markdown source.
+                        let content = self.extract_string_value(value).unwrap_or("");
+                        attrs.push(format!("content=\"{}\"", content));
+                    }
+                    None => {}
+                }
+                // style/class (wrapper sizing).
+                self.push_style_class(&mut attrs, props);
+            }
+
             // === Input ===
             "input" => {
                 // v-model for value
@@ -14610,5 +14633,39 @@ widget NullProbe {
     #[test]
     fn test_a2vue_counter() {
         test_a2vue("001_counter").expect("a2vue counter golden mismatch");
+    }
+
+    /// Plan 022 Phase 7c: markdown content prop binding (fixes §10).
+    /// Uses shadcn mode (like real `auto build`) so `markdown` maps to
+    /// <MarkdownRender> via the widget registry + generate_shadcn_attrs.
+    #[test]
+    fn test_a2vue_markdown() {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let src_path = d.join("test/a2vue/002_markdown/input.at");
+        let src = std::fs::read_to_string(&src_path).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("no widget in 002_markdown input");
+        let mut gen = VueGenerator::new_shadcn();
+        let output = gen.generate_sfc(&widget).unwrap();
+        let exp_path = d.join("test/a2vue/002_markdown/input.expected.vue");
+        let expected = std::fs::read_to_string(&exp_path).unwrap_or_default();
+        let output_n = normalize_vue_output(&output);
+        let expected_n = normalize_vue_output(&expected);
+        if output_n != expected_n {
+            let wrong_path = d.join("test/a2vue/002_markdown/input.wrong.vue");
+            std::fs::write(&wrong_path, &output).unwrap();
+            panic!(
+                "a2vue markdown mismatch. See input.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                expected_n, output_n
+            );
+        }
     }
 }

@@ -907,28 +907,14 @@ impl<'a> Lexer<'a> {
 
     pub fn identifier_or_special_block(&mut self) -> AutoResult<Token> {
         let ident = self.identifier()?;
-        // TODO: register special blocks dynamically
-        if ident.text == "markdown" && self.peek_non_whitespace('{') {
-            self.chars.next();
-            let tk = self.single(TokenKind::LBrace, '{');
-            self.buffer.push_back(tk);
-            let mut code = String::new();
-            while let Some(&c) = self.chars.peek() {
-                if c == '}' {
-                    self.chars.next();
-                    break;
-                }
-                code.push(c);
-                self.chars.next();
-            }
-            let code = Token::str(self.pos(code.len()), code.into());
-            self.buffer.push_back(code);
-            let tk = self.single(TokenKind::RBrace, '}');
-            self.buffer.push_back(tk);
-            Ok(ident)
-        } else {
-            Ok(ident)
-        }
+        // Plan 022 Phase 7c: the `markdown { ... }` raw-string special capture
+        // (former lines 911-928) was REMOVED — it swallowed the brace body as
+        // an opaque string token, so `markdown { content: .x }` never reached
+        // the standard prop parser and `content: .x` leaked into the template
+        // as literal text (plan 022 §10). Now `markdown` is a plain identifier
+        // and `{ content: .x }` parses through the normal view-node prop path,
+        // letting codegen bind `:content="..."` onto <MarkdownRender>.
+        Ok(ident)
     }
 
     fn is_newstart(&mut self) -> bool {
@@ -1672,13 +1658,14 @@ mod tests {
 
     #[test]
     fn test_markdown() {
-        let code = r#"markdown {
-        # hello
-            This is a **test** for markdown
-        }
-        "#;
+        // Plan 022 Phase 7c: the markdown raw-string special capture was
+        // removed (it broke `content:` prop binding — see §10). `markdown`
+        // is now a plain identifier; its content is passed via the standard
+        // `content:` prop, so `markdown { content: "# hi" }` tokenizes like
+        // any other prop-bearing element.
+        let code = r##"markdown { content: "# hello" }"##;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<ident:markdown><{><str:\n        # hello\n            This is a **test** for markdown\n        ><}>");
+        assert_eq!(tokens, "<ident:markdown><{><ident:content><:><str:# hello><}>");
     }
 
     #[test]
