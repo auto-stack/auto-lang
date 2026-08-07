@@ -1163,7 +1163,7 @@ impl WidgetRegistry {
         markdown.primary_prop = Some("content".to_string());
         markdown.has_children = false;
         markdown.backends.insert("vue".to_string(), BackendMapping {
-            component: "MarkdownStream".to_string(),
+            component: "MarkdownRender".to_string(),
             import: Some("markstream-vue".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
