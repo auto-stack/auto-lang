@@ -1919,7 +1919,15 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     let back_name = back_member_name(project_dir);
     let api_backend_dir = ws_dir.join(&back_name);
     if !api_backend_dir.join("Cargo.toml").exists() {
-        return None;
+        // Plan musk-022: generate the Rust backend on first run when the project
+        // declares api: "rust". Previously returned None silently (no backend).
+        if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
+            eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
+            return None;
+        }
+        if !api_backend_dir.join("Cargo.toml").exists() {
+            return None;
+        }
     }
 
     println!();

@@ -305,13 +305,13 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::create_dir_all(&src_dir)
         .map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
+    // Plan musk-022: detect streaming endpoints — they need events.rs + cargo deps.
+    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+
     // Generate Cargo.toml (workspace member version — no [workspace])
-    let cargo_toml = generate_cargo_toml(&back_name);
+    let cargo_toml = generate_cargo_toml(&back_name, has_sse);
     std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
-
-    // Update workspace members to include the new backend project
-    let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
 
     // Generate types.rs
     let types_rs = generate_types_rs(api_module);
@@ -322,6 +322,13 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     let api_rs = generate_api_rs(api_module);
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
+
+    // Plan musk-022: events broadcast-bus module for SSE backends.
+    if has_sse {
+        let events_rs = generate_events_rs();
+        std::fs::write(src_dir.join("events.rs"), &events_rs)
+            .map_err(|e| format!("Failed to write events.rs: {}", e))?;
+    }
 
     // Read seed data from db.at (if exists)
     let db_file = root_dir.join("src").join("back").join("db.at");
@@ -336,6 +343,10 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
+    // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
+    // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
+    let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
+
     println!("  ✓ Generated Rust server: {}/", back_name);
 
     Ok(())
@@ -347,13 +358,16 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 /// projects' backends live as siblings under `D:/.auto/rust-workspace`, and
 /// cargo forbids two members with the same package name. Use the per-project
 /// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
-fn generate_cargo_toml(package_name: &str) -> String {
+fn generate_cargo_toml(package_name: &str, has_sse: bool) -> String {
     // Plan 328: Cargo rejects names starting with a digit.
     let safe_name = if package_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
         format!("app-{}", package_name)
     } else {
         package_name.to_string()
     };
+    let sse_deps = if has_sse { "
+async-stream = \"0.3\"
+futures = \"0.3\"" } else { "" };
     format!(
         r#"[package]
 name = "{}"
@@ -365,10 +379,26 @@ axum.workspace = true
 tokio = {{ version = "1", features = ["full"] }}
 serde.workspace = true
 serde_json.workspace = true
-tower-http.workspace = true
+tower-http.workspace = true{}
 "#,
-        safe_name
+        safe_name, sse_deps
     )
+}
+
+/// Plan musk-022: SSE broadcast-bus module. tokio::sync::broadcast channel;
+/// POST handlers call broadcast(json), GET stream handler calls subscribe().
+fn generate_events_rs() -> String {
+    r#"// Auto-generated SSE event bus (Plan musk-022).
+use tokio::sync::broadcast;
+type Bus = broadcast::Sender<String>;
+fn bus() -> Bus {
+    use std::sync::OnceLock;
+    static BUS: OnceLock<Bus> = OnceLock::new();
+    BUS.get_or_init(|| { let (tx, _rx) = broadcast::channel(256); tx }).clone()
+}
+pub fn subscribe() -> broadcast::Receiver<String> { bus().subscribe() }
+pub fn broadcast(json: String) { let _ = bus().send(json); }
+"#.to_string()
 }
 
 /// Generate types.rs with serde structs
@@ -596,11 +626,34 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
     // Convention: first field is the ID field
     let id_field = type_fields.first().copied().unwrap_or("id");
 
+    // Plan musk-022: detect SSE for POST broadcast.
+    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+
     // Generate handler for each endpoint
     for endpoint in &api_module.endpoints {
         let method = endpoint.method();
         let fn_name = &endpoint.fn_name;
         let has_path = has_path_param(&endpoint.path());
+
+        // Plan musk-022: streaming endpoints get an SSE handler (Sse<impl Stream>),
+        // not a JSON CRUD handler. Subscribes to the events bus, emits each as SSE.
+        if endpoint.return_type.contains("Stream<") {
+            lines.push(format!(
+                "pub async fn {}() -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {{",
+                fn_name
+            ));
+            lines.push("    let rx = crate::events::subscribe();".to_string());
+            lines.push("    let stream = async_stream::stream! {".to_string());
+            lines.push("        let mut rx = rx;".to_string());
+            lines.push("        while let Ok(json) = rx.recv().await {".to_string());
+            lines.push("            yield Ok(axum::response::sse::Event::default().data(json));".to_string());
+            lines.push("        }".to_string());
+            lines.push("    };".to_string());
+            lines.push("    axum::response::Sse::new(stream)".to_string());
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
 
         // Build function parameters
         let mut params = vec![];
@@ -750,6 +803,11 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                     lines.push("    };".to_string());
                 }
                 lines.push("    items.push(item.clone());".to_string());
+                if has_sse {
+                    lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
+                    lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"new_message\".to_string())); }".to_string());
+                    lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                }
                 lines.push("    JsonResponse(item)".to_string());
             }
             "PUT" => {
@@ -1091,9 +1149,16 @@ fn generate_main_rs(api_module: &auto_lang::api::ApiModule, db_at_content: Optio
     let initial_data = generate_initial_data_pub(api_module, db_at_content);
     let routes_str = routes.join("\n");
 
+    // Plan musk-022: declare events module when SSE endpoints exist.
+    let has_sse = api_module.endpoints.iter().any(|e| e.return_type.contains("Stream<"));
+
     let mut s = String::new();
     s.push_str("mod api;\n");
-    s.push_str("mod types;\n\n");
+    s.push_str("mod types;\n");
+    if has_sse {
+        s.push_str("mod events;\n");
+    }
+    s.push_str("\n");
     s.push_str("use api::Db;\n");
     s.push_str("use crate::types::*;\n");
     s.push_str("use std::sync::{Arc, Mutex};\n");
@@ -1478,5 +1543,36 @@ pub fn listusers() []User {
         assert_eq!(module.endpoints[1].return_type, "[]User");
         assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
         assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
+    }
+
+    /// Plan musk-022: SSE endpoint → Sse handler + events bus + cargo deps.
+    #[test]
+    fn test_sse_handler_generation() {
+        let content = r#"
+pub type Message = { id: int, text: str }
+
+#[api(method = "GET", path = "/api/messages")]
+pub fn list_messages() []Message { return db.all() }
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(text str) Message { return db.create(text) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+        assert!(module.endpoints.iter().any(|e| e.return_type.contains("Stream<")));
+        let api_rs = generate_api_rs(&module);
+        assert!(api_rs.contains("axum::response::Sse<"), "SSE return: {}", api_rs);
+        assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
+        assert!(api_rs.contains("async_stream::stream!"), "stream macro");
+        assert!(api_rs.contains("crate::events::broadcast("), "broadcast");
+        let cargo = generate_cargo_toml("chat-back", true);
+        assert!(cargo.contains("async-stream"), "dep");
+        let events = generate_events_rs();
+        assert!(events.contains("pub fn subscribe()"), "subscribe fn");
+        assert!(events.contains("pub fn broadcast("), "broadcast fn");
+        let main = generate_main_rs(&module, None);
+        assert!(main.contains("mod events;"), "mod events");
     }
 }
