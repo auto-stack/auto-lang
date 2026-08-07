@@ -31,6 +31,28 @@ use crate::vm::loader::Module;
 thread_local! {
     static STORE_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
     static STORE_WIDGET_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    // Plan 398 §2/§3 BUG-B + BUG-C: current widget's name + message-variant
+    // names, so `.SiblingHandler()` calls inside a handler (both store handlers
+    // calling sibling store handlers, AND child-widget handlers calling their
+    // own sibling handlers, e.g. PromptBar's `.OnCtrlD` calling `.Exit()`) get
+    // rewritten to `handler_<Widget>_<Sibling>(__state, args)` instead of being
+    // misread as a state-field access (`__state.Exit` → bogus `<W>_State.X`
+    // symbol at link time). Set per-widget in synthesize_from_decl.
+    static CURRENT_WIDGET_NAME: RefCell<String> = RefCell::new(String::new());
+    static CURRENT_MSG_VARIANTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// Plan 398: set the current widget (name + msg variants) for handler rewrite.
+pub fn set_current_widget(name: &str, msg_variants: HashSet<String>) {
+    CURRENT_WIDGET_NAME.with(|s| *s.borrow_mut() = name.to_string());
+    CURRENT_MSG_VARIANTS.with(|s| *s.borrow_mut() = msg_variants);
+}
+
+/// Plan 398: clear the current-widget context after a widget's handlers are
+/// rewritten.
+pub fn clear_current_widget() {
+    CURRENT_WIDGET_NAME.with(|s| s.borrow_mut().clear());
+    CURRENT_MSG_VARIANTS.with(|s| s.borrow_mut().clear());
 }
 
 /// Set the store context for the current synthesis pass.
@@ -129,6 +151,52 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                         pos: None,
                     });
                     return;
+                }
+            }
+        }
+    }
+    // Plan 398 §2/§3 (BUG-B + BUG-C): sibling-handler call rewriting.
+    // `.Sibling(args)` where the receiver is implicit self (`.X` / `self.X`)
+    // and `Sibling` is a msg variant of the CURRENT widget → rewrite to
+    // `handler_<CurrentWidget>_<Sibling>(__state, args)`.
+    //
+    // Without this, `.Exit()` inside PromptBar's `.OnCtrlD` handler (and
+    // `.RefreshGit()` inside ShellStore's `.Init`) fall through to the
+    // `.field` rewrite below → `__state.Exit` → codegen emits a CALL to the
+    // bogus symbol `<Widget>_State.Exit` → "Undefined symbol: <W>_State.X".
+    if let Expr::Call(call) = e {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            let is_self_receiver = matches!(
+                obj.as_ref(),
+                Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self"
+            );
+            if is_self_receiver {
+                let is_msg_variant = CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(method.as_str()));
+                if is_msg_variant {
+                    let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
+                    if !widget_name.is_empty() {
+                        let handler_fn = format!("handler_{}_{}", widget_name, method);
+                        let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                        for arg in &call.args.args {
+                            let mut cloned = arg.clone();
+                            match &mut cloned {
+                                crate::ast::Arg::Pos(ex) | crate::ast::Arg::Pair(_, ex) => {
+                                    rewrite_expr(ex, state_fields);
+                                }
+                                crate::ast::Arg::Name(_) => {}
+                            }
+                            new_args.push(cloned);
+                        }
+                        *e = Expr::Call(crate::ast::Call {
+                            name: Box::new(Expr::Ident(Name::from(handler_fn))),
+                            args: crate::ast::Args { args: new_args },
+                            ret: Type::Void,
+                            type_args: Vec::new(),
+                            generic_args: Vec::new(),
+                            pos: None,
+                        });
+                        return;
+                    }
                 }
             }
         }
@@ -1144,6 +1212,17 @@ pub fn synthesize_from_decl(
                 }
             }
         }
+        // Plan 398 §2/§3: set current widget (name + msg variants) so handler
+        // bodies that call a sibling handler (`.Sibling()`) rewrite to
+        // `handler_<Widget>_<Sibling>(__state, args)` instead of a bogus
+        // `<Widget>_State.Sibling` field access.
+        let d_msg_variants: HashSet<String> = d
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
+            .collect();
+        set_current_widget(d.name.to_string().as_str(), d_msg_variants);
+
         let d_state_type = synthesize_state_type_from_decl(d, d_tick);
 
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(d_state_type.clone())) {
@@ -1190,6 +1269,7 @@ pub fn synthesize_from_decl(
 
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
+    clear_current_widget();
     Ok((codegen.finish(decl.name.to_string()), registry))
 }
 
