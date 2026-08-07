@@ -6,13 +6,14 @@ widget App {
         composable: useRecentFiles from "src/front/composables/useRecentFiles.ts"
     }
 
-    msg Msg { Del(int), FacadeDel(int), DoOpen }
+    msg Msg { Del(int), FacadeDel(int), DoOpen, Search }
 
     model {
         var items []str = ["one", "two", "three"]
         var draft_name str = "draft.md"
         var cls str = "text-emerald-600"
         var open bool = true
+        var query str = ""
     }
 
     computed {
@@ -72,6 +73,25 @@ widget App {
             select (class: "control-row") {
             }
 
+            // P0#12 (Batch D): a STATE field inside a map-literal event arg
+            // used to emit `this.query` — `this` is invalid in Vue 3 template
+            // expressions and broke silently at runtime. Now emits the bare
+            // setup binding: @input="Search({ q: query, e: $event })".
+            input {
+                class: "border rounded px-2 py-1 text-sm"
+                oninput: .Search({ q: .query, e: $event })
+            }
+            text f"query: ${.query}" { class: "text-sm" }
+
+            // P0#11 leftover (Batch D): ~130 shadcn sub-component arms
+            // (DialogTitle, Sidebar*, overlay primitives, …) never looked at
+            // `class:` — dropped silently. Now forwarded on every arm via
+            // attr fallthrough.
+            dialogtitle {
+                class: "text-lg font-semibold"
+                text "batch-d dialog title"
+            }
+
             EntryOpener { ref: "openerRef" }
         }
     }
@@ -84,5 +104,8 @@ widget App {
         .FacadeDel(i) -> { .recentFiles.remove(i) }
         // gap 45: the child's exposed parameterized handler exists now.
         .DoOpen -> { .openerRef.Open(.draft_name) }
+        // P0#12: map-literal arg carrying a state field (payload unused here;
+        // the point is the template-side emission, not the handler body).
+        .Search(p) -> { .open = false }
     }
 }
