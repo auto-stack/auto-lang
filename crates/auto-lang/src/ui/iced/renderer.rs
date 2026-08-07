@@ -2467,6 +2467,97 @@ async fn http_sse_loop(
     }
 }
 
+/// Update a block in store.blocks by block_id from a shell event (ash-gui M1).
+/// Called from the update closure's command_output/command_result branch.
+/// VM RunOutput/RunResult handlers can't read renderer-written Value::Array
+/// blocks (type mismatch), so we update directly in Rust. Returns true if a
+/// block was found and modified.
+fn update_block_in_state(
+    component: &mut DynamicComponent,
+    block_id: i64,
+    event: &str,
+    payload: &serde_json::Value,
+) -> bool {
+    // Read blocks as Value::Array (renderer wrote it that way). Fall back to
+    // read_state_as_vec for VM-native List, then write back the same way.
+    let raw = match component.read_state("blocks") {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let mut blocks_vec: Vec<auto_val::Value> = match &raw {
+        auto_val::Value::Array(arr) => arr.values.clone(),
+        auto_val::Value::Nil => Vec::new(),
+        _ => match component.read_state_as_vec("blocks") {
+            Ok(v) => v,
+            Err(_) => return false,
+        },
+    };
+    let mut found = false;
+    for b in &mut blocks_vec {
+        if let auto_val::Value::Obj(obj) = b {
+            let id_matches = obj.get("id")
+                .map(|v| v.as_int() as i64 == block_id)
+                .unwrap_or(false);
+            if !id_matches {
+                continue;
+            }
+            found = true;
+            if event == "command_output" {
+                // Append chunk to streamed_text.
+                let chunk = payload.get("chunk").and_then(|x| x.as_str()).unwrap_or("");
+                let cur = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                obj.set("streamed_text", auto_val::Value::str(&format!("{}{}", cur, chunk)));
+            } else {
+                // command_result: set status / output / duration_ms / clear streamed_text.
+                let status_str = match payload.get("status") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(obj @ serde_json::Value::Object(_)) => {
+                        // {"Failed": msg} → 取 Failed 消息
+                        obj.get("Failed").and_then(|m| m.as_str()).unwrap_or("Failed").to_string()
+                    }
+                    _ => "Failed".to_string(),
+                };
+                let (kind, message) = if status_str == "Success" {
+                    ("Success".to_string(), String::new())
+                } else if status_str == "Cancelled" {
+                    ("Cancelled".to_string(), String::new())
+                } else {
+                    ("Failed".to_string(), status_str)
+                };
+                let dur = payload.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
+                // output:merged 模式下 payload output 为 null,用 streamed_text 作 output.Text。
+                let output_text = payload.get("output")
+                    .and_then(|o| o.get("Text"))
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default()
+                    });
+                let mut status = auto_val::Obj::new();
+                status.set("kind", auto_val::Value::str(&kind));
+                status.set("message", auto_val::Value::str(&message));
+                obj.set("status", auto_val::Value::Obj(status));
+                let mut out = auto_val::Obj::new();
+                out.set("Text", auto_val::Value::str(&output_text));
+                obj.set("output", auto_val::Value::Obj(out));
+                obj.set("streamed_text", auto_val::Value::str(""));
+                obj.set("duration_ms", auto_val::Value::Int(dur));
+            }
+            break;
+        }
+    }
+    if found {
+        // Write back the same type we read.
+        let _ = match &raw {
+            auto_val::Value::Array(_) | auto_val::Value::Nil => {
+                component.write_state("blocks", auto_val::Value::Array(auto_val::Array { values: blocks_vec }))
+            }
+            _ => component.write_state_vec("blocks", blocks_vec),
+        };
+    }
+    found
+}
+
 /// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
 /// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
 fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
@@ -3548,41 +3639,14 @@ fn compare_pngs(
             if let Some(json) = &msg.input_value {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
                     // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms}
-                    if let Some(bid) = v.get("block_id").and_then(|x| x.as_i64()) {
-                        let _ = state.component.write_state("__sse_block_id", auto_val::Value::Int(bid as i32));
+                    // M1:VM 的 RunOutput/RunResult handler 读 .blocks 读不到 renderer 写的
+                    // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
+                    // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
+                    let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
+                    let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
+                    if updated {
+                        *state.view_dirty.borrow_mut() = true;
                     }
-                    if msg.event == "command_output" {
-                        let chunk = v.get("chunk").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                        let _ = state.component.write_state("__sse_chunk", auto_val::Value::str(&chunk));
-                        // 触发无参 RunOutput(读 __sse_block_id/__sse_chunk)。
-                        let _ = state.component.on_with_input_for("ShellStore", "RunOutput", None);
-                    } else {
-                        // command_result:解析 status / cwd / duration_ms。
-                        let cwd = v.get("cwd").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                        let dur = v.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
-                        // status:Success(裸串)|{"Failed":msg}(对象)|"Cancelled"。
-                        // 用 JSON 字符串存,handler 内按形状判断(对齐 store 原逻辑)。
-                        let status_str = match v.get("status") {
-                            Some(serde_json::Value::String(s)) => s.clone(),
-                            Some(obj @ serde_json::Value::Object(_)) => obj.to_string(),
-                            _ => "Failed".to_string(),
-                        };
-                        // output(merged mock 路径下为 null;HTTP 模式后端可能返回
-                        // RenderedOutput。把 output 序列化存 __sse_output_text,handler
-                        // 视需要取 Text 变体或留空 —— merged 下用 streamed_text 作 output)。
-                        let output_text = v
-                            .get("output")
-                            .and_then(|o| o.get("Text"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let _ = state.component.write_state("__sse_cwd", auto_val::Value::str(&cwd));
-                        let _ = state.component.write_state("__sse_status", auto_val::Value::str(&status_str));
-                        let _ = state.component.write_state("__sse_output_text", auto_val::Value::str(&output_text));
-                        let _ = state.component.write_state("__sse_duration_ms", auto_val::Value::Int(dur));
-                        let _ = state.component.on_with_input_for("ShellStore", "RunResult", None);
-                    }
-                    *state.view_dirty.borrow_mut() = true;
                 }
             }
             return iced::Task::none();
@@ -3605,6 +3669,9 @@ fn compare_pngs(
 
         // Plan 320: route event to the correct widget's handler (single VM).
         let widget_name = &msg.widget;
+        // Save input_value before it's moved into on_with_input_for (ash-gui M1
+        // emit simulation below reads it).
+        let saved_input_value = msg.input_value.clone();
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // After handler runs, clear input_values for OTHER inputs whose state
@@ -3618,10 +3685,74 @@ fn compare_pngs(
                 || !input_map.contains_key(ev_name)
         });
 
-        // ── Shell bridge:RunCommand 后提交执行器;Cancel 标记取消(ash-gui M1)
-        // store 的 .RunCommand(cmd) handler body 建好 Running block 后,把
-        // {block_id, cmd} 写入 __pending_command_* 预置字段(不再调 shell 后端)。
-        // 这里读出提交给执行器线程(merged 模式本地执行 / HTTP 模式 POST 后端)。
+        // ── Shell bridge:emit 模拟(ash-gui M1) ──────────────────────────
+        // vm 模式 handler_codegen 剥离子组件的 callback prop 调用(handler_codegen.rs
+        // :996 Plan 370 D-GAP-4),故 PromptBar.Run 清 input 后的自动 emit('Run',cmd)
+        // → App.RunCommand 在 vm 不发生。这里模拟该 emit:PromptBar.Run 执行后,若它
+        // 带了 cmd 值(submit 传入的 input 当前值),直接触发 store.RunCommand(cmd)。
+        // 这是 ash-gui 特定知识(widget=PromptBar,event=Run),而非通用 emit 修复。
+        if widget_name == "PromptBar" && event_name == "Run" {
+            if let Some(cmd) = saved_input_value.as_deref() {
+                let cmd = cmd.trim();
+                if !cmd.is_empty() {
+                    // 触发 store 级 RunCommand(cmd)。on_with_input_for 把 input_value
+                    // 作为字符串参数传给 handler(cmd 参数)。store 只记 pending
+                    // {block_id, cmd}(VM 嵌套 struct 赋值会崩),block 在下方构造。
+                    state.component.on_with_input_for(
+                        "ShellStore",
+                        "RunCommand",
+                        Some(cmd.to_string()),
+                    );
+                    // store.RunCommand 已写 __pending_command_{id,str}。在此(Rust 侧)
+                    // 构造完整 Running block push 进 store.blocks,并提交执行器。
+                    let bid = state.component.read_state("__pending_command_id")
+                        .map(|v| v.as_int() as i64).unwrap_or(0);
+                    let cwd = state.component.read_state("cwd")
+                        .map(|v| v.as_str().to_string()).unwrap_or_default();
+                    if bid >= 0 {
+                        let mut status = auto_val::Obj::new();
+                        status.set("kind", auto_val::Value::str("Running"));
+                        status.set("message", auto_val::Value::str(""));
+                        let mut block = auto_val::Obj::new();
+                        block.set("id", auto_val::Value::Int(bid as i32));
+                        block.set("command", auto_val::Value::str(cmd));
+                        block.set("cwd", auto_val::Value::str(&cwd));
+                        block.set("status", auto_val::Value::Obj(status));
+                        block.set("streamed_text", auto_val::Value::str(""));
+                        block.set("duration_ms", auto_val::Value::Int(0));
+                        // blocks 字段可能初始为 nil(vm List 初始化问题)。先尝试
+                        // read_state_as_vec(对已初始化 List);失败则直接 write_state
+                        // 一个含新 block 的 Value::Array(覆盖 nil)。
+                        if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                            blocks.push(auto_val::Value::Obj(block));
+                            let _ = state.component.write_state_vec("blocks", blocks);
+                        } else {
+                            let _ = state.component.write_state(
+                                "blocks",
+                                auto_val::Value::Array(auto_val::Array {
+                                    values: vec![auto_val::Value::Obj(block)],
+                                }),
+                            );
+                        }
+                        if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                            if let Ok(mut h) = handle.lock() {
+                                h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                                    block_id: bid,
+                                    cmd: cmd.to_string(),
+                                    cwd,
+                                });
+                            }
+                        }
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+
+        // ── Shell bridge:RunCommand 后备路径(ash-gui M1) ──
+        // 当 store.RunCommand 从 App.RunCommand 直接触发(非 emit 模拟路径,
+        // 如 Rerun/侧栏),event_name=="RunCommand"。此路径下 store 也只记 pending,
+        // block 构造 + 执行器提交同上。emit 模拟路径(PromptBar.Run)已在上方处理。
         if event_name == "RunCommand" {
             let bid = state.component.read_state("__pending_command_id")
                 .map(|v| v.as_int() as i64).unwrap_or(0);
@@ -3629,7 +3760,21 @@ fn compare_pngs(
                 .map(|v| v.as_str().to_string()).unwrap_or_default();
             let cwd = state.component.read_state("cwd")
                 .map(|v| v.as_str().to_string()).unwrap_or_default();
-            if !cmd.is_empty() && bid != 0 {
+            if !cmd.is_empty() && bid >= 0 {
+                let mut status = auto_val::Obj::new();
+                status.set("kind", auto_val::Value::str("Running"));
+                status.set("message", auto_val::Value::str(""));
+                let mut block = auto_val::Obj::new();
+                block.set("id", auto_val::Value::Int(bid as i32));
+                block.set("command", auto_val::Value::str(&cmd));
+                block.set("cwd", auto_val::Value::str(&cwd));
+                block.set("status", auto_val::Value::Obj(status));
+                block.set("streamed_text", auto_val::Value::str(""));
+                block.set("duration_ms", auto_val::Value::Int(0));
+                if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                    blocks.push(auto_val::Value::Obj(block));
+                    let _ = state.component.write_state_vec("blocks", blocks);
+                }
                 if let Some(handle) = SHELL_EXEC_HANDLE.get() {
                     if let Ok(mut h) = handle.lock() {
                         h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
@@ -3639,6 +3784,7 @@ fn compare_pngs(
                         });
                     }
                 }
+                *state.view_dirty.borrow_mut() = true;
             }
         }
         if event_name == "Cancel" {

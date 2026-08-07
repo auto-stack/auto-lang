@@ -550,7 +550,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["press", "type_text", "toggle", "select_option", "set_value", "clear"],
+                        "enum": ["press", "type_text", "submit", "toggle", "select_option", "set_value", "clear"],
                         "description": "Action to perform"
                     },
                     "value": {
@@ -1050,6 +1050,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
     let action_type = match action_str {
         "press" => UiActionType::Press,
         "type_text" => UiActionType::TypeText,
+        "submit" => UiActionType::Submit,
         "toggle" => UiActionType::Toggle,
         "select_option" => UiActionType::SelectOption,
         "set_value" => UiActionType::SetValue,
@@ -1416,35 +1417,51 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
     let element_id_opt = args.get("element_id").and_then(|v| v.as_str());
     let clear_first = args.get("clear_first").and_then(|v| v.as_bool()).unwrap_or(true);
 
-    // Find the target input element
+    // Plan 371 续篇 / ash-gui M1:统一用 parse_element_id,支持 vnode_ 和 aura_。
+    // vnode_ 覆盖所有渲染元素(含子组件内部,如 PromptBar 的 input),是 vm 模式
+    // 定位子组件元素的唯一可靠方式 —— view_template 不展开 Component 节点,
+    // find_first_input 找不到子组件内的 input。无 element_id 时优先从 styled_vtree
+    // 找首个 Input vnode;回退到旧的 view_template 路径(向后兼容)。
     let element_id = match element_id_opt {
-        Some(id_str) => match parse_aura_id(id_str) {
+        Some(id_str) => match parse_element_id(id_str) {
             Some(id) => id,
-            None => return error_result(format!("Invalid element_id format: '{}'", id_str)),
+            None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", id_str)),
         },
         None => {
-            // Find the first input element with a handler
+            // 优先:从 styled_vtree(渲染后,展开 component)找首个 Input/Textarea vnode。
             let shared = shared_handle.lock().unwrap();
-            match &shared.view_template {
-                Some(t) => match find_first_input(&t.0) {
-                    Some(id) => id,
-                    None => return error_result("No input element found — specify element_id"),
-                },
-                None => return error_result("No UI available yet"),
+            if let Some(vnode_id) = find_first_input_vnode(&shared) {
+                ElementId::Vnode(vnode_id)
+            } else {
+                // 回退:旧的 view_template 路径(只覆盖根 widget 直接子元素)。
+                match &shared.view_template {
+                    Some(t) => match find_first_input(&t.0) {
+                        Some(id) => ElementId::Aura(id),
+                        None => return error_result("No input element found — specify element_id (vnode_N from autoui_find)"),
+                    },
+                    None => return error_result("No UI available yet"),
+                }
             }
         }
     };
 
-    // If clear_first, send a clear action
+    // clear_first:type_text 前先清空(vnode_ 走 execute_action_vnode,aura_ 走旧路径)。
     if clear_first {
         let clear_result = {
             let shared = shared_handle.lock().unwrap();
-            let (view, id_map) = match (&shared.view, &shared.id_map) {
-                (Some(v), Some(m)) => (v, m),
-                _ => return error_result("No UI available yet"),
-            };
-            let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
-            execute_action_on_shared(&shared, &snapshot.tree, element_id, UiActionType::Clear, None)
+            match element_id {
+                ElementId::Vnode(vid) => {
+                    execute_action_vnode(&shared, vid, UiActionType::Clear, None)
+                }
+                ElementId::Aura(aura_id) => {
+                    let (view, id_map) = match (&shared.view, &shared.id_map) {
+                        (Some(v), Some(m)) => (v, m),
+                        _ => return error_result("No UI available yet"),
+                    };
+                    let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
+                    execute_action_on_shared(&shared, &snapshot.tree, aura_id, UiActionType::Clear, None)
+                }
+            }
         };
         if let Err(e) = clear_result {
             // Clear may not be supported on all elements, that's OK
@@ -1455,12 +1472,19 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
     // Send type_text action
     let result = {
         let shared = shared_handle.lock().unwrap();
-        let (view, id_map) = match (&shared.view, &shared.id_map) {
-            (Some(v), Some(m)) => (v, m),
-            _ => return error_result("No UI available yet"),
-        };
-        let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
-        execute_action_on_shared(&shared, &snapshot.tree, element_id, UiActionType::TypeText, Some(auto_val::Value::str(&text)))
+        match element_id {
+            ElementId::Vnode(vid) => {
+                execute_action_vnode(&shared, vid, UiActionType::TypeText, Some(auto_val::Value::str(&text)))
+            }
+            ElementId::Aura(aura_id) => {
+                let (view, id_map) = match (&shared.view, &shared.id_map) {
+                    (Some(v), Some(m)) => (v, m),
+                    _ => return error_result("No UI available yet"),
+                };
+                let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
+                execute_action_on_shared(&shared, &snapshot.tree, aura_id, UiActionType::TypeText, Some(auto_val::Value::str(&text)))
+            }
+        }
     };
 
     match result {
@@ -1552,6 +1576,22 @@ fn find_first_input(node: &crate::aura::AuraNode) -> Option<AuraNodeId> {
         }
         _ => None,
     }
+}
+
+/// Find the first Input/Textarea VNode in the styled VTree (rendered, component-
+/// expanded). This is the vm-mode-correct way to locate inputs that live inside
+/// child widgets (e.g. PromptBar's input) — view_template does not expand
+/// Component nodes, so find_first_input misses them. Returns the VNodeId.
+fn find_first_input_vnode(shared: &SharedState) -> Option<VNodeId> {
+    use crate::ui::vnode::VNodeKind;
+    let snap = shared.styled_vtree.as_ref()?;
+    // VTree stores nodes flat in `nodes`; iterate in id order to find the first
+    // Input/Textarea. DFS order via children would be more "first visible", but
+    // flat iteration matches the snapshot's top-to-bottom render order closely
+    // enough for the "type into the input" use case.
+    snap.vtree.nodes.iter()
+        .find(|n| matches!(n.kind, VNodeKind::Input | VNodeKind::Textarea))
+        .map(|n| n.id)
 }
 
 /// Format an auto_val::Value for display.
@@ -1657,12 +1697,18 @@ fn execute_action_on_shared(
                 return Err(format!("Action 'clear' not valid for component type '{}'", target.kind));
             }
         }
+        UiActionType::Submit => {
+            if target.kind != "Input" && target.kind != "Textarea" {
+                return Err(format!("Action 'submit' not valid for component type '{}'", target.kind));
+            }
+        }
     }
 
     // Find handler from actions list
     let action_name = match &action {
         UiActionType::Press => "press",
         UiActionType::TypeText => "type",
+        UiActionType::Submit => "submit",
         UiActionType::Toggle => "toggle",
         UiActionType::SelectOption => "select",
         UiActionType::SetValue => "set_value",
@@ -1774,7 +1820,7 @@ fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
 }
 
 /// Extract the handler (widget_name, event_name) from a View for a given action.
-/// `action_name`: "press" / "type" / "toggle" / "select" / "set_value".
+/// `action_name`: "press" / "type" / "submit" / "toggle" / "select" / "set_value".
 fn extract_action_from_view(
     view: &View<DynamicMessage>,
     action_name: &str,
@@ -1785,6 +1831,11 @@ fn extract_action_from_view(
             if action_name == "type" =>
         {
             on_change.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        // submit → on_submit(Enter 键)。ash-gui M1:命令输入栏回车执行。
+        // Textarea 没有 on_submit(多行用 Shift+Enter 换行),只有 Input 有。
+        View::Input { on_submit, .. } if action_name == "submit" => {
+            on_submit.as_ref().and_then(|m| extract_dyn_msg(m))
         }
         View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
             on_toggle.as_ref().and_then(|m| extract_dyn_msg(m))
@@ -1822,6 +1873,7 @@ fn execute_action_vnode(
     let action_name = match &action {
         UiActionType::Press => "press",
         UiActionType::TypeText | UiActionType::Clear => "type",
+        UiActionType::Submit => "submit",
         UiActionType::Toggle => "toggle",
         UiActionType::SelectOption => "select",
         UiActionType::SetValue => "set_value",
@@ -1832,13 +1884,15 @@ fn execute_action_vnode(
             return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
         UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
             return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),
+        UiActionType::Submit if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
+            return Err(format!("Action 'submit' not valid for component type '{}'", vnode_kind_str)),
         UiActionType::Toggle if vnode_kind_str != "Checkbox" =>
             return Err(format!("Action 'toggle' not valid for component type '{}'", vnode_kind_str)),
         _ => {}
     }
 
     // Build input_value for type_text/clear
-    let input_value = match &action {
+    let mut input_value = match &action {
         UiActionType::TypeText => Some(
             value.as_ref()
                 .map(|v| match v {
@@ -1863,6 +1917,14 @@ fn execute_action_vnode(
             .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
         let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
             .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
+        // ash-gui M1:submit 模拟 onenter(如 PromptBar 的 `onenter: .Run(.input)`)。
+        // handler 带 .input 参数,但 submit 不自带 value —— 从 target_view(Input)
+        // 读当前 value 字段作为 handler 参数,使 Run(cmd) 收到命令文本。
+        if action == UiActionType::Submit && input_value.is_none() {
+            if let View::Input { value: v, .. } = target_view {
+                input_value = Some(v.clone());
+            }
+        }
         let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
         ActionMessage {
             target: ActionTarget::Event { widget, event: event_name.clone() },

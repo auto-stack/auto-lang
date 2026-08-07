@@ -225,7 +225,7 @@ impl DynamicComponent {
         let widget_name = _logic.name.to_string();
 
         // 3. Extract input-to-state mapping for text input handling
-        let input_state_map = extract_input_state_map(view.view_tree);
+        let input_state_map = extract_input_state_map_with_registry(view.view_tree, &registry);
 
         Ok(Self {
             bridge,
@@ -278,7 +278,7 @@ impl DynamicComponent {
         let view = view_widget.view_data();
         let view_template = view.view_tree.clone();
         let widget_name = view_widget.name.clone();
-        let input_state_map = extract_input_state_map(view.view_tree);
+        let input_state_map = extract_input_state_map_with_registry(view.view_tree, &registry);
 
         Ok(Self {
             bridge,
@@ -603,7 +603,7 @@ impl DynamicComponent {
         self.bridge = new_bridge;
         self.view_template = new_widget.view_tree.clone();
         self.widget_name = new_widget.name.clone();
-        self.input_state_map = extract_input_state_map(&new_widget.view_tree);
+        self.input_state_map = extract_input_state_map_with_registry(&new_widget.view_tree, &self.widget_registry);
         self.tick_interval = new_widget.tick_interval;
         self.span_map = new_widget.span_map.clone();
         self.dirty = true;
@@ -901,15 +901,43 @@ fn extract_input_state_map(view_tree: &crate::aura::AuraNode) -> HashMap<String,
     map
 }
 
+/// Plan 371 续篇 / ash-gui M1:scan the view tree AND all child widgets in the
+/// registry for input bindings. The root widget's view_tree does not expand
+/// Component nodes (child internals live in each child's own view_tree), so a
+/// root-only scan misses inputs inside child widgets (e.g. PromptBar's input).
+/// Without this, `autoui_type` fires the child's onchange handler but never
+/// writes the typed text to the bound state field, so the handler reads empty.
+fn extract_input_state_map_with_registry(
+    view_tree: &crate::aura::AuraNode,
+    registry: &crate::ui::widget_registry::WidgetRegistry,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    scan_node_for_inputs(view_tree, &mut map);
+    // Recurse into every registered child widget's view_tree. `all()` yields
+    // owned AuraWidget clones (registry stores Arc internally); each carries a
+    // &view_tree we can scan. First-match wins (entry().or_insert) so a root
+    // binding isn't clobbered by a child's same-named event.
+    for child in registry.all() {
+        scan_node_for_inputs(&child.view_tree, &mut map);
+    }
+    map
+}
+
 fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraPropValue};
     match node {
         AuraNode::Element { tag, props, events, children, .. } => {
-            if tag == "input" || tag == "textarea" {
-                // Find value prop that is a StateRef
+            if tag == "input" || tag == "textarea" || tag == "Input" {
+                // Find value prop that is a StateRef. `.input` parses as
+                // Expr::Dot(Ident("self"), "input") (ash-gui PromptBar pattern),
+                // while older apps use bare Expr::Ident("input"). Handle both.
                 let state_field = props.get("value").and_then(|v| match v {
                     AuraPropValue::Expr(Expr::Ident(name)) => Some(name.to_string()),
+                    AuraPropValue::Expr(Expr::Dot(obj, field)) => match obj.as_ref() {
+                        Expr::Ident(_) => Some(field.to_string()),
+                        _ => None,
+                    },
                     _ => None,
                 });
                 // Find oninput/onchange event
