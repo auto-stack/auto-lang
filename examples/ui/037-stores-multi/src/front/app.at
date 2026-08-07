@@ -1,0 +1,31 @@
+// app.at — 037-stores-multi: two stores emitted by one build.
+
+use alpha_store: AlphaStore
+use panel: BetaPanel
+
+widget App {
+    msg Msg { AddNote }
+
+    view {
+        col {
+            style: "p-6 font-sans space-y-4"
+
+            h1 "037 — multi-store single build" { style: "text-xl font-bold" }
+
+            row {
+                style: "gap-2 items-center"
+                text .store.selected
+                button "Add note" {
+                    onclick: .AddNote
+                    style: "px-3 py-1 bg-primary text-primary-foreground rounded"
+                }
+            }
+
+            BetaPanel()
+        }
+    }
+
+    on {
+        .AddNote -> { store.AddNote("new") }
+    }
+}

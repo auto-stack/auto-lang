@@ -1,0 +1,29 @@
+// panel.at — sub-widget consuming BetaStore.
+
+use beta_store: BetaStore
+
+widget BetaPanel {
+    msg Msg { Bump, Reset }
+
+    view {
+        col {
+            style: "gap-2 p-4 bg-card rounded-xl shadow-sm"
+
+            h3 "BetaPanel" { style: "text-lg font-bold" }
+            text .store.count
+            button "Bump" {
+                onclick: .Bump
+                style: "px-3 py-1 bg-primary text-primary-foreground rounded"
+            }
+            button "Reset" {
+                onclick: .Reset
+                style: "px-3 py-1 border rounded"
+            }
+        }
+    }
+
+    on {
+        .Bump -> { store.Bump() }
+        .Reset -> { store.Reset() }
+    }
+}

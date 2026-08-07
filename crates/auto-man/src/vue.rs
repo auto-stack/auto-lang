@@ -2340,18 +2340,17 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     Ok(project)
 }
 
-/// Run Vue dev server (auto run command)
+/// Incremental compile phase of `auto run`: compiles every changed (or
+/// output-missing) .at file through the UI cache, writes the changed SFCs
+/// plus the store composables collected from each compiled file, and returns
+/// the number of changed SFCs written.
 ///
-/// Steps:
-/// 1. Generate project structure if not exists, or regenerate source files if exists
-/// 2. Generate API client code (if api.at exists)
-/// 3. npm install
-/// 4. Install shadcn-vue components
-/// 5. Copy public assets
-/// 6. npm run dev
-pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
-
+/// Plan 012 Batch B: extracted from run_vue_project so the store-emission
+/// (gap 9a) and parse-failure semantics (gap 9b) are unit-testable without
+/// npm. Parse failures print the same "Warning: Failed to compile ..." line
+/// as the fresh path (see `handle_compile_error`) and fail the build under
+/// `auto build --strict`.
+fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     // Pre-load API function names BEFORE any VueGenerator::new() calls
     let api_fns_path = root_dir.join("dist").join(".api_functions");
     if api_fns_path.exists() {
@@ -2377,6 +2376,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     }
 
     let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
+    // Plan 012 Batch B (gap 9a): store composables are collected explicitly
+    // from every compiled .at file. The STORE_EXTRA_FILES thread-local is
+    // cleared per generate_component_from_file call, so it only ever holds
+    // the LAST compiled file's stores — unusable for multi-store workspaces.
+    let mut store_files: Vec<(String, String)> = Vec::new();
 
     // Phase 1: Scan sub-widget .at files in front_dir (e.g. editor.at, sidebar.at)
     // Collect their names for app.at compilation and generate their .vue files
@@ -2402,31 +2406,38 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
                     if source_changed || output_missing {
                         println!("  {} (changed)", file_name.bright_yellow());
-                        if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
-                            for widget_name in &widgets {
-                                sub_widget_names.push(widget_name.clone());
-                                // Also generate with widget name as fallback
-                                let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
-                                changed_files.push((output_path, vue_code.clone(), widget_name.clone()));
-                            }
-                            let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                UIArtifact {
-                                    source_path: path.clone(),
-                                    widget_name: w.clone(),
-                                    output_path: PathBuf::from(format!("src/components/{}.vue", w)),
-                                    source_hash: hash,
-                                    content_hash: hash_string(&vue_code),
-                                    backend: UIBackend::Vue,
+                        match compile_at_to_vue(&path, &content, root_dir) {
+                            Ok((vue_code, widgets, stores)) => {
+                                store_files.extend(stores);
+                                for widget_name in &widgets {
+                                    sub_widget_names.push(widget_name.clone());
+                                    // Also generate with widget name as fallback
+                                    let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
+                                    changed_files.push((output_path, vue_code.clone(), widget_name.clone()));
                                 }
-                            }).collect();
-                            cache.update(path.clone(), hash, artifacts);
+                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                    UIArtifact {
+                                        source_path: path.clone(),
+                                        widget_name: w.clone(),
+                                        output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                        source_hash: hash,
+                                        content_hash: hash_string(&vue_code),
+                                        backend: UIBackend::Vue,
+                                    }
+                                }).collect();
+                                cache.update(path.clone(), hash, artifacts);
+                            }
+                            Err(e) => handle_compile_error(&path, &e)?,
                         }
                     } else {
                         // Cached: still need sub-widget names for app.at compilation
-                        if let Ok((_vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
-                            for widget_name in &widgets {
-                                sub_widget_names.push(widget_name.clone());
+                        match compile_at_to_vue(&path, &content, root_dir) {
+                            Ok((_vue_code, widgets, _stores)) => {
+                                for widget_name in &widgets {
+                                    sub_widget_names.push(widget_name.clone());
+                                }
                             }
+                            Err(e) => handle_compile_error(&path, &e)?,
                         }
                         println!("  {} (cached)", file_name.bright_green());
                     }
@@ -2450,22 +2461,26 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                 } else {
                     println!("  {} (output missing)", "app.at".bright_yellow());
                 }
-                if let Ok((vue_code, widgets)) = compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir) {
-                    let content_hash = hash_string(&vue_code);
-                    if let Some(widget_name) = widgets.first() {
-                        changed_files.push((app_output_path, vue_code, widget_name.clone()));
-                    }
-                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                        UIArtifact {
-                            source_path: app_at.clone(),
-                            widget_name: w.clone(),
-                            output_path: PathBuf::from(format!("src/App.vue")),
-                            source_hash: hash,
-                            content_hash: content_hash.clone(),
-                            backend: UIBackend::Vue,
+                match compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir) {
+                    Ok((vue_code, widgets, stores)) => {
+                        store_files.extend(stores);
+                        let content_hash = hash_string(&vue_code);
+                        if let Some(widget_name) = widgets.first() {
+                            changed_files.push((app_output_path, vue_code, widget_name.clone()));
                         }
-                    }).collect();
-                    cache.update(app_at.clone(), hash, artifacts);
+                        let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                            UIArtifact {
+                                source_path: app_at.clone(),
+                                widget_name: w.clone(),
+                                output_path: PathBuf::from(format!("src/App.vue")),
+                                source_hash: hash,
+                                content_hash: content_hash.clone(),
+                                backend: UIBackend::Vue,
+                            }
+                        }).collect();
+                        cache.update(app_at.clone(), hash, artifacts);
+                    }
+                    Err(e) => handle_compile_error(&app_at, &e)?,
                 }
             } else {
                 println!("  {} (cached)", "app.at".bright_green());
@@ -2489,22 +2504,26 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
                         if source_changed {
                             println!("  widgets/{} (changed)", file_name.bright_yellow());
-                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
-                                if let Some(widget_name) = widgets.first() {
-                                    let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
-                                    changed_files.push((output_path, vue_code, widget_name.clone()));
-                                }
-                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                    UIArtifact {
-                                        source_path: path.clone(),
-                                        widget_name: w.clone(),
-                                        output_path: PathBuf::from(format!("src/components/{}.vue", w)),
-                                        source_hash: hash,
-                                        content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
-                                        backend: UIBackend::Vue,
+                            match compile_at_to_vue(&path, &content, root_dir) {
+                                Ok((vue_code, widgets, stores)) => {
+                                    store_files.extend(stores);
+                                    if let Some(widget_name) = widgets.first() {
+                                        let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
+                                        changed_files.push((output_path, vue_code, widget_name.clone()));
                                     }
-                                }).collect();
-                                cache.update(path.clone(), hash, artifacts);
+                                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                        UIArtifact {
+                                            source_path: path.clone(),
+                                            widget_name: w.clone(),
+                                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                            source_hash: hash,
+                                            content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
+                                            backend: UIBackend::Vue,
+                                        }
+                                    }).collect();
+                                    cache.update(path.clone(), hash, artifacts);
+                                }
+                                Err(e) => handle_compile_error(&path, &e)?,
                             }
                         } else {
                             println!("  widgets/{} (cached)", file_name.bright_green());
@@ -2542,21 +2561,25 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                             } else {
                                 println!("  pages/{} (output missing)", file_name.bright_yellow());
                             }
-                            if let Ok((vue_code, widgets)) = compile_at_to_vue(&path, &content, root_dir) {
-                                // Use file_stem for output path (matching VueProject::generate behavior)
-                                let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
-                                changed_files.push((output_path, vue_code, widget_name.clone()));
-                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                    UIArtifact {
-                                        source_path: path.clone(),
-                                        widget_name: w.clone(),
-                                        output_path: PathBuf::from(format!("src/pages/{}.vue", file_stem)),
-                                        source_hash: hash,
-                                        content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
-                                        backend: UIBackend::Vue,
-                                    }
-                                }).collect();
-                                cache.update(path.clone(), hash, artifacts);
+                            match compile_at_to_vue(&path, &content, root_dir) {
+                                Ok((vue_code, widgets, stores)) => {
+                                    store_files.extend(stores);
+                                    // Use file_stem for output path (matching VueProject::generate behavior)
+                                    let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
+                                    changed_files.push((output_path, vue_code, widget_name.clone()));
+                                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                        UIArtifact {
+                                            source_path: path.clone(),
+                                            widget_name: w.clone(),
+                                            output_path: PathBuf::from(format!("src/pages/{}.vue", file_stem)),
+                                            source_hash: hash,
+                                            content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
+                                            backend: UIBackend::Vue,
+                                        }
+                                    }).collect();
+                                    cache.update(path.clone(), hash, artifacts);
+                                }
+                                Err(e) => handle_compile_error(&path, &e)?,
                             }
                         } else {
                             println!("  pages/{} (cached)", file_name.bright_green());
@@ -2590,15 +2613,41 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         println!("{}", "No changes detected, using cached files".bright_green());
     }
 
-    // Plan 351: drain stashed store composable files and write them
-    for (filename, content) in auto_lang::drain_store_extra_files() {
+    // Plan 012 Batch B (gap 9a): write store composables collected explicitly
+    // from every compiled .at file above. Any residual STORE_EXTRA_FILES
+    // entries (e.g. stashed by the Phase-1 cached-branch recompile) merge in
+    // first; the explicitly-collected content wins on name conflicts.
+    let mut store_map: std::collections::BTreeMap<String, String> =
+        auto_lang::drain_store_extra_files().into_iter().collect();
+    store_map.extend(store_files);
+    if !store_map.is_empty() {
         let stores_dir = output_dir.join("src").join("stores");
         fs::create_dir_all(&stores_dir).ok();
-        let clean_name = filename.strip_prefix("stores/").unwrap_or(&filename);
-        let path = stores_dir.join(clean_name);
-        fs::write(&path, &content).ok();
-        println!("  ✓ Store composable: {}", path.display());
+        for (filename, content) in store_map {
+            let clean_name = filename.strip_prefix("stores/").unwrap_or(&filename);
+            let path = stores_dir.join(clean_name);
+            fs::write(&path, &content).ok();
+            println!("  ✓ Store composable: {}", path.display());
+        }
     }
+
+    Ok(changed_count)
+}
+
+/// Run Vue dev server (auto run command)
+///
+/// Steps:
+/// 1. Incrementally compile changed .at files (see `incremental_compile_changed`)
+/// 2. Generate project structure if not exists
+/// 3. Generate API client code (if api.at exists)
+/// 4. npm install
+/// 5. Install shadcn-vue components
+/// 6. Copy public assets
+/// 7. npm run dev
+pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
+
+    let changed_count = incremental_compile_changed(root_dir)?;
 
     // Load project context
     let project = VueProject::from_workspace(root_dir)?;
@@ -2770,7 +2819,27 @@ fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpo
 }
 
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
-fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>), String> {
+/// Plan 012 Batch B (gap 9b): unified parse-failure semantics for the
+/// incremental build path. Prints the same "Warning: Failed to compile ..."
+/// line the fresh path (`VueProject::from_workspace`) prints — jade's regen
+/// flow greps for that string — and, under `auto build --strict`, escalates
+/// to a hard build failure (non-zero exit), matching from_workspace.
+fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
+    if auto_lang::ui_gen::validators::strict_enabled() {
+        return Err(format!("Failed to compile {}: {}", path.display(), e));
+    }
+    println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+    Ok(())
+}
+
+/// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
+///
+/// Returns (vue_code, widget_names, store_composables). The store composables
+/// are returned explicitly — the STORE_EXTRA_FILES thread-local is cleared at
+/// the start of every generate_component_from_file call, so draining it after
+/// compiling several files only ever yields the LAST file's stores
+/// (Plan 012 Batch B, gap 9a).
+fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
@@ -2793,11 +2862,12 @@ fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<
     }
 
     let names: Vec<String> = result.widgets.iter().map(|w| w.name.clone()).collect();
-    Ok((result.vue_code, names))
+    Ok((result.vue_code, names, result.store_composables))
 }
 
 /// Compile an .at file to Vue SFC with known sub-widget names (Plan 361 §3: uses generate_component_from_file).
-fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>), String> {
+/// See `compile_at_to_vue` for the return contract.
+fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
@@ -2819,7 +2889,7 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
     }
 
     let names: Vec<String> = result.widgets.iter().map(|w| w.name.clone()).collect();
-    Ok((result.vue_code, names))
+    Ok((result.vue_code, names, result.store_composables))
 }
 
 #[cfg(test)]
@@ -3042,5 +3112,156 @@ widget App {
 
         let err = project.copy_ext_files().unwrap_err().to_string();
         assert!(err.contains("escapes the project root"), "err: {}", err);
+    }
+
+    // --- Plan 012 Batch B: incremental store emission + failure semantics ---
+
+    const BATCH_B_APP_AT: &str = r#"
+widget App {
+    view {
+        col {
+            text "hello"
+        }
+    }
+}
+"#;
+
+    const BATCH_B_ALPHA_STORE: &str = r#"
+store AlphaStore {
+    model {
+        var items []str = []
+    }
+    msg Msg { Touch }
+    on {
+        .Touch -> { }
+    }
+}
+"#;
+
+    const BATCH_B_BETA_STORE: &str = r#"
+store BetaStore {
+    model {
+        var count int = 0
+    }
+    msg Msg { Bump }
+    on {
+        .Bump -> { .count = .count + 1 }
+    }
+}
+"#;
+
+    /// Create a minimal two-store workspace in a temp dir.
+    fn make_multi_store_workspace(root: &Path) {
+        fs::write(root.join("pac.at"), "name: \"multistore\"\n").unwrap();
+        let front = root.join("src").join("front");
+        fs::create_dir_all(&front).unwrap();
+        fs::write(front.join("app.at"), BATCH_B_APP_AT).unwrap();
+        fs::write(front.join("alpha_store.at"), BATCH_B_ALPHA_STORE).unwrap();
+        fs::write(front.join("beta_store.at"), BATCH_B_BETA_STORE).unwrap();
+    }
+
+    /// Gap 9a: with TWO store .at files changed in one incremental build,
+    /// BOTH store composables must be (re-)emitted. Before Batch B the
+    /// incremental path drained the STORE_EXTRA_FILES thread-local, which is
+    /// cleared per compiled file — only the LAST store survived.
+    #[test]
+    fn test_incremental_build_emits_all_store_composables() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        make_multi_store_workspace(root);
+        let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
+
+        // First incremental pass: everything is dirty, both stores emitted.
+        let changed = incremental_compile_changed(root).expect("first pass must succeed");
+        assert!(changed > 0);
+        assert!(
+            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            "alpha composable after first pass"
+        );
+        assert!(
+            stores_dir.join("useBetaStoreStore.ts").exists(),
+            "beta composable after first pass"
+        );
+
+        // Delete the generated stores and touch BOTH store sources: the
+        // incremental path must re-emit BOTH, not just the last one.
+        fs::remove_dir_all(&stores_dir).unwrap();
+        fs::write(
+            root.join("src").join("front").join("alpha_store.at"),
+            format!("{}\n// touched\n", BATCH_B_ALPHA_STORE),
+        )
+        .unwrap();
+        fs::write(
+            root.join("src").join("front").join("beta_store.at"),
+            format!("{}\n// touched\n", BATCH_B_BETA_STORE),
+        )
+        .unwrap();
+
+        incremental_compile_changed(root).expect("second pass must succeed");
+        assert!(
+            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            "alpha composable re-emitted by incremental pass"
+        );
+        assert!(
+            stores_dir.join("useBetaStoreStore.ts").exists(),
+            "beta composable re-emitted by incremental pass"
+        );
+    }
+
+    /// Gap 9b: a parse failure in the incremental path must NOT be swallowed.
+    /// Non-strict: the build continues (Warning printed, matching the fresh
+    /// path) and the broken file's composable is not written. Strict
+    /// (`auto build --strict`): the build fails. Both assertions live in ONE
+    /// test because strict mode is a process-wide flag and cargo runs tests
+    /// in parallel.
+    #[test]
+    fn test_incremental_parse_failure_semantics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        make_multi_store_workspace(root);
+        // Break the beta store (unterminated block → parse error).
+        fs::write(
+            root.join("src").join("front").join("beta_store.at"),
+            "store BetaStore {\n    model {\n        var count int = \n",
+        )
+        .unwrap();
+
+        // Non-strict: warning + build continues.
+        auto_lang::ui_gen::validators::set_strict(false);
+        let ok = incremental_compile_changed(root);
+        assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
+        let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
+        assert!(
+            stores_dir.join("useAlphaStoreStore.ts").exists(),
+            "healthy store still emitted"
+        );
+        assert!(
+            !stores_dir.join("useBetaStoreStore.ts").exists(),
+            "broken store must not emit a composable"
+        );
+
+        // Strict: the same parse failure fails the build.
+        struct StrictGuard;
+        impl StrictGuard {
+            fn on() -> Self {
+                auto_lang::ui_gen::validators::set_strict(true);
+                StrictGuard
+            }
+        }
+        impl Drop for StrictGuard {
+            fn drop(&mut self) {
+                auto_lang::ui_gen::validators::set_strict(false);
+            }
+        }
+        let _guard = StrictGuard::on();
+        let err = match incremental_compile_changed(root) {
+            Ok(_) => panic!("strict build must fail on parse error"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("Failed to compile"),
+            "error should name the compile failure: {}",
+            err
+        );
     }
 }

@@ -1,0 +1,25 @@
+// alpha_store.at — store with a `notes` state var and NO declared
+// `all_tags` computed. Before Plan 012 Batch B the codegen injected a bogus
+// 015-notes-specific `get all_tags()` into ANY store with a `notes` var;
+// now the composable contains exactly what the store declares.
+
+store AlphaStore {
+    model {
+        var notes []str = []
+        var selected int = 0
+    }
+
+    msg Msg { AddNote(str), SelectNote(int) }
+
+    on {
+        .AddNote(text) -> {
+            .notes = []
+        }
+
+        .SelectNote(i) -> {
+            .selected = i
+        }
+    }
+}
+
+// touched

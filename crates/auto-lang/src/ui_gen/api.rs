@@ -803,4 +803,143 @@ widget StrictInfoProbe {
         let _ = std::fs::remove_file(&comma_path);
         let _ = std::fs::remove_file(&info_path);
     }
+
+    // --- Plan 012 Batch B: store codegen correctness -------------------------
+
+    /// Gap 9a: a single .at file declaring TWO stores must emit BOTH store
+    /// composables through the real parse path (return value AND the
+    /// STORE_EXTRA_FILES thread-local used by legacy callers).
+    #[test]
+    fn test_multi_store_single_file_emission() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store AlphaStore {
+    model {
+        var items []str = []
+    }
+    msg Msg { Touch }
+    on {
+        .Touch -> { }
+    }
+}
+
+store BetaStore {
+    model {
+        var count int = 0
+    }
+    msg Msg { Bump }
+    on {
+        .Bump -> { .count = .count + 1 }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_multi_store_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("two-store file must generate");
+
+        let names: Vec<&str> = result
+            .store_composables
+            .iter()
+            .map(|(f, _)| f.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["stores/useAlphaStoreStore.ts", "stores/useBetaStoreStore.ts"],
+            "both stores must be emitted, got: {:?}",
+            names
+        );
+
+        // The thread-local (drained by auto-man's incremental path) must hold
+        // the same two files.
+        let drained = crate::drain_store_extra_files();
+        let drained_names: Vec<&str> = drained.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(drained_names, names, "thread-local must match return value");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Gap 2: the 015-notes-specific `all_tags` getter auto-inject is gone.
+    /// A store with a `notes` state var but NO declared `all_tags` computed
+    /// must generate a composable with no `all_tags` anywhere (previously the
+    /// hack injected a getter referencing `notes.value`).
+    #[test]
+    fn test_store_with_notes_var_no_all_tags_injection() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store NotesLikeStore {
+    model {
+        var notes []str = []
+    }
+    msg Msg { Touch }
+    on {
+        .Touch -> { }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_notes_no_all_tags_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("store file must generate");
+        crate::drain_store_extra_files(); // keep thread-local clean for other tests
+
+        assert_eq!(result.store_composables.len(), 1);
+        let (filename, code) = &result.store_composables[0];
+        assert_eq!(filename, "stores/useNotesLikeStoreStore.ts");
+        assert!(
+            code.contains("export function useNotesLikeStoreStore()"),
+            "composable function, got:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("all_tags"),
+            "no all_tags getter may be injected, got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Gap 2 (compatibility): a store that DECLARES `all_tags` in its
+    /// `computed {}` block — the workaround jade and 015-notes carry — must
+    /// still compile, and the declared getter is emitted exactly once.
+    #[test]
+    fn test_store_declared_all_tags_placeholder_still_compiles() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store TagsStore {
+    model {
+        var notes []str = []
+    }
+    msg Msg { Touch }
+    computed {
+        all_tags => []
+    }
+    on {
+        .Touch -> { }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_declared_all_tags_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("declared all_tags placeholder must still compile");
+        crate::drain_store_extra_files();
+
+        let (_, code) = &result.store_composables[0];
+        let occurrences = code.matches("get all_tags()").count();
+        assert_eq!(
+            occurrences, 1,
+            "declared all_tags getter must appear exactly once, got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

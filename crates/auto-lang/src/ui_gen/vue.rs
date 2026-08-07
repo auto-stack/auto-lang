@@ -9916,28 +9916,6 @@ export function cn(...inputs: ClassValue[]) {
             code.push_str(&format!("        {},\n", name));
         }
 
-        // Auto-generate a computed 'all_tags' property that collects unique tags
-        // from all notes — but only if the store doesn't already declare all_tags.
-        // Check both model state_vars AND the user-declared computed block: a
-        // `computed { all_tags => ... }` declaration must suppress this auto-inject,
-        // otherwise we'd emit a duplicate `get all_tags()` key (vite warning).
-        // Plan 043 store-codegen: also require a `notes` state var — this is a
-        // 015-notes-specific helper that references `notes.value`, so injecting it
-        // into a store without `notes` (e.g. ShellStore) yields a runtime
-        // `notes is not defined`.
-        let has_all_tags = store.state_vars.iter().any(|s| s.name == "all_tags")
-            || store.computed.iter().any(|c| c.name == "all_tags");
-        let has_notes = store.state_vars.iter().any(|s| s.name == "notes");
-        if !has_all_tags && has_notes {
-            code.push_str("        get all_tags() {\n");
-            code.push_str("            const tags = new Set<string>();\n");
-            code.push_str("            for (const n of notes.value) {\n");
-            code.push_str("                if (n && n.tags) for (const t of n.tags) tags.add(t);\n");
-            code.push_str("            }\n");
-            code.push_str("            return Array.from(tags);\n");
-            code.push_str("        },\n");
-        }
-
         // Plan 360: when accent_color exists, expose the palette name list as
         // a computed so the UI can render swatch buttons via `for n in .store.accent_names`.
         if has_accent {
@@ -13751,10 +13729,11 @@ widget Counter {
         );
     }
 
-    /// Plan 043 store-codegen: a store WITHOUT a `notes` state var must NOT
-    /// get the 015-notes-specific `all_tags` getter injected (it references
-    /// `notes.value` and would be a runtime `notes is not defined`). And
-    /// array inits render as `[]`.
+    /// Plan 043 store-codegen / Plan 012 Batch B (gap 2): the 015-notes-specific
+    /// `all_tags` getter auto-inject was removed entirely — a store only gets an
+    /// `all_tags` getter when it declares one in its `computed {}` block. This
+    /// test pins that a plain store composable contains no `all_tags` (and that
+    /// array inits render as `[]`).
     #[test]
     fn test_store_composable_no_notes_no_all_tags() {
         use crate::aura::{AuraStore, AuraStateDef};

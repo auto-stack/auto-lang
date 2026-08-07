@@ -1,0 +1,27 @@
+// beta_store.at — second store in the same workspace. Both composables must
+// be emitted by a SINGLE `auto build` (gap 9a: the incremental path used to
+// drain a per-call-cleared thread-local, so only the last store survived).
+
+store BetaStore {
+    model {
+        var count int = 0
+    }
+
+    msg Msg { Bump, Reset }
+
+    computed {
+        double_count => .count * 2
+    }
+
+    on {
+        .Bump -> {
+            .count = .count + 1
+        }
+
+        .Reset -> {
+            .count = 0
+        }
+    }
+}
+
+// touched
