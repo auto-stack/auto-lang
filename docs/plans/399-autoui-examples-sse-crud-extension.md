@@ -144,16 +144,15 @@
 - **验证**：`regen_real_015_backend_db_delegation`（#[ignore]，默认栈）通过——015 完整生成，全 db 委托（无 State<Db>），`crate::db::all_notes`/`create_note`/`update_tags` 委托正确。
 - **剩余（转 §3）**：生成的 015 db.rs 有 26 个编译错误（E0308×14、E0277 i64/i32×6、E0614×2、E0596 mut×2、E0507×1）——都是 a2r 转译复杂 db.at 的缺陷，属 §3 根治范围。015 当前仍用旧 State<Db> 产物运行。
 
-### §8 🟡 db_fn 映射脆弱（命名偏离即静默回退）
-`db_fn_candidates`（`api_gen.rs:738`）是纯字符串前缀归一（list_→all_ 等 13 个动词），**无形态学推理**：
-- 不规则复数全失败：`list_person`→候选 `all_person`，db 若叫 `all_people` → 命中失败。
-- 同义词/别名失败：`login`→`find_user`、`archive_note`、`publish_post` 不在白名单。
-- `move_X` 归一到 `update_X` 有**语义错配风险**（move 改 folder、update 改 title，若 db 只有 update_note 会静默选错）。
-- 失败时静默回退 `State<Db>` 模板 + eprintln 警告（`api_gen.rs:1031`），不报错。
-- **当前影响低**（015/017 命名严格对齐 CRUD 约定），但未来示例偏离约定会踩坑。根治需改用 `endpoint.body` 的 `db.FN(...)` 调用解析（即路线A）或显式 `#[db_fn]` 注解。
+### §8 ✅ db_fn 映射改进（body-based 解析优先于命名启发式）
+原状：`db_fn_candidates` 纯前缀归一（list_→all_ 等 13 动词），无形态学——不规则复数（`list_person`→`all_people` 失败）、同义词（`login`→`find_user`）、`move_X`→`update_X` 语义错配，全部静默回退。
+**改进**：`resolve_db_call` 现在优先用 `extract_db_fn_from_body` —— 从 `endpoint.body` 的 `return db.FN(...)` AST 直接取 FN 名（路线A 的轻量版），仅在 body 无/解析失败时回退命名启发式。这覆盖了所有同义词/别名/复数情况（只要 api.at body 是 `return db.FN(args)` 薄委托，FN 名就被精确解析）。
+- 前提：`try_full_parse` 成功（拿到 body）。§7 栈溢出修复后，015/017 的 api.at full_parse 在默认栈成功（8/8 端点有 body）。lenient 路径（无 body）仍走启发式。
+- 测试：`test_db_fn_resolved_from_body_over_heuristic` —— 同义词端点 `lookup`（不在动词白名单）通过 body 的 `db.find_user(id)` 成功委托。
+- 剩余：`move_X` 语义错配（若 body 也是 `db.update_note`）仍按 body 解析——但这反映 api.at 作者意图（body 写啥就调啥），不再是 codegen 的猜测。
 
-### §9 🟡 PATCH+body 隐性编译 bug
-`endpoint_has_body`（`api_gen.rs:700`）只认 `POST | PUT`，**PATCH 不算有 body**。后果：若 PATCH 端点带 body 参数（如 `set_pinned(id, pinned bool)`），handler 签名不加 `Json(input)` 提取器，但 `resolve_db_call` 会生成 `&input.pinned` → handler 里无 `input` 绑定 → **编译错误**。015 的 `toggle_pin` 因无 body 参数而幸免。这是 codegen 普适性缺陷。
+### §9 ✅ PATCH+body 编译 bug（已修，前轮）
+`endpoint_has_body` 纳入 PATCH（有 body_params 时），带 body 的 PATCH 端点（如 `set_pinned(id, pinned bool)`）现在正确生成 `Json(input)` 提取器。回归测试 `test_patch_with_body_gets_json_extractor`。
 
 ### §10 🟡 混合状态（部分回退）运行时状态分裂
 当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum 0.8 下能编译（无 State 提取器的 handler 对任意 S 成立 `Handler`），但运行时同一资源的读写会不一致。文档/注释（`api_gen.rs:1031`）只警告"回退模板"，未提状态分裂风险。当前示例全委托不触发，但应明确记录。

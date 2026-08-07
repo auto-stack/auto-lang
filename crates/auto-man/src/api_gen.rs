@@ -917,6 +917,34 @@ struct DbDelegation {
     args: Vec<String>,
 }
 
+/// Plan 399 §8: extract the db function name from the endpoint's body AST when
+/// it is a thin `return db.FN(...)` delegate (the documented api.at convention).
+/// Reads `Stmt::Return(Expr::Call{ name: Dot(Ident("db"), FN) })`. Returns the
+/// FN name (verified to exist in db_fns) — far more reliable than the
+/// name-heuristic `db_fn_candidates`, which fails on synonyms/plurals/aliases.
+fn extract_db_fn_from_body(
+    endpoint: &ApiEndpoint,
+    db_fns: &std::collections::HashSet<String>,
+) -> Option<String> {
+    use auto_lang::ast::{Expr, Stmt};
+    let body = endpoint.body.as_ref()?;
+    // Scan statements for `return db.FN(...)` (the whole-body convention).
+    for stmt in &body.stmts {
+        if let Stmt::Return(expr) = stmt {
+            if let Expr::Call(call) = expr.as_ref() {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    if let Expr::Ident(recv_name) = receiver.as_ref() {
+                        if recv_name.as_ref() == "db" && db_fns.contains(method.as_ref()) {
+                            return Some(method.as_ref().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Resolve an endpoint to a db.rs function call, or `None` if no candidate name
 /// exists in `db_fns`. When matched, builds the argument list by mapping each
 /// endpoint param to its extractor binding:
@@ -932,9 +960,14 @@ fn resolve_db_call(
     endpoint: &ApiEndpoint,
     db_fns: &std::collections::HashSet<String>,
 ) -> Option<DbDelegation> {
-    let db_fn = db_fn_candidates(endpoint)
-        .into_iter()
-        .find(|c| db_fns.contains(c))?;
+    // Plan 399 §8: prefer the body's explicit `db.FN(...)` call over the
+    // name-heuristic (handles synonyms/plurals/aliases that the heuristic misses).
+    let db_fn = extract_db_fn_from_body(endpoint, db_fns)
+        .or_else(|| {
+            db_fn_candidates(endpoint)
+                .into_iter()
+                .find(|c| db_fns.contains(c))
+        })?;
     let path = endpoint.path();
     let method = endpoint.method();
     let is_str = |ty: &str| {
@@ -2451,6 +2484,33 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
             api_rs.contains("serde_json::to_value(&input)") && api_rs.contains("Typing"),
             "typing broadcasts input payload: {}", api_rs
         );
+    }
+
+    /// Plan 399 §8: db fn resolution prefers the body's `db.FN(...)` call over
+    /// the name-heuristic. A synonym endpoint (lookup, not in the verb whitelist)
+    /// delegates correctly via the body — the heuristic alone would miss it.
+    #[test]
+    fn test_db_fn_resolved_from_body_over_heuristic() {
+        let api = r#"
+pub type User = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn lookup(id int) ?User { return db.find_user(id) }
+"#;
+        // full_parse recovers the body (the `return db.find_user(id)` AST).
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(module.endpoints[0].body.is_some(), "body captured");
+        // db.rs has find_user. The endpoint fn name "lookup" is NOT in the
+        // heuristic verb whitelist, so db_fn_candidates would fail — but the
+        // body-based resolver finds find_user directly.
+        let db_fns: std::collections::HashSet<String> = ["find_user".to_string()].into_iter().collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        assert!(
+            api_rs.contains("crate::db::find_user(id)"),
+            "synonym endpoint delegates via body: {}", api_rs
+        );
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
     }
 
     /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and
