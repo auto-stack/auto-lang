@@ -1,6 +1,9 @@
 // chat_store.at — SharedStore (Plan musk-022 SSE multi-event).
 // Consumes the SSE stream via codegen-injected EventSource.
-use back.api: list_messages
+// NOTE: `stream` MUST be imported here — Plan musk-022 Phase 4 filters
+// stream_endpoints by the store's api_imports, so omitting it silently drops
+// the SSE wiring (T6/T7 regression).
+use back.api: list_messages, stream
 
 store ChatStore {
     model {

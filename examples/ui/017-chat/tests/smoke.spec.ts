@@ -34,8 +34,9 @@ test('T3: 发送消息后气泡出现（且在右侧 sent 位置）', async ({ p
   await page.getByRole('button', { name: 'Send' }).click()
   await page.waitForTimeout(1000)
   expect(await page.locator('body').innerText()).toContain(marker)
-  // 回归守护：sender=="You" 气泡必须在右侧(justify-end)。CRUD 模板 mine 不可靠，
-  // 前端按 sender 派生；若误依赖持久化 mine，气泡会落到左侧。
+  // 回归守护：新发消息气泡必须在右侧(justify-end)。Plan 399 第4-5步让后端调
+  // db::create_message(设 mine:true)，前端按 msg.mine 派生方向；若后端回退到
+  // ..Default::default() (mine:false)，气泡会落到左侧。
   const sentBubble = page.locator(`span:has-text("${marker}")`)
     .locator('xpath=ancestor::div[contains(@class,"justify-end")]')
   await expect(sentBubble).toHaveCount(1, { timeout: 3000 })

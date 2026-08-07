@@ -158,9 +158,11 @@ impl ApiExtractor {
         // Extract return type
         endpoint.return_type = type_to_string(&fn_decl.ret);
 
-        // Plan musk-022 CRUD 智能扩展: capture the function body AST so the
-        // rust backend generator can transpile real business logic (a2r)
-        // instead of always applying a CRUD template.
+        // Plan musk-022 CRUD 智能扩展: capture the function body AST so a
+        // future "route A" can transpile real business logic (a2r) instead of
+        // a CRUD template. NOTE: Plan 399 第4-5 步 shipped "route B" (db-
+        // delegation in api_gen.rs) which does NOT read this; it stays
+        // populated for the eventual route A. See ApiEndpoint::body doc.
         endpoint.body = Some(fn_decl.body.clone());
 
         Some(endpoint)

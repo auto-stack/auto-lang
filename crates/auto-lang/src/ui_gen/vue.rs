@@ -13938,7 +13938,11 @@ store ShellStore {
                 (".RunOutput(data)".to_string(), vec!["data".to_string()]),
                 (".RunResult(data)".to_string(), vec!["data".to_string()]),
             ]),
-            api_imports: vec!["stream".to_string()],
+            // Both streaming endpoints are imported by this store, so both get
+            // SSE wiring. (Plan musk-022 Phase 4 filters stream_endpoints by
+            // api_imports — a store only wires the streams it actually imports,
+            // so AuthStore doesn't accidentally pick up chat_stream's dispatchers.)
+            api_imports: vec!["stream".to_string(), "events".to_string()],
             stream_endpoints: vec![
                 crate::aura::StreamEndpoint {
                     fn_name: "stream".to_string(),
