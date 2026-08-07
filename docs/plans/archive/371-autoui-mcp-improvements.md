@@ -1386,3 +1386,99 @@ Plan 371 的 L1/L2/L3 + 4 个预存限制全部完成。Rust 模式的组件状�
 ### 18.6 结论
 
 循环内多实例子组件的"per-instance 状态持久化"问题，通过**路径 A（集中状态模式）**解决——与 VM 单一状态堆语义对齐，无需 per-instance 持久化。013-todo 的编辑功能（进入编辑、输入文字、保存）在 VM + Rust 双模式下均正确工作。
+
+## 19. 新发现(2026-08-08):真实 Enter 不触发 Run — on_submit 的 input_value 缺失
+
+> **症状修正**:初判"VM input 无焦点管理、键盘全断"**部分错误**——实测字符输入(打字)是
+> 正常的(说明聚焦 + on_input 链路通)。真正的、唯一的症状是:**按回车不执行命令**。
+> 根因不是焦点,而是 `on_submit` 消息不带 `input_value`,导致 PromptBar.Run 的 emit 模拟
+> 拿不到命令文本而跳过。
+>
+> **与 §14 的区别**:§14/§15/§16-18 的"编辑框无法编辑"是 Rust 模式状态持久化问题;本节是
+> VM 模式 on_submit 值传递缺失,独立缺陷。
+>
+> 发现来源:auto-shell 仓库 ash-gui-auto(`auto run -r vm`)实测,用户报告"输入 ls 按回车没反应"。
+> 已在 auto-shell 侧 `designs/ash-gui-native-archived.md` 记为 EDGE-15。
+
+### 19.1 症状(精确)
+
+VM 模式窗口里,点击 input 聚焦后**能正常打字**(字符进框),但**按回车不执行**——
+input 不清空、block 不创建、store.RunCommand 不触发。
+
+### 19.2 实测复现
+
+```
+autoui_type text=ls          → input: "ls"          ✓ 字符输入正常
+autoui_keyboard key=enter    → input: "ls"(未清空) ✗ Run 未触发
+                              blocks: nil, next_id: 0
+```
+
+对照:`autoui_action action=submit` → 命令正常执行(input 清空、block 创建、Success)。
+**真实 Enter / autoui_keyboard enter 不行,MCP action submit 行。**
+
+### 19.3 根因(代码证据)
+
+`on_submit`(Enter)与 `on_input`(字符)的 msg 构造不同——**on_submit 不带 input_value**:
+
+```rust
+// renderer.rs:6707-6713  on_input —— 带 text
+input_widget = input_widget.on_input(move |text| {
+    IcedMessage { ..., input_value: Some(text) }   // ✓ 有值
+});
+
+// renderer.rs:6719-6720  on_submit —— 裸 msg,无 input_value
+input_widget = input_widget.on_submit(msg);        // ✗ msg.input_value = None
+```
+
+而 update 的 emit 模拟块依赖 `saved_input_value`(即 msg.input_value)才转发到 store:
+
+```rust
+// renderer.rs:3694-3705  PromptBar.Run 的 emit 模拟
+if widget_name == "PromptBar" && event_name == "Run" {
+    if let Some(cmd) = saved_input_value.as_deref() {   // ✗ None → 整块跳过!
+        state.component.on_with_input_for("ShellStore", "RunCommand", Some(cmd...));
+        ...  // 构造 block、提交执行器,全在这块里
+    }
+}
+```
+
+Enter 触发 on_submit → msg.input_value=None → 第 3695 行 `as_deref()` = None →
+**整个 store.RunCommand 转发 + block 构造 + 执行器提交全部跳过** → 回车无反应。
+
+**对照证据:MCP 路径专门补了这个值。** `mcp_server.rs:1963-1968`:
+```rust
+// ash-gui M1:submit 模拟 onenter。handler 带 .input 参数,但 submit 不自带 value
+// —— 从 target_view(Input) 的当前值补。
+if action == UiActionType::Submit && input_value.is_none() {
+    if let Some(v) = read_input_value(target_view) {
+        input_value = Some(v.clone());   // ← MCP 手动补值,所以 MCP submit 能工作
+    }
+}
+```
+
+MCP 作者明确知道 submit 不自带 value 并补了;**但真实 on_submit 路径没有等价补值逻辑**。
+
+### 19.4 为什么测试套件没发现
+
+ash-gui-auto 测试套件(56 pass)全部用 `autoui_type` + `autoui_action submit`
+(`test_command_exec.py:52-70`),走的是 MCP 那条**已补值**的路径。"真实回车"从未被测。
+
+### 19.5 修复方向(小改动,renderer.rs update 一处)
+
+在 update 的 emit 模拟块(renderer.rs:3694 附近),当 `saved_input_value` 为 None 时,
+从 state 的 `input` 字段读当前值补上(等价于 mcp_server.rs:1966 的做法):
+
+```rust
+if widget_name == "PromptBar" && event_name == "Run" {
+    let cmd = saved_input_value.as_deref().map(|s| s.to_string())
+        .or_else(|| state.component.read_state("input")
+                     .map(|v| v.as_str().to_string()));   // ← 补 this
+    if let Some(cmd) = cmd {
+        let cmd = cmd.trim();
+        if !cmd.is_empty() { ... }
+    }
+}
+```
+
+这是 ash-gui 特定知识(widget=PromptBar, event=Run)的 emit 模拟,补值也应在此处完成,
+无需动 on_submit 的通用机制。修复后真实回车即恢复。
