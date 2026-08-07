@@ -696,10 +696,19 @@ fn endpoint_path_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     }).collect()
 }
 
-/// Check if endpoint has a JSON body (POST/PUT with non-path params)
+/// Check if endpoint has a JSON body to extract.
+/// Plan 399 §9: PATCH with body params (e.g. `set_pinned(id, pinned bool)`)
+/// was previously excluded, which meant no `Json(input)` extractor — but
+/// `resolve_db_call` still emitted `&input.X` → unbound `input` → compile error.
+/// POST/PUT always have a body (create/update the whole resource); PATCH only
+/// has a body when it declares body params (toggle_pin has none → no body).
 fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
     let method = endpoint.method();
-    matches!(method.as_str(), "POST" | "PUT")
+    match method.as_str() {
+        "POST" | "PUT" => true,
+        "PATCH" => !endpoint_body_params(endpoint).is_empty(),
+        _ => false,
+    }
 }
 
 // ============================================================================
@@ -2220,5 +2229,79 @@ pub fn list_notes() []Note { return db.all_notes() }
         assert!(!main_rs.contains("with_state"), "main drops state: {}", main_rs);
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
         assert!(main_rs.contains("mod events;"), "main declares events (SSE): {}", main_rs);
+    }
+
+    /// Plan 399 §9: PATCH endpoint WITH body params must get a Json(input)
+    /// extractor (previously endpoint_has_body excluded PATCH → unbound input).
+    /// PATCH WITHOUT body (toggle_pin) must still get no Json extractor.
+    #[test]
+    fn test_patch_with_body_gets_json_extractor() {
+        let api = r#"
+pub type Task = { id: int, title: str, done: bool }
+
+#[api(method = "PATCH", path = "/api/tasks/:id")]
+pub fn set_done(id int, done bool) ?Task { return db.set_done(id, done) }
+
+#[api(method = "PATCH", path = "/api/tasks/:id/pin")]
+pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
+"#;
+        let module = extract_api_lenient(api).expect("extract");
+        let db_fns: std::collections::HashSet<String> = [
+            "set_done".to_string(), "toggle_pin".to_string(),
+        ].into_iter().collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+
+        // PATCH+body (set_done): must have Json extractor AND delegate &input.done.
+        assert!(
+            api_rs.contains("Json(input): Json<") && api_rs.contains("set_done"),
+            "PATCH+body has Json extractor: {}", api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::set_done(id, input.done)"),
+            "PATCH+body delegates bool param (no borrow): {}", api_rs
+        );
+
+        // PATCH no body (toggle_pin): must NOT have a Json extractor (only Path).
+        // Match "Json(input)" specifically — the return type JsonResponse also contains "Json".
+        let toggle_sig = api_rs.lines()
+            .find(|l| l.contains("pub async fn toggle_pin"))
+            .unwrap_or_else(|| panic!("toggle_pin handler missing: {}", api_rs));
+        assert!(!toggle_sig.contains("Json(input)"), "PATCH no-body has no Json extractor: {}", toggle_sig);
+        assert!(toggle_sig.contains("Path(id)"), "PATCH no-body has Path: {}", toggle_sig);
+    }
+
+    /// Plan 399 §7: probe the REAL 015-notes backend codegen path. Marked
+    /// #[ignore] — currently DOCUMENTS a known a2r stack overflow on 015's
+    /// complex db.at (12 fns + list-rebuild loops), so 015's backend cannot be
+    /// generated via the Plan399 db.rs route today. 017 (2 simple fns) works.
+    /// When the a2r overflow is fixed, flip this to a real assertion test.
+    #[test]
+    #[ignore]
+    fn regen_real_015_backend_probe() {
+        let project = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..").join("..").join("examples").join("ui").join("015-notes");
+        if !project.exists() {
+            eprintln!("skip: 015-notes not found");
+            return;
+        }
+        let api_content = std::fs::read_to_string(project.join("src").join("back").join("api.at"))
+            .expect("api.at");
+        let module = try_full_parse(&api_content)
+            .or_else(|| extract_api_lenient(&api_content))
+            .expect("api extracts");
+        eprintln!("stage A ok: {} endpoints", module.endpoints.len());
+
+        let db_content = std::fs::read_to_string(project.join("src").join("back").join("db.at"))
+            .expect("db.at");
+        eprintln!("stage B1: transpile_db_to_rs (a2r on 015 db.at, 12 fns)");
+        match transpile_db_to_rs(&db_content) {
+            Ok(db_rs) => {
+                eprintln!("stage B1 ok ({} bytes) — a2r overflow FIXED, upgrade this test", db_rs.len());
+                eprintln!("stage B2: generate_api full path");
+                generate_api(&project, "rust").expect("generate_api 015 ok");
+                eprintln!("stage B2 ok — 015 backend regenerates successfully now");
+            }
+            Err(e) => panic!("stage B1 failed (non-overflow): {}", e),
+        }
     }
 }

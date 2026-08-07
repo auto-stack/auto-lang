@@ -1,7 +1,7 @@
 # Plan 399: AutoUI 示例扩展 — SSE 多事件 + CRUD 智能扩展（路径 B）
 
-> **状态（2026-08-07）**: ✅ 完成（含运行时验证）。第 1-5 步全部落地，017-chat `auto run` + playwright **8/8 全绿**，POST 返回 `mine:true` 已端到端确认。调研收尾（§1-§5）完成，仅余 a2r 根治等长远项。
-> **分支**: 第 1-3 步在 `auto-ui-examples`（已合并 master `c175e9d8`）；第 4-5 步在 `plan399/handler-db-state`（已合并 master `45619231`）；收尾（§1-§5）在 `plan399/cleanup`（worktree `D:/autostack/auto-lang-autoui`）。
+> **状态（2026-08-07）**: 🟡 代码完成 + 017 运行时验证通过，深层调研发现新遗漏。第 1-5 步落地，017-chat playwright 8/8 全绿。但第二轮深挖发现 5 项此前未记录的问题（§6-§10）：Typing 事件死代码、015 后端从未编译验证、db_fn 映射脆弱、PATCH+body 隐性 bug、混合状态分裂。详见「已知遗留与技术债」。
+> **分支**: 第 1-3 步 `auto-ui-examples`（合并 `c175e9d8`）；第 4-5 步 `plan399/handler-db-state`（合并 `45619231`）；收尾 §1-§5 `plan399/cleanup`（合并 `80538fb1`）；深层修复 §6-§10 `plan399/deepfix`（worktree `D:/autostack/auto-lang-autoui`）。
 > **动机**: 调研 016-027 全部是「单文件静态玩具」，015-notes 是唯一完整 App。本计划把 017-chat 升级为首个 SSE 实时聊天 App，并在过程中打通 SSE 多事件 codegen + 修复后端 CRUD 模板丢弃业务逻辑的根因（mine:false bug）。
 
 ---
@@ -120,13 +120,48 @@
 1. **单测** `test_store_composable_sse_multi_endpoint`（`vue.rs:13925`）：测试数据 `api_imports` 加 `"events"`，与 Phase 4 的按 fn_name 过滤逻辑一致。
 2. **真实 bug** `examples/ui/017-chat/src/front/chat_store.at`：原 `use back.api: list_messages` 缺 `stream`，致 Phase 4 过滤器（`vue.rs:9900`）丢弃 SSE 接线 → 前端不建 EventSource → T6/T7 失败。改为 `use back.api: list_messages, stream` 并加注释说明。这解释了为何文档原称"第2步 8/8"在当前 codegen 下无法复现。
 
+### §6 🔴 Typing 事件是死代码（"多事件"卖点名不副实）
+第二轮深挖发现：017-chat 的 `ChatEvent { NewMessage(Message), Typing(str) }` 里，**只有 NewMessage 真正端到端可用，Typing 全链路无触发路径**：
+- **后端 codegen 硬编码**：`api_gen.rs:1162` 的 POST 广播 discriminator 字面量写死 `"NewMessage"`，完全不读 `ChatEvent` 变体列表。整个 codegen 无任何分支 emit `"typing"`。
+- **api.at 无 Typing 触发端点**：只有 `list_messages`/`send_message`/`stream` 三个端点，无 typing-indicator API。
+- **composer 的 InputChanged 是 no-op**：`composer.at:23` `.InputChanged -> { .draft = .draft }`，输入时不发任何 typing 信号。
+- **后果**：前端 `chat_store.at` 的 `.Typing(name)` handler 永远不会被调用。"首个 SSE 多事件 App"实际只是单事件（NewMessage）。
+- **修复需 4 处**：(1) 后端加 typing 触发端点或 POST 分支按变体广播；(2) `api_gen.rs` 让 broadcast 读 `ChatEvent` 变体而非硬编码；(3) composer 输入时发 typing；(4) 重生成 store。属功能补全，非 bug 修复——当前作为「声明但未实现」记录。
+
+### §7 🔴 015-notes 后端 a2r 转译栈溢出（无法用 Plan399 路径生成）
+015 是回归基线（文档曾称"9 端点全委托"），但深挖发现**015 的 db.at 根本无法用 Plan399 的 db.rs 转译路径生成**：
+- **实测栈溢出**：`transpile_db_to_rs(015 db.at)`（a2r 转译）触发 `STATUS_STACK_OVERFLOW (0xc00000fd)`。stage A（api.at 解析）正常出 8 端点，溢出发生在 stage B1（a2r 转译 db.at）。
+- **根因**：015 db.at 比 017 复杂得多——12 个 pub fn + 多处 `var new_notes List<Note>.new([])` + `for note in notes { if/else ... }` 列表重建循环 + `Note { ... }` 结构体构造嵌套。a2r（`trans/rust.rs`）转译这种深度嵌套时递归过深。017 的 db.at 只有 2 个简单函数（`all_messages` 直接返回、`create_message` 线性逻辑），所以第3步"db.rs 编译通过"只验证了简单情形。
+- **文档此前的不实声明**：原 §7 说"015 全量回归（9 端点单测 + 完整 codegen 测试 + db.rs 转译）"——但 `test_gen_015_notes_rust` 调的是**前端**生成器 `generate_rust_ui`（不生成后端），`test_handler_calls_db_for_notes_regression` 是**内联简化文本**单测（不触发真实 db.at 转译）。015 的真实 db.at 转译从未跑过。
+- **影响**：015 的 Plan399 后端路径（db.rs 转译）当前不可用。015 仍能用旧的 `State<Db>` 模板路径运行（stale 产物 `examples/rust-workspace/015-notes-back/`），但拿不到 db.rs 的真实业务逻辑。
+- **根治**：修 a2r 的递归深度（`trans/rust.rs`，可能是 expr/stmt 转译的递归未用迭代栈）。属 a2r 层 bug，非 Plan399 codegen 逻辑问题。测试 `regen_real_015_backend_probe`（#[ignore]）记录现状，a2r 修好后升级为真实断言。
+
+### §8 🟡 db_fn 映射脆弱（命名偏离即静默回退）
+`db_fn_candidates`（`api_gen.rs:738`）是纯字符串前缀归一（list_→all_ 等 13 个动词），**无形态学推理**：
+- 不规则复数全失败：`list_person`→候选 `all_person`，db 若叫 `all_people` → 命中失败。
+- 同义词/别名失败：`login`→`find_user`、`archive_note`、`publish_post` 不在白名单。
+- `move_X` 归一到 `update_X` 有**语义错配风险**（move 改 folder、update 改 title，若 db 只有 update_note 会静默选错）。
+- 失败时静默回退 `State<Db>` 模板 + eprintln 警告（`api_gen.rs:1031`），不报错。
+- **当前影响低**（015/017 命名严格对齐 CRUD 约定），但未来示例偏离约定会踩坑。根治需改用 `endpoint.body` 的 `db.FN(...)` 调用解析（即路线A）或显式 `#[db_fn]` 注解。
+
+### §9 🟡 PATCH+body 隐性编译 bug
+`endpoint_has_body`（`api_gen.rs:700`）只认 `POST | PUT`，**PATCH 不算有 body**。后果：若 PATCH 端点带 body 参数（如 `set_pinned(id, pinned bool)`），handler 签名不加 `Json(input)` 提取器，但 `resolve_db_call` 会生成 `&input.pinned` → handler 里无 `input` 绑定 → **编译错误**。015 的 `toggle_pin` 因无 body 参数而幸免。这是 codegen 普适性缺陷。
+
+### §10 🟡 混合状态（部分回退）运行时状态分裂
+当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum 0.8 下能编译（无 State 提取器的 handler 对任意 S 成立 `Handler`），但运行时同一资源的读写会不一致。文档/注释（`api_gen.rs:1031`）只警告"回退模板"，未提状态分裂风险。当前示例全委托不触发，但应明确记录。
+
 ---
 
 ## 后续（超出本计划）
 
+- **修 §7（高优先）**：a2r 递归栈溢出（`trans/rust.rs`），让 015 db.at 能转译，恢复 015 的 db.rs 路径
+- **补 §6**：Typing 事件端到端实现（后端广播读变体 + composer 触发 + 重生成），让"多事件"名副其实
 - a2r 深层转译缺陷根治（§3 的 5 类根因，在 `trans/rust.rs` 而非后处理）
+- **补 §8**：db_fn 映射改用 body 解析或注解，消除命名约定依赖
 - 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
+
+> 注：§9（PATCH+body）已在本轮修复（`endpoint_has_body` 纳入 PATCH + 回归测试 `test_patch_with_body_gets_json_extractor`）。§10（混合状态分裂）为设计权衡，文档记录即可。
 
 ---
 
