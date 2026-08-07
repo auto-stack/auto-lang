@@ -1,0 +1,9 @@
+# 017-chat 验收契约
+# T1: 初始消息渲染 (≥5 条含 Alice/Bob)
+# T2: 双气泡方向 (sent bg-primary / received bg-muted)
+# T3: 发送消息后气泡出现且在右侧 (sender=="You" 派生)
+# T4: 空消息不发送
+# T5: 发送后输入框清空
+# T6: SSE NewMessage 跨标签页推送
+# T7: SSE 连接建立 (EventSource /api/stream)
+# T8: 控制台无实质错误

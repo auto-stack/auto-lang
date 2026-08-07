@@ -805,7 +805,7 @@ fn generate_api_rs(api_module: &auto_lang::api::ApiModule) -> String {
                 lines.push("    items.push(item.clone());".to_string());
                 if has_sse {
                     lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
-                    lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"new_message\".to_string())); }".to_string());
+                    lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"NewMessage\".to_string())); }".to_string());
                     lines.push("    crate::events::broadcast(evt.to_string());".to_string());
                 }
                 lines.push("    JsonResponse(item)".to_string());
