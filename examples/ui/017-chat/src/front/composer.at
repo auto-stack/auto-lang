@@ -1,0 +1,31 @@
+// composer.at — input bar. DoSend msg avoids name collision with on_send
+// callback (U21: on_send -> "Send" would collide with a Send variant).
+widget Composer(on_send: msg) {
+    msg Msg { DoSend, InputChanged }
+    model { var draft str = "" }
+    view {
+        row {
+            style: "items-center gap-2 p-4 bg-card rounded-xl shadow-sm"
+            input {
+                placeholder: "Type a message..."
+                value: .draft
+                oninput: .InputChanged
+                onenter: .DoSend
+                style: "flex-1 px-4 py-2 bg-background border border-border rounded-full text-sm text-foreground outline-none focus:border-primary transition-colors"
+            }
+            button "Send" {
+                onclick: .DoSend
+                style: "px-5 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
+            }
+        }
+    }
+    on {
+        .InputChanged -> { .draft = .draft }
+        .DoSend -> {
+            if .draft.trim() != "" {
+                on_send(.draft)
+                .draft = ""
+            }
+        }
+    }
+}

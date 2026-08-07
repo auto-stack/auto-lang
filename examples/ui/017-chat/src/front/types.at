@@ -1,0 +1,7 @@
+type Message {
+    id int
+    sender str
+    text str
+    time str
+    mine bool
+}
