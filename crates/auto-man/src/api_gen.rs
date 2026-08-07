@@ -343,9 +343,11 @@ fn post_process_db_rs(mut code: String) -> String {
     // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
     // array literal is already vec![...]). Bracket-balanced over the .new(...) parens.
     code = strip_collection_new(&code);
-    // `fn f() -> &[T] { return *G.lock().unwrap(); }` -> return owned Vec<T> with
-    // .clone(): a2r emits a borrowed slice return over a MutexGuard (lifetime error).
-    code = fix_borrowed_slice_returns(&code);
+    // Plan 399 Phase 11.3: &[T] return + global clone now handled in a2r
+    // (rust_return_type_name emits Vec<T>; write_return_expr adds .clone() for
+    // global var returns). Keeping fix_borrowed_slice_returns as a no-op fallback
+    // is unnecessary once a2r is verified — comment out to confirm.
+    // code = fix_borrowed_slice_returns(&code);
     // Plan 399 §3: over-deref before method calls. Generalize the hardcoded
     // MESSAGES to any global: `*VAR.lock().unwrap().push/insert(...)` → drop `*`.
     // a2r over-dereferences the MutexGuard before a method call (push returns ()).
@@ -362,10 +364,10 @@ fn post_process_db_rs(mut code: String) -> String {
     // id field type widening: backend types.rs uses i64 for int, but a2r emits i32
     // guards. `id: *NEXTID.lock().unwrap()` -> add `as i64` for the id field.
     code = code.replace("id: *NEXTID.lock().unwrap()", "id: *NEXTID.lock().unwrap() as i64");
-    // Plan 399 §3: a2r emits i32 for all `int` (params, fields, global vars), but
-    // backend types.rs uses i64. Unify to i64 so db.rs is consistent with types.rs
-    // (fixes E0277 i64-vs-i32 comparisons + E0308 Note{id:0} field mismatches).
-    code = code.replace("i32", "i64");
+    // Plan 399 Phase 11.1: a2r now emits i64 for `int` (rust_type_name Type::Int
+    // => i64 + as i64 casts). The blunt code.replace("i32","i64") is no longer
+    // needed — comment out to confirm 015/017 still compile.
+    // code = code.replace("i32", "i64");
     // Plan 399 §3: a2r emits `let results: Vec<T> = ...` without `mut` but then
     // calls results.push(). Add `mut` to `let NAME:` that is followed (in the same
     // fn) by `NAME.push`. Simple per-line heuristic: `let X = vec![]` / `let X:` → `let mut X`.
