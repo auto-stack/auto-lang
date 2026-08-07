@@ -305,19 +305,35 @@ export type { IApi };
             format!("export async function {}({}): {} {{", name, param_list, return_type),
         ];
 
-        // Separate path params from query params
+        // Separate path params from query params.
+        // Plan 022 §7.6: 支持两种路径参数语法 —— `:param`（axum 0.6 / Express）
+        // 和 `{param}`（axum 0.7+ / RFC 6570 URI Template）。auto-musk api.at 用后者。
+        let is_path_param = |p_name: &str| {
+            path.contains(&format!(":{}", p_name)) || path.contains(&format!("{{{}}}", p_name))
+        };
         let path_params: Vec<_> = endpoint.params.iter()
-            .filter(|p| path.contains(&format!(":{}", p.name)))
+            .filter(|p| is_path_param(&p.name))
             .collect();
         let query_params: Vec<_> = endpoint.params.iter()
-            .filter(|p| !path.contains(&format!(":{}", p.name)))
+            .filter(|p| !is_path_param(&p.name))
             .collect();
 
-        // Build URL (handle path params)
-        let mut url = if path.contains(':') {
+        // Build URL (handle path params). 支持两种格式（不重叠处理避免双重替换）：
+        //   - `:param`（axum 0.6 / Express）→ `${param}`
+        //   - `{param}`（axum 0.7+ / RFC 6570 URI Template）→ `${param}`
+        let has_path_params = path.contains(':')
+            || endpoint.params.iter().any(|p| path.contains(&format!("{{{}}}", p.name)));
+        let mut url = if has_path_params {
             let mut url_str = path.to_string();
+            let uses_brace = endpoint.params.iter().any(|p| path.contains(&format!("{{{}}}", p.name)));
             for param in &path_params {
-                url_str = url_str.replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
+                if uses_brace {
+                    // `{name}` → `${name}`（一次性，不碰 colon）
+                    url_str = url_str.replace(&format!("{{{}}}", param.name), &format!("${{{}}}", param.name));
+                } else {
+                    // `:name` → `${name}`（colon 路径）
+                    url_str = url_str.replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
+                }
             }
             format!("`{}`", url_str)
         } else {
@@ -326,10 +342,13 @@ export type { IApi };
 
         // Add query params to URL for GET requests
         if method == "GET" && !query_params.is_empty() {
+            // Plan 022 §7.6: query 拼接也要基于已插值的 url（去掉外层反引号再重包），
+            // 此前用原始 path 会重新引入 `{param}`/`:param` 字面量。
+            let base = url.trim_start_matches('`').trim_end_matches('`');
             let query_str: Vec<String> = query_params.iter()
                 .map(|p| format!("{}=${{encodeURIComponent({})}}", p.name, p.name))
                 .collect();
-            url = format!("`{}?{}`", path, query_str.join("&"));
+            url = format!("`{}?{}`", base, query_str.join("&"));
         }
 
         lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
@@ -498,7 +517,7 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{ApiAttrs, ApiField};
+    use crate::api::{ApiAttrs, ApiField, ApiParam};
 
     #[test]
     fn test_to_ts_type() {
@@ -557,6 +576,51 @@ mod tests {
         assert!(result.contains("fetch"));
         assert!(result.contains("/api/users"));
         assert!(!result.contains("axios"));
+    }
+
+    /// Plan 022 §7.6: 路径参数 `{param}`（axum 0.7+ / URI Template）格式
+    /// 必须插值为 JS 模板 `${param}`，而非原样输出字面量 `{param}`。
+    #[test]
+    fn test_generate_fetch_function_brace_path_param() {
+        let gen = TypeScriptGenerator::new();
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/items/{section_id}/{id}".to_string());
+        let mut endpoint = ApiEndpoint::new("get_item".to_string(), attrs);
+        endpoint.params.push(ApiParam::new("section_id".to_string(), "str".to_string()));
+        endpoint.params.push(ApiParam::new("id".to_string(), "str".to_string()));
+        endpoint.return_type = "Item".to_string();
+
+        let result = gen.generate_fetch_function(&endpoint);
+        // 路径参数插值为 JS 模板字符串（注意：`${section_id}` 含大括号是正常的模板语法）
+        assert!(
+            result.contains("`/api/items/${section_id}/${id}`"),
+            "brace path params 应插值为 `${{section_id}}/${{id}}`，实际:\n{}", result
+        );
+        // 不应残留原始字面量路径 `/api/items/{section_id}/{id}`（未被反引号模板包裹的形态）
+        assert!(
+            !result.contains("'/api/items/") && !result.contains("/{section_id}/{id}"),
+            "不应残留原始字面量路径: {}", result
+        );
+    }
+
+    /// Plan 022 §7.6: 旧的 `:param` 格式（axum 0.6）仍应工作（向后兼容）。
+    #[test]
+    fn test_generate_fetch_function_colon_path_param() {
+        let gen = TypeScriptGenerator::new();
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("DELETE".to_string());
+        attrs.path = Some("/api/users/:id".to_string());
+        let mut endpoint = ApiEndpoint::new("delete_user".to_string(), attrs);
+        endpoint.params.push(ApiParam::new("id".to_string(), "str".to_string()));
+
+        let result = gen.generate_fetch_function(&endpoint);
+        assert!(
+            result.contains("`/api/users/${id}`"),
+            "colon path params 应插值为 `${{id}}`，实际:\n{}", result
+        );
+        // 不应残留原始 `:id` 字面量
+        assert!(!result.contains("/users/:id"), "不应残留 :id 字面量: {}", result);
     }
 
     #[test]
