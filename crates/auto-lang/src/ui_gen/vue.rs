@@ -6173,6 +6173,12 @@ impl VueGenerator {
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
+                // Plan 012: label is emitted as a NATIVE <label> even in shadcn
+                // mode (registry maps it to the native tag), so it must get the
+                // full plain-path class handling — static `class`, dynamic
+                // `:class` exprs and conditional ternaries (Batch A gap 20).
+                // Without this the shadcn path silently dropped `class:`.
+                self.push_native_classes(&mut attrs, tag, props);
             }
 
             // === Text (Typography) ===
@@ -6286,6 +6292,9 @@ impl VueGenerator {
                         attrs.push("disabled".to_string());
                     }
                 }
+                // Plan 012: forward `class:`/`style:` to the shadcn Select root
+                // (Vue attr fallthrough) instead of silently dropping them.
+                self.push_native_classes(&mut attrs, tag, props);
             }
 
             // === SelectItem ===
@@ -8686,14 +8695,51 @@ impl VueGenerator {
                         }
                     } else if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
                         attrs.push(format!(":style=\"{}\"", expr_str));
+                    } else {
+                        // Plan 012: never drop a class/style expr silently.
+                        self.warn(
+                            "R011",
+                            crate::ui_gen::validators::Severity::Warning,
+                            "class/style expression could not be rendered and was dropped",
+                        );
                     }
                 }
                 _ => {
                     let class = self.extract_string_value(value).unwrap_or("");
                     if !class.is_empty() {
                         attrs.push(format!("class=\"{}\"", class));
+                    } else {
+                        // Plan 012: a class/style prop value we don't know how
+                        // to emit (e.g. a StyleBinding on the shadcn path) used
+                        // to vanish without a trace.
+                        self.warn(
+                            "R011",
+                            crate::ui_gen::validators::Severity::Warning,
+                            "class/style prop value not emitted on this element (unsupported value shape)",
+                        );
                     }
                 }
+            }
+        }
+    }
+
+    /// Plan 012: full plain-path class handling for schema-registered elements
+    /// that stay on the shadcn attrs path (`generate_shadcn_attrs`) — either
+    /// because they emit a NATIVE tag there (`label`) or map to a shadcn
+    /// component that should still receive user classes via attr fallthrough
+    /// (`select`). Mirrors the plain-element path: static `class`, dynamic
+    /// `:class` exprs (Batch A gap 20), conditional ternaries, and the
+    /// `__style__` marker for CSS-string expressions.
+    fn push_native_classes(&self, attrs: &mut Vec<String>, tag: &str, props: &HashMap<String, AuraPropValue>) {
+        let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
+        if !static_classes.is_empty() {
+            attrs.push(format!("class=\"{}\"", static_classes));
+        }
+        if let Some(dynamic) = dynamic_classes {
+            if let Some(style_expr) = dynamic.strip_prefix("__style__") {
+                attrs.push(format!(":style=\"{}\"", style_expr));
+            } else {
+                attrs.push(format!(":class=\"{}\"", dynamic));
             }
         }
     }
@@ -14207,6 +14253,72 @@ widget ClassIfProbe {
                 && sfc.contains("line-through")
                 && sfc.contains("text-muted"),
             "class: if-expr must emit a :class ternary keeping both branches:\n{sfc}"
+        );
+    }
+
+    // --- Plan 012: label/select keep class on the shadcn path ------------
+    // Regression: once `label` was registered in the vue widget registry
+    // (6f3fe403, Plan 337 drift guard), shadcn mode routed it through
+    // generate_shadcn_attrs, whose label arm never forwarded `class:` —
+    // the attribute was silently dropped while div/span/input kept theirs.
+
+    #[test]
+    fn test_label_keeps_static_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget LabelProbe {
+    view {
+        col {
+            label {
+                class: "slider-row"
+                span { text "depth" }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("<label class=\"slider-row\">"),
+            "label must keep its static class on the shadcn path (native <label>):\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_label_keeps_dynamic_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget LabelDynProbe {
+    model { var cls str = "x" }
+    view {
+        col {
+            label (class: .cls) {
+                text "depth"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":class=\"cls\""),
+            "label must bind a dynamic class expr as :class (Batch A gap 20):\n{sfc}"
+        );
+    }
+
+    /// Sibling audit: `select` is schema-registered Form too and maps to the
+    /// shadcn Select component — its arm had the same silent class drop.
+    #[test]
+    fn test_select_keeps_static_class_shadcn() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SelectProbe {
+    view {
+        col {
+            select (class: "control-row") {
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("class=\"control-row\""),
+            "select must forward its static class on the shadcn path:\n{sfc}"
         );
     }
 

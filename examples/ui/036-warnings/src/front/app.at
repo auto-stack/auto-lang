@@ -58,6 +58,20 @@ widget App {
 
             text f"items: ${.items}" { class: "text-sm" }
 
+            // Plan 012 regression: schema-registered Form elements on the
+            // shadcn path must keep their classes too — `label` (native
+            // <label>) and `select` (shadcn Select) both silently dropped
+            // `class:` once label entered the vue widget registry.
+            label {
+                class: "slider-row"
+                span { class: "value", text "depth" }
+            }
+            label (class: .cls) {
+                text "dynamic-class label"
+            }
+            select (class: "control-row") {
+            }
+
             EntryOpener { ref: "openerRef" }
         }
     }
