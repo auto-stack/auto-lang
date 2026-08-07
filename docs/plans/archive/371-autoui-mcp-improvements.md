@@ -1386,3 +1386,66 @@ Plan 371 的 L1/L2/L3 + 4 个预存限制全部完成。Rust 模式的组件状�
 ### 18.6 结论
 
 循环内多实例子组件的"per-instance 状态持久化"问题，通过**路径 A（集中状态模式）**解决——与 VM 单一状态堆语义对齐，无需 per-instance 持久化。013-todo 的编辑功能（进入编辑、输入文字、保存）在 VM + Rust 双模式下均正确工作。
+
+## 19. 新发现(2026-08-08):VM 模式 input 无焦点管理,真实键盘输入完全失效
+
+> **与 §14 的区别**:§14/§15/§16-18 讨论的"编辑框无法编辑"是 **Rust 模式(a2r)** 的状态持久化
+> 问题(临时结构体丢弃 editing/edit_title)。本节记录的是 **VM 模式** 一个更底层的、独立的缺陷:
+> **input 控件根本没有焦点管理**,导致真实键盘输入(打字 + 回车)完全无效。两者根因不同、
+> 路径不同,本节的问题在 §14 的修复完成后依然存在。
+>
+> 发现来源:auto-shell 仓库的 ash-gui-auto(`auto run -r vm`)实测,用户报告"输入 ls 没反应"。
+> 已在 auto-shell 侧 `designs/ash-gui-native-archived.md` 记为 EDGE-15。
+
+### 19.1 症状
+
+VM 模式窗口里,在 input 输入框**敲键盘打字、按回车,完全没反应**——字符不进框、handler
+不触发。这是该应用当前最大的可用性阻塞(所有真实交互都卡在这)。
+
+### 19.2 实测复现(auto-shell ash-gui-auto,`auto run -r vm` + MCP)
+
+```
+autoui_keyboard key=l   → "Key sent: l"
+autoui_keyboard key=s   → "Key sent: s"
+input.value             → ""   ← 仍空!字符没进去
+state.input             → ""   ← oninput handler 也没触发
+```
+
+对照:`autoui_type text=ls`(直接调 handler)+ `autoui_action action=submit` → 命令正常执行。
+**MCP 工具能绕过,真实键盘 / autoui_keyboard 不能。**
+
+### 19.3 根因(代码证据,`crates/auto-lang/src/ui/iced/renderer.rs`)
+
+VM 模式的 input 渲染成 iced 原生 `TextInput`,但**没有任何焦点管理**:
+
+| 缺失环节 | 证据 |
+|---|---|
+| input 无 `widget::Id` | `build_input_shape`(renderer.rs:769-802)只设 width/style,从不 `.id()` |
+| 从不 `Task::focus` | 全 `crates/auto-lang/src/` 搜 `Task::focus` = 0 命中 |
+| 未实现 `autofocus` prop | renderer/dynamic/vm_bridge 搜 `autofocus` = 0 命中(仅 vue 生成器有 CSS 样式) |
+| inspect 模式吞点击 | renderer.rs:6704/6718 `inspect_capture_active()` 为真时 on_change/on_submit 置 None,`wrap_debug` 的 `mouse_area.on_press` 拦截点击 → input 永不聚焦 |
+
+VM 模式 Input 渲染分支(renderer.rs:6697-6725)调 `build_input_shape` 构造 `TextInput`,接
+`on_input`(字符)/`on_submit`(回车),但**没分配 Id、没 focus 调用**。iced 0.14 的
+`TextInput` 默认不自动聚焦,只能靠用户点击。全局键盘订阅(`keyboard_subscription`,
+renderer.rs:2588-2695)发的是全局事件,落到没焦点的 input 上被丢弃
+(`mcp_types.rs:109-111` 作者注释:"keyboard tool dispatches a global key handler,
+**not the iced input's on_submit**")。
+
+### 19.4 为什么 MCP 测试套件没发现
+
+auto-shell 的 ash-gui-auto 测试套件(56 pass)全部用 `autoui_type` + `autoui_action submit`
+(`test_command_exec.py:52-70` 的 `_submit_command`),**刻意绕过**了这条坏掉的键盘链路。
+"输入 ls"这个最基本的真实交互,从未被测试覆盖——MCP 工具能调 handler 不代表真实键盘能用。
+
+### 19.5 修复方向(属 Plan 371 / autoui 改进范畴)
+
+1. **给每个 input 分配稳定 `widget::Id`**(基于 vnode id 或 widget path 哈希)。
+2. **实现 `autofocus` prop**:`.at` 里 `input { autofocus: true }` → 渲染时返回
+   `Task::focus(id)` 初始 command(iced 0.14 的标准聚焦方式)。
+3. **点击聚焦**:确保 inspect 模式的 `mouse_area` 不吞掉 input 点击(或在 input 上跳过
+   `wrap_debug`),让 iced 内部点击聚焦生效。
+4. **验证键盘订阅在 input 聚焦时仍能派发 `onkeydown.*` 绑定**(renderer.rs:2610-2613 的
+   `Status::Captured` 屏蔽逻辑可能漏键;EDGE-01 修过派发收集,但 Captured 屏蔽未复核)。
+
+修复后,auto-shell ash-gui-auto 的真实键盘交互即可恢复(当前只能靠 MCP 工具绕过)。
