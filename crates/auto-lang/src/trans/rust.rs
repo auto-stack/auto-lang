@@ -8580,7 +8580,17 @@ impl RustTrans {
                         && !matches!(expr, Expr::Str(_) | Expr::CStr(_));
                     (name, needs_ts)
                 }
-                Arg::Name(name) => (name.clone(), false),
+                Arg::Name(name) => {
+                    // Plan 399 Phase 11.2: shorthand `Type { field }` means
+                    // `field: field` (same-name local). If the field is a String
+                    // type, the local must be .to_string()'d (a2r fn params are
+                    // &str). Mirrors the Arg::Pair logic below.
+                    let needs_ts = field_types.iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                        .unwrap_or(false);
+                    (name.clone(), needs_ts)
+                }
                 Arg::Pair(key, expr) => {
                     let needs_ts = field_types.iter()
                         .find(|(n, _)| n == key)
@@ -8595,7 +8605,10 @@ impl RustTrans {
                 Arg::Pos(expr) | Arg::Pair(_, expr) => {
                     self.write_expr_for_struct_field(expr, out)?;
                 }
-                Arg::Name(_) => {}
+                Arg::Name(name) => {
+                    // Plan 399 Phase 11.2: shorthand `Type { field }` → `field: field`.
+                    write!(out, "{}", name)?;
+                }
             }
             if needs_to_string {
                 write!(out, ".to_string()")?;
@@ -17633,6 +17646,35 @@ pub fn create_note(title str) Note {
     ]);
     let out = t.transpile_fn(&fn_ast).unwrap();
     assert!(out.contains("fn create_note"), "transpile_fn output must contain fn: {}", out);
+}
+
+/// Plan 399 Phase 11.2: struct field `Type { title: title }` (Arg::Pair with a
+/// same-name &str param) must add `.to_string()` when the field is a String type.
+/// This is the form db.at actually uses (the Arg::Name shorthand `Type { title }`
+/// is rarer). Verifies a2r's struct_field_types lookup drives the to_string.
+#[test]
+fn test_struct_pair_field_to_string() {
+    use crate::parser::Parser;
+    let code = r#"
+pub type Note = { id: int, title: str }
+pub fn make(title str) Note {
+    return Note { id: 1, title: title }
+}
+"#;
+    let mut parser = Parser::from(code);
+    let ast = parser.parse().unwrap();
+    let fn_ast = ast.stmts.iter().find_map(|st| match st {
+        crate::ast::Stmt::Fn(f) => Some(f.clone()),
+        _ => None,
+    }).expect("no fn found");
+    let mut t = RustTrans::new(AutoStr::from("test"));
+    t.register_type("Note", vec![
+        ("id", Type::Int),
+        ("title", Type::StrOwned),
+    ]);
+    let out = t.transpile_fn(&fn_ast).unwrap();
+    assert!(out.contains("title: title.to_string()"),
+        "Pair String field gets .to_string(): {}", out);
 }
 
 /// analysis pass actually runs in the transpile pipeline. Not used by the
