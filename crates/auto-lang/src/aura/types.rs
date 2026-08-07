@@ -386,6 +386,16 @@ pub struct AuraStore {
 /// (Plan 043 stream phase.) The store composable opens an EventSource at `path`
 /// and dispatches each SSE message into a handler action. `item_type` is the
 /// inner `T` (e.g. `ShellEvent`), kept as a raw string for lightweight matching.
+///
+/// Plan musk-022 Phase 1: `discriminator` + `variants` make SSE dispatch
+/// data-driven instead of the hardcoded `command_output`/`command_result` pair.
+/// `discriminator` is the JSON field name on each SSE payload whose value
+/// selects the action (default `"event"`; externally-tagged enums using
+/// `#[serde(tag = "type")]` set this to `"type"`). `variants` maps each wire
+/// value (snake_case, as emitted by `#[serde(rename_all = "snake_case")]`) to
+/// the PascalCase store action name that consumes it. When `variants` is empty,
+/// the legacy two-variant fallback (`command_output`→RunOutput,
+/// `command_result`→RunResult) is preserved for backward compatibility.
 #[derive(Debug, Clone)]
 pub struct StreamEndpoint {
     /// The API function name (e.g. "stream"), for matching against `api_imports`.
@@ -394,6 +404,14 @@ pub struct StreamEndpoint {
     pub path: String,
     /// The inner item type `T` of `~Stream<T>` (raw string, e.g. "ShellEvent").
     pub item_type: String,
+    /// Plan musk-022 Phase 1: JSON field name used as the SSE discriminator.
+    /// Defaults to `"event"` (ash-gui ShellEvent contract). Forge streams emit
+    /// `#[serde(tag = "type")]` so this becomes `"type"`.
+    pub discriminator: String,
+    /// Plan musk-022 Phase 1: (wire_value, action_name) pairs. `wire_value` is
+    /// the snake_case discriminator value (e.g. `tool_call`); `action_name` is
+    /// the PascalCase store action (e.g. `ToolCall`). Empty = legacy fallback.
+    pub variants: Vec<(String, String)>,
 }
 
 

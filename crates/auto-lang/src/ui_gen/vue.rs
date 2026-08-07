@@ -9829,17 +9829,30 @@ export function cn(...inputs: ClassValue[]) {
         // `event` discriminator names an action, by that discriminator). For the
         // ash-gui ShellEvent contract (`{"event":"command_output"|"command_result"}`),
         // the discriminator-route keeps the existing RunOutput/RunResult mapping.
-        let stream_ep = store.stream_endpoints.first().cloned();
-        let wire_sse = stream_ep.is_some();
+        //
+        // Plan musk-022 Phase 1: dispatch is now fully data-driven. Each endpoint
+        // carries its own `discriminator` (JSON field name, e.g. "type" for
+        // `#[serde(tag="type")]` enums) and `variants` (wire value → action name
+        // map). Multiple endpoints are supported (forge has 3 SSE streams), each
+        // with its own per-endpoint module-level connection guard. When
+        // `variants` is empty, the legacy `command_output`/`command_result`
+        // fallback is emitted for backward compatibility.
+        let stream_eps = store.stream_endpoints.clone();
+        let wire_sse = !stream_eps.is_empty();
 
         // Export function.
         let fn_name = format!("use{}Store", store.name);
         // Module-level guard: every widget calls reactive(useXxxStore()), so
-        // without a flag each call would open its own SSE connection.
+        // without a flag each call would open its own SSE connection. One guard
+        // per endpoint (keyed by path) so multi-endpoint stores don't collapse.
         if wire_sse {
             code.push_str("// Plan 043 stream phase: type-driven SSE. The streaming endpoint's\n");
             code.push_str("// `~Stream<T>` return type + path drive this EventSource wiring.\n");
-            code.push_str("let __streamConnected = false;\n\n");
+            for ep in &stream_eps {
+                let guard = stream_guard_var(&ep.path);
+                code.push_str(&format!("let {} = false;\n", guard));
+            }
+            code.push('\n');
         }
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
 
@@ -9885,20 +9898,46 @@ export function cn(...inputs: ClassValue[]) {
         // before `return` so the connection opens on the first composable call.
         // The path comes from the streaming endpoint's `#[api(path=...)]` (no
         // longer hardcoded). Dispatch routes by the SSE event discriminator
-        // (`data.event`) to actions named after the discriminator's snake_case
-        // value (e.g. `command_output` → `RunOutput`), matching the
-        // externally-tagged-union contract the server emits.
+        // (`data.<discriminator>`) to actions named after the discriminator's
+        // value, matching the externally-tagged-union contract the server emits.
+        //
+        // Plan musk-022 Phase 1: each endpoint emits its own EventSource block
+        // with a per-path guard, and the discriminator field name + variant
+        // routing come from `ep.discriminator` / `ep.variants` (resolved from
+        // the inner type's `#[serde(tag=...)]` declaration). When `variants`
+        // is empty, fall back to the legacy `command_output`/`command_result`
+        // pair so existing ash-gui stores keep working unchanged.
         if wire_sse {
-            if let Some(ep) = &stream_ep {
-                code.push_str("    if (!__streamConnected) {\n");
-                code.push_str("        __streamConnected = true;\n");
+            for ep in &stream_eps {
+                let guard = stream_guard_var(&ep.path);
+                code.push_str(&format!("    if (!{}) {{\n", guard));
+                code.push_str(&format!("        {} = true;\n", guard));
                 code.push_str(&format!("        const es = new EventSource('{}');\n", ep.path));
                 code.push_str("        es.onmessage = (ev) => {\n");
                 code.push_str("            try {\n");
                 code.push_str("                const data = JSON.parse(ev.data);\n");
-                // Discriminator route: map `data.event` snake_case → PascalCase action.
-                code.push_str("                if (data.event === 'command_output') RunOutput(data);\n");
-                code.push_str("                else if (data.event === 'command_result') RunResult(data);\n");
+                // Build the dispatch if-chain from ep.variants (data-driven), or
+                // fall back to the legacy two-variant ash-gui contract. Each
+                // entry is (discriminator_field, wire_value, action_name).
+                let disc = &ep.discriminator;
+                let chain: Vec<(String, String, String)> = if ep.variants.is_empty() {
+                    // Legacy fallback: data.event discriminator + RunOutput/RunResult.
+                    vec![
+                        ("event".to_string(), "command_output".to_string(), "RunOutput".to_string()),
+                        ("event".to_string(), "command_result".to_string(), "RunResult".to_string()),
+                    ]
+                } else {
+                    ep.variants.iter()
+                        .map(|(wire, action)| (disc.clone(), wire.clone(), action.clone()))
+                        .collect()
+                };
+                for (i, (disc_field, wire_value, action)) in chain.iter().enumerate() {
+                    let kw = if i == 0 { "if" } else { "else if" };
+                    code.push_str(&format!(
+                        "                {} (data.{} === '{}') {}(data);\n",
+                        kw, disc_field, wire_value, action
+                    ));
+                }
                 code.push_str("            } catch { }\n");
                 code.push_str("        };\n");
                 code.push_str("    }\n");
@@ -10255,6 +10294,21 @@ impl VueGenerator {
     pub fn covers_aura_tag(tag: &str) -> bool {
         Self::LIBRARY_WIDGETS.iter().any(|w| tag == *w || tag.starts_with(&format!("{w}-")))
     }
+}
+
+/// Plan musk-022 Phase 1: derive a unique module-level connection-guard variable
+/// name from an SSE endpoint path. `/api/chats/session/{id}/stream` →
+/// `__streamConnected_api_chats_session_stream`. Slashes/braces collapse to `_`
+/// so the result is a valid JS identifier. Per-path guards let multi-endpoint
+/// stores (forge has 3 SSE streams) each open at most one connection.
+fn stream_guard_var(path: &str) -> String {
+    let suffix: String = path
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string();
+    format!("__streamConnected_{}", suffix)
 }
 
 /// The `cn` class-merge helper emitted at the registry root (`registry/utils.ts`)
@@ -13840,18 +13894,24 @@ widget Counter {
                 fn_name: "stream".to_string(),
                 path: "/api/stream".to_string(),
                 item_type: "ShellEvent".to_string(),
+                discriminator: "event".to_string(),
+                variants: vec![],
             }],
             computed: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);
 
-        // Module-level single-connection guard.
-        assert!(code.contains("let __streamConnected = false;"), "module guard:\n{}", code);
+        // Module-level single-connection guard (Plan musk-022: per-path name).
+        assert!(
+            code.contains("let __streamConnected_api_stream = false;"),
+            "module guard:\n{}", code
+        );
         // The connection is opened inside the composable, guarded, before return.
-        assert!(code.contains("if (!__streamConnected) {"), "guard check:\n{}", code);
+        assert!(code.contains("if (!__streamConnected_api_stream) {"), "guard check:\n{}", code);
         assert!(code.contains("new EventSource('/api/stream')"), "EventSource:\n{}", code);
-        // Dispatch into the store's actions.
+        // Dispatch into the store's actions (legacy fallback: empty variants →
+        // command_output/RunOutput + command_result/RunResult via data.event).
         assert!(
             code.contains("if (data.event === 'command_output') RunOutput(data);"),
             "output dispatch:\n{}",
@@ -13863,6 +13923,128 @@ widget Counter {
             code
         );
     }
+
+    /// Plan musk-022 Phase 1: a store with an endpoint whose inner type resolves
+    /// to a `#[serde(tag = "type", rename_all = "snake_case")] pub tag` emits a
+    /// data-driven dispatch keyed on `data.type` with one clause per variant
+    /// (snake_case wire value → PascalCase action name). This mirrors the
+    /// auto-musk forge stream contract.
+    #[test]
+    fn test_store_composable_sse_multi_variant_data_driven() {
+        use crate::aura::{AuraStore, AuraStateDef};
+        use crate::ast::Expr;
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "ForgeStore".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "messages".to_string(),
+                type_info: crate::ast::Type::Unknown,
+                initial: Expr::Array(vec![]),
+                decorators: vec![],
+            }],
+            messages: vec![],
+            handlers: HashMap::from([
+                (".Delta(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (".ToolCall(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (".Done(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+            ]),
+            handler_params: HashMap::from([
+                (".Delta(data)".to_string(), vec!["data".to_string()]),
+                (".ToolCall(data)".to_string(), vec!["data".to_string()]),
+                (".Done(data)".to_string(), vec!["data".to_string()]),
+            ]),
+            api_imports: vec!["chat_stream".to_string()],
+            stream_endpoints: vec![crate::aura::StreamEndpoint {
+                fn_name: "chat_stream".to_string(),
+                path: "/api/chats/session/{id}/stream".to_string(),
+                item_type: "SseEventDto".to_string(),
+                discriminator: "type".to_string(),
+                variants: vec![
+                    ("delta".to_string(), "Delta".to_string()),
+                    ("tool_call".to_string(), "ToolCall".to_string()),
+                    ("done".to_string(), "Done".to_string()),
+                ],
+            }],
+            computed: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+
+        // Per-path guard (slashes/braces collapse to _; {id} → _id_).
+        assert!(
+            code.contains("let __streamConnected_api_chats_session__id__stream = false;"),
+            "guard var:\n{}", code
+        );
+        assert!(
+            code.contains("new EventSource('/api/chats/session/{id}/stream')"),
+            "EventSource:\n{}", code
+        );
+        // Data-driven dispatch keyed on data.type (NOT data.event).
+        assert!(
+            code.contains("if (data.type === 'delta') Delta(data);"),
+            "delta dispatch:\n{}", code
+        );
+        assert!(
+            code.contains("else if (data.type === 'tool_call') ToolCall(data);"),
+            "tool_call dispatch:\n{}", code
+        );
+        assert!(
+            code.contains("else if (data.type === 'done') Done(data);"),
+            "done dispatch:\n{}", code
+        );
+        // The legacy command_output/command_result must NOT appear here.
+        assert!(!code.contains("command_output"), "legacy leak:\n{}", code);
+    }
+
+    /// Plan musk-022 Phase 1: multi-endpoint store emits one EventSource block
+    /// per endpoint, each with its own per-path guard.
+    #[test]
+    fn test_store_composable_sse_multi_endpoint() {
+        use crate::aura::{AuraStore};
+        use std::collections::HashMap;
+
+        let store = AuraStore {
+            name: "MultiStreamStore".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            handlers: HashMap::from([
+                (".RunOutput(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (".RunResult(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+            ]),
+            handler_params: HashMap::from([
+                (".RunOutput(data)".to_string(), vec!["data".to_string()]),
+                (".RunResult(data)".to_string(), vec!["data".to_string()]),
+            ]),
+            api_imports: vec!["stream".to_string()],
+            stream_endpoints: vec![
+                crate::aura::StreamEndpoint {
+                    fn_name: "stream".to_string(),
+                    path: "/api/stream".to_string(),
+                    item_type: "ShellEvent".to_string(),
+                    discriminator: "event".to_string(),
+                    variants: vec![],
+                },
+                crate::aura::StreamEndpoint {
+                    fn_name: "events".to_string(),
+                    path: "/api/events".to_string(),
+                    item_type: "Event".to_string(),
+                    discriminator: "event".to_string(),
+                    variants: vec![],
+                },
+            ],
+            computed: vec![],
+        };
+
+        let code = VueGenerator::generate_store_composable(&store);
+        // Two distinct per-path guards.
+        assert!(code.contains("let __streamConnected_api_stream = false;"), "guard 1:\n{}", code);
+        assert!(code.contains("let __streamConnected_api_events = false;"), "guard 2:\n{}", code);
+        // Two EventSource openings.
+        assert!(code.contains("new EventSource('/api/stream')"), "es 1:\n{}", code);
+        assert!(code.contains("new EventSource('/api/events')"), "es 2:\n{}", code);
+    }
+
 
     /// Plan 043 M5 G1 negative: without the `stream` api import, no
     /// EventSource wiring is generated (a store with RunOutput/RunResult but
@@ -13916,6 +14098,8 @@ widget Counter {
                 fn_name: "subscribe".to_string(),
                 path: "/events".to_string(),
                 item_type: "ShellEvent".to_string(),
+                discriminator: "event".to_string(),
+                variants: vec![],
             }],
             computed: vec![],
         };
@@ -13923,11 +14107,12 @@ widget Counter {
         let code = VueGenerator::generate_store_composable(&store);
 
         // Wiring fires because a stream endpoint is declared, regardless of name.
-        assert!(code.contains("let __streamConnected = false;"), "module guard:\n{}", code);
+        // (Plan musk-022: guard is now per-path, so __streamConnected_events.)
+        assert!(code.contains("let __streamConnected_events = false;"), "module guard:\n{}", code);
         // Path comes from the endpoint, not a hardcoded "/api/stream".
         assert!(code.contains("new EventSource('/events')"), "custom path:\n{}", code);
         assert!(!code.contains("'/api/stream'"), "must not use hardcoded path:\n{}", code);
-        // Dispatch unchanged (discriminator-route).
+        // Dispatch unchanged (legacy discriminator-route on data.event).
         assert!(code.contains("RunOutput(data);"), "dispatch:\n{}", code);
         // The streaming fn ("subscribe") is consumed via SSE, so it must NOT appear
         // in the api import line (api.ts does not export it).
