@@ -3445,9 +3445,14 @@ impl VueGenerator {
                             } else {
                                 attrs.push(format!("v-model=\"{}\"", model_ref));
                             }
-                            // Track the handler but don't emit @input event (v-model handles it)
+                            // Plan 399 Phase 12: still emit @input so handlers with
+                            // side effects (e.g. typing-signal InputChanged) run —
+                            // v-model only handles the two-way value binding, not
+                            // arbitrary handler logic. Vue allows v-model + @input.
+                            let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                             let handler_name = self.handler_to_function_call(&aura_event.handler);
                             self.used_handlers.insert(handler_name);
+                            attrs.push(format!("@input=\"{}\"", handler_fn));
                             continue;
                         }
                         let vue_event = if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {

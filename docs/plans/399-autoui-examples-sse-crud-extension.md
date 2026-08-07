@@ -219,11 +219,14 @@ P11.1（i64，独立）→ P11.2（str，独立）→ P11.3（&[T] 返回，删 
 
 ## Phase 12：§6 前端 SSE typing 端到端验证
 
-> **状态**：🟡 协议修复已落地（P12.0/P12.1），运行时验证（P12.2 重生成 + P12.4 T9）待 dev-server 环境。
-> **本轮已做**：后端广播改为 `{"event":"Typing","name": input.sender}`（`api_gen.rs` typing 分支用 `serde_json::json!` + 固定 `name` 字段）；前端 `chat_store.at` 的 `Typing` 改为对象变体 `Typing(TypingEvent)`，handler 读 `evt.name`（解决 `[object Object]` 协议 bug）。测试 `test_sse_broadcast_event_name_not_hardcoded` 更新。
-> **待运行时**：清 `.auto/ui-cache.json` + `auto run` 重生成 store（验证 EventSource + dispatch）+ playwright T9。
+> **状态**：✅ 完成（playwright 9/9 全绿，typing 指示器跨标签页端到端跑通）。
+> **本轮修复 3 个 bug**：
+> 1. **协议不匹配**：后端广播 `{"event":"Typing","name": input.sender}`（`serde_json::json!` + 固定 `name` 字段），前端 `chat_store.at` 的 `Typing` 改对象变体 `Typing(TypingEvent)`、handler 读 `evt.name`（解决 `[object Object]` 永不消失）。
+> 2. **CreateInput 422**：void POST（set_typing）原复用 `CreateMessageInput`（含 text），前端只发 `{sender}` → 422。改为每个唯一 body-param set 生成独立 CreateInput（`CreateMessageSetTypingInput`），与 UpdateInput 同样的去重逻辑。
+> 3. **vue codegen 吞 oninput**：input 有 `:value`+`oninput` 时 v-model 优化吞掉了 oninput handler（只 track 不生成 `@input`）。改为仍生成 `@input="handler"`（v-model + @input 共存，Vue 允许），让有副作用的 handler（如 typing 的 InputChanged）能运行。
+> **验证**：`auto run` 重生成（清缓存）+ playwright T1-T9 全绿，含 T9（B 输入 → A 看到 "You is typing…"）。017-chat 现在是真正的多事件 SSE App（NewMessage + Typing）。
 
-> **关键发现**（调研）：后端逻辑已落地，但**前端 store/后端产物全是旧的**（缓存未失效），且存在**协议不匹配 bug**——即便重生成，typing 也会渲染 `[object Object] is typing…`。本轮已修此 bug。
+> **历史调研发现**：后端逻辑落地后，前端 store/后端产物全是旧的（缓存未失效）+ 协议不匹配 bug——本轮全部修复并运行时验证。
 
 ### P12.0 核心协议 bug（阻塞项）
 - 后端广播（`api_gen.rs:1313-1319` void+Typing 分支）：`serde_json::to_value(&input)` → `{"event":"Typing","sender":"You"}`。

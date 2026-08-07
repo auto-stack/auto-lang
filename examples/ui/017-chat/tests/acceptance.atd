@@ -7,3 +7,4 @@
 # T6: SSE NewMessage 跨标签页推送
 # T7: SSE 连接建立 (EventSource /api/stream)
 # T8: 控制台无实质错误
+# T9: typing 指示器跨标签页 (B输入→A看到"You is typing…", Phase 12 协议 evt.name)
