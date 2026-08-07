@@ -153,9 +153,22 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
 
 // Template generators
 
-fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[(String, String)]) -> String {
+fn generate_package_json(
+    name: &str,
+    has_routes: bool,
+    i18n_enabled: bool,
+    extra_deps: &[(String, String)],
+) -> String {
     let router_dep = if has_routes {
         r#"    "vue-router": "^4.2.0",
+"#
+    } else {
+        ""
+    };
+
+    // Plan musk-022 Phase 2: vue-i18n dependency when i18n is enabled.
+    let i18n_dep = if i18n_enabled {
+        r#"    "vue-i18n": "^9.14.0",
 "#
     } else {
         ""
@@ -180,7 +193,7 @@ fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[(String, St
   }},
   "dependencies": {{
     "vue": ">=3.4.0 <3.5.36",
-{}{}    "@vueuse/core": "^10.7.0",
+{}{}{}    "@vueuse/core": "^10.7.0",
     "reka-ui": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
@@ -204,7 +217,7 @@ fn generate_package_json(name: &str, has_routes: bool, extra_deps: &[(String, St
     "@types/prismjs": "^1.26.0"
   }}
 }}
-"#, name, router_dep, extra_lines)
+"#, name, router_dep, i18n_dep, extra_lines)
 }
 
 fn generate_vite_config() -> String {
@@ -412,7 +425,13 @@ fn generate_index_html(name: &str) -> String {
 "#, name)
 }
 
-fn generate_main_ts(has_routes: bool, uses_autodown: bool, style_files: &[String]) -> String {
+fn generate_main_ts(
+    has_routes: bool,
+    uses_autodown: bool,
+    style_files: &[String],
+    i18n: &I18nConfig,
+    locale_files: &[String],
+) -> String {
     let autodown_css = if uses_autodown {
         "\nimport '@autodown/editor/style.css'"
     } else {
@@ -424,6 +443,47 @@ fn generate_main_ts(has_routes: bool, uses_autodown: bool, style_files: &[String
         .iter()
         .map(|f| format!("\nimport './styles/{}'", f))
         .collect();
+    // Plan musk-022 Phase 2: i18n imports + createI18n. Locale files (copied
+    // into src/locales/) are imported by basename and assembled into messages.
+    // Each locale's language key is derived from its filename stem (e.g.
+    // `en.json` → `en`). When locale_files is empty, an empty messages object
+    // is used (caller is expected to populate it later).
+    let (i18n_imports, i18n_setup): (String, String) = if i18n.enabled {
+        let locale_imports: String = locale_files
+            .iter()
+            .map(|f| {
+                let stem = std::path::Path::new(f)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("locale");
+                format!("\nimport {} from './locales/{}'", stem, basename(f))
+            })
+            .collect();
+        let messages_entries: String = locale_files
+            .iter()
+            .map(|f| {
+                let stem = std::path::Path::new(f)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("locale");
+                format!("    {},\n", stem)
+            })
+            .collect();
+        let setup = format!(
+            "\nimport {{ createI18n }} from 'vue-i18n'{locale_imports}\n\n\
+const i18n = createI18n({{\n  legacy: false,\n  locale: {default_locale:?},\n\
+  messages: {{\n{messages_entries}  }},\n}})\n",
+            locale_imports = locale_imports,
+            default_locale = locale_files
+                .first()
+                .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+                .unwrap_or("en"),
+            messages_entries = messages_entries,
+        );
+        (String::new(), setup)
+    } else {
+        (String::new(), String::new())
+    };
     let base = format!(
         r#"import {{ createApp }} from 'vue'
 import App from './App.vue'
@@ -451,11 +511,35 @@ Prism.languages.auto = {{
         autodown_css = autodown_css,
         style_imports = style_imports
     );
-    if has_routes {
-        format!("{}\nimport router from './router'\n\nconst app = createApp(App)\napp.use(router)\napp.mount('#app')\n", base)
+    // Plan musk-022 Phase 2: unify the app construction so i18n + router can
+    // both be `.use()`'d. Previously the non-route branch used a one-liner
+    // `createApp(App).mount('#app')` which couldn't accept `app.use(i18n)`.
+    let router_import = if has_routes {
+        "\nimport router from './router'"
     } else {
-        format!("{}\ncreateApp(App).mount('#app')\n", base)
-    }
+        ""
+    };
+    let app_use_router = if has_routes { "app.use(router)\n" } else { "" };
+    let app_use_i18n = if i18n.enabled { "app.use(i18n)\n" } else { "" };
+    format!(
+        "{base}{i18n_setup}{router_import}\n\nconst app = createApp(App)\n{app_use_i18n}{app_use_router}app.mount('#app')\n",
+        base = base,
+        i18n_setup = i18n_setup,
+        router_import = router_import,
+        app_use_i18n = app_use_i18n,
+        app_use_router = app_use_router,
+    )
+}
+
+/// Plan musk-022 Phase 2: return the file name (last path component) of a
+/// relative path, e.g. `src/i18n/locales/en.json` → `en.json`. Used to name
+/// copied locale files inside `src/locales/`.
+fn basename(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path)
+        .to_string()
 }
 
 fn generate_app_vue(vue_code: &str) -> String {
@@ -654,9 +738,11 @@ fn write_project_files(
     has_routes: bool,
     extra_deps: &[(String, String)],
     style_files: &[String],
+    i18n: &I18nConfig,
+    locale_files: &[String],
 ) -> Result<(), String> {
     // package.json
-    let package_json = generate_package_json(name, has_routes, extra_deps);
+    let package_json = generate_package_json(name, has_routes, i18n.enabled, extra_deps);
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
@@ -712,7 +798,7 @@ fn write_project_files(
 
     // src/main.ts
     let uses_autodown = extra_deps.iter().any(|(name, _)| name == "@autodown/editor");
-    let main_ts = generate_main_ts(has_routes, uses_autodown, style_files);
+    let main_ts = generate_main_ts(has_routes, uses_autodown, style_files, i18n, locale_files);
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -943,6 +1029,56 @@ fn parse_style_files(content: &str) -> Vec<String> {
     files
 }
 
+/// Plan musk-022 Phase 2: i18n (vue-i18n) configuration parsed from pac.at.
+/// When `enabled`, the generated project gets:
+///   - `vue-i18n` added to package.json dependencies
+///   - `createI18n({ messages }) + app.use(i18n)` injected into main.ts
+///   - locale files (in `locale_files`) copied byte-for-byte into `src/locales/`
+///     and imported as the i18n `messages`.
+/// When `enabled` is false, no i18n machinery is emitted (default, backward
+/// compatible). `locale_files` may be empty when `i18n: true` is set without
+/// paths — in that case an empty messages object is used.
+#[derive(Debug, Clone, Default)]
+pub struct I18nConfig {
+    pub enabled: bool,
+    /// Locale files (relative to root_dir) to copy into `src/locales/`.
+    /// e.g. `["src/i18n/locales/en.json", "src/i18n/locales/zh.json"]`.
+    pub locale_files: Vec<String>,
+}
+
+/// Plan musk-022 Phase 2: parse the `i18n` field from pac.at content.
+/// Recognized forms:
+///   - `i18n: true`               → enabled, no locale files (inline messages)
+///   - `i18n: "path/en.json"`     → enabled, single locale file
+///   - `i18n: ["en.json", ...]`   → enabled, multiple locale files
+/// Absent / other values → disabled (default).
+fn parse_i18n(content: &str) -> I18nConfig {
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("i18n:") {
+            let rest = rest.trim().trim_end_matches(',');
+            if rest == "true" {
+                return I18nConfig { enabled: true, locale_files: vec![] };
+            } else if rest.starts_with('[') {
+                let value = rest.trim_start_matches('[').trim_end_matches(']');
+                let files: Vec<String> = value
+                    .split(',')
+                    .map(|p| p.trim().trim_matches('"').trim_matches('\'').trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                return I18nConfig { enabled: true, locale_files: files };
+            } else if rest.starts_with('"') || rest.starts_with('\'') {
+                let f = rest.trim_matches('"').trim_matches('\'').to_string();
+                if !f.is_empty() {
+                    return I18nConfig { enabled: true, locale_files: vec![f] };
+                }
+            }
+            break;
+        }
+    }
+    I18nConfig::default()
+}
+
 /// True when a widget `use { ... }` import path refers to a project-local
 /// file (copied into `src/ext/`) rather than an npm package specifier.
 /// Mirrors `VueGenerator::ext_is_local_path` in auto-lang — the two must
@@ -1097,6 +1233,10 @@ pub struct VueProject {
     /// `src/styles/` and imported from `main.ts`. Paths are relative to
     /// the pac.at directory (root_dir).
     pub style_files: Vec<String>,
+    /// Plan musk-022 Phase 2: i18n config from pac.at `i18n:` field. When
+    /// enabled, the generated project wires vue-i18n (dependency + createI18n
+    /// in main.ts + copied locale files).
+    pub i18n: I18nConfig,
     /// Project-local TS/Vue files referenced by widget-level
     /// `use { fn/component/composable: ... from "<path>" }` blocks —
     /// copied into `src/ext/` (layout preserved) so the generated SFCs can
@@ -1477,6 +1617,7 @@ export default router
             routes: all_routes,
             npm_deps: parse_npm_deps(&pac_content),
             style_files: parse_style_files(&pac_content),
+            i18n: parse_i18n(&pac_content),
             ext_files: ext_file_set.into_iter().collect(),
             store_files: all_store_files,
         })
@@ -1510,6 +1651,27 @@ export default router
             fs::copy(&src, styles_dir.join(&file_name)).map_err(|e| {
                 format!("Failed to copy style file {}: {}", src.display(), e)
             })?;
+            copied.push(file_name);
+        }
+        Ok(copied)
+    }
+
+    /// Plan musk-022 Phase 2: copy pac.at `i18n:` locale files into
+    /// `src/locales/` (byte-for-byte) and return the copied file names for
+    /// `main.ts` imports. Mirrors `copy_style_files`.
+    fn copy_locale_files(&self) -> AutoResult<Vec<String>> {
+        let mut copied = Vec::new();
+        if !self.i18n.enabled || self.i18n.locale_files.is_empty() {
+            return Ok(copied);
+        }
+        let locales_dir = self.output_dir.join("src").join("locales");
+        fs::create_dir_all(&locales_dir)
+            .map_err(|e| format!("Failed to create src/locales: {}", e))?;
+        for rel in &self.i18n.locale_files {
+            let src = self.root_dir.join(rel);
+            let file_name = basename(rel);
+            fs::copy(&src, locales_dir.join(&file_name))
+                .map_err(|e| format!("Failed to copy locale file {}: {}", src.display(), e))?;
             copied.push(file_name);
         }
         Ok(copied)
@@ -1614,6 +1776,20 @@ export default router
             println!("{} {}", "Ext imports:".bright_cyan(), ext_copies.join(", "));
         }
 
+        // Plan musk-022 Phase 2: copy pac.at `i18n:` locale files into src/locales/.
+        let locale_copies = self.copy_locale_files()?;
+        if self.i18n.enabled {
+            println!(
+                "{} {}",
+                "i18n:".bright_cyan(),
+                if locale_copies.is_empty() {
+                    "enabled (inline messages)".to_string()
+                } else {
+                    locale_copies.join(", ")
+                }
+            );
+        }
+
         // Write project files
         write_project_files(
             &self.output_dir,
@@ -1623,6 +1799,8 @@ export default router
             self.has_routes,
             &self.npm_deps,
             &style_copies,
+            &self.i18n,
+            &locale_copies,
         )?;
 
         // Generate router files if routes detected
@@ -1720,6 +1898,9 @@ export default router
         // Copy widget `use { ... }` local import files into src/ext/.
         self.copy_ext_files()?;
 
+        // Plan musk-022 Phase 2: copy i18n locale files.
+        let locale_copies = self.copy_locale_files()?;
+
         // Scaffolding files (not component .vue files)
         write_project_files(
             output_path,
@@ -1729,6 +1910,8 @@ export default router
             self.has_routes,
             &self.npm_deps,
             &style_copies,
+            &self.i18n,
+            &locale_copies,
         )?;
 
         // Write App.vue (the root component)
@@ -1740,7 +1923,7 @@ export default router
 
         // Write main.ts
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies);
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
 
@@ -1778,8 +1961,10 @@ export default router
         let style_copies = self.copy_style_files()?;
         // Re-copy widget `use { ... }` local import files into src/ext/.
         self.copy_ext_files()?;
+        // Plan musk-022 Phase 2: re-copy i18n locale files.
+        let locale_copies = self.copy_locale_files()?;
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies);
+        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -1812,13 +1997,18 @@ export default router
             .map_err(|e| format!("Failed to write index.html: {}", e))?;
         println!("{}", "  ✓ Regenerated index.html".bright_green());
 
-        // Regenerate package.json if outdated (e.g., missing @types/prismjs)
+        // Regenerate package.json if outdated (e.g., missing @types/prismjs,
+        // or missing vue-i18n when i18n is enabled — Plan musk-022 Phase 2)
         let pkg_path = self.output_dir.join("package.json");
         if pkg_path.exists() {
             let existing_pkg = fs::read_to_string(&pkg_path)
                 .map_err(|e| format!("Failed to read package.json: {}", e))?;
-            if !existing_pkg.contains("@types/prismjs") || !existing_pkg.contains("onlyBuiltDependencies") {
-                let new_pkg = generate_package_json(&self.name, self.has_routes, &self.npm_deps);
+            let needs_i18n = self.i18n.enabled && !existing_pkg.contains("vue-i18n");
+            if !existing_pkg.contains("@types/prismjs")
+                || !existing_pkg.contains("onlyBuiltDependencies")
+                || needs_i18n
+            {
+                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps);
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
@@ -2858,14 +3048,92 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     #[test]
     fn test_generate_main_ts_imports_style_files() {
         let styles = vec!["autodown-editor.css".to_string(), "theme.css".to_string()];
-        let main_ts = generate_main_ts(false, false, &styles);
+        let main_ts = generate_main_ts(false, false, &styles, &I18nConfig::default(), &[]);
         assert!(main_ts.contains("import './styles/autodown-editor.css'"), "main.ts:\n{}", main_ts);
         assert!(main_ts.contains("import './styles/theme.css'"), "main.ts:\n{}", main_ts);
 
         // Without styles: no imports, same as before.
-        let plain = generate_main_ts(false, false, &[]);
+        let plain = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
         assert!(!plain.contains("./styles/"), "main.ts:\n{}", plain);
     }
+
+    // ====================================================================
+    // Plan musk-022 Phase 2: i18n (vue-i18n) support
+    // ====================================================================
+
+    #[test]
+    fn test_parse_i18n_true() {
+        let content = "name: \"demo\"\ni18n: true\n";
+        let cfg = parse_i18n(content);
+        assert!(cfg.enabled);
+        assert!(cfg.locale_files.is_empty());
+    }
+
+    #[test]
+    fn test_parse_i18n_locale_files() {
+        let content = "name: \"demo\"\ni18n: [\"src/i18n/locales/en.json\", \"src/i18n/locales/zh.json\"]\n";
+        let cfg = parse_i18n(content);
+        assert!(cfg.enabled);
+        assert_eq!(
+            cfg.locale_files,
+            vec!["src/i18n/locales/en.json".to_string(), "src/i18n/locales/zh.json".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_parse_i18n_single_locale() {
+        let content = "name: \"demo\"\ni18n: \"src/locales/en.json\"\n";
+        let cfg = parse_i18n(content);
+        assert!(cfg.enabled);
+        assert_eq!(cfg.locale_files, vec!["src/locales/en.json".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_i18n_absent() {
+        let content = "name: \"demo\"\nrender: \"vue\"\n";
+        let cfg = parse_i18n(content);
+        assert!(!cfg.enabled);
+    }
+
+    #[test]
+    fn test_generate_main_ts_injects_i18n() {
+        let cfg = I18nConfig {
+            enabled: true,
+            locale_files: vec!["src/i18n/locales/en.json".to_string(), "src/i18n/locales/zh.json".to_string()],
+        };
+        let locales = vec!["en.json".to_string(), "zh.json".to_string()];
+        let main_ts = generate_main_ts(false, false, &[], &cfg, &locales);
+        // createI18n + vue-i18n import.
+        assert!(main_ts.contains("import { createI18n } from 'vue-i18n'"), "main.ts:\n{}", main_ts);
+        assert!(main_ts.contains("const i18n = createI18n("), "main.ts:\n{}", main_ts);
+        // Locale imports keyed by filename stem.
+        assert!(main_ts.contains("import en from './locales/en.json'"), "main.ts:\n{}", main_ts);
+        assert!(main_ts.contains("import zh from './locales/zh.json'"), "main.ts:\n{}", main_ts);
+        // messages object includes both locales.
+        assert!(main_ts.contains("messages: {"), "main.ts:\n{}", main_ts);
+        // app.use(i18n) before mount.
+        assert!(main_ts.contains("app.use(i18n)"), "main.ts:\n{}", main_ts);
+    }
+
+    #[test]
+    fn test_generate_main_ts_no_i18n_when_disabled() {
+        let main_ts = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
+        assert!(!main_ts.contains("vue-i18n"), "main.ts should not mention i18n:\n{}", main_ts);
+        assert!(!main_ts.contains("createI18n"), "main.ts:\n{}", main_ts);
+    }
+
+    #[test]
+    fn test_generate_package_json_includes_vue_i18n() {
+        let pkg = generate_package_json("demo", false, true, &[]);
+        assert!(pkg.contains("\"vue-i18n\": \"^9.14.0\""), "package.json:\n{}", pkg);
+    }
+
+    #[test]
+    fn test_generate_package_json_no_vue_i18n_when_disabled() {
+        let pkg = generate_package_json("demo", false, false, &[]);
+        assert!(!pkg.contains("vue-i18n"), "package.json should not mention i18n:\n{}", pkg);
+    }
+
 
     #[test]
     fn test_copy_style_files_byte_for_byte() {
@@ -2894,6 +3162,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             style_files: vec!["src/front/autodown-editor.css".to_string()],
             ext_files: vec![],
             store_files: vec![],
+            i18n: I18nConfig::default(),
         };
 
         let copied = project.copy_style_files().unwrap();
@@ -2925,6 +3194,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             style_files: vec!["src/front/nope.css".to_string()],
             ext_files: vec![],
             store_files: vec![],
+            i18n: I18nConfig::default(),
         };
 
         assert!(project.copy_style_files().is_err());
@@ -3009,6 +3279,7 @@ widget App {
             style_files: vec![],
             ext_files: vec!["src/front/utils/greet.ts".to_string()],
             store_files: vec![],
+            i18n: I18nConfig::default(),
         };
 
         let copied = project.copy_ext_files().unwrap();
@@ -3038,6 +3309,7 @@ widget App {
             style_files: vec![],
             ext_files: vec!["../outside/x.ts".to_string()],
             store_files: vec![],
+            i18n: I18nConfig::default(),
         };
 
         let err = project.copy_ext_files().unwrap_err().to_string();
