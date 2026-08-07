@@ -146,7 +146,12 @@ pub struct ApiEndpoint {
     /// Documentation comment
     pub doc: Option<String>,
 
-    /// Function body AST (Plan musk-022 CRUD 智能扩展).
+    /// Function body AST. Captured by `extract_endpoint` (Plan musk-022 CRUD
+    /// 智能扩展 第1步) for a future "route A" that transpiles the body into the
+    /// handler via a2r. **Currently unused in production** — Plan 399 第4-5 步
+    /// shipped "route B" (db-delegation pattern matching in `api_gen.rs`),
+    /// which does not read this field. Only `test_extract_endpoint_captures_body`
+    /// reads it. Do not rely on it being populated unless route A is implemented.
     pub body: Option<Body>,
 }
 

@@ -310,12 +310,18 @@ fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
 
 /// Plan musk-022 CRUD 扩展: post-process a2r's db.rs output to fix the known
 /// backend-context gaps (a2r transpiles for a generic module; the HTTP backend
-/// has specific shape). Fixes applied:
-/// - `use crate::api::{T}` → `use crate::types::{T}` (types live in types.rs,
-///   not api.rs; a2r maps `use api:` to `crate::api` but the generator emits
-///   types separately).
-/// These are mechanical, safe rewrites; the deeper a2r issues (List<T>.new
-/// wrapping, &[T] lifetimes) are fixed in a2r proper (trans/rust.rs).
+/// has specific shape). All rewrites below are mechanical, safe string fixes.
+///
+/// NOTE (Plan 399 调研 2026-08-07): these are **workarounds**, not redundant —
+/// the corresponding a2r root causes are NOT fixed in `trans/rust.rs`. Verified:
+/// - `use api:` → `crate::api` : a2r `use_stmt` has no api→types remap
+///   (`rust.rs:11490` maps any non-stdlib bare module to `crate::<name>`).
+/// - `List<T>.new(EXPR)` wrapper : a2r `call` has no List/Array interception
+///   (`rust.rs:3659`); `GenName` emits `List<T>` verbatim.
+/// - `&[T]` return over a MutexGuard : a2r `Type::Slice` always emits `&[T]`
+///   regardless of return position (`rust.rs:1184`), no owned-Vec rewrite.
+/// - str param → String field missing `.to_string()` : no such logic in a2r.
+/// Do NOT delete these rewrites unless the a2r root cause is fixed first.
 fn post_process_db_rs(mut code: String) -> String {
     code = code.replace("use crate::api::", "use crate::types::");
     // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the

@@ -1,6 +1,7 @@
 // message_thread.at — presentational child widget.
-// mine is DERIVED from sender identity (not the persisted field: the generic
-// CRUD POST handler sets mine via Default::default(), unreliable). "You" = right.
+// Bubble direction is driven by the persisted `mine` field. Plan 399 第4-5步
+// made the backend call db::create_message (which sets mine:true), so `mine`
+// is now authoritative — no more sender=="You" heuristic. mine=true → right.
 widget MessageThread(messages: []Message, typing_name: str) {
     view {
         col {
@@ -23,7 +24,7 @@ widget MessageThread(messages: []Message, typing_name: str) {
                 }
                 for msg in .messages {
                     col {
-                        if msg.sender == "You" {
+                        if msg.mine {
                             row {
                                 style: "justify-end"
                                 col {

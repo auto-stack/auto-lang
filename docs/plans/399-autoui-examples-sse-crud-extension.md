@@ -1,7 +1,7 @@
 # Plan 399: AutoUI 示例扩展 — SSE 多事件 + CRUD 智能扩展（路径 B）
 
-> **状态（2026-08-07）**: 🟢 代码完成，运行时验证待补。第 1-5 步全部落地（codegen 逻辑正确，已用单测 + 实际重新生成 + cargo build 验证）。遗留：017-chat playwright 未在修复后跑过；前端 `sender=="You"` mine 兜底待清理；`post_process_db_rs` 注释过时。详见「已知遗留与技术债」。
-> **分支**: 第 1-3 步在 `auto-ui-examples`（已合并 master `c175e9d8`）；第 4-5 步在 `plan399/handler-db-state`（已合并 master `45619231`）。
+> **状态（2026-08-07）**: ✅ 完成（含运行时验证）。第 1-5 步全部落地，017-chat `auto run` + playwright **8/8 全绿**，POST 返回 `mine:true` 已端到端确认。调研收尾（§1-§5）完成，仅余 a2r 根治等长远项。
+> **分支**: 第 1-3 步在 `auto-ui-examples`（已合并 master `c175e9d8`）；第 4-5 步在 `plan399/handler-db-state`（已合并 master `45619231`）；收尾（§1-§5）在 `plan399/cleanup`（worktree `D:/autostack/auto-lang-autoui`）。
 > **动机**: 调研 016-027 全部是「单文件静态玩具」，015-notes 是唯一完整 App。本计划把 017-chat 升级为首个 SSE 实时聊天 App，并在过程中打通 SSE 多事件 codegen + 修复后端 CRUD 模板丢弃业务逻辑的根因（mine:false bug）。
 
 ---
@@ -94,49 +94,38 @@
 - auto-man 全部 194 lib 测试绿；auto-lang 22 个失败 = master 既有（与本计划无关，见「已知遗留 §4」）
 
 **验收对照**：
-- ✅ POST `/api/messages` 返回 `mine:true`（codegen 逻辑正确；重新生成的产物含 `mine: true` 且编译通过。注：后端产物是 `.gitignore` 忽略的运行时生成物，不入仓库）
-- ✅ GET `/api/messages` 返回含 POST 新增消息（状态统一到 db.rs lazy_static，单进程内 POST 写 == GET 读）
+- ✅ POST `/api/messages` 返回 `mine:true`（codegen 逻辑正确；**运行时已确认** —— curl POST 返回 `{"mine":true}`，db.rs create_message 真实执行。注：后端产物是 `.gitignore` 忽略的运行时生成物，不入仓库）
+- ✅ GET `/api/messages` 返回含 POST 新增消息（状态统一到 db.rs lazy_static；运行时确认 POST 后 GET 总数 5→6）
 - ✅ 015-notes 全量回归（9 端点单测 + 完整 codegen 测试 + db.rs 转译）
-- ⏳ 017-chat playwright 8/8（**未在修复后的 codegen 上跑过**。第2步的 8/8 是在旧的 State<Db> codegen + 前端 `sender=="You"` 兜底下绿的；第4-5步改了 codegen 但没重跑 playwright。需 `auto run` 重新生成后端 + 跑 playwright 确认）
+- ✅ 017-chat playwright 8/8（**§1 运行时验证通过** —— `auto run` 重新生成后端（handler 调 db.rs）+ 前端 + 跑 playwright 8/8 全绿。过程中发现并修复 chat_store.at 缺 `stream` import 的 SSE bug，见 §5）
 
 ---
 
-## 已知遗留与技术债（2026-08-07 调研）
+## 已知遗留与技术债（2026-08-07 调研 + 收尾）
 
-### §1 ⏳ 017-chat playwright 未在修复后重跑（本计划验收缺口）
-第2步的 playwright 8/8 是在**旧的 `State<Db>` codegen**（POST 返回 `mine:false`）+ 前端 `sender=="You"` 兜底下绿的。第4-5步重构了 codegen（handler 改调 `crate::db::create_message`），但**没重新 `auto run` 生成后端 + 重跑 playwright**。代码层已确认 handler 行为对外不变（POST 仍广播 SSE、返回 Message），但需端到端确认。补做方法：`auto run` 017-chat（重新生成后端 + 前端）→ `npx playwright test`。
+### §1 ✅ 017-chat playwright 运行时验证（收尾完成）
+第4-5步重构 codegen 后，用 `auto run`（在 017-chat 目录，pac.at 已声明 `render:vue`/`api:rust`）重新生成前后端 + 跑 playwright，**8/8 全绿**。运行时确认：curl POST `/api/messages` 返回 `{"mine":true}`；POST 后 GET 总数 5→6（状态统一）。过程中发现 chat_store.at 缺 `stream` import 致 SSE 不接线（见 §5），修复后 T6/T7 转绿。
 
-### §2 🟡 前端 `sender=="You"` mine 兜底（待 §1 后清理）
-`examples/ui/017-chat/src/front/message_thread.at:2-3,26`：气泡左右用 `msg.sender == "You"` 判定，**完全不读 `mine` 字段**。这是第2步时为绕过 CRUD 模板 `mine:false` 加的兜底。第4-5步修复后端后，理论上可改用后端返回的 `mine`（`if msg.mine`），让"我的消息"由后端业务逻辑（`create_message` 设 `mine:true`）决定，而非前端硬编码 sender 字符串。`tests/smoke.spec.ts:37-41`（T3）和 `tests/acceptance.atd:4` 也依赖此兜底，需同步更新。**前置条件**：先完成 §1 确认后端 `mine:true` 真实到达前端。
+### §2 ✅ 前端 `sender=="You"` mine 兜底清理（收尾完成）
+`message_thread.at` 气泡方向从 `if msg.sender == "You"` 改为 `if msg.mine`（后端 db.rs create_message 设 mine:true，现权威）。`smoke.spec.ts` T3 注释、`acceptance.atd` T3 契约同步更新。改后重跑 playwright 仍 8/8。
 
-### §3 🟡 `post_process_db_rs` 仍是必需 workaround，且头注释过时
-`crates/auto-man/src/api_gen.rs:319` 的 `post_process_db_rs` 用字符串后处理修了 6 类 a2r 转译缺陷。调研核实：**6 类 rewrite 无一被 a2r 根治**，全部仍必需：
-- `use crate::api::` → `crate::types::`（a2r `use_stmt` 无 api 重映射，`rust.rs:11490`）
-- `List<T>.new(expr)` 剥包装（a2r `call` 无 List 拦截，`rust.rs:3659`）
-- `&[T]` 返回 → `Vec<T>` + `.clone()`（a2r `Type::Slice` 无返回位特判，`rust.rs:1184`）
-- 过度解引用 `*G.lock().push` → 去 `*`
-- str 参数 → String 字段补 `.to_string()`（a2r 无此逻辑）
-- `id: *NEXTID.lock()` 加 `as i64`（后端 types.rs 用 i64，本属后处理职责）
+### §3 🟡 `post_process_db_rs` 仍是必需 workaround（注释已修正）
+`crates/auto-man/src/api_gen.rs:319` 用字符串后处理修 6 类 a2r 转译缺陷。调研核实**全部仍必需**（a2r 无一根治），已修正过时的头注释（原误导性声称"a2r 已修 List.new/生命周期"）。根治属长远项（改 `trans/rust.rs` 的 use 路径映射、List.new 拦截、切片返回生命周期、str→String 补 to_string）。
 
-**问题**：函数头注释（`:317-318`）声称"a2r proper 已修 List.new 和 &[T] 生命周期"——**与代码事实不符，过时/误导**。建议修正注释（不改逻辑）。
+### §4 ⚪ `endpoint.body` 标注为路线A预留（收尾完成）
+`ApiEndpoint.body` 生产代码无读取者。路线B（db 委托）不依赖它。已在 `types.rs`/`mod.rs` 加注释明确"路线A预留，路线B未用"，不删除（留作未来转译任意 body 的基建）。
 
-### §4 ⚪ `endpoint.body` 是死字段（路线A未实现）
-`crates/auto-lang/src/api/types.rs:149` 的 `ApiEndpoint.body: Option<Body>` 由第1步捕获（`api/mod.rs:164`），但**生产代码无任何读取者**（仅 `test_extract_endpoint_captures_body` 测试读它）。路线B（db 委托模式识别）绕开了路线A（转译 body 当 handler 体），该字段至今未消费。可视为死代码，或留作未来路线A（支持非 `db.FN()` 委托的任意 body）的基建。
-
-### §5 ⚪ auto-lang 22 个失败测试（master 既有，非本计划）
-`cargo test -p auto-lang --lib` 有 22 个失败，全部在 Plan 399 前的基线 `1631fed1` 已失败：
-- dstr StringBuilder ×18（运行时 spec 注册缺失，2026-01 起）
-- ark golden ×2（Plan 043 codegen 改进致 golden 过期）
-- vm codegen ×1、route discovery ×1（Windows 路径/指令偏移）
-- **边界情况**：`test_store_composable_sse_multi_endpoint`（`ui_gen/vue.rs:13925`）随 Plan 399 的 merge `c175e9d8` 进 master，但根因是 **Plan musk-022 Phase 4 commit `0e3aad9d`** 的 `api_imports` 过滤器（`vue.rs:9900`）与测试数据（`api_imports: ["stream"]` 缺 `"events"`）不一致。严格说非 Plan 399 引入，但若要"SSE 多端点 codegen 自洽"，应修（测试数据加 `"events"` 或 codegen 不按 `fn_name` 过滤多端点）。
+### §5 ✅ SSE multi-endpoint 测试 + chat_store.at 真实 bug（收尾完成）
+两处修复：
+1. **单测** `test_store_composable_sse_multi_endpoint`（`vue.rs:13925`）：测试数据 `api_imports` 加 `"events"`，与 Phase 4 的按 fn_name 过滤逻辑一致。
+2. **真实 bug** `examples/ui/017-chat/src/front/chat_store.at`：原 `use back.api: list_messages` 缺 `stream`，致 Phase 4 过滤器（`vue.rs:9900`）丢弃 SSE 接线 → 前端不建 EventSource → T6/T7 失败。改为 `use back.api: list_messages, stream` 并加注释说明。这解释了为何文档原称"第2步 8/8"在当前 codegen 下无法复现。
 
 ---
 
 ## 后续（超出本计划）
 
-- **补 §1/§2**：`auto run` 017-chat 重跑 playwright；通过后清理前端 `sender=="You"` 兜底改用 `mine`
-- 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
 - a2r 深层转译缺陷根治（§3 的 5 类根因，在 `trans/rust.rs` 而非后处理）
+- 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
 
 ---
