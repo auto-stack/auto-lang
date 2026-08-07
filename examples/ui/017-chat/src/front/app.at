@@ -2,10 +2,10 @@
 use chat_store: ChatStore
 use message_thread: MessageThread
 use composer: Composer
-use back.api: send_message, list_messages
+use back.api: send_message, list_messages, set_typing
 
 widget App {
-    msg Msg { Init, SendMessage(str) }
+    msg Msg { Init, SendMessage(str), Typing(str) }
     view {
         col {
             style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
@@ -23,7 +23,7 @@ widget App {
             col {
                 style: "flex-1 gap-3 min-h-0"
                 MessageThread(messages: .store.messages, typing_name: .store.typing_name)
-                Composer(on_send: .SendMessage)
+                Composer(on_send: .SendMessage, on_typing: .Typing)
             }
         }
     }
@@ -32,6 +32,12 @@ widget App {
         .SendMessage(text) -> {
             send_message("You", text)
             store.messages = list_messages()
+        }
+        // Plan 399 §6: typing-indicator — fire-and-forget POST /api/typing.
+        // The backend broadcasts a Typing SSE event; connected clients' stores
+        // receive it via the .Typing(name) handler (chat_store.at).
+        .Typing(name) -> {
+            set_typing(name)
         }
     }
 }

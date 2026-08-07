@@ -17,6 +17,13 @@ pub fn all_messages() []Message {
     return messages
 }
 
+// Plan 399 §6: typing signal — no persistence needed (transient); the handler
+// broadcasts the Typing SSE event. This fn exists so resolve_db_call delegates
+// set_typing → crate::db::set_typing (and the void-POST+broadcast path runs).
+pub fn set_typing(sender str) {
+    return
+}
+
 pub fn create_message(sender str, text str) Message {
     let msg = Message {
         id: nextid,

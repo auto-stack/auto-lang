@@ -896,6 +896,25 @@ fn all_endpoints_covered(
     })
 }
 
+/// Plan 399 §6: infer the SSE broadcast discriminator value for a POST endpoint.
+/// The frontend store dispatches by `data.<discriminator_field>` (default field
+/// "event"), and the value names the ChatEvent variant to route to. Convention:
+/// - POST returning the primary entity (a "create") → `"New{TypeName}"`
+///   (e.g. POST /api/messages → Message → "NewMessage").
+/// - POST whose fn name contains "typing" (void, signals presence) → `"Typing"`.
+/// Returns None when the endpoint should not broadcast.
+fn broadcast_event_name(endpoint: &ApiEndpoint, primary_type: &str) -> Option<String> {
+    if endpoint.method() != "POST" {
+        return None;
+    }
+    let fn_name = endpoint.fn_name.to_lowercase();
+    if fn_name.contains("typing") {
+        return Some("Typing".to_string());
+    }
+    // Default: a create broadcasts "New<Type>".
+    Some(format!("New{}", primary_type))
+}
+
 /// Generate api.rs with route handlers — full CRUD implementation.
 ///
 /// Plan 399 第 4-5 步: when `db_fns` is `Some`, endpoints whose business logic
@@ -1034,6 +1053,8 @@ fn generate_api_rs(
         let method = endpoint.method();
         let fn_name = &endpoint.fn_name;
         let has_path = has_path_param(&endpoint.path());
+        // Plan 399 §6: SSE broadcast event name (was hardcoded "NewMessage").
+        let bcast_evt = broadcast_event_name(endpoint, &primary_type);
 
         // Plan musk-022: streaming endpoints get an SSE handler (Sse<impl Stream>),
         // not a JSON CRUD handler. Subscribes to the events bus, emits each as SSE.
@@ -1169,7 +1190,18 @@ fn generate_api_rs(
         if let Some(deleg) = &db_delegation {
             let call = format!("crate::db::{}({})", deleg.db_fn, deleg.args.join(", "));
             if is_void {
-                if needs_result {
+                // Plan 399 §6: a void POST that broadcasts (e.g. typing signal)
+                // emits the input fields as the SSE payload with the event name.
+                if has_sse && bcast_evt.as_deref() == Some("Typing") {
+                    lines.push(format!("    {};", call));
+                    lines.push("    let mut evt = serde_json::to_value(&input).unwrap_or_default();".to_string());
+                    lines.push(format!(
+                        "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
+                        bcast_evt.as_deref().unwrap_or("Typing")
+                    ));
+                    lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                    lines.push("    StatusCode::OK".to_string());
+                } else if needs_result {
                     lines.push(format!("    match {} {{ Some(_) => Ok(StatusCode::OK), None => Err(StatusCode::NOT_FOUND) }};", call));
                 } else {
                     lines.push(format!("    {};", call));
@@ -1193,9 +1225,13 @@ fn generate_api_rs(
                 }
             } else if has_sse && method == "POST" {
                 // Capture the created item, broadcast, then return it.
+                // Plan 399 §6: event name is New{Type} (was hardcoded "NewMessage").
                 lines.push(format!("    let item = {};", call));
                 lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
-                lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"NewMessage\".to_string())); }".to_string());
+                lines.push(format!(
+                    "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
+                    bcast_evt.as_deref().unwrap_or("NewMessage")
+                ));
                 lines.push("    crate::events::broadcast(evt.to_string());".to_string());
                 lines.push(format!("    JsonResponse::<{}>(item)", json_inner));
             } else {
@@ -1272,7 +1308,10 @@ fn generate_api_rs(
                 lines.push("    items.push(item.clone());".to_string());
                 if has_sse {
                     lines.push("    let mut evt = serde_json::to_value(&item).unwrap_or_default();".to_string());
-                    lines.push("    if let Some(obj) = evt.as_object_mut() { obj.insert(\"event\".to_string(), serde_json::Value::String(\"NewMessage\".to_string())); }".to_string());
+                    lines.push(format!(
+                        "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
+                        bcast_evt.as_deref().unwrap_or("NewMessage")
+                    ));
                     lines.push("    crate::events::broadcast(evt.to_string());".to_string());
                 }
                 lines.push("    JsonResponse(item)".to_string());
@@ -2295,6 +2334,39 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
             .unwrap_or_else(|| panic!("toggle_pin handler missing: {}", api_rs));
         assert!(!toggle_sig.contains("Json(input)"), "PATCH no-body has no Json extractor: {}", toggle_sig);
         assert!(toggle_sig.contains("Path(id)"), "PATCH no-body has Path: {}", toggle_sig);
+    }
+
+    /// Plan 399 §6: SSE broadcast event name is no longer hardcoded. A create
+    /// POST broadcasts "New{Type}", a typing POST (void, fn name has "typing")
+    /// broadcasts "Typing" with the input payload.
+    #[test]
+    fn test_sse_broadcast_event_name_not_hardcoded() {
+        let api = r#"
+pub type Message = { id: int, text: str }
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(text str) Message { return db.create(text) }
+
+#[api(method = "POST", path = "/api/typing")]
+pub fn set_typing(sender str) { return db.set_typing(sender) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(api).expect("extract");
+        let db_fns: std::collections::HashSet<String> = [
+            "create".to_string(), "set_typing".to_string(),
+        ].into_iter().collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+
+        // create POST broadcasts "NewMessage" (was hardcoded before §6).
+        assert!(api_rs.contains("\"NewMessage\""), "create broadcasts NewMessage: {}", api_rs);
+        // typing POST (void) broadcasts "Typing" with the input payload.
+        assert!(api_rs.contains("\"Typing\""), "typing broadcasts Typing: {}", api_rs);
+        assert!(
+            api_rs.contains("serde_json::to_value(&input)") && api_rs.contains("Typing"),
+            "typing broadcasts input payload: {}", api_rs
+        );
     }
 
     /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and

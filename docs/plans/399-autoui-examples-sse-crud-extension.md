@@ -120,13 +120,13 @@
 1. **单测** `test_store_composable_sse_multi_endpoint`（`vue.rs:13925`）：测试数据 `api_imports` 加 `"events"`，与 Phase 4 的按 fn_name 过滤逻辑一致。
 2. **真实 bug** `examples/ui/017-chat/src/front/chat_store.at`：原 `use back.api: list_messages` 缺 `stream`，致 Phase 4 过滤器（`vue.rs:9900`）丢弃 SSE 接线 → 前端不建 EventSource → T6/T7 失败。改为 `use back.api: list_messages, stream` 并加注释说明。这解释了为何文档原称"第2步 8/8"在当前 codegen 下无法复现。
 
-### §6 🔴 Typing 事件是死代码（"多事件"卖点名不副实）
-第二轮深挖发现：017-chat 的 `ChatEvent { NewMessage(Message), Typing(str) }` 里，**只有 NewMessage 真正端到端可用，Typing 全链路无触发路径**：
-- **后端 codegen 硬编码**：`api_gen.rs:1162` 的 POST 广播 discriminator 字面量写死 `"NewMessage"`，完全不读 `ChatEvent` 变体列表。整个 codegen 无任何分支 emit `"typing"`。
-- **api.at 无 Typing 触发端点**：只有 `list_messages`/`send_message`/`stream` 三个端点，无 typing-indicator API。
-- **composer 的 InputChanged 是 no-op**：`composer.at:23` `.InputChanged -> { .draft = .draft }`，输入时不发任何 typing 信号。
-- **后果**：前端 `chat_store.at` 的 `.Typing(name)` handler 永远不会被调用。"首个 SSE 多事件 App"实际只是单事件（NewMessage）。
-- **修复需 4 处**：(1) 后端加 typing 触发端点或 POST 分支按变体广播；(2) `api_gen.rs` 让 broadcast 读 `ChatEvent` 变体而非硬编码；(3) composer 输入时发 typing；(4) 重生成 store。属功能补全，非 bug 修复——当前作为「声明但未实现」记录。
+### §6 🟡→✅(后端) Typing 事件补全（后端链路打通，前端待运行时验证）
+原状：`ChatEvent { NewMessage, Typing }` 只有 NewMessage 可用，Typing 全链路无触发。本轮补全了**后端链路 + 前端源码**：
+- **后端广播泛化**（`api_gen.rs`）：新增 `broadcast_event_name(endpoint, primary_type)` —— POST create 广播 `"New{Type}"`（如 NewMessage），POST fn 名含 `typing` 的 void 端点广播 `"Typing"`。两处广播（db 委托 + fallback）+ void-POST typing 分支（广播 `&input` payload）均改用动态名，不再硬编码 `"NewMessage"`。
+- **typing 端点**：api.at 加 `POST /api/typing` (`set_typing(sender str)`)，db.at 加 `set_typing`（no-op，广播由 handler 做）。
+- **前端触发链路**：composer.at 加 `on_typing` 回调，`InputChanged` 时 emit；app.at 加 `.Typing(name)` msg，调 `set_typing(name)`。
+- **测试**：`test_sse_broadcast_event_name_not_hardcoded` 验证 create 广播 NewMessage、typing 广播 Typing + input payload。
+- **待运行时验证**：前端 store 重生成（type-driven SSE dispatch 已支持 Typing 变体）+ playwright 新增 typing 用例。当前 codegen 层链路完整，需 `auto run` 端到端确认。
 
 ### §7 ✅→🟡 015 栈溢出已修复，编译错误转 §3
 015 db.at 转译的两个独立 bug 已修，015 现在能**生成**，但生成的 db.rs 仍有编译错误（属 §3 范围）：

@@ -28,6 +28,15 @@ pub fn send_message(sender str, text str) Message {
     return db.create_message(sender, text)
 }
 
+/// POST /api/typing — Plan 399 §6: typing-indicator signal. Void return; the
+/// handler broadcasts a Typing event (the sender name) over the SSE bus so all
+/// connected clients see "X is typing…". fn name contains "typing" so the
+/// codegen broadcasts discriminator "Typing" (broadcast_event_name convention).
+#[api(method = "POST", path = "/api/typing")]
+pub fn set_typing(sender str) {
+    return db.set_typing(sender)
+}
+
 /// GET /api/stream — frontend opens EventSource here (codegen-driven).
 #[api(method = "GET", path = "/api/stream")]
 pub fn stream() ~Stream<ChatEvent> {

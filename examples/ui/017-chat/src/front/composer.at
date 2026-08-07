@@ -1,6 +1,7 @@
 // composer.at — input bar. DoSend msg avoids name collision with on_send
 // callback (U21: on_send -> "Send" would collide with a Send variant).
-widget Composer(on_send: msg) {
+// Plan 399 §6: InputChanged also fires on_typing so App can signal typing.
+widget Composer(on_send: msg, on_typing: msg) {
     msg Msg { DoSend, InputChanged }
     model { var draft str = "" }
     view {
@@ -20,7 +21,10 @@ widget Composer(on_send: msg) {
         }
     }
     on {
-        .InputChanged -> { .draft = .draft }
+        .InputChanged -> {
+            .draft = .draft
+            on_typing("You")
+        }
         .DoSend -> {
             if .draft.trim() != "" {
                 on_send(.draft)
