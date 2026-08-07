@@ -166,6 +166,11 @@ pub struct RustTrans {
     // Cache for struct field types: struct_name -> Vec<(field_name, field_type)>
     // Used to add .to_string() when &str is assigned to String field
     struct_field_types: HashMap<AutoStr, Vec<(AutoStr, Type)>>,
+    /// Plan 399 Phase 11.4: names of loop variables that iterate a borrowed
+    /// collection (`for x in &coll`). Reads `x.field` of a non-Copy type must
+    /// emit `.clone()` because `x` is `&T`. Cleared per function (function-scope
+    /// set; nested loops just add to it).
+    borrowed_iter_vars: std::collections::HashSet<AutoStr>,
     /// Plan 376D: Shared TypeStore from all modules (for type inference).
     /// When Some, `run_type_inference` uses this instead of building a local one.
     shared_type_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
@@ -355,6 +360,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            borrowed_iter_vars: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -430,6 +436,7 @@ impl RustTrans {
             current_fn_err_type: None,
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
+            borrowed_iter_vars: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -1132,6 +1139,26 @@ impl RustTrans {
             write!(out, "return {}.lock().unwrap().clone()", static_name)?;
             if add_semi { out.write(b";")?; }
             return Ok(());
+        }
+        // Plan 399 Phase 11.4: `return Some(iter_var)` where iter_var is a
+        // borrowed loop variable (&T) — Some(&T) vs expected Some<T> is E0308.
+        // Clone the inner: Some(iter_var.clone()).
+        if let Expr::Call(call) = expr {
+            if let Expr::Ident(callee) = call.name.as_ref() {
+                if callee.as_ref() == "Some" {
+                    if let Some(crate::ast::Arg::Pos(inner)) = call.args.args.first() {
+                        if let Expr::Ident(inner_name) = inner {
+                            if self.borrowed_iter_vars.contains(inner_name) {
+                                write!(out, "return Some(")?;
+                                self.expr(inner, out)?;
+                                write!(out, ".clone())")?;
+                                if add_semi { out.write(b";")?; }
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
         }
         out.write(b"return ")?;
         self.expr(expr, out)?;
@@ -8689,6 +8716,17 @@ impl RustTrans {
         if Self::is_self_dot(expr) {
             write!(out, ".clone()")?;
         }
+        // Plan 399 Phase 11.4: `iter_var.field` where iter_var is a borrowed
+        // loop variable (&T) — moving a non-Copy field out of a shared ref is
+        // E0507. Add .clone() (conservative: also clones Copy fields like id,
+        // which is harmless). Matches the `obj.field` non-Copy pattern in store.
+        if let Expr::Dot(obj, _field) = expr {
+            if let Expr::Ident(obj_name) = obj.as_ref() {
+                if self.borrowed_iter_vars.contains(obj_name) {
+                    write!(out, ".clone()")?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -8985,6 +9023,24 @@ impl RustTrans {
                     write!(sink.body, "{}.lock().unwrap().clone()", static_name)?;
                     sink.body.write(b";")?;
                     return Ok(true);
+                }
+                // Plan 399 Phase 11.4: `return Some(iter_var)` where iter_var is
+                // a borrowed loop variable — clone the inner to avoid &T vs T.
+                if let Expr::Call(call) = expr.as_ref() {
+                    if let Expr::Ident(callee) = call.name.as_ref() {
+                        if callee.as_ref() == "Some" {
+                            if let Some(crate::ast::Arg::Pos(inner)) = call.args.args.first() {
+                                if let Expr::Ident(inner_name) = inner {
+                                    if self.borrowed_iter_vars.contains(inner_name) {
+                                        write!(sink.body, "return Some(")?;
+                                        self.expr(inner, &mut sink.body)?;
+                                        write!(sink.body, ".clone());")?;
+                                        return Ok(true);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 self.expr(expr, &mut sink.body)?;
                 if needs_to_string {
@@ -10882,6 +10938,10 @@ impl RustTrans {
                     );
                     if is_borrowable {
                         sink.body.write(b"&")?;
+                        // Plan 399 Phase 11.4: record this loop var as borrowed
+                        // (&T) so struct-field reads `x.field` of non-Copy types
+                        // can emit .clone() (avoiding E0507 move out of shared ref).
+                        self.borrowed_iter_vars.insert(name.clone());
                     }
                     self.expr(&for_stmt.range, &mut sink.body)?;
                     sink.body.write(b" {\n")?;
