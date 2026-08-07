@@ -155,20 +155,138 @@
 `endpoint_has_body` 纳入 PATCH（有 body_params 时），带 body 的 PATCH 端点（如 `set_pinned(id, pinned bool)`）现在正确生成 `Json(input)` 提取器。回归测试 `test_patch_with_body_gets_json_extractor`。
 
 ### §10 🟡 混合状态（部分回退）运行时状态分裂
-当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum 0.8 下能编译（无 State 提取器的 handler 对任意 S 成立 `Handler`），但运行时同一资源的读写会不一致。文档/注释（`api_gen.rs:1031`）只警告"回退模板"，未提状态分裂风险。当前示例全委托不触发，但应明确记录。
+### §10 🟡 混合状态（部分回退）运行时状态分裂 → 详见 Phase 13
+当 db.rs 只覆盖部分端点时（`db_full_cover=false`），main.rs 保留 `State<Db>`，但命中的 db 委托 handler 调 db.rs 的 `Lazy` 全局，回退 handler 调 `State<Db>` seed——**两份独立状态，写入会发散**。axum **0.7**（仓库实际版本，`examples/rust-workspace/Cargo.toml:29`；原文误写 0.8，两者 `Handler`/`with_state` 行为一致）下能编译，但运行时同一资源的读写会不一致。**已深入调研，根治方案见 Phase 13**（推荐方案 A：生成期硬检查 + escape hatch）。当前示例全委托不触发。
 
 ---
 
-## 后续（超出本计划）
+## 后续（超出本计划，详见 Phase 11-13 调研）
 
-- **修 §7（高优先）**：a2r 递归栈溢出（`trans/rust.rs`），让 015 db.at 能转译，恢复 015 的 db.rs 路径
-- **补 §6**：Typing 事件端到端实现（后端广播读变体 + composer 触发 + 重生成），让"多事件"名副其实
-- a2r 深层转译缺陷根治（§3 的 5 类根因，在 `trans/rust.rs` 而非后处理）
-- **补 §8**：db_fn 映射改用 body 解析或注解，消除命名约定依赖
+本轮（§7/§6/§3/§8）已完成的：栈溢出修复、Typing 后端补全、a2r 后处理加固（015 编译通过）、db_fn body 解析、PATCH+body 修复。剩余三项长远问题已深入调研，作为独立 Phase 记录在下：
+
+- **Phase 11**：a2r 转译器根治（`trans/rust.rs`，6 类缺陷，当前靠 post_process 后处理覆盖）
+- **Phase 12**：§6 前端 SSE typing 端到端验证（协议不匹配 bug + store 重生成 + playwright T9）
+- **Phase 13**：§10 混合状态分裂根治（生成期硬检查）
 - 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
 
-> 注：§9（PATCH+body）已在本轮修复（`endpoint_has_body` 纳入 PATCH + 回归测试 `test_patch_with_body_gets_json_extractor`）。§10（混合状态分裂）为设计权衡，文档记录即可。
+> 注：§9（PATCH+body）已修复（`endpoint_has_body` 纳入 PATCH + `test_patch_with_body_gets_json_extractor`）。§10 升格为 Phase 13。
+
+---
+
+## Phase 11：a2r 转译器根治（6 类缺陷，`trans/rust.rs`）
+
+> **调研结论**：`rust_type_name`/`rust_param_type_name` 是 `RustTrans` 私有方法，仅 a2r 内部用，**不影响 gdscript/tscn/typescript/javascript/python 等其他转译目标**（各自独立转译器）。axum/tauri targets 有独立的 `to_rust_type`（`api/targets/axum.rs:66` 等写 `int→i32`），改 a2r 不影响它们（若要统一需同步改，低优先）。a2r 已有 `#![allow(unused_mut, unused_parens, ...)]`（`trans/rust.rs:1680`），保守根治策略安全。
+
+### P11.1 int 类型 i32→i64（低成本高价值，优先）
+- **根因**：`trans/rust.rs:1162` `Type::Int => "i32"`（唯一类型映射点）。后端 types.rs 用 i64（`api_gen.rs:750` `auto_type_to_rust` `int→i64`）。已有 i64 先例：`trans/rust.rs:9160`（task state 字段，Plan 387）。
+- **改动**：(1) `:1162` 改 `i64`；(2) 全文 `as i32`→`as i64`、`.parse::<i32>()`→`.parse::<i64>()`（机械批量 ~30 处）；(3) 删 `api_gen.rs:368` 的 `code.replace("i32","i64")` 暴力后处理。
+- **风险**：低（无跨目标影响，回归由 trans/rust.rs 末尾 test fixtures 捕获）。
+
+### P11.2 str→String 字段 to_string（低成本高价值，优先）
+- **根因**：`trans/rust.rs:8583` `Arg::Name(name)` 分支**硬编码 `needs_to_string=false`**，不查 `struct_field_types`（相邻的 `Arg::Pair:8584` 和 `Arg::Pos:8578` 都正确查了）。这是 a2r 已有逻辑的遗漏分支。
+- **改动**：`:8583` 照抄 `Arg::Pair` 分支，查 `struct_field_types` 判断 String 字段 → 加 `.to_string()`。
+- **验证**：删 `api_gen.rs:361` `append_tostring_for_str_fields` 调用后 015/017 仍编译。
+- **风险**：低（1 处改动，逻辑从相邻分支照抄）。
+
+### P11.3 &[T] 返回生命周期 + 全局 clone（中成本高价值）
+- **根因**：`trans/rust.rs:1214` `Type::Slice` 总输出 `&[T]`（不区分返回位置）；`:1928` 全局读 `*G.lock().unwrap()` 在 return 时 move guard 失败。
+- **改动**：(1) 加 `in_return_position` 标志（抄 `current_fn_ret_type:226` 模式），返回位置 `Type::Slice` 输出 `Vec<T>`；(2) `return_stmt`（`:8896`/`:1120`）扩展 `needs_global_clone`（抄 `needs_self_clone` 机制），return 全局变量时发 `G.lock().unwrap().clone()`。
+- **删后处理**：`api_gen.rs:348` `fix_borrowed_slice_returns`。
+- **风险**：中（`Type::Slice` 在字段/参数位置仍应 `&[T]`，标志位维护需小心）。
+
+### P11.4 借用迭代器字段 clone（中成本高价值）
+- **根因**：`for_stmt:10825` 正确对集合加 `&`（借用迭代），但没记录迭代变量是借用；`write_expr_for_struct_field:8630` 不对 `iter_var.field` 加 clone。
+- **现成模板**：`trans/rust.rs:10070-10080`（store 处理 `obj.field` 非 Copy → `.clone()`）。
+- **改动**：(1) `for_stmt:10825`/`for_stmt_inline:10920` 记录借用迭代变量到 `borrowed_iter_vars: HashSet`；(2) `write_expr_for_struct_field:8630` 加分支：借用迭代变量的字段读无条件 clone（保守版，避开 struct_field_types 查找）；(3) `Expr::Pair:2495` 也走 `write_expr_for_struct_field`。
+- **删后处理**：`api_gen.rs:385` `append_clone_for_borrowed_fields`。
+- **风险**：中（需维护 iter var 作用域；保守版冗余 clone 无害）。
+
+### P11.5 mut 推断（中成本中价值，暂缓）
+- **根因**：`trans/rust.rs:9968` 完全依赖 `var`/`let` 关键字，无 body 扫描。db.at 用 `var` 已对（生 `let mut`），但源码用 `let` 后 push 会漏。
+- **改动**：函数级预扫描 pass 收集被 mutate 的 binding（`push/insert/extend/assign`），`store:9968` 命中则强制 `let mut`。
+- **暂缓理由**：mutating 方法名集合难完备；后处理 `add_mut_to_let_collections:409` 正则已覆盖 db.rs 90%。边际收益低。
+
+### P11.6 去 deref（中成本中价值，暂缓）
+- **根因**：`trans/rust.rs:1926-1928` 全局读无条件加 `*`（注释：算术/比较/index/cast 需解引用），但方法调用（push/insert）前加 `*` 错（E0614）。
+- **暂缓理由**：a2r 在 `Expr::Ident` 层看不到下游；根治要碰方法调用全路径，回归面广。db.rs 实际 mutating 方法几乎只有 push/insert，后处理正则（`api_gen.rs:352`）够用，建议先扩 method 集合（push|insert|extend|retain|clear|remove|sort_by|swap|truncate）。
+
+### P11 实施顺序（依赖关系）
+P11.1（i64，独立）→ P11.2（str，独立）→ P11.3（&[T] 返回，删 fix_borrowed_slice_returns）→ P11.4（借用 clone，与 P11.2 共享 struct_field_types）→ P11.5/P11.6（后期）。
+
+---
+
+## Phase 12：§6 前端 SSE typing 端到端验证
+
+> **关键发现**：后端逻辑已落地，但**前端 store/后端产物全是旧的**（缓存未失效），且存在**协议不匹配 bug**——即便重生成，typing 也会渲染 `[object Object] is typing…`。
+
+### P12.0 核心协议 bug（阻塞项）
+- 后端广播（`api_gen.rs:1313-1319` void+Typing 分支）：`serde_json::to_value(&input)` → `{"event":"Typing","sender":"You"}`。
+- 前端 dispatch（`vue.rs:10102`）：`Typing(data)` 传**整个对象**（不区分单值/对象变体）。
+- chat_store handler（`chat_store.at:24`）：`.Typing(name) -> { .typing_name = name }` → `typing_name` 变成对象 → MessageThread 模板 `{{ typing_name }} is typing…` 渲染 `[object Object]`，且 `typing_name != ''`（对象≠''恒真）指示器永不消失。
+- 根因：`resolve_stream_variants`（`api.rs:198-215`）只抓 PascalCase 变体名，**丢弃载荷类型信息**（`Typing(str)` 的 `str`），无法为单值变体生成 `Typing(data.X)` 取字段代码。
+- NewMessage 巧合正确（payload 本身是完整 Message 对象，`NewMessage(data)` push 进数组恰好对）。
+
+### P12.1 修复协议（二选一）
+- **方案 A（推荐，改后端广播）**：`api_gen.rs:1313-1319` typing 分支不广播 `&input`，改广播 `serde_json::json!({"event":"Typing","name": input.sender}).to_string()`（字段名 `name`）；配合前端 dispatch 对单值变体生成 `Typing(data.name)`（需 `resolve_stream_variants` 保留载荷类型 + 约定单值变体字段名 `name`）。
+- **方案 B（改前端 handler）**：chat_store `.Typing(evt) -> { .typing_name = evt.sender }`，dispatch 仍传整个对象。需 aura 支持 `.sender` 取字段。但与 `Typing(str)` 变体声明语义冲突。
+- **推荐 A**：更通用（单值变体是通用 codegen 问题，非 typing 特有）。
+
+### P12.2 store 重生成（先决）
+- 删 `examples/ui/017-chat/.auto/ui-cache.json`（`chat_store.at` 的 `artifacts:[]` + 旧 hash）强制失效缓存。
+- 重跑 `auto run`（017-chat），验证产物：
+  - `api.ts` 出现 `set_typing` fetch 客户端
+  - `useChatStoreStore.ts` 出现 `new EventSource('/api/stream')` + `data.event==='Typing') Typing(data...)`
+  - 后端 `main.rs` 出现 `/api/typing` 路由 + `api.rs` 的 `set_typing` handler + `db.rs` 的 `set_typing` fn
+- `resolve_stream_variants` 读 `src/back/api.at`（`api.rs:120-130`），不依赖 db.rs 转译。
+
+### P12.3 前端增强（可选）
+- typing 防抖：composer `oninput` 每字符发一次 POST 会刷屏；加 debounce 250-400ms，或 App `.Typing` handler 加超时清除（typing_name 置空定时器）。
+- 当前无此机制，T9 能过但 UX 差。
+
+### P12.4 测试（T9）
+```ts
+test('T9: typing 指示器跨标签页（B 输入 → A 看到 "X is typing…"）', async ({ browser }) => {
+  const ctxA = await browser.newContext(); const pageA = await ctxA.newPage()
+  await waitForApp(pageA)
+  const ctxB = await browser.newContext(); const pageB = await ctxB.newPage()
+  await waitForApp(pageB)
+  await pageB.locator('input').fill('hello-typing')  // 触发 oninput → POST /api/typing
+  await expect.poll(
+    async () => (await pageA.locator('body').innerText()).includes('You is typing'),
+    { timeout: 8000, message: 'A 应通过 SSE 看到 "You is typing…"'
+  ).toBe(true)
+  await ctxA.close(); await ctxB.close()
+})
+```
+- 同步更新 `acceptance.atd` 加 T9。
+- 重跑 T1-T9，确认 T6（NewMessage）仍绿。
+
+### P12 风险
+P12.1 是阻塞项——不修协议，T9 必失败（`[object Object]`）。P12.2 单独跑会让协议 bug 显形（store 接线后 typing 事件一来就炸）。
+
+---
+
+## Phase 13：§10 混合状态分裂根治
+
+> **关键修正**：plan 原文 `399-...md:158` 写「axum 0.8」，**实际仓库是 axum 0.7**（`examples/rust-workspace/Cargo.toml:29`）。两者在 `Handler`/`with_state` 行为一致（无 State 提取器的 handler 对任意 S 成立 `Handler`；`with_state` 只对「缺 state」报错，对「state 没被用」静默），结论不变，但版本号要改。
+
+### 状态分裂确认（真实风险）
+触发条件：`has_db && db_fns 非空 && !all_endpoints_covered`。例：015-notes 加一个 `duplicate_note` 端点但 db.at 无对应函数（或函数名不一致）→ 该端点回退 `State<Db>` 模板，其余调 db.rs Lazy。结果两份独立 `Vec<Note>`：db.rs `NOTES: Lazy<Mutex<Vec<Note>>>` vs main.rs `State<Db>: Arc<Mutex<Vec<Note>>>`（种子初值相同但写操作发散：POST create 写 Lazy，POST duplicate 写 State<Db>，GET list 读 Lazy 看不到 duplicate）。
+
+### 根治方案（推荐方案 A）
+- **方案 A（推荐）**：生成期硬检查——`has_db && !all_endpoints_covered` 时 `return Err`（列出未覆盖端点名），而非静默回退。配 escape hatch（`pac.at` 加 `allow_partial_db` 或 env `AUTO_ALLOW_PARTIAL_DB=1`）供渐进迁移。
+  - 改动 ~10-20 行（`api_gen.rs:636` `db_full_cover` 计算处 + `:1205-1212` 警告处）。
+  - 正确性优先（fail-fast），不破坏 015/017（全覆盖 no-op），未来 022-kanban 等复杂 App 一旦 miss 立即报错。
+- 方案 B（未命中端点也生成 db.rs fallback 函数）：改动大、回归风险高、语义不可控（模板丢业务逻辑=mine:false 回归）。
+- 方案 C（放弃 db 委托）：不可接受（放弃 §3-§5 成果）。
+- 方案 D（Lazy 与 State<Db> 共享内存）：对单集合可行，但 015 多集合（notes+folders）+ 需改 a2r，复杂度高。
+- 方案 E（混合时当无 db.rs）：浪费已写业务逻辑，mine:false 回归。
+
+### P13 落地判断
+- **当前无真实示例触发**（015/017 全覆盖），不需独立 Phase 实施工时——但**方案 A 防御性加固应尽快落地**（防未来踩坑）。
+- 升格标准：仅当某真实示例（如 022-kanban）因混合状态实际跑出 bug 时，才升格深度改造（考虑 B/D）。
+- 文档：§10 落地方案 A 后改 ✅；修正 axum 0.7；`:171` 注脚更新。
 
 ---
 
