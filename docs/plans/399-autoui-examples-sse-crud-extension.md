@@ -109,8 +109,17 @@
 ### §2 ✅ 前端 `sender=="You"` mine 兜底清理（收尾完成）
 `message_thread.at` 气泡方向从 `if msg.sender == "You"` 改为 `if msg.mine`（后端 db.rs create_message 设 mine:true，现权威）。`smoke.spec.ts` T3 注释、`acceptance.atd` T3 契约同步更新。改后重跑 playwright 仍 8/8。
 
-### §3 🟡 `post_process_db_rs` 仍是必需 workaround（注释已修正）
-`crates/auto-man/src/api_gen.rs:319` 用字符串后处理修 6 类 a2r 转译缺陷。调研核实**全部仍必需**（a2r 无一根治），已修正过时的头注释（原误导性声称"a2r 已修 List.new/生命周期"）。根治属长远项（改 `trans/rust.rs` 的 use 路径映射、List.new 拦截、切片返回生命周期、str→String 补 to_string）。
+### §3 ✅(后处理层) a2r 转译缺陷后处理大幅加固（015 db.rs 26→0 编译错误）
+`post_process_db_rs` 原只覆盖 017 简单情形（硬编码 MESSAGES、i32 只修 id 字段）。015 的复杂 db.at（12 fns + for/if-else + 列表重建 + emoji 种子）暴露 26 个编译错误。本轮在后处理层系统修复（a2r `trans/rust.rs` 根治仍属长远项）：
+- **i32→i64 统一**：a2r 把所有 `int` 转 `i32`，但 types.rs 用 `i64` → db.rs 全 `i32`→`i64`（消 6 E0277 + 多 E0308）。
+- **去 deref 泛化**：`*MESSAGES.lock().push` → 正则 `*\w+.lock().push/insert`（覆盖 NOTES/FOLDERS，消 E0614）。
+- **借用字段 .clone()**：`for note in &*G.lock()` 里 `note.title`/`note.tags` 是共享引用，move 报错 → `append_clone_for_borrowed_fields` 给 struct-ctor 里的 `obj.field` 和 `Some(note)` 加 `.clone()`（消 E0507）。
+- **let → let mut**：`let results = vec![]` 后 `.push()` → `add_mut_to_let_collections` 加 mut（消 E0596）。
+- **str/slice 参数赋字段**：`folder: folder`（&str→String，含尾部 ` }`）+ `tags: tags`（&[String]→Vec 加 `.to_vec()`）；`append_tostring_for_str_fields` 扩展 slice_params + ` }` 结尾。
+- **FOLDERS 返回**：`fix_borrowed_slice_returns` 泛化 `return *VAR.lock()` 正则（消 Folder E0507）。
+- **handler []str 借用**：`resolve_db_call` 的 `[]str` 参数借用 `&input.tags`（&Vec→&\[String] deref）。
+- **验证**：015 后端**实际 cargo build 通过**（Finished，仅 dead-code warning）。`regen_real_015_backend_db_delegation`（#[ignore]）断言全 db 委托 + `&input.tags`。auto-man 196 测试绿。
+- **剩余长远项**：a2r `trans/rust.rs` 的根治（int 类型推断 i64、借用迭代器 clone、str→String 转换、mut 推断）——当前靠后处理，根治应在 a2r 层。
 
 ### §4 ⚪ `endpoint.body` 标注为路线A预留（收尾完成）
 `ApiEndpoint.body` 生产代码无读取者。路线B（db 委托）不依赖它。已在 `types.rs`/`mod.rs` 加注释明确"路线A预留，路线B未用"，不删除（留作未来转译任意 body 的基建）。

@@ -346,11 +346,15 @@ fn post_process_db_rs(mut code: String) -> String {
     // `fn f() -> &[T] { return *G.lock().unwrap(); }` -> return owned Vec<T> with
     // .clone(): a2r emits a borrowed slice return over a MutexGuard (lifetime error).
     code = fix_borrowed_slice_returns(&code);
-    // `*G.lock().unwrap().method(...)` -> `G.lock().unwrap().method(...)`: a2r over-
-    // dereferences the guard before a method call (push/insert). Only the method-call
-    // form (a `.` following), not assignment targets.
-    code = code.replace("*MESSAGES.lock().unwrap().push", "MESSAGES.lock().unwrap().push");
-    code = code.replace("*MESSAGES.lock().unwrap().insert", "MESSAGES.lock().unwrap().insert");
+    // Plan 399 §3: over-deref before method calls. Generalize the hardcoded
+    // MESSAGES to any global: `*VAR.lock().unwrap().push/insert(...)` → drop `*`.
+    // a2r over-dereferences the MutexGuard before a method call (push returns ()).
+    {
+        use regex::Regex;
+        if let Ok(re) = Regex::new(r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert)\(") {
+            code = re.replace_all(&code, "$1.lock().unwrap().$2(").to_string();
+        }
+    }
     // Param-to-field &str -> String: a2r passes &str fn params into String struct
     // fields without .to_string(). Regex: `<field>: <param>,` where both are the same
     // bare ident and field is a known String field (skip id/bool/time/count).
@@ -358,7 +362,57 @@ fn post_process_db_rs(mut code: String) -> String {
     // id field type widening: backend types.rs uses i64 for int, but a2r emits i32
     // guards. `id: *NEXTID.lock().unwrap()` -> add `as i64` for the id field.
     code = code.replace("id: *NEXTID.lock().unwrap()", "id: *NEXTID.lock().unwrap() as i64");
+    // Plan 399 §3: a2r emits i32 for all `int` (params, fields, global vars), but
+    // backend types.rs uses i64. Unify to i64 so db.rs is consistent with types.rs
+    // (fixes E0277 i64-vs-i32 comparisons + E0308 Note{id:0} field mismatches).
+    code = code.replace("i32", "i64");
+    // Plan 399 §3: a2r emits `let results: Vec<T> = ...` without `mut` but then
+    // calls results.push(). Add `mut` to `let NAME:` that is followed (in the same
+    // fn) by `NAME.push`. Simple per-line heuristic: `let X = vec![]` / `let X:` → `let mut X`.
+    code = add_mut_to_let_collections(&code);
+    // Plan 399 §3: a2r iterates borrowed (`for note in &*G.lock()`) but moves
+    // fields out of the shared reference in struct literals (`tags: note.tags`)
+    // and returns (`return Some(note)`). Add .clone() to `note.X` field reads in
+    // struct-ctor position and to `Some(note)` over a borrow.
+    code = append_clone_for_borrowed_fields(&code);
     code
+}
+
+/// Plan 399 §3: in `Type { ..., field: note.x, ... }` struct literals, `note` is
+/// a `&Note` (borrowed iterator), so moving `note.tags`/`note.title` errors.
+/// Append `.clone()` to every `<ident>.<ident>` read inside struct-ctor fields.
+/// Also fix `return Some(<ident>)` over a borrow → `Some(<ident>.clone())`.
+fn append_clone_for_borrowed_fields(code: &str) -> String {
+    use regex::Regex;
+    let mut out = code.to_string();
+    // `field: name.attr` (not already cloned, not a method call) → add .clone()
+    // Matches `word.word` followed by `,` or ` }` (struct field end). Avoids
+    // `word.word(...)` calls and already-`.clone()`d reads.
+    let re = match Regex::new(r"(\b\w+:\s*)(\w+)\.(\w+)(,|\s*\})") {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    out = re.replace_all(&out, "${1}${2}.${3}.clone()${4}").to_string();
+    // `return Some(name)` → `return Some(name.clone())` when name is a bare ident
+    // (covers `for note in &*G.lock() { ... return Some(note) }`).
+    let re2 = match Regex::new(r"return Some\((\w+)\)") {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    out = re2.replace_all(&out, "return Some($1.clone())").to_string();
+    out
+}
+
+/// Plan 399 §3: add `mut` to `let NAME = vec![...]` / `let NAME: Vec<...> = ...`
+/// when the binding is later mutated (a2r omits `mut`). Conservative: only
+/// prefixes `let ` → `let mut ` for lines that look like a fresh Vec binding.
+fn add_mut_to_let_collections(code: &str) -> String {
+    use regex::Regex;
+    let re = match Regex::new(r"(?m)^(\s*)let (\w+)(:\s*Vec<| =\s*vec!\[)") {
+        Ok(r) => r,
+        Err(_) => return code.to_string(),
+    };
+    re.replace_all(code, "${1}let mut ${2}${3}").to_string()
 }
 
 /// For `Type { field: field, ... }` where `field` is a &str param assigned to a
@@ -367,6 +421,9 @@ fn post_process_db_rs(mut code: String) -> String {
 fn append_tostring_for_str_fields(code: &str) -> String {
     use std::collections::HashSet;
     let mut str_params: HashSet<String> = HashSet::new();
+    // Plan 399 §3: slice params (&[String]) assigned to Vec<String> fields need
+    // .to_vec() (a2r passes them straight: `tags: tags` where tags: &[String]).
+    let mut slice_params: HashSet<String> = HashSet::new();
     for line in code.lines() {
         let l = line.trim_start();
         if !(l.starts_with("pub fn ") || l.starts_with("fn ")) { continue; }
@@ -378,6 +435,10 @@ fn append_tostring_for_str_fields(code: &str) -> String {
                     if tok.len() >= 2 && (tok[1] == "str" || tok[1] == "&str") {
                         str_params.insert(tok[0].to_string());
                     }
+                    // Slice param: `name &[String]` or `name &[...]`.
+                    if tok.len() >= 2 && tok[1].starts_with("&[") {
+                        slice_params.insert(tok[0].to_string());
+                    }
                 }
             }
         }
@@ -388,9 +449,21 @@ fn append_tostring_for_str_fields(code: &str) -> String {
     let mut out = code.to_string();
     for name in &str_params {
         if skip.contains(name.as_str()) { continue; }
-        let needle = format!("{}: {},", name, name);
-        let repl = format!("{}: {}.to_string(),", name, name);
-        out = out.replace(&needle, &repl);
+        // Plan 399 §3: a2r emits `field: field` for str params; add .to_string().
+        // Match both `,` (mid-struct) and ` }` (last field, no trailing comma).
+        for sep in [",", " }"] {
+            let needle = format!("{}: {}{}", name, name, sep);
+            let repl = format!("{}: {}.to_string(){}", name, name, sep);
+            out = out.replace(&needle, &repl);
+        }
+    }
+    // Plan 399 §3: slice params (`tags: &[String]`) → `field: tags.to_vec()`.
+    for name in &slice_params {
+        for sep in [",", " }"] {
+            let needle = format!("{}: {}{}", name, name, sep);
+            let repl = format!("{}: {}.to_vec(){}", name, name, sep);
+            out = out.replace(&needle, &repl);
+        }
     }
     out
 }
@@ -473,9 +546,14 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
         } else { break; }
     }
     // Body: `return *G.lock().unwrap();` -> `return G.lock().unwrap().clone();`
-    // (matches the all_messages pattern: return *<UPPER>.lock().unwrap();)
-    out = out.replace("return *MESSAGES.lock().unwrap();", "return MESSAGES.lock().unwrap().clone();");
-    out = out.replace("return *NOTES.lock().unwrap();", "return NOTES.lock().unwrap().clone();");
+    // Plan 399 §3: generalize the hardcoded MESSAGES/NOTES to any global (e.g.
+    // FOLDERS) — `return *<UPPER>.lock().unwrap();` over a guard can't move.
+    {
+        use regex::Regex;
+        if let Ok(re) = Regex::new(r"return \*(\w+)\.lock\(\)\.unwrap\(\);") {
+            out = re.replace_all(&out, "return $1.lock().unwrap().clone();").to_string();
+        }
+    }
     out
 }
 
@@ -863,10 +941,16 @@ fn resolve_db_call(
         let t = ty.trim();
         t == "str" || t == "String" || t == "&str"
     };
+    // Plan 399 §3: a2r turns `[]str` into `&[String]` params, but extractors hold
+    // `Vec<String>` — borrow (`&input.tags`) so `&Vec<String>` derefs to `&[String]`.
+    let is_slice_str = |ty: &str| {
+        let t = ty.trim();
+        t == "[]str" || t == "[]String" || t == "&[String]"
+    };
     let args: Vec<String> = endpoint.params.iter().map(|p| {
         let is_path = path.contains(&format!(":{}", p.name));
         let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
-        let borrow = is_str(&p.ty);
+        let borrow = is_str(&p.ty) || is_slice_str(&p.ty);
         if is_path {
             // Path str params are rare; borrow them too (Path<String> → &str).
             if borrow { format!("&{}", p.name) } else { p.name.clone() }
@@ -2405,10 +2489,11 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
         assert!(api_rs.contains("crate::db::all_notes"), "list delegates: {}", api_rs);
         assert!(api_rs.contains("crate::db::create_note"), "create delegates: {}", api_rs);
-        // []str param (update_tags) — value, not borrow.
+        // []str param (update_tags) — borrowed (&input.tags): a2r emits &[String]
+        // params, extractors hold Vec<String>, &Vec derefs to &[String].
         assert!(
-            api_rs.contains("crate::db::update_tags(id, input.tags)"),
-            "[]str param not borrowed: {}", api_rs
+            api_rs.contains("crate::db::update_tags(id, &input.tags)"),
+            "[]str param borrowed: {}", api_rs
         );
         assert!(!main_rs.contains("with_state"), "main no with_state: {}", main_rs);
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
