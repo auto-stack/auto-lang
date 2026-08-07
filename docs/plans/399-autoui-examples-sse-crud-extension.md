@@ -177,12 +177,15 @@
 
 ## Phase 11：a2r 转译器根治（6 类缺陷，`trans/rust.rs`）
 
-> **调研结论**：`rust_type_name`/`rust_param_type_name` 是 `RustTrans` 私有方法，仅 a2r 内部用，**不影响 gdscript/tscn/typescript/javascript/python 等其他转译目标**（各自独立转译器）。axum/tauri targets 有独立的 `to_rust_type`（`api/targets/axum.rs:66` 等写 `int→i32`），改 a2r 不影响它们（若要统一需同步改，低优先）。a2r 已有 `#![allow(unused_mut, unused_parens, ...)]`（`trans/rust.rs:1680`），保守根治策略安全。
+> **状态总览**：
+> - **P11.2 ✅ 已落地**（Arg::Name shorthand str→String，`trans/rust.rs:8583`）
+> - **P11.1 / P11.3 / P11.4 / P11.5 / P11.6 🟡 暂缓**——理由：a2r（`trans/rust.rs` 17000+ 行）仅 2 个单元测试，改动主要靠 015/017 端到端编译验证（慢）；而 `post_process_db_rs` 后处理已让 015/017 编译通过，根治的边际价值是「消除后处理的清洁性」非功能正确性。待 a2r 有充分测试覆盖后再逐项根治。
+> - **调研结论**：`rust_type_name`/`rust_param_type_name` 是 `RustTrans` 私有方法，仅 a2r 内部用，**不影响 gdscript/tscn/typescript/javascript/python 等其他转译目标**。axum/tauri targets 有独立的 `to_rust_type`（`api/targets/axum.rs:66`），改 a2r 不影响它们。a2r 已有 `#![allow(unused_mut, unused_parens, ...)]`（`trans/rust.rs:1680`），保守根治策略安全。
 
-### P11.1 int 类型 i32→i64（低成本高价值，优先）
-- **根因**：`trans/rust.rs:1162` `Type::Int => "i32"`（唯一类型映射点）。后端 types.rs 用 i64（`api_gen.rs:750` `auto_type_to_rust` `int→i64`）。已有 i64 先例：`trans/rust.rs:9160`（task state 字段，Plan 387）。
-- **改动**：(1) `:1162` 改 `i64`；(2) 全文 `as i32`→`as i64`、`.parse::<i32>()`→`.parse::<i64>()`（机械批量 ~30 处）；(3) 删 `api_gen.rs:368` 的 `code.replace("i32","i64")` 暴力后处理。
-- **风险**：低（无跨目标影响，回归由 trans/rust.rs 末尾 test fixtures 捕获）。
+### P11.1 int 类型 i32→i64（🟡 暂缓——实际 cast 64 处远超调研估计，无测试保护）
+- **根因**：`trans/rust.rs:1162` `Type::Int => "i32"`（唯一类型映射点）。后端 types.rs 用 i64（`api_gen.rs:750`）。已有 i64 先例：`trans/rust.rs:9160`（task state 字段）。
+- **改动**：(1) `:1162` 改 `i64`；(2) 全文 `as i32`→`as i64`（**实际 64 处**，非调研估计的 ~30，含位运算 `as u32) as i32` 等嵌套 cast）；(3) 删 `api_gen.rs:368` 的 `code.replace("i32","i64")`。
+- **暂缓理由**：64 处 cast 改动需逐个判断语义（位运算中间值 vs 最终 cast），但 a2r 仅 2 个测试，回归靠端到端编译（慢）；后处理 `code.replace("i32","i64")` 已覆盖 015/017。待 a2r 加测试后根治。
 
 ### P11.2 str→String 字段 to_string（低成本高价值，优先）
 - **根因**：`trans/rust.rs:8583` `Arg::Name(name)` 分支**硬编码 `needs_to_string=false`**，不查 `struct_field_types`（相邻的 `Arg::Pair:8584` 和 `Arg::Pos:8578` 都正确查了）。这是 a2r 已有逻辑的遗漏分支。
