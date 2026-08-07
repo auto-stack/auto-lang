@@ -2130,6 +2130,365 @@ fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
     })
 }
 
+// =====================================================================
+// Shell SSE → iced subscription bridge (ash-gui-native M1)
+// =====================================================================
+// 让 iced 原生路径消费后端 `~Stream<ShellEvent>` 契约。两条路径共用本桥:
+//
+//   - **merged (in-process)** 模式(ash-gui vm 默认):UI VM 无法执行系统进程,
+//     本桥在 renderer 侧起一个 Rust 执行器线程跑 std::process::Command,通过
+//     `tokio::sync::mpsc` 把 command_output / command_result 事件回流。
+//   - **HTTP** 模式(`AUTO_BACKEND=http://host:port`):执行器线程改为拉起一个
+//     reqwest 异步客户端连后端 `/api/stream`,逐帧 SSE 解析后推同一 mpsc。
+//
+// VM 限制:`push_value` 对 struct 参数只推占位 0(vm_bridge.rs:929),store 的
+// `.RunResult(result)` / `.RunOutput(output)` 无法直接收 struct 参数。故 update
+// 闭包先把事件字段 write_state 到 store 的「预置字段」(`__sse_*`),再以**无参**
+// 触发对应 handler —— handler body 读预置字段(见 ash-gui shell_store.at)。
+//
+// 事件契约对齐 ash-server 的 ShellEvent(`types.rs:115-122`):
+//   {"event":"command_output","block_id":N,"chunk":"..."}
+//   {"event":"command_result","CommandResult":{block_id,cwd,status,output,duration_ms}}
+
+/// 一条回流到 iced 的事件(执行器线程 / HTTP 客户端 → subscription)。
+/// `event` 取 "command_output" | "command_result"。`payload` 是完整 JSON
+/// (update 闭包按字段解析后写预置字段)。
+struct ShellStreamEvent {
+    event: String,
+    payload_json: String,
+}
+
+/// 待执行的命令(merged 模式:由 update 闭包在 `.RunCommand` 后写入队列)。
+#[derive(Clone)]
+struct PendingShellCommand {
+    block_id: i64,
+    cmd: String,
+    cwd: String,
+}
+
+/// 执行器线程的共享句柄:命令队列 + 取消标志 + HTTP 后端地址(若为 HTTP 模式)。
+struct ShellExecutorHandle {
+    queue: std::collections::VecDeque<PendingShellCommand>,
+    /// block_id → cancel flag。Cancel 时插入 true;执行器轮询后清除。
+    cancel_flags: std::collections::HashMap<i64, bool>,
+    /// HTTP 模式后端 base URL(如 "http://127.0.0.1:3000");None = merged 模式。
+    http_backend: Option<String>,
+}
+
+/// 执行器线程的事件回流 receiver(全局,subscription poll)。仿 MCP_ACTION_RX。
+static SHELL_EVENT_RX: std::sync::OnceLock<
+    std::sync::Mutex<Option<std::sync::mpsc::Receiver<ShellStreamEvent>>>,
+> = std::sync::OnceLock::new();
+
+/// 执行器线程的共享句柄(全局,update 闭包提交命令 / 标记取消)。仿 MCP_ACTION_RX。
+static SHELL_EXEC_HANDLE: std::sync::OnceLock<
+    std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+> = std::sync::OnceLock::new();
+
+/// 启动 shell 执行器线程(merged + HTTP 双模式)。在 `run_dynamic_iced` 里调用一次。
+/// 返回事件 receiver,由调用方塞进 `SHELL_EVENT_RX` 全局量供 subscription poll。
+fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
+    let (tx, rx) = std::sync::mpsc::channel::<ShellStreamEvent>();
+    let handle = std::sync::Arc::new(std::sync::Mutex::new(ShellExecutorHandle {
+        queue: std::collections::VecDeque::new(),
+        cancel_flags: std::collections::HashMap::new(),
+        http_backend: std::env::var("AUTO_BACKEND").ok().filter(|s| !s.is_empty()),
+    }));
+    // 注册全局句柄,供 update 闭包提交命令 / 标记取消。
+    {
+        let guard = SHELL_EXEC_HANDLE.get_or_init(|| handle.clone());
+        let _ = guard; // 已初始化则保留旧值(启动只调一次,正常路径是新初始化)
+    }
+
+    let exec_handle = handle.clone();
+    let event_tx = tx.clone();
+    std::thread::spawn(move || {
+        // 执行器线程内建 current_thread tokio runtime(reqwest 异步 + 阻塞 IO 复用)。
+        // 仿 mcp_server.rs:387 的建法。
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+        let is_http = exec_handle.lock().unwrap().http_backend.is_some();
+        if is_http {
+            // HTTP 模式:连后端 /api/stream,逐帧推事件。
+            rt.block_on(http_sse_loop(exec_handle.clone(), event_tx));
+        } else {
+            // merged 模式:轮询本地命令队列,用 std::process 执行。
+            rt.block_on(merged_exec_loop(exec_handle.clone(), event_tx));
+        }
+    });
+
+    rx
+}
+
+/// merged 模式执行循环:从队列取命令 → std::process::Command 执行 → 推流式 + 结果事件。
+async fn merged_exec_loop(
+    handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+    tx: std::sync::mpsc::Sender<ShellStreamEvent>,
+) {
+    use std::io::Read;
+    loop {
+        // 取一条命令(队列空则短歇,避免忙等)。
+        let pending = {
+            let mut h = handle.lock().unwrap();
+            h.queue.pop_front()
+        };
+        let pending = match pending {
+            Some(p) => p,
+            None => {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                continue;
+            }
+        };
+        let block_id = pending.block_id;
+        let cmd = pending.cmd;
+        let cwd = pending.cwd;
+
+        // 跨平台:Windows 用 cmd /C,Unix 用 sh -c。对齐 ash-server 的执行语义
+        // (外部命令经 shell 解析,支持管道/重定向)。
+        let (program, args) = if cfg!(windows) {
+            ("cmd", vec!["/C".to_string(), cmd.clone()])
+        } else {
+            ("sh", vec!["-c".to_string(), cmd.clone()])
+        };
+        let mut child = match std::process::Command::new(program)
+            .args(&args)
+            .current_dir(if cwd.is_empty() { "." } else { &cwd })
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                // spawn 失败 → Failed。
+                let _ = tx.send(ShellStreamEvent {
+                    event: "command_result".to_string(),
+                    payload_json: serde_json::json!({
+                        "block_id": block_id,
+                        "cwd": cwd,
+                        "status": {"Failed": format!("spawn failed: {}", e)},
+                        "output": null,
+                        "duration_ms": 0,
+                    })
+                    .to_string(),
+                });
+                continue;
+            }
+        };
+
+        // 逐块读 stdout 推 command_output。为支持取消,每读一块检查 cancel flag。
+        let t0 = std::time::Instant::now();
+        let mut stdout = child.stdout.take();
+        let mut stderr = child.stderr.take();
+        let mut cancelled = false;
+        let mut buf = [0u8; 4096];
+        loop {
+            // 取消检查。
+            if let Some(true) = handle.lock().unwrap().cancel_flags.get(&block_id).copied() {
+                cancelled = true;
+                let _ = child.kill();
+                break;
+            }
+            let read_guard = stdout.as_mut();
+            let n = match read_guard.and_then(|r| r.read(&mut buf).ok()) {
+                Some(0) => break, // EOF
+                Some(n) => n,
+                None => break,
+            };
+            if n > 0 {
+                let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = tx.send(ShellStreamEvent {
+                    event: "command_output".to_string(),
+                    payload_json: serde_json::json!({
+                        "block_id": block_id,
+                        "chunk": chunk,
+                    })
+                    .to_string(),
+                });
+            }
+        }
+        // 收 stderr(失败时作为 Failed 消息)。
+        let mut err_text = String::new();
+        if let Some(mut e) = stderr.take() {
+            let _ = e.read_to_string(&mut err_text);
+        }
+        let status_code = child.wait().ok().and_then(|s| s.code());
+        let duration_ms = t0.elapsed().as_millis() as u64;
+
+        // 清除取消标志(已处理)。
+        handle.lock().unwrap().cancel_flags.remove(&block_id);
+
+        if cancelled {
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": cwd,
+                    "status": "Cancelled",
+                    "output": null,
+                    "duration_ms": duration_ms,
+                })
+                .to_string(),
+            });
+            continue;
+        }
+
+        // 对齐 ash-server CommandStatus:Success(裸串)| Failed(msg)(对象)。
+        // output 我们暂只支持 Text 变体(把累积 stdout 作文本)。
+        // 完整 RenderedOutput 渲染留给 a2r/HTTP(真后端 ash-server 走 /api/run_smart
+        // 已有 Table/Record 等渲染)。merged mock 路径 Text 足以验证闭环。
+        let success = matches!(status_code, Some(0));
+        let (status_val, output_val) = if success {
+            // stdout 已流式推过;结果事件带一份完整文本(供 store 切到 Success 分支)。
+            // 这里复用:不再读 stdout(已耗尽),用空串占位 —— store 的 RunResult
+            // 在 merged 模式下保留 streamed_text?不:RunResult 会清空 streamed_text
+            // 并设 output。为避免空 output,执行器在流推期间累积一份完整 stdout。
+            // (下方用 ACCUMULATED_STDOUT 线程局部?复杂化 —— 改为:merged 模式下
+            //  RunResult 不清空 streamed_text,而是把它提升为 output.Text。)
+            // 简化:output.Text = "" 让 store 用 streamed_text 作 output(见 store 注释)。
+            (serde_json::Value::String("Success".to_string()), serde_json::Value::Null)
+        } else {
+            let msg = if err_text.is_empty() {
+                format!("exit code {:?}", status_code)
+            } else {
+                err_text
+            };
+            (serde_json::json!({"Failed": msg}), serde_json::Value::Null)
+        };
+        let _ = tx.send(ShellStreamEvent {
+            event: "command_result".to_string(),
+            payload_json: serde_json::json!({
+                "block_id": block_id,
+                "cwd": cwd,
+                "status": status_val,
+                "output": output_val,
+                "duration_ms": duration_ms,
+            })
+            .to_string(),
+        });
+    }
+}
+
+/// HTTP 模式:连后端 `/api/stream` SSE,逐帧 JSON 解析后推 ShellStreamEvent。
+/// 命令提交 / 取消走 HTTP POST。本函数假设后端是 ash-server(契约见 ash-server/types.rs)。
+async fn http_sse_loop(
+    handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
+    tx: std::sync::mpsc::Sender<ShellStreamEvent>,
+) {
+    let base = match handle.lock().unwrap().http_backend.clone() {
+        Some(b) => b,
+        None => return,
+    };
+    let client = reqwest::Client::new();
+    let stream_url = format!("{}/api/stream", base.trim_end_matches('/'));
+    let post_url = format!("{}/api/run_command", base.trim_end_matches('/'));
+    let cancel_url = format!("{}/api/cancel", base.trim_end_matches('/'));
+
+    // 后台:轮询本地命令队列 → POST 到后端(后端执行后经 SSE 回流)。
+    let h2 = handle.clone();
+    let post_url_c = post_url.clone();
+    let client_c = client.clone();
+    let _poster = tokio::spawn(async move {
+        loop {
+            let pending = { h2.lock().unwrap().queue.pop_front() };
+            if let Some(p) = pending {
+                let _ = client_c
+                    .post(&post_url_c)
+                    .json(&serde_json::json!({"block_id": p.block_id, "cmd": p.cmd}))
+                    .send()
+                    .await;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            // 取消标志 → POST /api/cancel。
+            let cancels: Vec<i64> = {
+                let mut h = h2.lock().unwrap();
+                let keys: Vec<i64> = h.cancel_flags.drain().filter(|(_, v)| *v).map(|(k, _)| k).collect();
+                keys
+            };
+            if !cancels.is_empty() {
+                let _ = client_c.post(&cancel_url).send().await;
+            }
+        }
+    });
+
+    // 主:循环连 SSE(断线重连)。
+    loop {
+        match client.get(&stream_url).send().await {
+            Ok(resp) => {
+                use futures::StreamExt;
+                let mut byte_stream = resp.bytes_stream();
+                let mut acc = String::new();
+                while let Some(chunk_res) = byte_stream.next().await {
+                    match chunk_res {
+                        Ok(bytes) => {
+                            acc.push_str(&String::from_utf8_lossy(&bytes));
+                            // 按 SSE 帧边界 "\n\n" 切分。
+                            while let Some(idx) = acc.find("\n\n") {
+                                let frame = acc[..idx].to_string();
+                                acc = acc[idx + 2..].to_string();
+                                // 提取 `data:` 行。
+                                let data: String = frame
+                                    .lines()
+                                    .filter_map(|l| l.strip_prefix("data:").map(|s| s.trim_start().to_string()))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                if data.is_empty() {
+                                    continue;
+                                }
+                                // 解析 JSON,取 event 字段判别。
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                                    let event = v
+                                        .get("event")
+                                        .and_then(|e| e.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    if event == "command_output" || event == "command_result" {
+                                        let _ = tx.send(ShellStreamEvent {
+                                            event,
+                                            payload_json: v.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+        // 断线后等一会再重连。
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+}
+
+/// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
+/// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
+fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
+    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        let Some(rx) = lock.as_mut() else {
+            return None;
+        };
+        // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
+        match rx.try_recv() {
+            Ok(ev) => Some(IcedMessage {
+                widget: "ShellStore".to_string(),
+                event: ev.event,
+                input_value: Some(ev.payload_json),
+            }),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        }
+    })
+}
+
 /// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
 ///
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
@@ -2590,6 +2949,15 @@ fn compare_pngs(
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         *lock = Some(mcp_action_rx);
+    }
+
+    // Start shell executor (merged in-process / HTTP SSE bridge, ash-gui M1).
+    // Returns the event receiver; stash it in SHELL_EVENT_RX for the subscription.
+    {
+        let shell_rx = start_shell_executor();
+        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+        let mut lock = guard.lock().unwrap();
+        *lock = Some(shell_rx);
     }
 
     // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
@@ -3170,6 +3538,56 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────
+        // subscription 把 command_output/command_result 事件送成 IcedMessage
+        // (widget="ShellStore",input_value=完整 JSON)。VM 无法收 struct 参
+        // (push_value 对 Obj 推占位 0),故此处先 write_state 预置字段,
+        // 再以**无参**触发 ShellStore 的 RunOutput/RunResult handler —— handler
+        // body 读预置字段(shell_store.at 的 `__sse_*`)。
+        if msg.event == "command_output" || msg.event == "command_result" {
+            if let Some(json) = &msg.input_value {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                    // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms}
+                    if let Some(bid) = v.get("block_id").and_then(|x| x.as_i64()) {
+                        let _ = state.component.write_state("__sse_block_id", auto_val::Value::Int(bid as i32));
+                    }
+                    if msg.event == "command_output" {
+                        let chunk = v.get("chunk").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let _ = state.component.write_state("__sse_chunk", auto_val::Value::str(&chunk));
+                        // 触发无参 RunOutput(读 __sse_block_id/__sse_chunk)。
+                        let _ = state.component.on_with_input_for("ShellStore", "RunOutput", None);
+                    } else {
+                        // command_result:解析 status / cwd / duration_ms。
+                        let cwd = v.get("cwd").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let dur = v.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
+                        // status:Success(裸串)|{"Failed":msg}(对象)|"Cancelled"。
+                        // 用 JSON 字符串存,handler 内按形状判断(对齐 store 原逻辑)。
+                        let status_str = match v.get("status") {
+                            Some(serde_json::Value::String(s)) => s.clone(),
+                            Some(obj @ serde_json::Value::Object(_)) => obj.to_string(),
+                            _ => "Failed".to_string(),
+                        };
+                        // output(merged mock 路径下为 null;HTTP 模式后端可能返回
+                        // RenderedOutput。把 output 序列化存 __sse_output_text,handler
+                        // 视需要取 Text 变体或留空 —— merged 下用 streamed_text 作 output)。
+                        let output_text = v
+                            .get("output")
+                            .and_then(|o| o.get("Text"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let _ = state.component.write_state("__sse_cwd", auto_val::Value::str(&cwd));
+                        let _ = state.component.write_state("__sse_status", auto_val::Value::str(&status_str));
+                        let _ = state.component.write_state("__sse_output_text", auto_val::Value::str(&output_text));
+                        let _ = state.component.write_state("__sse_duration_ms", auto_val::Value::Int(dur));
+                        let _ = state.component.on_with_input_for("ShellStore", "RunResult", None);
+                    }
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+            return iced::Task::none();
+        }
+
         let event_name = {
             let name = msg.event.trim_start_matches('.');
             if let Some(pos) = name.rfind("::") { &name[pos + 2..] } else { name }
@@ -3199,6 +3617,57 @@ fn compare_pngs(
             ev_name == &event_name
                 || !input_map.contains_key(ev_name)
         });
+
+        // ── Shell bridge:RunCommand 后提交执行器;Cancel 标记取消(ash-gui M1)
+        // store 的 .RunCommand(cmd) handler body 建好 Running block 后,把
+        // {block_id, cmd} 写入 __pending_command_* 预置字段(不再调 shell 后端)。
+        // 这里读出提交给执行器线程(merged 模式本地执行 / HTTP 模式 POST 后端)。
+        if event_name == "RunCommand" {
+            let bid = state.component.read_state("__pending_command_id")
+                .map(|v| v.as_int() as i64).unwrap_or(0);
+            let cmd = state.component.read_state("__pending_command_str")
+                .map(|v| v.as_str().to_string()).unwrap_or_default();
+            let cwd = state.component.read_state("cwd")
+                .map(|v| v.as_str().to_string()).unwrap_or_default();
+            if !cmd.is_empty() && bid != 0 {
+                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                    if let Ok(mut h) = handle.lock() {
+                        h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                            block_id: bid,
+                            cmd,
+                            cwd,
+                        });
+                    }
+                }
+            }
+        }
+        if event_name == "Cancel" {
+            // store .Cancel handler 把所有 Running block 标 Cancelled(原逻辑保留);
+            // 这里额外通知执行器线程停掉对应进程(merged:标所有队列里的 + 记录)。
+            // 因 store 不带 block_id,简化:标 cancel_flags 里所有当前 Running。
+            // 读 blocks 找 Running 的 id(若可读);否则队列/进程级取消。
+            if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                if let Ok(mut h) = handle.lock() {
+                    // 读 store blocks 找 Running block_id(VM read_state_as_vec)。
+                    if let Ok(blocks) = state.component.read_state_as_vec("blocks") {
+                        for b in &blocks {
+                            // blocks 元素是 Obj;取 .id + .status.kind。
+                            if let auto_val::Value::Obj(obj) = b {
+                                let bid = obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0);
+                                let kind = obj.get("status")
+                                    .and_then(|s| if let auto_val::Value::Obj(so) = s {
+                                        so.get("kind").map(|k| k.as_str().to_string())
+                                    } else { None })
+                                    .unwrap_or_default();
+                                if kind == "Running" && bid != 0 {
+                                    h.cancel_flags.insert(bid, true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Post-process Lap: format lap entries with "Lap N: time" prefix.
         // The bytecode handler already shifts lap3=lap2, lap2=lap1, lap1=time.
@@ -3396,6 +3865,9 @@ fn compare_pngs(
             subs.push(keyboard_subscription(_state.component.key_bindings()));
             // MCP action channel — polls for injected actions from AI agent (Plan 278)
             subs.push(mcp_action_subscription());
+            // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
+            // dispatches command_output/command_result to ShellStore handlers.
+            subs.push(shell_event_subscription());
             // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
             // app while an agent is connected. Only ticks when MCP is active.
             if _state.mcp_shared.is_some() {
@@ -7733,5 +8205,94 @@ mod tests {
             }
             _ => panic!("convert_view_messages dropped the Grid (hit the _ => Empty wildcard)"),
         }
+    }
+
+    // ── Shell SSE bridge (ash-gui M1) ──────────────────────────────────
+    // 验证执行器线程的命令执行 + 事件回流闭环,不依赖 VM/UI。
+    // 这覆盖 M1 的 Rust 核心逻辑:队列提交 → std::process 执行 → command_output/
+    // command_result 事件经 mpsc channel 产出。VM 侧的预置字段派发由 smoke 测试
+    // + 端到端测试(M3,需先修 view_template 不展开 Component 的 MCP 缺陷)覆盖。
+    //
+    // 注意:执行器用 OnceLock 全局量(SHELL_EXEC_HANDLE / SHELL_EVENT_RX),进程
+    // 生命期只初始化一次。测试间共享同一执行器线程 + receiver,故合并到一个测试
+    // 函数里顺序提交两条命令,避免全局量二次初始化导致命令丢进无人读的队列。
+
+    #[test]
+    fn test_shell_executor_success_and_failure() {
+        let rx = start_shell_executor();
+
+        // ── 成功路径:echo ──
+        {
+            let handle = SHELL_EXEC_HANDLE.get().expect("executor handle registered");
+            let mut h = handle.lock().unwrap();
+            h.queue.push_back(PendingShellCommand {
+                block_id: 42,
+                cmd: "echo hello_m1_bridge".to_string(),
+                cwd: ".".to_string(),
+            });
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut got_success = false;
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(ev) if ev.event == "command_result" => {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&ev.payload_json).expect("result is JSON");
+                    assert_eq!(v["block_id"], 42, "success block_id matches");
+                    assert_eq!(
+                        v["status"], "Success",
+                        "echo should succeed: {}",
+                        ev.payload_json
+                    );
+                    got_success = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("executor channel disconnected before success result");
+                }
+            }
+        }
+        assert!(got_success, "executor emitted Success result for echo");
+
+        // ── 失败路径:nonexistent command ──
+        {
+            let handle = SHELL_EXEC_HANDLE.get().unwrap();
+            let mut h = handle.lock().unwrap();
+            h.queue.push_back(PendingShellCommand {
+                block_id: 7,
+                cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
+                cwd: ".".to_string(),
+            });
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut got_failed = false;
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(ev) if ev.event == "command_result" => {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&ev.payload_json).expect("result is JSON");
+                    assert_eq!(v["block_id"], 7, "failure block_id matches");
+                    assert!(
+                        v["status"].is_object(),
+                        "nonexistent command should fail: {}",
+                        ev.payload_json
+                    );
+                    assert!(
+                        v["status"]["Failed"].is_string(),
+                        "Failed variant carries a message"
+                    );
+                    got_failed = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("executor channel disconnected before failure result");
+                }
+            }
+        }
+        assert!(got_failed, "executor emitted Failed result for bad command");
     }
 }
