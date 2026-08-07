@@ -219,7 +219,11 @@ P11.1（i64，独立）→ P11.2（str，独立）→ P11.3（&[T] 返回，删 
 
 ## Phase 12：§6 前端 SSE typing 端到端验证
 
-> **关键发现**：后端逻辑已落地，但**前端 store/后端产物全是旧的**（缓存未失效），且存在**协议不匹配 bug**——即便重生成，typing 也会渲染 `[object Object] is typing…`。
+> **状态**：🟡 协议修复已落地（P12.0/P12.1），运行时验证（P12.2 重生成 + P12.4 T9）待 dev-server 环境。
+> **本轮已做**：后端广播改为 `{"event":"Typing","name": input.sender}`（`api_gen.rs` typing 分支用 `serde_json::json!` + 固定 `name` 字段）；前端 `chat_store.at` 的 `Typing` 改为对象变体 `Typing(TypingEvent)`，handler 读 `evt.name`（解决 `[object Object]` 协议 bug）。测试 `test_sse_broadcast_event_name_not_hardcoded` 更新。
+> **待运行时**：清 `.auto/ui-cache.json` + `auto run` 重生成 store（验证 EventSource + dispatch）+ playwright T9。
+
+> **关键发现**（调研）：后端逻辑已落地，但**前端 store/后端产物全是旧的**（缓存未失效），且存在**协议不匹配 bug**——即便重生成，typing 也会渲染 `[object Object] is typing…`。本轮已修此 bug。
 
 ### P12.0 核心协议 bug（阻塞项）
 - 后端广播（`api_gen.rs:1313-1319` void+Typing 分支）：`serde_json::to_value(&input)` → `{"event":"Typing","sender":"You"}`。

@@ -1341,14 +1341,22 @@ fn generate_api_rs(
         if let Some(deleg) = &db_delegation {
             let call = format!("crate::db::{}({})", deleg.db_fn, deleg.args.join(", "));
             if is_void {
-                // Plan 399 §6: a void POST that broadcasts (e.g. typing signal)
-                // emits the input fields as the SSE payload with the event name.
+                // Plan 399 §6/Phase 12: a void POST that broadcasts (e.g. typing
+                // signal) emits a single-value SSE payload. The frontend ChatEvent
+                // declares `Typing(str)` (single-value variant), so the broadcast
+                // uses a fixed "name" field carrying the typing user's name — the
+                // store handler reads `evt.name`. (Object variants like NewMessage
+                // broadcast the whole struct, which already matches.)
                 if has_sse && bcast_evt.as_deref() == Some("Typing") {
                     lines.push(format!("    {};", call));
-                    lines.push("    let mut evt = serde_json::to_value(&input).unwrap_or_default();".to_string());
+                    // Build {"event":"Typing","name": <first str body param>}.
+                    // The typing endpoint conventionally takes a single `sender`
+                    // str param naming who is typing.
+                    let name_field = endpoint_body_params(endpoint)
+                        .first().map(|p| p.name.as_str()).unwrap_or("sender");
                     lines.push(format!(
-                        "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
-                        bcast_evt.as_deref().unwrap_or("Typing")
+                        "    let evt = serde_json::json!({{ \"event\": \"Typing\", \"name\": input.{} }});",
+                        name_field
                     ));
                     lines.push("    crate::events::broadcast(evt.to_string());".to_string());
                     lines.push("    StatusCode::OK".to_string());
@@ -2512,11 +2520,12 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
 
         // create POST broadcasts "NewMessage" (was hardcoded before §6).
         assert!(api_rs.contains("\"NewMessage\""), "create broadcasts NewMessage: {}", api_rs);
-        // typing POST (void) broadcasts "Typing" with the input payload.
+        // typing POST (void) broadcasts "Typing" with the name field (Phase 12
+        // protocol: single-value variant uses a fixed "name" field, not &input).
         assert!(api_rs.contains("\"Typing\""), "typing broadcasts Typing: {}", api_rs);
         assert!(
-            api_rs.contains("serde_json::to_value(&input)") && api_rs.contains("Typing"),
-            "typing broadcasts input payload: {}", api_rs
+            api_rs.contains("serde_json::json!") && api_rs.contains("\"name\": input.sender"),
+            "typing broadcasts json! with name field: {}", api_rs
         );
     }
 
