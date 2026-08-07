@@ -505,6 +505,26 @@ impl RustTrans {
         &mut self.struct_fields
     }
 
+    /// Plan musk-022 CRUD 智能扩展: register a struct type so isolated fn
+    /// transpilation resolves `Type { field: val }` construction. Mirrors
+    /// the whole-module pre-scan.
+    pub fn register_type(&mut self, name: &str, fields: Vec<(&str, Type)>) {
+        let name_a: AutoStr = AutoStr::from(name);
+        let field_names: Vec<AutoStr> = fields.iter().map(|(n, _)| AutoStr::from(*n)).collect();
+        self.struct_fields.insert(name_a.clone(), field_names);
+        self.struct_field_types.insert(name_a, fields.into_iter().map(|(n, t)| (AutoStr::from(n), t)).collect());
+    }
+
+    /// Plan musk-022 CRUD 智能扩展: transpile a single `Fn` AST to Rust text
+    /// (no module header/imports). Reuses `fn_decl` (proven by trans_incremental).
+    pub fn transpile_fn(&mut self, f: &Fn) -> AutoResult<String> {
+        let mut sink = Sink::new(AutoStr::from(f.name.as_str()));
+        self.fn_decl(f, &mut sink)?;
+        let out = String::from_utf8(sink.done()?.to_vec())
+            .map_err(|e| format!("Invalid UTF-8 in transpile_fn output: {}", e))?;
+        Ok(out)
+    }
+
     /// Mutable access to the fn_ret_types cache (for cross-module / sibling
     /// pre-population from the CLI single-file path).
     pub fn fn_ret_types_mut(&mut self) -> &mut HashMap<AutoStr, Type> {
@@ -3686,6 +3706,33 @@ impl RustTrans {
                                     return Ok(());
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Plan musk-022 CRUD 扩展: `List<T>.new(expr)` -> `expr` (List maps to Vec in
+        // Rust, and the array literal expr is already a vec![...]; the .new()
+        // wrapper is a no-op constructor that must be stripped, or Rust sees
+        // `List<Message>.new(vec![...])` literally (fails: `List` isn't a value).
+        // Matches `Expr::Dot(GenName("List"/"Array"), "new")` and the parsed
+        // generic-ident forms. Only strips when there is exactly one positional arg.
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if method.as_str() == "new" {
+                let is_collection_ctor = match obj.as_ref() {
+                    Expr::GenName(n) => matches!(n.as_str(), "List" | "Array"),
+                    Expr::Ident(n) => matches!(n.as_str(), "List" | "Array"),
+                    // `List<Message>` parses as `List < Message` (Bina with Lt) since
+                    // `<` is the comparison operator; recognize the generic form.
+                    Expr::Bina(lhs, Op::Lt, _) => matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")),
+                    _ => false,
+                };
+                if is_collection_ctor {
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        if call.args.args.len() == 1 {
+                            self.expr(a, out)?;
+                            return Ok(());
                         }
                     }
                 }
@@ -10573,7 +10620,11 @@ impl RustTrans {
         write!(sink.body, " ")?;
 
         // Plan 321: Generator functions wrap body in async_stream::stream! {}
-        if is_generator_fn {
+        // Plan musk-022: only wrap when the body actually yields. A `~Stream<T>`
+        // function written as `return <expr>` (no yield) is a stream consumer
+        // and must NOT be wrapped (return inside the macro wouldn't produce a stream).
+        let body_yields = Self::scan_body_has_yield(&fn_decl.body);
+        if is_generator_fn && body_yields {
             write!(sink.body, "{{ async_stream::stream! {{")?;
         }
 
@@ -10598,11 +10649,50 @@ impl RustTrans {
         self.main_actor_epilogue = None;
 
         // Plan 321: Close async_stream::stream! wrapper
-        if is_generator_fn {
+        if is_generator_fn && body_yields {
             write!(sink.body, " }} }}")?;
         }
 
         Ok(())
+    }
+
+    /// Plan musk-022: does this function body contain a `yield` expression?
+    fn scan_body_has_yield(body: &Body) -> bool {
+        body.stmts.iter().any(Self::stmt_has_yield)
+    }
+
+    fn stmt_has_yield(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(e) => Self::expr_has_yield(e),
+            Stmt::Return(e) => Self::expr_has_yield(e),
+            Stmt::If(iff) => iff.branches.iter().any(|br| {
+                Self::expr_has_yield(&br.cond) || Self::scan_body_has_yield(&br.body)
+            }) || iff.else_.as_ref().map_or(false, |b| Self::scan_body_has_yield(b)),
+            Stmt::For(f) => Self::expr_has_yield(&f.range) || Self::scan_body_has_yield(&f.body),
+            Stmt::Block(b) => Self::scan_body_has_yield(b),
+            _ => false,
+        }
+    }
+
+    fn expr_has_yield(expr: &Expr) -> bool {
+        match expr {
+            Expr::Yield(_) => true,
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e)
+            | Expr::Unary(_, e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
+            | Expr::ErrorPropagate(e) | Expr::BoxExpr(e) | Expr::ArcExpr(e) => Self::expr_has_yield(e),
+            Expr::Bina(lhs, _, rhs) => Self::expr_has_yield(lhs) || Self::expr_has_yield(rhs),
+            Expr::NullCoalesce(a, b) => Self::expr_has_yield(a) || Self::expr_has_yield(b),
+            Expr::Dot(receiver, _) => Self::expr_has_yield(receiver),
+            Expr::Call(call) => Self::expr_has_yield(&call.name)
+                || call.args.args.iter().any(|arg| match arg {
+                    crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Self::expr_has_yield(e),
+                    _ => false,
+                }),
+            Expr::Index(t, i) => Self::expr_has_yield(t) || Self::expr_has_yield(i),
+            Expr::Array(elems) | Expr::Tuple(elems) => elems.iter().any(Self::expr_has_yield),
+            Expr::Await { expr: e } | Expr::Go { expr: e } => Self::expr_has_yield(e),
+            _ => false,
+        }
     }
 
     /// Plan 204 Phase 1D: Emit all statements in a loop body.
@@ -17517,6 +17607,34 @@ pub fn transpile_rust_with_siblings(
 
 /// Plan 310 Phase 1: Run escape analysis on source and return a summary
 /// (function name → number of tracked bindings). For verification that the
+/// Plan musk-022 CRUD 智能扩展: transpile_fn turns a single Fn AST into Rust.
+#[test]
+fn test_transpile_fn_single_function() {
+    use crate::parser::Parser;
+    let code = r#"
+pub type Note = { id: int, title: str }
+pub fn create_note(title str) Note {
+    let n = Note { id: 1, title: title }
+    return n
+}
+"#;
+    let mut parser = Parser::from(code);
+    let ast = parser.parse().unwrap();
+    // 取第一个 Stmt::Fn
+    let fn_ast = ast.stmts.iter().find_map(|st| match st {
+        crate::ast::Stmt::Fn(f) => Some(f.clone()),
+        _ => None,
+    }).expect("no fn found");
+    let mut t = RustTrans::new(AutoStr::from("test"));
+    // 预注册 Note 类型（字段名 + 类型），让构造体能解析
+    t.register_type("Note", vec![
+        ("id", Type::Int),
+        ("title", Type::StrOwned),
+    ]);
+    let out = t.transpile_fn(&fn_ast).unwrap();
+    assert!(out.contains("fn create_note"), "transpile_fn output must contain fn: {}", out);
+}
+
 /// analysis pass actually runs in the transpile pipeline. Not used by the
 /// transpiler output path.
 #[cfg(test)]

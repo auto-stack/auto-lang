@@ -31,6 +31,11 @@ pub struct BackendMapping {
     pub events: HashMap<String, String>,
     /// Additional components exported from same module (for multi-component imports)
     pub extra_components: Vec<String>,
+    /// Plan musk-022 Phase 3: npm package this builtin tag pulls in (name, version).
+    /// When a widget using this tag is emitted, the package is added to the
+    /// generated project's package.json dependencies. None for tags backed by
+    /// project-local (@/...) or always-present (vue) imports.
+    pub npm_package: Option<(String, String)>,
 }
 
 impl BackendMapping {
@@ -42,6 +47,7 @@ impl BackendMapping {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         }
     }
 
@@ -56,6 +62,7 @@ impl BackendMapping {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: components[1..].iter().map(|s| s.to_string()).collect(),
+            npm_package: None,
         }
     }
 
@@ -98,6 +105,7 @@ impl Default for BackendMapping {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         }
     }
 }
@@ -197,6 +205,7 @@ mod tests {
             props,
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         };
 
         spec.backends.insert("jet".to_string(), mapping);

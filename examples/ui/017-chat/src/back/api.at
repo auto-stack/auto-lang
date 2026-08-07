@@ -1,0 +1,35 @@
+// api.at — Chat API (Plan musk-022: first SSE multi-event example).
+// CRUD message endpoints + a streaming endpoint that fans out events.
+
+pub type Message = {
+    id: int
+    sender: str
+    text: str
+    time: str
+    mine: bool
+}
+
+// SSE event union. resolve_stream_variants reads this to wire the frontend
+// dispatch (new_message -> NewMessage, typing -> Typing).
+pub tag ChatEvent {
+    NewMessage(Message),
+    Typing(str),
+}
+
+use db
+
+#[api(method = "GET", path = "/api/messages")]
+pub fn list_messages() []Message {
+    return db.all_messages()
+}
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(sender str, text str) Message {
+    return db.create_message(sender, text)
+}
+
+/// GET /api/stream — frontend opens EventSource here (codegen-driven).
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> {
+    return bus.subscribe()
+}

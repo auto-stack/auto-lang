@@ -2,6 +2,7 @@
 //!
 //! Plan 102 Phase 5.1: Types for API annotation parsing and code generation
 
+use crate::ast::Body;
 use std::collections::HashMap;
 
 /// API annotation attributes parsed from `#[api(...)]`
@@ -144,6 +145,9 @@ pub struct ApiEndpoint {
 
     /// Documentation comment
     pub doc: Option<String>,
+
+    /// Function body AST (Plan musk-022 CRUD 智能扩展).
+    pub body: Option<Body>,
 }
 
 impl ApiEndpoint {
@@ -154,6 +158,7 @@ impl ApiEndpoint {
             params: Vec::new(),
             return_type: "void".to_string(),
             doc: None,
+            body: None,
         }
     }
 

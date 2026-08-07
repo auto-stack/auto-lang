@@ -106,6 +106,15 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
 /// (Plan 043 stream phase.) Uses a targeted regex scan (robust against
 /// `use types:`-style module references that defeat full AST parsing). Returns
 /// an empty vec if api.at is absent or has no stream endpoints.
+///
+/// Plan musk-022 Phase 1: for each endpoint, also resolve the discriminator
+/// field name and variant→action map from the inner type `T`'s definition.
+/// `T` is expected to be a `#[serde(tag = "X", rename_all = "snake_case")] pub tag`
+/// (externally-tagged enum) declared in the same file. When found, each variant
+/// name is converted to its snake_case wire form (matching serde's rename) and
+/// paired with its PascalCase action name. When `T` is not resolvable here,
+/// `variants` stays empty and the codegen falls back to the legacy
+/// `command_output`/`command_result` dispatch (backward compatible).
 pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::StreamEndpoint> {
     let root = std::path::Path::new(root_dir);
     let src_back = root.join("src").join("back").join("api.at");
@@ -129,13 +138,144 @@ pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::
 
     re.captures_iter(&content)
         .filter_map(|cap| {
+            let path = cap.get(1)?.as_str().to_string();
+            let fn_name = cap.get(2)?.as_str().to_string();
+            let item_type = cap.get(3)?.as_str().trim().to_string();
+            let (discriminator, variants) = resolve_stream_variants(&content, &item_type);
             Some(crate::aura::StreamEndpoint {
-                path: cap.get(1)?.as_str().to_string(),
-                fn_name: cap.get(2)?.as_str().to_string(),
-                item_type: cap.get(3)?.as_str().trim().to_string(),
+                path,
+                fn_name,
+                item_type,
+                discriminator,
+                variants,
             })
         })
         .collect()
+}
+
+/// Plan musk-022 Phase 1: resolve the SSE discriminator field name and the
+/// variant→action map for a stream's inner type `T`. Scans `content` for a
+/// `#[serde(tag = "X", ...)] pub tag T { V1, V2 {..}, ... }` declaration
+/// (externally-tagged enum). Returns `("event", [])` (legacy defaults) when `T`
+/// is not found or is not a `pub tag` with serde tag annotation.
+fn resolve_stream_variants(content: &str, type_name: &str) -> (String, Vec<(String, String)>) {
+    // Step 1: locate a `pub tag <type_name> {` or `pub enum <type_name> {`
+    // declaration and capture any preceding `#[serde(...)]` attribute. We only
+    // match up to the opening brace here (not the body), because variant bodies
+    // like `Delta { text str }` contain nested braces that defeat a naive
+    // `[^}]*` regex. Step 2 braces-balances to extract the full body.
+    let head_re = match regex::Regex::new(&format!(
+        r#"(?s)(#\[serde\(([^)]*)\)\]\s*)?(?:pub\s+)?(?:tag|enum)\s+{}\s*\{{"#,
+        regex_escape(type_name)
+    )) {
+        Ok(r) => r,
+        Err(_) => return ("event".to_string(), Vec::new()),
+    };
+    let Some(head_match) = head_re.captures(content) else {
+        return ("event".to_string(), Vec::new());
+    };
+    let serde_args = head_match.get(2).map(|m| m.as_str()).unwrap_or("");
+
+    // Step 2: from the opening `{` (end of the head match), braces-balance to
+    // find the matching closing `}`. Nested variant bodies are handled because
+    // we count every `{` and `}`.
+    let body_start = head_match.get(0).unwrap().end();
+    let body = match balance_braces(&content[body_start..]) {
+        Some(b) => b,
+        None => return ("event".to_string(), Vec::new()),
+    };
+
+    // Discriminator: `tag = "X"` in #[serde(...)]. Default "event" when absent.
+    let discriminator = regex::Regex::new(r#"tag\s*=\s*"([^"]+)""#)
+        .ok()
+        .and_then(|re| re.captures(serde_args))
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .unwrap_or_else(|| "event".to_string());
+
+    // rename_all: when "snake_case", variant names get snake_cased on the wire.
+    let snake = serde_args.contains("snake_case");
+
+    // Variants: each line in the body looks like `VariantName { ... }` or
+    // `VariantName` or `VariantName Type`. Take the leading PascalCase ident.
+    let variant_re = match regex::Regex::new(r"([A-Z][A-Za-z0-9_]*)") {
+        Ok(r) => r,
+        Err(_) => return (discriminator, Vec::new()),
+    };
+    let mut variants = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        if let Some(m) = variant_re.captures(line) {
+            let name = m.get(1).unwrap().as_str().to_string();
+            let wire = if snake { to_snake_case(&name) } else { name.clone() };
+            variants.push((wire, name));
+        }
+    }
+    (discriminator, variants)
+}
+
+/// Plan musk-022 Phase 1: braces-balance helper. Given a slice starting just
+/// after an opening `{`, return the substring up to (not including) the matching
+/// closing `}`, counting nested braces. Returns None if unbalanced.
+fn balance_braces(s: &str) -> Option<&str> {
+    let mut depth: i32 = 1;
+    let bytes = s.as_bytes();
+    let mut end = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'{' {
+            depth += 1;
+        } else if c == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&s[..end]);
+            }
+        }
+        end += 1;
+        i += 1;
+    }
+    None
+}
+
+/// Escape regex metacharacters in a type name for safe interpolation.
+fn regex_escape(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if r"\.+*?()|[]{}^$".contains(c) {
+                format!("\\{}", c)
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// Convert a PascalCase identifier to snake_case (e.g. `ToolCall` → `tool_call`,
+/// `HTTPError` → `http_error`). Matches serde's `rename_all = "snake_case"`.
+fn to_snake_case(s: &str) -> String {
+    let mut out = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                // Insert underscore before an uppercase letter when preceded by a
+                // lowercase letter or digit, OR before the last uppercase in a
+                // run followed by a lowercase (e.g. "HTTPError" → "http_error").
+                let prev = chars[i - 1];
+                let next_lower = chars.get(i + 1).map(|n| n.is_ascii_lowercase()).unwrap_or(false);
+                if prev.is_ascii_lowercase() || prev.is_ascii_digit() || next_lower {
+                    out.push('_');
+                }
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 // ============================================================================
@@ -941,5 +1081,69 @@ store TagsStore {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+    // ====================================================================
+    // Plan musk-022 Phase 1: resolve_stream_variants parses a
+    // `#[serde(tag="type", rename_all="snake_case")] pub tag T { ... }`
+    // declaration, extracting the discriminator field name and the
+    // wire-value → action-name variant map. Nested variant bodies
+    // (e.g. `Delta { text str }`) must NOT truncate parsing.
+    // ====================================================================
+
+    #[test]
+    fn test_resolve_stream_variants_snake_case_tag() {
+        let content = r#"
+#[serde(tag = "type", rename_all = "snake_case")]
+pub tag SseEventDto {
+    Delta { text str }
+    Thinking { thinking str }
+    ToolCall { id Option<str>, name str, arguments Value }
+    ToolResult { id Option<str>, name str, result str, status str }
+    Done { output str, turns int }
+    Error { message str }
+}
+"#;
+        let (disc, variants) = super::resolve_stream_variants(content, "SseEventDto");
+        assert_eq!(disc, "type");
+        // All 6 variants captured, snake_cased.
+        let wires: Vec<_> = variants.iter().map(|(w, _)| w.as_str()).collect();
+        assert_eq!(wires, vec!["delta", "thinking", "tool_call", "tool_result", "done", "error"]);
+        let actions: Vec<_> = variants.iter().map(|(_, a)| a.as_str()).collect();
+        assert_eq!(
+            actions,
+            vec!["Delta", "Thinking", "ToolCall", "ToolResult", "Done", "Error"]
+        );
+    }
+
+    #[test]
+    fn test_resolve_stream_variants_defaults_when_absent() {
+        // No pub tag declared → legacy defaults.
+        let content = "#[api(...)] pub fn stream() ~Stream<Foo> { }";
+        let (disc, variants) = super::resolve_stream_variants(content, "Foo");
+        assert_eq!(disc, "event");
+        assert!(variants.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_stream_variants_default_discriminator_without_tag_attr() {
+        // A pub tag WITHOUT #[serde(tag=...)] → discriminator defaults to "event".
+        // (Auto's pub tag convention: one variant per line.)
+        let content = "pub tag Plain {\n    A\n    B\n    C\n}";
+        let (disc, variants) = super::resolve_stream_variants(content, "Plain");
+        assert_eq!(disc, "event");
+        assert_eq!(
+            variants.iter().map(|(w, _)| w.as_str()).collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+    }
+
+    #[test]
+    fn test_to_snake_case_variants() {
+        use super::to_snake_case;
+        assert_eq!(to_snake_case("Delta"), "delta");
+        assert_eq!(to_snake_case("ToolCall"), "tool_call");
+        assert_eq!(to_snake_case("ToolResult"), "tool_result");
+        assert_eq!(to_snake_case("HTTPError"), "http_error");
+        assert_eq!(to_snake_case("Done"), "done");
     }
 }

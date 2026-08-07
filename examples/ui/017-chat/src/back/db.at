@@ -1,0 +1,31 @@
+// db.at — Chat data service (in-memory). SSE broadcast is handled by the
+// generated POST handler. NOTE: seed strings ASCII-only (field-splitter).
+
+use api: Message
+
+var messages List<Message> = List<Message>.new([
+    Message { id: 0, sender: "Alice", text: "Hey! How is the project going?", time: "10:00 AM", mine: false },
+    Message { id: 1, sender: "You", text: "Going well! Just finished the SSE integration.", time: "10:02 AM", mine: true },
+    Message { id: 2, sender: "Alice", text: "Nice! Does it handle multiple event types?", time: "10:03 AM", mine: false },
+    Message { id: 3, sender: "You", text: "Yes - NewMessage and Typing both dispatch correctly.", time: "10:05 AM", mine: true },
+    Message { id: 4, sender: "Bob", text: "Morning everyone!", time: "9:30 AM", mine: false },
+])
+
+var nextid int = 5
+
+pub fn all_messages() []Message {
+    return messages
+}
+
+pub fn create_message(sender str, text str) Message {
+    let msg = Message {
+        id: nextid,
+        sender: sender,
+        text: text,
+        time: "Just now",
+        mine: true,
+    }
+    nextid = nextid + 1
+    messages.push(msg)
+    return msg
+}

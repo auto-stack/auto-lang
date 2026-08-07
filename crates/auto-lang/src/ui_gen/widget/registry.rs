@@ -43,6 +43,7 @@ impl WidgetRegistry {
         self.register_layout_widgets();
         self.register_form_widgets();
         self.register_display_widgets();
+        self.register_rich_text_widgets();
         self.register_overlay_widgets();
         self.register_navigation_widgets();
         self.register_feedback_widgets();
@@ -61,6 +62,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         col.backends.insert("jet".to_string(), BackendMapping {
             component: "Column".to_string(),
@@ -68,6 +70,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         col.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -75,6 +78,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(col);
 
@@ -91,6 +95,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         center.backends.insert("jet".to_string(), BackendMapping {
             component: "Column".to_string(),
@@ -98,6 +103,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         center.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -105,6 +111,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(center);
 
@@ -118,6 +125,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         row.backends.insert("jet".to_string(), BackendMapping {
             component: "Row".to_string(),
@@ -125,6 +133,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         row.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -132,6 +141,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(row);
 
@@ -146,6 +156,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         stack.backends.insert("jet".to_string(), BackendMapping {
             component: "Box".to_string(),
@@ -153,6 +164,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         stack.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -160,6 +172,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(stack);
 
@@ -173,6 +186,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(scroll);
 
@@ -186,6 +200,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         spacer.backends.insert("jet".to_string(), BackendMapping {
             component: "Spacer".to_string(),
@@ -193,6 +208,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         spacer.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -200,6 +216,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(spacer);
 
@@ -213,6 +230,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         card.backends.insert("jet".to_string(), BackendMapping {
             component: "Card".to_string(),
@@ -220,6 +238,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         card.backends.insert("vue".to_string(), BackendMapping {
             component: "Card".to_string(),
@@ -227,6 +246,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card);
 
@@ -240,6 +260,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card_header);
 
@@ -253,6 +274,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card_content);
 
@@ -266,6 +288,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card_footer);
 
@@ -279,6 +302,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card_title);
 
@@ -292,6 +316,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(card_description);
 
@@ -306,6 +331,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         scroll_area.backends.insert("vue".to_string(), BackendMapping {
             component: "ScrollArea".to_string(),
@@ -313,6 +339,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(scroll_area);
 
@@ -326,6 +353,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(scroll_viewport);
 
@@ -338,6 +366,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(scroll_scrollbar);
 
@@ -350,6 +379,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(scroll_thumb);
 
@@ -363,6 +393,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         aspect_ratio.backends.insert("vue".to_string(), BackendMapping {
             component: "AspectRatio".to_string(),
@@ -370,6 +401,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(aspect_ratio);
 
@@ -383,6 +415,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(collapsible);
 
@@ -396,6 +429,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(collapsible_trigger);
 
@@ -409,6 +443,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(collapsible_content);
 
@@ -422,6 +457,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         accordion.backends.insert("vue".to_string(), BackendMapping {
             component: "Accordion".to_string(),
@@ -429,6 +465,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(accordion);
 
@@ -442,6 +479,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(accordion_item);
 
@@ -455,6 +493,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(accordion_trigger);
 
@@ -468,6 +507,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(accordion_content);
     }
@@ -483,6 +523,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         button.backends.insert("jet".to_string(), BackendMapping {
             component: "Button".to_string(),
@@ -490,6 +531,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         button.backends.insert("vue".to_string(), BackendMapping {
             component: "Button".to_string(),
@@ -497,6 +539,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(button);
 
@@ -509,6 +552,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         input.backends.insert("jet".to_string(), BackendMapping {
             component: "OutlinedTextField".to_string(),
@@ -516,6 +560,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         input.backends.insert("vue".to_string(), BackendMapping {
             component: "Input".to_string(),
@@ -523,6 +568,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(input);
 
@@ -535,6 +581,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         checkbox.backends.insert("jet".to_string(), BackendMapping {
             component: "Checkbox".to_string(),
@@ -542,6 +589,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         checkbox.backends.insert("vue".to_string(), BackendMapping {
             component: "Checkbox".to_string(),
@@ -549,6 +597,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(checkbox);
 
@@ -562,6 +611,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         switch.backends.insert("jet".to_string(), BackendMapping {
             component: "Switch".to_string(),
@@ -569,6 +619,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         switch.backends.insert("vue".to_string(), BackendMapping {
             component: "Switch".to_string(),
@@ -576,6 +627,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(switch);
 
@@ -589,6 +641,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         select.backends.insert("vue".to_string(), BackendMapping {
             component: "Select".to_string(),
@@ -596,6 +649,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select);
 
@@ -609,6 +663,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_trigger);
 
@@ -621,6 +676,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_value);
 
@@ -634,6 +690,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_content);
 
@@ -648,6 +705,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_item);
 
@@ -661,6 +719,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_group);
 
@@ -674,6 +733,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(select_label);
 
@@ -686,6 +746,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         slider.backends.insert("jet".to_string(), BackendMapping {
             component: "Slider".to_string(),
@@ -693,6 +754,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         slider.backends.insert("vue".to_string(), BackendMapping {
             component: "Slider".to_string(),
@@ -700,6 +762,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(slider);
 
@@ -713,6 +776,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         radio_group.backends.insert("vue".to_string(), BackendMapping {
             component: "RadioGroup".to_string(),
@@ -720,6 +784,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(radio_group);
 
@@ -733,6 +798,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(radio_item);
 
@@ -745,6 +811,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         textarea.backends.insert("jet".to_string(), BackendMapping {
             component: "OutlinedTextField".to_string(),
@@ -752,6 +819,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         textarea.backends.insert("vue".to_string(), BackendMapping {
             component: "Textarea".to_string(),
@@ -759,6 +827,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(textarea);
 
@@ -772,6 +841,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form);
 
@@ -785,6 +855,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form_field);
 
@@ -798,6 +869,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form_label);
 
@@ -811,6 +883,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(label);
 
@@ -824,6 +897,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form_control);
 
@@ -837,6 +911,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form_description);
 
@@ -850,6 +925,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(form_message);
     }
@@ -865,6 +941,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         text.backends.insert("jet".to_string(), BackendMapping {
             component: "Text".to_string(),
@@ -872,6 +949,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         text.backends.insert("vue".to_string(), BackendMapping {
             component: "span".to_string(),
@@ -879,6 +957,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(text);
 
@@ -892,6 +971,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         image.backends.insert("jet".to_string(), BackendMapping {
             component: "Image".to_string(),
@@ -899,6 +979,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         image.backends.insert("vue".to_string(), BackendMapping {
             component: "img".to_string(),
@@ -906,6 +987,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(image);
 
@@ -919,6 +1001,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         badge.backends.insert("vue".to_string(), BackendMapping {
             component: "Badge".to_string(),
@@ -926,6 +1009,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(badge);
 
@@ -939,6 +1023,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         avatar.backends.insert("vue".to_string(), BackendMapping {
             component: "Avatar".to_string(),
@@ -946,6 +1031,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(avatar);
 
@@ -959,6 +1045,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(avatar_image);
 
@@ -972,6 +1059,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(avatar_fallback);
 
@@ -984,6 +1072,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         separator.backends.insert("jet".to_string(), BackendMapping {
             component: "HorizontalDivider".to_string(),
@@ -991,6 +1080,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         separator.backends.insert("vue".to_string(), BackendMapping {
             component: "Separator".to_string(),
@@ -998,6 +1088,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(separator);
 
@@ -1010,6 +1101,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         skeleton.backends.insert("vue".to_string(), BackendMapping {
             component: "Skeleton".to_string(),
@@ -1017,6 +1109,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(skeleton);
 
@@ -1032,6 +1125,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         autodown_editor.backends.insert("jet".to_string(), BackendMapping {
             component: "OutlinedTextField".to_string(),
@@ -1039,6 +1133,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         autodown_editor.backends.insert("vue".to_string(), BackendMapping {
             component: "AutoDownEditor".to_string(),
@@ -1049,8 +1144,49 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(autodown_editor);
+    }
+
+    /// Plan musk-022 Phase 3: rich-text widgets — streaming markdown
+    /// (markstream-vue) and mermaid diagrams. These pull in their npm packages
+    /// automatically via `npm_package` so projects using `markdown {}` /
+    /// `mermaid {}` need no manual `npm_deps` declaration.
+    fn register_rich_text_widgets(&mut self) {
+        // Markdown — streaming markdown renderer (markstream-vue).
+        // Renders markdown content with optional typewriter/streaming effects.
+        // Primary prop `content` accepts a markdown string; `stream` accepts an
+        // SSE chunk for live rendering.
+        let mut markdown = WidgetSpec::new("Markdown", WidgetCategory::Display)
+            .with_alias("markdown");
+        markdown.primary_prop = Some("content".to_string());
+        markdown.has_children = false;
+        markdown.backends.insert("vue".to_string(), BackendMapping {
+            component: "MarkdownRender".to_string(),
+            import: Some("markstream-vue".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: Some(("markstream-vue".to_string(), "^0.0.14-beta.8".to_string())),
+        });
+        self.register(markdown);
+
+        // Mermaid — mermaid diagram renderer. Renders mermaid diagram source
+        // (e.g. `graph TD; A-->B`) into SVG. Primary prop `source`.
+        let mut mermaid = WidgetSpec::new("Mermaid", WidgetCategory::Display)
+            .with_alias("mermaid");
+        mermaid.primary_prop = Some("source".to_string());
+        mermaid.has_children = false;
+        mermaid.backends.insert("vue".to_string(), BackendMapping {
+            component: "Mermaid".to_string(),
+            import: Some("mermaid".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: Some(("mermaid".to_string(), "^11.15.0".to_string())),
+        });
+        self.register(mermaid);
     }
 
     fn register_navigation_widgets(&mut self) {
@@ -1064,6 +1200,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(swiper);
 
@@ -1077,6 +1214,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         tabs.backends.insert("vue".to_string(), BackendMapping {
             component: "Tabs".to_string(),
@@ -1084,6 +1222,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tabs);
 
@@ -1097,6 +1236,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         tabs_list.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsList".to_string(),
@@ -1104,6 +1244,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tabs_list);
 
@@ -1118,6 +1259,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         tabs_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsTrigger".to_string(),
@@ -1125,6 +1267,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tabs_trigger);
 
@@ -1139,6 +1282,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         tabs_content.backends.insert("vue".to_string(), BackendMapping {
             component: "TabsContent".to_string(),
@@ -1146,6 +1290,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tabs_content);
 
@@ -1160,6 +1305,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(navigation);
 
@@ -1173,6 +1319,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_destination);
 
@@ -1186,6 +1333,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb);
 
@@ -1199,6 +1347,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb_list);
 
@@ -1212,6 +1361,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb_item);
 
@@ -1225,6 +1375,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb_link);
 
@@ -1238,6 +1389,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb_page);
 
@@ -1250,6 +1402,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(breadcrumb_sep);
 
@@ -1264,6 +1417,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu);
 
@@ -1278,6 +1432,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu_list);
 
@@ -1292,6 +1447,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu_item);
 
@@ -1306,6 +1462,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu_trigger);
 
@@ -1320,6 +1477,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu_content);
 
@@ -1334,6 +1492,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_menu_link);
 
@@ -1347,6 +1506,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination);
 
@@ -1360,6 +1520,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_list);
 
@@ -1373,6 +1534,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_item);
 
@@ -1385,6 +1547,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_link);
 
@@ -1397,6 +1560,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_ellipsis);
 
@@ -1409,6 +1573,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_next);
 
@@ -1421,6 +1586,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(pagination_prev);
 
@@ -1434,6 +1600,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar);
 
@@ -1447,6 +1614,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_header);
 
@@ -1460,6 +1628,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_content);
 
@@ -1473,6 +1642,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_footer);
 
@@ -1486,6 +1656,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_menu);
 
@@ -1499,6 +1670,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_menu_item);
 
@@ -1512,6 +1684,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sidebar_menu_btn);
 
@@ -1525,6 +1698,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(menu_bar);
 
@@ -1538,6 +1712,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(menu_bar_menu);
 
@@ -1551,6 +1726,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(menu_bar_trigger);
 
@@ -1564,6 +1740,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(menu_bar_content);
 
@@ -1577,6 +1754,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(menu_bar_item);
 
@@ -1590,6 +1768,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dropdown_menu);
 
@@ -1603,6 +1782,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dropdown_trigger);
 
@@ -1616,6 +1796,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dropdown_content);
 
@@ -1629,6 +1810,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dropdown_item);
 
@@ -1642,6 +1824,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(nav_link);
     }
@@ -1660,6 +1843,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog.backends.insert("vue".to_string(), BackendMapping {
             component: "Dialog".to_string(),
@@ -1667,6 +1851,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog);
 
@@ -1680,6 +1865,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_trigger.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTrigger".to_string(),
@@ -1687,6 +1873,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_trigger);
 
@@ -1700,6 +1887,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_content.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogContent".to_string(),
@@ -1707,6 +1895,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_content);
 
@@ -1720,6 +1909,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_header.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogHeader".to_string(),
@@ -1727,6 +1917,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_header);
 
@@ -1740,6 +1931,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogFooter".to_string(),
@@ -1747,6 +1939,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_footer);
 
@@ -1760,6 +1953,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_title.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogTitle".to_string(),
@@ -1767,6 +1961,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_title);
 
@@ -1780,6 +1975,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         dialog_desc.backends.insert("vue".to_string(), BackendMapping {
             component: "DialogDescription".to_string(),
@@ -1787,6 +1983,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_desc);
 
@@ -1800,6 +1997,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(dialog_close);
 
@@ -1813,6 +2011,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         alert_dialog.backends.insert("vue".to_string(), BackendMapping {
             component: "AlertDialog".to_string(),
@@ -1820,6 +2019,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog);
 
@@ -1833,6 +2033,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_trigger);
 
@@ -1846,6 +2047,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_content);
 
@@ -1859,6 +2061,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_header);
 
@@ -1872,6 +2075,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_footer);
 
@@ -1885,6 +2089,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_title);
 
@@ -1898,6 +2103,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_desc);
 
@@ -1911,6 +2117,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_action);
 
@@ -1924,6 +2131,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_dialog_cancel);
 
@@ -1937,6 +2145,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet);
 
@@ -1950,6 +2159,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_trigger);
 
@@ -1963,6 +2173,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_content);
 
@@ -1976,6 +2187,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_header);
 
@@ -1989,6 +2201,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_footer);
 
@@ -2002,6 +2215,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_title);
 
@@ -2015,6 +2229,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sheet_desc);
 
@@ -2028,6 +2243,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer);
 
@@ -2041,6 +2257,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_trigger);
 
@@ -2054,6 +2271,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_content);
 
@@ -2067,6 +2285,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_header);
 
@@ -2080,6 +2299,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_footer);
 
@@ -2093,6 +2313,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_title);
 
@@ -2106,6 +2327,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(drawer_desc);
 
@@ -2119,6 +2341,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(popover);
 
@@ -2132,6 +2355,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(popover_trigger);
 
@@ -2145,6 +2369,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(popover_content);
 
@@ -2158,6 +2383,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tooltip);
 
@@ -2171,6 +2397,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tooltip_trigger);
 
@@ -2184,6 +2411,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(tooltip_content);
 
@@ -2197,6 +2425,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(hover_card);
 
@@ -2210,6 +2439,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(hover_card_trigger);
 
@@ -2223,6 +2453,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(hover_card_content);
 
@@ -2236,6 +2467,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(context_menu);
 
@@ -2249,6 +2481,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(context_menu_trigger);
 
@@ -2262,6 +2495,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(context_menu_content);
 
@@ -2275,6 +2509,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(context_menu_item);
     }
@@ -2290,6 +2525,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         alert.backends.insert("vue".to_string(), BackendMapping {
             component: "Alert".to_string(),
@@ -2297,6 +2533,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert);
 
@@ -2310,6 +2547,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_title);
 
@@ -2323,6 +2561,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(alert_desc);
 
@@ -2336,6 +2575,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         toast.backends.insert("vue".to_string(), BackendMapping {
             component: "Toast".to_string(),
@@ -2343,6 +2583,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast);
 
@@ -2356,6 +2597,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_provider);
 
@@ -2368,6 +2610,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_viewport);
 
@@ -2381,6 +2624,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_action);
 
@@ -2393,6 +2637,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_close);
 
@@ -2406,6 +2651,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_title);
 
@@ -2419,6 +2665,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(toast_desc);
 
@@ -2431,6 +2678,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         progress.backends.insert("jet".to_string(), BackendMapping {
             component: "LinearProgressIndicator".to_string(),
@@ -2438,6 +2686,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         progress.backends.insert("vue".to_string(), BackendMapping {
             component: "Progress".to_string(),
@@ -2445,6 +2694,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(progress);
 
@@ -2457,6 +2707,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(sonner);
     }
@@ -2472,6 +2723,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table.backends.insert("vue".to_string(), BackendMapping {
             component: "Table".to_string(),
@@ -2479,6 +2731,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table);
 
@@ -2492,6 +2745,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_header.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHeader".to_string(),
@@ -2499,6 +2753,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_header);
 
@@ -2512,6 +2767,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_body.backends.insert("vue".to_string(), BackendMapping {
             component: "TableBody".to_string(),
@@ -2519,6 +2775,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_body);
 
@@ -2532,6 +2789,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_footer.backends.insert("vue".to_string(), BackendMapping {
             component: "TableFooter".to_string(),
@@ -2539,6 +2797,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_footer);
 
@@ -2552,6 +2811,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_row.backends.insert("vue".to_string(), BackendMapping {
             component: "TableRow".to_string(),
@@ -2559,6 +2819,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_row);
 
@@ -2572,6 +2833,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_head.backends.insert("vue".to_string(), BackendMapping {
             component: "TableHead".to_string(),
@@ -2579,6 +2841,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_head);
 
@@ -2592,6 +2855,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_cell.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCell".to_string(),
@@ -2599,6 +2863,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_cell);
 
@@ -2612,6 +2877,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         table_caption.backends.insert("vue".to_string(), BackendMapping {
             component: "TableCaption".to_string(),
@@ -2619,6 +2885,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(table_caption);
 
@@ -2632,6 +2899,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(data_table);
 
@@ -2645,6 +2913,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         calendar.backends.insert("jet".to_string(), BackendMapping {
             component: "DatePicker".to_string(),
@@ -2652,6 +2921,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         calendar.backends.insert("vue".to_string(), BackendMapping {
             component: "Calendar".to_string(),
@@ -2659,6 +2929,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar);
 
@@ -2672,6 +2943,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar_grid);
 
@@ -2685,6 +2957,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar_header);
 
@@ -2698,6 +2971,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar_heading);
 
@@ -2711,6 +2985,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar_cell);
 
@@ -2723,6 +2998,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(calendar_day);
 
@@ -2736,6 +3012,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         grid.backends.insert("jet".to_string(), BackendMapping {
             component: "LazyVerticalGrid".to_string(),
@@ -2743,6 +3020,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         grid.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -2750,6 +3028,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(grid);
 
@@ -2763,6 +3042,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         grid_item.backends.insert("jet".to_string(), BackendMapping {
             component: "item".to_string(),
@@ -2770,6 +3050,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         grid_item.backends.insert("vue".to_string(), BackendMapping {
             component: "div".to_string(),
@@ -2777,6 +3058,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(grid_item);
 
@@ -2790,6 +3072,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         list.backends.insert("jet".to_string(), BackendMapping {
             component: "LazyColumn".to_string(),
@@ -2797,6 +3080,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         list.backends.insert("vue".to_string(), BackendMapping {
             component: "ul".to_string(),
@@ -2804,6 +3088,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(list);
 
@@ -2817,6 +3102,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         list_item.backends.insert("jet".to_string(), BackendMapping {
             component: "item".to_string(),
@@ -2824,6 +3110,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         list_item.backends.insert("vue".to_string(), BackendMapping {
             component: "li".to_string(),
@@ -2831,6 +3118,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(list_item);
 
@@ -2845,6 +3133,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(area_chart);
 
@@ -2858,6 +3147,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(bar_chart);
 
@@ -2871,6 +3161,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(line_chart);
 
@@ -2884,6 +3175,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(donut_chart);
 
@@ -2897,6 +3189,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: vec!["ChartTooltip".to_string(), "ChartLegend".to_string(), "ChartStyle".to_string()],
+            npm_package: None,
         });
         self.register(chart);
 
@@ -2910,6 +3203,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(chart_tooltip);
 
@@ -2923,6 +3217,7 @@ impl WidgetRegistry {
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
+            npm_package: None,
         });
         self.register(chart_legend);
     }
@@ -2938,6 +3233,7 @@ impl WidgetRegistry {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 extra_components: Vec::new(),
+                npm_package: None,
             });
             self.register(widget);
         }
@@ -2952,6 +3248,7 @@ impl WidgetRegistry {
                 props: HashMap::new(),
                 events: HashMap::new(),
                 extra_components: Vec::new(),
+                npm_package: None,
             });
             self.register(widget);
         }

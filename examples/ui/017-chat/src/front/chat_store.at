@@ -1,0 +1,24 @@
+// chat_store.at — SharedStore (Plan musk-022 SSE multi-event).
+// Consumes the SSE stream via codegen-injected EventSource.
+use back.api: list_messages
+
+store ChatStore {
+    model {
+        var messages []Message = []
+        var typing_name str = ""
+        var loading bool = false
+    }
+
+    msg Msg { Init, NewMessage(Message), Typing(str), RefreshMessages }
+
+    on {
+        .Init -> {
+            .loading = true
+            .messages = list_messages()
+            .loading = false
+        }
+        .NewMessage(msg) -> { .messages.push(msg) }
+        .Typing(name) -> { .typing_name = name }
+        .RefreshMessages -> { .messages = list_messages() }
+    }
+}
