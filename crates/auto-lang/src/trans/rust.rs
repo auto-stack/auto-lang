@@ -505,6 +505,26 @@ impl RustTrans {
         &mut self.struct_fields
     }
 
+    /// Plan musk-022 CRUD 智能扩展: register a struct type so isolated fn
+    /// transpilation resolves `Type { field: val }` construction. Mirrors
+    /// the whole-module pre-scan.
+    pub fn register_type(&mut self, name: &str, fields: Vec<(&str, Type)>) {
+        let name_a: AutoStr = AutoStr::from(name);
+        let field_names: Vec<AutoStr> = fields.iter().map(|(n, _)| AutoStr::from(*n)).collect();
+        self.struct_fields.insert(name_a.clone(), field_names);
+        self.struct_field_types.insert(name_a, fields.into_iter().map(|(n, t)| (AutoStr::from(n), t)).collect());
+    }
+
+    /// Plan musk-022 CRUD 智能扩展: transpile a single `Fn` AST to Rust text
+    /// (no module header/imports). Reuses `fn_decl` (proven by trans_incremental).
+    pub fn transpile_fn(&mut self, f: &Fn) -> AutoResult<String> {
+        let mut sink = Sink::new(AutoStr::from(f.name.as_str()));
+        self.fn_decl(f, &mut sink)?;
+        let out = String::from_utf8(sink.done()?.to_vec())
+            .map_err(|e| format!("Invalid UTF-8 in transpile_fn output: {}", e))?;
+        Ok(out)
+    }
+
     /// Mutable access to the fn_ret_types cache (for cross-module / sibling
     /// pre-population from the CLI single-file path).
     pub fn fn_ret_types_mut(&mut self) -> &mut HashMap<AutoStr, Type> {
@@ -17560,6 +17580,34 @@ pub fn transpile_rust_with_siblings(
 
 /// Plan 310 Phase 1: Run escape analysis on source and return a summary
 /// (function name → number of tracked bindings). For verification that the
+/// Plan musk-022 CRUD 智能扩展: transpile_fn turns a single Fn AST into Rust.
+#[test]
+fn test_transpile_fn_single_function() {
+    use crate::parser::Parser;
+    let code = r#"
+pub type Note = { id: int, title: str }
+pub fn create_note(title str) Note {
+    let n = Note { id: 1, title: title }
+    return n
+}
+"#;
+    let mut parser = Parser::from(code);
+    let ast = parser.parse().unwrap();
+    // 取第一个 Stmt::Fn
+    let fn_ast = ast.stmts.iter().find_map(|st| match st {
+        crate::ast::Stmt::Fn(f) => Some(f.clone()),
+        _ => None,
+    }).expect("no fn found");
+    let mut t = RustTrans::new(AutoStr::from("test"));
+    // 预注册 Note 类型（字段名 + 类型），让构造体能解析
+    t.register_type("Note", vec![
+        ("id", Type::Int),
+        ("title", Type::StrOwned),
+    ]);
+    let out = t.transpile_fn(&fn_ast).unwrap();
+    assert!(out.contains("fn create_note"), "transpile_fn output must contain fn: {}", out);
+}
+
 /// analysis pass actually runs in the transpile pipeline. Not used by the
 /// transpiler output path.
 #[cfg(test)]

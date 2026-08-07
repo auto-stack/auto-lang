@@ -158,6 +158,11 @@ impl ApiExtractor {
         // Extract return type
         endpoint.return_type = type_to_string(&fn_decl.ret);
 
+        // Plan musk-022 CRUD 智能扩展: capture the function body AST so the
+        // rust backend generator can transpile real business logic (a2r)
+        // instead of always applying a CRUD template.
+        endpoint.body = Some(fn_decl.body.clone());
+
         Some(endpoint)
     }
 
@@ -336,5 +341,28 @@ type User {
         assert_eq!(module.types.len(), 1);
         assert_eq!(module.types[0].name, "User");
         assert_eq!(module.types[0].fields.len(), 3);
+    }
+
+    /// Plan musk-022 CRUD 智能扩展: extract_endpoint must capture the body AST.
+    #[test]
+    fn test_extract_endpoint_captures_body() {
+        let code = r#"
+pub type Note = { id: int, title: str }
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str) Note {
+    let n = Note { id: 1, title: title }
+    return n
+}
+"#;
+        let mut parser = Parser::from(code);
+        let ast = parser.parse().unwrap();
+        let module = ApiExtractor::new().extract("test", &ast.stmts);
+        assert_eq!(module.endpoints.len(), 1);
+        let ep = &module.endpoints[0];
+        assert_eq!(ep.fn_name, "create_note");
+        assert!(ep.body.is_some(), "endpoint body AST must be captured");
+        let body = ep.body.as_ref().unwrap();
+        assert!(!body.stmts.is_empty(), "captured body must be non-empty");
     }
 }

@@ -340,6 +340,7 @@ mod tests {
             ],
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
+            body: None,
         };
 
         let result = gen.generate_command(&endpoint);
