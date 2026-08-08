@@ -830,6 +830,39 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // Plan 403: press a sequence of buttons by label, return final state.
+        json!({
+            "name": "autoui_press_sequence",
+            "title": "Press Button Sequence",
+            "description": "Press a sequence of calculator/UI buttons by their label text, then return the resulting application state. Each key is matched to a rendered button by exact label (e.g. \"2\", \"+\", \"=\"). This is the expression-evaluation-via-MCP interface: send [\"2\",\"+\",\"3\",\"=\"] and read the computed result from the returned state — the math happens through real button presses, not direct calculation.\n\n## When to use\n- Drive a calculator: [\"5\",\"*\",\"3\",\"=\"] → state shows display=15\n- Automate any keypad/button-sequence interaction\n- End-to-end verification that button wiring + handlers work\n\n## Parameters\n- keys (required): array of button label strings\n- delay_ms (optional): ms to wait between presses (default 50)\n- state_fields (optional): array of field names to filter the returned state to\n\n## Output\n'Pressed: [2, +, 3, =]\\n\\nState:\\n  display: 5 (int)\\n  ...'",
+            "inputSchema": {
+                "type": "object",
+                "required": ["keys"],
+                "properties": {
+                    "keys": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Button labels to press in order (e.g. [\"2\",\"+\",\"3\",\"=\"])"
+                    },
+                    "delay_ms": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Milliseconds to wait between presses"
+                    },
+                    "state_fields": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "If given, filter the returned state to only these fields"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -851,6 +884,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_vtree" => tool_vtree(shared, args),
         "autoui_find" => tool_find(shared, args),
         "autoui_exists" => tool_exists(shared, args),
+        "autoui_press_sequence" => tool_press_sequence(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -1103,6 +1137,122 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             text_result(action_result.to_aura_string())
         }
         Err(e) => error_result(e.to_string()),
+    }
+}
+
+// ── Helpers for autoui_press_sequence (Plan 403) ─────────────────────────
+
+/// Find buttons whose label matches `label` (case-insensitive substring),
+/// returning up to `limit` VNodeIds. Reuses the same styled-VTree + label
+/// matching as `tool_find`.
+fn find_buttons_by_label(shared: &SharedState, label: &str, limit: usize) -> Vec<VNodeId> {
+    let label_lower = label.to_lowercase();
+    let snap = match shared.styled_vtree.as_ref() {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    snap.vtree.nodes.iter()
+        .filter(|vnode| {
+            format!("{}", vnode.kind).to_lowercase() == "button"
+                && vnode_searchable_text(&vnode.props).to_lowercase() == label_lower
+        })
+        .map(|n| n.id)
+        .take(limit)
+        .collect()
+}
+
+/// Format the state map as human-readable text (mirrors `tool_state` output).
+fn format_state(state: &std::collections::HashMap<String, auto_val::Value>) -> String {
+    if state.is_empty() {
+        return "State: (empty)".to_string();
+    }
+    let mut out = String::from("State:\n");
+    let mut entries: Vec<_> = state.iter().collect();
+    entries.sort_by_key(|(k, _)| k.to_string());
+    for (name, value) in &entries {
+        let type_str = match value {
+            auto_val::Value::Int(_) => "int",
+            auto_val::Value::Float(_) => "float",
+            auto_val::Value::Bool(_) => "bool",
+            auto_val::Value::Str(_) => "str",
+            auto_val::Value::Null => "null",
+            auto_val::Value::Array(_) => "list",
+            auto_val::Value::Obj(_) => "object",
+            _ => "unknown",
+        };
+        out.push_str(&format!("  {}: {} ({})\n", name, value, type_str));
+    }
+    out
+}
+
+// ── Tool: autoui_press_sequence (Plan 403) ──────────────────────────────
+// Press a sequence of buttons by label, then return the final state. Each key
+// is matched to a rendered button by its label text (e.g. "2", "+", "="). This
+// is the "expression evaluation via MCP" interface: send ["2","+","3","="] and
+// read the result from the returned state — the computation happens through
+// real UI button presses, not direct math.
+fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let keys = match args.get("keys").and_then(|v| v.as_array()) {
+        Some(arr) if !arr.is_empty() => arr.clone(),
+        _ => return error_result("Missing or empty required parameter: keys (array of button labels)"),
+    };
+    let delay_ms = args.get("delay_ms").and_then(|v| v.as_u64()).unwrap_or(50);
+
+    let mut pressed: Vec<String> = Vec::new();
+    let mut last_error: Option<String> = None;
+
+    for key_val in &keys {
+        let label = match key_val.as_str() {
+            Some(s) => s,
+            None => { last_error = Some(format!("Non-string key: {:?}", key_val)); break; }
+        };
+        // Find the button by label.
+        let find_result = {
+            let shared = shared_handle.lock().unwrap();
+            find_buttons_by_label(&shared, label, 1)
+        };
+        let vnode_id = match find_result.first() {
+            Some(id) => *id,
+            None => { last_error = Some(format!("No button found with label '{}'", label)); break; }
+        };
+        // Press it.
+        let press_result = {
+            let shared = shared_handle.lock().unwrap();
+            execute_action_vnode(&shared, vnode_id, UiActionType::Press, None)
+        };
+        match press_result {
+            Ok(_) => {
+                pressed.push(label.to_string());
+                if delay_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+            }
+            Err(e) => { last_error = Some(format!("Press '{}' failed: {}", label, e)); break; }
+        }
+    }
+
+    // Read final state.
+    let state_text = {
+        let shared = shared_handle.lock().unwrap();
+        format_state(&shared.state)
+    };
+
+    if let Some(err) = last_error {
+        error_result(format!("Sequence aborted after [{}]: {}", pressed.join(", "), err))
+    } else {
+        let mut msg = format!("Pressed: [{}]\n\n{}", pressed.join(", "), state_text);
+        // If a "state_fields" param was given, filter to just those fields.
+        if let Some(fields) = args.get("state_fields").and_then(|v| v.as_array()) {
+            let want: Vec<String> = fields.iter().filter_map(|f| f.as_str().map(String::from)).collect();
+            msg = format!("Pressed: [{}]\n\n", pressed.join(", "));
+            for line in state_text.lines() {
+                if want.iter().any(|w| line.contains(w.as_str())) {
+                    msg.push_str(line);
+                    msg.push('\n');
+                }
+            }
+        }
+        text_result(msg)
     }
 }
 
@@ -1852,11 +2002,42 @@ fn find_view_by_path<'a>(
     Some(current)
 }
 
+/// Plan 403: encode a parametric message's first arg into the event name, so
+/// the downstream `on_with_input_for` → `decode_payload` chain forwards it to
+/// the handler. Mirrors `renderer::encode_payload` (which is pub(crate) and
+/// can't be re-exported). Format: "{name}\u{1F}{type-code}\u{1F}{value}".
+fn mcp_encode_payload(event_name: &str, args: &[auto_val::Value]) -> String {
+    let Some(v) = args.first() else {
+        return event_name.to_string();
+    };
+    const SEP: char = '\u{1F}';
+    let (tc, val) = match v {
+        auto_val::Value::Int(i) => ("i", i.to_string()),
+        auto_val::Value::Uint(u) => ("u", u.to_string()),
+        auto_val::Value::Bool(b) => ("b", if *b { "1" } else { "0" }.to_string()),
+        auto_val::Value::Float(f) => ("f", f.to_string()),
+        auto_val::Value::Double(d) => ("d", d.to_string()),
+        auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
+        _ => return event_name.to_string(),
+    };
+    format!("{}{}{}{}{}", event_name, SEP, tc, SEP, val)
+}
+
 /// Extract (widget_name, event_name) from a DynamicMessage.
+/// Plan 403: when the message carries parametric args (e.g. `.Digit(7)` →
+/// args=[Int(7)]), encode them into the event name via `encode_payload` so the
+/// downstream `on_with_input_for` → `decode_payload` chain forwards them to the
+/// handler. Without this, `autoui_action press` on `.Digit(7)` calls `.Digit`
+/// with no argument and the handler's `n` is unset.
 fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
     match msg {
-        DynamicMessage::Typed { widget_name, event_name, .. } => {
-            Some((widget_name.clone(), event_name.clone()))
+        DynamicMessage::Typed { widget_name, event_name, args } => {
+            let event = if args.is_empty() {
+                event_name.clone()
+            } else {
+                mcp_encode_payload(event_name, args)
+            };
+            Some((widget_name.clone(), event))
         }
         DynamicMessage::String(name) => Some((String::new(), name.clone())),
     }
