@@ -1690,6 +1690,13 @@ impl VueGenerator {
         }
         // Timer/tick mechanism needs onMounted + onUnmounted
         if widget.tick_interval.is_some() {
+            // The tick timer (`const tickTimer = ref<...>(null)`) always uses
+            // `ref`, but `interval` is stripped from state_vars (extract.rs),
+            // so `needs_ref` above can be false when interval is the only var.
+            // Ensure `ref` is imported whenever the timer code is emitted.
+            if !imports.contains(&"ref") {
+                imports.push("ref");
+            }
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }

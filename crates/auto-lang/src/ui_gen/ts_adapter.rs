@@ -235,6 +235,29 @@ fn expr_brief(expr: &Expr, ctx: &AuraTsContext) -> String {
     String::from_utf8(tmp).unwrap_or_else(|_| "?".to_string())
 }
 
+/// Heuristic: does this expression contain a float/double literal (or a
+/// nested sub-expression that does)? Used to decide whether `/` should be
+/// integer division (`Math.trunc(a/b)`) or JS float division (`a/b`).
+///
+/// AutoLang `/` on two ints is integer division (matches VM `DIV` opcode =
+/// `wrapping_div`), but the TS adapter has no type symbol table, so this is a
+/// conservative structural check: if neither operand visibly contains a float
+/// literal, treat it as integer division. Variable operands of unknown type
+/// fall through to float division (numerically safe, just maybe not truncated).
+fn expr_looks_float(expr: &Expr) -> bool {
+    match expr {
+        Expr::Float(_, _) | Expr::Double(_, _) => true,
+        Expr::Bina(lhs, _, rhs) => expr_looks_float(lhs) || expr_looks_float(rhs),
+        Expr::Unary(_, inner) => expr_looks_float(inner),
+        Expr::Block(body) => body.stmts.iter().any(|s| match s {
+            Stmt::Expr(e) => expr_looks_float(e),
+            Stmt::Store(s) => expr_looks_float(&s.expr),
+            _ => false,
+        }),
+        _ => false,
+    }
+}
+
 /// Convert a snake_case identifier to camelCase (for TS/JS output).
 /// e.g. `list_notes` → `listNotes`, `create_note` → `createNote`
 pub fn snake_to_camel(name: &str) -> String {
@@ -789,6 +812,26 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     } else {
                         transpile_expr(lhs, ctx, out);
                         write!(out, " + ").ok();
+                        transpile_expr(rhs, ctx, out);
+                    }
+                }
+                Op::Div | Op::Mod => {
+                    // AutoLang `/` and `%` on two ints are integer ops (matches
+                    // VM DIV/MOD opcodes = wrapping_div/wrapping_rem). JS `/`
+                    // and `%` are float, so when neither operand looks float,
+                    // wrap in Math.trunc to get integer semantics. Float
+                    // operands fall through to native JS behavior.
+                    let is_int = !expr_looks_float(lhs) && !expr_looks_float(rhs);
+                    let js_op = if matches!(op, Op::Mod) { " %" } else { " / " };
+                    if is_int {
+                        write!(out, "Math.trunc(").ok();
+                        transpile_expr(lhs, ctx, out);
+                        write!(out, "{}", js_op).ok();
+                        transpile_expr(rhs, ctx, out);
+                        write!(out, ")").ok();
+                    } else {
+                        transpile_expr(lhs, ctx, out);
+                        write!(out, "{}", js_op).ok();
                         transpile_expr(rhs, ctx, out);
                     }
                 }

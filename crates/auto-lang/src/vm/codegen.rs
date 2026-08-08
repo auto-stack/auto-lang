@@ -8450,6 +8450,18 @@ impl Codegen {
             Expr::If(if_expr) => {
                 // If expression: each branch must leave a value on the stack
                 // Plan 377: 全值单槽化后，每个分支恒留 1 个栈槽。
+                //
+                // Plan 402 bug 3 fix: an if-*expression* is a value context — each
+                // branch body (a Stmt::Block) must leave its result on the stack.
+                // But Stmt::Block lets the last statement inherit the *outer*
+                // `should_pop_expr_result`. When the if-expression is an assignment
+                // RHS (`.field = if c { a } else { b }`), the outer context has
+                // `should_pop_expr_result = true`, so the branch result gets POP'd,
+                // leaving nothing for the subsequent SET_FIELD to read → it reads a
+                // stale stack value. Force `should_pop_expr_result = false` here so
+                // every branch keeps its result value.
+                let saved_pop = self.should_pop_expr_result;
+                self.should_pop_expr_result = false;
                 let mut jumps_to_end = Vec::new();
 
                 for branch in &if_expr.branches {
@@ -8492,6 +8504,7 @@ impl Codegen {
                     self.patch_jump(jump);
                 }
 
+                self.should_pop_expr_result = saved_pop;
                 // Plan 118 Phase 7: If expression produces a value
                 self.last_expr_type = ObjectType::Int; // default
             }
