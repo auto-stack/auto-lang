@@ -545,6 +545,26 @@ impl VmBridge {
                     ))
                 }
             }
+            // EDGE-16: List<T>.new([]) 物化成 VmRef 指向 ListData<Value> 堆对象。
+            // write_state_vec 需把元素写进该堆对象(同 Int(id) 路径,只是 id 来自 VmRef)。
+            Value::VmRef(r) => {
+                let arr_id = r.id as u64;
+                if let Some(obj) = self.vm.get_heap_object(arr_id) {
+                    let mut guard = obj.write().unwrap();
+                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                        list.elems = values;
+                        Ok(())
+                    } else {
+                        Err(VmBridgeError::InvalidState(
+                            format!("VmRef id {} is not a writable list", arr_id)
+                        ))
+                    }
+                } else {
+                    Err(VmBridgeError::InvalidState(
+                        format!("VmRef id {} not found in heap_objects", arr_id)
+                    ))
+                }
+            }
             other => Err(VmBridgeError::InvalidState(
                 format!("Expected array for field '{}', got {:?}", field_name, other)
             )),
