@@ -128,6 +128,9 @@ pub struct DynamicComponent {
     /// Plan 401/VM-routing: the root widget's route table. `outlet` resolves
     /// the current route to a page widget from this table.
     routes: Vec<crate::aura::AuraRoute>,
+
+    /// EDGE-16 第五层:root widget 的 computed 属性表,供 view 渲染求值。
+    computed: Vec<crate::aura::AuraComputed>,
 }
 
 
@@ -183,6 +186,7 @@ impl DynamicComponent {
             key_bindings: widget.key_bindings.clone(),
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
             routes: Vec::new(),
+            computed: Vec::new(),
         })
     }
 
@@ -252,6 +256,7 @@ impl DynamicComponent {
             key_bindings,
             widget_registry: registry,
             routes: Vec::new(),
+            computed: Vec::new(),
         })
     }
 
@@ -321,6 +326,7 @@ impl DynamicComponent {
             key_bindings,
             widget_registry: registry,
             routes,
+            computed: view_widget.computed.clone(),
         })
     }
 
@@ -357,6 +363,7 @@ impl DynamicComponent {
             key_bindings: widget.key_bindings.clone(),
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
             routes: Vec::new(),
+            computed: Vec::new(),
         })
     }
     // ========================================================================
@@ -471,7 +478,7 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 

@@ -104,6 +104,12 @@ pub struct AuraViewBuilder<'a> {
     /// `outlet` reads `__current_route` state and renders the matching page
     /// widget from this table. None = no routes (outlet renders empty).
     routes: Option<&'a [crate::aura::AuraRoute]>,
+
+    /// EDGE-16 第五层(VM computed 求值):当前 widget 的 computed 属性表。
+    /// resolve_expr_to_value / read_state_as_string_with 解析 `.foo` 时,先查
+    /// 此表:命中则用 computed.expr 在当前 bindings 下求值(递归),未命中再
+    /// 回退 state。None = 根 widget 在 build_with_debug_gated 时由调用方传入。
+    computed: Option<&'a [crate::aura::AuraComputed]>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -121,6 +127,7 @@ impl<'a> AuraViewBuilder<'a> {
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
+            computed: None,
         }
     }
 
@@ -137,6 +144,7 @@ impl<'a> AuraViewBuilder<'a> {
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
+            computed: None,
         }
     }
 
@@ -157,6 +165,7 @@ impl<'a> AuraViewBuilder<'a> {
             import_stmts: Some(import_stmts),
             override_state_obj_id: None,
             routes: None,
+            computed: None,
         }
     }
 
@@ -164,6 +173,13 @@ impl<'a> AuraViewBuilder<'a> {
     /// can resolve the current route to a page widget.
     pub fn with_routes(mut self, routes: &'a [crate::aura::AuraRoute]) -> Self {
         self.routes = Some(routes);
+        self
+    }
+
+    /// EDGE-16 第五层:传入当前 widget 的 computed 属性表,供 resolve 时
+    /// 求值 computed 引用(如 `.status_glyph`)。
+    pub fn with_computed(mut self, computed: &'a [crate::aura::AuraComputed]) -> Self {
+        self.computed = Some(computed);
         self
     }
 
@@ -1423,6 +1439,7 @@ impl<'a> AuraViewBuilder<'a> {
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
             routes: None,
+            computed: Some(&child_widget.computed),
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -2079,6 +2096,10 @@ impl<'a> AuraViewBuilder<'a> {
         if let Some(val) = bindings.get(field_name) {
             return value_to_display_string(val);
         }
+        // EDGE-16 第五层:查 computed(如 .status_glyph),命中则求值。
+        if let Some(val) = self.eval_computed(field_name, bindings) {
+            return value_to_display_string(&val);
+        }
         match self.read_state(field_name) {
             Ok(value) => value_to_display_string(&value),
             Err(_) => format!("${{{}}}", field_name),
@@ -2100,6 +2121,18 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Field access: object.field → Dot(object, field)
             Expr::Dot(object, field) => {
+                // Plan 402: handle .store.X path — flatten to read root state X.
+                // Mirrors resolve_expr_to_value's store flattening (D-GAP-4).
+                // Without this, `.store.mines_label` resolves to empty (read_state
+                // has no "store" field since store fields are bare-named in root
+                // state) → empty text node → filtered out → label disappears.
+                if let Expr::Dot(inner_obj, store_field) = object.as_ref() {
+                    if store_field.as_str() == "store"
+                        && matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                    {
+                        return self.read_state_as_string_with(field.as_str(), bindings);
+                    }
+                }
                 // Plan 370 (Issue 4): single-level self-ref `.field` (parsed as
                 // Dot(Ident("."), field)) — read directly from state, mirroring
                 // the fix in resolve_expr_to_value. Without this, `.edit_title`
@@ -2177,6 +2210,21 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// EDGE-16 第五层:求值 computed 属性。查 self.computed 表,命中则用其
+    /// expr 在当前 bindings 下递归求值(resolve_expr_to_value)。用 visited
+    /// 防递归循环(computed 引用自身)。未命中返回 None。
+    fn eval_computed(&self, name: &str, bindings: &Bindings) -> Option<Value> {
+        if let Some(computed_list) = self.computed {
+            if let Some(c) = computed_list.iter().find(|c| c.name == name) {
+                // 防 computed 递归引用自身(bindings 里已有同名则跳过)
+                if !bindings.contains_key(name) {
+                    return self.resolve_expr_to_value(&c.expr, bindings);
+                }
+            }
+        }
+        None
+    }
+
     /// Resolve a base AST `Expr` to a Value, checking loop bindings and VmBridge state.
     fn resolve_expr_to_value(&self, expr: &Expr, bindings: &Bindings) -> Option<Value> {
         match expr {
@@ -2185,6 +2233,7 @@ impl<'a> AuraViewBuilder<'a> {
             Expr::Ident(name) => {
                 let field_name = name.as_str().trim_start_matches('.');
                 bindings.get(field_name).cloned()
+                    .or_else(|| self.eval_computed(field_name, bindings))
                     .or_else(|| self.read_state(field_name).ok())
             }
             // Field access: object.field → Dot(object, field)
