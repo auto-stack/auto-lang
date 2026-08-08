@@ -348,12 +348,14 @@ fn post_process_db_rs(mut code: String) -> String {
     // global var returns). Keeping fix_borrowed_slice_returns as a no-op fallback
     // is unnecessary once a2r is verified — comment out to confirm.
     // code = fix_borrowed_slice_returns(&code);
-    // Plan 399 §3: over-deref before method calls. Generalize the hardcoded
-    // MESSAGES to any global: `*VAR.lock().unwrap().push/insert(...)` → drop `*`.
-    // a2r over-dereferences the MutexGuard before a method call (push returns ()).
+    // Plan 399 §3/P11.6: over-deref before method calls. Generalize the hardcoded
+    // MESSAGES to any global + any mutating method: `*VAR.lock().unwrap().METHOD(`
+    // → drop `*`. a2r over-dereferences the MutexGuard before a method call
+    // (push/insert/extend/etc. need &mut self via DerefMut, not a moved value).
+    // P11.6 a2r根治(改 Expr::Ident)回归面广,保留这个后处理正则作为完整覆盖.
     {
         use regex::Regex;
-        if let Ok(re) = Regex::new(r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert)\(") {
+        if let Ok(re) = Regex::new(r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert|extend|pop|remove|retain|clear|sort_by|sort|swap|truncate|drain|splice|resize)\(") {
             code = re.replace_all(&code, "$1.lock().unwrap().$2(").to_string();
         }
     }
