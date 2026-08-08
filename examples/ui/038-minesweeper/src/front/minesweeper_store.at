@@ -21,7 +21,6 @@ store MinesweeperStore {
         var elapsed int = 0
         var flags_placed int = 0
         // Precomputed view strings (VM view bindings cannot call functions).
-        var grid_style str = ""
         var mines_label str = "💣 10"
         var timer_label str = "⏱ 0s"
         var beginner_class str = ""
@@ -74,7 +73,6 @@ store MinesweeperStore {
                 }
                 x = x + 1
             }
-            .grid_style = "display:grid; grid-template-columns: repeat(" + .cols.to_string() + ", minmax(0, 1fr)); gap:0;"
             .mines_label = "💣 " + .mine_count.to_string()
             .timer_label = "⏱ 0s"
             .beginner_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50"

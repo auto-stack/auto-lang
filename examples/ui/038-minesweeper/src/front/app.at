@@ -63,19 +63,35 @@ widget App {
                 }
 
                 // —— 棋盘网格 ——
+                // 用条件 grid(每档固定字面量 cols),因为两个后端都不支持动态 cols:
+                //   vue codegen 的 cols 只接受字面量(→ grid-cols-N Tailwind class)
+                //   VM 的 extract_u16 也只接受字面量(→ View::Grid{cols})
+                // 且 VM 原生渲染器不解析 CSS grid-template-columns,必须用 grid 元素。
                 div {
-                    div {
-                        for cell in .store.board {
-                            button {
-                                if cell.revealed {
-                                    if cell.mine {
-                                        text "💣" {
-                                            style: cell.number_class
+                    if .store.difficulty == "beginner" {
+                        grid {
+                            for cell in .store.board {
+                                button {
+                                    if cell.revealed {
+                                        if cell.mine {
+                                            text "💣" {
+                                                style: cell.number_class
+                                            }
+                                        } else {
+                                            if cell.adjacent > 0 {
+                                                text cell.adjacent.to_string() {
+                                                    style: cell.number_class
+                                                }
+                                            } else {
+                                                text " " {
+                                                    style: "text-lg"
+                                                }
+                                            }
                                         }
                                     } else {
-                                        if cell.adjacent > 0 {
-                                            text cell.adjacent.to_string() {
-                                                style: cell.number_class
+                                        if cell.flagged {
+                                            text "🚩" {
+                                                style: "text-lg"
                                             }
                                         } else {
                                             text " " {
@@ -83,23 +99,94 @@ widget App {
                                             }
                                         }
                                     }
-                                } else {
-                                    if cell.flagged {
-                                        text "🚩" {
-                                            style: "text-lg"
+                                    onclick: .Reveal(cell.x, cell.y),
+                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                                    class: cell.cell_class
+                                }
+                            }
+                            cols: 9
+                            gap: 0
+                        }
+                    }
+                    if .store.difficulty == "intermediate" {
+                        grid {
+                            for cell in .store.board {
+                                button {
+                                    if cell.revealed {
+                                        if cell.mine {
+                                            text "💣" {
+                                                style: cell.number_class
+                                            }
+                                        } else {
+                                            if cell.adjacent > 0 {
+                                                text cell.adjacent.to_string() {
+                                                    style: cell.number_class
+                                                }
+                                            } else {
+                                                text " " {
+                                                    style: "text-lg"
+                                                }
+                                            }
                                         }
                                     } else {
-                                        text " " {
-                                            style: "text-lg"
+                                        if cell.flagged {
+                                            text "🚩" {
+                                                style: "text-lg"
+                                            }
+                                        } else {
+                                            text " " {
+                                                style: "text-lg"
+                                            }
                                         }
                                     }
+                                    onclick: .Reveal(cell.x, cell.y),
+                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                                    class: cell.cell_class
                                 }
-                                onclick: .Reveal(cell.x, cell.y),
-                                oncontextmenu.prevent: .Flag(cell.x, cell.y),
-                                class: cell.cell_class
                             }
+                            cols: 16
+                            gap: 0
                         }
-                        style: .store.grid_style
+                    }
+                    if .store.difficulty == "expert" {
+                        grid {
+                            for cell in .store.board {
+                                button {
+                                    if cell.revealed {
+                                        if cell.mine {
+                                            text "💣" {
+                                                style: cell.number_class
+                                            }
+                                        } else {
+                                            if cell.adjacent > 0 {
+                                                text cell.adjacent.to_string() {
+                                                    style: cell.number_class
+                                                }
+                                            } else {
+                                                text " " {
+                                                    style: "text-lg"
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        if cell.flagged {
+                                            text "🚩" {
+                                                style: "text-lg"
+                                            }
+                                        } else {
+                                            text " " {
+                                                style: "text-lg"
+                                            }
+                                        }
+                                    }
+                                    onclick: .Reveal(cell.x, cell.y),
+                                    oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                                    class: cell.cell_class
+                                }
+                            }
+                            cols: 30
+                            gap: 0
+                        }
                     }
                     style: "overflow-x-auto w-full mt-6"
                 }
