@@ -617,10 +617,24 @@ impl VmBridge {
                 }
                 v.clone()
             }
-            // Plan 335: VmRef (heap id from other paths) — same GenericInstanceData deref.
+            // Plan 335: VmRef (heap id from other paths) — deref to Value::Obj.
+            // Plan 402: ObjectData downcast added (Obj literals like `{ x, y, ... }`
+            // compile to ObjectData, not GenericInstanceData; without this arm, a
+            // `for cell in board` whose cells are Obj literals fails to resolve
+            // `cell.x` in onclick params — materialize returns the raw VmRef and
+            // resolve_binding_path only matches Value::Obj).
             Value::VmRef(r) => {
                 if let Some(obj) = self.vm.get_heap_object(r.id as u64) {
                     let guard = obj.read().unwrap();
+                    if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                        let mut out = auto_val::Obj::new();
+                        for (key, val) in od.fields.iter() {
+                            if let auto_val::ValueKey::Str(s) = key {
+                                out.set(s.clone(), val.clone());
+                            }
+                        }
+                        return Value::Obj(out);
+                    }
                     if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
                         let mut out = auto_val::Obj::new();
                         for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
