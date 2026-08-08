@@ -99,12 +99,12 @@ widget App {
                 // (bit-logic operations are future work).
                 if .mode == "scientific" {
                     grid {
-                        grid-item { button "sin" { onclick: .SciFn("sin"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                        grid-item { button "cos" { onclick: .SciFn("cos"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                        grid-item { button "tan" { onclick: .SciFn("tan"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                        grid-item { button "sqrt" { onclick: .SciFn("sqrt"), style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                        grid-item { button "^" { onclick: .Operator("^"),    style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                        grid-item { button "pi" { onclick: .SciFn("pi"),    style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "sin" { onclick: .SciFn("sin"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "cos" { onclick: .SciFn("cos"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "tan" { onclick: .SciFn("tan"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "sqrt" { onclick: .SciFn("sqrt"), style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "^" { onclick: .Operator("^"),    style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "pi" { onclick: .SciFn("pi"),    style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
                         cols: 6
                         gap: 1
                         style: "w-full px-2 pt-1 bg-gray-800"
@@ -114,33 +114,33 @@ widget App {
                 // Main keypad (shared by all modes). Scientific adds ( ) in the
                 // top row; basic/programmer keep the standard layout.
                 grid {
-                    grid-item { button "C"   { onclick: .Clear,         style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "+/-" { onclick: .Negate,        style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "%"   { onclick: .Percent,       style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "/"   { onclick: .Operator("/"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "C"   { onclick: .Clear,         style: "w-full bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+/-" { onclick: .Negate,        style: "w-full bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "%"   { onclick: .Percent,       style: "w-full bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "/"   { onclick: .Operator("/"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "7"   { onclick: .Digit(7),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "8"   { onclick: .Digit(8),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "9"   { onclick: .Digit(9),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "*"   { onclick: .Operator("*"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "7"   { onclick: .Digit(7),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "8"   { onclick: .Digit(8),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "9"   { onclick: .Digit(9),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "*"   { onclick: .Operator("*"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "4"   { onclick: .Digit(4),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "5"   { onclick: .Digit(5),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "6"   { onclick: .Digit(6),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "-"   { onclick: .Operator("-"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "4"   { onclick: .Digit(4),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "5"   { onclick: .Digit(5),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "6"   { onclick: .Digit(6),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "-"   { onclick: .Operator("-"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "1"   { onclick: .Digit(1),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "2"   { onclick: .Digit(2),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "3"   { onclick: .Digit(3),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "+"   { onclick: .Operator("+"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "1"   { onclick: .Digit(1),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "2"   { onclick: .Digit(2),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "3"   { onclick: .Digit(3),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+"   { onclick: .Operator("+"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "("   { onclick: .Paren("("),    style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "0"   { onclick: .Digit(0),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "."   { onclick: .Dot,           style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "="   { onclick: .Equals,        style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "("   { onclick: .Paren("("),    style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "0"   { onclick: .Digit(0),      style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "."   { onclick: .Dot,           style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "="   { onclick: .Equals,        style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button ")"   { onclick: .Paren(")"),    style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "⌫"   { onclick: .Backspace,     style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button ")"   { onclick: .Paren(")"),    style: "w-full bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "⌫"   { onclick: .Backspace,     style: "w-full bg-gray-600 text-white rounded-lg p-4 text-lg" } }
                     grid-item { text ""      { style: "bg-transparent" } }
                     grid-item { text ""      { style: "bg-transparent" } }
 
