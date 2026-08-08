@@ -1,5 +1,18 @@
+// app.at — Calculator (Plan 403: grid layout + unified handlers).
+// Integer-only four-function calculator. The keypad uses a `grid` (CSS grid in
+// vue, column-of-rows in iced) instead of nested col/row — one container, no
+// per-button flex-1. Digit/operator handlers are unified via parametric
+// messages (Digit(int), Operator(str)) to remove ~200 lines of duplication.
 widget App {
-    msg Msg { Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Add, Sub, Mul, Div, Equals, Clear, Dot, Negate }
+    msg Msg {
+        Digit(int),
+        Operator(str),
+        Equals,
+        Clear,
+        Negate,
+        Dot,
+        Percent
+    }
 
     model {
         var display str = "0"
@@ -24,43 +37,37 @@ widget App {
                     style: "w-full p-6 bg-gray-900 rounded-t-2xl"
                 }
 
-                // Button grid
-                col {
-                    row {
-                        button "C" { onclick: .Clear, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "+/-" { onclick: .Negate, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "%" { onclick: .Dot, style: "flex-1 bg-gray-600 text-white rounded-lg p-4 text-lg" }
-                        button "/" { onclick: .Div, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        style: "w-full"
-                    }
-                    row {
-                        button "7" { onclick: .Digit7, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "8" { onclick: .Digit8, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "9" { onclick: .Digit9, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "*" { onclick: .Mul, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        style: "w-full"
-                    }
-                    row {
-                        button "4" { onclick: .Digit4, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "5" { onclick: .Digit5, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "6" { onclick: .Digit6, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "-" { onclick: .Sub, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        style: "w-full"
-                    }
-                    row {
-                        button "1" { onclick: .Digit1, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "2" { onclick: .Digit2, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "3" { onclick: .Digit3, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "+" { onclick: .Add, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        style: "w-full"
-                    }
-                    row {
-                        button "0" { onclick: .Digit0, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "." { onclick: .Dot, style: "flex-1 bg-gray-700 text-white rounded-lg p-4 text-lg" }
-                        button "=" { onclick: .Equals, style: "flex-1 bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" }
-                        style: "w-full"
-                    }
-                    style: "w-full p-2 bg-gray-800 rounded-b-2xl gap-1"
+                // Button keypad — a single grid replaces 5 nested row blocks.
+                // cols:4 lays out 20 buttons in a 4×5 grid; the last row holds
+                // 0/.//= (4 cells). grid-item forwards its child's style.
+                grid {
+                    grid-item { button "C"   { onclick: .Clear,            style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+/-" { onclick: .Negate,           style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "%"   { onclick: .Percent,          style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "/"   { onclick: .Operator("/"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+
+                    grid-item { button "7"   { onclick: .Digit(7),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "8"   { onclick: .Digit(8),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "9"   { onclick: .Digit(9),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "*"   { onclick: .Operator("*"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+
+                    grid-item { button "4"   { onclick: .Digit(4),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "5"   { onclick: .Digit(5),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "6"   { onclick: .Digit(6),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "-"   { onclick: .Operator("-"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+
+                    grid-item { button "1"   { onclick: .Digit(1),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "2"   { onclick: .Digit(2),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "3"   { onclick: .Digit(3),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+"   { onclick: .Operator("+"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+
+                    grid-item { button "0"   { onclick: .Digit(0),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "."   { onclick: .Dot,              style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "="   { onclick: .Equals,           style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { text ""      { style: "bg-transparent" } }
+                    cols: 4
+                    gap: 1
+                    style: "w-full p-2 bg-gray-800 rounded-b-2xl"
                 }
 
                 style: "w-80 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
@@ -69,20 +76,9 @@ widget App {
     }
 
     bind {
-        "0" -> .Digit0
-        "1" -> .Digit1
-        "2" -> .Digit2
-        "3" -> .Digit3
-        "4" -> .Digit4
-        "5" -> .Digit5
-        "6" -> .Digit6
-        "7" -> .Digit7
-        "8" -> .Digit8
-        "9" -> .Digit9
-        "+" -> .Add
-        "-" -> .Sub
-        "*" -> .Mul
-        "/" -> .Div
+        // Note: bind only supports parameter-less messages, so digit/operator
+        // keys are driven via button presses (UI click + MCP autoui_action
+        // press), not keyboard. Only control keys are bound here.
         "Enter" -> .Equals
         "Escape" -> .Clear
         "Backspace" -> .Clear
@@ -99,111 +95,30 @@ widget App {
         }
         .Negate -> {
             .val = 0 - .val
+            .display = .val
         }
         .Dot -> {
-            // Decimal not supported with int-only math
+            // Decimal not supported with int-only math (placeholder for Plan 403 engine upgrade).
         }
-        .Digit0 -> {
+        .Percent -> {
+            // Percent: divide current value by 100 (e.g. 50 % -> 0).
+            .val = .val / 100
+            .display = .val
+        }
+        // Unified digit handler: append digit n to the current value.
+        .Digit(n int) -> {
             if .fresh {
-                .display = "0"
-                .val = 0
+                .display = n.to_string()
+                .val = n
             } else {
-                .display = .display + "0"
-                .val = .val * 10
+                .display = .display + n.to_string()
+                .val = .val * 10 + n
             }
             .fresh = false
         }
-        .Digit1 -> {
-            if .fresh {
-                .display = "1"
-                .val = 1
-            } else {
-                .display = .display + "1"
-                .val = .val * 10 + 1
-            }
-            .fresh = false
-        }
-        .Digit2 -> {
-            if .fresh {
-                .display = "2"
-                .val = 2
-            } else {
-                .display = .display + "2"
-                .val = .val * 10 + 2
-            }
-            .fresh = false
-        }
-        .Digit3 -> {
-            if .fresh {
-                .display = "3"
-                .val = 3
-            } else {
-                .display = .display + "3"
-                .val = .val * 10 + 3
-            }
-            .fresh = false
-        }
-        .Digit4 -> {
-            if .fresh {
-                .display = "4"
-                .val = 4
-            } else {
-                .display = .display + "4"
-                .val = .val * 10 + 4
-            }
-            .fresh = false
-        }
-        .Digit5 -> {
-            if .fresh {
-                .display = "5"
-                .val = 5
-            } else {
-                .display = .display + "5"
-                .val = .val * 10 + 5
-            }
-            .fresh = false
-        }
-        .Digit6 -> {
-            if .fresh {
-                .display = "6"
-                .val = 6
-            } else {
-                .display = .display + "6"
-                .val = .val * 10 + 6
-            }
-            .fresh = false
-        }
-        .Digit7 -> {
-            if .fresh {
-                .display = "7"
-                .val = 7
-            } else {
-                .display = .display + "7"
-                .val = .val * 10 + 7
-            }
-            .fresh = false
-        }
-        .Digit8 -> {
-            if .fresh {
-                .display = "8"
-                .val = 8
-            } else {
-                .display = .display + "8"
-                .val = .val * 10 + 8
-            }
-            .fresh = false
-        }
-        .Digit9 -> {
-            if .fresh {
-                .display = "9"
-                .val = 9
-            } else {
-                .display = .display + "9"
-                .val = .val * 10 + 9
-            }
-            .fresh = false
-        }
-        .Add -> {
+        // Unified operator handler: if there's a pending op, compute it first,
+        // then install the new operator (chained, left-to-right, no precedence).
+        .Operator(new_op str) -> {
             if .op == "+" {
                 .val = .prev + .val
             }
@@ -221,85 +136,16 @@ widget App {
             if .op != "" {
                 .display = .val
             }
-            .expr = .display + " +"
+            .expr = .display + " " + new_op
             .prev = .val
-            .op = "+"
-            .fresh = true
-        }
-        .Sub -> {
-            if .op == "+" {
-                .val = .prev + .val
-            }
-            if .op == "-" {
-                .val = .prev - .val
-            }
-            if .op == "*" {
-                .val = .prev * .val
-            }
-            if .op == "/" {
-                if .val != 0 {
-                    .val = .prev / .val
-                }
-            }
-            if .op != "" {
-                .display = .val
-            }
-            .expr = .display + " -"
-            .prev = .val
-            .op = "-"
-            .fresh = true
-        }
-        .Mul -> {
-            if .op == "+" {
-                .val = .prev + .val
-            }
-            if .op == "-" {
-                .val = .prev - .val
-            }
-            if .op == "*" {
-                .val = .prev * .val
-            }
-            if .op == "/" {
-                if .val != 0 {
-                    .val = .prev / .val
-                }
-            }
-            if .op != "" {
-                .display = .val
-            }
-            .expr = .display + " *"
-            .prev = .val
-            .op = "*"
-            .fresh = true
-        }
-        .Div -> {
-            if .op == "+" {
-                .val = .prev + .val
-            }
-            if .op == "-" {
-                .val = .prev - .val
-            }
-            if .op == "*" {
-                .val = .prev * .val
-            }
-            if .op == "/" {
-                if .val != 0 {
-                    .val = .prev / .val
-                }
-            }
-            if .op != "" {
-                .display = .val
-            }
-            .expr = .display + " /"
-            .prev = .val
-            .op = "/"
+            .op = new_op
             .fresh = true
         }
         .Equals -> {
             if .op != "" {
                 // Build expression BEFORE computing (e.g. "1 + 2 =")
                 .expr = .expr + " " + .display + " ="
-                // Compute
+                // Compute the pending operation
                 if .op == "+" {
                     .val = .prev + .val
                 }
