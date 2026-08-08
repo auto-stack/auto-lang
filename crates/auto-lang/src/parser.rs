@@ -1157,8 +1157,28 @@ impl<'a> Parser<'a> {
             catch_param = Some(name.to_string());
         }
 
+        // Scope the catch binding like for-loop variables do: enter a scope,
+        // define the param, parse the catch body, then exit — so `e` resolves
+        // inside the handler but stays invisible to `finally` and beyond.
+        let has_catch_binding = catch_param.is_some();
+        if let Some(ref param) = catch_param {
+            self.enter_scope();
+            let meta = Meta::Store(Store {
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                name: Name::from(param.as_str()),
+                expr: Expr::Nil,
+                ty: Type::Unknown,
+            });
+            self.define(param.as_str(), meta);
+        }
+
         let catch_body = self.body()?;
         let catch_new_line = catch_body.has_new_line;
+        if has_catch_binding {
+            self.exit_scope();
+        }
 
         // Plan 012 P2: optional `finally { cleanup }`. `finally` is not a
         // lexer keyword — it lexes as Ident, matched by text (contextual).
@@ -14160,6 +14180,91 @@ mod tests {
             .expect("try stmt");
         assert!(try_stmt.catch_param.is_none(), "bare catch: no binding");
         assert!(try_stmt.finally_body.is_none(), "no finally clause");
+    }
+
+    #[test]
+    fn test_try_catch_param_resolves_in_catch_body() {
+        // Regression: the `catch (e)` binding must be visible inside the
+        // catch body — `rethrow(e)` used to fail name resolution with
+        // UndefinedVariable because the param was never defined.
+        let code = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch (e) { rethrow(e) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let on = widget.on.as_ref().expect("on block");
+        let try_stmt = on.handlers[0]
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Try(t) => Some(t),
+                _ => None,
+            })
+            .expect("try stmt");
+        assert_eq!(try_stmt.catch_param.as_deref(), Some("e"));
+    }
+
+    #[test]
+    fn test_try_catch_param_does_not_leak() {
+        // The catch binding is scoped to the catch body: referencing `e`
+        // after it (or inside `finally`) must fail name resolution.
+        let after_catch = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch (e) { .error = \"x\" }\n",
+            "      rethrow(e)\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser = Parser::from(after_catch)
+            .with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "catch binding must not leak past the catch body"
+        );
+
+        let in_finally = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch (e) { .error = \"x\" } finally { rethrow(e) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser = Parser::from(in_finally)
+            .with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "catch binding must not be visible inside finally"
+        );
     }
 
     #[test]
