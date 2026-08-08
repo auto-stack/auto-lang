@@ -1,6 +1,6 @@
 # Plan 402: AutoUI 示例 — 扫雷游戏(038-minesweeper)
 
-> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)+ Phase 2(Auto 版)实现完成;vue 后端完整可用,VM 后端启动/渲染可用但交互受 VM store handler bug 阻塞(§13.6)
+> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)+ Phase 2(Auto 版)实现完成;vue 后端完整可用,VM 后端仅能启动(渲染/交互受 VM store 支持缺陷阻塞,§13.6)
 > **分支**: `plan402/038-minesweeper`
 > **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例,
 > 集中展示 escape-hatch(`use { fn }`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
@@ -682,17 +682,35 @@ store 的 self/state 绑定丢失。属 VM codegen 的 store handler 合成缺�
 (`handler_codegen.rs` 的 store action 调用改写 `store.X` →
 `handler_<Store>_X(__state, args)` 时,`__state` 未正确传入),**非示例层可修复**。
 
+**VM bug 5(view 读 store 字段也失效 + 棋盘零尺寸)**:经 vtree 检查,VM 原生
+窗口里 view 读取 `.store.*` 字段(如 `.store.mines_label`、`.store.difficulty`)
+也失败 —— snapshot 里只显示静态副标题("mines left"/"time"),store 派生的标签
+和条件渲染的 grid 均未出现,棋盘 button 落入 fallback Column 布局(`bbox` 全为
+`x:0,y:0,w:0,h:0` 零尺寸),表现为"一列 button"。这是 bug 4 在 view 层的表现:
+view-builder 读 store 字段同样走 self 绑定路径,VM 下失效。对照测试
+`015-notes --render vm` 的 vtree 也呈现相同的零尺寸 content,表明 **VM 对
+"store 驱动 + view 读 store 字段"组合的支持整体不完整**,非 038 特有问题。
+
+**网格机制差异(已处理)**:VM 原生渲染器不解析 CSS `grid-template-columns`,
+只认 `grid { cols: N字面量 }` 元素(`aura_view_builder.rs` → `View::Grid`)。
+已将棋盘从 `div + grid_style(CSS)` 改为条件渲染三个 `grid { cols: 9/16/30 }`
+(两个后端的 cols 属性都只接受字面量)。vue 侧 beginner(9)完整正确;VM 侧
+grid 元素本身正确,但受 bug 5 阻塞无法显示。
+
 **影响**:
-- vue 后端完全可用(本示例的主要交付目标)。
-- VM 后端能**启动并渲染**棋盘 UI,但**无法交互**(点击揭开/插旗无效)。
-  这是 VM 对 store 驱动架构的支持缺陷,不是 038 特有问题 —— 任何
-  widget 事件 → store action(带字段访问)的模式在 VM 下都会触发。
+- **vue 后端完全可用**(本示例的主要交付目标)—— vue 下 grid、store、交互全通。
+- **VM 后端只能启动**:窗口能打开、Init 能填充 state(经 autoui_state 验证),
+  但 view 读 store 字段失效(bug 5)→ 棋盘/标签不显示;事件触发的 store action
+  也失效(bug 4)→ 无法交互。这是 VM 对 store 驱动架构的整体支持缺陷,对照
+  015-notes 同样表现,非 038 特有问题。
 
 **结论**:
 - 038 的 **vue 后端完整可用**(tsx 单测 + DOM 渲染双确认)。
-- **VM 后端部分可用**:启动/渲染 OK,交互受 VM store handler bug 阻塞。
-- 要让 038 完全跑在 VM,需先修复 VM codegen 的 store action self 绑定
-  (VM bug 4)。本计划标记为"vue ✅ + VM 渲染 ✅ / 交互 🟡 待 VM 修复"。
-- 已记录 4 个 VM/vue codegen bug(§13.4 两个 + §13.6 两个),供后续
-  codegen 层修复参考。
+- **VM 后端不可用**(仅能启动,渲染/交互均受阻)。根因是 VM 对
+  "store 驱动"的支持不完整(action self 绑定 + view 字段读取双重缺陷)。
+- 要让 038 完全跑在 VM,需先修复 VM codegen 的 store 支持(bug 4 + bug 5),
+  或退回"widget model + inline on 块"的非 store 架构(Phase 0 方式 C)。
+- 已记录 5 个 VM/vue codegen bug(§13.4 两个 vue + §13.6 三个 VM),
+  供后续 codegen 层修复参考。Phase 2 的 store 架构代码已就位,VM 修复后
+  即可自然生效。
 
