@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid 重构）已完成**（`0bc72d9c`）。需求 1（MCP 操纵）部分验证——发现带参 press 限制。需求 1b（press_sequence 工具）/ 1c（引擎升级）/ 3（多模式）待办。
+> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid 重构）✅ + 需求 1b（press_sequence + 带参 press 修复）✅ 已完成**。需求 1c（引擎升级）/ 3（多模式）待办。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
@@ -95,7 +95,7 @@ grid {
 
 1. **需求 2：grid 重构** ✅ 已完成（`0bc72d9c`）→ grid 布局 + 修 `%` bug + 统一 Digit/Operator handler。vue/iced 双路径验证通过。
 2. **需求 1a：MCP 操纵验证** ⚠️ 部分完成 → `autoui_find`/`autoui_state` 正常；但带参 press 丢参数（见 1b 发现），需先修才能跑通 `2+3=5`。
-3. **需求 1b：`autoui_press_sequence`**（MCP 基建）→ 新工具 + **修复带参 press 传参** + 验证 `2+3=→5`。
+3. **需求 1b：`autoui_press_sequence`** ✅ 已完成（`95bc6141`）→ 新工具 + **修复带参 press 传参** + 验证 `2+3=5` / `5*3=15` / `9-4=5` / `1+2+3=6`（链式）。
 4. **需求 1c / 引擎升级**（可选）→ 优先级/小数/括号。
 5. **需求 3：多模式**（后置）→ shadcn-vue 参考版或 Auto 三模式。
 
