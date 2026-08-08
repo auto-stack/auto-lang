@@ -845,6 +845,17 @@ macro_rules! for_each_bigvm_native {
             ("auto.env.home_dir", 1105, Void),
             ("env.home_dir", 1105, Void),
 
+            // === Storage (1106-1108) — Plan 401: localStorage-style KV store ===
+            ("auto.storage.get", 1106, String),
+            ("Storage.get", 1106, String),
+            ("storage.get", 1106, String),
+            ("auto.storage.set", 1107, Void),
+            ("Storage.set", 1107, Void),
+            ("storage.set", 1107, Void),
+            ("auto.storage.remove", 1108, Void),
+            ("Storage.remove", 1108, Void),
+            ("storage.remove", 1108, Void),
+
             // === Time (1200-1204) ===
             ("auto.time.now_ms", 1200, I64),
             ("auto.time.now_sec", 1201, I64),
@@ -1649,6 +1660,15 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("env.local_data_dir", 1104),
     ("auto.env.home_dir", 1105),
     ("env.home_dir", 1105),
+    ("auto.storage.get", 1106),
+    ("Storage.get", 1106),
+    ("storage.get", 1106),
+    ("auto.storage.set", 1107),
+    ("Storage.set", 1107),
+    ("storage.set", 1107),
+    ("auto.storage.remove", 1108),
+    ("Storage.remove", 1108),
+    ("storage.remove", 1108),
     ("auto.time.now_ms", 1200),
     ("auto.time.now_sec", 1201),
     ("auto.time.sleep_ms", 1202),

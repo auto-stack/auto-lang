@@ -113,7 +113,7 @@ widget book_detail {
             router.push("/book/" + .book_id.to_string() + "/chapter/" + n.to_string())
         }
         .ContinueReading -> {
-            let current int = 1
+            var current int = 1
             if .book != None {
                 if .book.progress > 0 {
                     let total int = .book.chapter_count
