@@ -387,6 +387,9 @@ is s {
 #[test] #[ignore] fn test_15_nested_mutation_012_deep_array_obj() { test_vm("15_nested_mutation/012_deep_array_obj").unwrap(); }
 #[test] #[ignore] fn test_15_nested_mutation_013_structure_preserve() { test_vm("15_nested_mutation/013_structure_preserve").unwrap(); }
 #[test] #[ignore] fn test_15_nested_mutation_014_out_of_bounds_error() { test_vm("15_nested_mutation/014_out_of_bounds_error").unwrap(); }
+// EDGE-16: type self 字段 List push(纯逻辑层,对照 store 层的 push 持久化 bug)。
+// 不 ignore:持续守护"VM 纯逻辑层 self.list.push 正常"这一基准,把 store 层 bug 隔离出来。
+#[test] fn test_15_nested_mutation_015_self_list_push() { test_vm("15_nested_mutation/015_self_list_push").unwrap(); }
 
 // === 16_option_result ===
 #[test] #[ignore] fn test_16_option_result_001_option_type() { test_vm("16_option_result/001_option_type").unwrap(); }

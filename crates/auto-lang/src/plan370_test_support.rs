@@ -19,12 +19,18 @@ use std::path::{Path, PathBuf};
 
 /// Locate the 015-notes app.at regardless of cwd (tests vs. IDE).
 pub(crate) fn locate_app_at() -> Option<PathBuf> {
+    locate_example_app_at("015-notes")
+}
+
+/// Locate any example's app.at by example dir name (e.g. "015-notes", "021-block-static").
+pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
+    let rel = format!("examples/ui/{}/src/front/app.at", example);
     let candidates = [
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
-            .map(|d| PathBuf::from(d).join("../../examples/ui/015-notes/src/front/app.at")),
-        Some(PathBuf::from("examples/ui/015-notes/src/front/app.at")),
-        Some(PathBuf::from("../../examples/ui/015-notes/src/front/app.at")),
+            .map(|d| PathBuf::from(d).join(format!("../../{}", rel))),
+        Some(PathBuf::from(&rel)),
+        Some(PathBuf::from(format!("../../{}", rel))),
     ];
     candidates.into_iter().flatten().find(|p| p.exists())
 }
@@ -41,7 +47,17 @@ pub(crate) fn locate_app_at() -> Option<PathBuf> {
 /// present (e.g. running the crate in isolation without the examples/ tree).
 #[cfg(feature = "ui-interpreter")]
 pub(crate) fn build_015_component() -> Option<DynamicComponent> {
-    let manifest = locate_app_at()?;
+    build_example_component("015-notes")
+}
+
+/// Build a DynamicComponent from any example's app.at (same production path
+/// as `run_file_dynamic_ui_inner`): parse → root widget → collect use-imported
+/// child widgets + stores → module imports → build → fire_init.
+///
+/// Returns None (graceful no-op) when the example sources aren't present.
+#[cfg(feature = "ui-interpreter")]
+pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent> {
+    let manifest = locate_example_app_at(example)?;
     let base_dir = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
     let code = fs::read_to_string(&manifest).unwrap();
 

@@ -1,0 +1,23 @@
+// app.at — widget App,use 导入 block_store(EDGE-16 回归测试载体)
+use block_store: BlockStore
+
+widget App {
+    msg Msg { Ok }
+
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
+            for b in .store.blocks {
+                col {
+                    style: "border rounded-lg p-3"
+                    text .b.command { style: "font-mono text-sm" }
+                    text .b.text_output { style: "text-xs" }
+                }
+            }
+        }
+    }
+
+    on {
+        .Ok -> { }
+    }
+}

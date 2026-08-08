@@ -1,0 +1,25 @@
+// block_store.at — store:model List 字段 + Init handler push
+// (EDGE-16 回归测试载体,被 app.at use 导入)
+type BlockItem {
+    command str
+    text_output str
+}
+
+store BlockStore {
+    model {
+        var blocks List<BlockItem> = List<BlockItem>.new([])
+    }
+    msg Msg { Init }
+    on {
+        .Init -> {
+            var b1 BlockItem = BlockItem{}
+            b1.command = "cat README.md"
+            b1.text_output = "Hello from block 1"
+            .blocks.push(b1)
+            var b2 BlockItem = BlockItem{}
+            b2.command = "echo hello"
+            b2.text_output = "hello"
+            .blocks.push(b2)
+        }
+    }
+}

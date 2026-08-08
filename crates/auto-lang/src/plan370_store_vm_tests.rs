@@ -150,3 +150,66 @@ mod plan370_store_vm_tests {
         assert!(!builder.eval_condition(".active_folder == \"pinned\""));
     }
 }
+
+/// EDGE-16 regression: store model `List<T>` field + handler `.push()` must
+/// populate state in VM merged mode.
+///
+/// Symptom (ash-gui-auto): BlockStore.Init pushes 2 BlockItems to `.blocks`,
+/// but `read_state_as_vec("blocks")` returns Nil and `for b in .blocks`
+/// renders nothing. This isolates whether VM store-handler List.push
+/// persists (the production path Plan 370 fixed for assignment; push may
+/// still be broken).
+#[cfg(test)]
+mod block_static_store_tests {
+    use crate::plan370_test_support::build_example_component;
+
+    /// Init handler pushes 2 items → read_state_as_vec("blocks").len() == 2.
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn store_list_push_persists_after_init() {
+        let comp = match build_example_component("021-block-static") {
+            Some(c) => c,
+            None => {
+                eprintln!("block-static: SKIPPED — app.at not found");
+                return;
+            }
+        };
+        let result = comp.read_state_as_vec("blocks");
+        match &result {
+            Ok(vec) => {
+                assert_eq!(
+                    vec.len(),
+                    2,
+                    "expected 2 blocks after Init push, got {}: {:?}",
+                    vec.len(),
+                    vec
+                );
+            }
+            Err(e) => panic!(
+                "read_state_as_vec('blocks') failed: {}. \
+                 Init handler pushed 2 items but state is not an array — \
+                 VM store-handler List.push does not persist.",
+                e
+            ),
+        }
+    }
+
+    /// `blocks` field must be present in root state (not missing/Nil).
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn store_list_field_in_root_state() {
+        let comp = match build_example_component("021-block-static") {
+            Some(c) => c,
+            None => {
+                eprintln!("block-static: SKIPPED — app.at not found");
+                return;
+            }
+        };
+        let state = comp.read_all_state();
+        assert!(
+            state.contains_key("blocks"),
+            "store field 'blocks' missing from root state; keys = {:?}",
+            state.keys().collect::<Vec<_>>()
+        );
+    }
+}

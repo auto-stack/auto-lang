@@ -1,0 +1,21 @@
+// 最简:type 的 self 字段是 List,mut fn 里 push,外部读 len。
+// 模拟 widget/store 的 model { var blocks List<T> } + handler push 场景。
+type Holder {
+    items List<int>
+
+    mut fn add(x int) void {
+        self.items.push(x)
+    }
+
+    fn count() int {
+        return self.items.len()
+    }
+}
+
+fn main() {
+    var h = Holder { items: List<int>.new([]) }
+    h.add(10)
+    h.add(20)
+    h.add(30)
+    print(h.count())
+}
