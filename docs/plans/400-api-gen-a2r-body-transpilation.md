@@ -165,6 +165,16 @@ pub async fn auth_login(State(db): State<Db>, Json(input): Json<CreateAuthUserIn
 | `use.rust` 收集不全导致编译错误 | 🟢 | 后处理扫描 a2r 产物里未解析的符号，补声明 |
 | 回归 015/017（body 是薄委托时行为变化） | 🟢 | a2r 转译薄委托应等价于路线B；单测锚定（`test_handler_calls_db_for_chat` 等） |
 
+### 5.1 auto-musk dogfooding 发现的关联 codegen 问题（非本计划核心范围）
+
+以下问题在 auto-musk dogfooding 中发现，属**前端 vue codegen**（`ui_gen/vue.rs`）而非后端 a2r（本计划范围），但同属"dogfooding 暴露的 codegen 缺陷"，记录于此供后续跟进：
+
+| 编号 | 问题 | 影响 | 当前处置 | 根因定位 |
+|---|---|---|---|---|
+| DF-1 | **嵌套 if 表达式在 style 绑定中被压平**：`style: if A { if B { "x" } else { "y" } } else { "z" }` 生成 `A ? '' : 'z'`（内层 if 丢失，true 分支变空字符串） | 选中态 class 丢失 → 布局/样式错乱（auto-musk 的 session 列表项点击后标题变居中） | auto-musk 侧简化为单层 if 绕开（`bde65a2`） | `ui_gen/vue.rs` style/attr 绑定的 if-expr 转换逻辑只取外层条件，未递归处理嵌套 if 的分支。需在 vue codegen 层修复（支持嵌套三元 `A ? (B ? 'x' : 'y') : 'z'`） |
+
+> **注**：DF-1 属 vue codegen 范畴，不在本计划（后端 a2r）的实施范围内，但登记于此避免遗忘。修复时应在 `ui_gen/vue.rs` 加单测（嵌套 if → 嵌套三元），并可考虑纳入 a2vue golden 测试覆盖。
+
 ---
 
 ## 6. 验收标准
@@ -182,7 +192,7 @@ pub async fn auth_login(State(db): State<Db>, Json(input): Json<CreateAuthUserIn
 - **不改 db.rs 转译路径**：399 已让 db.at→db.rs 走 a2r，本计划不重做。
 - **不删除 CRUD 模板 / 路线B**：保留作为回退，向后兼容。
 - **不做 vm 后端**（`AUTO_BACKEND_IMPL=vm`）：本计划聚焦 rust 后端的 a2r 接通。
-- **不做前端 codegen 改动**：前端 vue 生成不受影响。
+- **不做前端 codegen 改动**：前端 vue 生成不受影响（§5.1 的 DF-1 等 dogfooding 发现的前端 codegen 问题登记但不实施）。
 - **`extern fn` 语言扩展**：若 Phase 3 评估为大局改动，拆独立计划，不阻塞 Phase 1/2。
 
 ---
