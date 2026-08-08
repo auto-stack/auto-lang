@@ -1,8 +1,6 @@
-widget App {
-    use {
-        fn: init_board, place_mines, reveal_flood, check_win, count_flags, toggle_flag, reveal_all_mines, difficulty_rows, difficulty_cols, difficulty_mines, number_class, difficulty_class, cell_class, mines_left_label, time_label, grid_style from "src/front/utils/minesweeper.ts"
-    }
+use minesweeper_store: MinesweeperStore
 
+widget App {
     msg Msg {
         Reveal(int, int),
         Flag(int, int),
@@ -13,20 +11,7 @@ widget App {
     }
 
     model {
-        var board = []
-        var rows int = 9
-        var cols int = 9
-        var mine_count int = 10
-        var difficulty str = "beginner"
-        var game_state str = "ready"
-        var elapsed int = 0
         var interval int = 1000
-        var flags_placed int = 0
-    }
-
-    computed {
-        mines_label => mines_left_label(mine_count, flags_placed)
-        timer_label => time_label(elapsed)
     }
 
     view {
@@ -35,7 +20,7 @@ widget App {
                 // —— 信息栏 ——
                 row {
                     col {
-                        text .mines_label {
+                        text .store.mines_label {
                             style: "text-2xl font-bold text-gray-800"
                         }
                         text "mines left" {
@@ -44,7 +29,7 @@ widget App {
                         style: "items-center"
                     }
                     col {
-                        text .timer_label {
+                        text .store.timer_label {
                             style: "text-2xl font-bold font-mono text-gray-800"
                         }
                         text "time" {
@@ -59,19 +44,19 @@ widget App {
                     style: "w-full items-center justify-between"
                 }
 
-                // —— 难度选择 ——
+                // —— 难度选择(class 从 store 预存字段读取,VM 视图不能调函数) ——
                 row {
                     button "初级 9×9" {
                         onclick: .SetDifficulty("beginner"),
-                        class: difficulty_class(.difficulty, "beginner")
+                        class: .store.beginner_class
                     }
                     button "中级 16×16" {
                         onclick: .SetDifficulty("intermediate"),
-                        class: difficulty_class(.difficulty, "intermediate")
+                        class: .store.intermediate_class
                     }
                     button "高级 30×16" {
                         onclick: .SetDifficulty("expert"),
-                        class: difficulty_class(.difficulty, "expert")
+                        class: .store.expert_class
                     }
                     style: "gap-2 mt-4"
                 }
@@ -79,17 +64,17 @@ widget App {
                 // —— 棋盘网格 ——
                 div {
                     div {
-                        for cell in .board {
+                        for cell in .store.board {
                             button {
                                 if cell.revealed {
                                     if cell.mine {
                                         text "💣" {
-                                            style: "text-lg"
+                                            style: cell.number_class
                                         }
                                     } else {
                                         if cell.adjacent > 0 {
                                             text cell.adjacent.to_string() {
-                                                class: number_class(cell.adjacent)
+                                                style: cell.number_class
                                             }
                                         } else {
                                             text " " {
@@ -110,22 +95,21 @@ widget App {
                                 }
                                 onclick: .Reveal(cell.x, cell.y),
                                 oncontextmenu.prevent: .Flag(cell.x, cell.y),
-                                variant: "text",
-                                class: cell_class(cell.revealed)
+                                class: cell.cell_class
                             }
                         }
-                        style: grid_style(.cols)
+                        style: .store.grid_style
                     }
                     style: "overflow-x-auto w-full mt-6"
                 }
 
                 // —— 游戏结束遮罩 ——
-                if .game_state == "won" {
+                if .store.game_state == "won" {
                     text "🎉 胜利!" {
                         style: "text-3xl font-bold text-green-600 mt-6"
                     }
                 }
-                if .game_state == "lost" {
+                if .store.game_state == "lost" {
                     text "💥 踩雷了!点 🔄 重开" {
                         style: "text-2xl font-bold text-red-600 mt-6"
                     }
@@ -138,89 +122,27 @@ widget App {
 
     on {
         .Init -> {
-            .rows = difficulty_rows(.difficulty)
-            .cols = difficulty_cols(.difficulty)
-            .mine_count = difficulty_mines(.difficulty)
-            .board = init_board(.rows, .cols)
-            .game_state = "ready"
-            .elapsed = 0
-            .flags_placed = 0
+            store.Init()
         }
 
         .Reset -> {
-            .board = init_board(.rows, .cols)
-            .game_state = "ready"
-            .elapsed = 0
-            .flags_placed = 0
+            store.Reset()
         }
 
         .SetDifficulty(d) -> {
-            .difficulty = d
-            .rows = difficulty_rows(d)
-            .cols = difficulty_cols(d)
-            .mine_count = difficulty_mines(d)
-            .board = init_board(.rows, .cols)
-            .game_state = "ready"
-            .elapsed = 0
-            .flags_placed = 0
+            store.SetDifficulty(d)
         }
 
         .Reveal(x, y) -> {
-            // 游戏已结束则忽略。
-            if .game_state == "won" {
-                return
-            }
-            if .game_state == "lost" {
-                return
-            }
-
-            // 首次点击:安全布雷。
-            if .game_state == "ready" {
-                .board = place_mines(.board, .rows, .cols, .mine_count, x, y)
-                .game_state = "playing"
-            }
-
-            // 取出目标格,旗子格/已揭开格忽略。
-            let idx = x * .cols + y
-            let target = .board[idx]
-            if target.flagged {
-                return
-            }
-            if target.revealed {
-                return
-            }
-
-            // 踩雷:揭开所有雷,游戏失败。
-            if target.mine {
-                .board = reveal_all_mines(.board)
-                .game_state = "lost"
-                return
-            }
-
-            // 正常揭开 + 连锁空白展开。
-            .board = reveal_flood(.board, .rows, .cols, x, y)
-
-            // 胜负判定。
-            if check_win(.board) {
-                .game_state = "won"
-            }
+            store.Reveal(x, y)
         }
 
         .Flag(x, y) -> {
-            if .game_state == "won" {
-                return
-            }
-            if .game_state == "lost" {
-                return
-            }
-            .board = toggle_flag(.board, .cols, x, y)
-            .flags_placed = count_flags(.board)
+            store.Flag(x, y)
         }
 
         .Tick -> {
-            if .game_state == "playing" {
-                .elapsed = .elapsed + 1
-            }
+            store.Tick()
         }
     }
 }

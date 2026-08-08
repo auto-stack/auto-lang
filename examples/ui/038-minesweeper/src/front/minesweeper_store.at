@@ -1,0 +1,285 @@
+// minesweeper_store.at — pure-Autolang minesweeper game logic as a store.
+//
+// All game logic lives here as store actions (no escape-hatch, no .ts), so the
+// same source compiles under BOTH backends: vue (codegen translates actions
+// into the store composable) and vm (the interpreter runs actions directly).
+// See Plan 402 §12 for the dual-backend rationale.
+//
+// Cell representation: Obj literals, NOT a `type` record. Each cell carries
+// precomputed `number_class` / `cell_class` view strings because the VM
+// view-builder cannot call functions (Plan 402 §12.2 constraint 2): every
+// style/label the view needs is a field read, not a function call.
+
+store MinesweeperStore {
+    model {
+        var board = []
+        var rows int = 9
+        var cols int = 9
+        var mine_count int = 10
+        var difficulty str = "beginner"
+        var game_state str = "ready"
+        var elapsed int = 0
+        var flags_placed int = 0
+        // Precomputed view strings (VM view bindings cannot call functions).
+        var grid_style str = ""
+        var mines_label str = "💣 10"
+        var timer_label str = "⏱ 0s"
+        var beginner_class str = ""
+        var intermediate_class str = ""
+        var expert_class str = ""
+    }
+
+    msg Msg {
+        Reveal(int, int),
+        Flag(int, int),
+        SetDifficulty(str),
+        Reset,
+        Tick,
+        Init,
+    }
+
+    on {
+        // Build a fresh all-empty board for the current difficulty and reset
+        // all per-game state. Called on first load and on every reset/difficulty
+        // switch. Mines are NOT placed here — that happens on the first click
+        // (first-click-safe, see .Reveal).
+        .Init -> {
+            // Difficulty -> dimensions (inline; no helper fn for vue codegen).
+            var r int = 9
+            var c int = 9
+            var m int = 10
+            if .difficulty == "intermediate" {
+                r = 16
+                c = 16
+                m = 40
+            }
+            if .difficulty == "expert" {
+                r = 16
+                c = 30
+                m = 99
+            }
+            .rows = r
+            .cols = c
+            .mine_count = m
+            .game_state = "ready"
+            .elapsed = 0
+            .flags_placed = 0
+            .board = []
+            var x int = 0
+            for x < .rows {
+                var y int = 0
+                for y < .cols {
+                    .board.push({ x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, number_class: "", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-gray-400 hover:bg-gray-500 border border-gray-500" })
+                    y = y + 1
+                }
+                x = x + 1
+            }
+            .grid_style = "display:grid; grid-template-columns: repeat(" + .cols.to_string() + ", minmax(0, 1fr)); gap:0;"
+            .mines_label = "💣 " + .mine_count.to_string()
+            .timer_label = "⏱ 0s"
+            .beginner_class = if .difficulty == "beginner" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
+            .intermediate_class = if .difficulty == "intermediate" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
+            .expert_class = if .difficulty == "expert" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
+        }
+
+        .Reset -> {
+            store.Init()
+        }
+
+        .SetDifficulty(d) -> {
+            .difficulty = d
+            store.Init()
+        }
+
+        .Reveal(x, y) -> {
+            // Ignore clicks once the game is over.
+            if .game_state == "won" {
+                return
+            }
+            if .game_state == "lost" {
+                return
+            }
+
+            // First click: lay out mines, avoiding the 3x3 zone around (x, y),
+            // then compute adjacency counts. Done in-place on .board.
+            if .game_state == "ready" {
+                var placed int = 0
+                var attempts int = 0
+                var max_attempts int = .mine_count * 50 + 100
+                for placed < .mine_count {
+                    if attempts >= max_attempts {
+                        break
+                    }
+                    attempts = attempts + 1
+                    var rr int = (math.random() * (.rows * .cols)).to_int()
+                    var rx int = rr / .cols
+                    var ry int = rr % .cols
+                    // Skip the 3x3 safe zone around the first click (x, y).
+                    var dx int = rx - x
+                    var dy int = ry - y
+                    if dx < -1 || dx > 1 || dy < -1 || dy > 1 {
+                        // Outside the safe zone — place a mine here if free.
+                        var idx int = rx * .cols + ry
+                        if .board[idx].mine == false {
+                            var old = .board[idx]
+                            .board[idx] = { x: old.x, y: old.y, mine: true, revealed: old.revealed, flagged: old.flagged, adjacent: old.adjacent, number_class: old.number_class, cell_class: old.cell_class }
+                            placed = placed + 1
+                        }
+                    }
+                }
+                // Adjacency counts for every non-mine cell.
+                var j int = 0
+                for j < .board.len() {
+                    if .board[j].mine == false {
+                        var cnt int = 0
+                        var ddx int = -1
+                        for ddx <= 1 {
+                            var ddy int = -1
+                            for ddy <= 1 {
+                                if ddx != 0 || ddy != 0 {
+                                    var nx int = .board[j].x + ddx
+                                    var ny int = .board[j].y + ddy
+                                    if nx >= 0 && nx < .rows && ny >= 0 && ny < .cols {
+                                        if .board[nx * .cols + ny].mine {
+                                            cnt = cnt + 1
+                                        }
+                                    }
+                                }
+                                ddy = ddy + 1
+                            }
+                            ddx = ddx + 1
+                        }
+                        var cj = .board[j]
+                        .board[j] = { x: cj.x, y: cj.y, mine: cj.mine, revealed: cj.revealed, flagged: cj.flagged, adjacent: cnt, number_class: cj.number_class, cell_class: cj.cell_class }
+                    }
+                    j = j + 1
+                }
+                .game_state = "playing"
+            }
+
+            // Look up the clicked cell; ignore flagged / already-revealed.
+            var tidx int = x * .cols + y
+            var target = .board[tidx]
+            if target.flagged {
+                return
+            }
+            if target.revealed {
+                return
+            }
+
+            // Stepped on a mine: reveal every mine, game over.
+            if target.mine {
+                var k int = 0
+                for k < .board.len() {
+                    if .board[k].mine {
+                        var ck = .board[k]
+                        .board[k] = { x: ck.x, y: ck.y, mine: true, revealed: true, flagged: ck.flagged, adjacent: ck.adjacent, number_class: "color:#000;font-weight:700;font-size:1.125rem", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200" }
+                    }
+                    k = k + 1
+                }
+                .game_state = "lost"
+                return
+            }
+
+            // Flood-fill reveal from (x, y) with an explicit stack (no recursion).
+            var stack = []
+            stack.push(x)
+            stack.push(y)
+            for stack.len() > 0 {
+                var cy int = stack.pop()
+                var cx int = stack.pop()
+                if cx >= 0 && cx < .rows && cy >= 0 && cy < .cols {
+                    var fidx int = cx * .cols + cy
+                    var fc = .board[fidx]
+                    if fc.revealed == false && fc.flagged == false {
+                        // Reveal it with its number color class.
+                        var nclass str = ""
+                        if fc.adjacent == 1 {
+                            nclass = "color:#1d4ed8;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 2 {
+                            nclass = "color:#15803d;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 3 {
+                            nclass = "color:#b91c1c;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 4 {
+                            nclass = "color:#6b21a8;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 5 {
+                            nclass = "color:#9a3412;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 6 {
+                            nclass = "color:#0f766e;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent == 7 {
+                            nclass = "color:#111827;font-weight:700;font-size:1.125rem"
+                        }
+                        if fc.adjacent >= 8 {
+                            nclass = "color:#9d174d;font-weight:700;font-size:1.125rem"
+                        }
+                        .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: true, flagged: fc.flagged, adjacent: fc.adjacent, number_class: nclass, cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200" }
+                        // Empty cell: push 8 neighbors to keep flooding.
+                        if fc.adjacent == 0 {
+                            var ex int = -1
+                            for ex <= 1 {
+                                var ey int = -1
+                                for ey <= 1 {
+                                    if ex != 0 || ey != 0 {
+                                        stack.push(cx + ex)
+                                        stack.push(cy + ey)
+                                    }
+                                    ey = ey + 1
+                                }
+                                ex = ex + 1
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Win check: every non-mine cell revealed.
+            var won bool = true
+            var w int = 0
+            for w < .board.len() {
+                if .board[w].mine == false {
+                    if .board[w].revealed == false {
+                        won = false
+                    }
+                }
+                w = w + 1
+            }
+            if won {
+                .game_state = "won"
+            }
+        }
+
+        .Flag(x, y) -> {
+            if .game_state == "won" {
+                return
+            }
+            if .game_state == "lost" {
+                return
+            }
+            var fidx int = x * .cols + y
+            var fc = .board[fidx]
+            if fc.revealed == false {
+                var new_flag bool = fc.flagged == false
+                .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: fc.revealed, flagged: new_flag, adjacent: fc.adjacent, number_class: fc.number_class, cell_class: fc.cell_class }
+                if new_flag {
+                    .flags_placed = .flags_placed + 1
+                } else {
+                    .flags_placed = .flags_placed - 1
+                }
+                .mines_label = "💣 " + (.mine_count - .flags_placed).to_string()
+            }
+        }
+
+        .Tick -> {
+            if .game_state == "playing" {
+                .elapsed = .elapsed + 1
+                .timer_label = "⏱ " + .elapsed.to_string() + "s"
+            }
+        }
+    }
+}

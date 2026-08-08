@@ -1,59 +1,77 @@
-# 038-minesweeper — Classic Minesweeper
+# 038-minesweeper — Classic Minesweeper (dual-backend)
 
 A complete minesweeper game: left-click to reveal (with first-click safety and
 flood-fill of empty regions), right-click to flag mines, three difficulty
 levels (beginner 9×9 / intermediate 16×16 / expert 30×16), and a live timer
 with a remaining-mines counter.
 
+**This is the first AutoUI example that runs on TWO backends from the same
+source** — `auto run` (vue) and `auto run --render vm`. All game logic is
+written in pure AutoLang, so it compiles to a Vue store composable (vue
+backend) **and** runs directly in the AutoVM interpreter (vm backend).
+
 ## Concepts
 
-- **`use { fn }` escape-hatch** — the heavy game logic (mine placement,
-  flood-fill, win/loss checks) lives in a hand-written TypeScript module
-  (`src/front/utils/minesweeper.ts`) and is imported into the widget via
-  `use { fn: ... from "..." }`. The `.at` widget stays a thin state shell
-  (model + view + event routing) while the imperative algorithm runs in plain
-  TS. See `029-external-imports` for the escape-hatch pattern.
+- **Store-driven pure-AutoLang logic** — the entire game (mine placement,
+  flood-fill, win/loss, flag toggling) lives in `src/front/minesweeper_store.at`
+  as store actions, with no escape-hatch and no `.ts`. The vue codegen
+  translates the store into a composable; the VM interpreter runs the actions
+  directly. The `app.at` widget is a thin view shell that only forwards events
+  to `store.*` and reads precomputed fields.
+- **Precomputed view strings (VM compatibility)** — the VM view-builder cannot
+  call functions in bindings, so every per-cell style (`number_class`,
+  `cell_class`) and every layout string (`grid_style`, `difficulty_class`) is
+  computed inside the action and stored as a field on the cell / store. The
+  view only reads fields — never calls a function.
 - **DOM event modifier `oncontextmenu.prevent`** — right-click on a cell
-  toggles a flag via `oncontextmenu.prevent: .Flag(x, y)`, which compiles to
-  Vue's `@contextmenu.prevent` (suppressing the browser's native menu).
-- **Timer convention** — `var interval int = 1000` in the model plus a `.Tick`
-  handler in `on` is a codegen signal: the SFC auto-gets a `setInterval`
+  toggles a flag via `oncontextmenu.prevent: .Flag(x, y)` → Vue's
+  `@contextmenu.prevent` (suppressing the browser's native menu).
+- **Timer convention** — `var interval int = 1000` in the widget model plus a
+  `.Tick` handler is a codegen signal: the SFC auto-gets a `setInterval`
   (cleared on unmount) without any hand-written async code.
-- **`computed` reactive labels** — `mines_label` / `timer_label` derive their
-  display strings by calling the imported TS helpers, keeping the `text` nodes
-  as clean field reads.
 - **Four-state machine** — `game_state` cycles `ready → playing → won/lost`,
   driving both the timer (only ticks while `playing`) and the end-game banner.
-- **Dynamic CSS grid via a style helper** — the board's column count is
-  variable (9/16/30), which exceeds the Tailwind `grid-cols-N` ceiling (12).
-  A `grid_style(cols)` helper returns a real `grid-template-columns: repeat(N …)`
-  string bound through `:style`, so the grid re-flows on every difficulty
-  switch.
+- **First-click-safe mine placement** — mines are laid out on the first click,
+  avoiding the 3×3 zone around the clicked cell, so the opening move always
+  reveals a region. Flood-fill uses an explicit stack (no recursion).
 
 ## Source
 
-- `src/front/app.at` — the widget: `model` (board + state), `computed`
-  (labels), `view` (info bar, difficulty buttons, board grid, end banner),
-  `on` (Reveal / Flag / SetDifficulty / Reset / Tick / Init).
-- `src/front/utils/minesweeper.ts` — pure game logic, imported via the
-  `use { fn }` block. `place_mines` is first-click-safe (the clicked cell and
-  its 8 neighbors are never mines); `reveal_flood` uses an explicit stack
-  (no recursion) to flood-fill empty regions.
+- `src/front/minesweeper_store.at` — `store MinesweeperStore`: all game logic
+  as AutoLang actions (`Init` / `Reveal` / `Flag` / `Reset` / `SetDifficulty` /
+  `Tick`). Cells are Obj literals carrying precomputed `number_class` /
+  `cell_class` fields.
+- `src/front/app.at` — `widget App`: a pure view shell. `use store:
+  MinesweeperStore`; the view reads `.store.*` fields only; the `on` block
+  forwards every event to the matching store action.
 
 ## How to Run
 
 ```
 cd examples/ui/038-minesweeper
-auto gen    # generate gen/front/vue (imports minesweeper.ts into src/ext/)
-auto run    # serve frontend (:4038)
+auto gen    # generate gen/front/vue (store composable + App SFC)
+
+# vue backend (web)
+auto run                 # serve frontend (:4038), open http://localhost:4038
+
+# vm backend (native AutoVM window)
+auto run --render vm     # interpret .at directly, no code generation
 ```
 
-Then open `http://localhost:4038`. Left-click reveals, right-click flags.
-Switch difficulty with the three buttons; click 🔄 to restart the current
-board.
+Left-click reveals, right-click flags. Switch difficulty with the three
+buttons; click 🔄 to restart the current board.
+
+## Why dual-backend matters
+
+The vue backend generates a real Vue/Vite SPA; the vm backend interprets the
+`.at` directly in a native window with no JS in between. Keeping the same
+source working on both is a constraint that shapes the architecture: no
+TypeScript escape-hatch, no function calls in view bindings, all logic in
+store actions. See Plan 402 §12 for the full dual-backend analysis.
 
 ## Inspiration
 
 The Windows Minesweeper classic. Chosen as a focused showcase for the
-escape-hatch + event-modifier + timer trio — a game whose logic is too large
-to inline in a handler but whose UI is a clean declarative grid.
+store-driven + dual-backend + event-modifier + timer pattern — a game whose
+logic is too large to inline in a widget handler but whose UI is a clean
+declarative grid.

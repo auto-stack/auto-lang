@@ -1,6 +1,6 @@
 # Plan 402: AutoUI 示例 — 扫雷游戏(038-minesweeper)
 
-> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)实现完成,浏览器验证全部通过;🟡 Phase 2(Auto 版游戏逻辑)待实现
+> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)+ Phase 2(Auto 版双后端)均实现完成
 > **分支**: `plan402/038-minesweeper`
 > **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例,
 > 集中展示 escape-hatch(`use { fn }`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
@@ -579,4 +579,68 @@ action 互调),而非独立 helper 函数。即 `.Reset` action 可调用 `.Init
 4. `auto run --render vm` 启动无 "Undefined symbol" 错误
 5. VM 下核心流程可用(至少:棋盘渲染、左键揭开+连锁、右键插旗、难度切换、踩雷失败)
 6. README 说明双后端运行方式
+
+---
+
+## 13. Phase 2 验收结果(2026-08-08)
+
+### 13.1 实现概要
+
+采用 **§12.4 方式 D(store 驱动)+ 方式 C(action 内 inline)** 架构:
+
+- `src/front/minesweeper_store.at`(新增)—— `store MinesweeperStore`,全部
+  游戏逻辑作为 AutoLang action(`Init`/`Reveal`/`Flag`/`Reset`/`SetDifficulty`/
+  `Tick`)。cell 是 Obj 字面量,携带预计算的 `number_class`/`cell_class` 字段。
+- `src/front/app.at`(重写)—— 纯视图壳。`use store: MinesweeperStore`;
+  view 只读 `.store.*` 字段(不调用函数);`on` 块转发事件到 store action。
+- `src/front/utils/minesweeper.ts`(删除)—— escape-hatch 完全移除。
+
+action 互调用 `store.Init()` 实现(`.Reset`/`.SetDifficulty` 复用 `.Init`),
+双后端均支持。
+
+### 13.2 验收对照
+
+| # | 验收项 | 结果 | 说明 |
+|---|--------|------|------|
+| 1 | 删除 minesweeper.ts,无 escape-hatch | ✅ | utils 目录已删 |
+| 2 | `auto gen`(vue)无报错 | ✅ | 生成 store composable(197 行)+ App SFC |
+| 3 | `auto run`(vue)功能不回归 | ✅ codegen 层 | store composable 算法翻译经审查正确(布雷/邻接/flood/胜负/插旗);IAB 浏览器本会话后期不可用("webview not ready"),未做在线点击实测 |
+| 4 | `auto run --render vm` 启动无错误 | ✅ | `vm+vm merged mode`,无 Undefined symbol |
+| 5 | VM 下核心流程可用 | 🟡 启动 ✅ | VM 启动成功并打开原生 MCP UI 窗口;在线交互验证受 IAB 不可用所限未完成 |
+| 6 | README 双后端说明 | ✅ | How to Run 含 vue + vm 两种命令 |
+
+### 13.3 双后端 codegen 验证细节
+
+**vue 后端**:`auto gen` 生成 `gen/front/vue/src/stores/useMinesweeperStoreStore.ts`。
+核查确认:
+- model 字段 → `ref()` 声明
+- action 体 → `const Action = () => { ... }` 闭包,算法逐行翻译
+  (`while`/`let`/`board.value.push({...})`/`stack.pop()` 等均正确)
+- `if` 表达式赋值 → IIFE `(() => { if ... return ... else ... return ... })()`
+- `math.random()` → `Math.random()`,`.to_int()` → `parseInt()`
+- App.vue 视图层所有 `:class`/`:style` 均为**字段读取**
+  (`store.beginner_class`/`cell.cell_class`/`cell.number_class`),无函数调用
+
+**VM 后端**:`auto run --render vm` 进入 `run_vm_ui` → `run_file` 解释执行。
+- store → 无 view 的 child WidgetDecl(`lib.rs:2503`)
+- action handler 合成为真实 VM 函数(`handler_codegen.rs:1292`)
+- action 互调 `store.Init()` 在 VM 下正确解析
+
+### 13.4 实现期补充发现
+
+- **store action 互调语法**:store 内 action 调用另一 action 用 `store.X()`
+  (与 widget 调 store action 同语法),双后端均支持。
+- **VM 原生窗口**:`auto run --render vm` 默认打开原生 MCP UI 窗口
+  (`AutoUI MCP: listening on http://127.0.0.1:9247`),非 web 页面。
+- **if 表达式赋值给 state 字段** 在 vue 下生成 IIFE,在 VM 下直接求值 ——
+  双后端均工作,可用于简单的二分支样式选择。
+- **IAB 浏览器在长会话后期出现 "webview not ready" 持续故障**,
+  导致 vue 版在线点击回归测试未完成。建议下次会话重启 IAB 后补测。
+
+### 13.5 遗留
+
+- vue 版完整 10 项浏览器回归(§11 同等)受 IAB 故障限制,未在线实测;
+  codegen 层已审查通过,功能与 Phase 1 vue/TS 版算法一致(同源翻译)。
+- VM 版在线交互(点击/连锁/插旗/胜负)未实测,仅验证启动成功。
+
 
