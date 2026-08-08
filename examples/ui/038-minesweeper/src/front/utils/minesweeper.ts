@@ -174,26 +174,29 @@ export function reveal_all_mines(board: Cell[]): Cell[] {
   return board.map((c) => (c.mine ? { ...c, revealed: true } : c))
 }
 
-/// Tailwind class for a cell given its number (1..8) — classic minesweeper
-/// number colors.
+/// Inline CSS color for a cell given its number (1..8) — classic minesweeper
+/// number colors. Returns a real CSS string because the codegen binds `text`
+/// element attributes through `:style` (Tailwind class names are not valid
+/// inline CSS and would be silently dropped). Font size/weight are handled by
+/// the surrounding revealed-cell styling.
 export function number_class(n: number): string {
   switch (n) {
     case 1:
-      return 'text-blue-600'
+      return 'color:#1d4ed8;font-weight:700;font-size:1.125rem'
     case 2:
-      return 'text-green-600'
+      return 'color:#15803d;font-weight:700;font-size:1.125rem'
     case 3:
-      return 'text-red-600'
+      return 'color:#b91c1c;font-weight:700;font-size:1.125rem'
     case 4:
-      return 'text-purple-700'
+      return 'color:#6b21a8;font-weight:700;font-size:1.125rem'
     case 5:
-      return 'text-orange-700'
+      return 'color:#9a3412;font-weight:700;font-size:1.125rem'
     case 6:
-      return 'text-teal-600'
+      return 'color:#0f766e;font-weight:700;font-size:1.125rem'
     case 7:
-      return 'text-gray-800'
+      return 'color:#111827;font-weight:700;font-size:1.125rem'
     default:
-      return 'text-pink-700'
+      return 'color:#9d174d;font-weight:700;font-size:1.125rem'
   }
 }
 
@@ -202,20 +205,23 @@ export function number_class(n: number): string {
 /// string + ternary concatenation, which the codegen renders without the
 /// protective parentheses the ?: operator needs.)
 export function difficulty_class(difficulty: string, target: string): string {
-  const base = 'px-3 py-1.5 rounded-lg text-sm font-semibold '
+  const base = 'px-3 py-1.5 rounded-lg text-sm font-semibold border '
   if (difficulty === target) {
-    return base + 'bg-blue-500 text-white'
+    return base + 'bg-blue-600 text-white border-blue-700'
   }
-  return base + 'bg-gray-100 text-gray-600'
+  return base + 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
 }
 
 /// Tailwind class for a board cell — flat when revealed, raised otherwise.
+/// Uses a strong light/dark split so revealed vs. hidden cells are
+/// unambiguous: hidden cells are a solid mid-gray "button" look, revealed
+/// cells drop to white with a faint border.
 export function cell_class(revealed: boolean): string {
-  const base = 'w-8 h-8 flex items-center justify-center '
+  const base = 'w-8 h-8 flex items-center justify-center select-none '
   if (revealed) {
-    return base + 'bg-gray-100'
+    return base + 'bg-white border border-gray-200'
   }
-  return base + 'bg-gray-300 hover:bg-gray-400'
+  return base + 'bg-gray-400 hover:bg-gray-500 border border-gray-500'
 }
 
 /// "💣 N" label for the mines-left counter. Returned as a single string so

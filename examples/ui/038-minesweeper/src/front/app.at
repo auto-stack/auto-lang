@@ -39,7 +39,7 @@ widget App {
                             style: "text-2xl font-bold text-gray-800"
                         }
                         text "mines left" {
-                            style: "text-xs text-gray-400 uppercase tracking-wide"
+                            style: "text-xs text-gray-500 uppercase tracking-wide"
                         }
                         style: "items-center"
                     }
@@ -48,7 +48,7 @@ widget App {
                             style: "text-2xl font-bold font-mono text-gray-800"
                         }
                         text "time" {
-                            style: "text-xs text-gray-400 uppercase tracking-wide"
+                            style: "text-xs text-gray-500 uppercase tracking-wide"
                         }
                         style: "items-center"
                     }
@@ -63,15 +63,15 @@ widget App {
                 row {
                     button "初级 9×9" {
                         onclick: .SetDifficulty("beginner"),
-                        style: difficulty_class(.difficulty, "beginner")
+                        class: difficulty_class(.difficulty, "beginner")
                     }
                     button "中级 16×16" {
                         onclick: .SetDifficulty("intermediate"),
-                        style: difficulty_class(.difficulty, "intermediate")
+                        class: difficulty_class(.difficulty, "intermediate")
                     }
                     button "高级 30×16" {
                         onclick: .SetDifficulty("expert"),
-                        style: difficulty_class(.difficulty, "expert")
+                        class: difficulty_class(.difficulty, "expert")
                     }
                     style: "gap-2 mt-4"
                 }
@@ -89,7 +89,7 @@ widget App {
                                     } else {
                                         if cell.adjacent > 0 {
                                             text cell.adjacent.to_string() {
-                                                style: "text-lg font-bold " + number_class(cell.adjacent)
+                                                class: number_class(cell.adjacent)
                                             }
                                         } else {
                                             text " " {
