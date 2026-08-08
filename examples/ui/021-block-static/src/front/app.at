@@ -2,7 +2,7 @@
 use block_store: BlockStore
 
 widget App {
-    msg Msg { Ok }
+    msg Msg { Init, Ok }
 
     view {
         col {
@@ -18,6 +18,9 @@ widget App {
     }
 
     on {
+        .Init -> {
+            store.Init()
+        }
         .Ok -> { }
     }
 }
