@@ -371,7 +371,9 @@ fn post_process_db_rs(mut code: String) -> String {
     // Plan 399 §3: a2r emits `let results: Vec<T> = ...` without `mut` but then
     // calls results.push(). Add `mut` to `let NAME:` that is followed (in the same
     // fn) by `NAME.push`. Simple per-line heuristic: `let X = vec![]` / `let X:` → `let mut X`.
-    code = add_mut_to_let_collections(&code);
+    // Plan 399 Phase 11.5: a2r now scans the fn body for mutated `let` bindings
+    // (scan_mutated_bindings) and emits `let mut` — this post-process is removed.
+    // code = add_mut_to_let_collections(&code);
     // Plan 399 §3: a2r iterates borrowed (`for note in &*G.lock()`) but moves
     // fields out of the shared reference in struct literals (`tags: note.tags`)
     // and returns (`return Some(note)`).

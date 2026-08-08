@@ -171,6 +171,11 @@ pub struct RustTrans {
     /// emit `.clone()` because `x` is `&T`. Cleared per function (function-scope
     /// set; nested loops just add to it).
     borrowed_iter_vars: std::collections::HashSet<AutoStr>,
+    /// Plan 399 Phase 11.5: names of `let` bindings that are mutated later in
+    /// the same fn body (push/insert/extend/assign). When a `let` store matches,
+    /// emit `let mut` so the mutation compiles. Populated by scanning the fn
+    /// body at fn_decl entry (scan_mutated_bindings).
+    mutated_let_bindings: std::collections::HashSet<AutoStr>,
     /// Plan 376D: Shared TypeStore from all modules (for type inference).
     /// When Some, `run_type_inference` uses this instead of building a local one.
     shared_type_store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
@@ -361,6 +366,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -437,6 +443,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
             tag_types: HashSet::new(),
@@ -10079,9 +10086,16 @@ impl RustTrans {
             || is_borrowed_split_source;
 
         let safe_name = Self::rust_ident(store.name.as_str());
+        // Plan 399 Phase 11.5: a `let` binding that is mutated later (push/assign)
+        // needs `let mut` — Auto's `let` allows mutation, Rust's doesn't.
+        let needs_mut = matches!(store.kind, StoreKind::Let)
+            && self.mutated_let_bindings.contains(store.name.as_ref());
         if skip_type_annotation {
             // No type annotation - let Rust infer the type
             match store.kind {
+                StoreKind::Let if needs_mut => {
+                    write!(out, "let mut {} = ", safe_name)?;
+                }
                 StoreKind::Let => {
                     write!(out, "let {} = ", safe_name)?;
                 }
@@ -10096,6 +10110,9 @@ impl RustTrans {
             // Explicit type annotation for non-closure expressions
             let ty_str = spec_array_type.as_deref().unwrap_or(&ty_name);
             match store.kind {
+                StoreKind::Let if needs_mut => {
+                    write!(out, "let mut {}: {} = ", safe_name, ty_str)?;
+                }
                 StoreKind::Let => {
                     write!(out, "let {}: {} = ", safe_name, ty_str)?;
                 }
@@ -10277,6 +10294,51 @@ impl RustTrans {
     }
 
     // Function declaration
+    /// Plan 399 Phase 11.5: collect names of bindings that are mutated after
+    /// declaration. Recognizes `name.push(...)`/`.insert(...)`/`.extend(...)`
+    /// method calls and `name = ...` assignments. Used to upgrade `let name` to
+    /// `let mut name` so the mutation compiles (Auto's `let` allows mutation;
+    /// Rust's doesn't).
+    fn scan_mutated_bindings(body: &crate::ast::Body) -> std::collections::HashSet<AutoStr> {
+        let mut out = std::collections::HashSet::new();
+        let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain",
+            "clear", "sort_by", "sort", "swap", "truncate", "drain", "splice", "resize"];
+        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &[&str]) {
+            // `name.push(...)` etc → name is mutated
+            if let crate::ast::Expr::Call(call) = expr {
+                if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
+                    if methods.contains(&method.as_str()) {
+                        if let crate::ast::Expr::Ident(name) = obj.as_ref() {
+                            out.insert(name.clone());
+                        }
+                    }
+                }
+                // Recurse into call args
+                for arg in &call.args.args {
+                    if let crate::ast::Arg::Pos(e) = arg { visit_expr(e, out, methods); }
+                }
+            }
+        }
+        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &[&str]) {
+            match stmt {
+                Stmt::Expr(expr) => visit_expr(expr, out, methods),
+                Stmt::Store(store) => visit_expr(&store.expr, out, methods),
+                Stmt::If(if_) => {
+                    for b in &if_.branches { for s in &b.body.stmts { visit_stmt(s, out, methods); } }
+                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out, methods); } }
+                }
+                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out, methods); } }
+                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out, methods); } }
+                Stmt::Try(t) => { for s in &t.body.stmts { visit_stmt(s, out, methods); } }
+                _ => {}
+            }
+        }
+        for stmt in &body.stmts {
+            visit_stmt(stmt, &mut out, &mutating_methods);
+        }
+        out
+    }
+
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
         // Skip C/VM function declarations (implemented externally)
         if matches!(fn_decl.kind, FnKind::CFunction | FnKind::VmFunction) {
@@ -10288,6 +10350,10 @@ impl RustTrans {
         for param in &fn_decl.params {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
+        // Plan 399 Phase 11.5: scan the fn body for `let` bindings that are
+        // later mutated (push/insert/extend/assign) — those need `let mut`.
+        self.mutated_let_bindings.clear();
+        self.mutated_let_bindings = Self::scan_mutated_bindings(&fn_decl.body);
 
         // Plan 310 Phase 2: Set current function context for escape-tier queries.
         // The escape_results key matches how transpile_rust registers functions:
