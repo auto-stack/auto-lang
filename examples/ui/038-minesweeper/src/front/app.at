@@ -72,32 +72,8 @@ widget App {
                         grid {
                             for cell in .store.board {
                                 button {
-                                    if cell.revealed {
-                                        if cell.mine {
-                                            text "💣" {
-                                                style: cell.number_class
-                                            }
-                                        } else {
-                                            if cell.adjacent > 0 {
-                                                text cell.adjacent.to_string() {
-                                                    style: cell.number_class
-                                                }
-                                            } else {
-                                                text " " {
-                                                    style: "text-lg"
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        if cell.flagged {
-                                            text "🚩" {
-                                                style: "text-lg"
-                                            }
-                                        } else {
-                                            text " " {
-                                                style: "text-lg"
-                                            }
-                                        }
+                                    text cell.display {
+                                        style: cell.number_class
                                     }
                                     onclick: .Reveal(cell.x, cell.y),
                                     oncontextmenu.prevent: .Flag(cell.x, cell.y),
@@ -112,32 +88,8 @@ widget App {
                         grid {
                             for cell in .store.board {
                                 button {
-                                    if cell.revealed {
-                                        if cell.mine {
-                                            text "💣" {
-                                                style: cell.number_class
-                                            }
-                                        } else {
-                                            if cell.adjacent > 0 {
-                                                text cell.adjacent.to_string() {
-                                                    style: cell.number_class
-                                                }
-                                            } else {
-                                                text " " {
-                                                    style: "text-lg"
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        if cell.flagged {
-                                            text "🚩" {
-                                                style: "text-lg"
-                                            }
-                                        } else {
-                                            text " " {
-                                                style: "text-lg"
-                                            }
-                                        }
+                                    text cell.display {
+                                        style: cell.number_class
                                     }
                                     onclick: .Reveal(cell.x, cell.y),
                                     oncontextmenu.prevent: .Flag(cell.x, cell.y),
@@ -152,32 +104,8 @@ widget App {
                         grid {
                             for cell in .store.board {
                                 button {
-                                    if cell.revealed {
-                                        if cell.mine {
-                                            text "💣" {
-                                                style: cell.number_class
-                                            }
-                                        } else {
-                                            if cell.adjacent > 0 {
-                                                text cell.adjacent.to_string() {
-                                                    style: cell.number_class
-                                                }
-                                            } else {
-                                                text " " {
-                                                    style: "text-lg"
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        if cell.flagged {
-                                            text "🚩" {
-                                                style: "text-lg"
-                                            }
-                                        } else {
-                                            text " " {
-                                                style: "text-lg"
-                                            }
-                                        }
+                                    text cell.display {
+                                        style: cell.number_class
                                     }
                                     onclick: .Reveal(cell.x, cell.y),
                                     oncontextmenu.prevent: .Flag(cell.x, cell.y),

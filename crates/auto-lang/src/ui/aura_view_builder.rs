@@ -2264,6 +2264,9 @@ impl<'a> AuraViewBuilder<'a> {
                 }
                 let obj = self.resolve_expr_to_value(object, bindings)?;
                 let field_str = field.as_str();
+                if field_str == "kind" || field_str == "status" {
+                    eprintln!("[DEBUG-F] Dot .{} obj={:?} (widget={})", field_str, obj, self.widget_name);
+                }
                 match obj {
                     Value::Obj(map) => map.get(field_str),
                     // Plan 320: raw struct heap id from Index — materialize to Obj

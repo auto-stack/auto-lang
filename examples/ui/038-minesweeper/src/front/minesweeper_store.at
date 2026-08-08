@@ -6,9 +6,11 @@
 // See Plan 402 §12 for the dual-backend rationale.
 //
 // Cell representation: Obj literals, NOT a `type` record. Each cell carries
-// precomputed `number_class` / `cell_class` view strings because the VM
-// view-builder cannot call functions (Plan 402 §12.2 constraint 2): every
-// style/label the view needs is a field read, not a function call.
+// precomputed `number_class` / `cell_class` view strings (and a `display`
+// label string) because the VM view-builder cannot call functions (Plan 402
+// §12.2 constraint 2) and its extract_children_text ignores Conditional
+// nodes: every style/label the view needs is a field read, not a function
+// call or inline `if` branch.
 
 store MinesweeperStore {
     model {
@@ -68,7 +70,7 @@ store MinesweeperStore {
             for x < .rows {
                 var y int = 0
                 for y < .cols {
-                    .board.push({ x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, number_class: "", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-gray-400 hover:bg-gray-500 border border-gray-500" })
+                    .board.push({ x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, number_class: "", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-gray-400 hover:bg-gray-500 border border-gray-500", display: " " })
                     y = y + 1
                 }
                 x = x + 1
@@ -129,7 +131,7 @@ store MinesweeperStore {
                         var idx int = rx * .cols + ry
                         if .board[idx].mine == false {
                             var old = .board[idx]
-                            .board[idx] = { x: old.x, y: old.y, mine: true, revealed: old.revealed, flagged: old.flagged, adjacent: old.adjacent, number_class: old.number_class, cell_class: old.cell_class }
+                            .board[idx] = { x: old.x, y: old.y, mine: true, revealed: old.revealed, flagged: old.flagged, adjacent: old.adjacent, number_class: old.number_class, cell_class: old.cell_class, display: old.display }
                             placed = placed + 1
                         }
                     }
@@ -157,7 +159,7 @@ store MinesweeperStore {
                             ddx = ddx + 1
                         }
                         var cj = .board[j]
-                        .board[j] = { x: cj.x, y: cj.y, mine: cj.mine, revealed: cj.revealed, flagged: cj.flagged, adjacent: cnt, number_class: cj.number_class, cell_class: cj.cell_class }
+                        .board[j] = { x: cj.x, y: cj.y, mine: cj.mine, revealed: cj.revealed, flagged: cj.flagged, adjacent: cnt, number_class: cj.number_class, cell_class: cj.cell_class, display: " " }
                     }
                     j = j + 1
                 }
@@ -180,7 +182,7 @@ store MinesweeperStore {
                 for k < .board.len() {
                     if .board[k].mine {
                         var ck = .board[k]
-                        .board[k] = { x: ck.x, y: ck.y, mine: true, revealed: true, flagged: ck.flagged, adjacent: ck.adjacent, number_class: "color:#000;font-weight:700;font-size:1.125rem", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200" }
+                        .board[k] = { x: ck.x, y: ck.y, mine: true, revealed: true, flagged: ck.flagged, adjacent: ck.adjacent, number_class: "color:#000;font-weight:700;font-size:1.125rem", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200", display: "💣" }
                     }
                     k = k + 1
                 }
@@ -225,7 +227,11 @@ store MinesweeperStore {
                         if fc.adjacent >= 8 {
                             nclass = "color:#9d174d;font-weight:700;font-size:1.125rem"
                         }
-                        .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: true, flagged: fc.flagged, adjacent: fc.adjacent, number_class: nclass, cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200" }
+                        var dpy str = " "
+                        if fc.adjacent > 0 {
+                            dpy = fc.adjacent.to_string()
+                        }
+                        .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: true, flagged: fc.flagged, adjacent: fc.adjacent, number_class: nclass, cell_class: "w-8 h-8 flex items-center justify-center select-none bg-white border border-gray-200", display: dpy }
                         // Empty cell: push 8 neighbors to keep flooding.
                         if fc.adjacent == 0 {
                             var ex int = -1
@@ -272,7 +278,11 @@ store MinesweeperStore {
             var fc = .board[fidx]
             if fc.revealed == false {
                 var new_flag bool = fc.flagged == false
-                .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: fc.revealed, flagged: new_flag, adjacent: fc.adjacent, number_class: fc.number_class, cell_class: fc.cell_class }
+                var new_dpy str = " "
+                if new_flag {
+                    new_dpy = "🚩"
+                }
+                .board[fidx] = { x: fc.x, y: fc.y, mine: fc.mine, revealed: fc.revealed, flagged: new_flag, adjacent: fc.adjacent, number_class: fc.number_class, cell_class: fc.cell_class, display: new_dpy }
                 if new_flag {
                     .flags_placed = .flags_placed + 1
                 } else {
