@@ -2389,6 +2389,80 @@ pub fn run_file_dynamic_ui_with_scenario(
     run_file_dynamic_ui_inner(code, path, override_scenario)
 }
 
+/// EDGE-16 第四层:递归注册传递性子组件(孙组件)。
+///
+/// 直接子组件(如 block_list.at 的 BlockList)自己 `use` 的子组件(如
+/// block_item.at 的 BlockItem)默认不进 registry(lib.rs 的 widget 收集
+/// 注释明确说 "Transitive modules do not register widgets here"),导致
+/// BlockList 渲染时 `<BlockItem ...>` 在 registry 找不到 → fallback Empty。
+///
+/// 此函数从 `module_path` 出发,扫它的 `use` 导入,把传递性 widget 注册进
+/// `registry`。用 `visited` 防循环(与 collect_module_imports 共享 visited)。
+/// 只注册 AuraWidget(孙组件),不重复处理 store(store 走 Plan 370 路径)。
+#[cfg(feature = "ui-iced")]
+fn register_transitive_widgets(
+    module_path: &std::path::Path,
+    registry: &mut crate::ui::widget_registry::WidgetRegistry,
+) {
+    // 独立的 visited(不与 collect_module_imports 共享,避免互相跳过模块)。
+    register_transitive_widgets_inner(module_path, registry, &mut std::collections::HashSet::new())
+}
+
+#[cfg(feature = "ui-iced")]
+fn register_transitive_widgets_inner(
+    module_path: &std::path::Path,
+    registry: &mut crate::ui::widget_registry::WidgetRegistry,
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+) {
+    let module_code = match std::fs::read_to_string(module_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let base_dir = module_path.parent().unwrap_or(std::path::Path::new("."));
+    let use_stmts = crate::use_scanner::scan_use_statements(&module_code);
+    for use_stmt in &use_stmts {
+        if use_stmt.is_c_import || use_stmt.is_rust_import {
+            continue;
+        }
+        let sub_path = match crate::resolve_module_path(base_dir, &use_stmt.module) {
+            Some(p) => p,
+            None => continue,
+        };
+        // 防循环:规范化路径后查 visited
+        let canon = match sub_path.canonicalize() {
+            Ok(c) => c,
+            Err(_) => sub_path.clone(),
+        };
+        if !visited.insert(canon.clone()) {
+            continue;
+        }
+        let sub_code = match std::fs::read_to_string(&sub_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let mod_session = crate::session::CompilerSession::ui();
+        let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
+        if let Ok(sub_ast) = mod_parser.parse() {
+            for stmt in &sub_ast.stmts {
+                if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                    if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                        // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
+                        if (use_stmt.is_wildcard
+                            || use_stmt.items.is_empty()
+                            || use_stmt.items.iter().any(|s| s == &child_widget.name))
+                            && registry.get(&child_widget.name).is_none()
+                        {
+                            registry.register(child_widget);
+                        }
+                    }
+                }
+            }
+        }
+        // 继续递归(孙组件可能还 use 了更深的组件)
+        register_transitive_widgets_inner(&sub_path, registry, visited);
+    }
+}
+
 #[cfg(feature = "ui-iced")]
 fn run_file_dynamic_ui_inner(
     code: &str,
@@ -2537,6 +2611,16 @@ fn run_file_dynamic_ui_inner(
                     }
                 }
             }
+
+            // EDGE-16 第四层:递归收集孙组件(传递性 widget)。
+            // 直接子组件(block_list.at 的 BlockList)自己 use 的子组件
+            // (block_item.at 的 BlockItem)不会进 registry,导致 BlockList
+            // 渲染时 BlockItem 找不到 → fallback Empty。这里递归扫当前模块的
+            // use,把孙组件也注册进同一个 registry。
+            register_transitive_widgets(
+                &module_path,
+                &mut registry,
+            );
 
             // Recursively collect ALL declarations from this module + its
             // transitive `use` deps (full module load so an imported fn's
