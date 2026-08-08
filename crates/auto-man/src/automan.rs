@@ -324,6 +324,14 @@ impl Automan {
         self.scene_override = Some(scene);
     }
 
+    /// Plan 401: per-project dev-server ports declared in pac.at
+    /// (`front_port` / `back_port`). Returns (front, back); each is None when
+    /// not declared. `auto run`/`auto build` use these as defaults for `-F`/`-B`
+    /// (the CLI flags still take precedence).
+    pub fn pac_dev_ports(&self) -> (Option<u16>, Option<u16>) {
+        (self.pac.front_port, self.pac.back_port)
+    }
+
     /// Set --gen-only mode: build stops after code generation, skipping
     /// npm/gradle install+build steps (used by CI to gate generation only).
     pub fn set_gen_only(&mut self, gen_only: bool) {

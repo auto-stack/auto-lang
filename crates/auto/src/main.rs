@@ -717,9 +717,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 am.set_scene(s.clone());
             }
             am.set_gen_only(gen_only);
-            // Plan 330: bake ports into generated artifacts the same way `run`
-            // does, for symmetry (so `build` then manual run matches).
-            if let Some(p) = &back_port {
+            // Plan 330/401: bake ports into generated artifacts the same way
+            // `run` does, for symmetry (so `build` then manual run matches).
+            // CLI flags win; otherwise fall back to pac.at back_port/front_port.
+            let (pac_front, pac_back) = am.pac_dev_ports();
+            let effective_back = back_port.clone().or_else(|| pac_back.map(|p| p.to_string()));
+            if let Some(p) = &effective_back {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
                         "Invalid backend port '{}': must be a number 0-65535", p
@@ -728,7 +731,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
                 println!("  Backend API server port: {}", p.trim());
             }
-            if let Some(p) = &front_port {
+            let effective_front = front_port.clone().or_else(|| pac_front.map(|p| p.to_string()));
+            if let Some(p) = &effective_front {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
                         "Invalid frontend port '{}': must be a number 0-65535", p
@@ -809,32 +813,39 @@ fn real_main(cli: Cli) -> Result<()> {
                 let frontend = render.as_deref().unwrap_or("vm");
                 println!("  {} split mode: frontend {} ↔ backend {} over HTTP", "→".bright_cyan(), frontend, backend);
             }
-            // Plan 330: `--back-port`/`-B` selects the backend HTTP API port.
-            // We inject it into AUTO_HTTP_PORT so all three port consumers stay
-            // in sync: the generated backend main.rs (reads it at runtime, via
-            // inherited child env), the vite proxy, and the rust-ui client (both
-            // read crate::util::http_port() at generation time, which happens
-            // inside am.run below). Falls back to 8080 when unset.
-            if let Some(p) = &back_port {
+            // Plan 330/401: resolve dev-server ports. CLI flags (-B/-F) win;
+            // otherwise fall back to pac.at `back_port`/`front_port`; otherwise
+            // leave unset (global default 8080/3000 applies downstream). The
+            // resolved value is injected into AUTO_HTTP_PORT/AUTO_FRONT_PORT so
+            // all consumers stay in sync: the generated backend main.rs (reads
+            // it at runtime via inherited child env), the vite proxy, and the
+            // rust-ui client (both read crate::util::http_port() at generation
+            // time, inside am.run below).
+            let (pac_front, pac_back) = am.pac_dev_ports();
+            let back_src = if back_port.is_some() { "cli" } else if pac_back.is_some() { "pac.at" } else { "" };
+            // CLI flag wins; else pac.at default. Both as owned Option<String>.
+            let effective_back = back_port.clone().or_else(|| pac_back.map(|p| p.to_string()));
+            if let Some(p) = &effective_back {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
                         "Invalid backend port '{}': must be a number 0-65535", p
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
-                println!("  Backend API server port: {}", p.trim());
+                let via = if back_src.is_empty() { String::new() } else { format!(" (from {})", back_src) };
+                println!("  Backend API server port: {}{}", p.trim(), via);
             }
-            // Plan 330: `--front-port`/`-F` selects the frontend dev server port.
-            // Injected into AUTO_FRONT_PORT, which the generated vite config reads
-            // at dev-server start. Falls back to 3000 when unset.
-            if let Some(p) = &front_port {
+            let front_src = if front_port.is_some() { "cli" } else if pac_front.is_some() { "pac.at" } else { "" };
+            let effective_front = front_port.clone().or_else(|| pac_front.map(|p| p.to_string()));
+            if let Some(p) = &effective_front {
                 if p.trim().parse::<u16>().is_err() {
                     return Err(miette::miette!(
                         "Invalid frontend port '{}': must be a number 0-65535", p
                     ));
                 }
                 std::env::set_var("AUTO_FRONT_PORT", p.trim());
-                println!("  Frontend dev server port: {}", p.trim());
+                let via = if front_src.is_empty() { String::new() } else { format!(" (from {})", front_src) };
+                println!("  Frontend dev server port: {}{}", p.trim(), via);
             }
             if !ai_mode {
                 info!("Running project ...");

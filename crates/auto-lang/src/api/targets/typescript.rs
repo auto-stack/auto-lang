@@ -337,7 +337,11 @@ export type { IApi };
             }
             format!("`{}`", url_str)
         } else {
-            format!("'{}'", path)
+            // Use backticks (not single quotes) so the GET query-param branch
+            // below — which strips backticks via trim_start/end_matches('`') —
+            // rebuilds the URL correctly. Single quotes here would survive the
+            // strip and leak a literal `'` into the final `${...}?...` URL.
+            format!("`{}`", path)
         };
 
         // Add query params to URL for GET requests

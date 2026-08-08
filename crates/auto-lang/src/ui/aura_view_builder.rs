@@ -99,6 +99,11 @@ pub struct AuraViewBuilder<'a> {
     /// bridge's root state_obj_id so read_state reads from the child's state
     /// object instead of the root widget's. None = use root state.
     override_state_obj_id: Option<u64>,
+
+    /// Plan 401/VM-routing: the root widget's route table (`routes {}` block).
+    /// `outlet` reads `__current_route` state and renders the matching page
+    /// widget from this table. None = no routes (outlet renders empty).
+    routes: Option<&'a [crate::aura::AuraRoute]>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -115,6 +120,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_registry: None,
             import_stmts: None,
             override_state_obj_id: None,
+            routes: None,
         }
     }
 
@@ -130,6 +136,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_registry: Some(registry),
             import_stmts: None,
             override_state_obj_id: None,
+            routes: None,
         }
     }
 
@@ -149,7 +156,15 @@ impl<'a> AuraViewBuilder<'a> {
             widget_registry: Some(registry),
             import_stmts: Some(import_stmts),
             override_state_obj_id: None,
+            routes: None,
         }
+    }
+
+    /// Plan 401/VM-routing: attach the root widget's route table so `outlet`
+    /// can resolve the current route to a page widget.
+    pub fn with_routes(mut self, routes: &'a [crate::aura::AuraRoute]) -> Self {
+        self.routes = Some(routes);
+        self
     }
 
     /// Build a `View<DynamicMessage>` from an AuraNode template.
@@ -437,31 +452,15 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Outlet => {
-                View::Text {
-                    content: "<outlet />".to_string(),
-                    style: None,
-                }
+                // Plan 401/VM-routing: render the page widget matching the
+                // current route (the iced equivalent of vue's <router-view>).
+                self.render_outlet(bindings)
             }
-            AuraNode::Link { text, children, .. } => {
-                if !children.is_empty() {
-                    let views: Vec<View<DynamicMessage>> = children
-                        .iter()
-                        .map(|n| self.convert_node_with(n, bindings))
-                        .collect();
-                    View::Column {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                    }
-                } else if !text.is_empty() {
-                    View::Text {
-                        content: text.clone(),
-                        style: None,
-                    }
-                } else {
-                    View::Empty
-                }
+            AuraNode::Link { text, children, to, .. } => {
+                // Plan 401/VM-routing: render a link as a clickable button whose
+                // onclick carries the target path as a __navigate message. The
+                // update loop intercepts __navigate and sets __current_route.
+                self.render_link_button(text, children, to, bindings)
             }
         }
     }
@@ -645,37 +644,16 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Outlet => {
-                View::Text {
-                    content: "<outlet />".to_string(),
-                    style: None,
-                }
+                // Plan 401/VM-routing: render the page widget matching the
+                // current route (the iced equivalent of vue's <router-view>).
+                self.render_outlet(bindings)
             }
-            AuraNode::Link { text, children, .. } => {
-                if !children.is_empty() {
-                    let views: Vec<View<DynamicMessage>> = children
-                        .iter()
-                        .enumerate()
-                        .map(|(i, n)| {
-                            path.push(i);
-                            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                            path.pop();
-                            v
-                        })
-                        .collect();
-                    View::Column {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                    }
-                } else if !text.is_empty() {
-                    View::Text {
-                        content: text.clone(),
-                        style: None,
-                    }
-                } else {
-                    View::Empty
-                }
+            AuraNode::Link { text, children, to, .. } => {
+                // Plan 401/VM-routing: render link as a clickable button (same
+                // as the untracked path); tracked children are flattened into
+                // the button label.
+                let _ = (path, id_map, probe);
+                self.render_link_button(text, children, to, bindings)
             }
         }
     }
@@ -1285,6 +1263,104 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Plan 401/VM-routing: render a `link (to: "/path")` as a clickable
+    /// button. The onclick carries a `__navigate` DynamicMessage with the target
+    /// path as its sole arg; the update loop intercepts `__navigate` and sets
+    /// `__current_route`, causing `outlet` to re-render the new page. The label
+    /// comes from the link's text or its first text child.
+    fn render_link_button(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, _bindings: &Bindings) -> View<DynamicMessage> {
+        // Resolve a display label: prefer explicit text, else the first child's
+        // text, else fall back to the path itself.
+        let label = if !text.is_empty() {
+            text.to_string()
+        } else {
+            let mut found = String::new();
+            for child in children {
+                if let crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) = child {
+                    if !s.is_empty() {
+                        found = s.clone();
+                        break;
+                    }
+                }
+            }
+            if found.is_empty() { to.to_string() } else { found }
+        };
+        View::Button {
+            label,
+            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: "__navigate".to_string(),
+                args: vec![auto_val::Value::str(to)],
+            },
+            style: None,
+        }
+    }
+
+    /// Plan 401/VM-routing: render the page widget for the current route.
+    ///
+    /// Reads `__current_route` (e.g. "/book/1") from VM state, matches it
+    /// against the routes table (honouring `:param` segments), and renders the
+    /// matching page widget via `render_child_widget` — the iced equivalent of
+    /// vue's `<router-view>`. Dynamic-segment values are written into the
+    /// `__route_params` state object so page handlers can read them via
+    /// `router.param("id")`. No routes / no match / empty route → `View::Empty`.
+    fn render_outlet(&self, bindings: &Bindings) -> View<DynamicMessage> {
+        let (Some(registry), Some(routes)) = (self.widget_registry, self.routes) else {
+            return View::Empty;
+        };
+
+        // Current route path. Default to the first route (the index "/") when
+        // unset, so the app boots into its home page without an explicit init.
+        let current = match self.read_state("__current_route") {
+            Ok(auto_val::Value::Str(s)) if !s.is_empty() => s.to_string(),
+            _ => routes.first().map(|r| r.path.clone()).unwrap_or_default(),
+        };
+
+        // Match the current path against each route pattern. A pattern segment
+        // starting with ':' matches any single path segment and is captured as
+        // a route param (e.g. "/book/:id" matches "/book/3" → id=3).
+        let cur_segs: Vec<&str> = current.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        for route in routes {
+            let pat_segs: Vec<&str> = route.path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+            if pat_segs.len() != cur_segs.len() {
+                continue;
+            }
+            let mut params: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut matched = true;
+            for (pat, cur) in pat_segs.iter().zip(cur_segs.iter()) {
+                if let Some(param_name) = pat.strip_prefix(':') {
+                    params.insert(param_name.to_string(), cur.to_string());
+                } else if *pat != *cur {
+                    matched = false;
+                    break;
+                }
+            }
+            if !matched {
+                continue;
+            }
+            // Found the route. (Param persistence into __route_params is handled
+            // by the navigation codegen — render time is read-only here.)
+            let _ = params;
+            // Render the page widget (route.module is the widget name).
+            if let Some(page_widget) = registry.get(&route.module) {
+                let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
+                let empty_events: HashMap<String, AuraEvent> = HashMap::new();
+                return self.render_child_widget(page_widget, &empty_props, &empty_events, bindings);
+            }
+            // Page widget not registered → show a textual placeholder so the
+            // gap is visible (e.g. "page book_detail not loaded").
+            return View::Text {
+                content: format!("<outlet: page {} not loaded>", route.module),
+                style: None,
+            };
+        }
+        // No route matched the current path.
+        View::Text {
+            content: format!("<outlet: no route for {}>", current),
+            style: None,
+        }
+    }
+
     /// Render a child widget by looking it up in the registry.
     ///
     /// This resolves props from parent state, injects them as state fields,
@@ -1346,6 +1422,7 @@ impl<'a> AuraViewBuilder<'a> {
             widget_registry: self.widget_registry,
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
+            routes: None,
         };
 
         child_builder.build(&child_widget.view_tree)

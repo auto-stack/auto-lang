@@ -3121,6 +3121,21 @@ fn compare_pngs(
         // It will be re-set by on_with_input/write_state/reload if state actually changes.
         state.component.clear_dirty();
 
+        // Plan 401/VM-routing: a `link` click arrives as a __navigate message
+        // whose event string embeds the target path (encode_payload format:
+        // "__navigate\u{1F}s\u{1F}/book/1"). Intercept it, set the route, and
+        // skip normal handler dispatch (it's a synthetic internal event).
+        if msg.event.starts_with("__navigate") {
+            let path = msg.event
+                .split(PAYLOAD_SEP)
+                .nth(2)
+                .unwrap_or("/")
+                .to_string();
+            state.component.set_route(&path);
+            *state.view_dirty.borrow_mut() = true;
+            return iced::Task::none();
+        }
+
         // Pick up pending screenshot request from MCP thread at every update (Plan 285).
         if state.screenshot_request.borrow().is_none() {
             if let Some(ref mcp_handle) = state.mcp_shared {

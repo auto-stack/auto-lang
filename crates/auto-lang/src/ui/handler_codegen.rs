@@ -93,6 +93,39 @@ pub fn rewrite_state_refs_stmts(stmts: &mut [Stmt], state_fields: &HashSet<Strin
 }
 
 fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
+    // Plan 401/VM-routing: `router.push(path)` → `__state.__current_route = path`.
+    // `router.push(...)` parses as Expr::Call with name Dot(Ident("router"),
+    // "push"); we rewrite the whole statement into a state assignment so the
+    // outlet renderer (which reads __current_route) re-renders the new page.
+    // Handles both bare statement form and the legacy `nav(...)` NavCall form.
+    let nav_path = match stmt {
+        Stmt::Expr(Expr::Call(call)) => {
+            if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if let Expr::Ident(name) = obj.as_ref() {
+                    if name.as_str() == "router" && method.as_str() == "push" {
+                        Some(call.args.args.first().and_then(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Name(_) => None,
+                        }).unwrap_or(Expr::Str(auto_val::AutoStr::from(""))))
+                    } else { None }
+                } else { None }
+            } else { None }
+        }
+        Stmt::Expr(Expr::NavCall { path, .. }) => Some((**path).clone()),
+        _ => None,
+    };
+    if let Some(mut path_expr) = nav_path {
+        rewrite_expr(&mut path_expr, state_fields);
+        *stmt = Stmt::Expr(Expr::Bina(
+            Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__current_route"),
+            )),
+            auto_val::Op::Asn,
+            Box::new(path_expr),
+        ));
+        return;
+    }
     match stmt {
         Stmt::Expr(e) => rewrite_expr(e, state_fields),
         Stmt::Store(s) => rewrite_expr(&mut s.expr, state_fields),
@@ -121,6 +154,33 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
+    // Plan 401/VM-routing: `router.param("id")` → read the captured dynamic
+    // segment from the __route_params state object: `__state.__route_params.id`.
+    // __route_params is populated by the outlet renderer (render_outlet) when it
+    // matches the current path against a route pattern (e.g. "/book/:id" →
+    // { id: "3" }). The arg is a string literal naming the segment, so we build
+    // a static field access Dot(__state.__route_params, <param_name>).
+    if let Expr::Call(call) = e {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(name) = obj.as_ref() {
+                if name.as_str() == "router" && method.as_str() == "param" {
+                    // The param name is the first positional arg (a str literal).
+                    let param_field = call.args.args.iter().find_map(|a| match a {
+                        crate::ast::Arg::Pos(Expr::Str(s)) => Some(s.clone()),
+                        _ => None,
+                    }).unwrap_or_default();
+                    *e = Expr::Dot(
+                        Box::new(Expr::Dot(
+                            Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                            Name::from("__route_params"),
+                        )),
+                        Name::from(&param_field),
+                    );
+                    return;
+                }
+            }
+        }
+    }
     // Plan 370 D-GAP-4 Phase 0: store.X rewriting.
     // store.Method(args) → handler_StoreName_Method(__state, args)
     if let Expr::Call(call) = e {

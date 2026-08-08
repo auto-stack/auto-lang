@@ -1232,9 +1232,19 @@ pub fn stmts_have_route_access(stmts: &[Stmt]) -> bool {
     fn walk_expr(expr: &Expr) -> bool {
         match expr {
             Expr::Call(call) => {
-                if let Expr::Dot(object, _) = call.name.as_ref() {
+                if let Expr::Dot(object, method) = call.name.as_ref() {
                     if let Expr::Ident(name) = object.as_ref() {
                         if name.as_str() == "route" {
+                            return true;
+                        }
+                        // router.param("id") / router.query("q") / router.path()
+                        // transpile to useRoute().params/query/path (ts_adapter
+                        // ~line 1097), so they need useRoute() imported.
+                        if name.as_str() == "router"
+                            && (method.as_str() == "param"
+                                || method.as_str() == "query"
+                                || method.as_str() == "path")
+                        {
                             return true;
                         }
                     }

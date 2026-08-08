@@ -1,0 +1,21 @@
+# Override parent .gitignore so the handmade theme escape-hatch files commit.
+# The repo-root rule `examples/**/vue/` ignores generated vue dirs; this example
+# ships a handmade ThemeToggle.vue + index.css that must be tracked (cf.
+# examples/a3ui-replica/.gitignore which does the same).
+!vue/
+
+# And allow the playwright test manifest (repo-root `*.json` ignores it; 017-chat
+# relies on pnpm-lock.yaml, but committing package.json makes `npm/pnpm install`
+# work without regeneration).
+!tests/package.json
+
+# Generated / runtime artifacts (still ignored).
+gen/
+.auto/
+dist/
+build/
+examples/
+.am/
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/

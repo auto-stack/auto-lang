@@ -1,0 +1,99 @@
+// settings.at — "/settings" reading preferences.
+// Font size is persisted to localStorage (storage.get/set) and applied to the
+// reading view. Theme (light/dark) is handled by the ThemeToggle escape hatch.
+widget settings {
+    msg Msg { Init, SetFont(str) }
+
+    model {
+        var font_size str = "medium"
+    }
+
+    view {
+        col {
+            style: "p-6 md:p-10 gap-6 max-w-3xl mx-auto"
+
+            col {
+                h1 "Settings" { style: "text-2xl md:text-3xl font-bold text-foreground" }
+                text "Customize your reading experience" { style: "text-sm text-muted-foreground mt-1" }
+            }
+
+            col {
+                style: "gap-6"
+
+                // Font size
+                col {
+                    style: "gap-3"
+                    text "Font Size" { style: "text-sm font-semibold text-foreground" }
+                    text "Affects the reading view text size." { style: "text-xs text-muted-foreground" }
+                    row {
+                        style: "gap-2"
+                        button {
+                            onclick: .SetFont("small")
+                            style: if .font_size == "small" {
+                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-xs"
+                            } else {
+                                "px-4 py-2 border border-border rounded-lg text-xs text-foreground hover:bg-accent"
+                            }
+                            text "A  Small" {}
+                        }
+                        button {
+                            onclick: .SetFont("medium")
+                            style: if .font_size == "medium" {
+                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+                            } else {
+                                "px-4 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-accent"
+                            }
+                            text "A  Medium" {}
+                        }
+                        button {
+                            onclick: .SetFont("large")
+                            style: if .font_size == "large" {
+                                "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-base"
+                            } else {
+                                "px-4 py-2 border border-border rounded-lg text-base text-foreground hover:bg-accent"
+                            }
+                            text "A  Large" {}
+                        }
+                    }
+                }
+
+                // Theme
+                col {
+                    style: "gap-3"
+                    text "Theme" { style: "text-sm font-semibold text-foreground" }
+                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: "text-xs text-muted-foreground" }
+                    row {
+                        style: "gap-2 items-center"
+                        text "☀️" { style: "text-xl" }
+                        text "Light" { style: "text-sm text-muted-foreground" }
+                        text "⇄" { style: "text-muted-foreground mx-2" }
+                        text "🌙" { style: "text-xl" }
+                        text "Dark" { style: "text-sm text-muted-foreground" }
+                    }
+                }
+
+                // About
+                col {
+                    style: "gap-2 p-4 bg-card border border-border rounded-xl"
+                    text "About" { style: "text-sm font-semibold text-foreground" }
+                    text "AutoRead — a multi-page e-book reader built with AutoUI: routes, a rust backend, and a runtime theme toggle." { style: "text-xs text-muted-foreground leading-relaxed" }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            let saved = storage.get("br-font-size")
+            if saved != nil {
+                if saved != "" {
+                    .font_size = saved
+                }
+            }
+        }
+        .SetFont(s str) -> {
+            .font_size = s
+            storage.set("br-font-size", s)
+        }
+    }
+}

@@ -1573,6 +1573,21 @@ impl VueGenerator {
                 _ => {}
             }
         }
+        // Lifecycle handlers (.Init → onMounted, .Destroy → onUnmounted) can
+        // also read route params (e.g. .Init -> { .id = router.param("id") }),
+        // so check them for route access + navigation too.
+        for lc in &widget.lifecycle {
+            if let Ok(body) = self.generate_handler_body(&lc.payload) {
+                if body.contains("useRoute") {
+                    self.needs_route = true;
+                }
+            }
+            if let LogicPayload::AstStmts(stmts) = &lc.payload {
+                if crate::ui_gen::ts_adapter::stmts_have_router_nav(stmts) {
+                    self.needs_router = true;
+                }
+            }
+        }
 
         // Then generate script (which can now include shadcn imports and router)
         let script = self.generate_script(widget)?;
