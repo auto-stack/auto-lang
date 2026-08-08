@@ -116,7 +116,7 @@ widget App {
                         }
                         style: grid_style(.cols)
                     }
-                    style: "overflow-x-auto w-full"
+                    style: "overflow-x-auto w-full mt-6"
                 }
 
                 // —— 游戏结束遮罩 ——
