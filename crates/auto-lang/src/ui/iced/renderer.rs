@@ -3671,7 +3671,19 @@ fn compare_pngs(
         let widget_name = &msg.widget;
         // Save input_value before it's moved into on_with_input_for (ash-gui M1
         // emit simulation below reads it).
-        let saved_input_value = msg.input_value.clone();
+        // EDGE-15: on_submit(真实 Enter)的 msg 不带 input_value,而 PromptBar.Run
+        // handler 会清空 .input。故在 handler 执行前,若 msg 无 input_value 则从
+        // state.input 预先抢救当前值,供下方 emit 模拟使用(等价 mcp_server.rs:1966)。
+        let saved_input_value = msg.input_value.clone().or_else(|| {
+            if widget_name == "PromptBar" && event_name == "Run" {
+                state.component
+                    .read_state("input")
+                    .ok()
+                    .map(|v| v.as_str().to_string())
+            } else {
+                None
+            }
+        });
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // After handler runs, clear input_values for OTHER inputs whose state
@@ -3692,6 +3704,8 @@ fn compare_pngs(
         // 带了 cmd 值(submit 传入的 input 当前值),直接触发 store.RunCommand(cmd)。
         // 这是 ash-gui 特定知识(widget=PromptBar,event=Run),而非通用 emit 修复。
         if widget_name == "PromptBar" && event_name == "Run" {
+            // saved_input_value 在 handler 执行前已补值(见上方 EDGE-15 注释):
+            // on_submit 无 input_value 时从 state.input 抢救,故此处直接用。
             if let Some(cmd) = saved_input_value.as_deref() {
                 let cmd = cmd.trim();
                 if !cmd.is_empty() {
