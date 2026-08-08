@@ -1852,11 +1852,15 @@ fn find_view_by_path<'a>(
     Some(current)
 }
 
-/// Extract (widget_name, event_name) from a DynamicMessage.
+/// Extract (widget_name, event_name) from a DynamicMessage, encoding any
+/// payload args into the event string via `encode_payload` so multi-arg
+/// handlers (`.Reveal(cell.x, cell.y)`, `.SetDifficulty("beginner")`) carry
+/// their args through the MCP action path (Plan 402 bug 4/5).
 fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
     match msg {
-        DynamicMessage::Typed { widget_name, event_name, .. } => {
-            Some((widget_name.clone(), event_name.clone()))
+        DynamicMessage::Typed { widget_name, event_name, args } => {
+            let encoded = crate::ui::iced::encode_payload(event_name, args);
+            Some((widget_name.clone(), encoded))
         }
         DynamicMessage::String(name) => Some((String::new(), name.clone())),
     }

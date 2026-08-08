@@ -1681,23 +1681,32 @@ pub struct IcedMessage {
 /// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
 pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
 
-/// Embed the first onclick payload arg (type-tagged) into the event string so
-/// it can be carried by the `Send` `IcedMessage`. Only the first arg is encoded
-/// (the common `.Foo(id)` / `.SelectDay(cell.date)` case). See `decode_payload`.
+/// Embed all onclick payload args (type-tagged) into the event string so they
+/// can be carried by the `Send` `IcedMessage`. Each arg is encoded as
+/// `{tc}{SEP}{val}` appended after the event name. Multi-arg handlers like
+/// `.Reveal(cell.x, cell.y)` need both args; previously only the first was
+/// encoded (Plan 402 bug 4). See `decode_payload`.
 pub(crate) fn encode_payload(event_name: &str, args: &[auto_val::Value]) -> String {
-    let Some(v) = args.first() else {
+    if args.is_empty() {
         return event_name.to_string();
-    };
-    let (tc, val) = match v {
-        auto_val::Value::Int(i) => ("i", i.to_string()),
-        auto_val::Value::Uint(u) => ("u", u.to_string()),
-        auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
-        auto_val::Value::Float(f) => ("f", f.to_string()),
-        auto_val::Value::Double(d) => ("d", d.to_string()),
-        auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
-        _ => return event_name.to_string(),
-    };
-    format!("{}{}{}{}{}", event_name, PAYLOAD_SEP, tc, PAYLOAD_SEP, val)
+    }
+    let mut out = String::from(event_name);
+    for v in args {
+        let (tc, val) = match v {
+            auto_val::Value::Int(i) => ("i", i.to_string()),
+            auto_val::Value::Uint(u) => ("u", u.to_string()),
+            auto_val::Value::Bool(b) => ("b", (if *b { "1" } else { "0" }).to_string()),
+            auto_val::Value::Float(f) => ("f", f.to_string()),
+            auto_val::Value::Double(d) => ("d", d.to_string()),
+            auto_val::Value::Str(s) => ("s", s.as_str().to_string()),
+            _ => continue,
+        };
+        out.push(PAYLOAD_SEP);
+        out.push_str(tc);
+        out.push(PAYLOAD_SEP);
+        out.push_str(&val);
+    }
+    out
 }
 
 impl IcedMessage {

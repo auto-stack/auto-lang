@@ -842,7 +842,7 @@ impl DynamicComponent {
         }
 
         // Run the handler via VM. call_handler_for looks up the namespaced fn.
-        let mut args: Vec<auto_val::Value> = payload.into_iter().collect();
+        let mut args: Vec<auto_val::Value> = payload;
         // Plan 370 (Issue 4): input events (oninput/onupdate) carry the typed
         // text in `input_value`. If there are no payload-encoded args, pass the
         // input_value as a string argument so handlers like
@@ -878,11 +878,11 @@ impl DynamicComponent {
                 if handler_ms > 100 || render_ms > 100 {
                 }
             }
-            Err(_) => {
+            Err(_e) => {
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 match self.bridge.call_handler(&clean_name, &args) {
                     Ok(()) => { self.dirty = true; }
-                    Err(_) => {}
+                    Err(_e2) => {}
                 }
             }
         }
@@ -890,29 +890,42 @@ impl DynamicComponent {
 }
 
 /// Decode a payload embedded by `encode_payload` (renderer.rs). Returns the
-/// bare handler name and, if a payload was present, the decoded arg Value.
-/// Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
-fn decode_payload(event_name: &str) -> (String, Option<auto_val::Value>) {
+/// bare handler name and the decoded arg Values (one per encoded payload arg).
+/// Format: `{event}(\u{1F}{typechar}\u{1F}{value})*` — zero or more type-tagged
+/// args, supporting multi-arg handlers like `.Reveal(cell.x, cell.y)` (Plan 402
+/// bug 4). Previously only a single arg was decoded.
+fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {
     const SEP: char = '\u{1F}';
     let Some(idx) = event_name.find(SEP) else {
-        return (event_name.to_string(), None);
+        return (event_name.to_string(), Vec::new());
     };
     let name = &event_name[..idx];
-    let rest = &event_name[idx + SEP.len_utf8()..]; // "{tc}\x1F{value}"
-    let (tc, val) = match rest.find(SEP) {
-        Some(s) => (&rest[..s], &rest[s + SEP.len_utf8()..]),
-        None => return (event_name.to_string(), None),
-    };
-    let value = match tc {
-        "i" => val.parse::<i32>().ok().map(auto_val::Value::Int),
-        "u" => val.parse::<u32>().ok().map(auto_val::Value::Uint),
-        "b" => Some(auto_val::Value::Bool(val == "1")),
-        "f" => val.parse::<f64>().ok().map(auto_val::Value::Float),
-        "d" => val.parse::<f64>().ok().map(auto_val::Value::Double),
-        "s" => Some(auto_val::Value::str(val)),
-        _ => None,
-    };
-    (name.to_string(), value)
+    let mut rest = &event_name[idx + SEP.len_utf8()..];
+    let mut args = Vec::new();
+    while !rest.is_empty() {
+        let (tc, after_tc) = match rest.find(SEP) {
+            Some(s) => (&rest[..s], &rest[s + SEP.len_utf8()..]),
+            None => break,
+        };
+        let (val, after_val) = match after_tc.find(SEP) {
+            Some(s) => (&after_tc[..s], &after_tc[s + SEP.len_utf8()..]),
+            None => (after_tc, ""),
+        };
+        let value = match tc {
+            "i" => val.parse::<i32>().ok().map(auto_val::Value::Int),
+            "u" => val.parse::<u32>().ok().map(auto_val::Value::Uint),
+            "b" => Some(auto_val::Value::Bool(val == "1")),
+            "f" => val.parse::<f64>().ok().map(auto_val::Value::Float),
+            "d" => val.parse::<f64>().ok().map(auto_val::Value::Double),
+            "s" => Some(auto_val::Value::str(val)),
+            _ => None,
+        };
+        if let Some(v) = value {
+            args.push(v);
+        }
+        rest = after_val;
+    }
+    (name.to_string(), args)
 }
 
 /// Parse a string input value into the best-matching Value type.
@@ -1259,19 +1272,25 @@ mod tests {
 
         // String payload (SelectDay date).
         let enc = encode("SelectDay", &auto_val::Value::str("2026-06-17"));
-        let (name, arg) = decode_payload(&enc);
+        let (name, args) = decode_payload(&enc);
         assert_eq!(name, "SelectDay");
-        assert_eq!(arg, Some(auto_val::Value::str("2026-06-17")));
+        assert_eq!(args, vec![auto_val::Value::str("2026-06-17")]);
 
         // Int payload (e.g. todo id).
-        let (name, arg) = decode_payload(&encode("ToggleTodo", &auto_val::Value::Int(7)));
+        let (name, args) = decode_payload(&encode("ToggleTodo", &auto_val::Value::Int(7)));
         assert_eq!(name, "ToggleTodo");
-        assert_eq!(arg, Some(auto_val::Value::Int(7)));
+        assert_eq!(args, vec![auto_val::Value::Int(7)]);
 
         // No payload → passthrough.
-        let (name, arg) = decode_payload("Init");
+        let (name, args) = decode_payload("Init");
         assert_eq!(name, "Init");
-        assert_eq!(arg, None);
+        assert!(args.is_empty());
+
+        // Multi-arg payload (Plan 402 bug 4): .Reveal(cell.x, cell.y).
+        let enc = format!("Reveal\u{1F}i\u{1F}4\u{1F}i\u{1F}5");
+        let (name, args) = decode_payload(&enc);
+        assert_eq!(name, "Reveal");
+        assert_eq!(args, vec![auto_val::Value::Int(4), auto_val::Value::Int(5)]);
     }
 
     /// Helper: create a minimal AuraWidget for testing.
