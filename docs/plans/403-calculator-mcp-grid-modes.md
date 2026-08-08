@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid 重构）✅ + 需求 1b（press_sequence + 带参 press 修复）✅ 已完成**。需求 1c（引擎升级）/ 3（多模式）待办。
+> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid）✅ + 需求 1b（press_sequence）✅ + 需求 1c（引擎升级）✅ + 需求 3（多模式）✅ 代码完成**。引擎运行时 MCP 验证待稳定环境。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
