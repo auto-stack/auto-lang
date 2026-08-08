@@ -714,3 +714,45 @@ grid 元素本身正确,但受 bug 5 阻塞无法显示。
   供后续 codegen 层修复参考。Phase 2 的 store 架构代码已就位,VM 修复后
   即可自然生效。
 
+
+### 13.8 VM 后端修复突破(Phase 3 完成,2026-08-08)
+
+通过深度诊断,发现 §13.6/§13.7 记录的"store 写回失败"和"bug 4/5"**根因判断
+有误**,实际是三个独立且可修的 bug。全部修复后,VM 后端核心流程可用。
+
+**根因修正**:store 写回机制本身完全正确(015-notes 全部测试通过)。真正失败
+的原因是 **MCP autoui_action 路径丢失 onclick 参数** + **VmRef 物化漏 ObjectData**。
+
+**三个修复**(均在 master 分支):
+
+1. **MCP 参数传递**(`2962737a`):`extract_dyn_msg`(mcp_server.rs)用 `..` 忽略了
+   DynamicMessage 的 args,只传裸 handler 名 → 参数丢失 → handler n_args 不匹配 →
+   `__state` 读栈外 null → "Invalid object ID"。修复:用 `encode_payload` 编码 args
+   进 event 字符串。同时重应用 bug 4 的 encode/decode 多参数支持(git merge 时被覆盖)。
+
+2. **VmRef → ObjectData 物化**(`5fc54126`):`materialize_obj_ref`(vm_bridge.rs)的
+   VmRef 分支只 downcast GenericInstanceData,漏了 ObjectData。038 的 cell 是 Obj 字面量
+   (→ ObjectData,非自定义 type → GenericInstanceData),downcast 失败 → 返回原 VmRef →
+   `resolve_binding_path` 只 match Value::Obj → `cell.x` 解析失败 → fallback 字面字符串。
+   修复:VmRef 分支补 ObjectData downcast。015 能工作是因为 note 是 GenericInstanceData。
+
+3. **bug 1-4 codegen 修复**(`80bc35dc`,Phase 3 早期):vue ref import / 整数除法
+   Math.trunc / VM if 表达式 should_pop / encode-decode 多参数。
+
+**VM 实测结果**(修复后):
+- ✅ 初始状态正确(ready / 💣 10 / 9×9 棋盘 81 格渲染)
+- ✅ 点击中心格 → 首点安全布雷 → game_state 正确转为 playing
+- ✅ SetDifficulty("intermediate") → difficulty/cols/rows/mine_count 正确更新(16×16/40雷)
+- ✅ store.Init() 嵌套调用(SetDifficulty 内)正常重建棋盘
+- 🟡 右键插旗:MCP autoui_action 的 press 是左键,无右键(contextmenu)触发途径
+- 🟡 连锁展开/数字显示:需实机窗口目视确认(snapshot 文本提取未捕获数字)
+
+**结论修订**(取代 §13.6/§13.7 的悲观结论):
+- **vue 后端**:完整可用 ✅
+- **VM 后端**:**核心流程可用** ✅(初始/首点安全/布雷/难度切换/store 写回全通);
+  完整游戏体验需实机窗口目视验证连锁展开/数字/胜负
+- "VM 对 store 驱动不支持"的判断**不成立** —— store 机制正确,是参数传递和
+  ObjectData 物化两个独立 bug 阻塞了,现已修复
+
+**遗留**:MCP autoui_action 不支持右键(contextmenu)事件,插旗需在实机窗口操作;
+view-builder 的 snapshot 数字文本提取未确认(可能是 snapshot 格式问题非渲染问题)。
