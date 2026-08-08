@@ -1,6 +1,7 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-08）**: 🟡 规划中。需求已明确，调研完成，待实施。
+> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid 重构）已完成**（`0bc72d9c`）。需求 1（MCP 操纵）部分验证——发现带参 press 限制。需求 1b（press_sequence 工具）/ 1c（引擎升级）/ 3（多模式）待办。
+> **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
 
@@ -49,6 +50,7 @@
 - 实现：逐个 key 解析为按钮（按 label 匹配 `button "2"`）→ `autoui_action press`，最后可选读 state。
 - 验证：`autoui_press_sequence { keys: ["2","+","3","="] }` → 返回 `display: "5"`。
 - **简化**：当前计算器无 `(` `)`，故先支持 `1+2*3` 这类（无括号）。括号表达式求值依赖需求 1c（或后置）。
+- **关键发现（2026-08-08 实测）**：当前 `autoui_action press` 触发带参 onclick（如 `.Digit(7)`）时**丢失参数**——handler 被调用（日志 `handler: .App.Digit`）但 `n` 拿不到值，display 不变（`mcp_server.rs:execute_action_vnode` 只取消息名，不传 onclick 的字面参数）。故 `press_sequence` 实现时需修复此点：从按钮的 onclick AST 提取字面参数（`Digit(7)` 的 `7`）一并传入 `call_handler`。这是需求 1b 的核心难点。
 
 **1c. 运算符优先级 / 表达式求值（可选，本轮可做简化版）**
 - 当前计算器是链式左到右（无优先级）。要做 `2+3*4=14`（优先级）或 `2*(3+4)=14`（括号），需改计算逻辑。
@@ -91,9 +93,9 @@ grid {
 
 ## 实施顺序（增量）
 
-1. **需求 2：grid 重构**（示例源码层，零基建）→ 011 改 grid 布局 + 修 `%` bug + 去重复 handler。
-2. **需求 1a：MCP 操纵验证**（零基建）→ `tests/desktop_mcp.py` 跑通按键→读值。
-3. **需求 1b：`autoui_press_sequence`**（MCP 基建）→ 新工具 + 验证 `2+3=→5`。
+1. **需求 2：grid 重构** ✅ 已完成（`0bc72d9c`）→ grid 布局 + 修 `%` bug + 统一 Digit/Operator handler。vue/iced 双路径验证通过。
+2. **需求 1a：MCP 操纵验证** ⚠️ 部分完成 → `autoui_find`/`autoui_state` 正常；但带参 press 丢参数（见 1b 发现），需先修才能跑通 `2+3=5`。
+3. **需求 1b：`autoui_press_sequence`**（MCP 基建）→ 新工具 + **修复带参 press 传参** + 验证 `2+3=→5`。
 4. **需求 1c / 引擎升级**（可选）→ 优先级/小数/括号。
 5. **需求 3：多模式**（后置）→ shadcn-vue 参考版或 Auto 三模式。
 
