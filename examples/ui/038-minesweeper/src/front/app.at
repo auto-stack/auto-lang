@@ -12,6 +12,7 @@ widget App {
 
     model {
         var interval int = 1000
+        var mounted int = 0
     }
 
     view {

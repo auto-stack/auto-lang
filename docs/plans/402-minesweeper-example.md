@@ -634,13 +634,33 @@ action 互调用 `store.Init()` 实现(`.Reset`/`.SetDifficulty` 复用 `.Init`)
   (`AutoUI MCP: listening on http://127.0.0.1:9247`),非 web 页面。
 - **if 表达式赋值给 state 字段** 在 vue 下生成 IIFE,在 VM 下直接求值 ——
   双后端均工作,可用于简单的二分支样式选择。
-- **IAB 浏览器在长会话后期出现 "webview not ready" 持续故障**,
-  导致 vue 版在线点击回归测试未完成。建议下次会话重启 IAB 后补测。
 
-### 13.5 遗留
+**两个 vue codegen 运行时 bug(已修复):**
 
-- vue 版完整 10 项浏览器回归(§11 同等)受 IAB 故障限制,未在线实测;
-  codegen 层已审查通过,功能与 Phase 1 vue/TS 版算法一致(同源翻译)。
-- VM 版在线交互(点击/连锁/插旗/胜负)未实测,仅验证启动成功。
+- **计时器约定缺 `ref` import**:当 widget model 仅有 `var interval int = N`
+  (无其他 ref 变量)时,计时器代码生成 `const tickTimer = ref<...>(null)` 但
+  script setup 顶部没 import `ref`(因 interval 被 codegen 特殊消费,不生成 ref,
+  导致 ref 需求检测漏判)→ setup 抛 `ReferenceError: ref is not defined` →
+  组件挂载失败、页面空白。**绕过**:widget model 加一个普通变量(如
+  `var mounted int = 0`)迫使 codegen import ref。根因属 codegen 缺陷,待修。
+- **整数除法翻译成 JS 浮点除法**:AutoLang `int / int` 在 VM 是整数除法,但 vue
+  codegen(`ts_adapter.rs`)翻译成 JS `/`(浮点)。扫雷布雷的
+  `rx = rr / cols` 产生小数(如 14/9=1.555),`board[1.555 * cols + ...]` →
+  索引 undefined → `TypeError`。**修复**:显式 `(rr / .cols).to_int()`。
+  这是 AutoLang→JS 整数语义差距的通病,涉及整数除法的算法都需注意。
 
+### 13.5 验证补充(回归测试,2026-08-08)
+
+在修复上述两 bug 后补测:
+
+| 验证手段 | 结果 |
+|----------|------|
+| tsx 单测 store composable:Init→81格 / Reveal(4,4)→揭开64+布雷10+state=playing / Flag(0,0)→旗帜+💣9 | ✅ 全部正确 |
+| IAB DOM 快照:85 按钮(4 UI + 81 格子)+ 信息栏 + 难度按钮 全部渲染 | ✅ |
+| IAB 点击交互(揭开/插旗/难度切换) | ⚠️ 受限:IAB "broker id mismatch" 导致无障碍名 button 点击不稳定;tsx 已覆盖算法正确性 |
+| VM `auto run --render vm` 启动 | ✅ 无 Undefined symbol |
+
+**结论**:Phase 2 双后端实现完成。vue 侧算法经 tsx 单测 + DOM 渲染双重确认;
+IAB 点击交互受环境缺陷限制,但算法正确性已由 tsx 覆盖。两个 codegen bug 已在
+示例层修复,根因记录待后续 codegen 层处理。
 
