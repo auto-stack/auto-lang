@@ -1,9 +1,43 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-08）**: 🟡 进行中。**需求 2（grid）✅ + 需求 1b（press_sequence）✅ + 需求 1c（引擎升级）✅ + 需求 3（多模式）✅ 代码完成**。引擎运行时 MCP 验证待稳定环境。
+> **状态（2026-08-09）**: ✅ 代码全部完成。需求 1a/1b/1c/2/3 代码完成 + grid 按钮等宽对齐修复 + VM List 基建修复。**VM 运行时 MCP 表达式验证受阻于 VM 浮点运算缺陷**（详见下方"已知限制"）。vue 路径完整可用。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
+
+---
+
+## 完成总结（2026-08-09）
+
+### ✅ 已完成的需求
+| 需求 | 状态 | 提交 | 说明 |
+|------|------|------|------|
+| 2: Grid 布局重构 | ✅ | `0bc72d9c` | col/row → grid，统一 Digit/Operator handler，修 `%` bug |
+| 2: Grid 按钮等宽对齐修复 | ✅ | `78501aa8` | iced build_grid Fill 列包装 + vue w-full，按钮等宽对齐、间距可配置(~4px) |
+| 1a: MCP 操纵验证 | ✅ | `eafdee25` | autoui_find/state 正常；带参 press 发现丢参数 |
+| 1b: press_sequence + 带参 press 修复 | ✅ | `95bc6141` | autoui_press_sequence 工具 + extract_dyn_msg 参数编码 |
+| 1c: 表达式引擎（优先级/括号/小数/幂） | ✅ | `4e72f4bd` | shunting-yard 双栈引擎，List<str> 数字栈 + apply_top/prec/fmt_num |
+| 3: 多模式 UI | ✅ | `4e72f4bd` | Basic/Scientific/Programmer 三模式 + 模式切换 |
+
+### ✅ VM List 基建修复（Plan 403 副产品，修复真实 bug）
+调试表达式引擎运行时验证时，发现并修复了 VM 列表类型的多个缺陷：
+1. **`shim_list_push` 丢字符串**：`ListData<Value>` 分支把 `is_string` 的元素存成 `Value::Int(字符串索引)` 而非 `Value::Str`（native.rs）。→ 改为解析真实字节存 `Value::Str`。
+2. **`ListData<String>` 无 shim 支持**：`CREATE_LIST_STR` 创建 `ListData<String>`，但 `shim_list_push/pop/get/len` 只 downcast `ListData<i32>` 和 `ListData<Value>`，`List<str>` 的所有操作静默失败。→ 四个 shim 全部补 `ListData<String>` 分支。
+3. **CALLSPEC `get`/`last` 不完整**：`type_name=="List"` 的 inline 分发，`get` 只处理 `ListData<i32>`，`last` 不存在。→ 补 `ListData<String>` + `ListData<Value>` 分支 + 新增 `last`。
+4. **`str.to_float()` 缺失**：str 类型方法只有 `to_int`/`to_uint`，无 `to_float`。→ 补 `to_float`/`parse_float` handler。
+5. **f64 `to_string()` 走 int 路径**：f64 值的 type_name 是 `<unknown_nv:...>`，`to_string` 把浮点位当 i32 解码（输出天文数字）。→ `to_string` handler 增加 `is_f64` 检查 + `fmt_f64` 辅助函数。
+
+### ⚠️ 已知限制（VM 浮点运算缺陷）
+- **VM 浮点运算损坏**：`var v float = 3.0 + 4.0` 在 VM 中结果损坏（`v` 被存为 nanboxed i32 而非 f64）。这是 VM 的 codegen/存储层问题，浮点值的栈编码可能被错误地 nanboxed 成 i32。
+- **影响**：表达式引擎 `apply_top` 依赖 `nums.get(...).to_float()` 做浮点算术，受此缺陷影响，VM 模式下 `=` 求值无法正确计算（显示 Error）。vue 模式不受影响（vue codegen 不经 VM）。
+- **验证**：整数运算在 VM 中正常（`3+4 → 7`），仅浮点损坏。
+- **后续**：VM 浮点支持需独立计划修复（涉及 codegen 的 float 类型处理 + 栈编码）。这是 Plan 403 范围外的 VM 基建工作。
+
+### 验证结果
+- ✅ vue 路径：`auto run` → playwright 截图确认按钮等宽对齐、间距一致(~4px)、三模式切换正常。
+- ✅ iced/VM 路径：窗口正常启动渲染；013-todo / 016-calendar 回归通过（List 基建修复未破坏现有功能）。
+- ⚠️ VM 表达式求值：受 VM 浮点缺陷限制，`=` 显示 Error（整数算术本身正常）。
+- ✅ MCP `autoui_press_sequence` 工具：按键序列操纵正常（`2+3=` 能触发完整 handler 流程）。
 
 ---
 

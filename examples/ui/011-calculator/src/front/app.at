@@ -244,7 +244,13 @@ widget App {
 fn eval_expr(input str) str {
     // Plan 403: shunting-yard expression evaluator.
     // Supports + - * / ^ %, parentheses, decimals, unary minus, precedence.
-    var nums List<float> = []
+    //
+    // Note: numbers are kept on a List<str> (not List<float>) and parsed to
+    // float only at the point of arithmetic. This dodges a VM limitation where
+    // an empty List<float> is instantiated as ListData<i32>, which corrupts
+    // pushed floats. String elements round-trip correctly via ListData<String>
+    // (with Plan 403 fixes to shim_list_push/get/pop/len for ListData<String>).
+    var nums List<str> = []
     var ops List<str> = []
     var i int = 0
     var n int = input.len()
@@ -270,7 +276,7 @@ fn eval_expr(input str) str {
                 }
             }
             i = j
-            nums.push(num_str.to_float())
+            nums.push(num_str)
         }
         // Opening paren.
         else if ch == "(" {
@@ -279,7 +285,7 @@ fn eval_expr(input str) str {
         }
         // Closing paren: pop until "(".
         else if ch == ")" {
-            while ops.len() > 0 && ops.last() != "(" {
+            while ops.len() > 0 && ops.get(ops.len() - 1) != "(" {
                 ok = apply_top(nums, ops)
                 if !ok {
                     return "ERROR"
@@ -314,12 +320,12 @@ fn eval_expr(input str) str {
                     }
                     if j > i + 1 {
                         i = j
-                        nums.push(num_str.to_float())
+                        nums.push(num_str)
                     } else {
                         i = i + 1
                     }
                 } else {
-                    while ops.len() > 0 && ops.last() != "(" && prec(ops.last()) >= prec(ch) {
+                    while ops.len() > 0 && ops.get(ops.len() - 1) != "(" && prec(ops.get(ops.len() - 1)) >= prec(ch) {
                         ok = apply_top(nums, ops)
                         if !ok {
                             return "ERROR"
@@ -329,7 +335,7 @@ fn eval_expr(input str) str {
                     i = i + 1
                 }
             } else {
-                while ops.len() > 0 && ops.last() != "(" && prec(ops.last()) >= prec(ch) {
+                while ops.len() > 0 && ops.get(ops.len() - 1) != "(" && prec(ops.get(ops.len() - 1)) >= prec(ch) {
                     ok = apply_top(nums, ops)
                     if !ok {
                         return "ERROR"
@@ -347,7 +353,7 @@ fn eval_expr(input str) str {
 
     // Pop remaining operators.
     while ops.len() > 0 {
-        if ops.last() == "(" {
+        if ops.get(ops.len() - 1) == "(" {
             ops.pop()
         } else {
             ok = apply_top(nums, ops)
@@ -358,22 +364,22 @@ fn eval_expr(input str) str {
     }
 
     if nums.len() == 1 {
-        return fmt_num(nums.last())
+        return fmt_num(nums.get(0).to_float())
     }
     return "ERROR"
 }
 
 /// Pop the top operator and apply it to the top two values. Returns false on
 /// error (e.g. division by zero, or insufficient values).
-fn apply_top(nums List<float>, ops List<str>) bool {
+fn apply_top(nums List<str>, ops List<str>) bool {
     if ops.len() == 0 || nums.len() < 2 {
         return false
     }
-    var op str = ops.last()
+    var op str = ops.get(ops.len() - 1)
     ops.pop()
-    var b float = nums.last()
+    var b float = nums.get(nums.len() - 1).to_float()
     nums.pop()
-    var a float = nums.last()
+    var a float = nums.get(nums.len() - 1).to_float()
     nums.pop()
     var result float = 0.0
     if op == "+" {
@@ -397,7 +403,7 @@ fn apply_top(nums List<float>, ops List<str>) bool {
     if op == "%" {
         result = a - b * (a / b)
     }
-    nums.push(result)
+    nums.push(result.to_string())
     return true
 }
 

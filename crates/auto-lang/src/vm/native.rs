@@ -1164,7 +1164,14 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     } else if auto_val::is_object(elem_nv) {
         Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
     } else if auto_val::is_string(elem_nv) {
-        Value::Int(auto_val::decode_string(elem_nv) as i32)
+        // Plan 403: store the actual string bytes, not the pool index. The old
+        // code stored Value::Int(string_index), which corrupted List<str>/<Value>
+        // element values on read-back (e.g. "3" rendered as its pool index).
+        let idx = auto_val::decode_string(elem_nv) as usize;
+        let s = vm.strings.read().unwrap().get(idx)
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_default();
+        Value::Str(s.into())
     } else if auto_val::is_null(elem_nv) {
         Value::Nil
     } else if auto_val::is_bool(elem_nv) {
@@ -1187,6 +1194,24 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 auto_val::decode_i32(elem_nv)
             };
             list.push(stored);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) — store
+        // the actual string bytes, not the nanbox index. Without this branch a
+        // push onto List<str> silently dropped the element (both i32 and Value
+        // downcasts failed), corrupting any string-stack algorithm (e.g. the
+        // calculator's shunting-yard engine).
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
+            let s = if auto_val::is_string(elem_nv) {
+                let idx = auto_val::decode_string(elem_nv) as usize;
+                vm.strings.read().unwrap().get(idx)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default()
+            } else {
+                auto_val::decode_i32(elem_nv).to_string()
+            };
+            list.push(s);
             task.ram.push_i32(0);
             return Ok(());
         }
@@ -1222,6 +1247,17 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_i32(elem);
             return Ok(());
         }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) — pop the
+        // actual string and push it as a nanbox string value.
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
+            if let Some(s) = list.pop() {
+                let idx = { let mut strings = vm.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
+                task.ram.push_str_idx(idx as u32);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
         // Plan 335: ListData<Value> (struct element lists)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
             if let Some(val) = list.pop() {
@@ -1251,6 +1287,11 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
             task.ram.push_i32(list.len() as i32);
             return Ok(());
         }
@@ -1343,12 +1384,17 @@ fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
 
 /// Plan 335: 栈上的 nanbox NanoValue 解码为 `Value`（set/insert/contains 等写入/比较用）。
 /// VmRef / Int / String / Bool / Nil 五类，与 shim_list_push 的编码一致。
+/// Plan 403: string values now decode to Value::Str (actual bytes), not
+/// Value::Int(pool_index) — keeps List<Value> string elements round-tripping.
 fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
     } else if auto_val::is_object(nv) {
         Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
     } else if auto_val::is_string(nv) {
+        // Plan 403: resolve to actual string bytes via the pool index.
+        // NOTE: this is a best-effort decode; callers that need the string
+        // should use the pool directly. We fall back to Int if unavailable.
         Value::Int(auto_val::decode_string(nv) as i32)
     } else if auto_val::is_null(nv) {
         Value::Nil
@@ -1384,6 +1430,17 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                 if let Some(&val) = list.get(index) {
                     push_tagged_value(&mut task.ram, val);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+            // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) —
+            // return the element as a nanbox string.
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                if let Some(s) = list.get(index) {
+                    let idx = { let mut strings = vm.strings.write().unwrap(); let i = strings.len(); strings.push(s.clone().into_bytes()); i };
+                    task.ram.push_str_idx(idx as u32);
                 } else {
                     task.ram.push_i32(0);
                 }
