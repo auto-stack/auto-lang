@@ -1,6 +1,6 @@
 # Plan 402: AutoUI 示例 — 扫雷游戏(038-minesweeper)
 
-> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)+ Phase 2(Auto 版双后端)均实现完成
+> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)+ Phase 2(Auto 版)实现完成;vue 后端完整可用,VM 后端启动/渲染可用但交互受 VM store handler bug 阻塞(§13.6)
 > **分支**: `plan402/038-minesweeper`
 > **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例,
 > 集中展示 escape-hatch(`use { fn }`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
@@ -656,11 +656,43 @@ action 互调用 `store.Init()` 实现(`.Reset`/`.SetDifficulty` 复用 `.Init`)
 | 验证手段 | 结果 |
 |----------|------|
 | tsx 单测 store composable:Init→81格 / Reveal(4,4)→揭开64+布雷10+state=playing / Flag(0,0)→旗帜+💣9 | ✅ 全部正确 |
-| IAB DOM 快照:85 按钮(4 UI + 81 格子)+ 信息栏 + 难度按钮 全部渲染 | ✅ |
-| IAB 点击交互(揭开/插旗/难度切换) | ⚠️ 受限:IAB "broker id mismatch" 导致无障碍名 button 点击不稳定;tsx 已覆盖算法正确性 |
-| VM `auto run --render vm` 启动 | ✅ 无 Undefined symbol |
+| IAB DOM 快照(vue):85 按钮(4 UI + 81 格子)+ 信息栏 + 难度按钮 全部渲染 | ✅ |
+| IAB 点击交互(vue) | ⚠️ 受限:IAB "broker id mismatch" 导致无障碍名 button 点击不稳定;tsx 已覆盖算法正确性 |
+| VM `auto run --render vm` 启动 + MCP 渲染 | ✅ 无 Undefined symbol;原生窗口渲染棋盘 81 格 |
+| VM state 查询(`autoui_state`) | ✅ Init 正确填充(board 81 格、class 字段、labels) |
+| VM 点击棋盘(`autoui_action` press) | ❌ 见下,VM store 字段访问 bug |
 
-**结论**:Phase 2 双后端实现完成。vue 侧算法经 tsx 单测 + DOM 渲染双重确认;
-IAB 点击交互受环境缺陷限制,但算法正确性已由 tsx 覆盖。两个 codegen bug 已在
-示例层修复,根因记录待后续 codegen 层处理。
+### 13.6 VM 后端交互验证与发现的 bug(2026-08-08)
+
+通过 VM MCP server(`:9247`)的 `autoui_snapshot` / `autoui_state` /
+`autoui_action` 工具,对 VM 原生窗口做了交互验证,发现两个 VM bug:
+
+**VM bug 3(if 表达式赋值,已绕过)**:`.field = if c {a} else {b}` 形式的
+if 表达式赋值,VM 执行时结果错乱(`beginner_class` 得 0,`intermediate_class`
+得 16 即 cols 的值)。**绕过**:改用 if 语句(`if c { .field = a }`)。修复后
+VM state 三档 class 字段值正确。vue 侧不受影响(两种写法 codegen 都正确)。
+
+**VM bug 4(store action 跨 widget 事件调用的 self 绑定,未修复)**:widget
+事件触发的 `store.Reveal(x, y)` 调用,合成的 `handler_MinesweeperStore_Reveal`
+访问 store 字段(`.game_state` / `.board` / `.cols` / `.rows`)时报
+`GET_FIELD non-i32 obj_id: raw=fff4000080000001`。action 报告 `status: ok`
+但 state 不变(game_state 仍 ready)。**Init 在 onMounted 首次调用时字段访问
+正常**(self 绑定正确),但经 widget 事件转发的 store action 调用路径下,
+store 的 self/state 绑定丢失。属 VM codegen 的 store handler 合成缺陷
+(`handler_codegen.rs` 的 store action 调用改写 `store.X` →
+`handler_<Store>_X(__state, args)` 时,`__state` 未正确传入),**非示例层可修复**。
+
+**影响**:
+- vue 后端完全可用(本示例的主要交付目标)。
+- VM 后端能**启动并渲染**棋盘 UI,但**无法交互**(点击揭开/插旗无效)。
+  这是 VM 对 store 驱动架构的支持缺陷,不是 038 特有问题 —— 任何
+  widget 事件 → store action(带字段访问)的模式在 VM 下都会触发。
+
+**结论**:
+- 038 的 **vue 后端完整可用**(tsx 单测 + DOM 渲染双确认)。
+- **VM 后端部分可用**:启动/渲染 OK,交互受 VM store handler bug 阻塞。
+- 要让 038 完全跑在 VM,需先修复 VM codegen 的 store action self 绑定
+  (VM bug 4)。本计划标记为"vue ✅ + VM 渲染 ✅ / 交互 🟡 待 VM 修复"。
+- 已记录 4 个 VM/vue codegen bug(§13.4 两个 + §13.6 两个),供后续
+  codegen 层修复参考。
 
