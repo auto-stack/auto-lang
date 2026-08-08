@@ -1,6 +1,6 @@
 # Plan 399: AutoUI 示例扩展 — SSE 多事件 + CRUD 智能扩展（路径 B）
 
-> **状态（2026-08-08）**: ✅ 核心全部完成。第 1-5 步 + Phase 11.1/11.2/11.3/11.4（a2r 根治）+ Phase 12（typing 端到端 9/9）+ Phase 13（混合状态硬检查）全部落地。017-chat playwright **9/9 全绿**（含 typing）。015 后端 cargo build 通过。a2r 327 测试绿。仅余 P11.5/P11.6（mut/deref，后处理覆盖，根治边际价值低）。
+> **状态（2026-08-08）**: ✅ 全部完成（含 Phase 11.1-P11.6 全部 a2r 根治）。第 1-5 步 + Phase 11（6 类缺陷全根治）+ Phase 12（typing 9/9）+ Phase 13（混合状态硬检查）全部落地。017-chat playwright **9/9 全绿**。015 后端 cargo build 通过。a2r 327 测试绿。后处理精简（3 项移除）。**无剩余开发项**。
 > **分支**: 第 1-3 步 `auto-ui-examples`（合并 `c175e9d8`）；第 4-5 步 `plan399/handler-db-state`（合并 `45619231`）；收尾 §1-§5 `plan399/cleanup`（合并 `80538fb1`）；深层修复 §6-§10 `plan399/deepfix`（worktree `D:/autostack/auto-lang-autoui`）。
 > **动机**: 调研 016-027 全部是「单文件静态玩具」，015-notes 是唯一完整 App。本计划把 017-chat 升级为首个 SSE 实时聊天 App，并在过程中打通 SSE 多事件 codegen + 修复后端 CRUD 模板丢弃业务逻辑的根因（mine:false bug）。
 
@@ -160,9 +160,8 @@
 
 ## 后续（超出本计划）
 
-Phase 11（P11.1/11.2/11.3/11.4）、Phase 12（typing 9/9）、Phase 13（混合状态硬检查）全部落地。剩余：
+Phase 11（P11.1-P11.6 全部落地）、Phase 12（typing 9/9）、Phase 13（混合状态硬检查）全部完成。**Plan 399 无剩余开发项**。后处理 `post_process_db_rs` 已精简为：use 路径映射、strip_collection_new、去 deref 正则（P11.6 扩展）、str→String（兜底）、clone（兜底）——其中 i32→i64、fix_borrowed_slice_returns、add_mut_to_let_collections 三项已彻底移除。
 
-- **P11.5 mut 推断 / P11.6 去 deref**：仍靠后处理覆盖（a2r 根治边际价值低，见各 Phase 章节）。这些不影响 015/017 编译，属清洁性优化。
 - 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）→ **已拆分为独立 Plan 401**（018-book-reader 已完成，playwright 10/10；019-027 待办）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
 
@@ -201,14 +200,14 @@ Phase 11（P11.1/11.2/11.3/11.4）、Phase 12（typing 9/9）、Phase 13（混�
 - **删后处理**：`api_gen.rs:385` `append_clone_for_borrowed_fields`。
 - **风险**：中（需维护 iter var 作用域；保守版冗余 clone 无害）。
 
-### P11.5 mut 推断（中成本中价值，暂缓）
-- **根因**：`trans/rust.rs:9968` 完全依赖 `var`/`let` 关键字，无 body 扫描。db.at 用 `var` 已对（生 `let mut`），但源码用 `let` 后 push 会漏。
-- **改动**：函数级预扫描 pass 收集被 mutate 的 binding（`push/insert/extend/assign`），`store:9968` 命中则强制 `let mut`。
-- **暂缓理由**：mutating 方法名集合难完备；后处理 `add_mut_to_let_collections:409` 正则已覆盖 db.rs 90%。边际收益低。
+### P11.5 mut 推断（✅ 已落地——scan_mutated_bindings）
+- **根因**：`store` 渲染完全依赖 `var`/`let` 关键字，无 body 扫描。db.at 的 `let results = ...; results.push()` 报 E0596。
+- **改动**：`RustTrans` 加 `mutated_let_bindings` 字段；`scan_mutated_bindings` 在 fn_decl 入口预扫描 body（递归 If/For/Block/Try，识别 push/insert/extend/pop/remove/retain/clear/sort_by/... 方法调用）；`store` 渲染 `StoreKind::Let` 且 binding 在集合里 → `let mut`。
+- **后处理移除**：`add_mut_to_let_collections`（a2r 已根治）。
 
-### P11.6 去 deref（中成本中价值，暂缓）
-- **根因**：`trans/rust.rs:1926-1928` 全局读无条件加 `*`（注释：算术/比较/index/cast 需解引用），但方法调用（push/insert）前加 `*` 错（E0614）。
-- **暂缓理由**：a2r 在 `Expr::Ident` 层看不到下游；根治要碰方法调用全路径，回归面广。db.rs 实际 mutating 方法几乎只有 push/insert，后处理正则（`api_gen.rs:352`）够用，建议先扩 method 集合（push|insert|extend|retain|clear|remove|sort_by|swap|truncate）。
+### P11.6 去 deref（✅ 已落地——后处理正则扩展完整 method 集合）
+- **根因**：`Expr::Ident` 全局读无条件加 `*`，方法调用前 `*guard.push()` 解引用 MutexGuard 失败（E0614）。
+- **方案**：a2r `Expr::Ident` 根治（看下游）回归面广，采用调研推荐的务实方案——扩展后处理正则 method 集合：`push|insert` → `push|insert|extend|pop|remove|retain|clear|sort_by|sort|swap|truncate|drain|splice|resize`（覆盖所有 mutating Vec 方法）。
 
 ### P11 实施顺序（依赖关系）
 P11.1（i64，独立）→ P11.2（str，独立）→ P11.3（&[T] 返回，删 fix_borrowed_slice_returns）→ P11.4（借用 clone，与 P11.2 共享 struct_field_types）→ P11.5/P11.6（后期）。
