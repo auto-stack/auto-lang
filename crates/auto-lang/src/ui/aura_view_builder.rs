@@ -2259,14 +2259,17 @@ impl<'a> AuraViewBuilder<'a> {
                     // reads state field "" and fails → note resolves to None →
                     // the entire panel renders empty.
                     if name.as_str() == "." || name.as_str() == "self" {
-                        return self.read_state(field.as_str()).ok();
+                        // EDGE-16 第五层:`.field` 可能是循环变量(for b in ...
+                        // 里的 .b),先查 bindings,再回退 state。
+                        if let Some(v) = bindings.get(field.as_str()) {
+                            return Some(v.clone());
+                        }
+                        return self.eval_computed(field.as_str(), bindings)
+                            .or_else(|| self.read_state(field.as_str()).ok());
                     }
                 }
                 let obj = self.resolve_expr_to_value(object, bindings)?;
                 let field_str = field.as_str();
-                if field_str == "kind" || field_str == "status" {
-                    eprintln!("[DEBUG-F] Dot .{} obj={:?} (widget={})", field_str, obj, self.widget_name);
-                }
                 match obj {
                     Value::Obj(map) => map.get(field_str),
                     // Plan 320: raw struct heap id from Index — materialize to Obj
