@@ -1,0 +1,40 @@
+use tab: Pane
+
+widget App {
+    msg Msg { Show(str), Init }
+
+    model {
+        var active str = "alpha"
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "038 — v-show (show: prop)" { class: "text-xl font-bold" }
+
+            // Pane switcher: each pane stays MOUNTED (v-show), so per-pane
+            // DOM/component state survives a switch — unlike v-if.
+            row {
+                class: "space-x-1",
+                button "alpha" { class: "px-3 py-1 border rounded", onclick: .Show("alpha") }
+                button "beta" { class: "px-3 py-1 border rounded", onclick: .Show("beta") }
+            }
+
+            Pane(name: "alpha", show: .active == "alpha")
+            Pane(name: "beta", show: .active == "beta")
+
+            // v-show on a plain element with a block-form prop.
+            div {
+                class: "text-sm text-gray-500",
+                show: .active != "",
+                text "One pane is always visible; both stay mounted."
+            }
+        }
+    }
+
+    on {
+        .Show(name) -> { .active = name }
+        .Init -> { .active = "alpha" }
+    }
+}

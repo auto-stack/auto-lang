@@ -1,0 +1,11 @@
+// Child pane for 038 — kept dumb so the example isolates the v-show
+// contract. `show:` on the call site becomes v-show on this component's
+// root element.
+widget Pane(name: str) {
+    view {
+        div {
+            class: "p-4 border rounded bg-white",
+            text .name { class: "font-medium text-gray-800" }
+        }
+    }
+}

@@ -432,3 +432,168 @@ widget W {
     );
     assert!(sfc.contains(":disabled=\"busy\""), "disabled binding:\n{sfc}");
 }
+
+// ============================================================================
+// Plan 012 P2 — reserved-word contextualization (jade gaps 18/27/29/34/43/53).
+// `link`/`task` are element/keyword tokens but legitimate identifier names;
+// `type:`/`to:` are keyword tokens but legitimate prop keys; `map` is a
+// built-in prop type.
+// ============================================================================
+
+/// jade gap 18/29: a view for-loop variable may be named `link` or `task`.
+/// Previously `text link.title` misparsed as a router-link element + garbage
+/// sibling nodes.
+#[test]
+fn cap_loop_var_named_link_and_task() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var items list = [] }
+    view {
+        col {
+            for link in .items {
+                div { text link.title }
+            }
+            for task in .items {
+                div { text task.name }
+            }
+        }
+    }
+}
+"#,
+    );
+    assert!(sfc.contains(r#"v-for="link in items""#), "link loop:\n{sfc}");
+    assert!(sfc.contains("{{ link.title }}"), "link field access:\n{sfc}");
+    assert!(sfc.contains(r#"v-for="task in items""#), "task loop:\n{sfc}");
+    assert!(sfc.contains("{{ task.name }}"), "task field access:\n{sfc}");
+    assert!(!sfc.contains("router-link"), "no router-link garbage:\n{sfc}");
+}
+
+/// jade gap 18 (handler side): a handler local may be named `link`/`task`
+/// and used in conditions and field access.
+#[test]
+fn cap_handler_local_named_link() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    msg Msg { Go }
+    model {
+        var items list = []
+        var n int = 0
+    }
+    view {
+        col {
+            button "go" { onclick: .Go }
+        }
+    }
+    on {
+        .Go -> {
+            var link = .items.find(l => l.id == 1)
+            if link != null { .n = link.id }
+        }
+    }
+}
+"#,
+    );
+    assert!(sfc.contains("function Go("), "handler emitted:\n{sfc}");
+    assert!(sfc.contains("link"), "link local survives:\n{sfc}");
+}
+
+/// jade gap 53: keyword-token prop keys in BRACE form — `button { type:
+/// "button" }` now emits a real `:type` binding instead of garbage
+/// `<div>button</div>` child nodes (previously only the paren form worked).
+#[test]
+fn cap_keyword_prop_keys_brace_form() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    view {
+        col {
+            button {
+                type: "button"
+                class: "x"
+                text "hi"
+            }
+        }
+    }
+}
+"#,
+    );
+    assert!(sfc.contains(r#":type="'button'"#), "type prop emitted:\n{sfc}");
+    assert!(!sfc.contains("<div>button</div>"), "no garbage child:\n{sfc}");
+}
+
+/// jade gap 27: `to:` on a dyn block is a normal prop — `:to="'body'"`, no
+/// garbage `<div>body</div>` child nodes.
+#[test]
+fn cap_dyn_keyword_to_prop() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    view {
+        col {
+            dyn (.Teleport) {
+                to: "body"
+                text "overlay"
+            }
+        }
+    }
+}
+"#,
+    );
+    assert!(sfc.contains(r#":to="'body'"#), "to prop emitted:\n{sfc}");
+    assert!(!sfc.contains("<div>body</div>"), "no garbage child:\n{sfc}");
+}
+
+/// jade gap 34: `path` is NOT actually reserved for computed/locals (only
+/// SVG-path element position) — a computed named `path` compiles. Lock the
+/// verified-good behavior.
+#[test]
+fn cap_computed_named_path() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var active_path str = "" }
+    computed {
+        path => .active_path
+    }
+    view { col { text .path } }
+}
+"#,
+    );
+    assert!(sfc.contains("{{ path }}"), "computed path in template:\n{sfc}");
+}
+
+/// jade gap 43: `map` is a legal widget prop type — emits `any` and, unlike
+/// before, no broken `import type { map } from '@/lib/api'`.
+#[test]
+fn cap_map_prop_type_is_any() {
+    let sfc = gen_sfc(
+        r#"
+widget W(settings: map) {
+    view { col { text "x" } }
+}
+"#,
+    );
+    assert!(sfc.contains("settings: any"), "map prop → any:\n{sfc}");
+    assert!(!sfc.contains("import type { map }"), "no broken import:\n{sfc}");
+}
+
+/// Regression lock: the router-link VIEW element (`link (to: ...)`) is
+/// unaffected by `link` becoming a contextual identifier.
+#[test]
+fn cap_router_link_element_unchanged() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    view {
+        col {
+            link (to: "/home") { text "Home" }
+        }
+    }
+}
+"#,
+    );
+    assert!(sfc.contains("router-link"), "router-link still emitted:\n{sfc}");
+    assert!(sfc.contains(r#"to="/home""#), "router-link target:\n{sfc}");
+}
