@@ -1,17 +1,19 @@
 # Plan 402: AutoUI 示例 — 扫雷游戏(038-minesweeper)
 
-> **状态(2026-08-08)**: ✅ 实现完成,浏览器验证全部通过
+> **状态(2026-08-08)**: ✅ Phase 1(vue/TS 版)实现完成,浏览器验证全部通过;🟡 Phase 2(Auto 版游戏逻辑)待实现
 > **分支**: `plan402/038-minesweeper`
 > **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例,
 > 集中展示 escape-hatch(`use { fn }`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
 > 定时器约定(`var interval` + `.Tick`)、`computed` 响应式标签、动态 CSS grid。
 >
-> **架构变更说明(实现期发现)**:原设计假设"顶层 `pub fn` 文件可被 vue codegen 处理"
-> (模仿 016-calendar 的 `calendar_util.at`)。实现时核查发现 **vue codegen 根本不支持
-> 顶层 `pub fn`** —— `generate_component_from_file` 只处理 widget/store,顶层 fn 被静默丢弃,
-> 016-calendar 的 gen 产物也已损坏(从未成功生成)。因此架构调整为 **AutoLang 状态壳
-> (app.at)+ TypeScript 算法 escape-hatch(minesweeper.ts)**,对标 029-external-imports 的
-> 官方机制。详见 §10 实现发现。
+> **两阶段交付**:
+> - **Phase 1(vue/TS 版,✅ 已完成)**:游戏逻辑用 TypeScript 写在 `minesweeper.ts`,
+>   经 `use { fn }` escape-hatch 导入。对标 029-external-imports。已通过浏览器实测。
+>   原因:vue codegen 不支持顶层 `pub fn`(详见 §10.1),escape-hatch 是 vue 后端
+>   唯一能让算法函数被 SFC 使用的机制。
+> - **Phase 2(Auto 版游戏逻辑,🟡 待实现)**:把游戏逻辑从 TS 改写为**纯 AutoLang**,
+>   使同一份 `.at` 代码**既能被 VM 后端解释执行,又能被 vue codegen 翻译成 TS**,
+>   不再依赖 `use { fn } from "*.ts"` escape-hatch。详见 §12。
 
 ---
 
@@ -419,3 +421,162 @@ auto run    # 启动前端(默认端口)
 | 10 | 🔄 重置:计时/雷数归零,棋盘复原 | ✅ |
 
 全部通过。
+
+---
+
+## 12. Phase 2:Auto 版游戏逻辑(双后端:VM + vue)
+
+### 12.1 目标与动机
+
+Phase 1 的 vue/TS 版已工作,但只能在 vue 后端运行。实测 `auto run --render vm` 报错:
+
+```
+VM UI error: Undefined symbol: toggle_flag in module App
+```
+
+根因:`use { fn: ... from "*.ts" }` escape-hatch 是 **vue 后端专有**(parser.rs:11372
+明确注释 "Vue backend escape hatch"),VM 后端只解释 `.at`,从不解析 `.ts`。
+
+**Phase 2 目标**:把游戏逻辑从 TypeScript 改写为**纯 AutoLang**,使同一份 `.at`
+既能被 VM 解释执行,又能被 vue codegen 翻译成 TS。让 038 成为首个同时跑在
+**两个后端**的 AutoUI 示例。
+
+### 12.2 双后端兼容性核查结论(关键约束)
+
+经对 `crates/auto-lang` 的 vue codegen 和 VM runtime 逐路径核查,得出以下硬约束:
+
+**约束 1:vue codegen 不输出任何顶层 `pub fn`**(§10.1)。唯一被翻译成 TS 的
+逻辑载体是:① widget `on` handler;② store `on` action;③ store `computed`。
+
+**约束 2:VM 视图绑定完全不能调用函数**。`aura_view_builder.rs` 的
+`resolve_expr_to_value` / `resolve_expr_to_string_with`(2089/2181 行)**没有
+`Expr::Call` 分支**,兜底返回空。这意味着 view 里的 `class: difficulty_class(...)`
+、`class: number_class(...)`、`style: grid_style(...)` 在 VM 下**全部求值为空**。
+→ **Auto 版必须消除视图绑定里的一切函数调用**,改为预计算 state 字段或 `if` 表达式。
+
+**约束 3:computed 不能带参数**(`ast/ui.rs:333` 只有 name + expr)。带参算法
+(`reveal_flood(board,...)`)无法用 computed 表达。computed 仅适合无参派生值。
+
+**约束 4:on 块内局部 var/loop/数组操作,双后端都完整支持**(vue ts_adapter.rs:313-405;
+VM codegen.rs:2366)。问题不在语法,在组织方式与视图绑定。
+
+### 12.3 双后端兼容性矩阵
+
+| 组织方式 | vue codegen | VM | 双后端? |
+|----------|-------------|-----|---------|
+| A. 顶层 `pub fn` 在 app.at | ❌ 被丢弃 | ✅ | ❌ |
+| B. `pub fn` 在 util.at + `use` 导入 | ❌(016 损坏) | ✅(vm_bridge.rs:1550 铁证) | ❌ |
+| C. inline 进 widget `on` 块 | ✅ | ✅ | ✅ 但仅 handler 内,视图无法调用 |
+| D. 算法进 store `on` action,widget `use store` | ✅(composable) | ✅(child WidgetDecl) | ✅ |
+| E. widget `computed` 块 | ✅ | ✅ | ⚠️ 无参派生值专用 |
+
+### 12.4 目标架构:方式 D(store)+ 方式 C(action inline)+ 消除视图函数调用
+
+基于约束矩阵,Auto 版采用 **store 驱动** 架构:
+
+```
+minesweeper_store.at          # store MinesweeperStore — 全部游戏逻辑(AutoLang)
+  model { var board, var rows, var cols, ... var mines_label, var timer_label ... }
+  computed { ... }            # 无参派生值(若需要)
+  on {
+    .Init -> { ... }          # 算法 inline,操作 .board 等 state
+    .Reveal(x, y) -> { ... place_mines + reveal_flood inline ... }
+    .Flag(x, y) -> { ... }
+    .Reset -> { ... }
+    .SetDifficulty(d) -> { ... }
+    .Tick -> { ... }
+  }
+
+app.at                         # widget App — 纯视图壳,无算法
+  use store: MinesweeperStore
+  model { var interval int = 1000 }   # 计时器约定
+  view { ... }                 # 全部读 .store.* 字段,不调用函数
+  on { ... }                   # 转发到 store action(或直接绑 store action)
+```
+
+**关键改造点:**
+
+1. **算法全部 inline 进 store action**,不作为带参 helper 函数。例如 `reveal_flood`
+   不再是 `fn reveal_flood(board, ...)` 返回新 board,而是 `.Reveal` action 体内
+   用局部 `var nb = []` + `loop` 累积,最后 `.board = nb`。
+
+2. **视图绑定消除所有函数调用**(约束 2)。当前 038 视图里的 4 类函数调用改造:
+   - `number_class(cell.adjacent)` → 每个 cell 对象预存 `number_class` 字段
+     (action 内计算时写入);view 读 `cell.number_class`
+   - `cell_class(cell.revealed)` → 同上,cell 预存 `cell_class` 字段;或用
+     `if cell.revealed { "..." } else { "..." }` 表达式(VM 支持 Expr::If)
+   - `difficulty_class(.difficulty, "beginner")` → store 预存 3 个
+     `beginner_class`/`intermediate_class`/`expert_class` 字段,或 view 用 `if` 表达式
+   - `grid_style(.cols)` → store 预存 `grid_style` 字段(SetDifficulty/Init 时计算)
+   - `mines_left_label`/`time_label` → computed 无参派生纯 Auto 表达式
+     (如 `mines_label => mine_count - flags_placed`,view 用 `text "💣 " + .mines_label`;
+     注意 f-string 算术不可靠见 §10.4,故用 `+` 拼接或 store 预存字符串字段)
+
+3. **TS `minesweeper.ts` 删除**,`use { fn }` escape-hatch 移除。
+
+### 12.5 store action 之间的复用
+
+扫雷的 `place_mines` 在 `.Reveal`(首点)调用,`reveal_flood` 也在 `.Reveal` 调用,
+`init_board` 在 `.Init`/`.Reset`/`.SetDifficulty` 共用。在 store 里这些通过
+**action 间互调**实现(handler_codegen.rs:218-260 / ts_adapter.rs:580-596 支持同 store
+action 互调),而非独立 helper 函数。即 `.Reset` action 可调用 `.Init` action 的逻辑。
+
+### 12.6 任务分解(Phase 2)
+
+#### Phase 2-A:store 骨架 + 算法迁移(第 5 步) ⚪
+
+1. 新建 `src/front/minesweeper_store.at`(`store MinesweeperStore { model / on }`),
+   model 含 board + 全部 state + 预计算字段(number_class/cell_class/grid_style 等)
+2. 把 `minesweeper.ts` 的 11 个函数逐个翻译成 AutoLang,inline 进对应 action:
+   - `init_board` → `.Init` action 体
+   - `place_mines` + 首点安全 → `.Reveal` action 体(ready 分支)
+   - `reveal_flood` 显式栈 → `.Reveal` action 体(playing 分支)
+   - `check_win` → `.Reveal` action 末尾
+   - `toggle_flag` + `count_flags` → `.Flag` action 体
+   - `reveal_all_mines` → `.Reveal` action(踩雷分支)
+   - 难度参数(init 用的 rows/cols/mines)→ `.SetDifficulty` 内 if 链
+3. 算法里用 `math.floor(math.random() * n)` 生成随机数(vue codegen 内置转译为
+   Math.floor/Math.random;VM native 支持)
+
+#### Phase 2-B:app.at 改造为 store 视图壳(第 6 步) ⚪
+
+4. 删除 `src/front/utils/minesweeper.ts`,移除 `use { fn }` escape-hatch
+5. `app.at` 改为 `use store: MinesweeperStore`,view 全部读 `.store.*` 字段
+6. 消除视图里所有函数调用:
+   - cell 的 class/style 改读预存字段或 `if` 表达式
+   - 难度按钮、grid style 改读预存字段或 `if` 表达式
+   - 标签改 computed 无参派生
+7. `auto gen`(vue)验证生成正确,浏览器实测 vue 后端功能不回归
+
+#### Phase 2-C:VM 后端验证(第 7 步) ⚪
+
+8. `auto run --render vm` 验证 VM 启动无 "Undefined symbol" 错误
+9. VM 下浏览器实测核心流程(揭开/连锁/插旗/难度/计时/胜负)
+10. 记录 VM 与 vue 的差异(若有),更新 README
+
+#### Phase 2-D:文档与收尾(第 8 步) ⚪
+
+11. README 增补"双后端运行"说明(`auto run` vue / `auto run --render vm`)
+12. Concepts 增补"store 驱动 + 双后端"特性
+13. 本计划 §13 补充 Phase 2 验收结果
+
+### 12.7 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| store action 互调在 vue/vm 行为不一致 | 先写最小 action 互调用例,双后端各 `auto gen`/`--render vm` 验证 |
+| 视图 `if` 表达式嵌套过深(数字色/格子色/难度色) | 优先用预存字段;`if` 仅用于简单二分支(如 cell.revealed) |
+| cell 对象预存 class 字段导致 board 体积膨胀 | 高级 480 格 × 多字段,可接受(纯内存) |
+| VM 对 `math.random` 支持不确定 | Phase 0 已确认 vue codegen 转译;VM 侧 Phase 2-C 实测,必要时用伪随机兜底 |
+| store 计时器约定(`var interval`)位置 | interval 放 widget model 还是 store model 需实测(codegen 查找 widget state_vars) |
+| on 块内 `var` 局部变量在 VM 的支持 | Phase 0 已确认 vue 支持;VM codegen.rs:1440 支持,但 Phase 2-C 实测确认 |
+
+### 12.8 验收标准(Phase 2)
+
+1. 删除 `minesweeper.ts`,无 `use { fn } from "*.ts"` escape-hatch
+2. `auto gen`(vue)无报错,生成 `gen/front/vue/`
+3. `auto run`(vue)功能不回归 —— §11 的 10 项 vue 验收全部通过
+4. `auto run --render vm` 启动无 "Undefined symbol" 错误
+5. VM 下核心流程可用(至少:棋盘渲染、左键揭开+连锁、右键插旗、难度切换、踩雷失败)
+6. README 说明双后端运行方式
+
