@@ -87,6 +87,7 @@ playwright **10/10 全绿**（干净态可复现）：T1 书架渲染 / T2 进�
 
 | 示例 | 现状 | 升级方向 | 优先级 |
 |---|---|---|---|
+| 011-calculator | 整数加减乘除、col/row | grid 重构 + MCP 操纵验证 + 多模式 UI → **已拆分 Plan 403** | 高 |
 | 019-video-app | 单文件静态 | 视频列表 + 播放历史后端 | 中 |
 | 020-music-player | 单文件静态 | 播放列表 + 喜欢/最近播放后端 | 中 |
 | 021-blog-viewer | 单文件静态 | 文章列表 + 评论后端 | 中 |
@@ -104,4 +105,5 @@ playwright **10/10 全绿**（干净态可复现）：T1 书架渲染 / T2 进�
 
 | commit/分支 | 内容 | 示例 |
 |---|---|---|
+| `plan401/018-vm-routing` → master | 018 完整升级 + per-example 端口 + VM/iced 路由支持 + storage 内置（已合并 master `bc5e1041`） | 018 |
 | `plan399/018-book-reader` | 018 升级 + 3 codegen 修复 + playwright 10/10 | 018 |
