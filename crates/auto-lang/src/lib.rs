@@ -2650,6 +2650,19 @@ fn run_file_dynamic_ui_inner(
     let mut all_child_decls = child_decls.clone();
     all_child_decls.extend(store_as_child_decls);
 
+    // Plan 403: collect the root module's own top-level fn/type/enum
+    // declarations so they're compiled into the VM alongside imported ones.
+    // Without this, a handler calling a top-level fn (e.g. fn eval_expr in
+    // 011-calculator) fails with "Undefined symbol".
+    for stmt in &ast.stmts {
+        match stmt {
+            crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_) => {
+                import_stmts.push(stmt.clone());
+            }
+            _ => {}
+        }
+    }
+
     // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
     // cross-module `#[api]` calls are rewritten at codegen time into HTTP
     // requests instead of in-process direct calls. Default (merge) keeps the

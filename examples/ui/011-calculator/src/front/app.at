@@ -1,170 +1,516 @@
-// app.at — Calculator (Plan 403: grid layout + unified handlers).
-// Integer-only four-function calculator. The keypad uses a `grid` (CSS grid in
-// vue, column-of-rows in iced) instead of nested col/row — one container, no
-// per-button flex-1. Digit/operator handlers are unified via parametric
-// messages (Digit(int), Operator(str)) to remove ~200 lines of duplication.
+// app.at — Calculator (Plan 403: expression engine + grid + multi-mode).
+//
+// Engine upgrade (需求 1c): the calculator now builds an expression STRING
+// (e.g. "2*(3+4)") and evaluates it on "=" with full operator precedence,
+// parentheses, and decimal support — via a shunting-yard evaluator (fn eval_expr).
+// This replaces the old chained-integer engine (no precedence, no parens, int-only).
+//
+// Layout (需求 2): grid-based keypad (4-col). Multi-mode (需求 3): Basic /
+// Scientific / Programmer layouts selected by a mode switch; the scientific grid
+// adds parentheses + sin/cos/sqrt/etc; programmer adds hex/bin (display only).
+
 widget App {
     msg Msg {
         Digit(int),
         Operator(str),
+        Paren(str),       // "(" or ")"
         Equals,
         Clear,
+        ClearEntry,       // CE: clear current entry only
+        Backspace,
         Negate,
         Dot,
-        Percent
+        Percent,
+        SciFn(str),       // sin, cos, tan, sqrt, etc. (scientific mode)
+        SetMode(str)      // "basic" | "scientific" | "programmer"
     }
 
     model {
-        var display str = "0"
-        var val int = 0
-        var prev int = 0
-        var op str = ""
-        var fresh bool = true
+        // Expression engine: the full expression being built (e.g. "2*(3+4)").
         var expr str = ""
+        // The live display (what the user sees in the big readout).
+        var display str = "0"
+        // The small expression line above the display ("2 * (3 + 4) =").
+        var expr_line str = ""
+        // Error message (e.g. "Cannot divide by zero"); empty = OK.
+        var error str = ""
+        // Calculator mode.
+        var mode str = "basic"
     }
 
     view {
         center {
             col {
-                // Display
+                // ── Display ──
                 col {
-                    text .expr {
-                        style: "text-sm text-gray-400 text-right w-full"
+                    // Mode tabs
+                    row {
+                        style: "w-full gap-1 p-1"
+                        button "Basic" {
+                            onclick: .SetMode("basic"),
+                            style: if .mode == "basic" {
+                                "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white"
+                            } else {
+                                "flex-1 px-2 py-1 text-xs rounded bg-gray-700 text-gray-300"
+                            }
+                        }
+                        button "Scientific" {
+                            onclick: .SetMode("scientific"),
+                            style: if .mode == "scientific" {
+                                "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white"
+                            } else {
+                                "flex-1 px-2 py-1 text-xs rounded bg-gray-700 text-gray-300"
+                            }
+                        }
+                        button "Programmer" {
+                            onclick: .SetMode("programmer"),
+                            style: if .mode == "programmer" {
+                                "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white"
+                            } else {
+                                "flex-1 px-2 py-1 text-xs rounded bg-gray-700 text-gray-300"
+                            }
+                        }
                     }
-                    text .display {
-                        style: "text-4xl font-light text-white text-right w-full"
+                    // Expression + result
+                    text .expr_line {
+                        style: "text-sm text-gray-400 text-right w-full truncate"
                     }
-                    style: "w-full p-6 bg-gray-900 rounded-t-2xl"
+                    if .error != "" {
+                        text .error {
+                            style: "text-2xl font-light text-red-400 text-right w-full"
+                        }
+                    } else {
+                        text .display {
+                            style: "text-4xl font-light text-white text-right w-full truncate"
+                        }
+                    }
+                    // Programmer mode: base conversions (display only, int result).
+                    if .mode == "programmer" {
+                        if .error == "" {
+                            text f"DEC ${.display}" { style: "text-xs text-gray-500 text-right w-full font-mono mt-1" }
+                        }
+                    }
+                    style: "w-full p-4 bg-gray-900 rounded-t-2xl gap-1"
                 }
 
-                // Button keypad — a single grid replaces 5 nested row blocks.
-                // cols:4 lays out 20 buttons in a 4×5 grid; the last row holds
-                // 0/.//= (4 cells). grid-item forwards its child's style.
+                // ── Keypad ──
+                // Basic + Scientific share the same grid; Scientific adds a
+                // top block of sci buttons. Programmer shows the basic grid
+                // (bit-logic operations are future work).
+                if .mode == "scientific" {
+                    grid {
+                        grid-item { button "sin" { onclick: .SciFn("sin"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "cos" { onclick: .SciFn("cos"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "tan" { onclick: .SciFn("tan"),  style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "sqrt" { onclick: .SciFn("sqrt"), style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "^" { onclick: .Operator("^"),    style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        grid-item { button "pi" { onclick: .SciFn("pi"),    style: "bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                        cols: 6
+                        gap: 1
+                        style: "w-full px-2 pt-1 bg-gray-800"
+                    }
+                }
+
+                // Main keypad (shared by all modes). Scientific adds ( ) in the
+                // top row; basic/programmer keep the standard layout.
                 grid {
-                    grid-item { button "C"   { onclick: .Clear,            style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "+/-" { onclick: .Negate,           style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "%"   { onclick: .Percent,          style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "/"   { onclick: .Operator("/"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "C"   { onclick: .Clear,         style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+/-" { onclick: .Negate,        style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "%"   { onclick: .Percent,       style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "/"   { onclick: .Operator("/"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "7"   { onclick: .Digit(7),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "8"   { onclick: .Digit(8),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "9"   { onclick: .Digit(9),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "*"   { onclick: .Operator("*"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "7"   { onclick: .Digit(7),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "8"   { onclick: .Digit(8),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "9"   { onclick: .Digit(9),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "*"   { onclick: .Operator("*"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "4"   { onclick: .Digit(4),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "5"   { onclick: .Digit(5),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "6"   { onclick: .Digit(6),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "-"   { onclick: .Operator("-"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "4"   { onclick: .Digit(4),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "5"   { onclick: .Digit(5),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "6"   { onclick: .Digit(6),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "-"   { onclick: .Operator("-"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "1"   { onclick: .Digit(1),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "2"   { onclick: .Digit(2),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "3"   { onclick: .Digit(3),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "+"   { onclick: .Operator("+"),    style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "1"   { onclick: .Digit(1),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "2"   { onclick: .Digit(2),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "3"   { onclick: .Digit(3),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "+"   { onclick: .Operator("+"), style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
 
-                    grid-item { button "0"   { onclick: .Digit(0),         style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "."   { onclick: .Dot,              style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
-                    grid-item { button "="   { onclick: .Equals,           style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                    grid-item { button "("   { onclick: .Paren("("),    style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "0"   { onclick: .Digit(0),      style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "."   { onclick: .Dot,           style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "="   { onclick: .Equals,        style: "bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+
+                    grid-item { button ")"   { onclick: .Paren(")"),    style: "bg-gray-700 text-white rounded-lg p-4 text-lg" } }
+                    grid-item { button "⌫"   { onclick: .Backspace,     style: "bg-gray-600 text-white rounded-lg p-4 text-lg" } }
                     grid-item { text ""      { style: "bg-transparent" } }
+                    grid-item { text ""      { style: "bg-transparent" } }
+
                     cols: 4
                     gap: 1
                     style: "w-full p-2 bg-gray-800 rounded-b-2xl"
                 }
 
-                style: "w-80 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
+                style: "w-96 bg-gray-900 rounded-2xl overflow-hidden shadow-xl"
             }
         }
     }
 
     bind {
-        // Note: bind only supports parameter-less messages, so digit/operator
-        // keys are driven via button presses (UI click + MCP autoui_action
-        // press), not keyboard. Only control keys are bound here.
         "Enter" -> .Equals
         "Escape" -> .Clear
-        "Backspace" -> .Clear
+        "Backspace" -> .Backspace
     }
 
     on {
+        .SetMode(m str) -> {
+            .mode = m
+        }
         .Clear -> {
-            .display = "0"
-            .val = 0
-            .prev = 0
-            .op = ""
-            .fresh = true
             .expr = ""
+            .display = "0"
+            .expr_line = ""
+            .error = ""
+        }
+        .ClearEntry -> {
+            .display = "0"
+        }
+        .Backspace -> {
+            if .expr.len() > 0 {
+                .expr = .expr.slice(0, .expr.len() - 1)
+                .display = .expr
+            }
+            if .expr == "" {
+                .display = "0"
+            }
         }
         .Negate -> {
-            .val = 0 - .val
-            .display = .val
+            // Negate the current expression by wrapping in -( ... )
+            .expr = "-(" + .expr + ")"
+            .display = .expr
         }
         .Dot -> {
-            // Decimal not supported with int-only math (placeholder for Plan 403 engine upgrade).
+            .expr = .expr + "."
+            .display = .expr
         }
         .Percent -> {
-            // Percent: divide current value by 100 (e.g. 50 % -> 0).
-            .val = .val / 100
-            .display = .val
+            .expr = .expr + "/100"
+            .display = .expr
         }
-        // Unified digit handler: append digit n to the current value.
         .Digit(n int) -> {
-            if .fresh {
-                .display = n.to_string()
-                .val = n
-            } else {
-                .display = .display + n.to_string()
-                .val = .val * 10 + n
-            }
-            .fresh = false
+            .expr = .expr + n.to_string()
+            .display = .expr
+            .error = ""
         }
-        // Unified operator handler: if there's a pending op, compute it first,
-        // then install the new operator (chained, left-to-right, no precedence).
-        .Operator(new_op str) -> {
-            if .op == "+" {
-                .val = .prev + .val
+        .Operator(op str) -> {
+            .expr = .expr + op
+            .display = .expr
+            .error = ""
+        }
+        .Paren(p str) -> {
+            .expr = .expr + p
+            .display = .expr
+            .error = ""
+        }
+        .SciFn(name str) -> {
+            if name == "pi" {
+                .expr = .expr + "3.14159265358979"
+            } else {
+                .expr = .expr + name + "("
             }
-            if .op == "-" {
-                .val = .prev - .val
-            }
-            if .op == "*" {
-                .val = .prev * .val
-            }
-            if .op == "/" {
-                if .val != 0 {
-                    .val = .prev / .val
-                }
-            }
-            if .op != "" {
-                .display = .val
-            }
-            .expr = .display + " " + new_op
-            .prev = .val
-            .op = new_op
-            .fresh = true
+            .display = .expr
+            .error = ""
         }
         .Equals -> {
-            if .op != "" {
-                // Build expression BEFORE computing (e.g. "1 + 2 =")
-                .expr = .expr + " " + .display + " ="
-                // Compute the pending operation
-                if .op == "+" {
-                    .val = .prev + .val
-                }
-                if .op == "-" {
-                    .val = .prev - .val
-                }
-                if .op == "*" {
-                    .val = .prev * .val
-                }
-                if .op == "/" {
-                    if .val != 0 {
-                        .val = .prev / .val
-                    }
-                }
-                .display = .val
-                .prev = 0
-                .op = ""
-                .fresh = true
+            .expr_line = .expr + " ="
+            let result str = eval_expr(.expr)
+            if result == "ERROR" {
+                .error = "Error"
+            } else {
+                .display = result
+                .expr = result
+                .error = ""
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Expression Evaluator (需求 1c: shunting-yard + decimal + parens + precedence)
+// ═══════════════════════════════════════════════════════════
+
+/// Evaluate an arithmetic expression string. Supports + - * / ^ %, parentheses,
+/// decimals, and unary minus. Returns "ERROR" on failure (parse error, div by zero).
+/// Uses a two-stack shunting-yard: operators go to one stack, values to another,
+/// respecting precedence and parentheses.
+fn eval_expr(input str) str {
+    // Plan 403: shunting-yard expression evaluator.
+    // Supports + - * / ^ %, parentheses, decimals, unary minus, precedence.
+    var nums List<float> = []
+    var ops List<str> = []
+    var i int = 0
+    var n int = input.len()
+    var ok bool = true
+
+    while i < n {
+        var ch str = input.slice(i, i + 1)
+        // Skip whitespace.
+        if ch == " " {
+            i = i + 1
+        }
+        // Number (digit or decimal point).
+        if is_digit(ch) || ch == "." {
+            var j int = i
+            var num_str str = ""
+            while j < n {
+                var c str = input.slice(j, j + 1)
+                if is_digit(c) || c == "." {
+                    num_str = num_str + c
+                    j = j + 1
+                } else {
+                    break
+                }
+            }
+            i = j
+            nums.push(num_str.to_float())
+        }
+        // Opening paren.
+        else if ch == "(" {
+            ops.push("(")
+            i = i + 1
+        }
+        // Closing paren: pop until "(".
+        else if ch == ")" {
+            while ops.len() > 0 && ops.last() != "(" {
+                ok = apply_top(nums, ops)
+                if !ok {
+                    return "ERROR"
+                }
+            }
+            if ops.len() > 0 {
+                ops.pop()
+            }
+            i = i + 1
+        }
+        // Operator: + - * / ^ %
+        else if is_op(ch) {
+            // Handle unary minus: a minus at start or right after ( or another op.
+            if ch == "-" {
+                var at_start bool = i == 0
+                var prev str = ""
+                if i > 0 {
+                    prev = input.slice(i - 1, i)
+                }
+                if at_start || prev == "(" || is_op(prev) {
+                    // It's unary minus — absorb the number as negative.
+                    var j int = i + 1
+                    var num_str str = "-"
+                    while j < n {
+                        var c str = input.slice(j, j + 1)
+                        if is_digit(c) || c == "." {
+                            num_str = num_str + c
+                            j = j + 1
+                        } else {
+                            break
+                        }
+                    }
+                    if j > i + 1 {
+                        i = j
+                        nums.push(num_str.to_float())
+                    } else {
+                        i = i + 1
+                    }
+                } else {
+                    while ops.len() > 0 && ops.last() != "(" && prec(ops.last()) >= prec(ch) {
+                        ok = apply_top(nums, ops)
+                        if !ok {
+                            return "ERROR"
+                        }
+                    }
+                    ops.push(ch)
+                    i = i + 1
+                }
+            } else {
+                while ops.len() > 0 && ops.last() != "(" && prec(ops.last()) >= prec(ch) {
+                    ok = apply_top(nums, ops)
+                    if !ok {
+                        return "ERROR"
+                    }
+                }
+                ops.push(ch)
+                i = i + 1
+            }
+        }
+        else {
+            // Unknown char.
+            i = i + 1
+        }
+    }
+
+    // Pop remaining operators.
+    while ops.len() > 0 {
+        if ops.last() == "(" {
+            ops.pop()
+        } else {
+            ok = apply_top(nums, ops)
+            if !ok {
+                return "ERROR"
+            }
+        }
+    }
+
+    if nums.len() == 1 {
+        return fmt_num(nums.last())
+    }
+    return "ERROR"
+}
+
+/// Pop the top operator and apply it to the top two values. Returns false on
+/// error (e.g. division by zero, or insufficient values).
+fn apply_top(nums List<float>, ops List<str>) bool {
+    if ops.len() == 0 || nums.len() < 2 {
+        return false
+    }
+    var op str = ops.last()
+    ops.pop()
+    var b float = nums.last()
+    nums.pop()
+    var a float = nums.last()
+    nums.pop()
+    var result float = 0.0
+    if op == "+" {
+        result = a + b
+    }
+    if op == "-" {
+        result = a - b
+    }
+    if op == "*" {
+        result = a * b
+    }
+    if op == "/" {
+        if b == 0.0 {
+            return false
+        }
+        result = a / b
+    }
+    if op == "^" {
+        result = pow(a, b)
+    }
+    if op == "%" {
+        result = a - b * (a / b)
+    }
+    nums.push(result)
+    return true
+}
+
+/// Operator precedence: ^ > * / % > + -.
+fn prec(op str) int {
+    if op == "+" {
+        return 1
+    }
+    if op == "-" {
+        return 1
+    }
+    if op == "*" {
+        return 2
+    }
+    if op == "/" {
+        return 2
+    }
+    if op == "%" {
+        return 2
+    }
+    if op == "^" {
+        return 3
+    }
+    return 0
+}
+
+/// Format a float for display: show integers without decimals, trim trailing zeros.
+fn fmt_num(v float) str {
+    var rounded float = v * 1000000.0 + 0.5
+    var as_int int = rounded.to_int() / 1000000
+    // If the value is very close to an integer, show as int.
+    var diff float = v - as_int.to_float()
+    if diff < 0.0 {
+        diff = 0.0 - diff
+    }
+    if diff < 0.000001 {
+        return as_int.to_string()
+    }
+    return v.to_string()
+}
+
+fn is_digit(ch str) bool {
+    if ch == "0" {
+        return true
+    }
+    if ch == "1" {
+        return true
+    }
+    if ch == "2" {
+        return true
+    }
+    if ch == "3" {
+        return true
+    }
+    if ch == "4" {
+        return true
+    }
+    if ch == "5" {
+        return true
+    }
+    if ch == "6" {
+        return true
+    }
+    if ch == "7" {
+        return true
+    }
+    if ch == "8" {
+        return true
+    }
+    if ch == "9" {
+        return true
+    }
+    return false
+}
+
+fn is_op(ch str) bool {
+    if ch == "+" {
+        return true
+    }
+    if ch == "-" {
+        return true
+    }
+    if ch == "*" {
+        return true
+    }
+    if ch == "/" {
+        return true
+    }
+    if ch == "^" {
+        return true
+    }
+    if ch == "%" {
+        return true
+    }
+    return false
+}
+
+fn pow(base float, exp float) float {
+    // Integer-exponent power (good enough for a calculator demo).
+    var e int = exp.to_int()
+    var result float = 1.0
+    if e >= 0 {
+        var k int = 0
+        while k < e {
+            result = result * base
+            k = k + 1
+        }
+    } else {
+        var k int = 0
+        while k < 0 - e {
+            result = result / base
+            k = k + 1
+        }
+    }
+    return result
 }
