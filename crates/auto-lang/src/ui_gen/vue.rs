@@ -1005,6 +1005,15 @@ struct CodeBlockData {
     lang: String,
 }
 
+/// Result of evaluating a style/class `if`-branch body.
+/// `Leaf(s)` is a plain string literal → emitted as `'s'`.
+/// `Nested(t)` is an inner `if` expression → emitted as `(t)` (a ternary).
+/// (DF-1: nested if in style binding was previously flattened to empty string.)
+enum StyleBranch {
+    Leaf(String),
+    Nested(String),
+}
+
 impl VueGenerator {
     /// Create a new Vue generator (Plain Tailwind mode, TypeScript output)
     pub fn new() -> Self {
@@ -8789,44 +8798,66 @@ impl VueGenerator {
             let cond = self
                 .expr_to_vue_bound_value(&first.cond)
                 .unwrap_or_else(|_| "false".to_string());
-            let then = Self::style_branch_str(&first.body.stmts);
+            let then = self.style_branch_value(&first.body.stmts);
             let else_part = self.build_style_ternary(rest, else_);
+            // Assemble then-branch: Leaf → 'str', Nested → (ternary).
+            let then_str = match &then {
+                StyleBranch::Leaf(s) => format!("'{}'", s),
+                StyleBranch::Nested(t) => format!("({})", t),
+            };
             if else_part.is_empty() {
-                format!("{} ? '{}' : ''", cond, then)
+                format!("{} ? {} : ''", cond, then_str)
             } else if else_part.starts_with('\'') {
                 // Leaf else string — emit directly, no parens.
-                format!("{} ? '{}' : {}", cond, then, else_part)
+                format!("{} ? {} : {}", cond, then_str, else_part)
             } else {
                 // Nested ternary from an else-if chain — parenthesize.
-                format!("{} ? '{}' : ({})", cond, then, else_part)
+                format!("{} ? {} : ({})", cond, then_str, else_part)
             }
         } else {
+            // Final else branch — Leaf gets quotes, Nested returns raw ternary
+            // (the caller wraps it in parens via the "not starts with '"'" branch).
             else_
                 .as_ref()
-                .map(|b| format!("'{}'", Self::style_branch_str(&b.stmts)))
+                .map(|b| match self.style_branch_value(&b.stmts) {
+                    StyleBranch::Leaf(s) => format!("'{}'", s),
+                    StyleBranch::Nested(t) => t,
+                })
                 .unwrap_or_default()
         }
     }
 
-    /// Extract the string payload of an `if` branch body: `{ "cls" }` or
-    /// `{ return "cls" }` → `"cls"`; anything else → empty.
-    fn style_branch_str(stmts: &[crate::ast::Stmt]) -> String {
+    /// Classify an `if` branch body into a leaf string or a nested if-ternary.
+    ///
+    /// - `{ "cls" }` or `{ return "cls" }` → `Leaf("cls")`
+    /// - `{ if cond { x } else { y } }`    → `Nested("<ternary>")` (recursive)
+    /// - anything else                     → `Leaf("")` (fallback, preserves
+    ///   the old `style_branch_str` behavior of returning empty)
+    fn style_branch_value(&self, stmts: &[crate::ast::Stmt]) -> StyleBranch {
         for st in stmts {
             match st {
+                // String leaf: `{ "cls" }` or `{ return "cls" }`
                 crate::ast::Stmt::Return(e) => {
                     if let crate::ast::Expr::Str(s) = e.as_ref() {
-                        return s.to_string();
+                        return StyleBranch::Leaf(s.to_string());
                     }
                 }
                 crate::ast::Stmt::Expr(e) => {
                     if let crate::ast::Expr::Str(s) = e {
-                        return s.to_string();
+                        return StyleBranch::Leaf(s.to_string());
                     }
+                    if let crate::ast::Expr::If(if_stmt) = e {
+                        return StyleBranch::Nested(self.if_expr_to_style_ternary(if_stmt));
+                    }
+                }
+                // Nested if as a statement: `{ if cond { x } else { y } }`
+                crate::ast::Stmt::If(if_stmt) => {
+                    return StyleBranch::Nested(self.if_expr_to_style_ternary(if_stmt));
                 }
                 _ => {}
             }
         }
-        String::new()
+        StyleBranch::Leaf(String::new())
     }
 
     /// Extract the `style`/`class` prop into template attributes for
@@ -11412,6 +11443,61 @@ widget W {
         assert!(
             sfc.contains(":class=\"kind == 'Dir' ? 'text-sky-400' : (kind == 'CodeAtRs' ? 'text-emerald-400' : (kind == 'Config' ? 'text-amber-300' : 'text-foreground'))\""),
             "else-if chain → nested ternary:\n{}",
+            sfc
+        );
+    }
+
+    /// DF-1: a nested `if` in the *then-branch body* of a style binding must
+    /// produce a nested ternary, not be flattened to an empty string.
+    /// `style: if a { if b { "x" } else { "y" } } else { "z" }`
+    /// → `a ? (b ? 'x' : 'y') : 'z'`
+    #[test]
+    fn test_nested_if_in_style_branch() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget W {
+    model { var sid str = "" }
+    view {
+        col {
+            text "t" {
+                style: if .sid != "" { if .sid == "a" { "item active" } else { "item" } } else { "item" }
+            }
+        }
+    }
+}
+"#,
+        );
+        // The then-branch is a nested if → must become a parenthesized
+        // ternary, NOT an empty string.
+        assert!(
+            sfc.contains(
+                ":class=\"sid != '' ? (sid == 'a' ? 'item active' : 'item') : 'item'\""
+            ),
+            "nested if in then-branch → nested ternary:\n{}",
+            sfc
+        );
+    }
+
+    /// DF-1 variant: a nested `if` in the *else-branch body*.
+    #[test]
+    fn test_nested_if_in_style_else_branch() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget W {
+    model { var a str = "" }
+    view {
+        col {
+            text "t" {
+                style: if .a == "x" { "foo" } else { if .a == "y" { "bar" } else { "baz" } }
+            }
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains(":class=\"a == 'x' ? 'foo' : (a == 'y' ? 'bar' : 'baz')\""),
+            "nested if in else-branch → nested ternary:\n{}",
             sfc
         );
     }
@@ -15416,6 +15502,12 @@ widget NullProbe {
                 expected_n, output_n
             );
         }
+    }
+
+    /// DF-1: nested if in style binding → nested ternary (golden).
+    #[test]
+    fn test_a2vue_nested_if_style() {
+        test_a2vue("004_nested_if_style").expect("a2vue nested_if_style golden mismatch");
     }
 
     /// Plan 022 限制2: composable 带参调用。验证

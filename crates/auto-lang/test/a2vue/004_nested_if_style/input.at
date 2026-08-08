@@ -1,0 +1,13 @@
+// a2vue golden case 004 — 嵌套 if 表达式作为 style 绑定值（DF-1 修复）。
+// 验证 `style: if a { if b { "x" } else { "y" } } else { "z" }`
+// 生成 `:class="a ? (b ? 'x' : 'y') : 'z'"`（嵌套三元，非空字符串压平）。
+widget NestedIfStyle {
+    model { var sid str = "" }
+    view {
+        col {
+            text "test" {
+                style: if .sid != "" { if .sid == "a" { "item active" } else { "item" } } else { "item" }
+            }
+        }
+    }
+}
