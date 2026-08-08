@@ -1050,6 +1050,43 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
                 } else {
                     Value::Nil
                 }
+            } else if let crate::ast::Expr::Dot(receiver, method) = call.name.as_ref() {
+                // EDGE-16: <Type>.new(...) 构造调用,name 是 Expr::Dot
+                // (如 `List<T>.new([])`)。之前落入 Nil,导致 store model 字段
+                // 初始化为 Nil,handler 的 push 静默失败。这里物化成堆对象。
+                if method == "new" {
+                    // receiver 可能是 GenName(泛型,如 List<BlockItem>)或 Ident(普通类型)
+                    let type_name_opt = match receiver.as_ref() {
+                        crate::ast::Expr::GenName(n) => Some(n.as_str().to_string()),
+                        crate::ast::Expr::Ident(n) => Some(n.as_str().to_string()),
+                        _ => None,
+                    };
+                    if let Some(tn) = type_name_opt {
+                        // List<T>.new(...) — 物化成空 ListData 堆对象
+                        // (忽略 args,等价 List::new;初始 elems 后续由 push 填充)。
+                        if tn.starts_with("List") {
+                            let id = vm.insert_heap_object(crate::vm::types::ListData::<auto_val::Value> {
+                                elems: Vec::new(),
+                                storage: None,
+                            });
+                            return Value::VmRef(auto_val::VmRef { id: id as usize });
+                        }
+                        // <OtherType>.new() — 若是注册类型,走字面量物化(空字段)。
+                        if vm.generic_registry.has_template(&tn) {
+                            let synthetic = crate::ast::Node {
+                                name: crate::ast::Name::from(tn.as_str()),
+                                id: crate::ast::Name::new(),
+                                num_args: 0,
+                                args: call.args.clone(),
+                                body: crate::ast::Body::new(),
+                                typ: auto_val::shared(crate::ast::Type::Unknown),
+                                doc: None,
+                            };
+                            return materialize_type_literal(&synthetic, vm);
+                        }
+                    }
+                }
+                Value::Nil
             } else {
                 Value::Nil
             }
