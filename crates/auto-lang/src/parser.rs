@@ -1126,6 +1126,7 @@ impl<'a> Parser<'a> {
 
     /// Plan 010 (MS3-A): `try { body } catch (e) { handler }`.
     /// `catch` is required; the binding `(e)` is optional.
+    /// Plan 012 P2 (gap 4): optional trailing `finally { cleanup }`.
     fn try_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `try`
         let body = self.body()?;
@@ -1159,11 +1160,26 @@ impl<'a> Parser<'a> {
         let catch_body = self.body()?;
         let catch_new_line = catch_body.has_new_line;
 
+        // Plan 012 P2: optional `finally { cleanup }`. `finally` is not a
+        // lexer keyword — it lexes as Ident, matched by text (contextual).
+        while self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+            self.next();
+        }
+        let mut finally_body = None;
+        let mut finally_new_line = false;
+        if self.cur.text.as_str() == "finally" {
+            self.next();
+            let fb = self.body()?;
+            finally_new_line = fb.has_new_line;
+            finally_body = Some(fb);
+        }
+
         Ok(Stmt::Try(crate::ast::Try {
             body,
             catch_param,
             catch_body,
-            new_line: body_new_line || catch_new_line,
+            finally_body,
+            new_line: body_new_line || catch_new_line || finally_new_line,
         }))
     }
 
@@ -3470,6 +3486,12 @@ impl<'a> Parser<'a> {
             }
             // Allow 'type' keyword as identifier in certain contexts (e.g., expr.type)
             TokenKind::Type => Expr::Ident(self.cur.text.clone()),
+            // Plan 012 P2: 'link'/'task' are contextual keywords — usable as
+            // identifiers in expressions (loop vars, locals named `link`/
+            // `task`, jade gaps 18/29). Element/keyword positions (view
+            // router-link, task decls) intercept the token before atom()
+            // runs, so this only affects expression positions.
+            TokenKind::Link | TokenKind::Task => Expr::Ident(self.cur.text.clone()),
             // Plan 124: Async block: ~{ stmts }
             TokenKind::Tilde => {
                 self.next(); // consume '~'
@@ -12521,7 +12543,13 @@ impl<'a> Parser<'a> {
         let has_primary_prop_value = self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
         let has_dot_primary = self.is_kind(TokenKind::Dot);
         // Check if identifier is followed by dot (like item.order)
-        let has_ident_field_primary = self.is_kind(TokenKind::Ident) && {
+        // Plan 012 P2: 'link'/'task' are contextual keywords (TokenKind::Link/
+        // Task) but legitimate loop-var/local names — treat them as
+        // identifiers here too, so `text link.title` parses as a field
+        // access instead of a router-link node (jade gaps 18/29).
+        let has_ident_field_primary = (self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::Link)
+            || self.is_kind(TokenKind::Task)) && {
             // Peek ahead to see if identifier is followed by dot
             if let Ok(next_token) = self.lexer.next() {
                 let is_dot = next_token.kind == TokenKind::Dot;
@@ -12705,10 +12733,13 @@ impl<'a> Parser<'a> {
                 // e.g., "class:" or "onclick:"
                 // "is" is a keyword token but a legitimate prop key
                 // (Vue's <component is="..."> / dyn { is: ... }).
-                let is_prop_like = if self.is_kind(TokenKind::Ident)
-                    || (self.is_kind(TokenKind::On) && self.cur.text == "on")
-                    || self.cur.text == "is"
-                {
+                // Plan 012 P2: keyword tokens are legitimate prop keys too —
+                // `type:`/`to:`/`as:` (and any other reserved word) followed
+                // by a colon is unambiguous in a view block: child nodes never
+                // take a colon suffix (jade gaps 27/53). Without this,
+                // `button { type: "button" }` silently parsed `type` as a
+                // child element, emitting garbage `<div>button</div>` nodes.
+                let is_prop_like = {
                     // Peek at next token to see if it's a colon
                     if let Ok(next_token) = self.lexer.next() {
                         let is_colon = next_token.kind == TokenKind::Colon;
@@ -12726,8 +12757,6 @@ impl<'a> Parser<'a> {
                     } else {
                         false
                     }
-                } else {
-                    false
                 };
 
                 if is_prop_like {
@@ -14042,6 +14071,95 @@ mod tests {
         }
         assert!(props.iter().any(|p| p.name == "size"));
         assert!(props.iter().any(|p| p.name == "class"));
+    }
+
+    #[test]
+    fn test_try_catch_finally_parses() {
+        // Plan 012 P2 (gap 4): optional `finally { }` after catch, in an
+        // on-block handler body.
+        let code = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try {\n",
+            "        .error = \"\"\n",
+            "      } catch (e) {\n",
+            "        .error = \"failed\"\n",
+            "      } finally {\n",
+            "        .error = \"done\"\n",
+            "      }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let on = widget.on.as_ref().expect("on block");
+        let try_stmt = on.handlers[0]
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Try(t) => Some(t),
+                _ => None,
+            })
+            .expect("try stmt in handler body");
+        assert_eq!(try_stmt.catch_param.as_deref(), Some("e"));
+        assert!(try_stmt.finally_body.is_some(), "finally body parsed");
+        assert_eq!(try_stmt.finally_body.as_ref().unwrap().stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_try_catch_without_finally_unchanged() {
+        // Regression lock: the Plan 010 form (no finally) still parses with
+        // finally_body = None.
+        let code = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch { .error = \"x\" }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
+        let on = widget.on.as_ref().expect("on block");
+        let try_stmt = on.handlers[0]
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Try(t) => Some(t),
+                _ => None,
+            })
+            .expect("try stmt");
+        assert!(try_stmt.catch_param.is_none(), "bare catch: no binding");
+        assert!(try_stmt.finally_body.is_none(), "no finally clause");
     }
 
     #[test]

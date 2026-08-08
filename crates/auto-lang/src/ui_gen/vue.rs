@@ -2815,6 +2815,15 @@ impl VueGenerator {
                 }
                 continue;
             }
+            // v-show visibility directive: show: .cond → v-show="cond"
+            // (component stays mounted; only inline display toggles).
+            if key == "show" {
+                if let AuraPropValue::Expr(expr) = value {
+                    let cond = self.expr_to_vue_bound_value(expr)?;
+                    attrs.push(format!("v-show=\"{}\"", cond));
+                }
+                continue;
+            }
             match value {
                 AuraPropValue::Expr(expr) => {
                     let value_str = self.expr_to_vue_bound_value(expr)?;
@@ -3137,6 +3146,15 @@ impl VueGenerator {
                             }
                             continue;
                         }
+                        // v-show visibility directive on a component:
+                        // show: .cond → v-show="cond" (instance stays mounted).
+                        if key == "show" {
+                            if let AuraPropValue::Expr(expr) = value {
+                                let cond = self.expr_to_vue_bound_value(expr)?;
+                                attrs.push(format!("v-show=\"{}\"", cond));
+                            }
+                            continue;
+                        }
                         let value_str = match value {
                             AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
                             AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
@@ -3342,6 +3360,15 @@ impl VueGenerator {
                         if key == "style_obj" {
                             if let AuraPropValue::StyleBinding(bindings) = value {
                                 attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                            }
+                            continue;
+                        }
+                        // v-show visibility directive: show: .cond → v-show="cond"
+                        // (element stays mounted; only inline display toggles).
+                        if key == "show" {
+                            if let AuraPropValue::Expr(expr) = value {
+                                let cond = self.expr_to_vue_bound_value(expr)?;
+                                attrs.push(format!("v-show=\"{}\"", cond));
                             }
                             continue;
                         }
@@ -5925,6 +5952,16 @@ impl VueGenerator {
         // (like `ref` above) so every shadcn-mapped element supports it.
         if let Some(AuraPropValue::StyleBinding(bindings)) = props.get("style_obj") {
             attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+        }
+
+        // v-show visibility directive: show: .cond → v-show="cond". Handled
+        // generically (like style_obj above) so every shadcn-mapped element
+        // supports it. Infallible here (no Result in scope) — an exotic expr
+        // that fails conversion is simply not emitted.
+        if let Some(AuraPropValue::Expr(expr)) = props.get("show") {
+            if let Ok(cond) = self.expr_to_vue_bound_value(expr) {
+                attrs.push(format!("v-show=\"{}\"", cond));
+            }
         }
 
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
@@ -9287,6 +9324,10 @@ impl VueGenerator {
                     "str" => "string".to_string(),
                     "int" | "i64" | "uint" => "number".to_string(),
                     "bool" => "boolean".to_string(),
+                    // Plan 012 P2 (gap 43): DSL `map` (map-literal type) is
+                    // loosely typed — emit `any` (jade treats `x: map` as an
+                    // untyped object), never a broken `import type { map }`.
+                    "map" => "any".to_string(),
                     // Custom types (e.g. Note) — use the type name directly.
                     // The interface should be imported from api.ts.
                     other => other.to_string(),
@@ -9445,6 +9486,9 @@ impl VueGenerator {
         matches!(name,
             "msg" | "str" | "int" | "i64" | "uint" | "u64" | "usize" | "byte" | "char"
             | "float" | "double" | "bool"
+            // Plan 012 P2 (gap 43): lowercase `map` is the DSL map-literal
+            // type — built-in, not an api.ts interface.
+            | "map"
             | "List" | "Array" | "Map" | "Option" | "Result" | "String")
     }
 
@@ -13852,6 +13896,175 @@ widget App {
             sfc2
         );
         assert!(!sfc2.contains("i?.id"), "no ?.id on primitive index (generic path):\n{}", sfc2);
+    }
+
+    // ====================================================================
+    // v-show (gap 52) — `show: <expr>` prop emits `v-show="<expr>"` instead
+    // of a `:show` binding. The element/component stays mounted; only inline
+    // display toggles (jade MainArea keep-alive tabs are the driving case).
+    // ====================================================================
+
+    /// Dynamic condition on a plain element (brace prop form).
+    #[test]
+    fn test_vshow_plain_element_dynamic() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var active_path str = "" }
+    view {
+        col {
+            div(show: .active_path == "graph", class: "graph-pane") { text "G" }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-show="active_path == 'graph'""#),
+            "v-show emitted with bound condition:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":show="), "no :show binding leaks:\n{}", sfc);
+    }
+
+    /// Static-ish model ref on a plain element, block prop form.
+    #[test]
+    fn test_vshow_plain_element_model_ref() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var visible bool = true }
+    view {
+        col {
+            div {
+                show: .visible
+                text "hi"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-show="visible""#),
+            "v-show with bare model ref:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":show="), "no :show binding leaks:\n{}", sfc);
+    }
+
+    /// v-show on a sub-widget component instantiation (v-show works on
+    /// components in Vue — the directive lands on the component root).
+    #[test]
+    fn test_vshow_on_sub_widget_component() {
+        let sfc = gen_sfc_with_sub_widgets(r#"
+use tab: EditorTab
+
+widget App {
+    model { var tabs list = [] }
+    model { var active_path str = "" }
+    view {
+        col {
+            for tab in .tabs {
+                EditorTab(key: tab.path, path: tab.path, show: tab.path == .active_path)
+            }
+        }
+    }
+}
+"#, &["EditorTab"]);
+        assert!(
+            sfc.contains(r#"v-show="tab.path == active_path""#),
+            "v-show on component:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":show="), "no :show binding leaks:\n{}", sfc);
+    }
+
+    /// v-show on a dyn (`<component :is>`) node.
+    #[test]
+    fn test_vshow_on_dyn_component() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var open bool = false }
+    view {
+        col {
+            dyn (.Teleport) {
+                show: .open
+                text "overlay"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-show="open""#),
+            "v-show on dyn component:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":show="), "no :show binding leaks:\n{}", sfc);
+    }
+
+    // ====================================================================
+    // try/catch/finally in handler bodies (gap 4) — Plan 010 gave the parser
+    // `try { } catch (e) { }`; Plan 012 P2 adds `finally { }` and the
+    // ts_adapter emission (previously Stmt::Try fell into the a2ts fallback,
+    // which has no Try case, and was SILENTLY DROPPED from handlers).
+    // ====================================================================
+
+    /// Widget handler: try/catch/finally emits real JS with AURA-aware
+    /// bodies (state refs → .value) in all three clauses.
+    #[test]
+    fn test_try_catch_finally_in_widget_handler() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    msg Msg { Save }
+    model {
+        var busy bool = false
+        var error str = ""
+    }
+    view { col { button "save" { onclick: .Save } } }
+    on {
+        .Save -> {
+            try {
+                .error = ""
+                .busy = true
+            } catch (e) {
+                .error = "failed"
+            } finally {
+                .busy = false
+            }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("try {"), "try emitted:\n{}", sfc);
+        assert!(sfc.contains("catch (e) {"), "catch with binding:\n{}", sfc);
+        assert!(sfc.contains("finally {"), "finally emitted:\n{}", sfc);
+        assert!(sfc.contains("error.value = ''"), "state ref in try body:\n{}", sfc);
+        assert!(sfc.contains("error.value = 'failed'"), "state ref in catch body:\n{}", sfc);
+        assert!(sfc.contains("busy.value = false"), "state ref in finally body:\n{}", sfc);
+    }
+
+    /// Store handler (jade's actual gap-4 site): try/catch in an on-block
+    /// survives into the generated composable.
+    #[test]
+    fn test_try_catch_in_store_handler() {
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Docs {
+    model { var error str = "" }
+    msg Msg { Save(str) }
+    on {
+        .Save(args) -> {
+            try {
+                .error = ""
+            } catch (e) {
+                .error = "failed"
+            }
+        }
+    }
+}
+"#,
+        ));
+        assert!(code.contains("try {"), "store try emitted:\n{}", code);
+        assert!(code.contains("catch (e) {"), "store catch emitted:\n{}", code);
+        assert!(code.contains("error.value = 'failed'"), "state ref in catch:\n{}", code);
     }
 
     /// Plan 043 M5 #3: an `if / else if / else if / else` chain must flatten

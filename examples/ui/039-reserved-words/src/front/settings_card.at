@@ -1,0 +1,10 @@
+// gap 43: `map` is a legal widget prop type — emits `settings: any` in
+// defineProps with no broken `import type { map }`.
+widget SettingsCard(settings: map) {
+    view {
+        div {
+            class: "p-3 border rounded text-sm bg-gray-50",
+            text "settings card (map prop)"
+        }
+    }
+}

@@ -1,0 +1,61 @@
+use settings_card: SettingsCard
+
+widget App {
+    use {
+        // Vue's built-in Teleport, consumed as an external component so the
+        // dyn (.Teleport) below has a real import (gen project ships vue).
+        component: Teleport from "vue"
+    }
+
+    msg Msg { Go }
+
+    model {
+        var items list = []
+        var n int = 0
+        var open bool = false
+        var cfg map = {}
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "039 — reserved words as identifiers" { class: "text-xl font-bold" }
+
+            // gap 18/29: loop vars named link/task compile and bind.
+            for link in .items {
+                div { text link.title, class: "text-sm" }
+            }
+            for task in .items {
+                div { text task.name, class: "text-sm text-gray-500" }
+            }
+
+            // gap 53: brace-form keyword prop key (no paren workaround).
+            button {
+                type: "button"
+                class: "px-3 py-1 border rounded w-fit"
+                text "Go"
+                onclick: .Go
+            }
+
+            // gap 27: `to:` prop on a dyn block.
+            dyn (.Teleport) {
+                to: "body"
+                show: .open
+                text "overlay"
+            }
+
+            // gap 43: map-typed widget prop.
+            SettingsCard(settings: .cfg)
+        }
+    }
+
+    on {
+        // gap 18 handler side: a local named link, used in a condition.
+        .Go -> {
+            var link = .items.find(l => l.id == 1)
+            if link != null { .n = link.id }
+            .open = !.open
+        }
+    }
+}

@@ -1,0 +1,66 @@
+widget App {
+    use {
+        fn: saveDoc from "src/front/utils/io.ts"
+    }
+
+    msg Msg { Save, SetText(str) }
+
+    model {
+        var text str = ""
+        var busy bool = false
+        var error str = ""
+        var saved bool = false
+    }
+
+    view {
+        col {
+            class: "p-6 font-sans space-y-4",
+
+            h1 "040 — try/catch/finally" { class: "text-xl font-bold" }
+
+            input {
+                class: "border rounded px-2 py-1",
+                value: .text,
+                oninput: .SetText($event)
+            }
+
+            button "Save" {
+                class: "px-3 py-1 border rounded w-fit",
+                disabled: .busy,
+                onclick: .Save
+            }
+
+            // gap 52 synergy: error banner toggles with v-show, not v-if.
+            div {
+                class: "text-sm text-red-600",
+                show: .error != "",
+                text .error
+            }
+            div {
+                class: "text-sm text-green-600",
+                show: .saved,
+                text "saved!"
+            }
+        }
+    }
+
+    on {
+        .SetText(v) -> {
+            .text = v
+            .saved = false
+        }
+
+        .Save -> {
+            try {
+                .error = ""
+                .busy = true
+                saveDoc(.text)
+                .saved = true
+            } catch (e) {
+                .error = "save failed"
+            } finally {
+                .busy = false
+            }
+        }
+    }
+}

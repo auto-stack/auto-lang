@@ -395,6 +395,30 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             writeln!(out, "break;").ok();
         }
 
+        // Plan 012 P2 (gap 4): try/catch/finally → JS try/catch/finally.
+        // Bodies stay AURA-aware (state refs → .value, API calls → await) via
+        // transpile_body. `catch (e)` binding is optional in JS (ES2019), so
+        // a bare `catch {` is emitted when there is no param. Until this arm
+        // existed, Stmt::Try fell into the a2ts fallback which had no Try
+        // case and SILENTLY DROPPED the whole statement.
+        Stmt::Try(t) => {
+            write!(out, "try {{").ok();
+            transpile_body(&t.body, ctx, out);
+            write!(out, "}}").ok();
+            match &t.catch_param {
+                Some(p) => write!(out, " catch ({}) {{", p).ok(),
+                None => write!(out, " catch {{").ok(),
+            };
+            transpile_body(&t.catch_body, ctx, out);
+            write!(out, "}}").ok();
+            if let Some(finally_body) = &t.finally_body {
+                write!(out, " finally {{").ok();
+                transpile_body(finally_body, ctx, out);
+                write!(out, "}}").ok();
+            }
+            writeln!(out).ok();
+        }
+
         // Fallback — delegate to a2ts for anything else
         _ => {
             let mut ts = TypeScriptTrans::new("fragment".into());
@@ -1216,6 +1240,16 @@ pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
                 .branches
                 .iter()
                 .any(|b| walk_expr(&b.cond, api_fns) || check_stmts(&b.body.stmts, api_fns)),
+            // Plan 012 P2: api calls inside try/catch/finally must still mark
+            // the handler async (gap 4 — save() wrapped in try).
+            Stmt::Try(t) => {
+                check_stmts(&t.body.stmts, api_fns)
+                    || check_stmts(&t.catch_body.stmts, api_fns)
+                    || t.finally_body
+                        .as_ref()
+                        .map(|fb| check_stmts(&fb.stmts, api_fns))
+                        .unwrap_or(false)
+            }
             _ => false,
         })
     }
@@ -1265,6 +1299,15 @@ pub fn stmts_have_route_access(stmts: &[Stmt]) -> bool {
                 .branches
                 .iter()
                 .any(|b| walk_expr(&b.cond) || b.body.stmts.iter().any(walk_stmt)),
+            // Plan 012 P2: descend into try/catch/finally bodies.
+            Stmt::Try(t) => {
+                t.body.stmts.iter().any(walk_stmt)
+                    || t.catch_body.stmts.iter().any(walk_stmt)
+                    || t.finally_body
+                        .as_ref()
+                        .map(|fb| fb.stmts.iter().any(walk_stmt))
+                        .unwrap_or(false)
+            }
             _ => false,
         }
     }
@@ -1303,6 +1346,15 @@ pub fn stmts_have_router_nav(stmts: &[Stmt]) -> bool {
                 .branches
                 .iter()
                 .any(|b| walk_expr(&b.cond) || b.body.stmts.iter().any(walk_stmt)),
+            // Plan 012 P2: descend into try/catch/finally bodies.
+            Stmt::Try(t) => {
+                t.body.stmts.iter().any(walk_stmt)
+                    || t.catch_body.stmts.iter().any(walk_stmt)
+                    || t.finally_body
+                        .as_ref()
+                        .map(|fb| fb.stmts.iter().any(walk_stmt))
+                        .unwrap_or(false)
+            }
             _ => false,
         }
     }
@@ -1593,6 +1645,59 @@ mod tests {
             out_b.contains("let x: number ="),
             "builtin int var annotated, got:\n{}",
             out_b
+        );
+    }
+
+    /// Plan 012 P2 (gap 4): Stmt::Try transpiles to JS try/catch/finally
+    /// (was silently dropped by the a2ts fallback), and the api-call walker
+    /// descends into all three bodies so the handler is still marked async.
+    #[test]
+    fn p2_try_catch_finally_emitted_and_walked() {
+        use crate::ast::{Body, Try};
+        let try_stmt = Stmt::Try(Try {
+            body: Body {
+                stmts: vec![Stmt::Expr(bare_call("saveWiki"))],
+                has_new_line: false,
+                source_lines: vec![],
+            },
+            catch_param: Some("e".into()),
+            catch_body: Body {
+                stmts: vec![Stmt::Expr(Expr::Bina(
+                    Box::new(self_dot("error")),
+                    Op::Asn,
+                    Box::new(Expr::Str("failed".into())),
+                ))],
+                has_new_line: false,
+                source_lines: vec![],
+            },
+            finally_body: Some(Body {
+                stmts: vec![Stmt::Expr(Expr::Bina(
+                    Box::new(self_dot("busy")),
+                    Op::Asn,
+                    Box::new(Expr::Bool(false)),
+                ))],
+                has_new_line: false,
+                source_lines: vec![],
+            }),
+            new_line: false,
+        });
+
+        // Emission: real JS try/catch/finally, AURA-aware bodies.
+        let ctx = AuraTsContext::new(
+            ["error".to_string(), "busy".to_string()].into_iter().collect(),
+        )
+        .with_api_functions(vec!["saveWiki".to_string()]);
+        let out = transpile_handler_body(std::slice::from_ref(&try_stmt), &ctx);
+        assert!(out.contains("try {"), "try emitted:\n{}", out);
+        assert!(out.contains("catch (e) {"), "catch emitted:\n{}", out);
+        assert!(out.contains("finally {"), "finally emitted:\n{}", out);
+        assert!(out.contains("error.value = 'failed'"), "catch body aura-aware:\n{}", out);
+        assert!(out.contains("busy.value = false"), "finally body aura-aware:\n{}", out);
+
+        // Walker: api call inside try marks the handler async.
+        assert!(
+            stmts_contain_api_call_with(&[try_stmt], &["saveWiki".to_string()]),
+            "api call inside try must be detected"
         );
     }
 }

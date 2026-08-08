@@ -1025,20 +1025,29 @@ impl Codegen {
             }
             Stmt::Try(try_stmt) => {
                 // Plan 010 (MS3-A): try/catch codegen.
+                // Plan 012 P2 (gap 4): optional finally — both the normal path
+                // and the post-catch path converge on the finally body.
                 //
                 //   PUSH_HANDLER <catch_pc>   ; install catch frame
                 //   <try body>
                 //   POP_HANDLER               ; normal exit — disarm
-                //   JMP <after>
+                //   JMP <finally_pc|after>
                 // catch_pc:
                 //   <STORE_LOCAL param | POP> ; bind/ignore the error value
-                //   <catch body>
+                //   <catch body>              ; falls through into finally
+                // finally_pc:                 ; (only when finally present)
+                //   <finally body>
                 // after:
                 //
                 // On a runtime error mid-body, execute_single_frame pops the
                 // handler frame, restores bp/sp, pushes the error message, and
                 // jumps to catch_pc — so the catch handler's first instruction
                 // must consume that pushed value.
+                //
+                // Deviation (documented): an error thrown INSIDE the catch body
+                // propagates without running finally (no nested handler frame
+                // is installed). The common paths — normal exit and
+                // error-then-catch — both run finally.
                 self.emit(OpCode::PUSH_HANDLER);
                 let handler_placeholder = self.emit_placeholder_i16();
 
@@ -1068,8 +1077,15 @@ impl Codegen {
                 self.compile_stmt(&Stmt::Block(try_stmt.catch_body.clone()))?;
                 self.pop_scope();
 
-                // after: patch the JMP-over-catch to land here.
-                self.patch_jump(jmp_after);
+                // Plan 012 P2: finally — the catch path falls through into it;
+                // the normal path's JMP targets it (or `after` when absent).
+                if let Some(finally_body) = &try_stmt.finally_body {
+                    self.patch_jump(jmp_after);
+                    self.compile_stmt(&Stmt::Block(finally_body.clone()))?;
+                } else {
+                    // after: patch the JMP-over-catch to land here.
+                    self.patch_jump(jmp_after);
+                }
             }
             Stmt::Fn(fn_decl) => {
                 // Reset last_expr_type for each function to avoid stale type from previous compilation
