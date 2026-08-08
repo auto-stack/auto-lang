@@ -171,7 +171,7 @@ pub async fn auth_login(State(db): State<Db>, Json(input): Json<CreateAuthUserIn
 
 | 编号 | 问题 | 影响 | 当前处置 | 根因定位 |
 |---|---|---|---|---|
-| DF-1 | **嵌套 if 表达式在 style 绑定中被压平**：`style: if A { if B { "x" } else { "y" } } else { "z" }` 生成 `A ? '' : 'z'`（内层 if 丢失，true 分支变空字符串） | 选中态 class 丢失 → 布局/样式错乱（auto-musk 的 session 列表项点击后标题变居中） | auto-musk 侧简化为单层 if 绕开（`bde65a2`） | `ui_gen/vue.rs` style/attr 绑定的 if-expr 转换逻辑只取外层条件，未递归处理嵌套 if 的分支。需在 vue codegen 层修复（支持嵌套三元 `A ? (B ? 'x' : 'y') : 'z'`） |
+| DF-1 | ~~**嵌套 if 表达式在 style 绑定中被压平**~~ **✅ 已修复**（`92391962`，2026-08-08）：`style: if A { if B { "x" } else { "y" } } else { "z" }` 现生成 `A ? (B ? 'x' : 'y') : 'z'`（嵌套三元）。根因：`style_branch_str` 只认 `Expr::Str`，对嵌套 `Stmt::If` 返回空字符串。修复：新增 `StyleBranch` 枚举 + `style_branch_value` 方法递归处理嵌套 if。含 2 单测 + golden 004 + 回归零破坏。 | 选中态 class 丢失 → 布局错乱 | ✅ 已修复（codegen 层）+ auto-musk 侧单层 if 绕开（`bde65a2`） | `ui_gen/vue.rs:8835` `style_branch_value` |
 
 > **注**：DF-1 属 vue codegen 范畴，不在本计划（后端 a2r）的实施范围内，但登记于此避免遗忘。修复时应在 `ui_gen/vue.rs` 加单测（嵌套 if → 嵌套三元），并可考虑纳入 a2vue golden 测试覆盖。
 
