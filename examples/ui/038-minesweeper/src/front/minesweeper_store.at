@@ -77,9 +77,18 @@ store MinesweeperStore {
             .grid_style = "display:grid; grid-template-columns: repeat(" + .cols.to_string() + ", minmax(0, 1fr)); gap:0;"
             .mines_label = "💣 " + .mine_count.to_string()
             .timer_label = "⏱ 0s"
-            .beginner_class = if .difficulty == "beginner" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
-            .intermediate_class = if .difficulty == "intermediate" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
-            .expert_class = if .difficulty == "expert" { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700" } else { "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50" }
+            .beginner_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            .intermediate_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            .expert_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            if .difficulty == "beginner" {
+                .beginner_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700"
+            }
+            if .difficulty == "intermediate" {
+                .intermediate_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700"
+            }
+            if .difficulty == "expert" {
+                .expert_class = "px-3 py-1.5 rounded-lg text-sm font-semibold border bg-blue-600 text-white border-blue-700"
+            }
         }
 
         .Reset -> {
