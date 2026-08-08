@@ -1387,7 +1387,7 @@ Plan 371 的 L1/L2/L3 + 4 个预存限制全部完成。Rust 模式的组件状�
 
 循环内多实例子组件的"per-instance 状态持久化"问题，通过**路径 A（集中状态模式）**解决——与 VM 单一状态堆语义对齐，无需 per-instance 持久化。013-todo 的编辑功能（进入编辑、输入文字、保存）在 VM + Rust 双模式下均正确工作。
 
-## 19. 新发现(2026-08-08):真实 Enter 不触发 Run — on_submit 的 input_value 缺失
+## 19. 真实 Enter 不触发 Run — on_submit 的 input_value 缺失(2026-08-08,已修复 ✅)
 
 > **症状修正**:初判"VM input 无焦点管理、键盘全断"**部分错误**——实测字符输入(打字)是
 > 正常的(说明聚焦 + on_input 链路通)。真正的、唯一的症状是:**按回车不执行命令**。
@@ -1463,22 +1463,35 @@ MCP 作者明确知道 submit 不自带 value 并补了;**但真实 on_submit �
 ash-gui-auto 测试套件(56 pass)全部用 `autoui_type` + `autoui_action submit`
 (`test_command_exec.py:52-70`),走的是 MCP 那条**已补值**的路径。"真实回车"从未被测。
 
-### 19.5 修复方向(小改动,renderer.rs update 一处)
+### 19.5 修复(已实施 + 验证 ✅)
 
-在 update 的 emit 模拟块(renderer.rs:3694 附近),当 `saved_input_value` 为 None 时,
-从 state 的 `input` 字段读当前值补上(等价于 mcp_server.rs:1966 的做法):
+**修复点**:`crates/auto-lang/src/ui/iced/renderer.rs` update 函数,`saved_input_value`
+构造处(handler 执行前)。
+
+**关键陷阱**:`PromptBar.Run` handler(prompt_bar.at:124)会清空 `.input`,故补值必须在
+handler 执行**之前**完成——把抢救逻辑放在 `on_with_input_for` 调用之前:
 
 ```rust
-if widget_name == "PromptBar" && event_name == "Run" {
-    let cmd = saved_input_value.as_deref().map(|s| s.to_string())
-        .or_else(|| state.component.read_state("input")
-                     .map(|v| v.as_str().to_string()));   // ← 补 this
-    if let Some(cmd) = cmd {
-        let cmd = cmd.trim();
-        if !cmd.is_empty() { ... }
+// EDGE-15: on_submit(真实 Enter)的 msg 不带 input_value,而 PromptBar.Run
+// handler 会清空 .input。故在 handler 执行前,若 msg 无 input_value 则从
+// state.input 预先抢救当前值,供下方 emit 模拟使用(等价 mcp_server.rs:1966)。
+let saved_input_value = msg.input_value.clone().or_else(|| {
+    if widget_name == "PromptBar" && event_name == "Run" {
+        state.component.read_state("input").ok()
+            .map(|v| v.as_str().to_string())
+    } else {
+        None
     }
-}
+});
+state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 ```
 
-这是 ash-gui 特定知识(widget=PromptBar, event=Run)的 emit 模拟,补值也应在此处完成,
-无需动 on_submit 的通用机制。修复后真实回车即恢复。
+**验证(2026-08-08,auto-shell ash-gui-auto 真实键盘)**:
+- 用户窗口输入 `ls` + 真实回车 → 命令执行成功(`status: Success`, `output: "app.at..."`,
+  `duration_ms: 38`,block 创建、next_id 递增)。
+- 回归:MCP `action submit` 路径仍正常。
+- 日志确认:Enter 产生 `on() msg: widget="PromptBar" event="Run" input_value=None`,
+  补值后 emit 模拟正确转发到 `ShellStore.RunCommand`。
+
+**遗留小问题**:回车后 `state.input` 仍显示 "ls"(理论上 PromptBar.Run 应清空)。下次输入
+会覆盖,不影响功能;清空时机受 patch_input_values 回填影响,留待后续细查。
