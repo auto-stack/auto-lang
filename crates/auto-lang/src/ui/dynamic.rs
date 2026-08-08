@@ -124,6 +124,10 @@ pub struct DynamicComponent {
 
     /// Widget registry for child widget lookup.
     widget_registry: crate::ui::widget_registry::WidgetRegistry,
+
+    /// Plan 401/VM-routing: the root widget's route table. `outlet` resolves
+    /// the current route to a page widget from this table.
+    routes: Vec<crate::aura::AuraRoute>,
 }
 
 
@@ -178,6 +182,7 @@ impl DynamicComponent {
             span_map: widget.span_map.clone(),
             key_bindings: widget.key_bindings.clone(),
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
+            routes: Vec::new(),
         })
     }
 
@@ -246,6 +251,7 @@ impl DynamicComponent {
             span_map: view.span_map.clone(),
             key_bindings,
             widget_registry: registry,
+            routes: Vec::new(),
         })
     }
 
@@ -292,6 +298,15 @@ impl DynamicComponent {
             key_bindings.entry(k).or_insert(v);
         }
 
+        // Plan 401/VM-routing: extract the route table from the root widget.
+        // The current-route state (__current_route) is seeded lazily by
+        // render_outlet (it falls back to the first route when unset), so no
+        // eager state init is needed here.
+        let routes: Vec<crate::aura::AuraRoute> = view_widget.routes
+            .as_ref()
+            .map(|r| r.routes.clone())
+            .unwrap_or_default();
+
         Ok(Self {
             bridge,
             view_template,
@@ -305,6 +320,7 @@ impl DynamicComponent {
             span_map: view.span_map.clone(),
             key_bindings,
             widget_registry: registry,
+            routes,
         })
     }
 
@@ -340,6 +356,7 @@ impl DynamicComponent {
             span_map: widget.span_map.clone(),
             key_bindings: widget.key_bindings.clone(),
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
+            routes: Vec::new(),
         })
     }
     // ========================================================================
@@ -440,7 +457,7 @@ impl DynamicComponent {
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes);
         builder.build_with_debug(&self.view_template)
     }
 
@@ -454,8 +471,57 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
+    }
+
+    /// Plan 401/VM-routing: set the current route (from a `link` click) and
+    /// re-resolve its params. Called by the iced renderer when it intercepts a
+    /// `__navigate` message carrying the target path.
+    pub fn set_route(&mut self, path: &str) {
+        let _ = self.bridge.write_state("__current_route", auto_val::Value::str(path));
+        self.sync_route_params();
+        self.dirty = true;
+    }
+
+    /// Plan 401/VM-routing: re-resolve the current route's dynamic segments
+    /// into the `__route_params` state object. Called after each handler (which
+    /// may have navigated via `router.push`) so page handlers can read params
+    /// via `router.param("id")` (rewritten to `__state.__route_params.id`).
+    /// Matches the current `__current_route` against the route table; a `:seg`
+    /// pattern segment captures that path segment as a named param.
+    fn sync_route_params(&mut self) {
+        if self.routes.is_empty() {
+            return;
+        }
+        let current = match self.bridge.read_state("__current_route") {
+            Ok(auto_val::Value::Str(s)) if !s.is_empty() => s.to_string(),
+            _ => self.routes.first().map(|r| r.path.clone()).unwrap_or_else(|| "/".to_string()),
+        };
+        let cur_segs: Vec<&str> = current.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        for route in &self.routes {
+            let pat_segs: Vec<&str> = route.path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+            if pat_segs.len() != cur_segs.len() {
+                continue;
+            }
+            let mut params = auto_val::Obj::new();
+            let mut matched = true;
+            for (pat, cur) in pat_segs.iter().zip(cur_segs.iter()) {
+                if let Some(name) = pat.strip_prefix(':') {
+                    params.set(name, auto_val::Value::str(*cur));
+                } else if *pat != *cur {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                let _ = self.bridge.write_state(
+                    "__route_params",
+                    auto_val::Value::Obj(params),
+                );
+                return;
+            }
+        }
     }
 
     /// Get the span map (AuraNodeId → SpanInfo) for DevTools.
@@ -704,7 +770,7 @@ impl Component for DynamicComponent {
             &self.widget_name,
             &self.widget_registry,
             &self.import_stmts,
-        );
+        ).with_routes(&self.routes);
         let view = builder.build(&self.view_template);
 
         view
@@ -801,6 +867,11 @@ impl DynamicComponent {
                 let handler_ms = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
                 self.dirty = true;
+                // Plan 401/VM-routing: after a handler may have navigated
+                // (router.push → __current_route), re-resolve the route params
+                // into __route_params so page handlers can read them via
+                // router.param("id"). The handler set the path; we parse it.
+                self.sync_route_params();
                 // Force a view rebuild to measure render time
                 let _ = self.view_with_debug_gated(false);
                 let render_ms = t1.elapsed().as_millis();

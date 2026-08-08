@@ -54,6 +54,11 @@ pub const NATIVE_ENV_REMOVE: u16 = 1102;
 pub const NATIVE_ENV_LOCAL_DATA_DIR: u16 = 1104;
 pub const NATIVE_ENV_HOME_DIR: u16 = 1105;
 
+// Storage functions: 1106-1108 (Plan 401: localStorage-style KV store)
+pub const NATIVE_STORAGE_GET: u16 = 1106;
+pub const NATIVE_STORAGE_SET: u16 = 1107;
+pub const NATIVE_STORAGE_REMOVE: u16 = 1108;
+
 // IO functions: 1150-1169
 pub const NATIVE_IO_READ_LINE: u16 = 1150;
 
@@ -463,6 +468,34 @@ pub fn shim_env_remove(key: String) {
 #[auto_macros::rust_fn("Env.get_or")]
 pub fn shim_env_get_or(key: String, default: String) -> String {
     std::env::var(&key).unwrap_or(default)
+}
+
+// ── Plan 401: localStorage-style key/value store (Storage module) ────────
+// The VM/iced path has no browser, so back storage.get/set by an in-process
+// HashMap (session-scoped persistence). vue implements these against the real
+// browser localStorage; this is the VM-side mirror so the same .at source runs
+// in both render modes.
+lazy_static::lazy_static! {
+    static ref STORAGE_MAP: std::sync::Mutex<std::collections::HashMap<String, String>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// storage.get(key) → stored value, or "" if absent (mirrors JS localStorage).
+#[auto_macros::rust_fn("Storage.get")]
+pub fn shim_storage_get(key: String) -> String {
+    STORAGE_MAP.lock().unwrap().get(&key).cloned().unwrap_or_default()
+}
+
+/// storage.set(key, value) → persists for the session.
+#[auto_macros::rust_fn("Storage.set")]
+pub fn shim_storage_set(key: String, value: String) {
+    STORAGE_MAP.lock().unwrap().insert(key, value);
+}
+
+/// storage.remove(key) → drops the entry.
+#[auto_macros::rust_fn("Storage.remove")]
+pub fn shim_storage_remove(key: String) {
+    STORAGE_MAP.lock().unwrap().remove(&key);
 }
 
 // ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────

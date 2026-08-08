@@ -1,0 +1,133 @@
+// book_detail.at — "/book/:id" book detail + chapter list.
+// Reads the :id route param, fetches the book (get_book) + its chapters
+// (list_chapters), and lets the reader jump into a chapter or continue reading.
+// NOTE: the found book is stored in a model field, NOT a multi-statement
+// `computed` — the vue codegen does not emit a `return` for a block-bodied
+// computed, so it would yield undefined.
+use back.api: get_book, list_chapters
+
+widget book_detail {
+    msg Msg { Init, Back, ReadChapter(int), ContinueReading }
+
+    model {
+        var book_id int = 0
+        var book ?Book = None
+        var chapters []Chapter = []
+        var loaded bool = false
+    }
+
+    view {
+        col {
+            style: "p-6 md:p-10 gap-6 max-w-4xl mx-auto"
+
+            button {
+                onclick: .Back
+                style: "inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+                text "← Back to Library" {}
+            }
+
+            if .loaded {
+                if .book == None {
+                    col {
+                        style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                        text "📖" { style: "text-5xl opacity-40" }
+                        text "Book not found" { style: "font-medium" }
+                    }
+                } else {
+                    row {
+                        style: "gap-6 flex-col md:flex-row"
+                        // Cover
+                        col {
+                            style: "w-36 h-52 rounded-xl bg-gradient-to-br " + .book.cover_color + " items-center justify-center flex-shrink-0 shadow-lg"
+                            text "📖" { style: "text-4xl text-white/70" }
+                        }
+                        col {
+                            style: "gap-2 flex-1"
+                            h1 .book.title { style: "text-2xl font-bold text-foreground" }
+                            text .book.author { style: "text-muted-foreground" }
+                            row {
+                                style: "items-center gap-3 text-sm text-muted-foreground flex-wrap mt-1"
+                                row {
+                                    style: "items-center gap-1"
+                                    text "📑" {}
+                                    text f"${.book.chapter_count} chapters" {}
+                                }
+                                row {
+                                    style: "items-center gap-1"
+                                    text "📝" {}
+                                    text f"${.book.word_count} words" {}
+                                }
+                                if .book.progress > 0 {
+                                    text f"${.book.progress}%" { style: "text-primary font-medium" }
+                                }
+                            }
+                            if .book.progress > 0 {
+                                if .book.progress < 100 {
+                                    button {
+                                        onclick: .ContinueReading
+                                        style: "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                        text "📖 Continue Reading" {}
+                                    }
+                                } else {
+                                    text "✓ Finished" { style: "mt-3 text-sm font-medium text-emerald-600 dark:text-emerald-400" }
+                                }
+                            } else {
+                                button {
+                                    onclick: .ReadChapter(1)
+                                    style: "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                    text "📖 Start Reading" {}
+                                }
+                            }
+                        }
+                    }
+
+                    col {
+                        style: "mt-2 gap-3"
+                        text "Chapters" { style: "text-lg font-semibold text-foreground" }
+                        div {
+                            style: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
+                            for ch in .chapters {
+                                button {
+                                    onclick: .ReadChapter(ch.number)
+                                    style: "flex items-center justify-between p-3 bg-card border border-border rounded-lg text-left hover:border-primary hover:bg-accent transition-all"
+                                    text ch.title { style: "text-sm font-medium text-foreground" }
+                                    text "→" { style: "text-muted-foreground" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .book_id = router.param("id")
+            .book = get_book(.book_id)
+            .chapters = list_chapters(.book_id)
+            .loaded = true
+        }
+        .Back -> { router.push("/") }
+        .ReadChapter(n int) -> {
+            router.push("/book/" + .book_id.to_string() + "/chapter/" + n.to_string())
+        }
+        .ContinueReading -> {
+            var current int = 1
+            if .book != None {
+                if .book.progress > 0 {
+                    let total int = .book.chapter_count
+                    let computed int = .book.progress * total / 100
+                    if computed >= 1 {
+                        if computed <= total {
+                            current = computed
+                        } else {
+                            current = total
+                        }
+                    }
+                }
+            }
+            router.push("/book/" + .book_id.to_string() + "/chapter/" + current.to_string())
+        }
+    }
+}

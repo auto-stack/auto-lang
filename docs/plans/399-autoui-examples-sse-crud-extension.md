@@ -163,8 +163,9 @@
 Phase 11（P11.1/11.2/11.3/11.4）、Phase 12（typing 9/9）、Phase 13（混合状态硬检查）全部落地。剩余：
 
 - **P11.5 mut 推断 / P11.6 去 deref**：仍靠后处理覆盖（a2r 根治边际价值低，见各 Phase 章节）。这些不影响 015/017 编译，属清洁性优化。
-- 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）
+- 继续升级 018-027 为正规 App（022-kanban / 023-realworld 下一批候选）→ **已拆分为独立 Plan 401**（018-book-reader 已完成，playwright 10/10；019-027 待办）
 - vm/rust 前端版（当前只做 vue + rust 后端，对标 015）
+
 
 ---
 

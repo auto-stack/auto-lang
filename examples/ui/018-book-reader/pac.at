@@ -2,3 +2,6 @@ name: "book-reader"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+api: "rust"
+front_port: 3018
+back_port: 8018

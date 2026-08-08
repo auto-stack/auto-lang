@@ -1,0 +1,146 @@
+// reading.at — "/book/:id/chapter/:ch" reading view.
+// Renders the chapter body with prev/next navigation. Progress is computed
+// from the chapter number and persisted to the backend on each navigation.
+// NOTE: book + progress are stored as model fields (set in .Init), NOT
+// multi-statement `computed` blocks — the vue codegen does not emit `return`
+// for a block-bodied computed, so it would yield undefined.
+use back.api: get_book, get_chapter
+use store: BooksStore
+
+widget reading {
+    msg Msg { Init, Back, PrevChapter, NextChapter }
+
+    model {
+        var book_id int = 0
+        var chapter_num int = 1
+        var chapter Chapter = Chapter { book_id: 0, number: 1, title: "", body: "", word_count: 0 }
+        var chapter_count int = 1
+        var progress_pct int = 0
+        var loaded bool = false
+    }
+
+    view {
+        col {
+            style: "min-h-screen bg-background"
+
+            // Top bar: back, chapter title, theme toggle
+            row {
+                style: "h-14 border-b border-border bg-card items-center px-4 gap-3 sticky top-0 z-30"
+                button {
+                    onclick: .Back
+                    style: "p-2 hover:bg-accent rounded-lg transition-colors"
+                    text "←" { style: "text-lg text-foreground" }
+                }
+                // Guard: chapter is undefined until .Init resolves, so avoid
+                // reading .chapter.title before .loaded (would crash the page).
+                if .loaded {
+                    text .chapter.title { style: "font-medium text-foreground flex-1 truncate" }
+                } else {
+                    text "Loading…" { style: "font-medium text-muted-foreground flex-1 truncate" }
+                }
+                theme-toggle {}
+            }
+
+            // Chapter body
+            col {
+                style: "flex-1 overflow-y-auto"
+                if .loaded {
+                    col {
+                        style: "max-w-2xl mx-auto px-6 py-10 gap-6"
+                        h1 .chapter.title { style: "text-2xl font-bold text-foreground" }
+                        text .chapter.body { style: "text-base leading-relaxed text-foreground" }
+                    }
+                } else {
+                    col {
+                        style: "items-center justify-center py-20 text-muted-foreground"
+                        text "Loading…" {}
+                    }
+                }
+            }
+
+            // Bottom bar: prev / progress / next
+            row {
+                style: "h-14 border-t border-border bg-card items-center px-4 gap-4"
+                button {
+                    onclick: .PrevChapter
+                    style: "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
+                    disabled: .chapter_num <= 1
+                    text "← Prev" {}
+                }
+                col {
+                    style: "flex-1 gap-1"
+                    progress {
+                        value: .progress_pct
+                        max: 100
+                        style: "w-full"
+                    }
+                    row {
+                        style: "justify-between text-xs text-muted-foreground"
+                        text f"Chapter ${.chapter_num} of ${.chapter_count}" {}
+                        text f"${.progress_pct}%" {}
+                    }
+                }
+                button {
+                    onclick: .NextChapter
+                    style: "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
+                    disabled: .chapter_num >= .chapter_count
+                    text "Next →" {}
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            // Route params are strings — coerce to int so arithmetic like
+            // .chapter_num + 1 doesn't do string concat ("1" + 1 = "11").
+            .book_id = router.param("id").to_int()
+            .chapter_num = router.param("ch").to_int()
+            .chapter = get_chapter(.book_id, .chapter_num)
+            // Resolve chapter_count from the book record for nav bounds + progress.
+            let book ?Book = get_book(.book_id)
+            if book != None {
+                .chapter_count = book.chapter_count
+            }
+            // Progress as % of chapters read.
+            let total int = .chapter_count
+            if total > 0 {
+                // parseInt: JS `/` yields a float (1*100/3 = 33.33), but the
+                // backend progress field is i64 and rejects fractional JSON.
+                .progress_pct = (.chapter_num * 100 / total).to_int()
+            }
+            .loaded = true
+            // Persist reading progress.
+            store.SetProgress(.book_id, .progress_pct)
+        }
+        .Back -> { router.push("/book/" + .book_id.to_string()) }
+        .PrevChapter -> {
+            if .chapter_num > 1 {
+                .chapter_num = .chapter_num - 1
+                router.push("/book/" + .book_id.to_string() + "/chapter/" + .chapter_num.to_string())
+                .chapter = get_chapter(.book_id, .chapter_num)
+                let total int = .chapter_count
+                if total > 0 {
+                    // parseInt: JS `/` yields a float (1*100/3 = 33.33), but the
+                // backend progress field is i64 and rejects fractional JSON.
+                .progress_pct = (.chapter_num * 100 / total).to_int()
+                }
+                store.SetProgress(.book_id, .progress_pct)
+            }
+        }
+        .NextChapter -> {
+            if .chapter_num < .chapter_count {
+                .chapter_num = .chapter_num + 1
+                router.push("/book/" + .book_id.to_string() + "/chapter/" + .chapter_num.to_string())
+                .chapter = get_chapter(.book_id, .chapter_num)
+                let total int = .chapter_count
+                if total > 0 {
+                    // parseInt: JS `/` yields a float (1*100/3 = 33.33), but the
+                // backend progress field is i64 and rejects fractional JSON.
+                .progress_pct = (.chapter_num * 100 / total).to_int()
+                }
+                store.SetProgress(.book_id, .progress_pct)
+            }
+        }
+    }
+}

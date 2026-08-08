@@ -5201,7 +5201,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -6704,7 +6704,7 @@ impl Codegen {
                                     // an instance (load the global) rather than a
                                     // static type reference.
                                     || self.import_scope.contains_key(obj_name.as_ref());
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi");
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage");
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -7177,6 +7177,13 @@ impl Codegen {
                             ("env", "remove") => Some("auto.env.remove".to_string()),
                             ("env", "local_data_dir") => Some("auto.env.local_data_dir".to_string()),
                             ("env", "home_dir") => Some("auto.env.home_dir".to_string()),
+                            // Plan 401: localStorage-style key/value store for the
+                            // VM/iced path (no browser in iced; back it by an
+                            // in-process HashMap so settings persist for the
+                            // session). vue already implements these in the browser.
+                            ("storage", "get") => Some("auto.storage.get".to_string()),
+                            ("storage", "set") => Some("auto.storage.set".to_string()),
+                            ("storage", "remove") => Some("auto.storage.remove".to_string()),
                             ("time", "now_ms") => Some("auto.time.now_ms".to_string()),
                             ("time", "now_sec") => Some("auto.time.now_sec".to_string()),
                             ("time", "sleep_ms") => Some("auto.time.sleep_ms".to_string()),

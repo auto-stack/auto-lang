@@ -2563,6 +2563,60 @@ fn run_file_dynamic_ui_inner(
         }
     }
 
+    // 2c. Plan 401/VM-routing: load route-target pages (pages/{module}.at).
+    // The vue codegen discovers these via `routes { "/" -> use bookshelf }`
+    // and emits a router; the VM/iced path instead renders the matched page
+    // widget inside `outlet`. But the VM loader (above) only follows top-level
+    // `use` lines — `-> use X` inside `routes {}` is invisible to use_scanner.
+    // So explicitly load each route's page module + register its widget, the
+    // same way top-level `use` modules are handled above. This makes the page
+    // widgets available for outlet to render (see aura_view_builder.rs Outlet).
+    if let Some(file_path) = path {
+        if let Some(ref routes_block) = root_decl.routes {
+            let base_dir = std::path::Path::new(file_path)
+                .parent()
+                .unwrap_or(std::path::Path::new("."));
+            for route in &routes_block.routes {
+                // Convention: `-> use bookshelf` maps to pages/bookshelf.at
+                // (mirrors vue's @/pages/{module}.vue — see ast/route.rs:45-46).
+                let page_module = format!("pages/{}", route.module);
+                let module_path = resolve_module_path(base_dir, &page_module);
+                let Some(module_path) = module_path else { continue };
+                if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                    let mod_session = CompilerSession::ui();
+                    let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
+                    if let Ok(mod_ast) = mod_parser.parse() {
+                        // Register view-fn fragments from the page module too.
+                        for stmt in &mod_ast.stmts {
+                            if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+                                crate::aura::extract::register_view_fragment(frag);
+                            }
+                        }
+                        for stmt in &mod_ast.stmts {
+                            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                                if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                    child_decls.push(decl.clone());
+                                    registry.register(child_widget);
+                                }
+                            }
+                        }
+                        // Pull in the page's own `use` deps (e.g. a page doing
+                        // `use store: BooksStore` or `use back.api: list_books`)
+                        // so its handlers compile.
+                        collect_module_imports(
+                            &module_path,
+                            &mut visited,
+                            &mut import_stmts,
+                            &mut seen_symbols,
+                            &mut import_session,
+                            override_scenario,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
 
     // 3. Create DynamicComponent with registry + imported symbols
     // Plan 370 D-GAP-4: collect StoreDecls and convert them to child WidgetDecls

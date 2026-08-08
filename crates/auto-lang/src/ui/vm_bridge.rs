@@ -323,6 +323,23 @@ impl VmBridge {
             }
         }
 
+        // Plan 401/VM-routing: inject the router state fields so handlers can
+        // read/write __current_route (set by router.push) and __route_params
+        // (populated by the outlet/sync_route_params from the matched route).
+        // Only when the root widget declares a routes {} block.
+        if decl.routes.is_some() {
+            if !field_names.iter().any(|n| n == "__current_route") {
+                field_names.push("__current_route".to_string());
+                field_values.push(auto_val::Value::str(
+                    decl.routes.as_ref().and_then(|r| r.routes.first()).map(|r| r.path.as_str()).unwrap_or("/")
+                ));
+            }
+            if !field_names.iter().any(|n| n == "__route_params") {
+                field_names.push("__route_params".to_string());
+                field_values.push(auto_val::Value::Obj(auto_val::Obj::new()));
+            }
+        }
+
         let mono_name = format!("{}_State", widget_name);
         let instance = GenericInstanceData::new_with_names(
             mono_name,

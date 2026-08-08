@@ -1,0 +1,226 @@
+widget App {
+    use {
+        fn: init_board, place_mines, reveal_flood, check_win, count_flags, toggle_flag, reveal_all_mines, difficulty_rows, difficulty_cols, difficulty_mines, number_class, difficulty_class, cell_class, mines_left_label, time_label, grid_style from "src/front/utils/minesweeper.ts"
+    }
+
+    msg Msg {
+        Reveal(int, int),
+        Flag(int, int),
+        SetDifficulty(str),
+        Reset,
+        Tick,
+        Init,
+    }
+
+    model {
+        var board = []
+        var rows int = 9
+        var cols int = 9
+        var mine_count int = 10
+        var difficulty str = "beginner"
+        var game_state str = "ready"
+        var elapsed int = 0
+        var interval int = 1000
+        var flags_placed int = 0
+    }
+
+    computed {
+        mines_label => mines_left_label(mine_count, flags_placed)
+        timer_label => time_label(elapsed)
+    }
+
+    view {
+        center {
+            col {
+                // —— 信息栏 ——
+                row {
+                    col {
+                        text .mines_label {
+                            style: "text-2xl font-bold text-gray-800"
+                        }
+                        text "mines left" {
+                            style: "text-xs text-gray-500 uppercase tracking-wide"
+                        }
+                        style: "items-center"
+                    }
+                    col {
+                        text .timer_label {
+                            style: "text-2xl font-bold font-mono text-gray-800"
+                        }
+                        text "time" {
+                            style: "text-xs text-gray-500 uppercase tracking-wide"
+                        }
+                        style: "items-center"
+                    }
+                    button "🔄" {
+                        onclick: .Reset,
+                        style: "text-3xl px-4 py-2 rounded-xl hover:bg-gray-100"
+                    }
+                    style: "w-full items-center justify-between"
+                }
+
+                // —— 难度选择 ——
+                row {
+                    button "初级 9×9" {
+                        onclick: .SetDifficulty("beginner"),
+                        class: difficulty_class(.difficulty, "beginner")
+                    }
+                    button "中级 16×16" {
+                        onclick: .SetDifficulty("intermediate"),
+                        class: difficulty_class(.difficulty, "intermediate")
+                    }
+                    button "高级 30×16" {
+                        onclick: .SetDifficulty("expert"),
+                        class: difficulty_class(.difficulty, "expert")
+                    }
+                    style: "gap-2 mt-4"
+                }
+
+                // —— 棋盘网格 ——
+                div {
+                    div {
+                        for cell in .board {
+                            button {
+                                if cell.revealed {
+                                    if cell.mine {
+                                        text "💣" {
+                                            style: "text-lg"
+                                        }
+                                    } else {
+                                        if cell.adjacent > 0 {
+                                            text cell.adjacent.to_string() {
+                                                class: number_class(cell.adjacent)
+                                            }
+                                        } else {
+                                            text " " {
+                                                style: "text-lg"
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if cell.flagged {
+                                        text "🚩" {
+                                            style: "text-lg"
+                                        }
+                                    } else {
+                                        text " " {
+                                            style: "text-lg"
+                                        }
+                                    }
+                                }
+                                onclick: .Reveal(cell.x, cell.y),
+                                oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                                variant: "text",
+                                class: cell_class(cell.revealed)
+                            }
+                        }
+                        style: grid_style(.cols)
+                    }
+                    style: "overflow-x-auto w-full mt-6"
+                }
+
+                // —— 游戏结束遮罩 ——
+                if .game_state == "won" {
+                    text "🎉 胜利!" {
+                        style: "text-3xl font-bold text-green-600 mt-6"
+                    }
+                }
+                if .game_state == "lost" {
+                    text "💥 踩雷了!点 🔄 重开" {
+                        style: "text-2xl font-bold text-red-600 mt-6"
+                    }
+                }
+
+                style: "w-full max-w-fit p-6 bg-white rounded-2xl shadow-lg items-center mt-8"
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .rows = difficulty_rows(.difficulty)
+            .cols = difficulty_cols(.difficulty)
+            .mine_count = difficulty_mines(.difficulty)
+            .board = init_board(.rows, .cols)
+            .game_state = "ready"
+            .elapsed = 0
+            .flags_placed = 0
+        }
+
+        .Reset -> {
+            .board = init_board(.rows, .cols)
+            .game_state = "ready"
+            .elapsed = 0
+            .flags_placed = 0
+        }
+
+        .SetDifficulty(d) -> {
+            .difficulty = d
+            .rows = difficulty_rows(d)
+            .cols = difficulty_cols(d)
+            .mine_count = difficulty_mines(d)
+            .board = init_board(.rows, .cols)
+            .game_state = "ready"
+            .elapsed = 0
+            .flags_placed = 0
+        }
+
+        .Reveal(x, y) -> {
+            // 游戏已结束则忽略。
+            if .game_state == "won" {
+                return
+            }
+            if .game_state == "lost" {
+                return
+            }
+
+            // 首次点击:安全布雷。
+            if .game_state == "ready" {
+                .board = place_mines(.board, .rows, .cols, .mine_count, x, y)
+                .game_state = "playing"
+            }
+
+            // 取出目标格,旗子格/已揭开格忽略。
+            let idx = x * .cols + y
+            let target = .board[idx]
+            if target.flagged {
+                return
+            }
+            if target.revealed {
+                return
+            }
+
+            // 踩雷:揭开所有雷,游戏失败。
+            if target.mine {
+                .board = reveal_all_mines(.board)
+                .game_state = "lost"
+                return
+            }
+
+            // 正常揭开 + 连锁空白展开。
+            .board = reveal_flood(.board, .rows, .cols, x, y)
+
+            // 胜负判定。
+            if check_win(.board) {
+                .game_state = "won"
+            }
+        }
+
+        .Flag(x, y) -> {
+            if .game_state == "won" {
+                return
+            }
+            if .game_state == "lost" {
+                return
+            }
+            .board = toggle_flag(.board, .cols, x, y)
+            .flags_placed = count_flags(.board)
+        }
+
+        .Tick -> {
+            if .game_state == "playing" {
+                .elapsed = .elapsed + 1
+            }
+        }
+    }
+}

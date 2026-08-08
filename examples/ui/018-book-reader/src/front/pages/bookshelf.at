@@ -1,0 +1,151 @@
+// bookshelf.at — "/" Library grid. Shows every book with a cover, progress
+// bar, and add/delete actions. Clicking a card navigates to its detail page.
+use store: BooksStore
+
+widget bookshelf {
+    msg Msg { Init, OpenBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
+
+    model {
+        var show_add bool = false
+        var new_title str = ""
+        var new_author str = ""
+    }
+
+    view {
+        col {
+            style: "p-6 md:p-10 gap-6 max-w-6xl mx-auto"
+
+            row {
+                style: "items-center justify-between gap-4"
+                col {
+                    h1 "Library" { style: "text-2xl md:text-3xl font-bold text-foreground" }
+                    text f"${.store.books.len()} books" { style: "text-sm text-muted-foreground mt-1" }
+                }
+                button {
+                    onclick: .ShowAdd
+                    style: "inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    text "＋ Add Book" {}
+                }
+            }
+
+            if .store.loading {
+                col {
+                    style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                    text "Loading library…" {}
+                }
+            } else {
+                if .store.books.len() == 0 {
+                    col {
+                        style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                        text "📖" { style: "text-5xl opacity-40" }
+                        text "No books yet" { style: "font-medium" }
+                        text "Add your first book to get started" { style: "text-sm" }
+                    }
+                } else {
+                    div {
+                        style: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
+                        for book in .store.books {
+                            col {
+                                onclick: .OpenBook(book.id)
+                                style: "cursor-pointer group"
+                                // Cover: gradient block with progress bar overlay.
+                                col {
+                                    style: "h-48 rounded-xl bg-gradient-to-br " + book.cover_color + " items-center justify-center relative overflow-hidden shadow-sm group-hover:shadow-md transition-shadow"
+                                    text "📖" { style: "text-4xl text-white/70" }
+                                    if book.progress > 0 {
+                                        col {
+                                            style: "absolute bottom-0 left-0 right-0 h-1.5 bg-black/15"
+                                            row {
+                                                style: "h-full bg-white/80"
+                                                style: "width:" + book.progress.to_string() + "%"
+                                            }
+                                        }
+                                    }
+                                }
+                                col {
+                                    style: "p-3 gap-0.5"
+                                    text book.title { style: "font-medium text-foreground truncate" }
+                                    text book.author { style: "text-sm text-muted-foreground truncate" }
+                                    row {
+                                        style: "items-center justify-between mt-1.5"
+                                        text f"${book.progress}%" { style: "text-xs text-muted-foreground" }
+                                        button {
+                                            onclick: .DeleteBook(book.id)
+                                            style: "opacity-0 group-hover:opacity-100 text-xs text-destructive hover:underline transition-opacity"
+                                            text "Remove" {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Add-book dialog
+            if .show_add {
+                col {
+                    style: "fixed inset-0 bg-black/50 z-50 items-center justify-center p-4"
+                    onclick: .CloseAdd
+                    col {
+                        style: "w-full max-w-md p-6 gap-4 bg-card rounded-xl shadow-lg border border-border"
+                        text "Add a Book" { style: "text-lg font-semibold text-foreground" }
+                        col {
+                            style: "gap-1.5"
+                            text "Title" { style: "text-sm font-medium text-foreground" }
+                            input {
+                                value: .new_title
+                                oninput: .TitleChanged
+                                placeholder: "Book title"
+                                style: "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+                            }
+                        }
+                        col {
+                            style: "gap-1.5"
+                            text "Author" { style: "text-sm font-medium text-foreground" }
+                            input {
+                                value: .new_author
+                                oninput: .AuthorChanged
+                                placeholder: "Author"
+                                style: "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+                            }
+                        }
+                        row {
+                            style: "justify-end gap-2 mt-2"
+                            button {
+                                onclick: .CloseAdd
+                                style: "px-4 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-accent"
+                                text "Cancel" {}
+                            }
+                            button {
+                                onclick: .SubmitAdd
+                                style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+                                text "Add" {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { store.Init() }
+        .OpenBook(id int) -> { router.push("/book/" + id.to_string()) }
+        .ShowAdd -> {
+            .show_add = true
+            .new_title = ""
+            .new_author = ""
+        }
+        .CloseAdd -> { .show_add = false }
+        .TitleChanged -> { }
+        .AuthorChanged -> { }
+        .SubmitAdd -> {
+            if .new_title != "" {
+                store.AddBook(.new_title, .new_author)
+                .show_add = false
+            }
+        }
+        .DeleteBook(id int) -> { store.RemoveBook(id) }
+    }
+}

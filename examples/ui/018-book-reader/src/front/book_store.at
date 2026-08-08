@@ -1,0 +1,32 @@
+// book_store.at — shared store. Persists the library + reading progress across
+// all route pages (k1 pattern). Each page does `use store: BooksStore`.
+use back.api: list_books, create_book, delete_book, update_progress
+
+store BooksStore {
+    model {
+        var books []Book = []
+        var loading bool = false
+    }
+
+    msg Msg { Init, AddBook(str, str), RemoveBook(int), SetProgress(int, int) }
+
+    on {
+        .Init -> {
+            .loading = true
+            .books = list_books()
+            .loading = false
+        }
+        .AddBook(title str, author str) -> {
+            create_book(title, author)
+            .books = list_books()
+        }
+        .RemoveBook(id int) -> {
+            delete_book(id)
+            .books = list_books()
+        }
+        .SetProgress(id int, progress int) -> {
+            update_progress(id, progress)
+            .books = list_books()
+        }
+    }
+}

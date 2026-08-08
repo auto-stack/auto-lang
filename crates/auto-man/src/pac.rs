@@ -81,6 +81,13 @@ pub struct Pac {
     /// Workspace members (relative paths to sub-projects)
     pub members: Vec<AutoStr>,
 
+    /// Per-project dev-server ports (Plan 401). Declared in pac.at as
+    /// `front_port: 3018` / `back_port: 8018`. `auto run`/`auto build` use
+    /// these as defaults for `-F`/`-B` (CLI flags still win). None = fall
+    /// back to the global defaults (3000 / 8080).
+    pub front_port: Option<u16>,
+    pub back_port: Option<u16>,
+
     is_update: bool,
 }
 
@@ -152,6 +159,14 @@ impl Pac {
             Some(api_value)
         };
 
+        // Plan 401: per-project dev-server ports (front_port/back_port).
+        // auto run/build use these as defaults for -F/-B (CLI flags win).
+        // None when absent or unparseable -> global default (3000/8080) applies.
+        let front_port = config.root.get_prop("front_port").to_astr();
+        let front_port = front_port.trim().parse::<u16>().ok();
+        let back_port = config.root.get_prop("back_port").to_astr();
+        let back_port = back_port.trim().parse::<u16>().ok();
+
         // target related properties
         let target_props = vec!["at", "lang"];
 
@@ -213,6 +228,8 @@ impl Pac {
             defines,
             scene,
             members,
+            front_port,
+            back_port,
             is_update: false,
         }
     }

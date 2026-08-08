@@ -1,0 +1,174 @@
+// db.at — Book Reader data service (in-memory).
+// Seeds 3 books each with several chapters of placeholder prose.
+// NOTE: seed strings ASCII-only (field-splitter limitation, see 017-chat).
+
+use api: Book, Chapter
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage
+// ═══════════════════════════════════════════════════════════
+
+var books List<Book> = List<Book>.new([
+    Book { id: 1, title: "The Silent Garden", author: "Ada Lin", chapter_count: 3, word_count: 24000, progress: 0, status: "unread", cover_color: "from-violet-400 to-indigo-500" },
+    Book { id: 2, title: "Rivers of Time", author: "M. Hartwell", chapter_count: 3, word_count: 38000, progress: 33, status: "reading", cover_color: "from-amber-400 to-orange-500" },
+    Book { id: 3, title: "The Last Lighthouse", author: "J. Okada", chapter_count: 3, word_count: 31000, progress: 100, status: "finished", cover_color: "from-emerald-400 to-teal-500" },
+])
+
+var chapters List<Chapter> = List<Chapter>.new([
+    Chapter { book_id: 1, number: 1, title: "Chapter 1: The Gate", body: "The old iron gate stood ajar at the end of the lane, creaking softly in the evening breeze. No one had tended the garden in years, yet the flowers beyond bloomed in colours no one could name. Mira paused at the threshold, her lantern raised, and listened. Somewhere deeper in, a stream was running, and the air smelled of rain and honey.", word_count: 4200 },
+    Chapter { book_id: 1, number: 2, title: "Chapter 2: The Gardener", body: "A figure moved between the hedgerows, patient and unhurried. The gardener did not speak at first, only gestured for Mira to follow. Together they walked past beds of silver moss and trees heavy with pale fruit. 'Everything here remembers,' the gardener said at last, 'and everything forgotten returns, in season.'", word_count: 4500 },
+    Chapter { book_id: 1, number: 3, title: "Chapter 3: The First Bloom", body: "When the dawn finally broke, the garden was transformed. Each branch had burst into flower overnight, and the gate behind her had vanished. Mira understood then that she had not found the garden by accident. She had been waiting for it her whole life, and it had been waiting for her.", word_count: 4100 },
+    Chapter { book_id: 2, number: 1, title: "Chapter 1: The Source", body: "The river begins where the snow forgets the mountain. Hartwell traced its path on the old map, finger tracing a thin blue thread that wound through three countries and a hundred years of history. Every village along its banks told a different story about where the water came from, and not one of them was wrong.", word_count: 5200 },
+    Chapter { book_id: 2, number: 2, title: "Chapter 2: The Crossing", body: "At the ferry the current ran swift and dark. The ferryman took her coin without counting it and pushed off into the fog. Halfway across, the water grew still, and Hartwell saw her own reflection clearly for the first time in years. She did not look away.", word_count: 4800 },
+    Chapter { book_id: 2, number: 3, title: "Chapter 3: The Delta", body: "Where the river met the sea it scattered into a thousand quiet channels, each one finding its own way home. Hartwell sat on the last dry bank and watched the sun go down. The journey was over, but the map, she realised, had never been the point.", word_count: 4600 },
+    Chapter { book_id: 3, number: 1, title: "Chapter 1: The Keeper", body: "The lighthouse had stood empty for a generation before Tomas came to tend it. The lamp still turned, though no ships ever passed. Each night he lit it anyway, a habit, a prayer, a small defiance against the dark that pressed in from every window.", word_count: 4300 },
+    Chapter { book_id: 3, number: 2, title: "Chapter 2: The Storm", body: "The storm rose without warning, the way storms always do in those parts. Tomas climbed the spiral stair with the wick in his fist, and when the lightning struck the lens the whole tower rang like a bell. In that flash he saw, far out on the water, a single sail.", word_count: 4700 },
+    Chapter { book_id: 3, number: 3, title: "Chapter 3: The Last Light", body: "By morning the storm had spent itself, and the sail had become a boat, and the boat had become a family, cold and grateful on the rocks below. Tomas helped them up one by one. The lighthouse had done its work at last, and so, he thought, had he.", word_count: 4400 },
+])
+
+var nextid int = 4
+
+// ═══════════════════════════════════════════════════════════
+// Book operations
+// ═══════════════════════════════════════════════════════════
+
+pub fn all_books() []Book {
+    return books
+}
+
+pub fn find_book(id int) ?Book {
+    for book in books {
+        if book.id == id {
+            return Some(book)
+        }
+    }
+    return None
+}
+
+pub fn create_book(title str, author str) Book {
+    let id int = nextid
+    nextid = nextid + 1
+    let book = Book {
+        id: id,
+        title: title,
+        author: author,
+        chapter_count: 3,
+        word_count: 9000,
+        progress: 0,
+        status: "unread",
+        cover_color: "from-sky-400 to-blue-500",
+    }
+    books.push(book)
+    // Seed three placeholder chapters so the new book is browsable.
+    var i int = 1
+    loop {
+        if i > 3 {
+            break
+        }
+        let ch = Chapter {
+            book_id: id,
+            number: i,
+            title: "Chapter " + i.to_string() + " of " + title,
+            body: "This is a placeholder chapter. In a fuller edition, the prose of " + title + " would begin here, unfolding across the page as the reader settles in.",
+            word_count: 3000,
+        }
+        chapters.push(ch)
+        i = i + 1
+    }
+    return book
+}
+
+pub fn delete_book(id int) bool {
+    var found bool = false
+    var new_books List<Book> = List<Book>.new([])
+    for book in books {
+        if book.id == id {
+            found = true
+        } else {
+            new_books.push(book)
+        }
+    }
+    books = new_books
+    // Also drop the book's chapters.
+    var new_chapters List<Chapter> = List<Chapter>.new([])
+    for ch in chapters {
+        if ch.book_id != id {
+            new_chapters.push(ch)
+        }
+    }
+    chapters = new_chapters
+    return found
+}
+
+pub fn update_progress(id int, progress int) Book {
+    var new_books List<Book> = List<Book>.new([])
+    var result Book = Book { id: id, title: "", author: "", chapter_count: 0, word_count: 0, progress: 0, status: "unread", cover_color: "" }
+    var ok bool = false
+    for book in books {
+        if book.id == id {
+            let p int = progress
+            var status str = "reading"
+            if p >= 100 {
+                status = "finished"
+            }
+            if p <= 0 {
+                status = "unread"
+            }
+            let updated = Book {
+                id: book.id,
+                title: book.title,
+                author: book.author,
+                chapter_count: book.chapter_count,
+                word_count: book.word_count,
+                progress: p,
+                status: status,
+                cover_color: book.cover_color,
+            }
+            new_books.push(updated)
+            result = updated
+            ok = true
+        } else {
+            new_books.push(book)
+        }
+    }
+    books = new_books
+    if ok {
+        return result
+    }
+    return result
+}
+
+// ═══════════════════════════════════════════════════════════
+// Chapter operations
+// ═══════════════════════════════════════════════════════════
+
+pub fn chapters_of(book_id int) []Chapter {
+    var result List<Chapter> = List<Chapter>.new([])
+    for ch in chapters {
+        if ch.book_id == book_id {
+            result.push(ch)
+        }
+    }
+    return result
+}
+
+pub fn get_chapter(book_id int, number int) Chapter {
+    var found Chapter = Chapter { book_id: book_id, number: number, title: "Chapter " + number.to_string(), body: "This chapter is not yet written.", word_count: 0 }
+    var ok bool = false
+    for ch in chapters {
+        if ch.book_id == book_id {
+            if ch.number == number {
+                // Rebuild as an owned struct. a2r clones borrowed-iter fields
+                // inside a `let` struct ctor (write_expr_for_struct_field), so
+                // building it here and reassigning the bare ident is safe.
+                let rebuilt = Chapter { book_id: ch.book_id, number: ch.number, title: ch.title, body: ch.body, word_count: ch.word_count }
+                found = rebuilt
+                ok = true
+            }
+        }
+    }
+    if ok {
+        return found
+    }
+    return found
+}
