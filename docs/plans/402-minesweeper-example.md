@@ -1,11 +1,17 @@
 # Plan 402: AutoUI 示例 — 扫雷游戏(038-minesweeper)
 
-> **状态(2026-08-08)**: ⚪ 设计完成,待实现
-> **分支**: `plan402/038-minesweeper`(待创建)
-> **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例(对标 012-stopwatch 的精简单文件范式),
-> 用于集中展示 AutoLang 当前已具备但尚未被现有示例覆盖的能力组合:
-> 二维数组(`List<List<Cell>>`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
-> 定时器约定(`var interval` + `.Tick`)、迭代算法(`loop` + 显式栈)。
+> **状态(2026-08-08)**: ✅ 实现完成,浏览器验证全部通过
+> **分支**: `plan402/038-minesweeper`
+> **动机**: 在 AutoUI 示例库中新增一个扫雷游戏示例,
+> 集中展示 escape-hatch(`use { fn }`)、DOM 事件修饰符(`oncontextmenu.prevent`)、
+> 定时器约定(`var interval` + `.Tick`)、`computed` 响应式标签、动态 CSS grid。
+>
+> **架构变更说明(实现期发现)**:原设计假设"顶层 `pub fn` 文件可被 vue codegen 处理"
+> (模仿 016-calendar 的 `calendar_util.at`)。实现时核查发现 **vue codegen 根本不支持
+> 顶层 `pub fn`** —— `generate_component_from_file` 只处理 widget/store,顶层 fn 被静默丢弃,
+> 016-calendar 的 gen 产物也已损坏(从未成功生成)。因此架构调整为 **AutoLang 状态壳
+> (app.at)+ TypeScript 算法 escape-hatch(minesweeper.ts)**,对标 029-external-imports 的
+> 官方机制。详见 §10 实现发现。
 
 ---
 
@@ -18,12 +24,12 @@
 
 | 维度 | 决策 |
 |------|------|
-| 示例定位 | 纯前端精简游戏(对标 012-stopwatch);**不**带后端、**不**带 tests、**不**用 escape-hatch |
-| 游戏架构 | 方案 A —— 游戏逻辑全部用 AutoLang 写在 `widget App` 的 `on`/`fn` 块内,单文件 |
+| 示例定位 | 纯前端游戏(无后端、无 tests);**不**带后端、**不**带 tests |
+| 游戏架构 | **AutoLang 状态壳 + TS 算法 escape-hatch** —— widget(model/view/on)在 `app.at`,游戏算法在 `src/front/utils/minesweeper.ts`,经 `use { fn: ... from }` 导入(对标 029-external-imports) |
 | 游戏特性 | 左键揭开 + 连锁空白展开;右键插旗/取消;难度选择(初级/中级/高级);计时器 + 剩余雷数 |
 | 首次点击 | **保证安全** —— 首次点击在点击时才布雷,保证首点格及其 8 邻均非雷 |
-| 连锁展开 | **显式栈 + `loop` 迭代**(非递归),规避任何潜在调用深度限制 |
-| 示例编号 | `038-minesweeper`;`pac.at` 中 `name: "minesweeper"` |
+| 连锁展开 | **显式栈迭代**(非递归,在 TS 中实现),规避任何潜在调用深度限制 |
+| 示例编号 | `038-minesweeper`;`pac.at` 中 `name: "minesweeper"`,`front_port: 4038`(本机 2779-3478 端口段被 Hyper-V/WSL 排除) |
 
 ### Out of Scope(明确排除)
 
@@ -353,3 +359,63 @@ auto run    # 启动前端(默认端口)
 8. 踩雷 → 显示失败 + 揭开所有雷;全部非雷格揭开 → 显示胜利。
 9. 重开按钮以当前难度重新开始,计时与旗数归零。
 10. `README.md` 完整,Concepts 准确反映所演示的 AutoUI 能力。
+
+---
+
+## 10. 实现发现(AutoUI codegen 边界)
+
+实现过程中发现若干原设计伪代码与真实 vue codegen 行为的偏差,记录如下,供后续示例参考:
+
+1. **顶层 `pub fn` 不被 vue codegen 处理**(关键)。`generate_component_from_file`
+   只遍历 `WidgetDecl`/`StoreDecl`/`ViewFragmentDecl`;`Stmt::Fn` 被静默丢弃。原设计
+   模仿的 016-calendar 的 `calendar_util.at`(纯顶层 fn)从未成功生成 —— 016 的 gen 产物
+   已损坏。**解决**:游戏算法移至手写 `minesweeper.ts`,经 `use { fn: ... from }` 导入
+   (029-external-imports 的官方机制)。
+
+2. **注释符是 `//`,不是 `#`**。`#` 是属性语法(`#[...]`),view 里写 `#` 注释会触发
+   `Expected '[' after '#'` 错误。
+
+3. **`text` 元素不支持函数调用表达式作为内容**。`text mines_left_label(...)` 会解析失败
+   (`Expected term, got RBrace`)。**解决**:用 `computed { label => fn(...) }` 预计算成
+   字段,view 里 `text .label`。
+
+4. **f-string 插值不支持算术运算**。`f"💣 ${.mine_count - .flags_placed}"` 会把 `-` 吞掉,
+   渲染成粘连的 `mine_countflags_placed`。**解决**:computed + TS helper 返回完整字符串。
+
+5. **`style:`/`class:` 里的 `"..." + (if ... {} else {})` 拼接,三元表达式缺括号**。
+   生成 `'...' + x == 'y' ? a : b`,运算符优先级错误。**解决**:把样式判断移入 TS helper
+   (`difficulty_class` / `cell_class`),view 里单一函数调用。
+
+6. **`grid` 元素的 `cols: .cols`(动态)不生成 `grid-template-columns`**。`cols:` 只转成
+   Tailwind `grid-cols-N`(上限 12,且不支持变量)。扫雷列数 9/16/30 超限。**解决**:
+   `grid_style(cols)` helper 返回真实 `grid-template-columns: repeat(N, ...)` 字符串,
+   `:style` 绑定。
+
+7. **`use { fn: a, b from "..." }` 必须单行**。跨行的 fn 列表会触发解析错误。
+
+8. **计时器约定确认有效**:`var interval int = 1000` + `.Tick` handler 正确生成
+   `setInterval`/`clearInterval`(onUnmounted 自动清理)。
+
+9. **端口**:本机 `netsh interface ipv4 show excludedportrange` 显示 2779-3478 段被
+   Hyper-V/WSL 排除,默认 3000 及 3038 均被拒(`EACCES`)。改用 4038(排除段外)。
+
+---
+
+## 11. 验收结果(浏览器实测,2026-08-08)
+
+`auto run` 在 `http://localhost:4038` 启动,通过 IAB 浏览器逐项验证:
+
+| # | 验收项 | 结果 |
+|---|--------|------|
+| 1 | `auto gen` 无报错,生成 `gen/front/vue/` | ✅ |
+| 2 | 默认初级 9×9 棋盘(81 格)正常显示 | ✅ |
+| 3 | 左键揭开;首点中心触发大片安全展开 | ✅ |
+| 4 | 连锁空白展开,数字格(1/2/3)作边界 | ✅ |
+| 5 | 右键插旗出现 🚩,💣 剩余 10→9 | ✅ |
+| 6 | 计时器 playing 状态每秒 +1 | ✅ |
+| 7 | 中级 16×16:256 格 + 40 雷 | ✅ |
+| 8 | 高级 30×16:480 格 + 99 雷 + 30 列 grid | ✅ |
+| 9 | 踩雷 → "踩雷了"+ 全雷揭开 | ✅ |
+| 10 | 🔄 重置:计时/雷数归零,棋盘复原 | ✅ |
+
+全部通过。
