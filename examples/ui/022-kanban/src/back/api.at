@@ -1,0 +1,38 @@
+// api.at — Kanban board API.
+// CRUD over cards + column moves. All endpoints delegate to db.rs (Plan 399
+// route B: full coverage, no State<Db> fallback, no mixed state). Frontend
+// consumes Card via `use back.api`.
+
+/// A card on the board. `column` is one of "todo" | "doing" | "done".
+pub type Card = {
+    id: int
+    title: str
+    column: str
+}
+
+use db
+
+/// GET /api/cards — list every card.
+#[api(method = "GET", path = "/api/cards")]
+pub fn all_cards() []Card {
+    return db.all_cards()
+}
+
+/// POST /api/cards — add a new card (defaults to the "todo" column).
+#[api(method = "POST", path = "/api/cards")]
+pub fn create_card(title str) Card {
+    return db.create_card(title)
+}
+
+/// DELETE /api/cards/:id — remove a card.
+#[api(method = "DELETE", path = "/api/cards/:id")]
+pub fn delete_card(id int) bool {
+    return db.delete_card(id)
+}
+
+/// PUT /api/cards/:id/move — move a card to another column.
+/// `column` is the target column name ("todo" | "doing" | "done").
+#[api(method = "PUT", path = "/api/cards/:id/move")]
+pub fn move_card(id int, column str) Card {
+    return db.move_card(id, column)
+}

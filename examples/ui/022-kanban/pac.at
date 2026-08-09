@@ -2,3 +2,6 @@ name: "kanban"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+api: "rust"
+front_port: 3022
+back_port: 8022

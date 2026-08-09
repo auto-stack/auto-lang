@@ -1,0 +1,14 @@
+# Allow the playwright test manifest to commit (repo-root `*.json` ignores it;
+# committing package.json makes `npm install` work without regeneration, cf. 018).
+!tests/package.json
+
+# Generated / runtime artifacts (still ignored).
+gen/
+.auto/
+dist/
+build/
+examples/
+.am/
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/

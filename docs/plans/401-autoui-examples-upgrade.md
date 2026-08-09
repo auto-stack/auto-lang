@@ -1,15 +1,16 @@
 # Plan 401: AutoUI 示例升级 — 018-027 从单文件玩具到完整 App
 
-> **状态（2026-08-08）**: 🟡 进行中。**018-book-reader 已完成**（playwright 10/10 全绿，干净态可复现）。019-027 待办。
-> **分支**: `plan399/018-book-reader`（018；后续每个示例建议独立分支 `plan401/0NN-xxx`）。
-> **动机**: 计划 399 §后续第 166 行“继续升级 018-027 为正规 App”。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
+> **状态（2026-08-09）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018 已完成；022 阶段 1 完成（Plan 404）。
+> **分支**: 各示例独立分支 `plan401/0NN-xxx`（018 已合并 master）。
+> **动机**: 计划 399 §后续第 166 行"继续升级 018-027 为正规 App"。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
 > **与 Plan 399 的关系**: 399 是 codegen 基建（SSE 多事件 / a2r 根治 / 混合状态硬检查）；本计划是**纯示例升级**，不引入新 codegen 基建（升级过程中发现的 codegen bug 单独修复并在此记录）。
+> **组织约定（2026-08-09 确立）**: 018 是首个示例，建立标准；011 已拆为 Plan 403。**自 022 起，每个示例开独立子计划**（如 `404-022-kanban`），开头引用本纲领的硬指标 + 技术约定。本文件不承载单个示例的实现细节。
 
 ---
 
-## 升级标准（“完整 App”的硬指标）
+## 升级标准（"完整 App"的硬指标）
 
-对齐 015-notes / 017-chat：
+对齐 015-notes / 017-chat / 018-book-reader：
 1. **多模块前端**（非单文件）：`app.at` + store + 子组件/pages，散装变量 → 强类型 model/store。
 2. **强类型后端**（`api: "rust"`）：`src/back/{api.at, db.at}`，`#[api]` 端点委托 db.rs（命中 Plan 399 路线 B 全覆盖）。
 3. **端到端验证**：`auto gen` + `auto run` + curl 后端 + playwright 测试套件（`tests/`，对齐 017-chat 的 package.json/playwright.config.ts/smoke.spec.ts/acceptance.atd 四件套）。
@@ -17,87 +18,84 @@
 
 ---
 
-## §018-book-reader ✅ 已完成（2026-08-08）
+## 流程约定（018 验证可行的五步，子计划套用）
 
-从单文件静态玩具（散装 `ch1/ch2/ch3`、无后端、no-op handler）升级为首个**「多路由 + 强类型 rust 后端 API」融合**示例，对标生产级阅读器（参考工程 `D:\code\vue\auto-read`，Apple Books 风格）。
-
-### 架构（融合 auto-read 的 routes + 015/017 的 CRUD）
+> ⚠️ **不采用"先手写 vue 参考、再翻译成 Auto"**。018 的实际流程是直接写 `.at` → codegen → 遇坑就地补 escape hatch。先 vue 再翻译会掩盖 codegen 真实能力、造成双倍维护。仅在"不确定 Auto 能否表达某交互、需先验证交互设计"时才做一次性 vue 原型（验证完丢弃，不进仓库）。
 
 ```
-src/front/
-  app.at              # App 路由壳：routes{4 条} + 侧边栏 nav + <outlet>
-  book_store.at       # BooksStore：books 集合 + 进度（跨页共享 store）
-  pages/
-    bookshelf.at      # / → Library 网格 + 添加/删除
-    book_detail.at    # /book/:id → 封面/章节列表/继续阅读
-    reading.at        # /book/:id/chapter/:ch → 正文 + 上下章 + 进度持久化
-    settings.at       # /settings → 字号 + 主题说明
-src/back/
-  api.at              # pub type Book/Chapter + 8 个 #[api] 端点（CRUD + 进度）
-  db.at               # 强类型内存存储 + 3 本种子书 × 3 章
-vue/
-  src/components/ThemeToggle.vue   # handmade 主题切换（escape hatch）
-  src/assets/index.css             # 覆盖固定 <html class="dark"> → 默认 light
-tests/               # playwright T1-T10
+1. 直接写 .at（路由/store/后端，套用 018 范式）
+2. auto gen → 生成 vue
+3. playwright 跑通核心流程（先 CRUD，后增量功能）
+4. 遇到 codegen 不支持的 → 二选一：
+   (a) 修 codegen（018 一次修了 3 个，这是示例的红利）
+   (b) 短期修不了 → 补 handmade vue 件（escape hatch，注明原因）
+5. 全绿后 README + 子计划归档
 ```
 
-### 功能（对标 auto-read 的核心 5 页面；笔记/统计/复习后置）
-- 书架 Library（网格 + 进度条 + 添加/删除书）
-- 书籍详情（封面 + 元信息 + 章节列表 + 继续阅读）
-- 阅读视图（章节正文 + 上一章/下一章 + 进度持久化）
-- 设置（字号 + 主题）
-- 暗色**运行时切换**（handmade ThemeToggle.vue，auto-read 招牌功能）
+**多版本策略**：vue 版是主验证路径，优先做。vm/rust 前端版统一后置（Plan 399 §后续已列）——待一批示例的 vue 版达到 018 水平、积累了足够多 codegen 边界 case 后，再系统性攻克 vm/rust 前端。
 
-### 过程中修复 3 个 codegen bug（阻塞本示例，根治通用，已验证 k1/017 无回归）
+---
 
-1. **路由 useRoute 缺失**（`ui_gen/vue.rs` + `ui_gen/ts_adapter.rs`）：
-   lifecycle handler（`.Init`）里的 `router.param("id")` 未触发 `needs_route` → 生成的 `.vue` 不 import `useRoute` → `(useRoute().params...)` undefined 崩页。
-   修复：(a) `stmts_have_route_access`（ts_adapter.rs）增加 `router.param/query/path` 调用识别；(b) vue.rs 的 needs_route 检测扩展到 `widget.lifecycle`（之前只查 `widget.handlers`，漏了 `.Init`）。
+## 技术约定（019-027 子计划必须遵守）
 
-2. **无路径参数 GET URL 多余引号**（`api/targets/typescript.rs:340`）：
-   路径无 `:param` 时 url 用单引号 `'...'`，但 GET query 拼接分支按反引号 trim（`trim_start_matches('`')`）→ 单引号漏进字面，URL 成 `` `'/api/chapters'?...` `` → 404。
-   修复：无参分支也用反引号 `format!("`{}`", path)`。
+以下均来自 018/022 的踩坑沉淀，子计划起草时在开头引用本节即可，无需重述。
 
-3. **a2r 返回位置 struct literal**（db.at 源码层规避，未改 a2r）：
-   `return Chapter{...}` a2r 报 `undefined variable`（返回位置 struct literal 未注册类型）；改 `let x = Chapter{...}; return x` 规避（a2r `let` 注册类型）。同源另有：reassignment `found = Chapter{...}` 解析失败（改 `let rebuilt = ...; found = rebuilt`）、借用迭代变量字段 move（`ch.title` → let-ctor 内访问触发 a2r clone）。均在 db.at 源码层规避并注释。
-
-### 关键技术约定（019-027 复用）
 - **路由参数是字符串**：`router.param("id")` 返回 str，做算术前必须 `.to_int()`（否则 `"1" + 1 = "11"` 字符串拼接）。
 - **多语句 computed 不可用**：vue codegen 不为 block-bodied computed 发 `return` → 恒 undefined。需派生值就存 model 字段、在 handler 里算。
 - **`auto run` 增量重生成不重扫 routes**（缓存所致）：必须先 `auto gen` 保证 `router/index.ts` 存在，再 `auto run`。这是已知边际，记此备查。
 - **handmade vue 件需 `.gitignore` 放行**：仓库根 `examples/**/vue/` + `*.json` 会吞掉 `vue/` 和 `tests/package.json`。需 per-example `.gitignore` 加 `!vue/` + `!tests/package.json`（cf. examples/a3ui-replica/.gitignore）。
-- **per-example 专属端口避免并发冲突**（Plan 401 新增）：多个示例同时测试时，默认 3000/8080 会互相抢占（vite 代理指错后端 → 前端收到 HTML 而非 JSON → `Unexpected token '<'`）。每个示例在 pac.at 声明专属端口：`front_port: 30NN` / `back_port: 80NN`（NN = 示例号）。`auto run`/`auto build` 读 pac.at 作为 `-F`/`-B` 的默认值（CLI 优先）。018 用 3018/8018。playwright `baseURL` 需同步改成专属前端端口。实现见 `pac.rs`（front_port/back_port 字段）+ `automan.rs`（`pac_dev_ports()` getter）+ `main.rs`（Run/Build 端口注入块 CLI 优先兜底）。
-
-### 验证流程（每示例通用）
-`auto gen`（前端，含 routes）→ `auto run`（后端 axum + vite）→ curl 验证 `#[api]` 端点 → `cd tests && npm test`（playwright）。
-
-### 018 验收
-playwright **10/10 全绿**（干净态可复现）：T1 书架渲染 / T2 进度信息 / T3 进详情 / T4 章节列表 / T5 进阅读 / T6 下一章导航 / T7 进度持久化 / T8 添加书 / T9 暗色运行时切换 / T10 控制台无错。
-
-### 不做（明确后置）
-- 笔记系统（auto-read 的 notes/review，下批）
-- 阅读统计（stats，下批）
-- Tauri 文件导入 / SQLite（auto-read 的桌面能力，超出 web 示例定位）
-- sepia 第三主题（先 light/dark，sepia 留扩展）
-- vm/rust 前端版（Plan 399 §后续已列，全示例统一后置）
+- **per-example 专属端口避免并发冲突**：多个示例同时测试时，默认 3000/8080 会互相抢占（vite 代理指错后端 → 前端收到 HTML 而非 JSON → `Unexpected token '<'`）。每个示例在 pac.at 声明专属端口：`front_port: 30NN` / `back_port: 80NN`（NN = 示例号）。playwright `baseURL` 需同步改成专属前端端口。
+  - ⚠️ **端口缺口（2026-08-09 Plan 404 实测发现）**：`pac.at` 的 `front_port`/`back_port` 已在 `pac.rs` 解析、`automan.rs` 有 `pac_dev_ports()` getter，但 **`auto run`（`run_vue`/`run_vue_project`）当前未调用它注入环境变量**，`main.rs` 也无 `-F`/`-B` CLI 参数定义。结果 `auto run` 仍默认 3000/8080，pac.at 端口声明不生效（018 README 描述的 `-F`/`-B` 与自动注入当前未实现）。**临时方案（022 已验证）**：环境变量分离启动——后端 `AUTO_HTTP_PORT=80NN ./app-NNNN-back.exe`；前端 `cd gen/front/vue && AUTO_FRONT_PORT=30NN AUTO_HTTP_PORT=80NN pnpm dev`。playwright `baseURL` 用 `http://localhost:30NN`（vite 默认监听 IPv6 `[::1]`，`127.0.0.1` 连不上）。**根治**：在 `run_vue_project` 调 `pac_dev_ports()` 并 `env::set_var("AUTO_FRONT_PORT"/"AUTO_HTTP_PORT")`，属独立 codegen 改进。
+- **拖拽 codegen 事件已支持，但属性/数据未验证**：`vue.rs` 有完整 HTML5 事件映射（`ondragstart/drag/dragend/dragover/drop`）；`onmousemove.window` 全局修饰符也已支持（026 自定义滚动条即此模式）。但 `draggable` 属性 + `dataTransfer` 在 codegen 无专门处理，属"需验证"灰区（022 阶段 2 待评估）。
+- **for + if 模式丢 auto-:key（R006）**：`for x in xs { if cond { el{...} } }` 中 `for` 的唯一直接子元素是 `if`（非 Element），codegen 不加 auto-`:key`（仅 `body.len()==1` 且为 Element/Component 时才加，`vue.rs:3707`）。功能上对增/删/跨容器移动正确，仅同列表重排有 DOM 复用问题。需重排就改用 store 预派生分组（让 for 体直接是 Element）。
+- **a2r 返回位置 struct literal 的已知规避**：`return T{...}` a2r 报 `undefined variable`；改 `let x = T{...}; return x` 规避。同类：reassignment `found = T{...}` 解析失败（改 `let rebuilt = ...; found = rebuilt`）、借用迭代变量字段 move（在 let-ctor 内访问触发 a2r clone）。均在源码层规避并注释。
 
 ---
 
-## §019-027 待办（候选优先级）
+## 018 范式锚点（子计划参照）
 
-| 示例 | 现状 | 升级方向 | 优先级 |
-|---|---|---|---|
-| 011-calculator | 整数加减乘除、col/row | grid 重构 + MCP 操纵验证 + 多模式 UI → **已拆分 Plan 403** | 高 |
-| 019-video-app | 单文件静态 | 视频列表 + 播放历史后端 | 中 |
-| 020-music-player | 单文件静态 | 播放列表 + 喜欢/最近播放后端 | 中 |
-| 021-blog-viewer | 单文件静态 | 文章列表 + 评论后端 | 中 |
-| 022-kanban | 单文件静态 | 看板 CRUD + 拖拽（Plan 399 §后续点名候选） | 高 |
-| 023-realworld | 单文件静态 | RealWorld 精简（文章/评论/关注，Plan 399 §后续点名候选） | 高 |
-| 024-widget-gallery | 单文件静态 | 组件目录（展示性，可能无需后端） | 低 |
-| 025-notes-extended | 已较完整 | 补 rust 后端 + playwright 对齐 | 低 |
-| 026-027 | 能力展示示例 | 保留（非 App 性质，可能不升级） | — |
+018 是首个完整示例，其结构作为后续示例的模板。**实现详情见 master 上的源码**，本纲领只保留索引：
 
-**推荐下一批**：022-kanban（CRUD + 拖拽，复用 018 的路由/store/后端范式，且 Plan 399 点名）。
+```
+examples/ui/018-book-reader/
+  pac.at                    # front_port:3018 / back_port:8018 / api:"rust"
+  src/front/
+    app.at                  # App 路由壳：routes{4 条} + 侧边栏 + outlet
+    book_store.at           # BooksStore：跨页共享 store（k1 模式）
+    pages/*.at              # 4 个路由页
+  src/back/
+    api.at                  # pub type + #[api] 端点，委托 db
+    db.at                   # 强类型内存存储 + 种子数据
+  vue/src/components/*.vue  # handmade escape hatch（暗色运行时切换）
+  tests/                    # playwright 四件套
+```
+
+**018 过程中修复的 3 个 codegen bug（已根治通用）**：
+1. 路由 useRoute 缺失（`ui_gen/vue.rs` + `ui_gen/ts_adapter.rs`）：lifecycle `.Init` 里的 `router.param()` 未触发 `needs_route` → 扩展 `stmts_have_route_access` 识别 `router.param/query/path`，needs_route 检测扩展到 `widget.lifecycle`。
+2. 无路径参数 GET URL 多余引号（`api/targets/typescript.rs:340`）：无 `:param` 时 url 用单引号，GET query 拼接按反引号 trim → 单引号漏进字面 → 404。改无参分支也用反引号。
+3. a2r 返回位置 struct literal：源码层规避（见上节技术约定），未改 a2r。
+
+**018 验收**：playwright **10/10 全绿**（干净态可复现）。
+
+---
+
+## §进度总表
+
+| 示例 | 现状 | 升级状态 | 子计划 | 备注 |
+|---|---|---|---|---|
+| 018-book-reader | 已升级 | ✅ 完成 | (本纲领 §018) | 10/10 全绿，合并 master `bc5e1041` |
+| 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
+| 022-kanban | 已升级 | 🟢 阶段1完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 5/5 全绿；拖拽待阶段2 |
+| 023-realworld | 227 行单文件 | ⬜ 待办 | — | 高优先级 |
+| 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
+| 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
+| 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
+| 024-widget-gallery | 283 行展示型 | ⬜ 待办 | — | 低（可能无需后端） |
+| 025-notes-extended | 6 文件无后端 | ⬜ 待办 | — | 低 |
+| 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
+| 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
+
+**推荐批次顺序**：022-kanban（✅ 阶段1完成）→ 023-realworld（高价值）→ 019/020/021（中等）→ 024/025（低）。
 
 ---
 
@@ -105,5 +103,6 @@ playwright **10/10 全绿**（干净态可复现）：T1 书架渲染 / T2 进�
 
 | commit/分支 | 内容 | 示例 |
 |---|---|---|
-| `plan401/018-vm-routing` → master | 018 完整升级 + per-example 端口 + VM/iced 路由支持 + storage 内置（已合并 master `bc5e1041`） | 018 |
+| `plan401/018-vm-routing` → master | 018 完整升级 + per-example 端口 + VM/iced 路由支持 + storage 内置（合并 master `bc5e1041`） | 018 |
 | `plan399/018-book-reader` | 018 升级 + 3 codegen 修复 + playwright 10/10 | 018 |
+| `plan401/022-kanban` | 022 阶段1：CRUD + 列移动 + playwright 5/5（待提交） | 022 |

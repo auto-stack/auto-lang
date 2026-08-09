@@ -1,0 +1,32 @@
+// board_store.at — shared store. Holds the board's cards and re-fetches after
+// every mutation (k1 pattern, cf. 018 book_store.at). Pages do `use store: BoardStore`.
+use back.api: all_cards, create_card, delete_card, move_card
+
+store BoardStore {
+    model {
+        var cards []Card = []
+        var loading bool = false
+    }
+
+    msg Msg { Init, AddCard(str), RemoveCard(int), MoveCard(int, str) }
+
+    on {
+        .Init -> {
+            .loading = true
+            .cards = all_cards()
+            .loading = false
+        }
+        .AddCard(title str) -> {
+            create_card(title)
+            .cards = all_cards()
+        }
+        .RemoveCard(id int) -> {
+            delete_card(id)
+            .cards = all_cards()
+        }
+        .MoveCard(id int, column str) -> {
+            move_card(id, column)
+            .cards = all_cards()
+        }
+    }
+}
