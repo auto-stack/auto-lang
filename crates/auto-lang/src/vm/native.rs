@@ -4910,7 +4910,13 @@ pub fn shim_rand_random(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
         .unwrap_or_default()
         .as_nanos() as u64;
     let mut rng = Xorshift64::new(seed);
-    task.ram.push_i32(rng.next() as i32);
+    // Plan 402 §13.10: the native registry marks auto.rand.random as Void
+    // return, so push_f64 here would leave a float that codegen doesn't
+    // expect (stack imbalance). Return a non-negative i32 instead — the old
+    // push_i32(rng.next() as i32) returned arbitrary (often negative) ints,
+    // so `(math.random() * n).to_int()` produced negative indices and
+    // mine placement never worked. Mask to 31 bits → [0, i32::MAX).
+    task.ram.push_i32((rng.next() & 0x7FFF_FFFF) as i32);
     Ok(())
 }
 

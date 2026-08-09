@@ -2291,78 +2291,50 @@ impl AutoVM {
                     // Get types from flash metadata
                     let types = &self.flash.object_types[key_index as usize];
 
-                    // Pop values from stack (in reverse order since last value is on top)
-                    // Convert each value based on its type
+                    // Pop values from stack (in reverse order since last value is on top).
+                    // Plan 402 §13.10: decode by the value's ACTUAL nanbox tag, not the
+                    // compile-time ObjectType. infer_object_type is unreliable for
+                    // variable/field references (e.g. `mine: cell.mine` infers
+                    // NestedObject instead of Bool), which caused CREATE_OBJ to pop
+                    // bool/int/string values with the wrong branch (NestedObject does
+                    // pop_i32() as usize → Value::VmRef with garbage ids). Decoding by
+                    // tag — the same approach the array push path uses (engine.rs push
+                    // handler) — is type-inferral-free and always correct.
                     let mut values = Vec::with_capacity(field_count as usize);
                     for i in 0..field_count {
                         let type_idx = (field_count - 1 - i) as usize;
                         let obj_type = types.get(type_idx).copied().unwrap_or(ObjectType::Int);
-
-                        let value = match obj_type {
-                            ObjectType::Int => {
-                                let bits = task.ram.pop_i32();
-                                auto_val::Value::Int(bits)
-                            }
-                            ObjectType::Uint => {
-                                let bits = task.ram.pop_i32();
-                                auto_val::Value::Uint(bits as u32)
-                            }
-                            // Plan 118: Byte type for object fields
-                            ObjectType::Byte => {
-                                let bits = task.ram.pop_i32();
-                                auto_val::Value::Byte(bits as u8)
-                            }
-                            ObjectType::Float => {
-                                let bits = task.ram.pop_f32();
-                                auto_val::Value::Float(bits as f64)
-                            }
-                            ObjectType::Double => {
-                                let bits = task.ram.pop_f64();
-                                auto_val::Value::Double(bits)
-                            }
-                            ObjectType::String => {
-                                let str_idx = pop_str_idx(&mut task.ram);
-                                let strings = self.strings.read().unwrap();
-                                if let Some(str_bytes) = strings.get(str_idx) {
-                                    let s = String::from_utf8_lossy(str_bytes).to_string();
-                                    auto_val::Value::Str(s.into())
-                                } else {
-                                    auto_val::Value::Nil
-                                }
-                            }
-                            ObjectType::Bool => {
-                                // Plan 402 §13.10: use decode_bool on the nanbox
-                                // value, not pop_i32. A `false` literal is pushed
-                                // by PUSH_BOOL as encode_bool(false) whose payload
-                                // is i32::MIN+1; pop_i32 reads that as -2147483647
-                                // and `!= 0` wrongly yields true — so every bool
-                                // field in an Obj literal (mine/revealed/flagged)
-                                // was stored as true regardless of its value.
-                                let nv = task.ram.pop_nv();
-                                auto_val::Value::Bool(auto_val::decode_bool(nv))
-                            }
-                            ObjectType::Char => {
-                                let bits = task.ram.pop_i32();
-                                if let Some(c) = char::from_u32(bits as u32) {
-                                    auto_val::Value::Char(c)
-                                } else {
-                                    auto_val::Value::Nil
-                                }
-                            }
-                            // Plan 073: Nested object field - store object ID as VmRef
-                            ObjectType::NestedObject => {
-                                let nested_id = task.ram.pop_i32() as usize;
-                                auto_val::Value::VmRef(auto_val::VmRef { id: nested_id })
-                            }
-                            // Plan 073: Array field - store as VmRef (for when arrays are implemented)
-                            ObjectType::Array => {
-                                let array_id = task.ram.pop_i32() as usize;
-                                auto_val::Value::VmRef(auto_val::VmRef { id: array_id })
-                            }
-                            // Plan 118 Phase 4: Void type - should not appear in object fields, but handle gracefully
-                            ObjectType::Void => {
-                                let _ = task.ram.pop_i32(); // Pop the void value
+                        let nv = task.ram.pop_nv();
+                        let value = if auto_val::is_object(nv) {
+                            auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+                        } else if auto_val::is_string(nv) {
+                            let str_idx = auto_val::decode_string(nv) as usize;
+                            let strings = self.strings.read().unwrap();
+                            if let Some(str_bytes) = strings.get(str_idx) {
+                                auto_val::Value::Str(String::from_utf8_lossy(str_bytes).to_string().into())
+                            } else {
                                 auto_val::Value::Nil
+                            }
+                        } else if auto_val::is_bool(nv) {
+                            auto_val::Value::Bool(auto_val::decode_bool(nv))
+                        } else if auto_val::is_null(nv) {
+                            auto_val::Value::Nil
+                        } else if auto_val::is_f64(nv) {
+                            auto_val::Value::Double(auto_val::decode_f64(nv))
+                        } else if auto_val::is_f32(nv) {
+                            auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                        } else {
+                            // i32 (and everything else): decode payload. Byte/Uint/Char
+                            // are stored as raw i32 too — apply the obj_type narrowing
+                            // only for these known-int payload types.
+                            let bits = auto_val::decode_i32(nv);
+                            match obj_type {
+                                ObjectType::Byte => auto_val::Value::Byte(bits as u8),
+                                ObjectType::Uint => auto_val::Value::Uint(bits as u32),
+                                ObjectType::Char => {
+                                    char::from_u32(bits as u32).map(auto_val::Value::Char).unwrap_or(auto_val::Value::Nil)
+                                }
+                                _ => auto_val::Value::Int(bits),
                             }
                         };
                         values.push(value);
@@ -5426,12 +5398,29 @@ impl AutoVM {
                                 // No-op: receiver stays on stack as-is
                             }
                             "to_int" | "parse_int" => {
-                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
-                                let s = self.strings.read().unwrap()
-                                    .get(str_idx)
-                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
-                                    .unwrap_or_default();
-                                let result = s.parse::<i32>().unwrap_or(0);
+                                // Plan 402 §13.10: handle float→int truncation too.
+                                // codegen routes ALL to_int calls here regardless of
+                                // receiver type (there is no float/int type_name
+                                // dispatch branch). A float receiver (e.g.
+                                // `(math.random() * n).to_int()`) was decoded via
+                                // decode_string on a float nanbox → garbage. Decode
+                                // by the receiver's actual tag.
+                                let result = if auto_val::is_f64(receiver_nv) {
+                                    auto_val::decode_f64(receiver_nv) as i32
+                                } else if auto_val::is_f32(receiver_nv) {
+                                    auto_val::decode_f32(receiver_nv) as i32
+                                } else if auto_val::is_string(receiver_nv) {
+                                    let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                    let s = self.strings.read().unwrap()
+                                        .get(str_idx)
+                                        .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                        .unwrap_or_default();
+                                    s.parse::<i32>().unwrap_or(0)
+                                } else if auto_val::is_bool(receiver_nv) {
+                                    if auto_val::decode_bool(receiver_nv) { 1 } else { 0 }
+                                } else {
+                                    auto_val::decode_i32(receiver_nv)
+                                };
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
                             }
                             "to_uint" => {
