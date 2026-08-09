@@ -1,0 +1,108 @@
+// pages/home.at — Global Feed + Popular Tags sidebar. Tag filtering is
+// client-side (article.tagList.contains(active_tag)). Cf. vue-ref Home.vue.
+use article_store: ArticleStore
+
+widget home {
+    msg Msg { Init, SetTag(str), ClearTag, OpenArticle(str) }
+
+    model {
+        // Popular tags (stage 1: static list matching seed articles; avoids
+        // splitting comma-strings in-template).
+        var tags []str = ["React", "JavaScript", "Performance", "TypeScript", "tRPC", "API", "CSS", "Web", "Design"]
+    }
+
+    view {
+        row {
+            style: "max-w-3xl mx-auto px-4 py-6 gap-6"
+            // Feed column
+            col {
+                style: "flex-1"
+                row {
+                    style: "gap-4 border-b border-brand-green pb-1 mb-2"
+                    text "Global Feed" {
+                        onclick: .ClearTag
+                        style: "text-brand-green font-medium cursor-pointer"
+                    }
+                    if .store.active_tag != "" {
+                        text f"# ${.store.active_tag}" { style: "text-brand-green font-medium" }
+                    }
+                }
+                if .store.articles.len() == 0 {
+                    text "No articles are here... yet." { style: "py-8 text-center text-gray-400" }
+                }
+                for article in .store.articles {
+                    if .store.active_tag == "" {
+                        col {
+                            style: "py-4 border-b border-gray-100"
+                            row {
+                                style: "items-center gap-2 mb-1"
+                                text article.author { style: "text-sm font-medium text-brand-green" }
+                                text article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                            }
+                            col {
+                                onclick: .OpenArticle(article.slug)
+                                style: "cursor-pointer"
+                                text article.title { style: "text-xl font-semibold text-gray-800" }
+                                text article.description { style: "text-gray-500 text-sm mt-1" }
+                            }
+                            row {
+                                style: "mt-2 items-center"
+                                text "Read more..." {
+                                    onclick: .OpenArticle(article.slug)
+                                    style: "text-xs text-gray-400 hover:underline cursor-pointer"
+                                }
+                                text article.tagList {
+                                    style: "ml-auto text-xs px-2 py-0.5 rounded-full border border-gray-300 text-gray-600"
+                                }
+                            }
+                        }
+                    } else {
+                        if article.tagList.contains(.store.active_tag) {
+                            col {
+                                style: "py-4 border-b border-gray-100"
+                                row {
+                                    style: "items-center gap-2 mb-1"
+                                    text article.author { style: "text-sm font-medium text-brand-green" }
+                                    text article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                                }
+                                col {
+                                    onclick: .OpenArticle(article.slug)
+                                    style: "cursor-pointer"
+                                    text article.title { style: "text-xl font-semibold text-gray-800" }
+                                    text article.description { style: "text-gray-500 text-sm mt-1" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Popular Tags sidebar
+            col {
+                style: "w-48 hidden md:block"
+                col {
+                    style: "bg-gray-50 rounded p-3"
+                    text "Popular Tags" { style: "text-sm font-medium text-gray-500 mb-2" }
+                    row {
+                        style: "flex-wrap gap-1"
+                        for tag in .tags {
+                            text tag {
+                                onclick: .SetTag(tag)
+                                style: "text-xs px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-100"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { store.Init() }
+        .SetTag(t str) -> { store.SetTag(t) }
+        .ClearTag -> { store.ClearTag() }
+        .OpenArticle(slug str) -> {
+            store.OpenArticle(slug)
+            router.push("/article/" + slug)
+        }
+    }
+}

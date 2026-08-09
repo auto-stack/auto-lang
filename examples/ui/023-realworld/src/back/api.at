@@ -1,0 +1,89 @@
+// api.at — RealWorld (Conduit) API, stage 1 subset.
+// Authentication + article feed + article detail + comments + tags.
+// All endpoints delegate to db.rs (Plan 399 route B). Frontend consumes
+// User/Article/Comment via `use back.api`.
+//
+// Stage 1 scope (Plan 405): login/register/current-user + list/get articles +
+// comments + tags. Stage 2 adds article CRUD, comment post/delete, follow,
+// favorite. Response is FLAT (not the RealWorld {article:{...}} wrapper) —
+// the auto app is self-contained, no cross-impl interop needed.
+
+/// A registered user. `token` is the mock JWT returned by login/register.
+pub type User = {
+    id: int
+    email: str
+    username: str
+    bio: str
+    image: str
+    token: str
+}
+
+/// An article in the feed. `tagList` is comma-separated (stage 1; []str TBD).
+pub type Article = {
+    slug: str
+    title: str
+    description: str
+    body: str
+    tagList: str
+    author: str
+    favoritesCount: int
+    createdAt: str
+}
+
+/// A comment on an article. `slug` is the article it belongs to.
+pub type Comment = {
+    id: int
+    slug: str
+    body: str
+    author: str
+    createdAt: str
+}
+
+use db
+
+/// POST /api/users/login — log in with email + password. Returns the user
+/// (with token) on success, or an empty User (id=0) on bad credentials.
+/// (Stage 1 returns a non-Option User so the frontend store can hold it
+/// directly without ?T unwrapping — codegen's handling of ?T fields in
+/// templates is unverified. Stage 2 may switch to ?User.)
+#[api(method = "POST", path = "/api/users/login")]
+pub fn login(email str, password str) User {
+    return db.login(email, password)
+}
+
+/// POST /api/users — register a new user. Returns the new user (with token).
+#[api(method = "POST", path = "/api/users")]
+pub fn register(username str, email str, password str) User {
+    return db.register(username, email, password)
+}
+
+/// GET /api/user — current user (stage 1 placeholder: first seed user). Real
+/// token auth = stage 2. Returns empty User (id=0) if none.
+#[api(method = "GET", path = "/api/user")]
+pub fn current_user() User {
+    return db.current_user()
+}
+
+/// GET /api/articles — list all articles (no server-side tag filter; the
+/// frontend filters by tagList client-side, since a2r doesn't clone borrowed
+/// String fields when passing them to a helper fn).
+#[api(method = "GET", path = "/api/articles")]
+pub fn list_articles() []Article {
+    return db.list_articles()
+}
+
+/// GET /api/articles/:slug — fetch a single article by slug.
+#[api(method = "GET", path = "/api/articles/:slug")]
+pub fn get_article(slug str) ?Article {
+    return db.get_article(slug)
+}
+
+/// GET /api/articles/:slug/comments — list comments for an article.
+#[api(method = "GET", path = "/api/articles/:slug/comments")]
+pub fn list_comments(slug str) []Comment {
+    return db.list_comments(slug)
+}
+
+// NOTE: no /api/tags endpoint — tags are derived client-side from the article
+// tagList fields (a2r has no List<str>, and aggregating Strings server-side
+// hits borrow-checker issues). The frontend splits each article.tagList.

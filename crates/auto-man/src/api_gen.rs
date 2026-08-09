@@ -710,7 +710,11 @@ fn generate_cargo_toml(package_name: &str, has_sse: bool, has_db: bool) -> Strin
 async-stream = \"0.3\"
 futures = \"0.3\"" } else { "" };
     // Plan musk-022 CRUD 扩展: a2r 全局变量转译用 once_cell::Lazy.
+    // Plan 405: db.at 字符串操作(+ 拼接/contains)会让 a2r 生成 `use a2r_std`
+    // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
+    // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let db_deps = if has_db { "
+auto-lang.workspace = true
 once_cell = \"1\"" } else { "" };
     format!(
         r#"[package]
