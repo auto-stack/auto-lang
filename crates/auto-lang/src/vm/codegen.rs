@@ -130,6 +130,21 @@ fn type_to_native_suffix(ty: &Type) -> &'static str {
     }
 }
 
+/// EDGE-04-B: 返回某 Type 的默认零值 Expr,用于 `Type{}` 空字面量补齐缺失字段。
+/// 避免 CONSTRUCT_INSTANCE 从栈上 pop 垃圾值导致 "Invalid instance ID: 0"。
+fn default_expr_for_type(ty: &Type) -> crate::ast::Expr {
+    use crate::ast::Expr;
+    match ty {
+        Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize | Type::Byte
+        | Type::StrFixed(_) | Type::Char => Expr::Int(0),
+        Type::Float | Type::Double => Expr::Float(0.0, "0.0".into()),
+        Type::Bool => Expr::Bool(false),
+        Type::StrSlice | Type::StrOwned | Type::CStrLit => Expr::Str("".into()),
+        // List / 复合类型 / 用户类型:Nil 占位(handler 通常会随后赋真值)。
+        _ => Expr::Nil,
+    }
+}
+
 /// Codegen: Compiles AST directly to AutoVM Bytecode
 pub struct Codegen {
     pub code: Vec<u8>,
@@ -4874,6 +4889,15 @@ impl Codegen {
                         // 1. Compile each field value expression (pushes values onto stack)
                         // Stack: ..., value1, value2, ..., valueN
                         let field_defs = class_type.fields();
+                        // EDGE-04-B: `Type{}` 空字面量(无 args/body)时 field_values
+                        // 不足 field_count,CONSTRUCT_INSTANCE 会从栈上 pop 垃圾值 →
+                        // 字段是无效 heap id(Invalid instance ID: 0)。补类型默认值。
+                        while field_values.len() < field_count {
+                            let default_expr = field_defs.get(field_values.len())
+                                .map(|fd| default_expr_for_type(&fd.field_type))
+                                .unwrap_or(crate::ast::Expr::Nil);
+                            field_values.push(default_expr);
+                        }
                         for (i, value_expr) in field_values.iter().enumerate() {
                             vm_debug!("DEBUG codegen: Compiling field value {}", i);
                             self.compile_expr(value_expr)?;
