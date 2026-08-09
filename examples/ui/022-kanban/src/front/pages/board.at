@@ -1,12 +1,17 @@
 // pages/board.at — the three-column board. Reads cards from the shared store,
-// filters by column, and offers add / move / delete (cf. 018 bookshelf.at).
+// filters by column, and offers add / move / delete / drag-and-drop
+// (cf. 018 bookshelf.at).
 use store: BoardStore
 
 widget board {
-    msg Msg { Init, AddCard, TitleChanged, RemoveCard(int), MoveCard(int, str) }
+    msg Msg { Init, AddCard, TitleChanged, RemoveCard(int), MoveCard(int, str), DragStart(int), AllowDrop, Drop(str) }
 
     model {
         var new_title str = ""
+        // id of the card currently being dragged (set by DragStart, read by Drop).
+        // We use widget state instead of HTML5 dataTransfer because source and
+        // target live in the same widget — simpler and avoids str↔int coercion.
+        var drag_id int = 0
     }
 
     view {
@@ -32,6 +37,8 @@ widget board {
                 // To Do
                 col {
                     style: "w-80 bg-gray-100 rounded-xl flex-shrink-0 p-3 gap-2"
+                    ondragover.prevent: .AllowDrop
+                    ondrop: .Drop("todo")
                     row {
                         style: "items-center px-1 py-2"
                         text "To Do" { style: "text-sm font-semibold text-gray-700" }
@@ -42,7 +49,9 @@ widget board {
                             if card.column == "todo" {
                                 row {
                                     key: card.id
-                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm"
+                                    draggable: true
+                                    ondragstart: .DragStart(card.id)
+                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm cursor-move"
                                     text card.title { style: "text-sm font-medium text-gray-800 flex-1" }
                                     button ">" {
                                         onclick: .MoveCard(card.id, "doing"),
@@ -60,6 +69,8 @@ widget board {
                 // In Progress
                 col {
                     style: "w-80 bg-orange-50 rounded-xl flex-shrink-0 p-3 gap-2"
+                    ondragover.prevent: .AllowDrop
+                    ondrop: .Drop("doing")
                     row {
                         style: "items-center px-1 py-2"
                         text "In Progress" { style: "text-sm font-semibold text-orange-600" }
@@ -70,7 +81,9 @@ widget board {
                             if card.column == "doing" {
                                 row {
                                     key: card.id
-                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm"
+                                    draggable: true
+                                    ondragstart: .DragStart(card.id)
+                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm cursor-move"
                                     text card.title { style: "text-sm font-medium text-gray-800 flex-1" }
                                     button ">" {
                                         onclick: .MoveCard(card.id, "done"),
@@ -88,6 +101,8 @@ widget board {
                 // Done
                 col {
                     style: "w-80 bg-green-50 rounded-xl flex-shrink-0 p-3 gap-2"
+                    ondragover.prevent: .AllowDrop
+                    ondrop: .Drop("done")
                     row {
                         style: "items-center px-1 py-2"
                         text "Done" { style: "text-sm font-semibold text-green-600" }
@@ -98,7 +113,9 @@ widget board {
                             if card.column == "done" {
                                 row {
                                     key: card.id
-                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm"
+                                    draggable: true
+                                    ondragstart: .DragStart(card.id)
+                                    style: "w-full items-center bg-white rounded-lg px-3 py-2 shadow-sm cursor-move"
                                     text card.title { style: "text-sm font-medium text-gray-800 flex-1" }
                                     button "×" {
                                         onclick: .RemoveCard(card.id),
@@ -124,5 +141,13 @@ widget board {
         }
         .RemoveCard(id int) -> { store.RemoveCard(id) }
         .MoveCard(id int, column str) -> { store.MoveCard(id, column) }
+        .DragStart(id int) -> { .drag_id = id }
+        .AllowDrop -> { }
+        .Drop(column str) -> {
+            if .drag_id != 0 {
+                store.MoveCard(.drag_id, column)
+                .drag_id = 0
+            }
+        }
     }
 }

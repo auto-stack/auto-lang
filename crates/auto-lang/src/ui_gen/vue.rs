@@ -5950,6 +5950,41 @@ impl VueGenerator {
 
     /// Generate shadcn-vue component attributes based on element type
     /// Returns: (attributes, text_content, generated_children_html)
+    /// Pass-through for arbitrary HTML attributes on layout primitives (row/col)
+    /// whose `generate_shadcn_attrs` arms only handle class. Emits any prop that
+    /// isn't class/style/gap/text/style_obj/show/ref (handled elsewhere) as a
+    /// v-bind expression (`:key="value"`) for Expr values or a static literal
+    /// (`key="value"`) for string literals. This lets `row { draggable: "true",
+    /// ondragstart: ... }` emit `:draggable="true"` alongside the flex class.
+    /// Called from within `generate_shadcn_attrs` (non-Result context), so expr
+    /// conversion failures are silently skipped (matching show/style_obj above).
+    fn push_passthrough_attrs(
+        &self,
+        attrs: &mut Vec<String>,
+        props: &HashMap<String, AuraPropValue>,
+    ) {
+        for (key, value) in props {
+            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref") {
+                continue;
+            }
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                    attrs.push(format!("{}=\"{}\"", key, Self::escape_js_string(s.as_str())));
+                }
+                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                    attrs.push(format!(":{}=\"{}\"", key, resolved));
+                }
+                AuraPropValue::Expr(expr) => {
+                    if let Ok(value_str) = self.expr_to_vue_bound_value(expr) {
+                        attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn generate_shadcn_attrs(
         &mut self,
         tag: &str,
@@ -6056,6 +6091,12 @@ impl VueGenerator {
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
+                // Pass-through for arbitrary HTML attributes (e.g. draggable,
+                // ondragstart handled as event elsewhere) that aren't covered
+                // by the layout-specific class logic above. Mirrors the plain
+                // element branch: skip class/style/gap/text/special keys; v-bind
+                // expressions (:key="..."), static literals (key="...").
+                self.push_passthrough_attrs(&mut attrs, props);
             }
 
             "col" | "column" => {
@@ -6071,6 +6112,7 @@ impl VueGenerator {
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
+                self.push_passthrough_attrs(&mut attrs, props);
             }
 
             "scroll" => {
