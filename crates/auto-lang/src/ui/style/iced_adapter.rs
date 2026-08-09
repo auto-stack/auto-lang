@@ -365,11 +365,16 @@ impl IcedStyle {
         //     vertical fill intent. A non-zero min-height (min-h-64) does NOT
         //     trigger this (e.g. a textarea that should be at least 64px, not
         //     fill all space).
+        //   - EDGE-16 问题2:flex-col(纵向容器)在横向 row 里用 flex-1,
+        //     说明它要占满 row 的交叉轴(高度)。CSS flexbox 默认 align-items:
+        //     stretch 会拉伸,iced 需显式补 height=Fill。
+        let is_flex_col = style.classes.iter().any(|c| matches!(c, StyleClass::FlexCol));
         if iced_style.width == Some(IcedSize::Full)
             && iced_style.height.is_none()
             && (iced_style.overflow_x.is_some()
                 || iced_style.overflow_y.is_some()
-                || iced_style.min_height == Some(0.0))
+                || iced_style.min_height == Some(0.0)
+                || is_flex_col)
         {
             iced_style.height = Some(IcedSize::Full);
         }
