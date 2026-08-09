@@ -47,7 +47,8 @@
 - **per-example 专属端口避免并发冲突**：多个示例同时测试时，默认 3000/8080 会互相抢占（vite 代理指错后端 → 前端收到 HTML 而非 JSON → `Unexpected token '<'`）。每个示例在 pac.at 声明专属端口：`front_port: 30NN` / `back_port: 80NN`（NN = 示例号）。playwright `baseURL` 需同步改成专属前端端口。
   - ⚠️ **端口缺口（2026-08-09 Plan 404 实测发现）**：`pac.at` 的 `front_port`/`back_port` 已在 `pac.rs` 解析、`automan.rs` 有 `pac_dev_ports()` getter，但 **`auto run`（`run_vue`/`run_vue_project`）当前未调用它注入环境变量**，`main.rs` 也无 `-F`/`-B` CLI 参数定义。结果 `auto run` 仍默认 3000/8080，pac.at 端口声明不生效（018 README 描述的 `-F`/`-B` 与自动注入当前未实现）。**临时方案（022 已验证）**：环境变量分离启动——后端 `AUTO_HTTP_PORT=80NN ./app-NNNN-back.exe`；前端 `cd gen/front/vue && AUTO_FRONT_PORT=30NN AUTO_HTTP_PORT=80NN pnpm dev`。playwright `baseURL` 用 `http://localhost:30NN`（vite 默认监听 IPv6 `[::1]`，`127.0.0.1` 连不上）。**根治**：在 `run_vue_project` 调 `pac_dev_ports()` 并 `env::set_var("AUTO_FRONT_PORT"/"AUTO_HTTP_PORT")`，属独立 codegen 改进。
 - **拖拽 codegen 事件已支持，但属性/数据未验证**：`vue.rs` 有完整 HTML5 事件映射（`ondragstart/drag/dragend/dragover/drop`）；`onmousemove.window` 全局修饰符也已支持（026 自定义滚动条即此模式）。但 `draggable` 属性 + `dataTransfer` 在 codegen 无专门处理，属"需验证"灰区（022 阶段 2 待评估）。
-- **for + if 模式丢 auto-:key（R006）**：`for x in xs { if cond { el{...} } }` 中 `for` 的唯一直接子元素是 `if`（非 Element），codegen 不加 auto-`:key`（仅 `body.len()==1` 且为 Element/Component 时才加，`vue.rs:3707`）。功能上对增/删/跨容器移动正确，仅同列表重排有 DOM 复用问题。需重排就改用 store 预派生分组（让 for 体直接是 Element）。
+- **for + if 模式的 :key**（R006 warning，已验证无害）：`for x in xs { if cond { el{...} } }` 会触发 R006 warning，但 codegen 实际会为内层元素生成 `:key`（022 实测 `for card in .store.cards { if card.column=="todo" { row{key:card.id,...} } }` 生成 `:key="card.id"`）。warning 判断滞后于 key 生成，可忽略；若要消 warning 就改用 store 预派生分组（让 for 体直接是 Element）。
+- **row/col 布局元素现在支持任意 HTML 属性**（022 阶段2 修复）：之前 row/col 的 shadcn 分支只输出 class，丢弃 draggable 等普通 prop。现已通过 `push_passthrough_attrs` 透传（vue.rs）。后续示例在 row/col 上写 `draggable`/`data-*` 等任意属性均可。
 - **a2r 返回位置 struct literal 的已知规避**：`return T{...}` a2r 报 `undefined variable`；改 `let x = T{...}; return x` 规避。同类：reassignment `found = T{...}` 解析失败（改 `let rebuilt = ...; found = rebuilt`）、借用迭代变量字段 move（在 let-ctor 内访问触发 a2r clone）。均在源码层规避并注释。
 
 ---
@@ -85,7 +86,7 @@ examples/ui/018-book-reader/
 |---|---|---|---|---|
 | 018-book-reader | 已升级 | ✅ 完成 | (本纲领 §018) | 10/10 全绿，合并 master `bc5e1041` |
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
-| 022-kanban | 已升级 | 🟢 阶段1完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 5/5 全绿；拖拽待阶段2 |
+| 022-kanban | 已升级 | ✅ 完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
 | 023-realworld | 227 行单文件 | ⬜ 待办 | — | 高优先级 |
 | 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
 | 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
@@ -95,7 +96,7 @@ examples/ui/018-book-reader/
 | 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 | 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 
-**推荐批次顺序**：022-kanban（✅ 阶段1完成）→ 023-realworld（高价值）→ 019/020/021（中等）→ 024/025（低）。
+**推荐批次顺序**：022-kanban（✅ 完成）→ 023-realworld（高价值）→ 019/020/021（中等）→ 024/025（低）。
 
 ---
 
@@ -105,4 +106,5 @@ examples/ui/018-book-reader/
 |---|---|---|
 | `plan401/018-vm-routing` → master | 018 完整升级 + per-example 端口 + VM/iced 路由支持 + storage 内置（合并 master `bc5e1041`） | 018 |
 | `plan399/018-book-reader` | 018 升级 + 3 codegen 修复 + playwright 10/10 | 018 |
-| `plan401/022-kanban` | 022 阶段1：CRUD + 列移动 + playwright 5/5（待提交） | 022 |
+| `plan401/022-kanban` | 022 阶段1：CRUD + 列移动 + playwright 5/5 | 022 |
+| `plan401/022-drag` | 022 阶段2：HTML5 拖拽 + 修 row/col 属性穿透 bug + playwright 6/6 | 022 |

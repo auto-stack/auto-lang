@@ -90,14 +90,16 @@ doing→done, delete card, state persistence across reload, no console errors.
 
 ## Notes
 
-- Card movement uses explicit `>` buttons (todo→doing→done) and `×` to delete.
-- **Drag-and-drop is deferred** (Plan 404 stage 2): codegen has the HTML5
-  event mapping (`ondragstart`/`ondrop` etc.), but `draggable` attribute and
-  `dataTransfer` handling are unverified; stage 1 ships button-based moves.
-- **R006 `:key` warning**: the `for` + `if`-filter pattern (single `if` child
-  of `for`) does not get the auto-`:key` that a single Element child gets.
-  Functionally correct for add/remove/move; same-column reorder (not in
-  scope) would need a keyed restructure.
+- Card movement supports both: `>` buttons (todo→doing→done) / `×` to delete,
+  **and HTML5 drag-and-drop** (drag a card onto another column).
+- **Drag-and-drop** (Plan 404 stage 2): cards are `draggable`, `ondragstart`
+  stores the id in widget state, columns use `ondragover.prevent` + `ondrop`
+  to read it and call `store.MoveCard`. Widget state (not `dataTransfer`)
+  carries the id since source and target share one widget.
+- **codegen fix**: `row`/`col` layout primitives used to drop non-class props
+  (their shadcn branch only emitted `class`), so `draggable` never reached the
+  DOM. Fixed via `push_passthrough_attrs` — row/col now pass through arbitrary
+  HTML attributes like `draggable`.
 
 ## Inspiration
 
