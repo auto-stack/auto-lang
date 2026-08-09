@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* RealWorld conduit uses a serif body font + green brand. */
+body { @apply bg-white; }
+a { @apply text-link hover:underline; }
+.btn-brand { @apply px-5 py-2 rounded bg-brand text-white text-sm hover:bg-brand-dark disabled:opacity-50; }
+.tag-pill { @apply inline-block px-2 py-0.5 text-xs rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100; }
+.input-field { @apply w-full px-3 py-2 border border-gray-300 rounded text-sm focus:border-link focus:outline-none; }
