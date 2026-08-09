@@ -539,6 +539,41 @@ impl RustTrans {
         Ok(out)
     }
 
+    /// Plan 400 Phase 2: transpile only body statements (no signature).
+    /// `params` pre-populates local_var_types. Returns indented lines.
+    pub fn transpile_body_stmts(
+        &mut self,
+        body: &crate::ast::Body,
+        params: &[(AutoStr, Type)],
+    ) -> AutoResult<Vec<String>> {
+        self.local_var_types.clear();
+        for (name, ty) in params {
+            self.local_var_types.insert(name.clone(), ty.clone());
+        }
+        self.mutated_let_bindings.clear();
+        self.mutated_let_bindings = Self::scan_mutated_bindings(body);
+        self.current_scope_depth = 0;
+        let mut result = Vec::new();
+        for stmt in &body.stmts {
+            let mut sink = Sink::new(AutoStr::from("body_stmt"));
+            self.stmt(stmt, &mut sink)?;
+            let raw = String::from_utf8(sink.done()?.to_vec())
+                .map_err(|e| format!("Invalid UTF-8 in body stmt: {}", e))?;
+            for line in raw.lines() {
+                let trimmed = line.trim_end();
+                if !trimmed.is_empty() {
+                    result.push(format!("    {}", trimmed));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Plan 400 Phase 2: read-only access to accumulated uses.
+    pub fn uses_ref(&self) -> &HashSet<AutoStr> {
+        &self.uses
+    }
+
     /// Mutable access to the fn_ret_types cache (for cross-module / sibling
     /// pre-population from the CLI single-file path).
     pub fn fn_ret_types_mut(&mut self) -> &mut HashMap<AutoStr, Type> {

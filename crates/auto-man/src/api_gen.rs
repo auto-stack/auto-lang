@@ -1082,6 +1082,62 @@ fn broadcast_event_name(endpoint: &ApiEndpoint, primary_type: &str) -> Option<St
 /// `db::FN(...)` directly instead of the `State<Db>` CRUD template. Endpoints
 /// not matched fall back to the template (with a warning). `None` keeps the
 /// legacy `State<Db>` behavior (e.g. seed-only backends with no db.at).
+
+/// Plan 400 Phase 2: Check if an endpoint's body is a "thin delegation"
+/// (`return db.FN(args)` or simple let+return). Thin delegations go through
+/// route B; only non-thin bodies with real logic (if/for/while/multi-statement)
+/// go through the a2r body-transpilation path.
+fn is_thin_delegation(endpoint: &ApiEndpoint) -> bool {
+    let body = match &endpoint.body {
+        Some(b) => b,
+        None => return true,
+    };
+    // Thin delegation = no control-flow statements (if/for/while/match).
+    // A body with only return/let-return is "thin" (goes to route B or CRUD).
+    for stmt in &body.stmts {
+        match stmt {
+            auto_lang::ast::Stmt::If(_) | auto_lang::ast::Stmt::For(_) => return false,
+            _ => {}
+        }
+    }
+    true
+}
+
+/// Plan 400 Phase 2: transpile body statements via a2r into indented Rust lines.
+fn try_transpile_body(
+    body: &auto_lang::ast::Body,
+    endpoint: &ApiEndpoint,
+    api_module: &auto_lang::api::ApiModule,
+) -> Result<Vec<String>, String> {
+    use auto_lang::trans::rust::RustTrans;
+    use auto_val::AutoStr;
+    use auto_lang::ast::Type;
+
+    let mut trans = RustTrans::new(AutoStr::from("api_handler"));
+    for api_type in &api_module.types {
+        let fields: Vec<(&str, Type)> = api_type
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), Type::StrOwned))
+            .collect();
+        trans.register_type(&api_type.name, fields);
+    }
+    let params: Vec<(AutoStr, Type)> = endpoint
+        .params
+        .iter()
+        .map(|p| {
+            let ty = match p.ty.as_str() {
+                "int" | "uint" | "u64" | "i64" => Type::Int,
+                "bool" => Type::Bool,
+                "float" => Type::Float,
+                _ => Type::StrOwned,
+            };
+            (AutoStr::from(p.name.as_str()), ty)
+        })
+        .collect();
+    trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())
+}
+
 fn generate_api_rs(
     api_module: &auto_lang::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
@@ -1376,6 +1432,30 @@ fn generate_api_rs(
             params.join(", "),
             ret_type
         ));
+
+        // Plan 400 Phase 2: a2r body transpilation. Non-thin bodies with real
+        // logic get transpiled via a2r instead of CRUD template. Disable: AUTO_A2R_BODY=0.
+        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY").map(|v| v != "0").unwrap_or(true);
+        if a2r_body_enabled && !is_thin_delegation(endpoint) {
+            if let Some(body) = &endpoint.body {
+                match try_transpile_body(body, endpoint, api_module) {
+                    Ok(stmts) => {
+                        for s in &stmts {
+                            lines.push(s.clone());
+                        }
+                        lines.push("}".to_string());
+                        lines.push("".to_string());
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "  ⚠ endpoint `{}` a2r body failed ({}); fallback to template",
+                            fn_name, e
+                        );
+                    }
+                }
+            }
+        }
 
         // Plan 399 第 4-5 步: db.rs delegation body. When resolved, the handler
         // body is just `db::FN(args)` (optionally broadcasting an SSE event for
@@ -2680,5 +2760,69 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
         );
         assert!(!main_rs.contains("with_state"), "main no with_state: {}", main_rs);
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
+    }
+
+    /// Plan 400 Phase 2: a non-thin-delegation body (contains real logic like
+    /// if/else, not just `return db.FN(...)`) should be transpiled via a2r and
+    /// injected into the handler — NOT fall through to the CRUD template.
+    #[test]
+    fn test_a2r_body_non_thin_delegation() {
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    if id > 0 {
+        return Item { id: id, name: "positive" }
+    }
+    return Item { id: id, name: "zero" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        // The body has an if-statement → NOT a thin delegation.
+        assert!(!is_thin_delegation(&module.endpoints[0]), "if-body is non-thin");
+        // No db.rs → no delegation possible.
+        let api_rs = generate_api_rs(&module, None);
+        // The a2r path should have transpiled the if-statement into the handler.
+        // Look for evidence: "if" keyword from the transpiled body (not the
+        // CRUD template which has no if-statements).
+        assert!(
+            api_rs.contains("if id") || api_rs.contains("if (id"),
+            "a2r body transpiled if-statement into handler:\n{}",
+            api_rs
+        );
+        // Should NOT contain the CRUD template's `db.lock()` (that's the
+        // fallback path which we bypassed).
+        assert!(
+            !api_rs.contains("db.lock()"),
+            "non-thin body should not use CRUD template:\n{}",
+            api_rs
+        );
+    }
+
+    /// Plan 400 Phase 2: AUTO_A2R_BODY=0 disables the a2r body path, falling
+    /// back to CRUD template even for non-thin bodies.
+    #[test]
+    fn test_a2r_body_disabled_falls_back() {
+        std::env::set_var("AUTO_A2R_BODY", "0");
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    if id > 0 { return Item { id: id, name: "positive" } }
+    return Item { id: id, name: "zero" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        let api_rs = generate_api_rs(&module, None);
+        std::env::remove_var("AUTO_A2R_BODY");
+        // With a2r disabled, falls back to CRUD template.
+        assert!(
+            api_rs.contains("db.lock()"),
+            "AUTO_A2R_BODY=0 should use CRUD template:\n{}",
+            api_rs
+        );
     }
 }
