@@ -835,6 +835,11 @@ fn build_grid<M: Clone + Debug + 'static>(
     // Each row is forced to full width so its Fill cells distribute into
     // `cols` equal columns. Consume `cells` by value (push needs owned
     // elements, and the padding cells above are already owned).
+    //
+    // Plan 402: wrap each cell so it fills its column. Without this, cells
+    // whose natural size is tiny (e.g. a button containing only " ") collapse
+    // to ~0 and become unclickable. Padding cells already use Fill (above);
+    // real cells need the same treatment.
     let mut iter = cells.into_iter();
     let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
     loop {
@@ -843,7 +848,12 @@ fn build_grid<M: Clone + Debug + 'static>(
         for _ in 0..cols {
             match iter.next() {
                 Some(cell) => {
-                    row_b = row_b.push(cell);
+                    // Plan 402: wrap cell in a Fill-width container so it
+                    // claims an equal share of the row width. Without this,
+                    // tiny-content cells (e.g. a button with " ") collapse
+                    // and become unclickable.
+                    let cell_fill = container(cell).width(iced::Length::Fill);
+                    row_b = row_b.push(cell_fill);
                     count += 1;
                 }
                 None => break,
@@ -1025,6 +1035,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let px_x = is.padding_x.unwrap_or(8.0);
                         let px_y = is.padding_y.unwrap_or(4.0);
                         btn = btn.padding([px_y, px_x]);
+                    } else {
+                        // Plan 402: default padding so tiny-content buttons
+                        // (e.g. a minesweeper cell with " ") have a clickable
+                        // size instead of collapsing to ~0.
+                        btn = btn.padding(8.0);
                     }
                     if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
                     if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }

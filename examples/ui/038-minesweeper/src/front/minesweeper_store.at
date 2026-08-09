@@ -70,7 +70,7 @@ store MinesweeperStore {
             for x < .rows {
                 var y int = 0
                 for y < .cols {
-                    .board.push({ x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, number_class: "", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-gray-400 hover:bg-gray-500 border border-gray-500", display: " " })
+                    .board.push({ x: x, y: y, mine: false, revealed: false, flagged: false, adjacent: 0, number_class: "", cell_class: "w-8 h-8 flex items-center justify-center select-none bg-gray-400 hover:bg-gray-500 border border-gray-500", display: "　" })
                     y = y + 1
                 }
                 x = x + 1
@@ -159,7 +159,7 @@ store MinesweeperStore {
                             ddx = ddx + 1
                         }
                         var cj = .board[j]
-                        .board[j] = { x: cj.x, y: cj.y, mine: cj.mine, revealed: cj.revealed, flagged: cj.flagged, adjacent: cnt, number_class: cj.number_class, cell_class: cj.cell_class, display: " " }
+                        .board[j] = { x: cj.x, y: cj.y, mine: cj.mine, revealed: cj.revealed, flagged: cj.flagged, adjacent: cnt, number_class: cj.number_class, cell_class: cj.cell_class, display: "　" }
                     }
                     j = j + 1
                 }
