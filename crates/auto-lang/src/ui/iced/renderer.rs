@@ -836,10 +836,13 @@ fn build_grid<M: Clone + Debug + 'static>(
     // `cols` equal columns. Consume `cells` by value (push needs owned
     // elements, and the padding cells above are already owned).
     //
-    // Plan 402: wrap each cell so it fills its column. Without this, cells
-    // whose natural size is tiny (e.g. a button containing only " ") collapse
-    // to ~0 and become unclickable. Padding cells already use Fill (above);
-    // real cells need the same treatment.
+    // Plan 402 §13.10: cells are pushed directly (no Fill wrapper). The
+    // button's own width/height classes (e.g. w-8 h-8 → Fixed 32px) or the
+    // default padding fallback (convert_button) give each cell a real size.
+    // Wrapping in a Fill container caused each cell to stretch to its full
+    // column share (= huge whitespace between cells) AND disrupted iced's
+    // widget-tree state retention under frequent heartbeat rebuilds, so
+    // button on_press never fired on real mouse clicks.
     let mut iter = cells.into_iter();
     let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
     loop {
@@ -848,12 +851,7 @@ fn build_grid<M: Clone + Debug + 'static>(
         for _ in 0..cols {
             match iter.next() {
                 Some(cell) => {
-                    // Plan 402: wrap cell in a Fill-width container so it
-                    // claims an equal share of the row width. Without this,
-                    // tiny-content cells (e.g. a button with " ") collapse
-                    // and become unclickable.
-                    let cell_fill = container(cell).width(iced::Length::Fill);
-                    row_b = row_b.push(cell_fill);
+                    row_b = row_b.push(cell);
                     count += 1;
                 }
                 None => break,
@@ -6434,7 +6432,15 @@ impl DebugRenderCtx {
         // wrap in a zero-visual container with an aura_ ID so LayoutCollector
         // can capture their rendered bounds for MCP snapshot @rect annotations.
         // Skip col/row/container/scroll — they already set IDs inside render_dynamic_view.
-        let el: iced::Element<'static, IcedMessage> = if aura_id.is_some()
+        //
+        // Plan 402 §13.10: only wrap when F12 debug_mode is on. Previously this
+        // also fired when only an MCP client was connected (capture_debug), so
+        // every button sat inside a per-frame bounds-probe Container. Although
+        // iced's Container is event-transparent, the extra wrapper layer
+        // disrupted widget-tree state retention (button is_pressed) under the
+        // ~200ms MCP heartbeat rebuild cadence, so real mouse clicks never
+        // fired on_press. MCP @rect bounds are still collected under debug_mode.
+        let el: iced::Element<'static, IcedMessage> = if self.debug_mode && aura_id.is_some()
             && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea")
         {
             // Use the unique id (with counter suffix) instead of raw aura_id
