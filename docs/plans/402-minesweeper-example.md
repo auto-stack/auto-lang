@@ -756,3 +756,33 @@ grid 元素本身正确,但受 bug 5 阻塞无法显示。
 
 **遗留**:MCP autoui_action 不支持右键(contextmenu)事件,插旗需在实机窗口操作;
 view-builder 的 snapshot 数字文本提取未确认(可能是 snapshot 格式问题非渲染问题)。
+
+### 13.9 实机 on_press 事件诊断(2026-08-09)
+
+**问题**:VM 实机窗口里,button(难度/格子/重开)的鼠标点击不触发 iced on_press 事件,
+但 MCP autoui_action 能成功触发所有 button 的 handler。
+
+**诊断过程**:
+- iced update 闭包加日志:实机点击只产生 `__mcp_heartbeat`,无任何 button 事件
+- MCP action 全通:Reveal/SetDifficulty/Reset 经 ActionMessage 路径成功触发
+- `inspect_capture_active()` 默认 false → button 挂了 on_press(1019 行)
+- 非 debug 模式下 wrap_debug 直接返回 el(6457 行),不加拦截 mouse_area
+- button 有 bounds probe container 包裹(6442 行),但 container 不拦截事件
+- 截图确认 button 视觉可见且有合理尺寸(padding 8.0 生效)
+
+**结论**:逻辑层、渲染层、handler 绑定都正确。问题在 **iced widget 事件路由** ——
+button 在 widget tree 里可见,但鼠标点击事件没有路由到 button::on_press。可能原因:
+(a) button 的 layout 尺寸在事件路由阶段为 0(vtree 报 2x2,虽然视觉可见);
+(b) bounds probe container 干扰了 iced 的事件命中测试;
+(c) iced 版本的 button 在某些 style(如 chromeless/transparent)下不响应点击。
+
+**当前阻塞**:shell 环境的 Windows CRT DLL 加载故障(api-ms-win-crt-locale-l1-1-0.dll
+not found),无法在当前 Git Bash 里启动 VM 做进一步实机诊断。需在正常环境(PowerShell/
+cmd/直接双击)下复现。
+
+**已验证可用的部分(MCP 路径全通)**:
+- 信息栏标签(💣 10 / ⏱ 0s)✅
+- 棋盘网格渲染(81 格,格子大小正常)✅
+- MCP 点击触发 handler(Reveal/SetDifficulty/Reset)✅
+- 参数传递(cell.x/cell.y → 数值)✅
+- store 写回(game_state 变化)✅
