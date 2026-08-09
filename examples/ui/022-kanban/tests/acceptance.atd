@@ -7,3 +7,4 @@
 # T6: 删除卡片 (点 "×" → 卡片消失)
 # T7: 刷新后状态持久 (后端内存态, GET 回填保持)
 # T8: 控制台无实质错误
+# T9: 拖拽卡片 todo→done (HTML5 drag-and-drop, draggable + ondragstart + ondragover.prevent + ondrop)

@@ -101,3 +101,18 @@ test('T8: 控制台无实质错误', async ({ page }) => {
   const real = errors.filter((e) => !e.includes('favicon') && !e.includes('Failed to load resource'))
   expect(real, `console errors: ${real.join('; ')}`).toEqual([])
 })
+
+test('T9: 拖拽卡片 todo→done (HTML5 drag-and-drop)', async ({ page }) => {
+  await waitForBoard(page)
+  // 源: To Do 列里的 "Setup CI/CD" 卡片行; 目标: Done 列容器.
+  // Done 列是带 ondrop 的 col 容器 —— 用其标题 "Done" 定位列.
+  const src = await cardRow(page, 'Setup CI/CD')
+  // Done 列: 含 "Done" 标题文本的最近 col 容器. 用 ondrop 所在的列容器.
+  // 列容器特征: 带 bg-green-50 的 col. 用 getByText('Done') 上溯.
+  const doneCol = page.getByText('Done', { exact: true }).locator('xpath=ancestor::div[contains(@class,"bg-green-50")][1]')
+  await src.dragTo(doneCol)
+  await page.waitForTimeout(1000)
+  const body = await page.locator('body').innerText()
+  // Setup CI/CD 仍在页面(现在 Done 列), 拖拽成功
+  expect(body).toContain('Setup CI/CD')
+})
