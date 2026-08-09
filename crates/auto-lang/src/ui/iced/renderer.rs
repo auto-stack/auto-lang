@@ -832,6 +832,21 @@ fn build_grid<M: Clone + Debug + 'static>(
         }
     }
 
+    // Force EVERY cell to Fill width so all columns are equal. Without this,
+    // content-sized cells (buttons) are narrower than Fill padding cells,
+    // causing misaligned, unevenly-spaced buttons.
+    let cells: Vec<iced::Element<'static, M>> = cells
+        .into_iter()
+        .map(|cell| {
+            // Wrap in a container that forces Fill width, preserving the
+            // cell's own height/layout. Using a 0-padding column is the
+            // simplest way to override width without losing content.
+            iced::widget::column![cell]
+                .width(iced::Length::Fill)
+                .into()
+        })
+        .collect();
+
     // Each row is forced to full width so its Fill cells distribute into
     // `cols` equal columns. Consume `cells` by value (push needs owned
     // elements, and the padding cells above are already owned).

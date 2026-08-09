@@ -44,6 +44,25 @@ pub fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
     ram.push_string(idx);
 }
 
+/// Plan 403: Format an f64 for display. Whole numbers (e.g. 7.0) render
+/// without a decimal part ("7"); others use Rust's default float formatting.
+/// Used by the f64 to_string() path so calculator results show cleanly.
+#[inline(always)]
+fn fmt_f64(f: f64) -> String {
+    if f.is_nan() {
+        return "NaN".to_string();
+    }
+    if f.is_infinite() {
+        return if f > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() };
+    }
+    // If the value is (very nearly) a whole number, show it as an int.
+    let rounded = f.round();
+    if (f - rounded).abs() < 1e-9 && rounded.abs() < 1e15 {
+        return format!("{}", rounded as i64);
+    }
+    format!("{}", f)
+}
+
 /// Pop a known-string value, returning the string pool index.
 #[inline(always)]
 fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
@@ -5408,6 +5427,18 @@ impl AutoVM {
                                 let result = s.parse::<i64>().unwrap_or(0) as i32;
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(result)); }
                             }
+                            // Plan 403: str.to_float() — parse a numeric string to f64.
+                            // Needed by the calculator engine (nums stored as strings,
+                            // parsed to float at arithmetic time).
+                            "to_float" | "parse_float" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                    .unwrap_or_default();
+                                let result = s.parse::<f64>().unwrap_or(0.0);
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_f64(result)); }
+                            }
                             _ => {
                                 // Unknown str method — fall through to other handlers below
                                 task.ram.push_nv(auto_val::encode_null());
@@ -5434,6 +5465,48 @@ impl AutoVM {
                                 } else { 0 };
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(len)); }
                             }
+                            // Plan 403: List.last() — peek the last element without
+                            // removing it (needed by the calculator's shunting-yard
+                            // engine, which inspects stack tops before popping).
+                            // Returns the element re-encoded onto the stack; pushes
+                            // null if the list is empty.
+                            "last" => {
+                                // Plan 403: List.last() — peek the last element
+                                // without removing it (the calculator's shunting-yard
+                                // engine inspects stack tops before popping). Handles
+                                // ListData<Value>, ListData<String>, and ListData<i32>.
+                                let top_nv = if let Some(obj) = self.heap_objects.get(&list_id) {
+                                    let guard = obj.read().unwrap();
+                                    if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        list.elems.last().map(|v| match v {
+                                            auto_val::Value::Int(i) => auto_val::encode_i32(*i),
+                                            auto_val::Value::Double(f) => auto_val::encode_f64(*f),
+                                            auto_val::Value::Float(f) => auto_val::encode_f64(*f as f64),
+                                            auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
+                                            auto_val::Value::Str(s) => {
+                                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::String(s) => {
+                                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+                                            _ => auto_val::encode_null(),
+                                        }).unwrap_or(auto_val::encode_null())
+                                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<String>>() {
+                                        // Plan 403: List<str> (CREATE_LIST_STR) — peek
+                                        // the last String and re-encode as nanbox string.
+                                        list.elems.last().map(|s| {
+                                            let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.as_bytes().to_vec()); i };
+                                            auto_val::encode_string(idx as u32)
+                                        }).unwrap_or(auto_val::encode_null())
+                                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                                        list.elems.last().map(|&i| auto_val::encode_i32(i)).unwrap_or(auto_val::encode_null())
+                                    } else { auto_val::encode_null() }
+                                } else { auto_val::encode_null() };
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(top_nv); }
+                            }
                             "get" => {
                                 // Pop index arg, then get element from list
                                 let index = auto_val::decode_i32(task.ram.pop_nv());
@@ -5456,6 +5529,38 @@ impl AutoVM {
                                             // Out of bounds — push 0 (None)
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
                                         }
+                                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<String>>() {
+                                        // Plan 403: List<str> via CREATE_LIST_STR.
+                                        if let Some(s) = list.get(index as usize) {
+                                            let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.clone().into_bytes()); i };
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                        } else {
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
+                                        }
+                                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                                        // Plan 403: ListData<Value> (from CREATE_ARRAY / `[]`) —
+                                        // re-encode the element by variant onto the stack.
+                                        if let Some(v) = list.get(index as usize) {
+                                            let nv = match v {
+                                                auto_val::Value::Int(i) => auto_val::encode_i32(*i),
+                                                auto_val::Value::Double(f) => auto_val::encode_f64(*f),
+                                                auto_val::Value::Float(f) => auto_val::encode_f64(*f as f64),
+                                                auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
+                                                auto_val::Value::Str(s) => {
+                                                    let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                    auto_val::encode_string(idx as u32)
+                                                }
+                                                auto_val::Value::String(s) => {
+                                                    let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                    auto_val::encode_string(idx as u32)
+                                                }
+                                                auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+                                                _ => auto_val::encode_null(),
+                                            };
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(nv); }
+                                        } else {
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
+                                        }
                                     }
                                 }
                             }
@@ -5464,6 +5569,15 @@ impl AutoVM {
                                 let elem_nv = task.ram.pop_nv();
                                 let elem_val = if auto_val::is_i32(elem_nv) {
                                     auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                } else if auto_val::is_f64(elem_nv) {
+                                    // Plan 403: f64 values use raw bit encoding
+                                    // (encode_f64), so must be checked before the
+                                    // else-branch Int fallback — otherwise floats
+                                    // pushed onto a List<float> get corrupted to
+                                    // garbage ints (e.g. 3.0 -> 1074266112).
+                                    auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                                } else if auto_val::is_f32(elem_nv) {
+                                    auto_val::Value::Double(auto_val::decode_f64(elem_nv))
                                 } else if auto_val::is_object(elem_nv) {
                                     auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(elem_nv) as usize })
                                 } else if auto_val::is_string(elem_nv) {
@@ -5671,7 +5785,15 @@ impl AutoVM {
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
                             }
                             "to_string" | "to_str" => {
-                                let s = int_val.to_string();
+                                // Plan 403: f64 values reach here as non-nanbox raw
+                                // bits (type_name "<unknown_nv:...>"). Decode as f64
+                                // when the receiver is an f64, otherwise as i32.
+                                let s = if auto_val::is_f64(receiver_nv) {
+                                    let f = auto_val::decode_f64(receiver_nv);
+                                    fmt_f64(f)
+                                } else {
+                                    int_val.to_string()
+                                };
                                 let bytes = s.into_bytes();
                                 let idx = {
                                     let mut strings = self.strings.write().unwrap();
