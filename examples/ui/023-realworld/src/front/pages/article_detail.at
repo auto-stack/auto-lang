@@ -1,0 +1,69 @@
+// pages/article_detail.at — article body + comments list (read-only). Reads
+// slug from the route param, loads via store.OpenArticle on Init. Cf. 018
+// reading.at (router.param) + vue-ref ArticleDetail.vue.
+use article_store: ArticleStore
+
+widget article_detail {
+    msg Msg { Init, Back }
+
+    model {
+        var slug str = ""
+    }
+
+    view {
+        col {
+            style: "max-w-2xl mx-auto px-4 py-6"
+            if .store.current_article.slug == "" {
+                text "Loading…" { style: "text-gray-400 py-12 text-center" }
+            } else {
+                // Article header banner
+                col {
+                    style: "bg-gray-50 py-6 -mx-4 px-4 mb-4"
+                    text .store.current_article.title { style: "text-3xl font-semibold text-gray-800 mb-3" }
+                    row {
+                        style: "items-center gap-2"
+                        text .store.current_article.author { style: "text-sm text-brand-green font-medium" }
+                        text .store.current_article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                    }
+                }
+                // Article body
+                text .store.current_article.body { style: "text-gray-700 leading-relaxed my-4" }
+                text .store.current_article.tagList {
+                    style: "text-xs px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 inline-block my-4"
+                }
+                // Back link
+                text "← Back to feed" {
+                    onclick: .Back
+                    style: "text-sm text-brand-green hover:underline cursor-pointer my-4"
+                }
+                // Comments
+                col {
+                    style: "mt-6"
+                    text f"Comments (${.store.comments.len()})" { style: "text-sm font-medium text-gray-500 mb-2" }
+                    if .store.comments.len() == 0 {
+                        text "No comments yet." { style: "text-gray-400 text-sm py-4" }
+                    }
+                    for comment in .store.comments {
+                        col {
+                            style: "border border-gray-200 rounded p-3 mb-2"
+                            row {
+                                style: "items-center gap-2 mb-1"
+                                text comment.author { style: "text-sm text-brand-green font-medium" }
+                                text comment.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                            }
+                            text comment.body { style: "text-sm text-gray-700" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .slug = router.param("slug")
+            store.OpenArticle(.slug)
+        }
+        .Back -> { router.push("/") }
+    }
+}

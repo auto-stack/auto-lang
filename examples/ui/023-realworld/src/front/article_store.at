@@ -1,0 +1,45 @@
+// article_store.at — shared article state: feed list, current article + its
+// comments, and a client-derived tag string. Tag filtering is client-side
+// (a2r doesn't clone borrowed String fields when passing to a helper fn on the
+// server; see db.at list_articles note).
+use back.api: list_articles, get_article, list_comments
+
+store ArticleStore {
+    model {
+        var articles []Article = []
+        var current_article Article = Article { slug: "", title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }
+        var comments []Comment = []
+        var all_tags str = ""
+        var active_tag str = ""
+        var loading bool = false
+    }
+
+    msg Msg { Init, OpenArticle(str), SetTag(str), ClearTag }
+
+    on {
+        .Init -> {
+            .loading = true
+            .articles = list_articles()
+            .loading = false
+            // Derive all_tags client-side: concatenate every article's tagList.
+            .all_tags = ""
+            for article in .articles {
+                if .all_tags == "" {
+                    .all_tags = article.tagList
+                } else {
+                    .all_tags = .all_tags + "," + article.tagList
+                }
+            }
+        }
+        .OpenArticle(slug str) -> {
+            .current_article = get_article(slug)
+            .comments = list_comments(slug)
+        }
+        .SetTag(t str) -> {
+            .active_tag = t
+        }
+        .ClearTag -> {
+            .active_tag = ""
+        }
+    }
+}

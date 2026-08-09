@@ -1,0 +1,27 @@
+// auth_store.at — shared auth state. Holds the current user (id=0 = logged
+// out). Handlers call back.api (bare module-call, U1); templates read
+// .store.current_user (self-field, U1).
+use back.api: login, register, current_user
+
+store AuthStore {
+    model {
+        var current_user User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+    }
+
+    msg Msg { Init, Login(str, str), Register(str, str, str), Logout }
+
+    on {
+        .Init -> {
+            .current_user = current_user()
+        }
+        .Login(email str, password str) -> {
+            .current_user = login(email, password)
+        }
+        .Register(username str, email str, password str) -> {
+            .current_user = register(username, email, password)
+        }
+        .Logout -> {
+            .current_user = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+        }
+    }
+}

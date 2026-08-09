@@ -33,36 +33,40 @@ var comments List<Comment> = List<Comment>.new([
 
 // --- Auth ---
 
-/// Log in by email. Mock: any password accepted for a known email.
-pub fn login(email str, password str) ?User {
+/// Log in by email. Mock: any password accepted for a known email. Returns
+/// empty User (id=0) on unknown email (stage 1: non-Option for simpler frontend).
+pub fn login(email str, password str) User {
+    var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     for user in users {
         if user.email == email {
             let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
-            return Some(found)
+            result = found
         }
     }
-    return None
+    return result
 }
 
 /// Register a new user. Returns the new user with a fresh token.
-pub fn register(username str, email str, password str) ?User {
+pub fn register(username str, email str, password str) User {
     let id int = nextuserid
     nextuserid = nextuserid + 1
     let token str = "mock-token-" + username
     let u = User { id: id, email: email, username: username, bio: "", image: "", token: token }
     users.push(u)
-    return Some(u)
+    return u
 }
 
 /// Current user (stage 1 placeholder: first seed user). Real token auth = stage 2.
 /// NOTE: avoid `users.len() > 0` + `users[0]` — a2r mis-transpiles both (deref on
-/// usize / User). Iterate to take the first instead.
-pub fn current_user() ?User {
+/// usize / User). Iterate to take the first instead. Returns empty User if none.
+pub fn current_user() User {
+    var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     for user in users {
         let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
-        return Some(found)
+        result = found
+        // break after first (loop body return-style)
     }
-    return None
+    return result
 }
 
 // --- Articles ---

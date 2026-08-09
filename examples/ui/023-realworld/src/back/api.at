@@ -42,22 +42,25 @@ pub type Comment = {
 use db
 
 /// POST /api/users/login — log in with email + password. Returns the user
-/// (with token) on success, None on bad credentials.
+/// (with token) on success, or an empty User (id=0) on bad credentials.
+/// (Stage 1 returns a non-Option User so the frontend store can hold it
+/// directly without ?T unwrapping — codegen's handling of ?T fields in
+/// templates is unverified. Stage 2 may switch to ?User.)
 #[api(method = "POST", path = "/api/users/login")]
-pub fn login(email str, password str) ?User {
+pub fn login(email str, password str) User {
     return db.login(email, password)
 }
 
-/// POST /api/users — register a new user. Returns the user (with token).
+/// POST /api/users — register a new user. Returns the new user (with token).
 #[api(method = "POST", path = "/api/users")]
-pub fn register(username str, email str, password str) ?User {
+pub fn register(username str, email str, password str) User {
     return db.register(username, email, password)
 }
 
-/// GET /api/user — current user (stage 1: returns the first seed user as a
-/// placeholder; real token-based auth is stage 2).
+/// GET /api/user — current user (stage 1 placeholder: first seed user). Real
+/// token auth = stage 2. Returns empty User (id=0) if none.
 #[api(method = "GET", path = "/api/user")]
-pub fn current_user() ?User {
+pub fn current_user() User {
     return db.current_user()
 }
 

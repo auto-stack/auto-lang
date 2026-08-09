@@ -1,0 +1,61 @@
+// pages/login.at — login form. value:+oninput: (no v-model, U5). On submit,
+// call store.Login then navigate home. Cf. vue-ref Login.vue + 005-login.
+use auth_store: AuthStore
+
+widget login {
+    msg Msg { Init, EmailChanged, PasswordChanged, Submit }
+
+    model {
+        var email str = "sarah@vercel.com"
+        var password str = "password"
+        var error str = ""
+    }
+
+    view {
+        col {
+            style: "max-w-md mx-auto px-4 py-8 text-center items-center"
+            text "Sign in" { style: "text-4xl font-semibold mb-2" }
+            link (to: "/register") { text "Need an account?" { style: "text-brand-green text-sm" } }
+            if .error != "" {
+                text .error { style: "text-red-500 text-sm my-3 bg-red-50 rounded p-2 w-full" }
+            }
+            col {
+                style: "text-left mt-4 gap-3 w-full"
+                input {
+                    placeholder: "Email",
+                    value: .email,
+                    oninput: .EmailChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                }
+                input {
+                    placeholder: "Password",
+                    type: "password",
+                    value: .password,
+                    oninput: .PasswordChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                }
+                row {
+                    style: "justify-end"
+                    button "Sign in" {
+                        onclick: .Submit,
+                        style: "px-5 py-2 rounded bg-brand-green text-white text-sm"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { }
+        .EmailChanged -> { .email = .email }
+        .PasswordChanged -> { .password = .password }
+        .Submit -> {
+            store.Login(.email, .password)
+            if .store.current_user.id != 0 {
+                router.push("/")
+            } else {
+                .error = "email or password is invalid"
+            }
+        }
+    }
+}
