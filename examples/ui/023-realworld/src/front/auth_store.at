@@ -1,6 +1,6 @@
 // auth_store.at — shared auth state. Holds the current user (id=0 = logged
-// out). Handlers call back.api (bare module-call, U1); templates read
-// .store.current_user (self-field, U1).
+// out). Profile/follow state lives in ArticleStore (so the profile page uses a
+// single store).
 use back.api: login, register, current_user
 
 store AuthStore {

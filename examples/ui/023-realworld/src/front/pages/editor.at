@@ -1,0 +1,108 @@
+// pages/editor.at — new/edit article. /editor = create, /editor/:slug = edit
+// (loads existing). Stage 2: user types the slug directly (no auto title→slug
+// to avoid string ops). Cf. vue-ref editor concept + login form pattern.
+use article_store: ArticleStore
+
+widget editor {
+    msg Msg { Init, SlugChanged, TitleChanged, DescChanged, BodyChanged, TagsChanged, Publish, Back }
+
+    model {
+        var slug str = ""
+        var title str = ""
+        var description str = ""
+        var body str = ""
+        var tagList str = ""
+        var editing bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            style: "max-w-2xl mx-auto px-4 py-8 items-center"
+            text "Editor" { style: "text-3xl font-semibold mb-4" }
+            if .error != "" {
+                text .error { style: "text-red-500 text-sm mb-3 bg-red-50 rounded p-2" }
+            }
+            col {
+                style: "gap-3 w-full text-left"
+                input {
+                    placeholder: "Article Title",
+                    value: .title,
+                    oninput: .TitleChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-lg"
+                }
+                if .editing == false {
+                    input {
+                        placeholder: "url-slug (lowercase, dashes)",
+                        value: .slug,
+                        oninput: .SlugChanged,
+                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                    }
+                }
+                input {
+                    placeholder: "What's this article about?",
+                    value: .description,
+                    oninput: .DescChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                }
+                textarea {
+                    placeholder: "Write your article (markdown supported in stage 3)",
+                    value: .body,
+                    oninput: .BodyChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm h-48"
+                }
+                input {
+                    placeholder: "Tags (comma-separated)",
+                    value: .tagList,
+                    oninput: .TagsChanged,
+                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                }
+                row {
+                    style: "justify-between"
+                    text "← Back" {
+                        onclick: .Back
+                        style: "text-sm text-brand-green hover:underline cursor-pointer"
+                    }
+                    button "Publish Article" {
+                        onclick: .Publish,
+                        style: "px-5 py-2 rounded bg-brand-green text-white text-sm"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .slug = router.param("slug")
+            if .slug != "" {
+                .editing = true
+                store.OpenArticle(.slug)
+            }
+        }
+        .SlugChanged -> { .slug = .slug }
+        .TitleChanged -> { .title = .title }
+        .DescChanged -> { .description = .description }
+        .BodyChanged -> { .body = .body }
+        .TagsChanged -> { .tagList = .tagList }
+        .Back -> { router.push("/") }
+        .Publish -> {
+            if .title == "" {
+                .error = "title is required"
+            } else {
+                if .editing {
+                    store.UpdateArticle(.slug, .title, .description, .body)
+                } else {
+                    if .slug == "" {
+                        .error = "slug is required for a new article"
+                    } else {
+                        store.CreateArticle(.slug, .title, .description, .body, .tagList)
+                    }
+                }
+                if .error == "" {
+                    router.push("/")
+                }
+            }
+        }
+    }
+}

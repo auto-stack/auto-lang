@@ -1,0 +1,65 @@
+// pages/profile.at — user profile: avatar/bio + Follow/Unfollow + My Articles.
+// Uses a single store (ArticleStore, which also holds viewed_profile/following).
+use article_store: ArticleStore
+
+widget profile {
+    msg Msg { Init, Follow, Unfollow, OpenArticle(str) }
+
+    model {
+        var username str = ""
+    }
+
+    view {
+        col {
+            style: "max-w-3xl mx-auto px-4 py-6"
+            if .store.viewed_profile == nil {
+                text "Loading…" { style: "text-gray-400 py-8 text-center" }
+            } else {
+                col {
+                    style: "text-center py-6"
+                    text .store.viewed_profile.username { style: "text-2xl font-semibold" }
+                    text .store.viewed_profile.bio { style: "text-gray-500 text-sm mt-2 max-w-md mx-auto" }
+                    row {
+                        style: "justify-center gap-2 mt-4"
+                        button "+ Follow" {
+                            onclick: .Follow,
+                            style: "px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100"
+                        }
+                        button "Unfollow" {
+                            onclick: .Unfollow,
+                            style: "px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100"
+                        }
+                    }
+                }
+                col {
+                    style: "mt-6 border-t border-gray-100"
+                    text "My Articles" { style: "text-brand-green font-medium border-b border-brand-green pb-1 my-2 inline-block" }
+                    for article in .store.articles {
+                        if article.author == .store.viewed_profile.username {
+                            col {
+                                style: "py-4 border-b border-gray-100"
+                                text article.title {
+                                    onclick: .OpenArticle(article.slug)
+                                    style: "text-xl font-semibold text-gray-800 cursor-pointer"
+                                }
+                                text article.description { style: "text-gray-500 text-sm mt-1" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            .username = router.param("username")
+            store.ViewProfile(.username)
+        }
+        .Follow -> { store.Follow(.username) }
+        .Unfollow -> { store.UnfollowStr(.username) }
+        .OpenArticle(slug str) -> {
+            router.push("/article/" + slug)
+        }
+    }
+}

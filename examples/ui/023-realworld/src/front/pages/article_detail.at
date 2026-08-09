@@ -1,15 +1,15 @@
-// pages/article_detail.at — article body + comments list (read-only). Reads
-// slug from the route param, loads via store.OpenArticle on Init. Cf. 018
-// reading.at (router.param) + vue-ref ArticleDetail.vue.
+// pages/article_detail.at — article body + favorite + comments (post/delete).
+// Stage 2: ♥ favorite button, comment form, delete-own-comment.
 // NOTE: store.current_article starts null (codegen flattens struct-literal
 // init to null), so guard with `!= nil` before reading fields.
 use article_store: ArticleStore
 
 widget article_detail {
-    msg Msg { Init, Back }
+    msg Msg { Init, Back, Favorite, Unfavorite, CommentChanged, SubmitComment, DeleteComment(int) }
 
     model {
         var slug str = ""
+        var new_comment str = ""
     }
 
     view {
@@ -26,6 +26,10 @@ widget article_detail {
                         style: "items-center gap-2"
                         text .store.current_article.author { style: "text-sm text-brand-green font-medium" }
                         text .store.current_article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                        button f"♥ ${.store.current_article.favoritesCount}" {
+                            onclick: .Favorite,
+                            style: "px-3 py-1 text-xs rounded border border-brand-green text-brand-green hover:bg-brand-green hover:text-white"
+                        }
                     }
                 }
                 // Article body
@@ -38,9 +42,26 @@ widget article_detail {
                     onclick: .Back
                     style: "text-sm text-brand-green hover:underline cursor-pointer my-4"
                 }
-                // Comments
+                // Comment form
                 col {
-                    style: "mt-6"
+                    style: "mt-6 border border-gray-200 rounded p-3 mb-4"
+                    textarea {
+                        placeholder: "Write a comment...",
+                        value: .new_comment,
+                        oninput: .CommentChanged,
+                        style: "w-full px-2 py-1 border border-gray-300 rounded text-sm h-20"
+                    }
+                    row {
+                        style: "justify-between items-center mt-2"
+                        text "Sarah Chen" { style: "text-xs text-brand-green" }
+                        button "Post Comment" {
+                            onclick: .SubmitComment,
+                            style: "px-3 py-1 text-xs rounded bg-brand-green text-white"
+                        }
+                    }
+                }
+                // Comments list
+                col {
                     text f"Comments (${.store.comments.len()})" { style: "text-sm font-medium text-gray-500 mb-2" }
                     if .store.comments.len() == 0 {
                         text "No comments yet." { style: "text-gray-400 text-sm py-4" }
@@ -54,6 +75,13 @@ widget article_detail {
                                 text comment.createdAt { style: "text-xs text-gray-400 ml-auto" }
                             }
                             text comment.body { style: "text-sm text-gray-700" }
+                            // delete button for own comments (author == Sarah Chen)
+                            if comment.author == "Sarah Chen" {
+                                text "Delete" {
+                                    onclick: .DeleteComment(comment.id)
+                                    style: "text-xs text-red-400 hover:underline cursor-pointer mt-1 inline-block"
+                                }
+                            }
                         }
                     }
                 }
@@ -67,5 +95,15 @@ widget article_detail {
             store.OpenArticle(.slug)
         }
         .Back -> { router.push("/") }
+        .Favorite -> { store.Favorite(.slug) }
+        .Unfavorite -> { store.Unfavorite(.slug) }
+        .CommentChanged -> { .new_comment = .new_comment }
+        .SubmitComment -> {
+            if .new_comment != "" {
+                store.CreateComment(.slug, .new_comment)
+                .new_comment = ""
+            }
+        }
+        .DeleteComment(id int) -> { store.DeleteComment(id) }
     }
 }
