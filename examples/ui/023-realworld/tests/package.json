@@ -1,0 +1,14 @@
+{
+  "name": "realworld-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan 405 acceptance tests for 023-realworld (stage 1: auth + feed + article detail)",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

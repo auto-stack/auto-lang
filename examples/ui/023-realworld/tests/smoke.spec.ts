@@ -1,0 +1,109 @@
+/**
+ * 023-realworld 冒烟测试 (Plan 405 阶段1) — 对应 acceptance.atd T1-T8.
+ * 前端 vite(auto run 启动, 端口见 RW_URL) + 后端 8023.
+ *
+ * 端口缺口(Plan 401): auto run 不读 pac.at front_port, vite 端口会变。
+ * 测试前先 auto run, 看 "Local:" 行的端口, 设 RW_URL=http://localhost:<port>
+ * 再跑 npm test。
+ */
+import { test, expect } from '@playwright/test'
+
+// 等首页加载: store.Init 异步拉 articles。
+async function waitForHome(page) {
+  await page.goto('/#/')
+  await page.locator('text=Global Feed').waitFor({ timeout: 10000 })
+  await page.waitForTimeout(1500)
+}
+
+test('T1: 首页 feed 渲染 — 3 篇种子文章', async ({ page }) => {
+  await waitForHome(page)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('Understanding React Server Components')
+  expect(body).toContain('Building Type-Safe APIs with tRPC')
+  expect(body).toContain('The State of CSS in 2026')
+})
+
+test('T2: 标签过滤 — 点 React 后只显示含 React 的文章', async ({ page }) => {
+  await waitForHome(page)
+  // 点 Popular Tags 里的 React
+  await page.locator('text=React').first().click()
+  await page.waitForTimeout(800)
+  const body = await page.locator('body').innerText()
+  // React 文章仍在
+  expect(body).toContain('Understanding React Server Components')
+  // 不含 React 的文章消失 (tRPC 文章 tagList 是 TypeScript,tRPC,API)
+  expect(body).not.toContain('Building Type-Safe APIs with tRPC')
+})
+
+test('T3: 进文章详情 — 正文 + 评论', async ({ page }) => {
+  await waitForHome(page)
+  // 点第一篇文章标题
+  await page.locator('text=Understanding React Server Components').first().click()
+  await page.waitForTimeout(1200)
+  const body = await page.locator('body').innerText()
+  // 正文(含"faster initial loads")
+  expect(body).toContain('faster initial loads')
+  // 评论
+  expect(body).toContain('Comments')
+})
+
+test('T4: 注册 — 成功后 nav 显示用户名', async ({ page }) => {
+  await page.goto('/#/register')
+  await page.waitForLoadState('domcontentloaded')
+  const name = 'TestUser' + Date.now()
+  await page.locator('input[placeholder="Username"]').fill(name)
+  await page.locator('input[placeholder="Email"]').fill(name + '@test.com')
+  await page.locator('input[placeholder="Password"]').fill('password123')
+  await page.locator('button:has-text("Sign up")').click()
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain(name)
+})
+
+test('T5: 登录 — 已知种子用户成功', async ({ page }) => {
+  await page.goto('/#/login')
+  await page.waitForLoadState('domcontentloaded')
+  // 默认值已是 sarah@vercel.com / password
+  await page.locator('button:has-text("Sign in")').click()
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('Sarah Chen')
+})
+
+test('T6: 设置页 — 登录后显示资料 + 登出', async ({ page }) => {
+  // 先登录
+  await page.goto('/#/login')
+  await page.waitForLoadState('domcontentloaded')
+  await page.locator('button:has-text("Sign in")').click()
+  await page.waitForTimeout(1500)
+  // 进设置
+  await page.goto('/#/settings')
+  await page.waitForTimeout(1000)
+  let body = await page.locator('body').innerText()
+  expect(body).toContain('Your Settings')
+  expect(body).toContain('Sarah Chen')
+  // 登出
+  await page.locator('button:has-text("logout")').click()
+  await page.waitForTimeout(1000)
+  body = await page.locator('body').innerText()
+  // 登出后 nav 显示 Sign in
+  expect(body).toContain('Sign in')
+})
+
+test('T7: 未登录访问设置页 — 显示 Sign in 提示', async ({ page }) => {
+  await page.goto('/#/settings')
+  await page.waitForTimeout(1000)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('not logged in')
+})
+
+test('T8: 控制台无实质错误', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text())
+  })
+  await waitForHome(page)
+  await page.waitForTimeout(1000)
+  const real = errors.filter((e) => !e.includes('favicon') && !e.includes('Failed to load resource'))
+  expect(real, `console errors: ${real.join('; ')}`).toEqual([])
+})

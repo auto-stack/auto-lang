@@ -1,6 +1,8 @@
 // pages/article_detail.at — article body + comments list (read-only). Reads
 // slug from the route param, loads via store.OpenArticle on Init. Cf. 018
 // reading.at (router.param) + vue-ref ArticleDetail.vue.
+// NOTE: store.current_article starts null (codegen flattens struct-literal
+// init to null), so guard with `!= nil` before reading fields.
 use article_store: ArticleStore
 
 widget article_detail {
@@ -13,7 +15,7 @@ widget article_detail {
     view {
         col {
             style: "max-w-2xl mx-auto px-4 py-6"
-            if .store.current_article.slug == "" {
+            if .store.current_article == nil {
                 text "Loading…" { style: "text-gray-400 py-12 text-center" }
             } else {
                 // Article header banner

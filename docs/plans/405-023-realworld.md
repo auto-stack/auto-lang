@@ -2,7 +2,7 @@
 
 > **纲领**: 遵循 [Plan 401](401-autoui-examples-upgrade.md) 硬指标 + 技术约定。本计划是 401 进度总表里 023-realworld 的子计划。
 > **技能**: 使用 `auto-ui-creator` 技能（`D:/autostack/skills/auto-ui-creator/`，含 25 条 Gotcha + Vue→AutoUI 映射 + 模板 + Toy→Real 重构模式 R1-R4）。
-> **状态（2026-08-09）**: 🟡 阶段 1 实施中
+> **状态（2026-08-09）**: ✅ 阶段 1 完成（vue 原型 + auto 复刻：认证 + feed + 文章详情，playwright 8/8 全绿）。阶段 2 待后续计划。
 > **分支/worktree**: `plan401/023-realworld`（`.worktree/plan401-023-realworld`）
 > **动机**: 023 现为 227 行单文件玩具（散装 art1_title/art2_author、current_view 字符串切视图、无后端、无交互）。升级为对标 RealWorld (Conduit) 完整 spec 的真实 App。
 > **参考**: RealWorld 官方 spec（19 端点 + 数据模型 + 7 页面 + JWT 认证，`Authorization: Token <jwt>` 前缀是 `Token` 非 `Bearer`）。
@@ -117,9 +117,20 @@ pub type Comment = { id: int, body: str, author: str }
 - **vue 原型价值兜底**: 即使 auto 复刻受阻，vue 原型本身也是有价值的交互参考。
 
 ## 验证清单（阶段 1）
-- [ ] vue-ref/ 原型可运行，4 页面 + settings 交互符合 RealWorld 预期
-- [ ] 后端 `cargo build` + curl 7 端点正确
-- [ ] `auto gen` + 启动 + 前端正常加载
-- [ ] playwright T1-T8 全绿
-- [ ] README 更新
-- [ ] 401 进度总表 023 状态更新
+- [x] vue-ref/ 原型可运行，5 视图(home/login/register/article/settings)渲染验证
+- [x] 后端 `cargo build` + curl 6 端点正确（list_tags 移到客户端派生）
+- [x] `auto gen` + 启动 + 前端正常加载（hash 路由 5 条）
+- [x] **playwright 8/8 全绿**（2026-08-09：T1 feed / T2 标签过滤 / T3 详情+评论 / T4 注册 / T5 登录 / T6 设置+登出 / T7 未登录提示 / T8 无错）
+- [x] README 更新
+- [x] 401 进度总表 023 状态更新
+
+### 阶段 1 过程中修复的 codegen 问题（4 个，影响后续示例）
+1. **`tag` 是保留软关键字**（TokenKind::Tag，enum 别名）→ 不能作参数名（a2r "expected '{' or type after 'str'"）。用 `filter_tag` 规避。
+2. **a2r_std import 路径错**（trans/rust.rs:17746）→ `use a2r_std` 改 `use auto_lang::a2r_std`（a2r_std 是 auto_lang 模块，非独立 crate）。
+3. **back Cargo.toml 缺 auto-lang 依赖**（api_gen.rs generate_cargo_toml）→ has_db 时加 `auto-lang.workspace = true`。
+4. **store model 的 struct 字面量初始值退化 null**（未修 codegen，.at 侧用 `!= nil` 判断规避）—— 记入 401 技术约定，留后续根治。
+
+### 待补（阶段 2 或独立计划）
+- store struct 字面量初始值 codegen 修复（根治 #4）
+- 真正的 token 认证（current_user 读 token，端点鉴权）
+- 文章 CRUD / 评论 POST-DELETE / 关注 / 收藏 / 资料 / 分页

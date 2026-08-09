@@ -1,6 +1,6 @@
 # Override parent .gitignore so the vue reference prototype + test manifest commit.
-# The repo-root rules `examples/**/vue/` and `*.json` would otherwise swallow
-# vue-ref/ and tests/package.json (cf. 018-book-reader/.gitignore).
+# Repo-root rules `examples/**/vue/` and `*.json` would swallow vue-ref/ and
+# tests/package.json (cf. 018-book-reader/.gitignore).
 !vue-ref/
 !tests/package.json
 

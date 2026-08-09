@@ -87,7 +87,7 @@ examples/ui/018-book-reader/
 | 018-book-reader | 已升级 | ✅ 完成 | (本纲领 §018) | 10/10 全绿，合并 master `bc5e1041` |
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
 | 022-kanban | 已升级 | ✅ 完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
-| 023-realworld | 227 行单文件 | 🟡 实施中(阶段1) | [Plan 405](405-023-realworld.md) | 完整 Conduit spec，分两阶段；先 vue 原型再复刻 |
+| 023-realworld | 已升级 | ✅ 阶段1完成 | [Plan 405](405-023-realworld.md) | Conduit spec 阶段1(认证+feed+详情)，8/8 全绿；阶段2待后续 |
 | 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
 | 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
 | 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
@@ -96,7 +96,7 @@ examples/ui/018-book-reader/
 | 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 | 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 
-**推荐批次顺序**：022-kanban（✅ 完成）→ 023-realworld（高价值）→ 019/020/021（中等）→ 024/025（低）。
+**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1）→ 019/020/021（中等）→ 024/025（低）。
 
 ---
 
@@ -108,3 +108,4 @@ examples/ui/018-book-reader/
 | `plan399/018-book-reader` | 018 升级 + 3 codegen 修复 + playwright 10/10 | 018 |
 | `plan401/022-kanban` | 022 阶段1：CRUD + 列移动 + playwright 5/5 | 022 |
 | `plan401/022-drag` | 022 阶段2：HTML5 拖拽 + 修 row/col 属性穿透 bug + playwright 6/6 | 022 |
+| `plan401/023-realworld` | 023 阶段1：Conduit 认证+feed+详情 + vue 原型 + 修 3 个 a2r codegen bug + playwright 8/8 | 023 |

@@ -1,5 +1,8 @@
 // pages/settings.at — profile form (stage 1: display-only, logout works) +
 // logout. Edit/save is stage 2 (needs PUT /user). Cf. vue-ref Settings.vue.
+// NOTE: store.current_user is null before Init, then an empty User (id=0)
+// after Init (codegen flattens struct-literal init to null; current_user()
+// returns id=0 when unauthenticated). Both states = "not logged in".
 use auth_store: AuthStore
 
 widget settings {
@@ -13,48 +16,57 @@ widget settings {
         col {
             style: "max-w-md mx-auto px-4 py-8 text-center items-center"
             text "Your Settings" { style: "text-3xl font-semibold mb-4" }
-            if .store.current_user.id == 0 {
+            // Logged in = current_user != nil AND id != 0.
+            if .store.current_user == nil {
                 col {
                     style: "text-gray-500 text-sm"
                     text "You are not logged in." {}
                     link (to: "/login") { text "Sign in" { style: "text-brand-green" } }
                 }
             } else {
-                col {
-                    style: "text-left gap-3 w-full"
-                    input {
-                        placeholder: "URL of profile picture",
-                        value: .store.current_user.image,
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                if .store.current_user.id == 0 {
+                    col {
+                        style: "text-gray-500 text-sm"
+                        text "You are not logged in." {}
+                        link (to: "/login") { text "Sign in" { style: "text-brand-green" } }
                     }
-                    input {
-                        placeholder: "Username",
-                        value: .store.current_user.username,
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    }
-                    textarea {
-                        placeholder: "Short bio about you",
-                        value: .store.current_user.bio,
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    }
-                    input {
-                        placeholder: "Email",
-                        value: .store.current_user.email,
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    }
-                    input {
-                        placeholder: "New Password (stage 2)",
-                        type: "password",
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    }
-                    row {
-                        style: "justify-between"
-                        button "Or click here to logout." {
-                            onclick: .Logout,
-                            style: "text-red-500 border border-red-500 px-3 py-1 text-sm rounded hover:bg-red-50"
+                } else {
+                    col {
+                        style: "text-left gap-3 w-full"
+                        input {
+                            placeholder: "URL of profile picture",
+                            value: .store.current_user.image,
+                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         }
-                        button "Update Settings (stage 2)" {
-                            style: "px-5 py-2 rounded bg-gray-300 text-gray-500 text-sm cursor-not-allowed"
+                        input {
+                            placeholder: "Username",
+                            value: .store.current_user.username,
+                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        }
+                        textarea {
+                            placeholder: "Short bio about you",
+                            value: .store.current_user.bio,
+                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        }
+                        input {
+                            placeholder: "Email",
+                            value: .store.current_user.email,
+                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        }
+                        input {
+                            placeholder: "New Password (stage 2)",
+                            type: "password",
+                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        }
+                        row {
+                            style: "justify-between"
+                            button "Or click here to logout." {
+                                onclick: .Logout,
+                                style: "text-red-500 border border-red-500 px-3 py-1 text-sm rounded hover:bg-red-50"
+                            }
+                            button "Update Settings (stage 2)" {
+                                style: "px-5 py-2 rounded bg-gray-300 text-gray-500 text-sm cursor-not-allowed"
+                            }
                         }
                     }
                 }

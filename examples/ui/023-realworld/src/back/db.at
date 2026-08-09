@@ -56,16 +56,11 @@ pub fn register(username str, email str, password str) User {
     return u
 }
 
-/// Current user (stage 1 placeholder: first seed user). Real token auth = stage 2.
-/// NOTE: avoid `users.len() > 0` + `users[0]` — a2r mis-transpiles both (deref on
-/// usize / User). Iterate to take the first instead. Returns empty User if none.
+/// Current user. Stage 1: NO token auth — always returns an empty User
+/// (id=0 = logged out). The frontend starts unauthenticated; login/register
+/// set the user. Real token-based current_user is stage 2.
 pub fn current_user() User {
     var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
-    for user in users {
-        let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
-        result = found
-        // break after first (loop body return-style)
-    }
     return result
 }
 

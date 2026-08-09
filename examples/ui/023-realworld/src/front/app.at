@@ -25,11 +25,16 @@ widget App {
                 row {
                     style: "ml-auto gap-4 text-sm"
                     link (to: "/") { text "Home" { style: "text-gray-600" } }
-                    if .store.current_user.id != 0 {
-                        link (to: "/settings") { text "Settings" { style: "text-gray-600" } }
-                        text .store.current_user.username {
-                            onclick: .Logout
-                            style: "text-gray-600 cursor-pointer"
+                    if .store.current_user != nil {
+                        if .store.current_user.id != 0 {
+                            link (to: "/settings") { text "Settings" { style: "text-gray-600" } }
+                            text .store.current_user.username {
+                                onclick: .Logout
+                                style: "text-gray-600 cursor-pointer"
+                            }
+                        } else {
+                            link (to: "/login") { text "Sign in" { style: "text-gray-600" } }
+                            link (to: "/register") { text "Sign up" { style: "text-gray-600" } }
                         }
                     } else {
                         link (to: "/login") { text "Sign in" { style: "text-gray-600" } }
