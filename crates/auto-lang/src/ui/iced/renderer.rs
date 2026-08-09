@@ -2262,6 +2262,77 @@ fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
     rx
 }
 
+/// Plan 044 M1: 把 serde_json::Value 转成 auto_val::Value(递归)。
+/// 用于 command_result 的 output 字段(RenderedOutput tagged union)。
+fn json_to_auto_val(v: &serde_json::Value) -> auto_val::Value {
+    match v {
+        serde_json::Value::Null => auto_val::Value::Nil,
+        serde_json::Value::Bool(b) => auto_val::Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                auto_val::Value::Int(i as i32)
+            } else {
+                auto_val::Value::Double(n.as_f64().unwrap_or(0.0))
+            }
+        }
+        serde_json::Value::String(s) => auto_val::Value::str(s),
+        serde_json::Value::Array(arr) => {
+            auto_val::Value::Array(auto_val::Array {
+                values: arr.iter().map(json_to_auto_val).collect(),
+            })
+        }
+        serde_json::Value::Object(map) => {
+            let mut obj = auto_val::Obj::new();
+            for (k, val) in map {
+                obj.set(k.clone(), json_to_auto_val(val));
+            }
+            auto_val::Value::Obj(obj)
+        }
+    }
+}
+
+/// Plan 044 M1: 把命令 stdout 解析成 RenderedOutput JSON(对齐 vue 版 ash-core 渲染)。
+/// 在 renderer 侧实现(不依赖 auto-shell/ash-core,避免循环依赖)。
+fn parse_output_to_structured(cmd: &str, stdout: &str) -> serde_json::Value {
+    let cmd_name = cmd.split_whitespace().next().unwrap_or("").to_lowercase();
+    match cmd_name.as_str() {
+        "ls" | "dir" => parse_ls_to_table(stdout),
+        _ => serde_json::json!({ "Text": stdout }),
+    }
+}
+
+/// 把 ls 的 stdout 解析成 RenderedOutput::Table JSON。
+/// 简化:每行一个文件名,列 [name, type, size]。
+fn parse_ls_to_table(stdout: &str) -> serde_json::Value {
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if line.starts_with("Volume ") || line.starts_with("Directory ") { continue; }
+        if line.starts_with("Total files") || (line.starts_with("  ") && line.contains("File(s)")) { continue; }
+
+        let name = if line.contains("<DIR>") {
+            line.split("<DIR>").nth(1).map(|s| s.trim().to_string()).unwrap_or_else(|| line.to_string())
+        } else {
+            line.split_whitespace().last().map(|s| s.to_string()).unwrap_or_else(|| line.to_string())
+        };
+        if name.is_empty() || name == "." || name == ".." { continue; }
+        let is_dir = line.contains("<DIR>") || name.ends_with('/');
+        let file_type = if is_dir { "dir" } else { "file" };
+        rows.push(serde_json::json!([
+            { "Text": name },
+            { "Text": file_type },
+            { "Text": "" },
+        ]));
+    }
+    if rows.is_empty() {
+        return serde_json::json!({ "Text": stdout });
+    }
+    serde_json::json!({
+        "Table": { "columns": ["name", "type", "size"], "rows": rows }
+    })
+}
+
 /// merged 模式执行循环:从队列取命令 → std::process::Command 执行 → 推流式 + 结果事件。
 async fn merged_exec_loop(
     handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
@@ -2323,6 +2394,7 @@ async fn merged_exec_loop(
         let mut stderr = child.stderr.take();
         let mut cancelled = false;
         let mut buf = [0u8; 4096];
+        let mut full_stdout = String::new();
         loop {
             // 取消检查。
             if let Some(true) = handle.lock().unwrap().cancel_flags.get(&block_id).copied() {
@@ -2338,6 +2410,7 @@ async fn merged_exec_loop(
             };
             if n > 0 {
                 let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                full_stdout.push_str(&chunk);
                 let _ = tx.send(ShellStreamEvent {
                     event: "command_output".to_string(),
                     payload_json: serde_json::json!({
@@ -2374,20 +2447,13 @@ async fn merged_exec_loop(
             continue;
         }
 
-        // 对齐 ash-server CommandStatus:Success(裸串)| Failed(msg)(对象)。
-        // output 我们暂只支持 Text 变体(把累积 stdout 作文本)。
-        // 完整 RenderedOutput 渲染留给 a2r/HTTP(真后端 ash-server 走 /api/run_smart
-        // 已有 Table/Record 等渲染)。merged mock 路径 Text 足以验证闭环。
+        // Plan 044 M1: output 支持 Table/Text 变体。ls 等命令解析成 Table(对齐 vue 版),
+        // 其余作 Text。parse_output_to_structured 在 renderer 侧实现(不依赖 auto-shell/
+        // ash-core,避免循环依赖:auto-shell → auto-lang,反向不可)。
         let success = matches!(status_code, Some(0));
         let (status_val, output_val) = if success {
-            // stdout 已流式推过;结果事件带一份完整文本(供 store 切到 Success 分支)。
-            // 这里复用:不再读 stdout(已耗尽),用空串占位 —— store 的 RunResult
-            // 在 merged 模式下保留 streamed_text?不:RunResult 会清空 streamed_text
-            // 并设 output。为避免空 output,执行器在流推期间累积一份完整 stdout。
-            // (下方用 ACCUMULATED_STDOUT 线程局部?复杂化 —— 改为:merged 模式下
-            //  RunResult 不清空 streamed_text,而是把它提升为 output.Text。)
-            // 简化:output.Text = "" 让 store 用 streamed_text 作 output(见 store 注释)。
-            (serde_json::Value::String("Success".to_string()), serde_json::Value::Null)
+            let parsed = parse_output_to_structured(&cmd, &full_stdout);
+            (serde_json::Value::String("Success".to_string()), parsed)
         } else {
             let msg = if err_text.is_empty() {
                 format!("exit code {:?}", status_code)
@@ -2562,21 +2628,27 @@ fn update_block_in_state(
                     ("Failed".to_string(), status_str)
                 };
                 let dur = payload.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
-                // output:merged 模式下 payload output 为 null,用 streamed_text 作 output.Text。
-                let output_text = payload.get("output")
-                    .and_then(|o| o.get("Text"))
-                    .and_then(|t| t.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| {
-                        obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default()
-                    });
+                // Plan 044 M1: output 按 payload 变体分发(Table/Text)。
+                let output_obj = if let Some(output) = payload.get("output") {
+                    if output.is_null() {
+                        let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                        let mut o = auto_val::Obj::new();
+                        o.set("Text", auto_val::Value::str(&text));
+                        auto_val::Value::Obj(o)
+                    } else {
+                        json_to_auto_val(output)
+                    }
+                } else {
+                    let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                    let mut o = auto_val::Obj::new();
+                    o.set("Text", auto_val::Value::str(&text));
+                    auto_val::Value::Obj(o)
+                };
                 let mut status = auto_val::Obj::new();
                 status.set("kind", auto_val::Value::str(&kind));
                 status.set("message", auto_val::Value::str(&message));
                 obj.set("status", auto_val::Value::Obj(status));
-                let mut out = auto_val::Obj::new();
-                out.set("Text", auto_val::Value::str(&output_text));
-                obj.set("output", auto_val::Value::Obj(out));
+                obj.set("output", output_obj);
                 obj.set("streamed_text", auto_val::Value::str(""));
                 obj.set("duration_ms", auto_val::Value::Int(dur));
             }
