@@ -1,40 +1,37 @@
-// db.at — RealWorld in-memory store + seed data (stage 1).
-// Types come from api.at (`use api: ...`); db holds only logic + state.
-// Memory storage uses module-level `var` (top-level mutable globals) with
-// List<T> containers (only over custom types — List<str>/[]str are NOT
-// supported by a2r, so tags are derived from articles and returned as a
-// comma-separated str). a2r workarounds (Plan 401 §技术约定): avoid struct
-// literals in return position — pre-declare a zero `var result`, build with a
-// `let` ctor inside the handler, then assign the bare ident.
+// db.at — RealWorld in-memory store + seed data (stages 1 + 2).
+// a2r workarounds (Plan 401 §技术约定): avoid struct literals in return
+// position (pre-declare result + let-ctor); avoid `tag` as a param name;
+// don't pass borrowed String fields to helper fns; avoid users[0]/len()>0.
 
-use api: User, Article, Comment
+use api: User, Article, Comment, Follow
 
-// --- Seed users (password is not stored; mock login accepts any password
-// for a known email). ---
+// --- Seed users ---
 var users List<User> = List<User>.new([
     User { id: 1, email: "sarah@vercel.com", username: "Sarah Chen", bio: "Senior Frontend Engineer at Vercel. Writing about React, TypeScript, and the future of web development.", image: "https://i.pravatar.cc/100?u=sarah", token: "mock-token-sarah" },
     User { id: 2, email: "marcus@example.com", username: "Marcus Johnson", bio: "API craftsman. tRPC, GraphQL, type safety enthusiast.", image: "https://i.pravatar.cc/100?u=marcus", token: "mock-token-marcus" },
 ])
 var nextuserid int = 3
 
-// --- Seed articles (slugs pre-computed; tagList comma-separated). ---
+// --- Seed articles ---
 var articles List<Article> = List<Article>.new([
     Article { slug: "understanding-react-server-components", title: "Understanding React Server Components", description: "Server Components represent a paradigm shift in how we think about rendering. They allow you to render components on the server, reducing the JavaScript sent to the client.", body: "Server Components represent a paradigm shift in how we think about rendering. They allow you to render components on the server, reducing the JavaScript sent to the client. This enables faster initial loads, direct access to backend resources, and a simpler mental model for data-heavy components.", tagList: "React,JavaScript,Performance", author: "Sarah Chen", favoritesCount: 42, createdAt: "2026-03-15" },
     Article { slug: "building-type-safe-apis-with-trpc", title: "Building Type-Safe APIs with tRPC", description: "tRPC eliminates the need for REST endpoints and client-side fetching. Your TypeScript types flow seamlessly from server to client.", body: "tRPC eliminates the need for REST endpoints and client-side fetching. Your TypeScript types flow seamlessly from server to client. With end-to-end type safety, refactors become fearless and the contract between your layers is enforced by the compiler, not by hand-written schemas.", tagList: "TypeScript,tRPC,API", author: "Marcus Johnson", favoritesCount: 18, createdAt: "2026-03-12" },
     Article { slug: "the-state-of-css-in-2026", title: "The State of CSS in 2026", description: "Container queries, cascade layers, and native nesting have changed everything. Here is what you need to know.", body: "Container queries, cascade layers, and native nesting have changed everything. The CSS working group shipped long-requested features that used to require preprocessors or build steps. This tour covers :has(), container queries, cascade layers, and native nesting.", tagList: "CSS,Web,Design", author: "Emily Park", favoritesCount: 27, createdAt: "2026-03-10" },
 ])
 
-// --- Seed comments (each carries its article slug; Comment.slug field). ---
+// --- Seed comments (each carries its article slug) ---
 var comments List<Comment> = List<Comment>.new([
     Comment { id: 1, slug: "understanding-react-server-components", body: "Great breakdown of RSC vs SSR — the mental model finally clicked for me.", author: "Marcus Johnson", createdAt: "2026-03-16" },
     Comment { id: 2, slug: "understanding-react-server-components", body: "Would love a follow-up on streaming + suspense boundaries.", author: "Emily Park", createdAt: "2026-03-16" },
     Comment { id: 3, slug: "building-type-safe-apis-with-trpc", body: "The end-to-end type safety story is what won my team over.", author: "Sarah Chen", createdAt: "2026-03-13" },
 ])
+var nextcommentid int = 4
 
-// --- Auth ---
+// --- Follow relationships (stage 2) ---
+var follows List<Follow> = List<Follow>.new([])
 
-/// Log in by email. Mock: any password accepted for a known email. Returns
-/// empty User (id=0) on unknown email (stage 1: non-Option for simpler frontend).
+// --- Auth (stage 1) ---
+
 pub fn login(email str, password str) User {
     var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     for user in users {
@@ -46,7 +43,6 @@ pub fn login(email str, password str) User {
     return result
 }
 
-/// Register a new user. Returns the new user with a fresh token.
 pub fn register(username str, email str, password str) User {
     let id int = nextuserid
     nextuserid = nextuserid + 1
@@ -56,24 +52,18 @@ pub fn register(username str, email str, password str) User {
     return u
 }
 
-/// Current user. Stage 1: NO token auth — always returns an empty User
-/// (id=0 = logged out). The frontend starts unauthenticated; login/register
-/// set the user. Real token-based current_user is stage 2.
+// Stage 1: no token auth — always returns empty User (id=0 = logged out).
 pub fn current_user() User {
     var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     return result
 }
 
-// --- Articles ---
+// --- Articles read (stage 1) ---
 
-/// List all articles. (Tag filtering is client-side: a2r doesn't clone a
-/// borrowed String field when passing it to a helper fn, so server-side
-/// tag matching is impractical. The frontend splits tagList and filters.)
 pub fn list_articles() []Article {
     return articles
 }
 
-/// Find a single article by slug.
 pub fn get_article(slug str) ?Article {
     for article in articles {
         if article.slug == slug {
@@ -84,9 +74,59 @@ pub fn get_article(slug str) ?Article {
     return None
 }
 
-// --- Comments ---
+// --- Article CRUD (stage 2) ---
 
-/// List comments belonging to an article slug.
+pub fn create_article(slug str, title str, description str, body str, tagList str, author str) Article {
+    let a = Article { slug: slug, title: title, description: description, body: body, tagList: tagList, author: author, favoritesCount: 0, createdAt: "2026-08-09" }
+    articles.push(a)
+    return a
+}
+
+pub fn update_article(slug str, title str, description str, body str) Article {
+    var new_articles List<Article> = List<Article>.new([])
+    var result Article = Article { slug: slug, title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }
+    for article in articles {
+        if article.slug == slug {
+            let updated = Article { slug: article.slug, title: title, description: description, body: body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            new_articles.push(updated)
+            result = updated
+        } else {
+            let kept = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    return result
+}
+
+pub fn delete_article(slug str) bool {
+    var new_articles List<Article> = List<Article>.new([])
+    var found bool = false
+    for article in articles {
+        if article.slug == slug {
+            found = true
+        } else {
+            let kept = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    // also delete the article's comments
+    var new_comments List<Comment> = List<Comment>.new([])
+    for comment in comments {
+        if comment.slug == slug {
+            // skip (deleted with the article)
+        } else {
+            let kept = Comment { id: comment.id, slug: comment.slug, body: comment.body, author: comment.author, createdAt: comment.createdAt }
+            new_comments.push(kept)
+        }
+    }
+    comments = new_comments
+    return found
+}
+
+// --- Comments (stage 1 read + stage 2 write) ---
+
 pub fn list_comments(slug str) []Comment {
     var matched List<Comment> = List<Comment>.new([])
     for comment in comments {
@@ -98,4 +138,100 @@ pub fn list_comments(slug str) []Comment {
     return matched
 }
 
-// (No list_tags / tag_in — tag filtering is client-side. See list_articles.)
+pub fn create_comment(slug str, body str, author str) Comment {
+    let id int = nextcommentid
+    nextcommentid = nextcommentid + 1
+    let c = Comment { id: id, slug: slug, body: body, author: author, createdAt: "2026-08-09" }
+    comments.push(c)
+    return c
+}
+
+pub fn delete_comment(id int) bool {
+    var found bool = false
+    var new_comments List<Comment> = List<Comment>.new([])
+    for comment in comments {
+        if comment.id == id {
+            found = true
+        } else {
+            let kept = Comment { id: comment.id, slug: comment.slug, body: comment.body, author: comment.author, createdAt: comment.createdAt }
+            new_comments.push(kept)
+        }
+    }
+    comments = new_comments
+    return found
+}
+
+// --- Favorite (stage 2) ---
+
+pub fn favorite_article(slug str) Article {
+    var new_articles List<Article> = List<Article>.new([])
+    var result Article = Article { slug: slug, title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }
+    for article in articles {
+        if article.slug == slug {
+            let count int = article.favoritesCount + 1
+            let updated = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: count, createdAt: article.createdAt }
+            new_articles.push(updated)
+            result = updated
+        } else {
+            let kept = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    return result
+}
+
+pub fn unfavorite_article(slug str) Article {
+    var new_articles List<Article> = List<Article>.new([])
+    var result Article = Article { slug: slug, title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }
+    for article in articles {
+        if article.slug == slug {
+            var count int = article.favoritesCount - 1
+            if count < 0 {
+                count = 0
+            }
+            let updated = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: count, createdAt: article.createdAt }
+            new_articles.push(updated)
+            result = updated
+        } else {
+            let kept = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            new_articles.push(kept)
+        }
+    }
+    articles = new_articles
+    return result
+}
+
+// --- Profile + follow (stage 2) ---
+
+pub fn get_profile(username str) User {
+    var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+    for user in users {
+        if user.username == username {
+            let found = User { id: user.id, email: "", username: user.username, bio: user.bio, image: user.image, token: "" }
+            result = found
+        }
+    }
+    return result
+}
+
+pub fn follow(username str) bool {
+    let f = Follow { follower_id: 1, followee_username: username }
+    follows.push(f)
+    return true
+}
+
+pub fn unfollow(username str) bool {
+    var new_follows List<Follow> = List<Follow>.new([])
+    var found bool = false
+    for f in follows {
+        if f.followee_username == username {
+            found = true
+        } else {
+            let kept = Follow { follower_id: f.follower_id, followee_username: f.followee_username }
+            new_follows.push(kept)
+        }
+    }
+    follows = new_follows
+    return found
+}

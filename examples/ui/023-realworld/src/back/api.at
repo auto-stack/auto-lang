@@ -1,12 +1,8 @@
-// api.at — RealWorld (Conduit) API, stage 1 subset.
-// Authentication + article feed + article detail + comments + tags.
-// All endpoints delegate to db.rs (Plan 399 route B). Frontend consumes
-// User/Article/Comment via `use back.api`.
-//
-// Stage 1 scope (Plan 405): login/register/current-user + list/get articles +
-// comments + tags. Stage 2 adds article CRUD, comment post/delete, follow,
-// favorite. Response is FLAT (not the RealWorld {article:{...}} wrapper) —
-// the auto app is self-contained, no cross-impl interop needed.
+// api.at — RealWorld (Conduit) API, stages 1 + 2.
+// Stage 1: auth + feed + article detail + comments.
+// Stage 2: article CRUD, post/delete comment, follow, favorite, profile.
+// All endpoints delegate to db.rs (Plan 399 route B). Response is FLAT
+// (not the RealWorld {article:{...}} wrapper).
 
 /// A registered user. `token` is the mock JWT returned by login/register.
 pub type User = {
@@ -18,7 +14,8 @@ pub type User = {
     token: str
 }
 
-/// An article in the feed. `tagList` is comma-separated (stage 1; []str TBD).
+/// An article. `tagList` is comma-separated. Stage 2: slug is client-generated
+/// (title→slug in the editor) to avoid server-side String ops (a2r borrow issues).
 pub type Article = {
     slug: str
     title: str
@@ -30,7 +27,7 @@ pub type Article = {
     createdAt: str
 }
 
-/// A comment on an article. `slug` is the article it belongs to.
+/// A comment. `slug` is the article it belongs to.
 pub type Comment = {
     id: int
     slug: str
@@ -39,51 +36,118 @@ pub type Comment = {
     createdAt: str
 }
 
+/// A follow relationship (who follows whom).
+pub type Follow = {
+    follower_id: int
+    followee_username: str
+}
+
 use db
 
-/// POST /api/users/login — log in with email + password. Returns the user
-/// (with token) on success, or an empty User (id=0) on bad credentials.
-/// (Stage 1 returns a non-Option User so the frontend store can hold it
-/// directly without ?T unwrapping — codegen's handling of ?T fields in
-/// templates is unverified. Stage 2 may switch to ?User.)
+// --- Stage 1: auth ---
+
 #[api(method = "POST", path = "/api/users/login")]
 pub fn login(email str, password str) User {
     return db.login(email, password)
 }
 
-/// POST /api/users — register a new user. Returns the new user (with token).
 #[api(method = "POST", path = "/api/users")]
 pub fn register(username str, email str, password str) User {
     return db.register(username, email, password)
 }
 
-/// GET /api/user — current user (stage 1 placeholder: first seed user). Real
-/// token auth = stage 2. Returns empty User (id=0) if none.
 #[api(method = "GET", path = "/api/user")]
 pub fn current_user() User {
     return db.current_user()
 }
 
-/// GET /api/articles — list all articles (no server-side tag filter; the
-/// frontend filters by tagList client-side, since a2r doesn't clone borrowed
-/// String fields when passing them to a helper fn).
+// --- Stage 1: articles (read) ---
+
 #[api(method = "GET", path = "/api/articles")]
 pub fn list_articles() []Article {
     return db.list_articles()
 }
 
-/// GET /api/articles/:slug — fetch a single article by slug.
 #[api(method = "GET", path = "/api/articles/:slug")]
 pub fn get_article(slug str) ?Article {
     return db.get_article(slug)
 }
 
-/// GET /api/articles/:slug/comments — list comments for an article.
 #[api(method = "GET", path = "/api/articles/:slug/comments")]
 pub fn list_comments(slug str) []Comment {
     return db.list_comments(slug)
 }
 
-// NOTE: no /api/tags endpoint — tags are derived client-side from the article
-// tagList fields (a2r has no List<str>, and aggregating Strings server-side
-// hits borrow-checker issues). The frontend splits each article.tagList.
+// --- Stage 2: article CRUD ---
+
+/// POST /api/articles — create. slug is supplied by the client (title→slug).
+#[api(method = "POST", path = "/api/articles")]
+pub fn create_article(slug str, title str, description str, body str, tagList str, author str) Article {
+    return db.create_article(slug, title, description, body, tagList, author)
+}
+
+/// PUT /api/articles/:slug — edit title/description/body (slug stays; a real
+/// impl would regenerate slug from new title, skipped to avoid String ops).
+#[api(method = "PUT", path = "/api/articles/:slug")]
+pub fn update_article(slug str, title str, description str, body str) Article {
+    return db.update_article(slug, title, description, body)
+}
+
+/// DELETE /api/articles/:slug — remove an article (and its comments).
+#[api(method = "DELETE", path = "/api/articles/:slug")]
+pub fn delete_article(slug str) bool {
+    return db.delete_article(slug)
+}
+
+// --- Stage 2: comments ---
+
+/// POST /api/articles/:slug/comments — add a comment.
+#[api(method = "POST", path = "/api/articles/:slug/comments")]
+pub fn create_comment(slug str, body str, author str) Comment {
+    return db.create_comment(slug, body, author)
+}
+
+/// DELETE /api/comments/:id — remove a comment by id. (Single path param: a2r
+/// doesn't extract a second path param from /:slug/comments/:id correctly.)
+#[api(method = "DELETE", path = "/api/comments/:id")]
+pub fn delete_comment(id int) bool {
+    return db.delete_comment(id)
+}
+
+// --- Stage 2: favorite ---
+
+/// POST /api/articles/:slug/favorite — favorite (favoritesCount + 1).
+#[api(method = "POST", path = "/api/articles/:slug/favorite")]
+pub fn favorite_article(slug str) Article {
+    return db.favorite_article(slug)
+}
+
+/// DELETE /api/articles/:slug/favorite — unfavorite (favoritesCount - 1, min 0).
+#[api(method = "DELETE", path = "/api/articles/:slug/favorite")]
+pub fn unfavorite_article(slug str) Article {
+    return db.unfavorite_article(slug)
+}
+
+// --- Stage 2: profile + follow ---
+
+/// GET /api/profiles/:username — a user's public profile. Returns empty User
+/// (id=0) if not found.
+#[api(method = "GET", path = "/api/profiles/:username")]
+pub fn get_profile(username str) User {
+    return db.get_profile(username)
+}
+
+/// POST /api/profiles/:username/follow — follow a user.
+#[api(method = "POST", path = "/api/profiles/:username/follow")]
+pub fn follow(username str) bool {
+    return db.follow(username)
+}
+
+/// DELETE /api/profiles/:username/follow — unfollow.
+#[api(method = "DELETE", path = "/api/profiles/:username/follow")]
+pub fn unfollow(username str) bool {
+    return db.unfollow(username)
+}
+
+// NOTE: no /api/tags endpoint — tags are derived client-side (a2r has no
+// List<str>, and aggregating Strings server-side hits borrow-checker issues).

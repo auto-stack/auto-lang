@@ -852,15 +852,13 @@ fn endpoint_path_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
 /// Plan 399 §9: PATCH with body params (e.g. `set_pinned(id, pinned bool)`)
 /// was previously excluded, which meant no `Json(input)` extractor — but
 /// `resolve_db_call` still emitted `&input.X` → unbound `input` → compile error.
-/// POST/PUT always have a body (create/update the whole resource); PATCH only
-/// has a body when it declares body params (toggle_pin has none → no body).
+/// A handler has a JSON body only when it declares body params (params not
+/// bound from the path). Previously POST/PUT were unconditionally treated as
+/// having a body, which broke path-only POSTs like favorite/follow (they got
+/// a spurious `Json<User>` extraction that rejected requests). Now every
+/// method is consistent: body exists iff there are body params. (Plan 405)
 fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
-    let method = endpoint.method();
-    match method.as_str() {
-        "POST" | "PUT" => true,
-        "PATCH" => !endpoint_body_params(endpoint).is_empty(),
-        _ => false,
-    }
+    !endpoint_body_params(endpoint).is_empty()
 }
 
 // ============================================================================
