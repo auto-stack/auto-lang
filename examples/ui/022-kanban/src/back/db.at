@@ -1,0 +1,81 @@
+// db.at — Kanban board in-memory store + seed data.
+// Types come from api.at (`use api: Card`); db holds only logic + state.
+// Memory storage uses module-level `var` (top-level mutable globals), with a
+// `List<Card>` container. CRUD rewrites the top-level var as a whole.
+// a2r workarounds (per Plan 401 §技术约定): avoid struct literals in return
+// position — pre-declare a zero `var result`, build with a `let` ctor inside
+// the handler, then assign the bare ident; rebuild borrowed-iter fields via a
+// `let` ctor to trigger a2r clone.
+
+use api: Card
+
+// Seed: 4 todo / 2 doing / 3 done (reuses the original 022 toy's titles).
+var cards List<Card> = List<Card>.new([
+    Card { id: 1, title: "Design landing page", column: "todo" },
+    Card { id: 2, title: "Write API docs", column: "todo" },
+    Card { id: 3, title: "Fix login bug", column: "todo" },
+    Card { id: 4, title: "Setup CI/CD", column: "todo" },
+    Card { id: 5, title: "Implement auth flow", column: "doing" },
+    Card { id: 6, title: "Build dashboard", column: "doing" },
+    Card { id: 7, title: "Setup database", column: "done" },
+    Card { id: 8, title: "Create user model", column: "done" },
+    Card { id: 9, title: "Design logo", column: "done" },
+])
+
+var nextid int = 10
+
+/// Return every card (slices the top-level var).
+pub fn all_cards() []Card {
+    return cards
+}
+
+/// Create a card in the "todo" column with an auto-increment id.
+pub fn create_card(title str) Card {
+    let id int = nextid
+    nextid = nextid + 1
+    let card = Card { id: id, title: title, column: "todo" }
+    cards.push(card)
+    return card
+}
+
+/// Delete a card by id (rebuilds the list without it).
+pub fn delete_card(id int) bool {
+    var found bool = false
+    var new_cards List<Card> = List<Card>.new([])
+    for card in cards {
+        if card.id == id {
+            found = true
+        } else {
+            // Rebuild as an owned struct so a2r clones the borrowed iter fields
+            // (cf. 018 db.at get_chapter).
+            let kept = Card { id: card.id, title: card.title, column: card.column }
+            new_cards.push(kept)
+        }
+    }
+    cards = new_cards
+    return found
+}
+
+/// Move a card to a target column. Returns the moved card (or a zero card if
+/// the id was not found).
+pub fn move_card(id int, column str) Card {
+    var result Card = Card { id: id, title: "", column: column }
+    var new_cards List<Card> = List<Card>.new([])
+    var ok bool = false
+    for card in cards {
+        if card.id == id {
+            // Build the updated card via a `let` ctor, then assign the bare
+            // ident — avoids `return T{...}` and reassignment `x = T{...}`,
+            // both of which a2r mis-handles.
+            let moved = Card { id: card.id, title: card.title, column: column }
+            new_cards.push(moved)
+            result = moved
+            ok = true
+        } else {
+            let kept = Card { id: card.id, title: card.title, column: card.column }
+            new_cards.push(kept)
+        }
+    }
+    cards = new_cards
+    return result
+}

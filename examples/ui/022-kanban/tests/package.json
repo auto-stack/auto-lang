@@ -1,0 +1,14 @@
+{
+  "name": "kanban-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan 404 acceptance tests for 022-kanban (CRUD + column moves, rust backend)",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
