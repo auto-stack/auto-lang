@@ -2456,6 +2456,11 @@ fn register_transitive_widgets_inner(
                         }
                     }
                 }
+                // Plan 044 M3: 传递性模块的 view fn 也注册(同类 EDGE-16c,
+                // 但 view fn 走 register_view_fragment 而非 widget registry)。
+                if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+                    crate::aura::extract::register_view_fragment(frag);
+                }
             }
         }
         // 继续递归(孙组件可能还 use 了更深的组件)
