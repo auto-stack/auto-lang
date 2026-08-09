@@ -912,6 +912,33 @@ widget StrictCommaProbe {
             "error should name strict mode and the rule: {msg}"
         );
 
+        // Strict: R013 (unsupported bound-position expr, `??` has no
+        // bound-value arm) also escalates to a hard build failure.
+        let r013_src = r#"
+widget StrictR013Probe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span {
+                style: { "line-through": .a ?? .b }
+                text "label"
+            }
+        }
+    }
+}
+"#;
+        let r013_path = std::env::temp_dir().join("plan012_strict_r013_probe.at");
+        std::fs::write(&r013_path, r013_src).expect("write probe .at");
+        let err = generate_component_from_file(&r013_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on R013");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R013"),
+            "error should name strict mode and R013: {msg}"
+        );
+
         // Strict + Info only: `.remove` on an ext-composable facade passes
         // through with an R010 Info note — advisory, must NOT fail the build.
         // (A composable facade rather than `store.*`, to avoid tripping

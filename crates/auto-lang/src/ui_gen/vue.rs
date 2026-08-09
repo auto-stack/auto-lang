@@ -1362,10 +1362,16 @@ impl VueGenerator {
                     if imp.kind == crate::ast::ExtImportKind::Composable {
                         // Plan 022: composable 调用参数 → JS 字符串（逗号分隔）。
                         // 空 call_args 生成 ""（→ 无参调用 useX()，向后兼容）。
+                        // Plan 012 P0#13 follow-up: an arg form the bound-value
+                        // transpiler rejects used to silently become `null`
+                        // (then dropped by unwrap_or_default) — warn R013.
                         let args_js = imp.call_args.iter()
-                            .map(|a| self.expr_to_vue_bound_value(a))
-                            .collect::<Result<Vec<_>, _>>()
-                            .unwrap_or_default()
+                            .map(|a| self.bound_value_or_warn(
+                                a,
+                                &format!("composable `{}` call args", imp.path),
+                                "null",
+                            ))
+                            .collect::<Vec<_>>()
                             .join(", ");
                         for sym in &symbols {
                             self.ext_composables
@@ -2857,7 +2863,15 @@ impl VueGenerator {
             }
             match value {
                 AuraPropValue::Expr(expr) => {
-                    let value_str = self.expr_to_vue_bound_value(expr)?;
+                    // Plan 012 P0#13 follow-up: an unsupported expr form here
+                    // used to silently bind `null`; keep that fallback but
+                    // warn R013 (a hard error would break the whole widget
+                    // for one bad prop).
+                    let value_str = self.bound_value_or_warn(
+                        expr,
+                        &format!("dynamic-component prop `{}`", key),
+                        "null",
+                    );
                     attrs.push(format!(":{}=\"{}\"", key, value_str));
                 }
                 AuraPropValue::StyleBinding(_) => {}
@@ -3187,7 +3201,14 @@ impl VueGenerator {
                             continue;
                         }
                         let value_str = match value {
-                            AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr)?,
+                            // Plan 012 P0#13 follow-up: warn R013 + keep the
+                            // old `null` fallback instead of failing the
+                            // whole widget for one unsupported prop expr.
+                            AuraPropValue::Expr(expr) => self.bound_value_or_warn(
+                                expr,
+                                &format!("component prop `{}`", key),
+                                "null",
+                            ),
                             AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
                         };
                         if first_prop_expr.is_none() {
@@ -3443,8 +3464,15 @@ impl VueGenerator {
                             if let Some(model) = self.extract_state_ref(value) {
                                 attrs.push(format!(":checked=\"{}\"", model));
                             } else if let AuraPropValue::Expr(expr) = value {
-                                if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
-                                    attrs.push(format!(":checked=\"{}\"", js_expr));
+                                match self.expr_to_vue_bound_value(expr) {
+                                    Ok(js_expr) => attrs.push(format!(":checked=\"{}\"", js_expr)),
+                                    // Plan 012 P0#13 follow-up: was silently
+                                    // dropped; warn R013 (no attr emitted).
+                                    Err(e) => self.warn(
+                                        "R013",
+                                        crate::ui_gen::validators::Severity::Warning,
+                                        format!("checkbox `checked` binding: {}; binding not emitted", e),
+                                    ),
                                 }
                             }
                             continue;
@@ -3460,7 +3488,13 @@ impl VueGenerator {
                         } else if let AuraPropValue::Expr(expr) = value {
                             // Plan 351: ALL expression prop values (FieldAccess,
                             // Index, etc.) use v-bind with bound JS value (no {{ }}).
-                            let value_str = self.expr_to_vue_bound_value(expr)?;
+                            // Plan 012 P0#13 follow-up: warn R013 + keep the
+                            // old `null` fallback rather than fail the widget.
+                            let value_str = self.bound_value_or_warn(
+                                expr,
+                                &format!("element `{}` prop `{}`", tag, key),
+                                "null",
+                            );
                             // Also track value ref for v-model optimization
                             if key == "value" && (tag == "input" || tag == "textarea") {
                                 // Handle both Expr::Ident(".xxx") and Expr::Dot(Ident("self"), "xxx")
@@ -4682,7 +4716,13 @@ impl VueGenerator {
     fn style_obj_to_vue(&self, bindings: &[AuraStyleBinding]) -> String {
         let parts: Vec<String> = bindings.iter()
             .map(|b| {
-                let v = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "null".to_string());
+                // Plan 012 P0#13 follow-up: was a silent `null` fallback;
+                // keep the fallback but warn R013 with the style key.
+                let v = self.bound_value_or_warn(
+                    &b.condition,
+                    &format!("style_obj binding `{}`", b.style_name),
+                    "null",
+                );
                 format!("{}: {}", Self::js_obj_key(&b.style_name), v)
             })
             .collect();
@@ -4839,7 +4879,13 @@ impl VueGenerator {
                     // Use expr_to_vue_bound_value (no .value suffix) because Vue templates auto-unwrap refs
                     let binding_strs: Vec<String> = bindings.iter()
                         .map(|b| {
-                            let cond = self.expr_to_vue_bound_value(&b.condition).unwrap_or_else(|_| "false".to_string());
+                            // Plan 012 P0#13 follow-up: was a silent `false`
+                            // fallback; keep it but warn R013.
+                            let cond = self.bound_value_or_warn(
+                                &b.condition,
+                                &format!("style: class binding `{}`", b.style_name),
+                                "false",
+                            );
                             // Class names may contain '-' (e.g. "line-through")
                             // — quote keys that aren't valid JS identifiers.
                             format!("{}: {}", Self::js_obj_key(&b.style_name), cond)
@@ -4873,8 +4919,18 @@ impl VueGenerator {
                     // CSS declaration string at runtime; emit as a dynamic
                     // binding via the special "__style__" marker so the caller
                     // renders `:style="<expr>"` instead of `:class`.
-                    if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
-                        dynamic_binding = Some(format!("__style__{}", expr_str));
+                    match self.expr_to_vue_bound_value(other_expr) {
+                        Ok(expr_str) => {
+                            dynamic_binding = Some(format!("__style__{}", expr_str));
+                        }
+                        // Plan 012 P0#13 follow-up: used to be silently
+                        // dropped (the Err branch was unreachable while the
+                        // catch-all returned Ok("null")); warn R013.
+                        Err(e) => self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("style: dynamic expression: {}; binding not emitted", e),
+                        ),
                     }
                 }
                 _ => {}
@@ -4909,9 +4965,9 @@ impl VueGenerator {
                 }
                 AuraPropValue::Expr(other_expr) => {
                     // Plan 012 P0#13: the catch-all in expr_to_vue_bound_value
-                    // yields literal "null" for expression forms it can't
-                    // render. Never emit that (or drop the prop) silently —
-                    // reject with a loud R011 instead.
+                    // used to yield literal "null" for expression forms it
+                    // can't render; it now returns Err. Never emit that (or
+                    // drop the prop) silently — reject with a loud R011.
                     match self.expr_to_vue_bound_value(other_expr) {
                         Ok(expr_str) if expr_str != "null" => {
                             dynamic_binding = Some(match dynamic_binding {
@@ -4919,10 +4975,15 @@ impl VueGenerator {
                                 None => expr_str,
                             });
                         }
-                        _ => self.warn(
+                        Ok(_) => self.warn(
                             "R011",
                             crate::ui_gen::validators::Severity::Warning,
                             "class: expression form is not supported and was not emitted",
+                        ),
+                        Err(e) => self.warn(
+                            "R011",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("class: expression form is not supported and was not emitted: {}", e),
                         ),
                     }
                 }
@@ -5610,11 +5671,15 @@ impl VueGenerator {
                     match method.as_str() {
                         "to_string" => Ok(obj_str.clone()),
                         "len" => Ok(format!("{}.length", obj_str)),
-                        "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.expr_to_vue_bound_value(a)).collect::<Result<Vec<_>, _>>()?.join(", "))),
+                        // Plan 012 P0#13 follow-up: an unsupported arg form
+                        // used to silently become `null`; keep that fallback
+                        // but warn R013 instead of propagating a hard error
+                        // out of a display-text position.
+                        "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.bound_value_or_warn(a, "contains() call arg", "null")).collect::<Vec<_>>().join(", "))),
                         _ => {
                             let args_str: Vec<String> = args.iter()
-                                .map(|a| self.expr_to_vue_bound_value(a))
-                                .collect::<Result<Vec<_>, _>>()?;
+                                .map(|a| self.bound_value_or_warn(a, "method-call arg in text position", "null"))
+                                .collect();
                             if is_self {
                                 if args_str.is_empty() {
                                     Ok(format!("{}()", method))
@@ -5637,8 +5702,8 @@ impl VueGenerator {
                             crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
                             _ => None,
                         })
-                        .map(|a| self.expr_to_vue_bound_value(&a))
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .map(|a| self.bound_value_or_warn(&a, "call arg in text position", "null"))
+                        .collect();
                     Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
@@ -5785,7 +5850,44 @@ impl VueGenerator {
             // hit the catch-all below and emit literal `null` — silently
             // broken output. Emit the string ternary instead.
             Expr::If(if_stmt) => Ok(self.if_expr_to_style_ternary(if_stmt)),
-            _ => Ok("null".to_string()),
+            // Literal-ish forms the old catch-all happened to render
+            // correctly — keep them on the Ok path so hardening the catch-all
+            // doesn't turn correct output into spurious R013 warnings.
+            Expr::Nil | Expr::Null | Expr::None => Ok("null".to_string()),
+            Expr::Uint(n) => Ok(n.to_string()),
+            Expr::I8(n) => Ok(n.to_string()),
+            Expr::U8(n) => Ok(n.to_string()),
+            Expr::I64(n) => Ok(n.to_string()),
+            Expr::U64(n) => Ok(n.to_string()),
+            Expr::Byte(n) => Ok(n.to_string()),
+            Expr::Char(c) => Ok(format!("'{}'", Self::escape_js_string(&c.to_string()))),
+            // Plan 012 P0#13 follow-up: everything else (Lambda, Closure,
+            // Range, NullCoalesce, Cast, Block, patterns, ...) used to emit
+            // literal `null` with no diagnostic. Reject instead; each call
+            // site decides between propagating the hard error and warning
+            // R013 + falling back.
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "bound-value position does not support expression form {:?}",
+                expr
+            ))),
+        }
+    }
+
+    /// Plan 012 P0#13 follow-up: render a bound value, but on an unsupported
+    /// expression form emit an R013 warning (with the expression's Debug
+    /// shape and the calling context) and return the caller's fallback —
+    /// the exact output the old silent `null` catch-all produced there.
+    fn bound_value_or_warn(&self, expr: &crate::ast::Expr, context: &str, fallback: &str) -> String {
+        match self.expr_to_vue_bound_value(expr) {
+            Ok(v) => v,
+            Err(e) => {
+                self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!("{}: {}; emitted `{}` fallback", context, e, fallback),
+                );
+                fallback.to_string()
+            }
         }
     }
 
@@ -5798,8 +5900,15 @@ impl VueGenerator {
                     attrs.push(format!("{}=\"{}\"", vue_attr, s));
                 }
                 AuraPropValue::Expr(expr) => {
-                    if let Ok(v) = self.expr_to_vue_bound_value(expr) {
-                        attrs.push(format!(":{}=\"{}\"", vue_attr, v));
+                    match self.expr_to_vue_bound_value(expr) {
+                        Ok(v) => attrs.push(format!(":{}=\"{}\"", vue_attr, v)),
+                        // Plan 012 P0#13 follow-up: was silently skipped;
+                        // warn R013.
+                        Err(e) => self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("chart prop `{}`: {}; prop not emitted", key, e),
+                        ),
                     }
                 }
                 _ => {}
@@ -6023,10 +6132,15 @@ impl VueGenerator {
         // v-show visibility directive: show: .cond → v-show="cond". Handled
         // generically (like style_obj above) so every shadcn-mapped element
         // supports it. Infallible here (no Result in scope) — an exotic expr
-        // that fails conversion is simply not emitted.
+        // that fails conversion is not emitted, but never silently (R013).
         if let Some(AuraPropValue::Expr(expr)) = props.get("show") {
-            if let Ok(cond) = self.expr_to_vue_bound_value(expr) {
-                attrs.push(format!("v-show=\"{}\"", cond));
+            match self.expr_to_vue_bound_value(expr) {
+                Ok(cond) => attrs.push(format!("v-show=\"{}\"", cond)),
+                Err(e) => self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!("v-show on `{}`: {}; directive not emitted", tag, e),
+                ),
             }
         }
 
@@ -6275,8 +6389,14 @@ impl VueGenerator {
                 // (content: .note.body → note.body).
                 match props.get("content") {
                     Some(AuraPropValue::Expr(expr)) => {
-                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
-                            attrs.push(format!(":content=\"{}\"", js_expr));
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":content=\"{}\"", js_expr)),
+                            // Plan 012 P0#13 follow-up: was silently skipped.
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("autodown_editor `content`: {}; prop not emitted", e),
+                            ),
                         }
                     }
                     Some(value) => {
@@ -6308,8 +6428,14 @@ impl VueGenerator {
             "markdown" => {
                 match props.get("content") {
                     Some(AuraPropValue::Expr(expr)) => {
-                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
-                            attrs.push(format!(":content=\"{}\"", js_expr));
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":content=\"{}\"", js_expr)),
+                            // Plan 012 P0#13 follow-up: was silently skipped.
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("markdown `content`: {}; prop not emitted", e),
+                            ),
                         }
                     }
                     Some(value) => {
@@ -6454,8 +6580,14 @@ impl VueGenerator {
                         attrs.push(":model-value=\"true\"".to_string());
                     } else if let AuraPropValue::Expr(expr) = value {
                         // Dynamic expression (e.g., todo.done) — one-way :model-value binding
-                        if let Ok(js_expr) = self.expr_to_vue_bound_value(expr) {
-                            attrs.push(format!(":model-value=\"{}\"", js_expr));
+                        match self.expr_to_vue_bound_value(expr) {
+                            Ok(js_expr) => attrs.push(format!(":model-value=\"{}\"", js_expr)),
+                            // Plan 012 P0#13 follow-up: was silently skipped.
+                            Err(e) => self.warn(
+                                "R013",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("checkbox `checked` (shadcn): {}; binding not emitted", e),
+                            ),
                         }
                     }
                 }
@@ -6591,8 +6723,14 @@ impl VueGenerator {
                         // be a string cell (e.g. "42"), so wrap in Number(...) to
                         // satisfy vue-tsc and coerce at runtime.
                         if let AuraPropValue::Expr(expr) = value {
-                            if let Ok(expr_str) = self.expr_to_vue_bound_value(expr) {
-                                attrs.push(format!(":model-value=\"Number({})\"", expr_str));
+                            match self.expr_to_vue_bound_value(expr) {
+                                Ok(expr_str) => attrs.push(format!(":model-value=\"Number({})\"", expr_str)),
+                                // Plan 012 P0#13 follow-up: was silently skipped.
+                                Err(e) => self.warn(
+                                    "R013",
+                                    crate::ui_gen::validators::Severity::Warning,
+                                    format!("progress `value`: {}; binding not emitted", e),
+                                ),
                             }
                         }
                     }
@@ -8849,9 +8987,13 @@ impl VueGenerator {
         else_: &Option<crate::ast::Body>,
     ) -> String {
         if let Some((first, rest)) = branches.split_first() {
-            let cond = self
-                .expr_to_vue_bound_value(&first.cond)
-                .unwrap_or_else(|_| "false".to_string());
+            // Plan 012 P0#13 follow-up: an unsupported condition form used
+            // to silently become `false`; keep that fallback, warn R013.
+            let cond = self.bound_value_or_warn(
+                &first.cond,
+                "if-expression condition in style/class ternary",
+                "false",
+            );
             let then = self.style_branch_value(&first.body.stmts);
             let else_part = self.build_style_ternary(rest, else_);
             // Assemble then-branch: Leaf → 'str', Nested → (ternary).
@@ -8942,15 +9084,19 @@ impl VueGenerator {
                                 attrs.push(format!("class=\"{}\"", s));
                             }
                         }
-                    } else if let Ok(expr_str) = self.expr_to_vue_bound_value(other_expr) {
-                        attrs.push(format!(":style=\"{}\"", expr_str));
                     } else {
-                        // Plan 012: never drop a class/style expr silently.
-                        self.warn(
-                            "R011",
-                            crate::ui_gen::validators::Severity::Warning,
-                            "class/style expression could not be rendered and was dropped",
-                        );
+                        match self.expr_to_vue_bound_value(other_expr) {
+                            Ok(expr_str) => attrs.push(format!(":style=\"{}\"", expr_str)),
+                            // Plan 012: never drop a class/style expr silently.
+                            // Plan 012 P0#13 follow-up: this branch is now
+                            // actually reachable (the catch-all errs instead
+                            // of returning "null") — include the error detail.
+                            Err(e) => self.warn(
+                                "R011",
+                                crate::ui_gen::validators::Severity::Warning,
+                                format!("class/style expression could not be rendered and was dropped: {}", e),
+                            ),
+                        }
                     }
                 }
                 _ => {
@@ -9124,7 +9270,16 @@ impl VueGenerator {
                 // Dynamic expression (e.g. can_edit: .editable → editable).
                 match self.expr_to_vue_bound_value(expr) {
                     Ok(js_expr) => format!(":{}=\"{}\"", kebab_attr, js_expr),
-                    Err(_) => format!(":{}=\"{}\"", kebab_attr, default_val),
+                    // Plan 012 P0#13 follow-up: the Err branch is now
+                    // reachable — keep the default-value fallback, warn R013.
+                    Err(e) => {
+                        self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("bool prop `{}`: {}; fell back to `{}`", snake_key, e, default_val),
+                        );
+                        format!(":{}=\"{}\"", kebab_attr, default_val)
+                    }
                 }
             }
             _ => format!(":{}=\"{}\"", kebab_attr, default_val),
@@ -15163,6 +15318,159 @@ widget ArrShadcnProbe {
         assert!(
             sfc.contains("'static-arr'") && sfc.contains("busy ? 'on' : 'off'"),
             "shadcn choke point must bind the class array:\n{sfc}"
+        );
+    }
+
+    // --- Plan 012 P0#13 follow-up: catch-all hardening (R013) --------------
+    // The `_ => Ok("null")` catch-all in expr_to_vue_bound_value now returns
+    // Err; bound-position call sites either propagate the hard error or warn
+    // R013 and keep their old fallback. Probes use `??` (Expr::NullCoalesce),
+    // a form with no bound-value arm.
+
+    /// style: map form — the `unwrap_or_else(|_| "false")` site. Before: the
+    /// condition silently emitted `null` (the fallback was unreachable).
+    /// After: `false` fallback + a loud R013.
+    #[test]
+    fn test_p013_catchall_style_binding_warns_r013() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget StyleCatchAllProbe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span {
+                style: { "line-through": .a ?? .b }
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        let r013 = warnings_for_rule(&warnings, "R013");
+        assert!(
+            !r013.is_empty(),
+            "unsupported expr in style: binding must warn R013, got: {warnings:?}"
+        );
+        assert!(
+            r013.iter().any(|w| w.message.contains("line-through")),
+            "R013 should name the style key: {r013:?}"
+        );
+        assert!(
+            sfc.contains("'line-through': false"),
+            "style: binding must keep the `false` fallback:\n{sfc}"
+        );
+    }
+
+    /// class: expr form — the class-specific site keeps its R011 warning,
+    /// now fed by the Err (with the expression's Debug shape) instead of a
+    /// literal-"null" string compare.
+    #[test]
+    fn test_p013_catchall_class_expr_warns_r011() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget ClassCatchAllProbe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span {
+                class: .a ?? .b
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        let r011 = warnings_for_rule(&warnings, "R011");
+        assert!(
+            !r011.is_empty(),
+            "unsupported class: expr must warn R011, got: {warnings:?}"
+        );
+        assert!(
+            r011.iter().any(|w| w.message.contains("NullCoalesce")),
+            "R011 should carry the expression's Debug shape: {r011:?}"
+        );
+        assert!(
+            !sfc.contains(":class=\"null\""),
+            "class: must never bind literal null:\n{sfc}"
+        );
+    }
+
+    /// v-show on a plain element keeps `?` propagation: an unsupported
+    /// condition form is a hard codegen error, not a degraded binding.
+    #[test]
+    fn test_p013_catchall_vshow_is_hard_error() {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(r#"
+widget VShowCatchAllProbe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span (show: .a ?? .b) {
+                text "label"
+            }
+        }
+    }
+}
+"#).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new();
+        let err = gen
+            .generate(&widget)
+            .expect_err("unsupported v-show condition must fail codegen");
+        assert!(
+            matches!(err, GenError::UnsupportedExpr(_)),
+            "expected UnsupportedExpr, got: {err:?}"
+        );
+    }
+
+    /// style_obj: — the `unwrap_or_else(|_| "null")` site keeps its `null`
+    /// fallback but must warn R013.
+    #[test]
+    fn test_p013_catchall_style_obj_warns_r013() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget StyleObjCatchAllProbe {
+    model {
+        var a int = 1
+        var b int = 2
+    }
+    view {
+        col {
+            span {
+                style_obj: { top: .a ?? .b }
+                text "label"
+            }
+        }
+    }
+}
+"#);
+        let r013 = warnings_for_rule(&warnings, "R013");
+        assert!(
+            !r013.is_empty(),
+            "unsupported expr in style_obj must warn R013, got: {warnings:?}"
+        );
+        assert!(
+            r013.iter().any(|w| w.message.contains("top")),
+            "R013 should name the style_obj key: {r013:?}"
+        );
+        assert!(
+            sfc.contains("top: null"),
+            "style_obj must keep the `null` fallback:\n{sfc}"
         );
     }
 
