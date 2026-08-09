@@ -120,7 +120,13 @@ store MinesweeperStore {
                         break
                     }
                     attempts = attempts + 1
-                    var rr int = (math.random() * (.rows * .cols)).to_int()
+                    // VM 的 math.random() 不路由到 native shim(模块占位符 bug),
+                    // 用确定性伪随机代替: 基于种子的线性同余。
+                    var seed int = (attempts * 1103515245 + 12345) % 2147483647
+                    if seed < 0 {
+                        seed = seed + 2147483647
+                    }
+                    var rr int = seed % (.rows * .cols)
                     var rx int = (rr / .cols).to_int()
                     var ry int = rr % .cols
                     // Skip the 3x3 safe zone around the first click (x, y).
