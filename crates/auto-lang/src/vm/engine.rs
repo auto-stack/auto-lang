@@ -2331,8 +2331,15 @@ impl AutoVM {
                                 }
                             }
                             ObjectType::Bool => {
-                                let bits = task.ram.pop_i32();
-                                auto_val::Value::Bool(bits != 0)
+                                // Plan 402 §13.10: use decode_bool on the nanbox
+                                // value, not pop_i32. A `false` literal is pushed
+                                // by PUSH_BOOL as encode_bool(false) whose payload
+                                // is i32::MIN+1; pop_i32 reads that as -2147483647
+                                // and `!= 0` wrongly yields true — so every bool
+                                // field in an Obj literal (mine/revealed/flagged)
+                                // was stored as true regardless of its value.
+                                let nv = task.ram.pop_nv();
+                                auto_val::Value::Bool(auto_val::decode_bool(nv))
                             }
                             ObjectType::Char => {
                                 let bits = task.ram.pop_i32();
@@ -4538,7 +4545,16 @@ impl AutoVM {
                                     auto_val::Value::Float(f) => task.ram.push_f32(f as f32),
                                     auto_val::Value::Double(d) => task.ram.push_f64(d),
                                     auto_val::Value::Bool(b) => {
-                                        task.ram.push_i32(if b { 1 } else { 0 })
+                                        // Plan 402 §13.10: push TAG_BOOL (encode_bool),
+                                        // not raw i32. Otherwise `obj.bool_field == false`
+                                        // compares i32(0) vs TAG_BOOL(false) → different
+                                        // nanbox tags → EQ returns false (6892: both must
+                                        // be is_i32, or both is_bool; a mix falls through
+                                        // to `else { false }`). This broke every bool-field
+                                        // comparison in minesweeper (mine==false, revealed
+                                        // ==false, flagged==false), so SET_ELEM never ran
+                                        // and the board never updated.
+                                        task.ram.push_nv(auto_val::encode_bool(b))
                                     }
                                     auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
                                     auto_val::Value::Str(s) => {
