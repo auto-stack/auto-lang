@@ -44,6 +44,7 @@ impl WidgetRegistry {
         self.register_form_widgets();
         self.register_display_widgets();
         self.register_rich_text_widgets();
+        self.register_chat_widgets();
         self.register_overlay_widgets();
         self.register_navigation_widgets();
         self.register_feedback_widgets();
@@ -1187,6 +1188,28 @@ impl WidgetRegistry {
             npm_package: Some(("mermaid".to_string(), "^11.15.0".to_string())),
         });
         self.register(mermaid);
+    }
+
+    /// Chat widgets — ChatMessage (single message bubble with header).
+    /// Plan 400 B-phase: unified message rendering for chat apps.
+    fn register_chat_widgets(&mut self) {
+        // ChatMessage — single chat message with header (role + time) + bubble.
+        // Maps to a library Vue component (like markdown → MarkdownRender).
+        // Props: role ("user"/"assistant"), content (text/markdown), timestamp,
+        //         thinking (reasoning chain), profession_id (agent name).
+        let mut chat_message = WidgetSpec::new("ChatMessage", WidgetCategory::Display)
+            .with_alias("chat_message");
+        chat_message.primary_prop = Some("content".to_string());
+        chat_message.has_children = false;
+        chat_message.backends.insert("vue".to_string(), BackendMapping {
+            component: "ChatMessage".to_string(),
+            import: Some("@/components/ChatMessage".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: None,
+        });
+        self.register(chat_message);
     }
 
     fn register_navigation_widgets(&mut self) {

@@ -6281,6 +6281,18 @@ impl VueGenerator {
                 self.push_style_class(&mut attrs, props);
             }
 
+            // === ChatMessage ===
+            // Plan 400 B-phase: bind role/content/timestamp/thinking props.
+            "chat_message" | "ChatMessage" => {
+                for (key, value) in props.iter() {
+                    if let AuraPropValue::Expr(expr) = value {
+                        if let Ok(v) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":{}=\"{}\"", key, v));
+                        }
+                    }
+                }
+            }
+
             // === Input ===
             "input" => {
                 // v-model for value
@@ -10536,6 +10548,7 @@ pub const LIBRARY_WIDGETS: &[&str] = &[
     "badge",
     "button",
     "card",
+    "chat_message",
     "checkbox",
     "dialog",
     "input",
@@ -10598,6 +10611,49 @@ fn attribution_header(name: &str) -> String {
 /// Phase 1.4: button / input / label. Remaining v1 widgets land in Phase 5.
 fn library_template(name: &str) -> Option<WidgetTemplate> {
     match name {
+        "chat_message" => Some(WidgetTemplate {
+            script: r#"
+const props = defineProps<{
+  role?: string
+  content?: string
+  timestamp?: number
+  thinking?: string
+  profession_id?: string
+  streaming?: boolean
+}>()
+
+const roleLabel = computed(() => {
+  if (props.role === 'user') return '🧑 You'
+  if (props.profession_id) return '🤖 ' + props.profession_id
+  return '🤖 AI'
+})
+
+const timeLabel = computed(() => {
+  if (!props.timestamp) return ''
+  const d = new Date(props.timestamp * 1000)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+})
+
+const isUser = computed(() => props.role === 'user')"#,
+            template: r#"  <div :class="['flex flex-col gap-0.5 msg-row', isUser ? 'msg-row-user' : 'msg-row-ai']">
+    <div :class="['flex items-center gap-2 px-1', isUser ? 'justify-end' : '']">
+      <span :class="['text-xs font-semibold', isUser ? 'text-primary' : 'text-muted-foreground']">{{ roleLabel }}</span>
+      <span v-if="timeLabel" class="text-xs text-muted-foreground">{{ timeLabel }}</span>
+    </div>
+    <div :class="[
+      'rounded-xl px-3.5 py-2.5 text-sm leading-relaxed break-words',
+      isUser
+        ? 'bg-primary text-primary-foreground rounded-br-sm self-end max-w-[85%]'
+        : 'bg-card border border-border text-foreground rounded-bl-sm self-start max-w-full'
+    ]">
+      <slot>{{ content }}</slot>
+    </div>
+    <div v-if="thinking" class="px-1 text-xs text-muted-foreground italic opacity-70">
+      💭 {{ thinking }}
+    </div>
+  </div>"#,
+            extra_support_files: vec![],
+        }),
         "button" => Some(WidgetTemplate {
             script: r#"import { Primitive } from 'reka-ui'
 import { cn } from '../utils'
@@ -11570,6 +11626,20 @@ widget W {
         assert!(sfc.contains("<script setup"), "has script setup");
         assert!(sfc.contains("reka-ui"), "label uses reka-ui Label");
         assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+    }
+
+    /// Plan 400 B-phase: ChatMessage library widget generates a self-contained
+    /// SFC with header + bubble structure.
+    #[test]
+    fn test_library_chat_message_sfc() {
+        let mut gen = VueGenerator::new_library();
+        let sfc = gen.generate_widget_sfc("chat_message").unwrap();
+        assert!(sfc.contains("<template>"), "has template");
+        assert!(sfc.contains("<script setup"), "has script setup");
+        assert!(sfc.contains("roleLabel"), "has role label computed");
+        assert!(sfc.contains("msg-row"), "has msg-row class");
+        assert!(sfc.contains("bg-primary"), "user bubble uses primary bg");
+        assert!(sfc.contains("bg-card"), "ai bubble uses card bg");
     }
 
     #[test]
