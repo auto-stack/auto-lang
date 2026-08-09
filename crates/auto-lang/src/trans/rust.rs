@@ -17743,7 +17743,14 @@ impl Trans for RustTrans {
         // generated crate only needs `a2r-std` as a dependency, not all of
         // auto_lang.
         if !self.merge_mode && self.a2r_std_used.get() {
-            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse a2r_std;\nuse a2r_std::*;\n\n";
+            // Plan 405: a2r_std lives in the auto_lang crate (lib.rs `pub mod
+            // a2r_std`), there is no standalone a2r-std crate. So qualify with
+            // auto_lang:: and rely on the `auto-lang.workspace = true` dep that
+            // generate_cargo_toml emits when has_db. Without this the generated
+            // `use a2r_std` fails with "unresolved import" (no crate named
+            // a2r_std). Keep `use auto_lang::a2r_std;` so `a2r_std::StringBuilder`
+            // paths still resolve, plus a glob for convenience.
+            let import = b"// a2r Standard Library (from auto_lang crate)\n#[allow(unused_imports)]\nuse auto_lang::a2r_std;\nuse auto_lang::a2r_std::*;\n\n";
             // Find the header boundary: after "#![allow]" line + blank line
             let body = &sink.body;
             let mut insert_pos = 0;

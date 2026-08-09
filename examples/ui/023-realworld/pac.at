@@ -2,3 +2,6 @@ name: "realworld"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+api: "rust"
+front_port: 3023
+back_port: 8023

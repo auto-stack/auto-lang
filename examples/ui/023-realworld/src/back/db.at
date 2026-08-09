@@ -1,0 +1,102 @@
+// db.at — RealWorld in-memory store + seed data (stage 1).
+// Types come from api.at (`use api: ...`); db holds only logic + state.
+// Memory storage uses module-level `var` (top-level mutable globals) with
+// List<T> containers (only over custom types — List<str>/[]str are NOT
+// supported by a2r, so tags are derived from articles and returned as a
+// comma-separated str). a2r workarounds (Plan 401 §技术约定): avoid struct
+// literals in return position — pre-declare a zero `var result`, build with a
+// `let` ctor inside the handler, then assign the bare ident.
+
+use api: User, Article, Comment
+
+// --- Seed users (password is not stored; mock login accepts any password
+// for a known email). ---
+var users List<User> = List<User>.new([
+    User { id: 1, email: "sarah@vercel.com", username: "Sarah Chen", bio: "Senior Frontend Engineer at Vercel. Writing about React, TypeScript, and the future of web development.", image: "https://i.pravatar.cc/100?u=sarah", token: "mock-token-sarah" },
+    User { id: 2, email: "marcus@example.com", username: "Marcus Johnson", bio: "API craftsman. tRPC, GraphQL, type safety enthusiast.", image: "https://i.pravatar.cc/100?u=marcus", token: "mock-token-marcus" },
+])
+var nextuserid int = 3
+
+// --- Seed articles (slugs pre-computed; tagList comma-separated). ---
+var articles List<Article> = List<Article>.new([
+    Article { slug: "understanding-react-server-components", title: "Understanding React Server Components", description: "Server Components represent a paradigm shift in how we think about rendering. They allow you to render components on the server, reducing the JavaScript sent to the client.", body: "Server Components represent a paradigm shift in how we think about rendering. They allow you to render components on the server, reducing the JavaScript sent to the client. This enables faster initial loads, direct access to backend resources, and a simpler mental model for data-heavy components.", tagList: "React,JavaScript,Performance", author: "Sarah Chen", favoritesCount: 42, createdAt: "2026-03-15" },
+    Article { slug: "building-type-safe-apis-with-trpc", title: "Building Type-Safe APIs with tRPC", description: "tRPC eliminates the need for REST endpoints and client-side fetching. Your TypeScript types flow seamlessly from server to client.", body: "tRPC eliminates the need for REST endpoints and client-side fetching. Your TypeScript types flow seamlessly from server to client. With end-to-end type safety, refactors become fearless and the contract between your layers is enforced by the compiler, not by hand-written schemas.", tagList: "TypeScript,tRPC,API", author: "Marcus Johnson", favoritesCount: 18, createdAt: "2026-03-12" },
+    Article { slug: "the-state-of-css-in-2026", title: "The State of CSS in 2026", description: "Container queries, cascade layers, and native nesting have changed everything. Here is what you need to know.", body: "Container queries, cascade layers, and native nesting have changed everything. The CSS working group shipped long-requested features that used to require preprocessors or build steps. This tour covers :has(), container queries, cascade layers, and native nesting.", tagList: "CSS,Web,Design", author: "Emily Park", favoritesCount: 27, createdAt: "2026-03-10" },
+])
+
+// --- Seed comments (each carries its article slug; Comment.slug field). ---
+var comments List<Comment> = List<Comment>.new([
+    Comment { id: 1, slug: "understanding-react-server-components", body: "Great breakdown of RSC vs SSR — the mental model finally clicked for me.", author: "Marcus Johnson", createdAt: "2026-03-16" },
+    Comment { id: 2, slug: "understanding-react-server-components", body: "Would love a follow-up on streaming + suspense boundaries.", author: "Emily Park", createdAt: "2026-03-16" },
+    Comment { id: 3, slug: "building-type-safe-apis-with-trpc", body: "The end-to-end type safety story is what won my team over.", author: "Sarah Chen", createdAt: "2026-03-13" },
+])
+
+// --- Auth ---
+
+/// Log in by email. Mock: any password accepted for a known email.
+pub fn login(email str, password str) ?User {
+    for user in users {
+        if user.email == email {
+            let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
+            return Some(found)
+        }
+    }
+    return None
+}
+
+/// Register a new user. Returns the new user with a fresh token.
+pub fn register(username str, email str, password str) ?User {
+    let id int = nextuserid
+    nextuserid = nextuserid + 1
+    let token str = "mock-token-" + username
+    let u = User { id: id, email: email, username: username, bio: "", image: "", token: token }
+    users.push(u)
+    return Some(u)
+}
+
+/// Current user (stage 1 placeholder: first seed user). Real token auth = stage 2.
+/// NOTE: avoid `users.len() > 0` + `users[0]` — a2r mis-transpiles both (deref on
+/// usize / User). Iterate to take the first instead.
+pub fn current_user() ?User {
+    for user in users {
+        let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
+        return Some(found)
+    }
+    return None
+}
+
+// --- Articles ---
+
+/// List all articles. (Tag filtering is client-side: a2r doesn't clone a
+/// borrowed String field when passing it to a helper fn, so server-side
+/// tag matching is impractical. The frontend splits tagList and filters.)
+pub fn list_articles() []Article {
+    return articles
+}
+
+/// Find a single article by slug.
+pub fn get_article(slug str) ?Article {
+    for article in articles {
+        if article.slug == slug {
+            let found = Article { slug: article.slug, title: article.title, description: article.description, body: article.body, tagList: article.tagList, author: article.author, favoritesCount: article.favoritesCount, createdAt: article.createdAt }
+            return Some(found)
+        }
+    }
+    return None
+}
+
+// --- Comments ---
+
+/// List comments belonging to an article slug.
+pub fn list_comments(slug str) []Comment {
+    var matched List<Comment> = List<Comment>.new([])
+    for comment in comments {
+        if comment.slug == slug {
+            let kept = Comment { id: comment.id, slug: comment.slug, body: comment.body, author: comment.author, createdAt: comment.createdAt }
+            matched.push(kept)
+        }
+    }
+    return matched
+}
+
+// (No list_tags / tag_in — tag filtering is client-side. See list_articles.)
