@@ -178,35 +178,42 @@ ALL plan files with sequential numbers MUST be created in `docs/plans/` folder w
 
 **Number allocation MUST go through `scripts/new-plan.sh <slug>`** (run on the master checkout, NOT inside a plan worktree). It reads the central counter `docs/plans/.next-id`, creates the plan skeleton, and bumps the counter — commit both before opening the plan worktree. Never estimate the next number by scanning the directory: concurrent worktrees have caused duplicate numbers in the past (see `scripts/spec-lint.py`).
 
-### ⚠️ CRITICAL: Use a Dedicated Worktree per Plan
+### ⚠️ CRITICAL: One Worktree per Agent (Never Share the Main Checkout)
 
-**Every new plan MUST be developed in its own git worktree, NOT on the main working tree's current branch.** This keeps the main checkout (typically `master`) stable for other sessions/agents that may have uncommitted work in flight.
+**Each agent/session develops in its OWN git worktree — the main checkout (`D:/autostack/auto-lang`, branch `master`) is shared read-only integration space.** NEVER make edits, commits, or branch switches inside the main checkout when doing development work. This applies to plans AND non-trivial fixes/diagnostics; only truly trivial changes (a one-line typo) may touch the main checkout directly.
 
-**Why:** Switching branches with `git checkout -b` carries uncommitted working-tree changes along, which can corrupt or strand another session's in-progress work. A worktree gives each plan an isolated directory + branch, so concurrent plans never interfere.
+**Why:** Multiple agents sharing one directory + branch corrupt each other: a `git checkout`/`merge`/`reset` in the main checkout silently overwrites another agent's uncommitted work (this has caused real, unrecoverable data loss). A per-agent worktree gives each session an isolated directory + branch, so concurrent work never interferes.
+
+**Layout & naming:**
+- Worktrees live under `.worktree/<name>/` (already in `.gitignore`).
+- **The branch name EQUALS the worktree directory name** — e.g. `.worktree/diag-038/` ↔ branch `diag-038`. This one-to-one mapping makes cleanup and ownership obvious.
+- Choose a short, descriptive `<name>`: for a plan use the plan slug (`011-calculator`, `018-book-reader`); for a fix/diag use the topic (`fix-grid-click`, `diag-038-vm`). Avoid bare plan numbers (`038`) — the name must be self-describing.
 
 **Workflow:**
 
 ```bash
-# 1. Create an isolated worktree on a new branch for the plan
-git worktree add ../auto-lang-NNN plan-NNN/short-slug
-cd ../auto-lang-NNN
+# 1. From the MAIN checkout, create an isolated worktree on a same-named branch:
+git worktree add .worktree/<name> -b <name>
+cd .worktree/<name>
 
-# 2. Do ALL plan work there — edits, builds, tests, commits
-#    The main checkout (D:/autostack/auto-lang) stays untouched.
+# 2. Do ALL work there — edits, builds (own target/ cache), tests, commits.
+#    The main checkout stays on master, untouched.
 
-# 3. Verify the plan fully (build + tests pass) before merging.
+# 3. Verify fully (build + tests pass) before merging.
 
-# 4. Merge the plan branch back into master (fast-forward if linear):
-git checkout master          # in the MAIN worktree
-git merge plan-NNN/short-slug
-git worktree remove ../auto-lang-NNN   # clean up
+# 4. Merge back into master (run in the MAIN checkout):
+git merge <name>              # resolve conflicts there, NOT in the worktree
+git worktree remove .worktree/<name>
+git branch -d <name>          # safe delete (fails if not fully merged)
 ```
 
 **Rules:**
-- NEVER run `git checkout -b <plan-branch>` in the main working tree to start a plan. Use `git worktree add` instead.
-- Each worktree gets its own `target/` build cache, so concurrent plans can build in parallel without thrashing.
-- Keep the main worktree on `master` (or the agreed integration branch) so other agents/sessions see a consistent base.
-- Only merge a plan branch after it builds and its tests pass end-to-end.
+- NEVER `git checkout -b` or `git switch` to a development branch inside the main checkout. Use `git worktree add .worktree/<name> -b <name>` instead.
+- The main checkout stays on `master` (or the agreed integration branch) at all times — other agents/sessions see a consistent base and can read/merge safely.
+- Each worktree has its own `target/` build cache, so concurrent agents build in parallel without thrashing.
+- Clean up after merge: `git worktree remove .worktree/<name>` + `git branch -d <name>`. Stale worktrees and branches accumulate confusion (the Aug 9 cleanup removed 6 of them).
+- If `git worktree remove` fails with "Directory not empty" (leftover files after the `.git` link is gone), delete the directory with `rm -rf .worktree/<name>` — it is no longer a registered worktree.
+- Only merge a branch after it builds and its tests pass end-to-end.
 
 ### ⚠️ CRITICAL: Never Edit Generated C Files
 
