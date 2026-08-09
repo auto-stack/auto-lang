@@ -444,6 +444,8 @@ is s {
 #[test] #[ignore] fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
 #[test] #[ignore] fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
 #[test] #[ignore] fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }
+// EDGE-16: VM 模式 std::process::Command FFI(shell.at 真实执行命令的基础)。
+#[test] #[ignore] fn test_19_rust_std_010_process_command() { test_vm("19_rust_std/010_process_command").unwrap(); }
 
 // === 20_permission ===
 #[test] #[ignore] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }
