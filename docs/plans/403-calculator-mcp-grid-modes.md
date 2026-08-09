@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-09）**: ✅ 代码全部完成。需求 1a/1b/1c/2/3 代码完成 + grid 按钮等宽对齐修复 + VM List 基建修复。**VM 运行时 MCP 表达式验证受阻于 VM 浮点运算缺陷**（详见下方"已知限制"）。vue 路径完整可用。
+> **状态（2026-08-09）**: ✅ 代码全部完成。需求 1a/1b/1c/2/3 代码完成 + grid 按钮等宽对齐修复 + VM List 基建修复。**VM 运行时 MCP 表达式验证受阻于 VM 浮点运算缺陷 → 已立项 [Phase 403-F](#phase-403-fvm-浮点运算修复-待办) 修复（🔵 待办）**。vue 路径完整可用。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
@@ -28,10 +28,10 @@
 5. **f64 `to_string()` 走 int 路径**：f64 值的 type_name 是 `<unknown_nv:...>`，`to_string` 把浮点位当 i32 解码（输出天文数字）。→ `to_string` handler 增加 `is_f64` 检查 + `fmt_f64` 辅助函数。
 
 ### ⚠️ 已知限制（VM 浮点运算缺陷）
-- **VM 浮点运算损坏**：`var v float = 3.0 + 4.0` 在 VM 中结果损坏（`v` 被存为 nanboxed i32 而非 f64）。这是 VM 的 codegen/存储层问题，浮点值的栈编码可能被错误地 nanboxed 成 i32。
+- **VM 浮点运算损坏**：`var v float = 3.0 + 4.0` 在 VM 中结果损坏（`v` 被存为 nanboxed i32 而非 f64）。深入调查（2026-08-09）定位为 **4 个 codegen/engine 静态 dispatch 盲区 bug**（比较漏 f32 / 复合赋值硬编码 i32 / 一元不查变量类型 / to_string 漏 f32），详见 **[Phase 403-F](#phase-403-fvm-浮点运算修复-待办)**。
 - **影响**：表达式引擎 `apply_top` 依赖 `nums.get(...).to_float()` 做浮点算术，受此缺陷影响，VM 模式下 `=` 求值无法正确计算（显示 Error）。vue 模式不受影响（vue codegen 不经 VM）。
 - **验证**：整数运算在 VM 中正常（`3+4 → 7`），仅浮点损坏。
-- **后续**：VM 浮点支持需独立计划修复（涉及 codegen 的 float 类型处理 + 栈编码）。这是 Plan 403 范围外的 VM 基建工作。
+- **后续**：→ **[Phase 403-F](#phase-403-fvm-浮点运算修复-待办)**（本计划内，🔵 待办），已给出 4 个 bug 的精确位置、修复方案、实施步骤和验收标准。
 
 ### 验证结果
 - ✅ vue 路径：`auto run` → playwright 截图确认按钮等宽对齐、间距一致(~4px)、三模式切换正常。
@@ -145,3 +145,64 @@ grid {
 - 运算符优先级 / 括号表达式（除非本轮做 1c）。
 - Programmer 模式的十六进制/位运算（需求 3 后置）。
 - vue 模式的 MCP（当前 MCP 仅 iced 嵌入；vue 走 playwright）。
+
+---
+
+## Phase 403-F：VM 浮点运算修复（🔵 待办）
+
+> **背景**：调试表达式引擎的 VM 运行时验证时发现，`var v float = 3.0 + 4.0` 在 VM 中结果损坏（receiver_nv 被错误 nanboxed 为 i32）。深入调查（2026-08-09）定位到 **4 个真实 codegen/engine bug**，都是把本应走 f32/f64 opcode 的运算误派到 i32 路径。整数运算正常，浮点损坏。修复后 011-calculator 的 VM 模式 `=` 求值才能工作。
+
+### 根因（静态 dispatch 模型）
+VM 浮点有**独立的 opcode**（`opcode.rs:96-115`）：`ADD_F/SUB_F/...`（f32，0x36-0x3A）、`ADD_D/SUB_D/...`（f64，0x3B-0x3F），与整数的 `ADD/SUB/...`（0x30-0x35）分开。**选哪个 opcode 是 codegen 时静态推断的**（`is_float_operation`/`is_double_operation`，基于 `var_types` + 字面量），不是运行时看栈值类型。bug 都在这个静态推断的覆盖盲区。
+
+### Bug 清单（按严重度排序）
+
+#### Bug A — 比较运算符漏判 f32（最致命）
+**位置**：`crates/auto-lang/src/vm/codegen.rs:6182-6211`（`Eq/Neq/Lt/Le/Gt/Ge` 分支）
+**症状**：比较只看 `is_double`/`is_u64`，**没有 `is_float` 分支**。两个 f32 比较（`diff < 0.000001`、`b == 0.0`）落到 `LT`/`EQ`（i32 路径），`pop_f32` vs `pop_i32` 错位解码 → 整个表达式求值链崩坏。
+**影响**：011 的 `apply_top`（`b == 0.0` 除零检查）、`fmt_num`（`diff < 0.000001` 整数判定）大量使用比较 → 直接导致 `=` 显示 Error。
+**修复**：加 `else if is_float { emit EQ_F/LT_F/LE_F/GT_F/GE_F }`。
+**阻塞**：opcode.rs 当前**无 `EQ_F/LT_F/...`**（只有 `_D` 和 `_U64` 变体），需先在 opcode.rs 新增 6 个 f32 比较 opcode + engine.rs 实现它们（复用 `pop_f32` + f32 比较）。
+
+#### Bug B — 复合赋值硬编码 i32
+**位置**：`crates/auto-lang/src/vm/codegen.rs:5673-5680` 与 `5706-5713`（`Op::AddEq => OpCode::ADD` 等）
+**症状**：`a += b` 直接发 `ADD`（i32），**完全不查 float/double**。
+**修复**：在复合赋值处用 `is_float_operation(lhs, rhs)`/`is_double_operation(...)` 选 `ADD_F`/`ADD_D`/`ADD`（6 个运算符 × 3 类型）。
+
+#### Bug C — 一元运算不查变量类型
+**位置**：`crates/auto-lang/src/vm/codegen.rs:6255-6256`
+**症状**：`is_float = matches!(rhs, Expr::Float(_, _))`，只看字面量不看 `var_types`，所以 `-v`（v 是 float 变量）发 `NEG`（i32）而非 `NEG_F`/`NEG_D`。
+**修复**：改用 `self.contains_float(rhs)` / `self.contains_double(rhs)`（已有的递归推断函数，9486-9507）。
+
+#### Bug D — `to_string` 漏判 f32
+**位置**：`crates/auto-lang/src/vm/engine.rs:5896`（primitive 分发）、`5958-5981`（`<unknown_nv>` 的 to_string handler）
+**症状**：inline `to_string` 的 primitive 分支只查 `is_i32`/`is_f64`/`is_null`，**漏 `is_f32`**；`<unknown_nv>` 的 to_string 修补（Plan 403 已加）也只覆盖 `is_f64`。f32 值走到 `format!("{:?}", recv_nv)` 输出 nanbox 字面量（如 `0xfff7...`）。
+**修复**：两处都加 `else if auto_val::is_f32(recv_nv) { let f = decode_f32(recv_nv); fmt_f64(f as f64) }`。
+
+### 附带（防御性，非阻塞）
+**`_D` 系列漏设 `last_result_type`**（`engine.rs:4815-4858`）：`ADD_D/SUB_D/MUL_D/DIV_D/NEG_D/MOD_D` 都没设 `task.last_result_type = ResultType::Double`（只有 f32 系列设了）。这会让依赖 `last_result_type` 的 `TYPE_CAST_*` 指令（engine.rs:2824-2848）误判。给 6 个 `_D` opcode 补设。
+
+### 实施步骤
+1. **opcode.rs**：新增 `EQ_F/NEQ_F/LT_F/LE_F/GT_F/GE_F`（6 个 f32 比较 opcode，复用 tag 模式），更新 `from_str`/`as_str`。
+2. **engine.rs**：实现 6 个新 opcode（`pop_f32`/`pop_f32` 比较 + `push_i32(0/1)`）；给 `_D` 系列 6 个 opcode 补 `last_result_type`；修 Bug D（两处 to_string 加 `is_f32`）。
+3. **codegen.rs**：
+   - Bug A：`Eq/Neq/Lt/Le/Gt/Ge` 分支加 `else if is_float { emit 新 opcode }`。
+   - Bug B：复合赋值按 `is_float`/`is_double` 选 opcode。
+   - Bug C：一元运算改用 `contains_float`/`contains_double`。
+4. **测试**：`codegen.rs` 测试块（12275 附近）补：f32 变量的 `Bina`→`ADD_F`、`Lt`→`LT_F`（修复前断言失败）、`+=`→`ADD_F`（修复前是 `ADD`）。
+5. **端到端验证**：`cd examples/ui/011-calculator && AUTOUI_MCP_PORT=9254 auto run -r vm` → `autoui_press_sequence { keys:["2","+","3","="] }` → `display: "5"`；再测 `2*(3+4)=14`、`3.5+1=4.5`。
+6. **回归**：013-todo / 015-notes / 016-calendar VM 模式正常（确认浮点修复无副作用）。
+
+### 验收标准
+- [ ] `2+3=5`（VM，整数）—— 本应已通过
+- [ ] `2*(3+4)=14`（VM，括号 + 优先级）
+- [ ] `3.5+1=4.5`（VM，小数）
+- [ ] `fmt_num(7.0) → "7"`（整数结果无小数点）
+- [ ] `fmt_num(4.5) → "4.5"`（小数正常显示）
+- [ ] 013/015/016 VM 回归无回归
+
+### 范围与风险
+- **范围**：仅 VM codegen + engine，不动 vue/rust codegen 路径。
+- **风险**：Bug A 需新增 6 个 opcode（改 opcode 枚举 + dispatch table），改动面相对最大；但模式清晰（完全复刻 `_D` 系列）。Bug B/C/D 是纯逻辑补充，风险低。
+- **可独立交付**：4 个 bug 相互独立，可分 4 个 commit；Bug D 最简单可先做，Bug A 最关键但需 opcode 扩展放最后。
+
