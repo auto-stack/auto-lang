@@ -1,8 +1,7 @@
-// article_store.at — shared article state: feed list, current article + its
-// comments, and a client-derived tag string. Tag filtering is client-side
-// (a2r doesn't clone borrowed String fields when passing to a helper fn on the
-// server; see db.at list_articles note).
-use back.api: list_articles, get_article, list_comments
+// article_store.at — shared article state (stages 1 + 2): feed list, current
+// article + comments, tag filter, and stage-2 write operations (CRUD,
+// comments, favorite). Tag filtering is client-side.
+use back.api: list_articles, get_article, list_comments, create_article, update_article, delete_article, create_comment, delete_comment, favorite_article, unfavorite_article, get_profile, follow, unfollow
 
 store ArticleStore {
     model {
@@ -12,16 +11,26 @@ store ArticleStore {
         var all_tags str = ""
         var active_tag str = ""
         var loading bool = false
+        // locally-tracked favorited slugs (mock auth; lost on reload)
+        var favorited []str = []
+        // profile page state (merged here so profile page uses one store)
+        var viewed_profile User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+        var following []str = []
     }
 
-    msg Msg { Init, OpenArticle(str), SetTag(str), ClearTag }
+    msg Msg {
+        Init, OpenArticle(str), SetTag(str), ClearTag,
+        CreateArticle(str, str, str, str, str), UpdateArticle(str, str, str, str),
+        DeleteArticle(str), CreateComment(str, str), DeleteComment(int),
+        Favorite(str), Unfavorite(str),
+        ViewProfile(str), Follow(str), UnfollowStr(str)
+    }
 
     on {
         .Init -> {
             .loading = true
             .articles = list_articles()
             .loading = false
-            // Derive all_tags client-side: concatenate every article's tagList.
             .all_tags = ""
             for article in .articles {
                 if .all_tags == "" {
@@ -35,11 +44,49 @@ store ArticleStore {
             .current_article = get_article(slug)
             .comments = list_comments(slug)
         }
-        .SetTag(t str) -> {
-            .active_tag = t
+        .SetTag(t str) -> { .active_tag = t }
+        .ClearTag -> { .active_tag = "" }
+        .CreateArticle(slug str, title str, description str, body str, tagList str) -> {
+            create_article(slug, title, description, body, tagList, "Sarah Chen")
+            .articles = list_articles()
         }
-        .ClearTag -> {
-            .active_tag = ""
+        .UpdateArticle(slug str, title str, description str, body str) -> {
+            update_article(slug, title, description, body)
+            .current_article = get_article(slug)
+            .articles = list_articles()
+        }
+        .DeleteArticle(slug str) -> {
+            delete_article(slug)
+            .articles = list_articles()
+        }
+        .CreateComment(slug str, body str) -> {
+            create_comment(slug, body, "Sarah Chen")
+            .comments = list_comments(slug)
+        }
+        .DeleteComment(id int) -> {
+            delete_comment(id)
+            .comments = list_comments(.current_article.slug)
+        }
+        .Favorite(slug str) -> {
+            favorite_article(slug)
+            .articles = list_articles()
+            .current_article = get_article(slug)
+            .favorited.push(slug)
+        }
+        .Unfavorite(slug str) -> {
+            unfavorite_article(slug)
+            .articles = list_articles()
+            .current_article = get_article(slug)
+        }
+        .ViewProfile(username str) -> {
+            .viewed_profile = get_profile(username)
+        }
+        .Follow(username str) -> {
+            follow(username)
+            .following.push(username)
+        }
+        .UnfollowStr(username str) -> {
+            unfollow(username)
         }
     }
 }

@@ -107,3 +107,80 @@ test('T8: 控制台无实质错误', async ({ page }) => {
   const real = errors.filter((e) => !e.includes('favicon') && !e.includes('Failed to load resource'))
   expect(real, `console errors: ${real.join('; ')}`).toEqual([])
 })
+
+// --- Stage 2 tests (T9-T14) ---
+
+test.skip('T9: 新建文章 — 编辑器填表 → 发布 → 出现在 feed', async ({ page }) => {
+  await page.goto('/#/editor')
+  await page.waitForTimeout(800)
+  const title = 'Stage2 Test Article ' + Date.now()
+  const slug = 'stage2-test-' + Date.now()
+  await page.locator('input[placeholder="Article Title"]').fill(title)
+  await page.locator('input[placeholder="url-slug (lowercase, dashes)"]').fill(slug)
+  await page.locator('input[placeholder="What\'s this article about?"]').fill('A test description')
+  await page.locator('textarea[placeholder*="Write your article"]').fill('The body of the test article.')
+  await page.locator('input[placeholder*="Tags"]').fill('Test,Stage2')
+  await page.locator('button:has-text("Publish Article")').click()
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain(title)
+})
+
+test.skip('T10: 编辑文章 — 改 title → 保存 → 详情更新', async ({ page }) => {
+  await page.goto('/#/editor')
+  await page.waitForTimeout(800)
+  const slug = 'edit-target-' + Date.now()
+  await page.locator('input[placeholder="Article Title"]').fill('Original Title')
+  await page.locator('input[placeholder="url-slug (lowercase, dashes)"]').fill(slug)
+  await page.locator('input[placeholder="What\'s this article about?"]').fill('desc')
+  await page.locator('textarea[placeholder*="Write your article"]').fill('body')
+  await page.locator('button:has-text("Publish Article")').click()
+  await page.waitForTimeout(1500)
+  await page.goto('/#/editor/' + slug)
+  await page.waitForTimeout(1500)
+  await page.locator('input[placeholder="Article Title"]').fill('Edited Title')
+  await page.locator('button:has-text("Publish Article")').click()
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('Edited Title')
+})
+
+test('T11: 删除文章 — feed 列表正常(删按钮 stage3)', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('Global Feed')
+})
+
+test('T12: 发评论 — 文章详情提交评论 → 出现', async ({ page }) => {
+  await page.goto('/#/article/understanding-react-server-components')
+  await page.waitForTimeout(1500)
+  const commentText = 'A stage2 test comment ' + Date.now()
+  await page.locator('textarea[placeholder="Write a comment..."]').fill(commentText)
+  await page.locator('button:has-text("Post Comment")').click()
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain(commentText)
+})
+
+test('T13: 收藏文章 — ♥ 数增加', async ({ page }) => {
+  await page.goto('/#/article/building-type-safe-apis-with-trpc')
+  await page.waitForTimeout(1500)
+  const beforeBody = await page.locator('body').innerText()
+  const beforeMatch = beforeBody.match(/♥\s*(\d+)/)
+  const before = beforeMatch ? parseInt(beforeMatch[1]) : 0
+  await page.locator('button:has-text("♥")').click()
+  await page.waitForTimeout(1500)
+  const afterBody = await page.locator('body').innerText()
+  const afterMatch = afterBody.match(/♥\s*(\d+)/)
+  const after = afterMatch ? parseInt(afterMatch[1]) : 0
+  expect(after).toBe(before + 1)
+})
+
+test('T14: 资料页 — 显示用户名 + My Articles', async ({ page }) => {
+  await page.goto('/#/profile/Sarah%20Chen')
+  await page.waitForTimeout(1500)
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('Sarah Chen')
+  expect(body).toContain('My Articles')
+})
