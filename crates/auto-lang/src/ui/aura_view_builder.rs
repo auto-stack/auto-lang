@@ -2538,11 +2538,24 @@ impl<'a> AuraViewBuilder<'a> {
             // Binding path (e.g., "todo.done")
             value_to_display_string(&val)
         } else if lhs.starts_with('.') {
-            // State ref (e.g., ".filter")
+            // State ref (e.g., ".filter") or nested prop path (e.g., ".block.output)
             let name = &lhs[1..];
-            match self.read_state(name) {
-                Ok(v) => value_to_display_string(&v),
-                Err(_) => return false,
+            if name.contains('.') {
+                // EDGE-16: 嵌套路径(.block.output)用 Dot expr resolve,
+                // read_state 只查单字段名取不到。
+                if let Some(expr) = Self::parse_dot_path_to_expr(lhs) {
+                    match self.resolve_expr_to_value(&expr, bindings) {
+                        Some(v) => value_to_display_string(&v),
+                        None => return false,
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                match self.read_state(name) {
+                    Ok(v) => value_to_display_string(&v),
+                    Err(_) => return false,
+                }
             }
         } else {
             match self.read_state(lhs) {
