@@ -40,6 +40,7 @@ pub enum Color {
     Rose(u16),     // rose-50 to rose-900
     Emerald(u16),  // emerald-50 to emerald-900
     Amber(u16),    // amber-50 to amber-900
+    Sky(u16),      // sky-50 to sky-900 (Plan 047:ash-gui text-sky-300 等)
     White,
     Black,
 
@@ -141,6 +142,7 @@ impl Color {
                         "rose" => Ok(Color::Rose(shade)),
                         "emerald" => Ok(Color::Emerald(shade)),
                         "amber" => Ok(Color::Amber(shade)),
+                        "sky" => Ok(Color::Sky(shade)),
                         _ => Err(format!("Unknown color name: {}", color_name)),
                     }
                 } else {
@@ -186,6 +188,7 @@ impl Color {
             Color::Rose(s) => tailwind_rose(*s),
             Color::Emerald(s) => tailwind_emerald(*s),
             Color::Amber(s) => tailwind_amber(*s),
+            Color::Sky(s) => tailwind_sky(*s),
             // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB
             Color::Primary => (99, 102, 241),       // indigo-500
             Color::Secondary => (139, 92, 246),      // violet-500
@@ -486,4 +489,18 @@ palette!(tailwind_amber, [
     700 => (180, 83, 9),
     800 => (146, 64, 14),
     900 => (120, 53, 15),
+]);
+
+// Plan 047:tailwind sky 色板(标准值)。ash-gui 大量使用 text-sky-300/200。
+palette!(tailwind_sky, [
+    50  => (240, 249, 255),
+    100 => (224, 242, 254),
+    200 => (186, 230, 253),
+    300 => (125, 211, 252),
+    400 => (56, 189, 248),
+    500 => (14, 165, 233),
+    600 => (2, 132, 199),
+    700 => (3, 105, 161),
+    800 => (7, 89, 133),
+    900 => (12, 74, 110),
 ]);

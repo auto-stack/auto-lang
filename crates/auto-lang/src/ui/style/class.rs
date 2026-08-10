@@ -573,14 +573,7 @@ impl StyleClass {
             if let Some(d) = dir {
                 return Ok(StyleClass::BgGradient(d));
             }
-            let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))
-                .or_else(|_| {
-                    // Support arbitrary value: bg-[#hex]
-                    arbitrary_value
-                        .and_then(|v| Color::from_hex(v).ok())
-                        .ok_or_else(|| format!("Unknown bg color: {}", color_name))
-                })?;
+            let color = parse_color_with_alpha(color_name, arbitrary_value)?;
             return Ok(StyleClass::BackgroundColor(color));
         }
 
@@ -655,14 +648,7 @@ impl StyleClass {
 
         // Parse text color: text-{color} (must come after text-size/align)
         if let Some(color_name) = class.strip_prefix("text-") {
-            let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))
-                .or_else(|_| {
-                    // Support arbitrary value: text-[#hex]
-                    arbitrary_value
-                        .and_then(|v| Color::from_hex(v).ok())
-                        .ok_or_else(|| format!("Unknown text color: {}", color_name))
-                })?;
+            let color = parse_color_with_alpha(color_name, arbitrary_value)?;
             return Ok(StyleClass::TextColor(color));
         }
 
@@ -893,13 +879,7 @@ impl StyleClass {
                     Color::from_hex("#ffffff").unwrap()
                 })));
             }
-            let color = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))
-                .or_else(|_| {
-                    arbitrary_value
-                        .and_then(|v| Color::from_hex(v).ok())
-                        .ok_or_else(|| format!("Unknown border color: {}", color_name))
-                })?;
+            let color = parse_color_with_alpha(color_name, arbitrary_value)?;
             return Ok(StyleClass::BorderColor(color));
         }
 
@@ -1094,6 +1074,38 @@ impl StyleClass {
 }
 
 /// Helper function to parse size values
+/// Plan 047:解析颜色名(可能带 /N 透明度修饰符)。
+/// "card/30" → Color::Surface 带.alpha(76); "sky-300" → Color::Sky(300) alpha=255。
+/// 支持 tailwind 色名 + hex + 语义色。失败返回 Err。
+fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<Color, String> {
+    // 分离 /N alpha 修饰符(如 "card/30"、"sky-300/90")。
+    let (base_name, alpha) = if let Some(slash_pos) = color_name.find('/') {
+        let (base, rest) = color_name.split_at(slash_pos);
+        // rest 形如 "/30",去掉 '/' 后 parse
+        let alpha_pct: u8 = rest[1..].parse().unwrap_or(100);
+        (base, alpha_pct)
+    } else {
+        (color_name, 100u8)
+    };
+
+    let color = Color::from_tailwind(base_name)
+        .or_else(|_| Color::from_hex(base_name))
+        .or_else(|_| {
+            arbitrary
+                .and_then(|v| Color::from_hex(v).ok())
+                .ok_or_else(|| format!("Unknown color: {}", base_name))
+        })?;
+
+    if alpha < 100 {
+        // 乘 alpha:从 color 取 RGB,转 Rgba。
+        let (r, g, b) = color.to_rgb8();
+        let a = (alpha as u32 * 255 / 100).min(255) as u8;
+        Ok(Color::Rgba { r, g, b, a })
+    } else {
+        Ok(color)
+    }
+}
+
 fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     match input {
         "full" | "screen" => Ok(SizeValue::Full),
