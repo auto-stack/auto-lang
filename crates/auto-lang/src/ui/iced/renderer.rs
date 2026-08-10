@@ -924,6 +924,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(ref weight) = iced_style.font_weight {
                         text_widget = text_widget.font(font_weight_to_iced(weight));
                     }
+                    // Apply font family (font-serif/sans/mono)
+                    if let Some(ref family) = iced_style.font_family {
+                        let fam = match family.as_str() {
+                            "serif" => iced::font::Family::Serif,
+                            "mono" => iced::font::Family::Monospace,
+                            _ => iced::font::Family::SansSerif,
+                        };
+                        let weight = iced_style.font_weight.as_ref().map(font_weight_to_iced).unwrap_or(iced::Font::DEFAULT);
+                        text_widget = text_widget.font(iced::Font {
+                            family: fam,
+                            weight: weight.weight,
+                            stretch: weight.stretch,
+                            style: weight.style,
+                        });
+                    }
                     // Apply width (e.g., from flex-1)
                     if let Some(ref w) = iced_style.width {
                         text_widget = text_widget.width(iced_length(w));

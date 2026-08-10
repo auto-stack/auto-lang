@@ -114,6 +114,8 @@ impl Color {
             "info" => Ok(Color::Info),
             // "border" / "input" / "ring" → subtle surface
             "border" | "input" | "ring" => Ok(Color::Surface),
+            // Conduit/RealWorld brand green (#5cb85c) — used by 023-realworld.
+            "brand-green" | "brand" => Ok(Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c }),
             _ => {
                 // Try to parse "color-shade" format
                 if let Some(pos) = name.find('-') {
