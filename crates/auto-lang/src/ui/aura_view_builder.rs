@@ -1001,21 +1001,30 @@ impl<'a> AuraViewBuilder<'a> {
 
         let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
         for (i, n) in children.iter().enumerate() {
-            if let AuraNode::Conditional { condition, then_body, else_body, .. } = n {
-                let is_true = self.eval_condition_with(condition, bindings);
-                let empty = Vec::new();
-                let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
-                for child_node in body {
+            match n {
+                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                    let is_true = self.eval_condition_with(condition, bindings);
+                    let empty = Vec::new();
+                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    for child_node in body {
+                        path.push(i);
+                        let v = self.convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
+                        path.pop();
+                        child_views.push(v);
+                    }
+                }
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    // Plan 047:flatten ForLoop into row(同 untracked convert_row)。
+                    // 用 for_loop_iterations(放弃 row 内 ForLoop 的 probe 追踪,
+                    // inspector 调试信息不影响渲染正确性)。
+                    child_views.extend(self.for_loop_iterations(var, index, iterable, body, bindings));
+                }
+                _ => {
                     path.push(i);
-                    let v = self.convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
+                    let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                     path.pop();
                     child_views.push(v);
                 }
-            } else {
-                path.push(i);
-                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                path.pop();
-                child_views.push(v);
             }
         }
 
@@ -1546,18 +1555,27 @@ impl<'a> AuraViewBuilder<'a> {
         let style = self.extract_style(props);
 
         // Flatten Conditional children: in a row, multiple condition children
-        // should be spread horizontally, not wrapped in a Column
+        // should be spread horizontally, not wrapped in a Column.
+        // Plan 047:also flatten ForLoop children(for cell in row → cells 横向排列,
+        // 而非被 ForLoop 包成单个 Column 导致纵向堆叠)。
         let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
         for n in children {
-            if let AuraNode::Conditional { condition, then_body, else_body, .. } = n {
-                let is_true = self.eval_condition_with(condition, bindings);
-                let empty = Vec::new();
-                let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
-                for child_node in body {
-                    child_views.push(self.convert_node_with(child_node, bindings));
+            match n {
+                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                    let is_true = self.eval_condition_with(condition, bindings);
+                    let empty = Vec::new();
+                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    for child_node in body {
+                        child_views.push(self.convert_node_with(child_node, bindings));
+                    }
                 }
-            } else {
-                child_views.push(self.convert_node_with(n, bindings));
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    // 同 convert_grid(:1675):用 for_loop_iterations spread 进 row
+                    child_views.extend(self.for_loop_iterations(var, index, iterable, body, bindings));
+                }
+                _ => {
+                    child_views.push(self.convert_node_with(n, bindings));
+                }
             }
         }
 

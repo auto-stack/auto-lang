@@ -3144,6 +3144,11 @@ struct DynamicState {
     inspector_scroll_id: iced::widget::Id,
     /// Fixed ID for the DevTools elements-tree (left pane) scrollable.
     elements_scroll_id: iced::widget::Id,
+    /// Plan 047:固定 ID for the primary text_input(ash-gui PromptBar),
+    /// 用于 view 重建后恢复焦点(iced 的 on_submit 只在 focused 时触发)。
+    prompt_input_id: iced::widget::Id,
+    /// Plan 047:Set by PromptBar.Run handler; update 结尾据此返回 focus Task。
+    needs_prompt_refocus: std::cell::Cell<bool>,
     /// Split ratio (0..1) for the inner Tree|Inspector divider within the
     /// DevTools panel — `ratio` is the Tree pane's share of the panel width.
     /// Dragged via the inner divider (Plan 309 续篇).
@@ -3379,6 +3384,8 @@ fn compare_pngs(
             cached_highlighted: std::cell::RefCell::new(None),
             inspector_scroll_id: iced::widget::Id::unique(),
             elements_scroll_id: iced::widget::Id::unique(),
+            prompt_input_id: iced::widget::Id::new("prompt_input"),
+            needs_prompt_refocus: std::cell::Cell::new(false),
             // Plan 309 续篇: Tree | Inspector 同屏分屏，树占 38%；分隔栏可拖拽。
             inspector_split_ratio: std::cell::RefCell::new(0.38),
             dragging_inner_divider: std::cell::RefCell::new(false),
@@ -4100,6 +4107,8 @@ fn compare_pngs(
         // 让 view 渲染时 input value 取 handler 清空后的空值(对齐 vue v-model)。
         if widget_name == "PromptBar" && event_name == "Run" {
             state.input_values.remove(&event_name);
+            // Plan 047:view 重建后恢复 input 焦点(否则 on_submit 第二次不触发)。
+            state.needs_prompt_refocus.set(true);
         }
 
         // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
@@ -4395,6 +4404,13 @@ fn compare_pngs(
                 });
         }
 
+        // Plan 047:PromptBar.Run 后恢复 input 焦点(view 重建会丢焦点)。
+        if state.needs_prompt_refocus.get() {
+            state.needs_prompt_refocus.set(false);
+            // iced 0.14: widget::operation::focus(id) 直接返回 Task<T>。
+            return iced::widget::operation::focus(state.prompt_input_id.clone());
+        }
+
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
@@ -4402,9 +4418,16 @@ fn compare_pngs(
         format!("Auto - {}", widget_name)
     };
 
+    // Plan 047:深色主题(对齐 ash-gui vue dark mode)。
+    let theme_fn = move |_state: &DynamicState| -> iced::Theme {
+        iced::Theme::Dark
+    };
+
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
         .window_size(iced::Size::new(800.0, 600.0))
+        // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
+        .theme(theme_fn)
         .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
             if _state.component.source_path().is_some() {
@@ -7096,6 +7119,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(msg) = on_submit {
                 input_widget = input_widget.on_submit(msg);
             }
+
+            // Plan 047:给 input 固定 Id,view 重建后 iced 按 Id 匹配焦点状态。
+            // 没有稳定 Id,每次 view_dirty 重建会丢焦点 → on_submit 不触发。
+            input_widget = input_widget.id(iced::widget::Id::new("prompt_input"));
 
             let el: iced::Element<'static, IcedMessage> = input_widget.into();
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
