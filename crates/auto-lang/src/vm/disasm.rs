@@ -94,6 +94,8 @@ impl<'a> Disassembler<'a> {
             | OpCode::LT_D | OpCode::GT_D | OpCode::LE_D | OpCode::GE_D
             | OpCode::EQ_U64 | OpCode::NE_U64 | OpCode::LT_U64 | OpCode::GT_U64
             | OpCode::LE_U64 | OpCode::GE_U64
+            | OpCode::EQ_F | OpCode::NE_F | OpCode::LT_F | OpCode::GT_F
+            | OpCode::LE_F | OpCode::GE_F
             | OpCode::I32_TO_F32 | OpCode::I64_TO_F64 | OpCode::U64_TO_F64
             | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE
             | OpCode::TASK_ID | OpCode::SPAWN_GO | OpCode::REPLY | OpCode::HANDLE_MSG

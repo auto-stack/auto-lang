@@ -285,7 +285,7 @@ fn eval_expr(input str) str {
         }
         // Closing paren: pop until "(".
         else if ch == ")" {
-            while ops.len() > 0 && ops.get(ops.len() - 1) != "(" {
+            while ops.len() > 0 && ops[ops.len() - 1] != "(" {
                 ok = apply_top(nums, ops)
                 if !ok {
                     return "ERROR"
@@ -325,7 +325,7 @@ fn eval_expr(input str) str {
                         i = i + 1
                     }
                 } else {
-                    while ops.len() > 0 && ops.get(ops.len() - 1) != "(" && prec(ops.get(ops.len() - 1)) >= prec(ch) {
+                    while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
                         ok = apply_top(nums, ops)
                         if !ok {
                             return "ERROR"
@@ -335,7 +335,7 @@ fn eval_expr(input str) str {
                     i = i + 1
                 }
             } else {
-                while ops.len() > 0 && ops.get(ops.len() - 1) != "(" && prec(ops.get(ops.len() - 1)) >= prec(ch) {
+                while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
                     ok = apply_top(nums, ops)
                     if !ok {
                         return "ERROR"
@@ -353,7 +353,7 @@ fn eval_expr(input str) str {
 
     // Pop remaining operators.
     while ops.len() > 0 {
-        if ops.get(ops.len() - 1) == "(" {
+        if ops[ops.len() - 1] == "(" {
             ops.pop()
         } else {
             ok = apply_top(nums, ops)
@@ -364,7 +364,7 @@ fn eval_expr(input str) str {
     }
 
     if nums.len() == 1 {
-        return fmt_num(nums.get(0).to_float())
+        return fmt_num(nums[0].to_float())
     }
     return "ERROR"
 }
@@ -375,11 +375,11 @@ fn apply_top(nums List<str>, ops List<str>) bool {
     if ops.len() == 0 || nums.len() < 2 {
         return false
     }
-    var op str = ops.get(ops.len() - 1)
+    var op str = ops[ops.len() - 1]
     ops.pop()
-    var b float = nums.get(nums.len() - 1).to_float()
+    var b float = nums[nums.len() - 1].to_float()
     nums.pop()
-    var a float = nums.get(nums.len() - 1).to_float()
+    var a float = nums[nums.len() - 1].to_float()
     nums.pop()
     var result float = 0.0
     if op == "+" {
@@ -432,16 +432,10 @@ fn prec(op str) int {
 
 /// Format a float for display: show integers without decimals, trim trailing zeros.
 fn fmt_num(v float) str {
-    var rounded float = v * 1000000.0 + 0.5
-    var as_int int = rounded.to_int() / 1000000
-    // If the value is very close to an integer, show as int.
-    var diff float = v - as_int.to_float()
-    if diff < 0.0 {
-        diff = 0.0 - diff
-    }
-    if diff < 0.000001 {
-        return as_int.to_string()
-    }
+    // Plan 403-F: simplified to avoid float.to_int() (which has VM dispatch
+    // issues for f32 values). The Rust-side fmt_f64 (engine.rs to_string)
+    // already shows whole floats without a decimal part (7.0 → "7"), so a
+    // plain to_string suffices for display.
     return v.to_string()
 }
 

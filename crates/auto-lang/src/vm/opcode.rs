@@ -159,6 +159,17 @@ pub enum OpCode {
     LE_U64 = 0xBE,
     GE_U64 = 0xBF,
 
+    // Plan 403-F: f32 comparison (each pops 1+1 slot, pushes 1 bool).
+    // Mirrors EQ_D/LT_D/... but for TAG_F32-encoded floats (lexer default for
+    // unsuffixed decimal literals like 3.0). Without these, comparisons on f32
+    // values fell through to the i32 EQ/LT path, mis-decoding the operands.
+    EQ_F = 0xC7,
+    NE_F = 0xC8,
+    LT_F = 0xC9,
+    GT_F = 0xCA,
+    LE_F = 0xCB,
+    GE_F = 0xCC,
+
     // === Control Flow ===
     JMP = 0x60,
     JMP_IF_Z = 0x61,
@@ -515,6 +526,13 @@ impl OpCode {
             Self::GT_U64 => "gt.u64",
             Self::LE_U64 => "le.u64",
             Self::GE_U64 => "ge.u64",
+            // Plan 403-F: f32 comparison
+            Self::EQ_F => "eq.f",
+            Self::NE_F => "ne.f",
+            Self::LT_F => "lt.f",
+            Self::GT_F => "gt.f",
+            Self::LE_F => "le.f",
+            Self::GE_F => "ge.f",
             Self::JMP => "jmp",
             Self::JMP_IF_Z => "jmp.z",
             Self::JMP_IF_NZ => "jmp.nz",
@@ -709,6 +727,13 @@ impl OpCode {
             "gt.u64" => Some(Self::GT_U64),
             "le.u64" => Some(Self::LE_U64),
             "ge.u64" => Some(Self::GE_U64),
+            // Plan 403-F: f32 comparison
+            "eq.f" => Some(Self::EQ_F),
+            "ne.f" => Some(Self::NE_F),
+            "lt.f" => Some(Self::LT_F),
+            "gt.f" => Some(Self::GT_F),
+            "le.f" => Some(Self::LE_F),
+            "ge.f" => Some(Self::GE_F),
             "jmp" => Some(Self::JMP),
             "jmp.z" => Some(Self::JMP_IF_Z),
             "jmp.nz" => Some(Self::JMP_IF_NZ),
@@ -816,6 +841,8 @@ impl OpCode {
             | Self::LT_D | Self::GT_D | Self::LE_D | Self::GE_D
             | Self::EQ_U64 | Self::NE_U64 | Self::LT_U64 | Self::GT_U64
             | Self::LE_U64 | Self::GE_U64
+            | Self::EQ_F | Self::NE_F | Self::LT_F | Self::GT_F
+            | Self::LE_F | Self::GE_F
             | Self::I32_TO_F32 | Self::I64_TO_F64 | Self::U64_TO_F64
             | Self::PROMOTE_F64 | Self::NULL_COALESCE
             | Self::TASK_ID | Self::SPAWN_GO | Self::REPLY | Self::HANDLE_MSG
