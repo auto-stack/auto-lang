@@ -51,6 +51,16 @@
 - **row/col 布局元素现在支持任意 HTML 属性**（022 阶段2 修复）：之前 row/col 的 shadcn 分支只输出 class，丢弃 draggable 等普通 prop。现已通过 `push_passthrough_attrs` 透传（vue.rs）。后续示例在 row/col 上写 `draggable`/`data-*` 等任意属性均可。
 - **a2r 返回位置 struct literal 的已知规避**：`return T{...}` a2r 报 `undefined variable`；改 `let x = T{...}; return x` 规避。同类：reassignment `found = T{...}` 解析失败（改 `let rebuilt = ...; found = rebuilt`）、借用迭代变量字段 move（在 let-ctor 内访问触发 a2r clone）。均在源码层规避并注释。
 
+### 023-realworld 阶段2 新增 gotcha（2026-08-10）
+- **`tag` 是保留软关键字**（TokenKind::Tag，enum 别名）→ 不能作函数参数名，否则 a2r 报 `expected '{' or type after 'str'`。用 `filter_tag`/`needle` 等替代（023 db.at）。
+- **store model 字段名不能与 `use back.api` 导入的函数名同名**：codegen 对 store 字段生成 `import { fn } from api` + 模块级 `const fn = ref(...)`，后者覆盖前者 → handler 调 `fn()` 报 `not a function`。023 的 `current_user` 字段改名 `me` 规避。规则：store 字段名避开 api 函数名（如 `current_user`/`list_articles` 等）。
+- **同一 widget 不能映射多条路由**：codegen 给同 widget 的多条路由生成同 `name`，vue-router 4 重名丢弃先注册的 → 路径不匹配。023 编辑器合并成 `/editor/:slug`（新建用 `/editor/new`）规避。
+- **store 的 struct 字面量初始值退化为 null**（codegen 已知边际，未根治）：`var x T = T { ... }` 生成的 store ts 是 `const x = ref<any>(null)`（struct literal 走 Expr::Node，store_init_to_js 未处理）。规避：模板访问字段前加 `!= nil` 判断（023 app/settings/article_detail）。根治需在 store_init_to_js 处理 Expr::Node → JS 对象（Node 是 widget-node 结构，映射较深，留后续）。
+- **a2r List<T> 声明顺序敏感**（parser 已知边际，未根治）：`var result T = T { 多字段 }` 之后的 `var xs List<T> = List<T>.new([])` 解析失败（`Expected Gt, found ]`）；但顺序反过来（List 声明在前）正常。规避：函数体内 `List<T>` 声明放在 `var result T = T{...}` 之前（对齐 018）。根因是 parser 解析 struct literal 后状态泄漏到下一行泛型解析，留后续。
+- **a2r 双路径参数只提取第一个**：`/api/:a/:b` 的 handler 只提取 `:a`，`:b` 丢失（023 delete_comment）。规避：改单路径参数（`/api/comments/:id`，评论 id 全局唯一）。
+- **a2r POST/PUT 无 body 参数时多余 Json body**（已修复，api_gen.rs endpoint_has_body）：POST/PUT 只有路径参数时原生成 `Json<User>` body 提取 → 拒绝请求。已改：body 存在 iff 有 body 参数。
+- **a2r_std import 路径**（已修复，trans/rust.rs）：生成的 `use a2r_std` 改为 `use auto_lang::a2r_std`（a2r_std 是 auto_lang 模块非独立 crate）+ back Cargo.toml 加 `auto-lang.workspace = true`（api_gen.rs generate_cargo_toml，has_db 时）。
+
 ---
 
 ## 018 范式锚点（子计划参照）
@@ -87,7 +97,7 @@ examples/ui/018-book-reader/
 | 018-book-reader | 已升级 | ✅ 完成 | (本纲领 §018) | 10/10 全绿，合并 master `bc5e1041` |
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
 | 022-kanban | 已升级 | ✅ 完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
-| 023-realworld | 已升级 | ✅ 阶段1完成 | [Plan 405](405-023-realworld.md) | Conduit spec 阶段1(认证+feed+详情)，8/8 全绿；阶段2待后续 |
+| 023-realworld | 已升级 | ✅ 完成(阶段1+2) | [Plan 405](405-023-realworld.md) | 完整 Conduit(认证+CRUD+评论+关注+收藏+资料)，14/14 全绿；vue 原型 |
 | 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
 | 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
 | 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
@@ -96,7 +106,7 @@ examples/ui/018-book-reader/
 | 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 | 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 
-**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1）→ 019/020/021（中等）→ 024/025（低）。
+**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 019/020/021（中等）→ 024/025（低）。
 
 ---
 
@@ -109,3 +119,5 @@ examples/ui/018-book-reader/
 | `plan401/022-kanban` | 022 阶段1：CRUD + 列移动 + playwright 5/5 | 022 |
 | `plan401/022-drag` | 022 阶段2：HTML5 拖拽 + 修 row/col 属性穿透 bug + playwright 6/6 | 022 |
 | `plan401/023-realworld` | 023 阶段1：Conduit 认证+feed+详情 + vue 原型 + 修 3 个 a2r codegen bug + playwright 8/8 | 023 |
+| `plan401/023-stage2` | 023 阶段2：Conduit 写操作(CRUD+评论+关注+收藏+资料) + 2 codegen 修复 + playwright 12/14 | 023 |
+| `plan401/023-editor-fix` | 023 编辑器修复(store 字段同名 + 重名路由) → playwright 14/14 全绿 | 023 |
