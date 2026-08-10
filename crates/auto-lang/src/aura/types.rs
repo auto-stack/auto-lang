@@ -678,6 +678,52 @@ pub struct AuraEvent {
     pub params: Vec<String>,
 }
 
+/// Split an event key into (base, modifiers), quote-aware.
+///
+/// `"onkeydown.enter.prevent"` → `("onkeydown", ["enter", "prevent"])`.
+///
+/// Quoted custom event names (`on"autodown:slash-open"`) may contain
+/// characters that are illegal in identifiers (':'/'-'); the base then runs
+/// to the closing quote and only what follows it counts as modifiers.
+/// (Mirror of the Vue backend's `split_event_key`, kept local so the aura
+/// layer does not depend on `ui_gen`.)
+pub fn split_aura_event_key(event: &str) -> (&str, Vec<&str>) {
+    if let Some(rest) = event.strip_prefix("on\"") {
+        if let Some(close) = rest.find('"') {
+            let end = 3 + close + 1; // just past the closing quote
+            let base = &event[..end];
+            let mods: Vec<&str> = event[end..]
+                .strip_prefix('.')
+                .map(|t| t.split('.').filter(|m| !m.is_empty()).collect())
+                .unwrap_or_default();
+            return (base, mods);
+        }
+    }
+    let mut parts = event.split('.');
+    let base = parts.next().unwrap_or(event);
+    (base, parts.collect())
+}
+
+/// Base-aware event lookup: exact `get` first, otherwise scan keys whose
+/// base (modifiers stripped via [`split_aura_event_key`]) equals `base`.
+///
+/// Event keys may carry modifiers (`oncontextmenu.prevent`); consumers that
+/// dispatch a single DOM event (VM button right-click, input change, …)
+/// must not miss those keys, so they look up by base name through here
+/// instead of `events.get(...)`.
+pub fn aura_events_get_base<'a>(
+    events: &'a HashMap<String, AuraEvent>,
+    base: &str,
+) -> Option<&'a AuraEvent> {
+    if let Some(ev) = events.get(base) {
+        return Some(ev);
+    }
+    events
+        .iter()
+        .find(|(k, _)| split_aura_event_key(k).0 == base)
+        .map(|(_, v)| v)
+}
+
 /// AURA property value - can be an expression or a class binding
 #[derive(Debug, Clone)]
 pub enum AuraPropValue {
@@ -1165,5 +1211,52 @@ mod tests {
 
         // logic 视图不含视图字段；view_data 视图不含逻辑字段
         // （编译期已由类型保证，这里只验证可访问性）
+    }
+
+    #[test]
+    fn test_split_aura_event_key() {
+        let (base, mods) = split_aura_event_key("onkeydown.enter.prevent");
+        assert_eq!(base, "onkeydown");
+        assert_eq!(mods, vec!["enter", "prevent"]);
+
+        let (base, mods) = split_aura_event_key("onclick");
+        assert_eq!(base, "onclick");
+        assert!(mods.is_empty());
+
+        // Quoted custom names: dots/colons inside the quotes are part of the
+        // base, only what follows the closing quote is modifiers.
+        let (base, mods) = split_aura_event_key("on\"autodown:slash-open\".prevent");
+        assert_eq!(base, "on\"autodown:slash-open\"");
+        assert_eq!(mods, vec!["prevent"]);
+
+        let (base, mods) = split_aura_event_key("on\"autodown:slash-open\"");
+        assert_eq!(base, "on\"autodown:slash-open\"");
+        assert!(mods.is_empty());
+    }
+
+    #[test]
+    fn test_aura_events_get_base() {
+        let mk = |handler: &str| AuraEvent {
+            handler: handler.to_string(),
+            params: Vec::new(),
+        };
+        let mut events: HashMap<String, AuraEvent> = HashMap::new();
+        events.insert("oncontextmenu.prevent".to_string(), mk(".Flag"));
+        events.insert("onclick".to_string(), mk(".Tap"));
+
+        // Exact hit takes the fast path.
+        assert_eq!(
+            aura_events_get_base(&events, "onclick").unwrap().handler,
+            ".Tap"
+        );
+        // Modifier-carrying key is found by its base.
+        assert_eq!(
+            aura_events_get_base(&events, "oncontextmenu")
+                .unwrap()
+                .handler,
+            ".Flag"
+        );
+        // Unknown base misses.
+        assert!(aura_events_get_base(&events, "oninput").is_none());
     }
 }

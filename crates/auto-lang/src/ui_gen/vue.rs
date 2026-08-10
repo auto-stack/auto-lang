@@ -13323,6 +13323,53 @@ widget Menu {
         assert!(sfc.contains("@click.stop=\"Tap\""), "stop modifier:\n{}", sfc);
     }
 
+    /// Regression lock (plan 402 follow-up): modifier-carrying event keys must
+    /// survive extraction intact — no collapsing to the base name
+    /// (`onclick.self` → `@click`) and no same-base overwrite
+    /// (`onkeydown.enter/down/up` → a single `@keydown`).
+    #[test]
+    fn test_event_modifiers_same_base_no_overwrite() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Nav {
+    msg Msg { X, A, B, C }
+    model { var n int = 0 }
+    view {
+        col {
+            onclick.self: .X,
+            onkeydown.enter.prevent: .A,
+            onkeydown.down.prevent: .B,
+            onkeydown.up.prevent: .C
+        }
+    }
+    on {
+        .X -> { .n = 1 }
+        .A -> { .n = 2 }
+        .B -> { .n = 3 }
+        .C -> { .n = 4 }
+    }
+}
+"#);
+        assert!(sfc.contains("@click.self=\"X\""), "self modifier kept:\n{}", sfc);
+        assert!(
+            sfc.contains("@keydown.enter.prevent=\"A\""),
+            "enter handler kept:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@keydown.down.prevent=\"B\""),
+            "down handler kept:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@keydown.up.prevent=\"C\""),
+            "up handler kept:\n{}",
+            sfc
+        );
+        // The regressed form: base-only key with the last writer winning.
+        assert!(!sfc.contains("@click=\"X\""), "no collapsed @click:\n{}", sfc);
+        assert!(!sfc.contains("@keydown=\"C\""), "no collapsed @keydown:\n{}", sfc);
+    }
+
     /// The $event object flows into the template handler call, with field
     /// access ($event.key, $event.clientY) preserved.
     #[test]

@@ -8,7 +8,7 @@ use super::{
 };
 use crate::ast::Expr;
 use crate::aura::{
-    AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget,
+    aura_events_get_base, AuraEvent, AuraNode, AuraPropValue, AuraTextContent, AuraWidget,
 };
 use std::collections::HashMap;
 
@@ -213,7 +213,8 @@ fn export_element(
     };
 
     let get_event = |key: &str| -> Option<A2UIAction> {
-        events.get(key).map(|ev| {
+        // Base-aware lookup: event keys may carry modifiers (onclick.self).
+        aura_events_get_base(events, key).map(|ev| {
             let mut action = A2UIAction::new(&ev.handler);
             if !ev.params.is_empty() {
                 let context = ev

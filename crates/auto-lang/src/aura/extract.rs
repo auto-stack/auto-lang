@@ -154,11 +154,15 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                         let handler = extract_event_handler(&pair.value)?;
                         events.insert("onclick".to_string(), handler);
                     }
-                    // Plan 402: contextmenu (right-click) event, with optional
-                    // `.prevent`/`.stop` modifier stripped from the stored key.
+                    // Plan 402: contextmenu (right-click) event. The stored key
+                    // keeps modifiers (e.g. oncontextmenu.prevent) so codegen
+                    // backends see them; consumers use base-aware lookup
+                    // (crate::aura::aura_events_get_base). Only the
+                    // `onContextMenu` casing is normalized to `oncontextmenu`.
                     k if k.starts_with("oncontextmenu") || k.starts_with("onContextMenu") => {
                         let handler = extract_event_handler(&pair.value)?;
-                        events.insert("oncontextmenu".to_string(), handler);
+                        let full_key = k.replacen("onContextMenu", "oncontextmenu", 1);
+                        events.insert(full_key, handler);
                     }
                     // Regular props
                     _ => {
@@ -205,9 +209,11 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                                 // `:on_select="Handler"` (function ref).
                                 if is_native_event_key(&key) {
                                     let handler = extract_event_handler(&pair.value)?;
-                                    // Plan 402: normalize event key (strip .prevent/.stop)
-                                    let base_key = key.split('.').next().unwrap_or(&key).to_string();
-                                    events.insert(base_key, handler);
+                                    // Keep the full key (including .prevent/.stop
+                                    // modifiers) so codegen backends can emit them;
+                                    // consumers use base-aware lookup
+                                    // (crate::aura::aura_events_get_base).
+                                    events.insert(key, handler);
                                 } else {
                                     let value = pair.value.as_ref().clone();
                                     props.insert(key, AuraPropValue::Expr(value));
@@ -741,9 +747,9 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         handler: e.handler.clone(),
                         params: e.params.clone(),
                     };
-                    // Plan 402: normalize event key (strip .prevent/.stop modifiers)
-                    let base_name = e.name.split('.').next().unwrap_or(&e.name).to_string();
-                    (base_name, event)
+                    // Keep the full key (including modifiers); consumers use
+                    // base-aware lookup (crate::aura::aura_events_get_base).
+                    (e.name.clone(), event)
                 })
                 .collect();
 
@@ -850,9 +856,9 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         handler: e.handler.clone(),
                         params: e.params.clone(),
                     };
-                    // Plan 402: normalize event key (strip .prevent/.stop modifiers)
-                    let base_name = e.name.split('.').next().unwrap_or(&e.name).to_string();
-                    (base_name, event)
+                    // Keep the full key (including modifiers); consumers use
+                    // base-aware lookup (crate::aura::aura_events_get_base).
+                    (e.name.clone(), event)
                 })
                 .collect();
 
@@ -1296,5 +1302,85 @@ mod tests {
             AuraNode::Text(AuraTextContent::Literal(s)) => assert_eq!(s, "Hello"),
             _ => panic!("Expected Text node"),
         }
+    }
+
+    /// Parse a widget source (real parser pipeline) and extract its AuraWidget.
+    fn extract_widget_from_src(src: &str) -> AuraWidget {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        extract_widget_from_decl(decl).expect("extract widget")
+    }
+
+    /// Event keys keep their modifiers in the extracted events map
+    /// (`onclick.self`, `onkeydown.enter.prevent`, …) — codegen backends need
+    /// them, and same-base events must not overwrite each other. Consumers
+    /// that dispatch by base name go through `aura_events_get_base`.
+    #[test]
+    fn test_extract_preserves_event_key_modifiers() {
+        let widget = extract_widget_from_src(r#"
+widget Nav {
+    msg Msg { X, A, B, C }
+    model { var n int = 0 }
+    view {
+        col {
+            onclick.self: .X,
+            onkeydown.enter.prevent: .A,
+            onkeydown.down.prevent: .B,
+            onkeydown.up.prevent: .C,
+            oncontextmenu.prevent: .X
+        }
+    }
+    on {
+        .X -> { .n = 1 }
+        .A -> { .n = 2 }
+        .B -> { .n = 3 }
+        .C -> { .n = 4 }
+    }
+}
+"#);
+        let events = match &widget.view_tree {
+            AuraNode::Element { events, .. } => events,
+            other => panic!("expected element view tree, got {:?}", other),
+        };
+        for key in [
+            "onclick.self",
+            "onkeydown.enter.prevent",
+            "onkeydown.down.prevent",
+            "onkeydown.up.prevent",
+            "oncontextmenu.prevent",
+        ] {
+            assert!(
+                events.contains_key(key),
+                "full event key `{}` preserved; got keys: {:?}",
+                key,
+                events.keys().collect::<Vec<_>>()
+            );
+        }
+        // Same-base events coexist (no normalization overwrite).
+        assert_eq!(events["onkeydown.enter.prevent"].handler, ".A");
+        assert_eq!(events["onkeydown.down.prevent"].handler, ".B");
+        assert_eq!(events["onkeydown.up.prevent"].handler, ".C");
+        // Base-aware lookup still reaches the modifier-carrying keys.
+        assert_eq!(
+            crate::aura::aura_events_get_base(events, "oncontextmenu")
+                .unwrap()
+                .handler,
+            ".X"
+        );
+        assert_eq!(
+            crate::aura::aura_events_get_base(events, "onclick")
+                .unwrap()
+                .handler,
+            ".X"
+        );
     }
 }

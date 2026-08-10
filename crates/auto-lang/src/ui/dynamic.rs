@@ -1155,12 +1155,13 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
                     },
                     _ => None,
                 });
-                // Find oninput/onchange event
-                let event_name = events.get("oninput")
-                    .or_else(|| events.get("onchange"))
-                    .or_else(|| events.get("onenter"))
-                    .or_else(|| events.get("input"))
-                    .or_else(|| events.get("change"))
+                // Find oninput/onchange event (base-aware: keys may carry
+                // modifiers like `onchange.prevent`)
+                let event_name = crate::aura::aura_events_get_base(events, "oninput")
+                    .or_else(|| crate::aura::aura_events_get_base(events, "onchange"))
+                    .or_else(|| crate::aura::aura_events_get_base(events, "onenter"))
+                    .or_else(|| crate::aura::aura_events_get_base(events, "input"))
+                    .or_else(|| crate::aura::aura_events_get_base(events, "change"))
                     .map(|e| clean_handler_name(&e.handler));
 
                 if let (Some(field), Some(event)) = (state_field, event_name) {

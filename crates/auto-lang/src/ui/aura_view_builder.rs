@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use auto_val::{Op, Value};
 
 use crate::ast::Expr;
-use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraEvent};
+use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraEvent, aura_events_get_base};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
@@ -1271,7 +1271,8 @@ impl<'a> AuraViewBuilder<'a> {
         //
         // If this text element has an onclick/click event, render it as a
         // Button so the click handler fires (View::Text has no onclick field).
-        if let Some(event) = events.get("onclick").or_else(|| events.get("click")) {
+        if let Some(event) = aura_events_get_base(events, "onclick")
+            .or_else(|| aura_events_get_base(events, "click")) {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
                 label: content,
@@ -1991,7 +1992,8 @@ impl<'a> AuraViewBuilder<'a> {
         // Button so the click handler fires (View::Text has no onclick field).
         // The Button renderer applies chromeless styling when no bg/border is
         // present, so the visual appearance matches plain text.
-        if let Some(event) = events.get("onclick").or_else(|| events.get("click")) {
+        if let Some(event) = aura_events_get_base(events, "onclick")
+            .or_else(|| aura_events_get_base(events, "click")) {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
                 label: styled_content,
@@ -2044,15 +2046,16 @@ impl<'a> AuraViewBuilder<'a> {
             if merged.is_empty() { None } else { Style::parse(&merged).ok() }
         };
 
-        // Resolve the onclick event handler to a DynamicMessage
-        let onclick = events.get("onclick")
-            .or_else(|| events.get("click"))
+        // Resolve the onclick event handler to a DynamicMessage.
+        // Base-aware lookup: event keys may carry modifiers (onclick.self).
+        let onclick = aura_events_get_base(events, "onclick")
+            .or_else(|| aura_events_get_base(events, "click"))
             .map(|event| self.event_to_message_with(event, bindings))
             .unwrap_or_else(|| DynamicMessage::String("click".to_string()));
 
         // Plan 402: resolve oncontextmenu (right-click) handler for flagging
-        let on_right_click = events.get("oncontextmenu")
-            .or_else(|| events.get("contextmenu"))
+        let on_right_click = aura_events_get_base(events, "oncontextmenu")
+            .or_else(|| aura_events_get_base(events, "contextmenu"))
             .map(|event| self.event_to_message_with(event, bindings));
 
         View::Button {
@@ -2081,14 +2084,14 @@ impl<'a> AuraViewBuilder<'a> {
         let width = self.extract_u16(props, "width");
         let password = self.extract_bool(props, "password").unwrap_or(false);
 
-        let on_change = events.get("onchange")
-            .or_else(|| events.get("change"))
-            .or_else(|| events.get("oninput"))
-            .or_else(|| events.get("input"))
+        let on_change = aura_events_get_base(events, "onchange")
+            .or_else(|| aura_events_get_base(events, "change"))
+            .or_else(|| aura_events_get_base(events, "oninput"))
+            .or_else(|| aura_events_get_base(events, "input"))
             .map(|event| self.event_to_message(&event.handler));
 
-        let on_submit = events.get("onenter")
-            .or_else(|| events.get("enter"))
+        let on_submit = aura_events_get_base(events, "onenter")
+            .or_else(|| aura_events_get_base(events, "enter"))
             .map(|event| self.event_to_message(&event.handler));
 
         let mut builder = View::<DynamicMessage>::input(placeholder).value(value);
@@ -2130,12 +2133,12 @@ impl<'a> AuraViewBuilder<'a> {
         let style = self.extract_style(props);
         let height = self.extract_u16(props, "height");
 
-        let on_change = events.get("onchange")
-            .or_else(|| events.get("change"))
-            .or_else(|| events.get("oninput"))
-            .or_else(|| events.get("input"))
-            .or_else(|| events.get("onupdate"))
-            .or_else(|| events.get("update"))
+        let on_change = aura_events_get_base(events, "onchange")
+            .or_else(|| aura_events_get_base(events, "change"))
+            .or_else(|| aura_events_get_base(events, "oninput"))
+            .or_else(|| aura_events_get_base(events, "input"))
+            .or_else(|| aura_events_get_base(events, "onupdate"))
+            .or_else(|| aura_events_get_base(events, "update"))
             .map(|event| self.event_to_message(&event.handler));
 
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
@@ -2176,9 +2179,9 @@ impl<'a> AuraViewBuilder<'a> {
             .flatten()
             .unwrap_or(false);
 
-        let on_toggle = events.get("onclick")
-            .or_else(|| events.get("change"))
-            .or_else(|| events.get("onchange"))
+        let on_toggle = aura_events_get_base(events, "onclick")
+            .or_else(|| aura_events_get_base(events, "change"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
             .map(|event| self.event_to_message_with(event, bindings));
 
         let style = self.extract_style(props);

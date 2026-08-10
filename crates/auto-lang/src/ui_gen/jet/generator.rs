@@ -682,9 +682,10 @@ fun {}Preview() {{
     ) -> GenResult<String> {
         let ind = "    ".repeat(indent);
 
-        // Get onClick handler - try both "onclick" and "click" for compatibility
-        let event = events.get("onclick")
-            .or_else(|| events.get("click"));
+        // Get onClick handler - try both "onclick" and "click" for compatibility.
+        // Base-aware lookup: event keys may carry modifiers (onclick.stop).
+        let event = crate::aura::aura_events_get_base(events, "onclick")
+            .or_else(|| crate::aura::aura_events_get_base(events, "click"));
 
         // Generate onClick code using dispatch mechanism
         let on_click_code = if let Some(evt) = event {
