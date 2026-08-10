@@ -5694,12 +5694,16 @@ impl Codegen {
                             self.emit(OpCode::LOAD_STATE_FIELD);
                             self.code.push(field_idx);
                             self.compile_expr(rhs)?;
+                            // Plan 403-F Bug B: pick float/double/int opcode by
+                            // operand types, not a hardcoded i32 ADD/SUB/....
+                            let is_d = self.is_double_operation(lhs, rhs);
+                            let is_f = !is_d && self.is_float_operation(lhs, rhs);
                             self.emit(match op {
-                                Op::AddEq => OpCode::ADD,
-                                Op::SubEq => OpCode::SUB,
-                                Op::MulEq => OpCode::MUL,
-                                Op::DivEq => OpCode::DIV,
-                                Op::ModEq => OpCode::MOD,
+                                Op::AddEq => if is_d { OpCode::ADD_D } else if is_f { OpCode::ADD_F } else { OpCode::ADD },
+                                Op::SubEq => if is_d { OpCode::SUB_D } else if is_f { OpCode::SUB_F } else { OpCode::SUB },
+                                Op::MulEq => if is_d { OpCode::MUL_D } else if is_f { OpCode::MUL_F } else { OpCode::MUL },
+                                Op::DivEq => if is_d { OpCode::DIV_D } else if is_f { OpCode::DIV_F } else { OpCode::DIV },
+                                Op::ModEq => if is_d { OpCode::MOD_D } else if is_f { OpCode::MOD_F } else { OpCode::MOD },
                                 _ => OpCode::NOP,
                             });
                             self.emit(OpCode::DUP);
@@ -5727,12 +5731,16 @@ impl Codegen {
                             self.compile_expr(rhs)?;
 
                             // Perform operation
+                            // Plan 403-F Bug B: pick float/double/int opcode by
+                            // operand types, not a hardcoded i32 ADD/SUB/....
+                            let is_d = self.is_double_operation(lhs, rhs);
+                            let is_f = !is_d && self.is_float_operation(lhs, rhs);
                             self.emit(match op {
-                                Op::AddEq => OpCode::ADD,
-                                Op::SubEq => OpCode::SUB,
-                                Op::MulEq => OpCode::MUL,
-                                Op::DivEq => OpCode::DIV,
-                                Op::ModEq => OpCode::MOD,
+                                Op::AddEq => if is_d { OpCode::ADD_D } else if is_f { OpCode::ADD_F } else { OpCode::ADD },
+                                Op::SubEq => if is_d { OpCode::SUB_D } else if is_f { OpCode::SUB_F } else { OpCode::SUB },
+                                Op::MulEq => if is_d { OpCode::MUL_D } else if is_f { OpCode::MUL_F } else { OpCode::MUL },
+                                Op::DivEq => if is_d { OpCode::DIV_D } else if is_f { OpCode::DIV_F } else { OpCode::DIV },
+                                Op::ModEq => if is_d { OpCode::MOD_D } else if is_f { OpCode::MOD_F } else { OpCode::MOD },
                                 _ => OpCode::NOP,
                             });
 
@@ -6205,31 +6213,37 @@ impl Codegen {
                         }
                         Op::Eq => {
                             if is_double { self.emit(OpCode::EQ_D); }
+                            else if is_float { self.emit(OpCode::EQ_F); }
                             else if is_u64 { self.emit(OpCode::EQ_U64); }
                             else { self.emit(OpCode::EQ); }
                         }
                         Op::Neq => {
                             if is_double { self.emit(OpCode::NE_D); }
+                            else if is_float { self.emit(OpCode::NE_F); }
                             else if is_u64 { self.emit(OpCode::NE_U64); }
                             else { self.emit(OpCode::NE); }
                         }
                         Op::Lt => {
                             if is_double { self.emit(OpCode::LT_D); }
+                            else if is_float { self.emit(OpCode::LT_F); }
                             else if is_u64 { self.emit(OpCode::LT_U64); }
                             else { self.emit(OpCode::LT); }
                         }
                         Op::Le => {
                             if is_double { self.emit(OpCode::LE_D); }
+                            else if is_float { self.emit(OpCode::LE_F); }
                             else if is_u64 { self.emit(OpCode::LE_U64); }
                             else { self.emit(OpCode::LE); }
                         }
                         Op::Gt => {
                             if is_double { self.emit(OpCode::GT_D); }
+                            else if is_float { self.emit(OpCode::GT_F); }
                             else if is_u64 { self.emit(OpCode::GT_U64); }
                             else { self.emit(OpCode::GT); }
                         }
                         Op::Ge => {
                             if is_double { self.emit(OpCode::GE_D); }
+                            else if is_float { self.emit(OpCode::GE_F); }
                             else if is_u64 { self.emit(OpCode::GE_U64); }
                             else { self.emit(OpCode::GE); }
                         }
@@ -6275,9 +6289,12 @@ impl Codegen {
                 }
             }
             Expr::Unary(op, rhs) => {
-                // Plan 073 Stage A.5: Check if this is a float/double operation
-                let is_float = matches!(rhs.as_ref(), Expr::Float(_, _));
-                let is_double = matches!(rhs.as_ref(), Expr::Double(_, _));
+                // Plan 403-F Bug C: use contains_float/contains_double (which
+                // also check var_types) instead of only matching literals, so
+                // that `-v` where v is a float/double variable emits NEG_F/NEG_D
+                // rather than the i32 NEG opcode.
+                let is_float = self.contains_float(rhs);
+                let is_double = self.contains_double(rhs);
 
                 // Compile the operand first
                 self.compile_expr(rhs)?;

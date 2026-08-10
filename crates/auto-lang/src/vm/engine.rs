@@ -4804,16 +4804,19 @@ impl AutoVM {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a + b);
+                    task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
                 }
                 OpCode::SUB_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a - b);
+                    task.last_result_type = ResultType::Float;
                 }
                 OpCode::MUL_D => {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a * b);
+                    task.last_result_type = ResultType::Float;
                 }
                 OpCode::DIV_D => {
                     let b = task.ram.pop_f64();
@@ -4822,6 +4825,7 @@ impl AutoVM {
                         return Err(VMError::DivisionByZero);
                     }
                     task.ram.push_f64(a / b);
+                    task.last_result_type = ResultType::Float;
                 }
                 OpCode::MOD => {
                     let b = task.ram.pop_i32();
@@ -4840,10 +4844,12 @@ impl AutoVM {
                     let b = task.ram.pop_f64();
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(a % b);
+                    task.last_result_type = ResultType::Float;
                 }
                 OpCode::NEG_D => {
                     let a = task.ram.pop_f64();
                     task.ram.push_f64(-a);
+                    task.last_result_type = ResultType::Float;
                 }
 
                 // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
@@ -5816,12 +5822,17 @@ impl AutoVM {
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
                             }
                             "to_string" | "to_str" => {
-                                // Plan 403: f64 values reach here as non-nanbox raw
-                                // bits (type_name "<unknown_nv:...>"). Decode as f64
-                                // when the receiver is an f64, otherwise as i32.
+                                // Plan 403-F Bug D: f64/f32/bool values reach here
+                                // as non-i32 nanbox values (type_name
+                                // "<unknown_nv:...>"). Decode by runtime tag.
                                 let s = if auto_val::is_f64(receiver_nv) {
                                     let f = auto_val::decode_f64(receiver_nv);
                                     fmt_f64(f)
+                                } else if auto_val::is_f32(receiver_nv) {
+                                    let f = auto_val::decode_f32(receiver_nv);
+                                    fmt_f64(f as f64)
+                                } else if auto_val::is_bool(receiver_nv) {
+                                    if auto_val::decode_bool(receiver_nv) { "true".to_string() } else { "false".to_string() }
                                 } else {
                                     int_val.to_string()
                                 };
@@ -5832,6 +5843,40 @@ impl AutoVM {
                                     strings.len() - 1
                                 };
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                            }
+                            // Plan 403-F: float to_int/to_float/to_uint on
+                            // f64/f32 values (which reach here as "<unknown_nv>").
+                            // Without this, float.to_int() returns null and
+                            // downstream integer math crashes.
+                            "to_int" | "parse_int" => {
+                                let v = if auto_val::is_f64(receiver_nv) {
+                                    auto_val::decode_f64(receiver_nv) as i32
+                                } else if auto_val::is_f32(receiver_nv) {
+                                    auto_val::decode_f32(receiver_nv) as i32
+                                } else {
+                                    int_val
+                                };
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
+                            }
+                            "to_uint" => {
+                                let v = if auto_val::is_f64(receiver_nv) {
+                                    auto_val::decode_f64(receiver_nv) as i64 as i32
+                                } else if auto_val::is_f32(receiver_nv) {
+                                    auto_val::decode_f32(receiver_nv) as i64 as i32
+                                } else {
+                                    int_val
+                                };
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
+                            }
+                            "to_float" | "parse_float" => {
+                                let v = if auto_val::is_f64(receiver_nv) {
+                                    auto_val::decode_f64(receiver_nv)
+                                } else if auto_val::is_f32(receiver_nv) {
+                                    auto_val::decode_f32(receiver_nv) as f64
+                                } else {
+                                    int_val as f64
+                                };
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_f64(v)); }
                             }
                             _ => {
                                 task.ram.push_nv(auto_val::encode_null());
@@ -5987,12 +6032,18 @@ impl AutoVM {
                             }
                         }
                         if !converted {
-                            // Primitive value — convert i32/f64 to string
+                            // Primitive value — convert i32/f32/f64/bool to string
+                            // Plan 403-F Bug D: added is_f32 branch (was missing,
+                            // so f32 values fell through to the {:?} debug dump).
                             {
                                 let s = if auto_val::is_i32(recv_nv) {
                                     auto_val::decode_i32(recv_nv).to_string()
                                 } else if auto_val::is_f64(recv_nv) {
-                                    format!("{}", auto_val::decode_f64(recv_nv))
+                                    fmt_f64(auto_val::decode_f64(recv_nv))
+                                } else if auto_val::is_f32(recv_nv) {
+                                    fmt_f64(auto_val::decode_f32(recv_nv) as f64)
+                                } else if auto_val::is_bool(recv_nv) {
+                                    if auto_val::decode_bool(recv_nv) { "true".to_string() } else { "false".to_string() }
                                 } else if auto_val::is_null(recv_nv) {
                                     "null".to_string()
                                 } else {
@@ -7163,6 +7214,41 @@ impl AutoVM {
                 OpCode::GE_U64 => {
                     let b = self.pop_i64_vm(task);
                     let a = self.pop_i64_vm(task);
+                    task.ram.push_nv(auto_val::encode_bool(a >= b));
+                }
+
+                // Plan 403-F: f32 comparison (each pops 1+1 slot, pushes 1 bool).
+                // Mirrors EQ_D/NE_D/LT_D/GT_D/LE_D/GE_D but for TAG_F32-encoded
+                // floats. Use pop_f32/push_nv(encode_bool) so operands are decoded
+                // from the f32 nanbox tag rather than mis-read as i32.
+                OpCode::EQ_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_nv(auto_val::encode_bool(a == b));
+                }
+                OpCode::NE_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_nv(auto_val::encode_bool(a != b));
+                }
+                OpCode::LT_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_nv(auto_val::encode_bool(a < b));
+                }
+                OpCode::GT_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_nv(auto_val::encode_bool(a > b));
+                }
+                OpCode::LE_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_nv(auto_val::encode_bool(a <= b));
+                }
+                OpCode::GE_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
                     task.ram.push_nv(auto_val::encode_bool(a >= b));
                 }
 
