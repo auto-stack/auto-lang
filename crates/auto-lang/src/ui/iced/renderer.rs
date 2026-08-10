@@ -8012,12 +8012,7 @@ fn devtools_subscription<C: Component + 'static>(
 where
     C::Msg: Send + 'static,
 {
-    let inner = if let (Some(ms), Some(msg)) = (w.inner.tick_interval_ms(), w.inner.tick_msg()) {
-        iced::time::every(std::time::Duration::from_millis(ms as u64))
-            .map(move |_| WrapperMsg::Inner(msg.clone()))
-    } else {
-        w.inner.subscription().map(WrapperMsg::Inner)
-    };
+    let inner = w.inner.subscription().map(WrapperMsg::Inner);
     // Plan 371 Task 19: drain MCP actions into WrapperMsg::Debug events.
     // Two addressing modes, encoded as distinct prefixes so devtools_update
     // can dispatch without string ambiguity:
@@ -8076,9 +8071,15 @@ where
     iced::Subscription::batch(vec![inner, f12, win, mcp])
 }
 
-/// Plan 407: non-capturing fn for tick subscription map.
-fn tick_map_fn<C: Component + 'static>(_: std::time::Instant) -> WrapperMsg<C> {
-    WrapperMsg::Debug("__tick__".to_string())
+/// Plan 407: tick subscription using run_with (avoids generic map const check).
+fn tick_subscription<C: Component + 'static>(interval: std::time::Duration) -> iced::Subscription<WrapperMsg<C>> {
+    iced::Subscription::run_with(interval, |interval| {
+        let interval = *interval;
+        futures::stream::unfold((), move |_| async move {
+            tokio::time::sleep(interval).await;
+            Some((WrapperMsg::<C>::Debug("__tick__".to_string()), ()))
+        })
+    })
 }
 
 /// Run a rust-mode Component with the F12 DevTools layer (Plan 311).
@@ -8103,14 +8104,14 @@ where
         devtools_view,
     )
     .subscription(move |w| {
-        let mut subs = vec![devtools_subscription(w)];
-        // Plan 407: add tick subscription from the inner component's tick_interval.
-        if let (Some(interval), Some(_msg)) = (interval, w.inner.tick_msg()) {
-            // Use a non-capturing fn pointer for the map closure.
-            subs.push(
-                iced::time::every(interval)
-                    .map(tick_map_fn::<C>)
-            );
+        let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
+        // Plan 407: add tick subscription. Cannot use Subscription::map in
+        // generic code (const check fails for non-concrete C). Instead,
+        // emit a periodic WrapperMsg::Debug("__tick__") via a 'static recipe.
+        if w.inner.tick_msg().is_some() {
+            // Use a custom subscription that doesn't go through .map().
+            // Recipe: a struct implementing Hash + recipe pattern.
+            subs.push(tick_subscription::<C>(interval.unwrap_or(std::time::Duration::from_secs(999999))));
         }
         iced::Subscription::batch(subs)
     })
