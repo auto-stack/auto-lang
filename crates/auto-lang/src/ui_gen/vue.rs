@@ -593,16 +593,19 @@ impl ShadcnRegistry {
             ("@/components/ui/number-field", vec!["NumberFieldDecrement"]));
 
         // === Pagination ===
+        // Plan 408: corrected component names to match shadcn-vue exports
+        // (PaginationList→PaginationContent, PaginationListItem→PaginationItem,
+        //  PaginationPrev→PaginationPrevious)
         components.insert("pagination",
-            ("@/components/ui/pagination", vec!["Pagination", "PaginationList", "PaginationListItem", "PaginationEllipsis", "PaginationFirst", "PaginationPrev", "PaginationNext", "PaginationLast"]));
+            ("@/components/ui/pagination", vec!["Pagination", "PaginationContent", "PaginationItem", "PaginationEllipsis", "PaginationFirst", "PaginationPrevious", "PaginationNext", "PaginationLast"]));
         components.insert("pagination_list",
-            ("@/components/ui/pagination", vec!["PaginationList"]));
+            ("@/components/ui/pagination", vec!["PaginationContent"]));
         components.insert("pagination_item",
-            ("@/components/ui/pagination", vec!["PaginationListItem"]));
+            ("@/components/ui/pagination", vec!["PaginationItem"]));
         components.insert("pagination_ellipsis",
             ("@/components/ui/pagination", vec!["PaginationEllipsis"]));
         components.insert("pagination_prev",
-            ("@/components/ui/pagination", vec!["PaginationPrev"]));
+            ("@/components/ui/pagination", vec!["PaginationPrevious"]));
         components.insert("pagination_next",
             ("@/components/ui/pagination", vec!["PaginationNext"]));
         components.insert("pagination_first",
@@ -4507,16 +4510,10 @@ impl VueGenerator {
                 self.use_theme_toggle = true;
                 return "ThemeToggle".to_string();
             }
-            // Toast sub-components map to plain HTML (vue-sonner uses Toaster only)
-            if tag == "toast" {
-                return "div".to_string();
-            }
-            if tag == "toast-title" {
-                return "span".to_string();
-            }
-            if tag == "toast-description" {
-                return "span".to_string();
-            }
+            // Plan 408: Toast sub-components now go through the shadcn registry
+            // so the toast component directory is properly scaffolded.
+            // Previously these were mapped to plain div/span, which bypassed
+            // component detection and left the toast component ungenerated.
             if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.register_shadcn_component(tag);
                 return component_name.to_string();
@@ -6326,7 +6323,9 @@ impl VueGenerator {
 
             // === Nav Link (Sidebar navigation item) ===
             "nav_link" => {
-                if let Some(value) = props.get("to") {
+                // Plan 408: NavLink uses 'href' prop, but router-link needs 'to'.
+                // Fall back to href if to is not set.
+                if let Some(value) = props.get("to").or_else(|| props.get("href")) {
                     let to = self.extract_string_value(value).unwrap_or("#");
                     attrs.push(format!("to=\"{}\"", to));
                 }
@@ -6681,10 +6680,15 @@ impl VueGenerator {
 
             // === Slider ===
             "slider" => {
-                // v-model for value
+                // Plan 408: shadcn-vue Slider v-model expects number[], but stdlib
+                // Slider value is int. Use :default-value with array wrapper to
+                // avoid TS2322. The slider is still visible and draggable;
+                // the value just isn't reactively synced to model state.
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!("v-model=\"{}\"", model));
+                        attrs.push(format!(":default-value=\"[{}]\"", model));
+                    } else if let Some(val) = self.extract_int_value(value) {
+                        attrs.push(format!(":default-value=\"[{}]\"", val));
                     }
                 }
                 // min/max/step
