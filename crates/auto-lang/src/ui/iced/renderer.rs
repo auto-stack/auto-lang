@@ -7360,7 +7360,15 @@ where
     C::Msg: Clone + Debug + Send + 'static,
 {
     iced::application(C::default, C::update, view)
-        .subscription(|c| c.subscription())
+        .subscription(|c| {
+            // Plan 407: build tick subscription from tick_interval_ms + tick_msg.
+            if let (Some(ms), Some(msg)) = (c.tick_interval_ms(), c.tick_msg()) {
+                iced::time::every(std::time::Duration::from_millis(ms as u64))
+                    .map(move |_| msg.clone())
+            } else {
+                iced::Subscription::none()
+            }
+        })
         .window_size(iced::Size::new(800.0, 600.0))
         .run()
         .map_err(|e| e.into())

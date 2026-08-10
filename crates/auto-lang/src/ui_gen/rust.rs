@@ -994,13 +994,20 @@ impl RustGenerator {
             code.push_str(&snapshot);
         }
 
+        // Plan 407: tick_msg() — returns the Tick variant for subscription.
+        if widget.tick_interval.is_some() {
+            let msg_name = self.current_msg_name();
+            code.push_str(&format!(
+                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
+                msg_name, msg_name
+            ));
+        }
+
         code.push_str("}\n");
 
-        // Plan 365 W1 follow-up: subscription() moved from Component to
-        // ComponentIced (de-ice the core trait). Generate a separate
-        // `impl ComponentIced` block when tick_interval is set.
-        // Plan 407: ComponentIced disabled — blanket impl in renderer.rs
-        // conflicts with explicit impl. Tick handled by App's update().
+        // Plan 407: ComponentIced is blanket-impl'd in renderer.rs. No explicit
+        // impl needed — subscription is built by run_app via tick_msg().
+        // The blanket impl provides view_iced() and update().
 
         code
     }
