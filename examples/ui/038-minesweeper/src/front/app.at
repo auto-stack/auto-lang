@@ -42,10 +42,10 @@ widget App {
                         onclick: .Reset,
                         style: "text-3xl px-4 py-2 rounded-xl hover:bg-gray-100"
                     }
-                    style: "w-full items-center justify-between"
+                    style: "items-center justify-between"
                 }
 
-                // —— 难度选择(class 从 store 预存字段读取,VM 视图不能调函数) ——
+                // —— 难度选择 ——
                 row {
                     button "初级 9×9" {
                         onclick: .SetDifficulty("beginner"),
@@ -59,7 +59,7 @@ widget App {
                         onclick: .SetDifficulty("expert"),
                         class: .store.expert_class
                     }
-                    style: "gap-2 mt-4"
+                    style: "gap-2"
                 }
 
                 // —— 棋盘网格 ——
@@ -116,7 +116,7 @@ widget App {
                             gap: 0
                         }
                     }
-                    style: "flex justify-center mt-6"
+                    style: "flex justify-center"
                 }
 
                 // —— 游戏结束遮罩 ——
@@ -131,7 +131,7 @@ widget App {
                     }
                 }
 
-                style: "w-full max-w-fit p-4 items-center"
+                style: "w-full max-w-fit p-4 items-center gap-4"
             }
         }
     }
