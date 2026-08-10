@@ -994,20 +994,25 @@ impl RustGenerator {
             code.push_str(&snapshot);
         }
 
-        code.push_str("}\n");
-
-        // Plan 365 W1 follow-up: subscription() moved from Component to
-        // ComponentIced (de-ice the core trait). Generate a separate
-        // `impl ComponentIced` block when tick_interval is set.
-        if let Some(interval_ms) = widget.tick_interval {
+        // Plan 407: tick_msg() + tick_interval_ms() — for run_app subscription.
+        if widget.tick_interval.is_some() {
             let msg_name = self.current_msg_name();
-            let struct_name = &widget.name;
-            code.push('\n');
+            let interval = widget.tick_interval.unwrap();
             code.push_str(&format!(
-                "impl auto_lang::ui::iced::ComponentIced for {} {{\n    fn subscription(&self) -> iced::Subscription<Self::Msg> {{\n        iced::time::every(std::time::Duration::from_millis({})).map(|_| {}::Tick)\n    }}\n}}\n",
-                struct_name, interval_ms, msg_name
+                "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
+                interval
+            ));
+            code.push_str(&format!(
+                "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
+                msg_name, msg_name
             ));
         }
+
+        code.push_str("}\n");
+
+        // Plan 407: ComponentIced is blanket-impl'd in renderer.rs. No explicit
+        // impl needed — subscription is built by run_app via tick_msg().
+        // The blanket impl provides view_iced() and update().
 
         code
     }
@@ -1574,7 +1579,7 @@ impl RustGenerator {
         for stmt in stmts {
             match stmt {
                 crate::ast::Stmt::Store(store) => {
-                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
+                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
                         let name = store.name.as_str();
                         // Check if the value is a function call (likely returns Value)
                         if matches!(&store.expr, crate::ast::Expr::Call(_)) {
@@ -1582,9 +1587,21 @@ impl RustGenerator {
                         }
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
-                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
-                                let coll_name = collection.as_str();
-                                if self.state_types.get(coll_name)
+                            // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(collection) => {
+                                    let s = collection.as_str();
+                                    Some(s.strip_prefix('.').unwrap_or(s))
+                                }
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(coll) = coll_stripped {
+                                if self.state_types.get(coll)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
@@ -1896,6 +1913,20 @@ impl RustGenerator {
         }
     }
 
+    /// Plan 407: generate a for-loop's map expression for grid cells (no col wrapper).
+    /// Calls generate_view_tree (which produces View::col().children(MAP.collect()).build())
+    /// then strips the col wrapper to get just MAP.
+    fn generate_for_loop_cells(&mut self, node: &AuraNode) -> String {
+        let col_expr = self.generate_view_tree(node);
+        // Strip "View::col().children(" prefix and ").collect::<Vec<_>>()).build()" suffix
+        if col_expr.starts_with("View::col().children(") && col_expr.ends_with(".collect::<Vec<_>>()).build()") {
+            let inner = &col_expr["View::col().children(".len()..col_expr.len() - ".collect::<Vec<_>>()).build()".len()];
+            inner.to_string()
+        } else {
+            col_expr
+        }
+    }
+
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
@@ -1975,7 +2006,22 @@ impl RustGenerator {
                     g = format!("{}.cols({})", g, cols);
                     if gap > 0 { g = format!("{}.spacing({})", g, gap); }
                     for c in children {
-                        g = format!("{}.child({})", g, self.generate_view_tree(c));
+                        // Plan 407: for grid children that are ForLoops, use
+                        // .children() (bulk add) instead of .child() (single).
+                        // A ForLoop generates View::col().children(map.collect()).build(),
+                        // which would be one child (a col) — the grid then treats it as
+                        // a single cell. Instead, unwrap: pass the map directly to
+                        // .children() so each iteration becomes a separate grid cell.
+                        match c {
+                            AuraNode::ForLoop { .. } => {
+                                // Generate the map expression WITHOUT the col wrapper.
+                                let map_expr = self.generate_for_loop_cells(c);
+                                g = format!("{}.children({}.collect::<Vec<_>>())", g, map_expr);
+                            }
+                            _ => {
+                                g = format!("{}.child({})", g, self.generate_view_tree(c));
+                            }
+                        }
                     }
                     if !style_str.is_empty() {
                         g = format!("{}.style(\"{}\")", g, style_str);
@@ -2371,7 +2417,13 @@ impl RustGenerator {
                         return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
                     }
                     if let Some(ref text) = text_rust_expr {
-                        // text_rust_expr already produces a String (expr_to_rust adds .to_string())
+                        // Plan 407 R2: wrap self. references in format! to avoid
+                        // moving String fields out of self in the immutable view().
+                        let text = if text.starts_with("self.") {
+                            format!("format!(\"{{}}\", {})", text)
+                        } else {
+                            text.clone()
+                        };
                         return format!("View::text_styled({}, \"{}\")", text, style_str);
                     }
                 }
@@ -2402,6 +2454,12 @@ impl RustGenerator {
                         return format!("View::text(\"{}\".to_string())", label);
                     }
                     if let Some(ref text) = text_rust_expr {
+                        // Plan 407 R2: wrap self. references to avoid String move.
+                        let text = if text.starts_with("self.") {
+                            format!("format!(\"{{}}\", {})", text)
+                        } else {
+                            text.clone()
+                        };
                         if let Some(default) = heading_default {
                             return format!("View::text_styled({}, \"{}\")", text, default);
                         }
@@ -3384,6 +3442,9 @@ impl RustGenerator {
             "onclick" | "onClick" | "on_click" => {
                 format!("{}.on_click({})", builder, handler_fn)
             }
+            "oncontextmenu" | "oncontextmenu.prevent" => {
+                format!("{}.on_right_click({})", builder, handler_fn)
+            }
             "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
             }
@@ -3719,25 +3780,25 @@ impl RustGenerator {
                         // Check if value is an index into a Vec<Value> (e.g., todos[idx])
                         // If so, use &mut borrow so that mutations to todo.field affect the array
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
-                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
-                                let coll_name = collection.as_str();
-                                let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
+                            // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(collection) => {
+                                    let s = collection.as_str();
+                                    Some(s.strip_prefix('.').unwrap_or(s))
+                                }
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(resolved_coll) = coll_stripped {
                                 if self.state_types.get(resolved_coll)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
-                                    // `let todo = self.todos[idx as usize]` →
-                                    // `let mut todo = &mut self.todos[idx as usize]`
-                                    // Prepend &mut to the collection reference in value
-                                    let target_prefix = if self.state_types.contains_key(resolved_coll) {
-                                        format!("self.{}", resolved_coll)
-                                    } else if resolved_coll != coll_name {
-                                        format!("self.{}", resolved_coll)
-                                    } else {
-                                        coll_name.to_string()
-                                    };
-                                    value = value.replacen(&target_prefix, &format!("&mut {}", target_prefix), 1);
-                                    return format!("let mut {} = {}", name, value);
+                                    return format!("let mut {} = {}.clone()", name, value);
                                 }
                             }
                         }
@@ -3745,6 +3806,23 @@ impl RustGenerator {
                     }
                     crate::ast::StoreKind::Var => {
                         // `var x = expr` → mutable local binding
+                        // Plan 407: if indexing into a Vec<Value>, clone the element.
+                        if let crate::ast::Expr::Index(target, _idx) = &store.expr {
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(c) => Some(c.as_str().strip_prefix('.').unwrap_or(c.as_str())),
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(coll) = coll_stripped {
+                                if self.state_types.get(coll).map(|t| t.starts_with("Vec<")).unwrap_or(false) {
+                                    return format!("let mut {} = {}.clone()", name, value);
+                                }
+                            }
+                        }
                         if self.state_types.contains_key(resolved) {
                             // Auto-coerce int → String when assigning to a String field
                             if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
@@ -3842,6 +3920,25 @@ impl RustGenerator {
                     }
                 }
             }
+            // Plan 407: support Break, Continue, Return in handler bodies.
+            crate::ast::Stmt::Break => "break".to_string(),
+            crate::ast::Stmt::Continue => "continue".to_string(),
+            crate::ast::Stmt::Return(expr) => {
+                // Plan 407: bare return (Expr::Nil) → `return;` not `return Value::Null`
+                if matches!(expr.as_ref(), crate::ast::Expr::Nil) {
+                    "return".to_string()
+                } else {
+                    format!("return {}", self.ast_expr_to_rust(expr))
+                }
+            }
+            crate::ast::Stmt::Block(body) => {
+                let stmts: Vec<String> = body.stmts.iter()
+                    .map(|s| self.ast_stmt_to_rust(s))
+                    .collect();
+                format!("{{ {} }}", stmts.join("; "))
+            }
+            crate::ast::Stmt::Comment(_) => String::new(),
+            crate::ast::Stmt::EmptyLine(_) => String::new(),
             _ => format!("/* unhandled stmt */"),
         }
     }
@@ -3859,11 +3956,14 @@ impl RustGenerator {
         // (Fix 2 / __a push), and #[api] Vec<String> arguments are rewritten by
         // the update_tags special-case in postprocess. Keeping this branch as
         // String avoids breaking those rewrites.
-        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count" {
-            format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
+        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count"
+            || field == "x" || field == "y" || field == "adjacent" {
+            // Plan 407: parenthesize so callers can safely append .to_string() etc.
+            format!("({}[\"{}\"].as_i64().unwrap_or(0) as i32)", obj_expr, field)
         } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
             || field == "editing" || field == "loading" || field == "dark_mode"
-            || field == "show_tag_input" || field.starts_with("is_") {
+            || field == "show_tag_input" || field.starts_with("is_")
+            || field == "mine" || field == "revealed" || field == "flagged" {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
@@ -4110,7 +4210,8 @@ impl RustGenerator {
                             let idx_cast = if idx_str.starts_with("self.")
                                 || (!idx_str.parse::<usize>().is_ok() && idx_str != "0")
                             {
-                                format!("{} as usize", idx_str)
+                                // Plan 407: parenthesize so `as usize` binds to whole expr.
+                                format!("({}) as usize", idx_str)
                             } else {
                                 idx_str
                             };
@@ -4119,6 +4220,16 @@ impl RustGenerator {
                     }
                 }
                 let obj_str = self.ast_expr_to_rust(obj);
+                // Plan 407 R1: wrap Bina objects in parens so `.field` binds to the
+                // whole expression, not just the right operand. E.g.
+                // `(.mine_count - .flags_placed).to_string()` must emit
+                // `(self.mine_count - self.flags_placed).to_string`, not
+                // `self.mine_count - self.flags_placed.to_string`.
+                let obj_str = if matches!(obj.as_ref(), Expr::Bina(..)) {
+                    format!("({})", obj_str)
+                } else {
+                    obj_str
+                };
                 format!("{}.{}", obj_str, field_str)
             }
             Expr::Bina(left, op, right) => {
@@ -4266,16 +4377,22 @@ impl RustGenerator {
                     Op::Le => "<=",
                     Op::Gt => ">",
                     Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    Op::Not => "!",
                     _ => "?",
                 };
                 let my_prec = bin_op_precedence(op);
-                // Wrap child in parens if its precedence is lower (needs grouping)
+                // Plan 407: wrap children in parens when needed.
+                // Left child: needs parens if lower precedence.
+                // Right child: needs parens if lower OR EQUAL precedence
+                //   (left-associative: a % (b*c) ≠ (a%b)*c at same precedence).
                 let left_wrapped = if bin_child_needs_parens(left, my_prec) {
                     format!("({})", left_str)
                 } else {
                     left_str
                 };
-                let right_wrapped = if bin_child_needs_parens(right, my_prec) {
+                let right_wrapped = if bin_child_needs_parens_side(right, my_prec, true) {
                     format!("({})", right_str)
                 } else {
                     right_str
@@ -4304,13 +4421,20 @@ impl RustGenerator {
                             .map(|name| format!("{}Msg", name))
                             .unwrap_or_else(|| "StoreMsg".to_string())
                     });
+                    // Plan 407 R7: when generating a handler INSIDE the store itself,
+                    // use self.on(...) instead of self.store.on(...).
+                    let is_in_store = STORE_NAMES.with(|sn| {
+                        let cur = self.current_widget.as_deref();
+                        sn.borrow().values().any(|name| Some(name.as_str()) == cur)
+                    });
+                    let receiver = if is_in_store { "self" } else { "self.store" };
                     if args_str.is_empty() {
-                        return format!("self.store.on({}::{})", store_msg, method);
+                        return format!("{}.on({}::{})", receiver, store_msg, method);
                     } else {
-                        return format!("self.store.on({}::{}({}))", store_msg, method, args_str);
+                        return format!("{}.on({}::{}({}))", receiver, store_msg, method, args_str);
                     }
-                    }
-                }
+                    } // close if !method.contains('.')
+                } // close if fn_name.starts_with("store.")
                 let args: Vec<String> = self.rust_call_args_with_clone(call);
                 match fn_name.as_str() {
                     "print" => {
@@ -4373,6 +4497,9 @@ impl RustGenerator {
                         // .len() returns usize — cast to i32 for AURA compatibility
                         if fn_name.ends_with(".len") {
                             format!("{} as i32", result)
+                        } else if fn_name.ends_with(".pop") {
+                            // Plan 407: Vec::pop returns Option<T>; unwrap_or(0) for i32
+                            format!("{}.unwrap_or(0)", result)
                         } else {
                             result
                         }
@@ -4408,7 +4535,9 @@ impl RustGenerator {
                 let index_cast = if index_str.parse::<usize>().is_ok() {
                     index_str // literal usize, no cast needed
                 } else {
-                    format!("{} as usize", index_str)
+                    // Plan 407: parenthesize the expression so `as usize` binds
+                    // to the whole index, not just the last operand.
+                    format!("({}) as usize", index_str)
                 };
                 format!("{}[{}]", target_str, index_cast)
             }
@@ -4756,15 +4885,24 @@ fn bin_op_precedence(op: &auto_val::Op) -> u8 {
     }
 }
 
-/// Check if a child expression needs parentheses when used inside a parent binary op
 fn bin_child_needs_parens(expr: &crate::ast::Expr, parent_prec: u8) -> bool {
+    bin_child_needs_parens_side(expr, parent_prec, false)
+}
+
+fn bin_child_needs_parens_side(expr: &crate::ast::Expr, parent_prec: u8, is_right: bool) -> bool {
     use crate::ast::Expr;
     use auto_val::Op;
     if let Expr::Bina(_, child_op, _) = expr {
         let child_prec = bin_op_precedence(child_op);
-        // Only needs parens for assignment-like ops or lower precedence
-        !matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq)
-            && child_prec < parent_prec
+        if matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
+            return false;
+        }
+        // Plan 407: right child needs parens at same precedence too (left-assoc).
+        if is_right {
+            child_prec <= parent_prec
+        } else {
+            child_prec < parent_prec
+        }
     } else {
         false
     }

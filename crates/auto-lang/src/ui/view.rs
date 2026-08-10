@@ -438,6 +438,7 @@ pub struct ViewBuilder<M: Clone + Debug> {
     text_content: String,
     button_label: String,
     button_onclick: Option<M>,
+    button_on_right_click: Option<M>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -462,6 +463,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             text_content: String::new(),
             button_label: String::new(),
             button_onclick: None,
+            button_on_right_click: None,
         }
     }
 
@@ -477,6 +479,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             text_content: String::new(),
             button_label: String::new(),
             button_onclick: None,
+            button_on_right_click: None,
         }
     }
 
@@ -494,6 +497,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             text_content: String::new(),
             button_label: String::new(),
             button_onclick: None,
+            button_on_right_click: None,
         }
     }
 
@@ -509,6 +513,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             text_content: String::new(),
             button_label: String::new(),
             button_onclick: None,
+            button_on_right_click: None,
         }
     }
 
@@ -524,6 +529,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             text_content: String::new(),
             button_label: String::new(),
             button_onclick: None,
+            button_on_right_click: None,
         }
     }
 
@@ -761,7 +767,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             ViewBuilderKind::Button => View::Button {
                 label: self.button_label,
                 onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
-                on_right_click: None,
+                on_right_click: self.button_on_right_click,
                 style: self.style,
             },
             ViewBuilderKind::Grid => View::Grid {
@@ -779,9 +785,16 @@ impl<M: Clone + Debug> ViewBuilder<M> {
     where
         F: Fn(()) -> M,
     {
-        // We can't store the closure since M: Clone is required.
-        // Instead, evaluate it immediately with a dummy input.
         self.button_onclick = Some(_handler(()));
+        self
+    }
+
+    /// Plan 407: right-click (contextmenu) handler for buttons.
+    pub fn on_right_click<F>(mut self, _handler: F) -> Self
+    where
+        F: Fn(()) -> M,
+    {
+        self.button_on_right_click = Some(_handler(()));
         self
     }
 }

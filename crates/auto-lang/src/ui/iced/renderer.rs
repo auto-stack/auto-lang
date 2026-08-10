@@ -7418,7 +7418,15 @@ where
     C::Msg: Clone + Debug + Send + 'static,
 {
     iced::application(C::default, C::update, view)
-        .subscription(|c| c.subscription())
+        .subscription(|c| {
+            // Plan 407: build tick subscription from tick_interval_ms + tick_msg.
+            if let (Some(ms), Some(msg)) = (c.tick_interval_ms(), c.tick_msg()) {
+                iced::time::every(std::time::Duration::from_millis(ms as u64))
+                    .map(move |_| msg.clone())
+            } else {
+                iced::Subscription::none()
+            }
+        })
         .window_size(iced::Size::new(800.0, 600.0))
         .run()
         .map_err(|e| e.into())
@@ -7950,6 +7958,12 @@ where
 {
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(ref s) if s == "__tick__" => {
+            // Plan 407: tick event — dispatch Tick to inner component.
+            if let Some(msg) = w.inner.tick_msg() {
+                w.inner.on(msg);
+            }
+        }
         WrapperMsg::Debug(s) => {
             // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
             // modes, both resolved against the inner component's typed View tree:
@@ -8115,6 +8129,17 @@ where
     iced::Subscription::batch(vec![inner, f12, win, mcp])
 }
 
+/// Plan 407: tick subscription using run_with (avoids generic map const check).
+fn tick_subscription<C: Component + 'static>(interval: std::time::Duration) -> iced::Subscription<WrapperMsg<C>> {
+    iced::Subscription::run_with(interval, |interval| {
+        let interval = *interval;
+        futures::stream::unfold((), move |_| async move {
+            tokio::time::sleep(interval).await;
+            Some((WrapperMsg::<C>::Debug("__tick__".to_string()), ()))
+        })
+    })
+}
+
 /// Run a rust-mode Component with the F12 DevTools layer (Plan 311).
 ///
 /// Mirrors [`run_app`] but instantiates `DevToolsWrapper::<C>` so F12 opens the
@@ -8125,12 +8150,29 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
+    // Check tick interval at startup
+    let tick = C::default();
+    let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
+    let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+    drop(tick);
+
     iced::application(
         DevToolsWrapper::<C>::default,
         devtools_update,
         devtools_view,
     )
-    .subscription(devtools_subscription)
+    .subscription(move |w| {
+        let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
+        // Plan 407: add tick subscription. Cannot use Subscription::map in
+        // generic code (const check fails for non-concrete C). Instead,
+        // emit a periodic WrapperMsg::Debug("__tick__") via a 'static recipe.
+        if w.inner.tick_msg().is_some() {
+            // Use a custom subscription that doesn't go through .map().
+            // Recipe: a struct implementing Hash + recipe pattern.
+            subs.push(tick_subscription::<C>(interval.unwrap_or(std::time::Duration::from_secs(999999))));
+        }
+        iced::Subscription::batch(subs)
+    })
     .window_size(iced::Size::new(800.0, 600.0))
     .run()
     .map_err(|e| e.into())

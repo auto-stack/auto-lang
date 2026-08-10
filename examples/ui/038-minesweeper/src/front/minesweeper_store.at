@@ -120,11 +120,11 @@ store MinesweeperStore {
                         break
                     }
                     attempts = attempts + 1
-                    // VM 的 math.random() 不路由到 native shim(模块占位符 bug),
-                    // 用确定性伪随机代替: 基于种子的线性同余。
-                    var seed int = (attempts * 1103515245 + 12345) % 2147483647
+                    // 确定性伪随机(LCG):用小常数避免 i32 溢出。
+                    // VM 的 math.random() 有模块占位符 bug,用 LCG 替代。
+                    var seed int = (attempts * 31 + 17) % 997
                     if seed < 0 {
-                        seed = seed + 2147483647
+                        seed = seed + 997
                     }
                     var rr int = seed % (.rows * .cols)
                     var rx int = rr / .cols

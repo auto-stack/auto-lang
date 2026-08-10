@@ -35,6 +35,13 @@ pub trait Component: Sized + Debug {
     /// Message type - must be cloneable for event handling
     type Msg: Clone + Debug + 'static;
 
+    /// Construct a Tick message from the tick interval timer.
+    /// Plan 407: allows run_app to create Tick messages generically
+    /// without needing to know the Msg enum's variant names.
+    fn tick_msg(&self) -> Option<Self::Msg> {
+        None
+    }
+
     /// Handle messages - Auto's equivalent of `fn on(ev Msg)`
     ///
     /// This is where state mutations happen based on incoming messages.
