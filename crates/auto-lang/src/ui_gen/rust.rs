@@ -1583,8 +1583,11 @@ impl RustGenerator {
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
                             if let crate::ast::Expr::Ident(collection) = target.as_ref() {
+                                // Plan 407 R4a: strip leading dot (.board → board) so
+                                // state_types lookup works for store field references.
                                 let coll_name = collection.as_str();
-                                if self.state_types.get(coll_name)
+                                let coll_stripped = coll_name.strip_prefix('.').unwrap_or(coll_name);
+                                if self.state_types.get(coll_stripped)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
@@ -2371,7 +2374,13 @@ impl RustGenerator {
                         return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
                     }
                     if let Some(ref text) = text_rust_expr {
-                        // text_rust_expr already produces a String (expr_to_rust adds .to_string())
+                        // Plan 407 R2: wrap self. references in format! to avoid
+                        // moving String fields out of self in the immutable view().
+                        let text = if text.starts_with("self.") {
+                            format!("format!(\"{{}}\", {})", text)
+                        } else {
+                            text.clone()
+                        };
                         return format!("View::text_styled({}, \"{}\")", text, style_str);
                     }
                 }
@@ -2402,6 +2411,12 @@ impl RustGenerator {
                         return format!("View::text(\"{}\".to_string())", label);
                     }
                     if let Some(ref text) = text_rust_expr {
+                        // Plan 407 R2: wrap self. references to avoid String move.
+                        let text = if text.starts_with("self.") {
+                            format!("format!(\"{{}}\", {})", text)
+                        } else {
+                            text.clone()
+                        };
                         if let Some(default) = heading_default {
                             return format!("View::text_styled({}, \"{}\")", text, default);
                         }
@@ -3865,11 +3880,13 @@ impl RustGenerator {
         // (Fix 2 / __a push), and #[api] Vec<String> arguments are rewritten by
         // the update_tags special-case in postprocess. Keeping this branch as
         // String avoids breaking those rewrites.
-        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count" {
+        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count"
+            || field == "x" || field == "y" || field == "adjacent" {
             format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
         } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
             || field == "editing" || field == "loading" || field == "dark_mode"
-            || field == "show_tag_input" || field.starts_with("is_") {
+            || field == "show_tag_input" || field.starts_with("is_")
+            || field == "mine" || field == "revealed" || field == "flagged" {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
             format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
@@ -4125,6 +4142,16 @@ impl RustGenerator {
                     }
                 }
                 let obj_str = self.ast_expr_to_rust(obj);
+                // Plan 407 R1: wrap Bina objects in parens so `.field` binds to the
+                // whole expression, not just the right operand. E.g.
+                // `(.mine_count - .flags_placed).to_string()` must emit
+                // `(self.mine_count - self.flags_placed).to_string`, not
+                // `self.mine_count - self.flags_placed.to_string`.
+                let obj_str = if matches!(obj.as_ref(), Expr::Bina(..)) {
+                    format!("({})", obj_str)
+                } else {
+                    obj_str
+                };
                 format!("{}.{}", obj_str, field_str)
             }
             Expr::Bina(left, op, right) => {
@@ -4310,13 +4337,20 @@ impl RustGenerator {
                             .map(|name| format!("{}Msg", name))
                             .unwrap_or_else(|| "StoreMsg".to_string())
                     });
+                    // Plan 407 R7: when generating a handler INSIDE the store itself,
+                    // use self.on(...) instead of self.store.on(...).
+                    let is_in_store = STORE_NAMES.with(|sn| {
+                        let cur = self.current_widget.as_deref();
+                        sn.borrow().values().any(|name| Some(name.as_str()) == cur)
+                    });
+                    let receiver = if is_in_store { "self" } else { "self.store" };
                     if args_str.is_empty() {
-                        return format!("self.store.on({}::{})", store_msg, method);
+                        return format!("{}.on({}::{})", receiver, store_msg, method);
                     } else {
-                        return format!("self.store.on({}::{}({}))", store_msg, method, args_str);
+                        return format!("{}.on({}::{}({}))", receiver, store_msg, method, args_str);
                     }
-                    }
-                }
+                    } // close if !method.contains('.')
+                } // close if fn_name.starts_with("store.")
                 let args: Vec<String> = self.rust_call_args_with_clone(call);
                 match fn_name.as_str() {
                     "print" => {
