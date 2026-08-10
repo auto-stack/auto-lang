@@ -2861,15 +2861,13 @@ impl VueGenerator {
                 }
                 continue;
             }
-            // v-html content directive: html: .content → v-html="content"
-            // (raw HTML injection; children are ignored by Vue at runtime).
-            if key == "html" {
-                if let AuraPropValue::Expr(expr) = value {
-                    let content = self.expr_to_vue_bound_value(expr)?;
-                    attrs.push(format!("v-html=\"{}\"", content));
-                }
-                continue;
-            }
+            // NOTE: `html:` is deliberately NOT intercepted as v-html here.
+            // A dyn node targets an arbitrary component — v-html on a
+            // component would shadow its slot AND steal the `html` prop,
+            // breaking the ext functional-component pattern
+            // (`HtmlDiv = (props) => h('div', { innerHTML: props.html })`,
+            // jade's gap-22 escape hatch). It falls through to the generic
+            // `:html` binding below. Only plain HTML elements get v-html.
             match value {
                 AuraPropValue::Expr(expr) => {
                     // Plan 012 P0#13 follow-up: an unsupported expr form here
@@ -2885,16 +2883,6 @@ impl VueGenerator {
                 }
                 AuraPropValue::StyleBinding(_) => {}
             }
-        }
-
-        // v-html overrides inner content in Vue: warn when the dyn node also
-        // carries children (still emitted; the Vue runtime ignores them).
-        if props.contains_key("html") && !children.is_empty() {
-            self.warn(
-                "R014",
-                crate::ui_gen::validators::Severity::Warning,
-                "v-html on `dyn` overrides its inner content; children ignored at runtime".to_string(),
-            );
         }
 
         // Event listeners (same conventions as plain elements)
@@ -3219,16 +3207,11 @@ impl VueGenerator {
                             }
                             continue;
                         }
-                        // v-html content directive on a component:
-                        // html: .content → v-html="content" (lands on the
-                        // component root; slot children are ignored by Vue).
-                        if key == "html" {
-                            if let AuraPropValue::Expr(expr) = value {
-                                let content = self.expr_to_vue_bound_value(expr)?;
-                                attrs.push(format!("v-html=\"{}\"", content));
-                            }
-                            continue;
-                        }
+                        // NOTE: `html:` is deliberately NOT intercepted as
+                        // v-html on components (same reason as the dyn path):
+                        // it must pass through as a plain `:html` prop so ext
+                        // functional components (innerHTML pattern) keep
+                        // receiving it. Only plain HTML elements get v-html.
                         let value_str = match value {
                             // Plan 012 P0#13 follow-up: warn R013 + keep the
                             // old `null` fallback instead of failing the
@@ -3244,16 +3227,6 @@ impl VueGenerator {
                             first_prop_expr = Some(value_str.clone());
                         }
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
-                    }
-                    // v-html on a component overrides its default slot: warn
-                    // when the instantiation also carries children (still
-                    // emitted; the Vue runtime ignores them).
-                    if props.contains_key("html") && !children.is_empty() {
-                        self.warn(
-                            "R014",
-                            crate::ui_gen::validators::Severity::Warning,
-                            format!("v-html on `{}`: children ignored at runtime", tag),
-                        );
                     }
                     // Add :key binding for component reuse identity.
                     //
@@ -14499,10 +14472,16 @@ widget App {
     }
 
     // ====================================================================
-    // v-html (plan 012 P2 gap 22) — `html: <expr>` prop emits
-    // `v-html="<expr>"` instead of a `:html` binding. Vue renders the raw
-    // HTML string as the element's inner content; any children/text are
+    // v-html (plan 012 P2 gap 22) — on a PLAIN HTML element, `html: <expr>`
+    // emits `v-html="<expr>"` instead of a `:html` binding. Vue renders the
+    // raw HTML string as the element's inner content; any children/text are
     // ignored at runtime (R014 warns on that conflict).
+    //
+    // dyn (`<component :is>`) and component-instantiation paths do NOT
+    // intercept: `html:` passes through as a plain `:html` prop. v-html on
+    // a component would shadow its slot and steal the prop from ext
+    // functional components using the `innerHTML` pattern (jade's gap-22
+    // escape hatch — e2e-verified regression when intercepted).
     // ====================================================================
 
     /// Dynamic content on a plain element (brace prop form).
@@ -14526,7 +14505,9 @@ widget App {
         assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
     }
 
-    /// v-html on a dyn (`<component :is>`) node.
+    /// `html:` on a dyn (`<component :is>`) node is NOT intercepted: it
+    /// passes through as a plain `:html` prop so ext functional components
+    /// (the `h('div', { innerHTML: props.html })` pattern) keep receiving it.
     #[test]
     fn test_vhtml_on_dyn_component() {
         let sfc = gen_sfc_from_widget_src(r#"
@@ -14542,15 +14523,16 @@ widget App {
 }
 "#);
         assert!(
-            sfc.contains(r#"v-html="content""#),
-            "v-html on dyn component:\n{}",
+            sfc.contains(r#":html="content""#),
+            "html passes through as :html prop on dyn:\n{}",
             sfc
         );
-        assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
+        assert!(!sfc.contains("v-html="), "no v-html on dyn component:\n{}", sfc);
     }
 
-    /// v-html on a sub-widget component instantiation (the directive lands
-    /// on the component root, like v-show).
+    /// `html:` on a sub-widget component instantiation is NOT intercepted:
+    /// passes through as `:html` (v-html on a component would shadow its
+    /// slot and steal the prop).
     #[test]
     fn test_vhtml_on_sub_widget_component() {
         let sfc = gen_sfc_with_sub_widgets(r#"
@@ -14569,11 +14551,41 @@ widget App {
 }
 "#, &["EditorTab"]);
         assert!(
-            sfc.contains(r#"v-html="content""#),
-            "v-html on component:\n{}",
+            sfc.contains(r#":html="content""#),
+            "html passes through as :html prop on component:\n{}",
             sfc
         );
-        assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
+        assert!(!sfc.contains("v-html="), "no v-html on component:\n{}", sfc);
+    }
+
+    /// Locks the jade ext functional-component escape hatch (the exact
+    /// gap-22 pattern that regressed when dyn intercepted `html:`):
+    /// `HtmlDiv = (props) => h('div', { innerHTML: props.html ?? '' })`
+    /// driven by `dyn (.HtmlDiv) { html: r.html }` in a for-loop must keep
+    /// its `:html="r.html"` prop channel.
+    #[test]
+    fn test_vhtml_dyn_passthrough_ext_component_pattern() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var rows list = [] }
+    view {
+        col {
+            for r in .rows {
+                dyn (.HtmlDiv) {
+                    class: "md-body"
+                    html: r.html
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#":html="r.html""#),
+            "ext component receives the html prop:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains("v-html="), "no v-html interception on dyn:\n{}", sfc);
     }
 
     /// Conflict: html: + child nodes → R014 warning. v-html is still
