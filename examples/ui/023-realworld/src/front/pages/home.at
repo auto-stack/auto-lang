@@ -24,7 +24,10 @@ widget home {
                         style: "text-brand-green font-medium cursor-pointer"
                     }
                     if .store.active_tag != "" {
-                        text f"# ${.store.active_tag}" { style: "text-brand-green font-medium" }
+                        text f"# ${.store.active_tag}" {
+                            onclick: .ClearTag
+                            style: "text-brand-green font-medium cursor-pointer"
+                        }
                     }
                 }
                 if .store.articles.len() == 0 {
@@ -78,17 +81,14 @@ widget home {
             }
             // Popular Tags sidebar
             col {
-                style: "w-48 hidden md:block"
+                style: "w-48"
                 col {
-                    style: "bg-gray-50 rounded p-3"
+                    style: "bg-gray-50 rounded p-3 gap-1"
                     text "Popular Tags" { style: "text-sm font-medium text-gray-500 mb-2" }
-                    row {
-                        style: "flex-wrap gap-1"
-                        for tag in .tags {
-                            text tag {
-                                onclick: .SetTag(tag)
-                                style: "text-xs px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-100"
-                            }
+                    for tag in .tags {
+                        button tag {
+                            onclick: .SetTag(tag)
+                            style: "text-xs px-3 py-1 rounded-full border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-100"
                         }
                     }
                 }
