@@ -1507,7 +1507,23 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        // 4. Ensure child state object exists on the VM heap + write props.
+        // 4. Seed child model-var defaults (e.g. `var collapsed bool = false`)
+        //    that the parent didn't pass. Plan 049: without this, a child view
+        //    that reads its own model var (`if !.collapsed`, a computed like
+        //    `collapse_glyph`) hits read_state Err on first render → the
+        //    condition short-circuits to false (body hidden) and the string
+        //    falls back to "${collapsed}" / "${collapse_glyph}".
+        //    Only runs when the parent didn't provide the prop (parent wins).
+        for state_var in &child_widget.state_vars {
+            if !resolved_props.contains_key(&state_var.name) {
+                resolved_props.insert(
+                    state_var.name.clone(),
+                    eval_initial_without_vm(&state_var.initial),
+                );
+            }
+        }
+
+        // 5. Ensure child state object exists on the VM heap + write props.
         let child_state_id = self.bridge.ensure_child_state(
             &child_widget.name,
             &child_field_names,
@@ -2615,6 +2631,19 @@ impl<'a> AuraViewBuilder<'a> {
                 || self.eval_condition_with(right, bindings);
         }
 
+        // Plan 049: leading negation — `! .collapsed` / `!.collapsed` / `!x`.
+        // Handled AFTER || / && (so `!a || b` splits on || first, then the left
+        // arm recurses here) but BEFORE operator splitting, so `a != b` (the
+        // "!=" appears mid-string, not as a prefix) is unaffected. Guard "!="
+        // as a bare prefix (e.g. `!= something`) — that is a comparison, not
+        // a negation.
+        if cond.starts_with('!') {
+            let rest = cond[1..].trim_start();
+            if !rest.starts_with('=') {
+                return !self.eval_condition_with(rest, bindings);
+            }
+        }
+
         // Handle && (AND) — split at top level only (paren depth 0)
         if let Some(pos) = Self::find_operator_at_depth0(cond, " && ") {
             let left = &cond[..pos];
@@ -3012,6 +3041,57 @@ impl<'a> AuraViewBuilder<'a> {
 // Free helper functions
 // ============================================================================
 
+/// Plan 049: evaluate a child model-var `initial` expression to a Value WITHOUT
+/// a VM. Mirrors `eval_expr_to_value` (vm_bridge.rs) for the literal cases so
+/// `var collapsed bool = false` → `Value::Bool(false)`. Complex initializers
+/// (type literals / `.new(...)` calls, which need the VM heap) fall back to
+/// `Value::Nil` — the same default the VM path uses for unresolvable exprs.
+fn eval_initial_without_vm(expr: &Expr) -> Value {
+    match expr {
+        Expr::Int(i) => Value::Int(*i),
+        Expr::I64(i) => Value::Int(*i as i32),
+        Expr::Uint(u) => Value::Uint(*u),
+        Expr::U64(u) => Value::Uint(*u as u32),
+        Expr::Byte(b) => Value::Int(*b as i32),
+        Expr::I8(i) => Value::Int(*i as i32),
+        Expr::U8(u) => Value::Int(*u as i32),
+        Expr::Float(f, _) => Value::Double(*f),
+        Expr::Double(f, _) => Value::Double(*f),
+        Expr::Bool(b) => Value::Bool(*b),
+        Expr::Char(c) => Value::Int(*c as i32),
+        Expr::Str(s) => Value::Str(s.clone()),
+        Expr::CStr(s) => Value::Str(s.clone()),
+        Expr::Unary(op, operand) => {
+            let val = eval_initial_without_vm(operand);
+            match op {
+                Op::Sub => match val {
+                    Value::Int(i) => Value::Int(-i),
+                    Value::Double(f) => Value::Double(-f),
+                    Value::Float(f) => Value::Float(-f),
+                    _ => Value::Int(0),
+                },
+                Op::Not => match val {
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => Value::Bool(true),
+                },
+                _ => Value::Int(0),
+            }
+        }
+        Expr::Array(elements) => {
+            let values: Vec<Value> = elements.iter().map(eval_initial_without_vm).collect();
+            Value::Array(auto_val::Array::from(values))
+        }
+        Expr::Object(pairs) => {
+            let mut obj = auto_val::Obj::new();
+            for pair in pairs {
+                obj.set(pair.key.to_astr(), eval_initial_without_vm(&pair.value));
+            }
+            Value::Obj(obj)
+        }
+        _ => Value::Nil,
+    }
+}
+
 /// Plan 370 (Issue 1): returns true for views that carry no visible content
 /// and should be dropped from layouts to avoid spurious blank space. Covers
 /// `View::Empty` and `View::Text { content: "", .. }` (the latter renders as
@@ -3200,6 +3280,125 @@ mod tests {
             }
             _ => panic!("Expected View::Text"),
         }
+    }
+
+    // ========================================================================
+    // Plan 049 — block 折叠 VM 修复回归测试
+    // ========================================================================
+
+    #[test]
+    fn test_conditional_negation_renders_then_body() {
+        // Plan 049:BlockItem 折叠 body 的条件 `if !.collapsed` 在 collapsed=false
+        // 时必须为 true。修复前 eval_condition_with 不认识 `!` 前缀,`! .collapsed`
+        // 落入 resolve_binding_path → None → false,导致 ls 结果默认全隐藏。
+        let widget = make_test_widget("Fold", vec![
+            AuraStateDef {
+                name: "collapsed".to_string(),
+                type_info: Type::Bool,
+                initial: Expr::Bool(false),
+                decorators: vec![],
+            },
+        ]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Fold");
+
+        let node = AuraNode::Conditional {
+            condition: "! .collapsed".to_string(),
+            then_body: vec![AuraNode::text("body")],
+            else_body: None,
+            span: None,
+            debug_id: None,
+        };
+        match builder.build(&node) {
+            View::Text { content, .. } => {
+                assert_eq!(content, "body", "!false must render the then_body");
+            }
+            other => panic!("expected View::Text body, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_conditional_negation_hides_when_true() {
+        // collapsed=true → `if !.collapsed` → false → body 隐藏(折叠生效)。
+        let widget = make_test_widget("Fold", vec![
+            AuraStateDef {
+                name: "collapsed".to_string(),
+                type_info: Type::Bool,
+                initial: Expr::Bool(true),
+                decorators: vec![],
+            },
+        ]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Fold");
+
+        let node = AuraNode::Conditional {
+            condition: "! .collapsed".to_string(),
+            then_body: vec![AuraNode::text("body")],
+            else_body: None,
+            span: None,
+            debug_id: None,
+        };
+        assert!(
+            matches!(builder.build(&node), View::Empty),
+            "!true must hide the body"
+        );
+    }
+
+    #[test]
+    fn test_text_onclick_becomes_toggle_button() {
+        // Plan 049:VM 的 convert_row 丢弃 row 的 onclick,所以 block_item.at
+        // 把折叠切换挂到 text 元素上 —— text 带 onclick 必须转成 chromeless
+        // Button,且消息是 Typed{ event_name: "ToggleCollapse" }。
+        let widget = make_test_widget("Fold", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Fold");
+
+        let node = AuraNode::element("text")
+            .with_prop("text", Expr::Ident(".collapse_glyph".into()))
+            .with_event("onclick", ".ToggleCollapse");
+        match builder.build(&node) {
+            View::Button { onclick, .. } => match onclick {
+                DynamicMessage::Typed { event_name, .. } => {
+                    assert_eq!(event_name, "ToggleCollapse");
+                }
+                other => panic!("expected Typed ToggleCollapse, got {:?}", other),
+            },
+            other => panic!("text-with-onclick must convert to Button, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_child_model_var_default_seeded_into_state() {
+        // Plan 049:渲染子组件(BlockList → BlockItem)时,子组件 model 变量
+        // 的默认值必须种入统一 root state。否则 `.collapsed` 首次读取 Err →
+        // 条件 false(内容隐藏)+ 字符串回退 "${collapse_glyph}"。
+        let child = make_test_widget("BlockItem", vec![
+            AuraStateDef {
+                name: "collapsed".to_string(),
+                type_info: Type::Bool,
+                initial: Expr::Bool(false),
+                decorators: vec![],
+            },
+        ]);
+        let parent = make_test_widget("BlockList", vec![]);
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "BlockList", &registry);
+
+        let node = AuraNode::Component {
+            name: "BlockItem".to_string(),
+            props: vec![],
+            events: HashMap::new(),
+            span: None,
+            debug_id: None,
+        };
+        builder.build(&node);
+        assert_eq!(
+            bridge.read_state("collapsed").unwrap(),
+            Value::Bool(false),
+            "child model var default must be seeded into root state"
+        );
     }
 
     // ========================================================================

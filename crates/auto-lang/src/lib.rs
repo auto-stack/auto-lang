@@ -2413,15 +2413,17 @@ pub fn run_file_dynamic_ui_with_scenario(
 fn register_transitive_widgets(
     module_path: &std::path::Path,
     registry: &mut crate::ui::widget_registry::WidgetRegistry,
+    child_decls: &mut Vec<crate::ast::WidgetDecl>,
 ) {
     // 独立的 visited(不与 collect_module_imports 共享,避免互相跳过模块)。
-    register_transitive_widgets_inner(module_path, registry, &mut std::collections::HashSet::new())
+    register_transitive_widgets_inner(module_path, registry, child_decls, &mut std::collections::HashSet::new())
 }
 
 #[cfg(feature = "ui-iced")]
 fn register_transitive_widgets_inner(
     module_path: &std::path::Path,
     registry: &mut crate::ui::widget_registry::WidgetRegistry,
+    child_decls: &mut Vec<crate::ast::WidgetDecl>,
     visited: &mut std::collections::HashSet<std::path::PathBuf>,
 ) {
     let module_code = match std::fs::read_to_string(module_path) {
@@ -2462,6 +2464,10 @@ fn register_transitive_widgets_inner(
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
+                            // Plan 049:孙组件 handler 也要编译进 VM 模块,
+                            // 否则点击其按钮(如 BlockItem.ToggleCollapse)会
+                            // HandlerNotFound 静默失败。
+                            child_decls.push(decl.clone());
                             registry.register(child_widget);
                         }
                     }
@@ -2474,7 +2480,7 @@ fn register_transitive_widgets_inner(
             }
         }
         // 继续递归(孙组件可能还 use 了更深的组件)
-        register_transitive_widgets_inner(&sub_path, registry, visited);
+        register_transitive_widgets_inner(&sub_path, registry, child_decls, visited);
     }
 }
 
@@ -2631,10 +2637,14 @@ fn run_file_dynamic_ui_inner(
             // 直接子组件(block_list.at 的 BlockList)自己 use 的子组件
             // (block_item.at 的 BlockItem)不会进 registry,导致 BlockList
             // 渲染时 BlockItem 找不到 → fallback Empty。这里递归扫当前模块的
-            // use,把孙组件也注册进同一个 registry。
+            // use,把孙组件也注册进同一个 registry,并同步收集其 WidgetDecl,
+            // 让孙组件的 handler(model var 读写)也编译进单一 VM 模块。
+            // Plan 049:没有后者,BlockItem 的 .ToggleCollapse handler 不存在,
+            // 点击折叠静默失败(HandlerNotFound)。
             register_transitive_widgets(
                 &module_path,
                 &mut registry,
+                &mut child_decls,
             );
 
             // Recursively collect ALL declarations from this module + its

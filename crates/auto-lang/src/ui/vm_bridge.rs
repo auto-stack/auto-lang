@@ -378,16 +378,27 @@ impl VmBridge {
     ///
     /// The current value of the field, or an error if the field doesn't exist.
     pub fn read_state(&self, field_name: &str) -> Result<Value> {
-        // Find field index by name
-        let field_index = self.state_field_names.iter()
-            .position(|name| name == field_name)
-            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?;
-
-        // Access the heap object
+        // Find field index by name — prefer the cached field list, but fall
+        // back to a name-based lookup on the live heap object. Plan 049:
+        // `ensure_child_state` seeds child model-var defaults (e.g. BlockItem's
+        // `collapsed`) into the root heap object AFTER the bridge is built, so
+        // those fields are missing from `state_field_names` and the cached
+        // index lookup alone would wrongly report FieldNotFound.
         let obj = self.vm.get_heap_object(self.state_obj_id)
             .ok_or_else(|| VmBridgeError::InvalidState(
                 format!("state heap object {} not found", self.state_obj_id)
             ))?;
+
+        let field_index = {
+            let guard = obj.read().unwrap();
+            let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
+                .ok_or_else(|| VmBridgeError::InvalidState(
+                    "state object is not a GenericInstanceData".to_string()
+                ))?;
+            self.state_field_names.iter().position(|name| name == field_name)
+                .or_else(|| instance.field_names.iter().position(|n| n == field_name))
+                .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?
+        };
 
         let guard = obj.read().unwrap();
         let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
@@ -409,10 +420,22 @@ impl VmBridge {
     /// * `field_name` - Name of the state field
     /// * `value` - New value for the field
     pub fn write_state(&mut self, field_name: &str, value: Value) -> Result<()> {
-        // Find field index by name
-        let field_index = self.state_field_names.iter()
-            .position(|name| name == field_name)
-            .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?;
+        // Find field index by name — same cached-list-first + live-object
+        // fallback as read_state (Plan 049 child model-var defaults).
+        let obj = self.vm.get_heap_object(self.state_obj_id)
+            .ok_or_else(|| VmBridgeError::InvalidState(
+                format!("state heap object {} not found", self.state_obj_id)
+            ))?;
+        let field_index = {
+            let guard = obj.read().unwrap();
+            let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
+                .ok_or_else(|| VmBridgeError::InvalidState(
+                    "state object is not a GenericInstanceData".to_string()
+                ))?;
+            self.state_field_names.iter().position(|name| name == field_name)
+                .or_else(|| instance.field_names.iter().position(|n| n == field_name))
+                .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?
+        };
 
         // Access the heap object with write access
         let obj = self.vm.get_heap_object_mut(self.state_obj_id)

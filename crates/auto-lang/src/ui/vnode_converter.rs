@@ -502,6 +502,7 @@ mod tests {
             label: "Click Me".to_string(),
             onclick: TestMsg::Click,
             style: None,
+            on_right_click: None,
         };
 
         let tree = view_to_vtree(view);
@@ -886,6 +887,7 @@ mod tests {
                     label: "Click".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
+                    on_right_click: None,
                 },
             ],
             spacing: 10,
@@ -938,6 +940,7 @@ mod tests {
                     label: "Click".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
+                    on_right_click: None,
                 },
             ],
             spacing: 10,
@@ -970,7 +973,7 @@ mod tests {
             children: vec![
                 View::Text { content: "a".into(), style: None },
                 View::Row { children: vec![
-                    View::Button { label: "b".into(), onclick: 0, style: None },
+                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None },
                 ], spacing: 0, padding: 0, style: None },
             ],
             spacing: 0, padding: 0, style: None,
