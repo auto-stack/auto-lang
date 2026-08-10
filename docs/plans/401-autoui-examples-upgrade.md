@@ -60,6 +60,7 @@
 - **a2r 双路径参数只提取第一个**：`/api/:a/:b` 的 handler 只提取 `:a`，`:b` 丢失（023 delete_comment）。规避：改单路径参数（`/api/comments/:id`，评论 id 全局唯一）。
 - **a2r POST/PUT 无 body 参数时多余 Json body**（已修复，api_gen.rs endpoint_has_body）：POST/PUT 只有路径参数时原生成 `Json<User>` body 提取 → 拒绝请求。已改：body 存在 iff 有 body 参数。
 - **a2r_std import 路径**（已修复，trans/rust.rs）：生成的 `use a2r_std` 改为 `use auto_lang::a2r_std`（a2r_std 是 auto_lang 模块非独立 crate）+ back Cargo.toml 加 `auto-lang.workspace = true`（api_gen.rs generate_cargo_toml，has_db 时）。
+- **VM 多 store 链接 bug**（未修复，留独立计划）：`auto run --render vm` 在多 store 项目报 `Undefined symbol: handler_X_Y`。根因：`handler_codegen.rs:1246` 把 store 映射硬编码 key `"store"`（多 store 覆盖）+ `lib.rs:2684` route-page loading 不递归加载页面的 store。单 store 项目（018/022）不受影响。详见 Plan 405 §VM 模式评估。
 
 ---
 

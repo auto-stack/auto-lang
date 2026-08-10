@@ -163,4 +163,28 @@ pub type Comment = { id: int, body: str, author: str }
 - 现象：editor 页加载报 `current_user is not a function`，页面空白（只显示 nav）。
 - 排查：editor.vue 只 import ArticleStore（不 import AuthStore），ArticleStore 不引用 current_user；home 页同用 ArticleStore 却不报错。怀疑多 store 共存（app 壳 AuthStore + editor ArticleStore）时 api.ts 模块加载交互问题，较深。
 - 后端验证：create_article / update_article curl 全绿，编辑器后端功能正常。
-- 处理：T9/T10 暂 `test.skip`，记遗留。修复需深入 store 多模块 codegen 交互。
+- **已修复**（plan401/023-editor-fix）：根因是 store 字段名 `current_user` 与 api 函数同名（const 覆盖 import）+ 同 widget 多路由重名。改 `me` + 合并路由，playwright 14/14 全绿。
+
+---
+
+## §VM 模式评估（2026-08-10）
+
+试跑 `auto run --render vm`（VM 前端渲染，vm+vm merged mode）：
+- **018（单 store）✅ 通过**：VM interpreter UI 正常启动。
+- **023（双 store）❌ 失败**：`Undefined symbol: handler_AuthStore_ClearTag in module App`。
+
+### 根因（VM 多 store 链接 bug，已完全定位）
+
+1. **`handler_codegen.rs:1246`**：store 映射的 key 硬编码为 `"store"`，多 store 时后者覆盖前者 → `store_widget_names["store"]` 只保留最后处理的 store 名。
+2. **`lib.rs:2684-2691`**：route-page loading 只 push WidgetDecl，**不递归加载页面的 `use store:`** → `ArticleStore` 从未进 `all_decls`。
+3. 结果：`home.at` 的 `store.ClearTag()`（ArticleStore）被错误归到唯一存活的 `AuthStore`，生成不存在的 `handler_AuthStore_ClearTag`，链接失败。
+
+### 修复方案（留独立计划）
+
+1. `handler_codegen.rs`：store 映射从全局单 key `"store"` 改成 per-widget 分桶（用已有的 `CURRENT_WIDGET_NAME` thread-local，handler_codegen.rs:41）。
+2. `lib.rs`：route-page loading（2684-2691）递归加载页面的 `use store:` 声明。
+3. 回归：018/022 单 store 不能破。
+
+### 处理
+
+VM 版统一后置（Plan 401 约定）。023 的 vue 版完整可用（14/14）。VM 多 store bug 记此，留独立计划修复。
