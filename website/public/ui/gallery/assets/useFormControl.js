@@ -1,1 +1,1 @@
-import{l as r,au as t,aX as u}from"./index.js";function n(o){return r(()=>{var e;return t(o)?!!((e=u(o))!=null&&e.closest("form")):!0})}export{n as u};
+import{m as r,ax as t,aH as a}from"./index.js";function m(o){return r(()=>{var e;return t(o)?!!((e=a(o))!=null&&e.closest("form")):!0})}export{m as u};

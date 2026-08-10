@@ -8,7 +8,9 @@ One Auto view declaration compiles to Web, Desktop, and Mobile. Experience truly
 
 ### <a id="components"></a><a href="/ui/gallery/index.html" target="_self">Components ↗</a>
 
-49 shadcn-vue components replicated in Auto language. Powered by Vue 3 + shadcn-vue, auto-generated via `auto build --backend vue`.
+47 shadcn-vue components replicated in Auto language (50 routes incl. index,
+Grid, NavLink). Powered by Vue 3 + shadcn-vue, auto-generated via `auto build`
+from [`examples/widgets-gallery`](../../examples/widgets-gallery).
 
 ### <a id="blocks"></a><a href="/ui/blocks/index.html" target="_self">Blocks ↗</a>
 

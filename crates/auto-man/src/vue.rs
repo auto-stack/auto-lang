@@ -202,6 +202,7 @@ fn generate_package_json(
     "prismjs": "^1.29.0",
     "embla-carousel-vue": "^8.5.1",
     "vaul-vue": "^0.4.1",
+    "vue-sonner": "^2.0.9",
     "vee-validate": "^4.15.1",
     "@vee-validate/zod": "^4.15.1",
     "zod": "^3.25.76"
