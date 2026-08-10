@@ -3863,6 +3863,18 @@ impl RustGenerator {
                     }
                 }
             }
+            // Plan 407: support Break, Continue, Return in handler bodies.
+            crate::ast::Stmt::Break => "break".to_string(),
+            crate::ast::Stmt::Continue => "continue".to_string(),
+            crate::ast::Stmt::Return(expr) => {
+                format!("return {}", self.ast_expr_to_rust(expr))
+            }
+            crate::ast::Stmt::Block(body) => {
+                let stmts: Vec<String> = body.stmts.iter()
+                    .map(|s| self.ast_stmt_to_rust(s))
+                    .collect();
+                format!("{{ {} }}", stmts.join("; "))
+            }
             _ => format!("/* unhandled stmt */"),
         }
     }
@@ -4299,6 +4311,9 @@ impl RustGenerator {
                     Op::Le => "<=",
                     Op::Gt => ">",
                     Op::Ge => ">=",
+                    Op::And => "&&",
+                    Op::Or => "||",
+                    Op::Not => "!",
                     _ => "?",
                 };
                 let my_prec = bin_op_precedence(op);
