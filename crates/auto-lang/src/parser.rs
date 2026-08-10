@@ -11530,19 +11530,44 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen)?;
             }
 
-            self.expect_ident("from")?;
-            if !self.is_kind(TokenKind::Str) {
+            // Plan 408: `from "..."` is optional for `component` imports.
+            // Without it, `component: X` references a same-project component
+            // synthesized from a `component fn` declaration (import resolves to
+            // `@/components/{X}.vue`, no file copy). fn/composable still require
+            // an explicit `from` since they only make sense for external sources.
+            let path = if self.cur.text.as_str() == "from" {
+                self.next();
+                if !self.is_kind(TokenKind::Str) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected string import path after 'from' in widget use block, got '{}'",
+                            self.cur.text
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                let p = self.cur.text.clone();
+                self.next();
+                p
+            } else if kind == ExtImportKind::Component {
+                // No `from` → project-internal component fn reference.
+                AutoStr::from("")
+            } else {
                 return Err(SyntaxError::Generic {
                     message: format!(
-                        "Expected string import path after 'from' in widget use block, got '{}'",
+                        "Expected 'from' in widget use block ({} imports require a source path), got '{}'",
+                        match kind {
+                            ExtImportKind::Fn => "fn",
+                            ExtImportKind::Composable => "composable",
+                            ExtImportKind::Component => "component",
+                        },
                         self.cur.text
                     ),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
-            }
-            let path = self.cur.text.clone();
-            self.next();
+            };
 
             imports.push(ExtImport { kind, symbols, path, call_args });
             self.skip_empty_lines();

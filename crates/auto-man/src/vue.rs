@@ -1427,7 +1427,8 @@ export default router
                             let app_store_deps = auto_lang::extract_store_deps_from_file(
                                 app_at.to_str().unwrap()
                             );
-                            let mut gen = VueGenerator::new_shadcn();
+                            let mut gen = VueGenerator::new_shadcn()
+                                .with_sub_widgets(sub_widget_names.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }
@@ -1559,7 +1560,8 @@ export default router
                                 all_routes.extend(routes.routes.clone());
                             }
                             // Generate each widget as an independent Vue component
-                            let mut gen = VueGenerator::new_shadcn();
+                            let mut gen = VueGenerator::new_shadcn()
+                                .with_sub_widgets(sub_widget_names.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }

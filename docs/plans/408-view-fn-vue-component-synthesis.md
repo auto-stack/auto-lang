@@ -133,3 +133,84 @@ view fn ContentHeader(title str, ...) { ... }
 - 跨文件复用（`use { component }` 引用他文件 component fn + ext 复制）——需联动 auto-man `copy_ext_files`，§3 标 🔴，未做。
 - legacy 入口（`ui_build_shadcn_with_widgets`）不支持 component fn 合成——见 KNOWN-DEBT。
 - auto-musk 023 试点验证（§Task 4 第 3 点）——待 auto-musk 侧以 `.at` component fn 替换逃生舱。
+
+---
+
+## 6. P2 残留解决方案（2026-08-10 立项）
+
+P1 落地后对三个残留做了实测复核，结论与立项时不同——尤其残留 2 已随 P1 顺带解决。下面是逐个的根因、方案与范围。
+
+### 6.1 残留 2：legacy 入口 —— 已随 P1 解决（仅文档过期）
+
+**复核结论**: 经实测，`ui_build_shadcn_with_widgets` / `ui_build_shadcn_with_widgets_and_stores` / `ui_build_shadcn_with_sub_widgets(_and_stores)` 以及 auto-man 的 `compile_at_to_vue(_with_sub_widgets)` **全部是 `generate_component_from_file` 的薄包装**（lib.rs:4552 / vue.rs:3052）。P1 改的是后者本体（api.rs:428-438 收集 component fn），能力自动透传到所有调用方。
+
+证据：lib.rs:4563 写盘循环已遍历 `result.all_widget_codes`——component fn SFC 在 `output.is_some()` 时会写盘。
+
+**方案（纯文档清理，零代码风险）**:
+1. 移除 `KNOWN-DEBT-AND-RISKS.md` 中 Plan 408 那条"legacy 入口不支持"的过期条目。
+2. 加一条 e2e 验证测试：用 legacy 入口（`ui_build_shadcn_with_widgets_and_stores` 带 output）编译含 component fn 的 .at，断言产物含 `components/<Name>.vue`，防止未来回归。
+3. 修订本节表述（残留 2 标记为已解决）。
+
+### 6.2 残留 1：跨文件复用 —— 真实缺口，本 P2 核心
+
+**根因（三层缺口，实测）**:
+
+1. **parser**: `use { component: X }` 的 `from` 是强制的（parser.rs:11533 `expect_ident("from")`），无 `from` 语法直接报错。跨文件引用他文件 component fn SFC 没有声明语法。
+2. **codegen**: 即便 parser 放开，`known_sub_widgets` 的 import 路径硬编码 `@/components/{Name}.vue`（vue.rs:1860），与 component fn SFC 的写盘位置一致——**这一层无需改**，只要 SFC 确实写到那。
+3. **auto-man 写盘**: `from_workspace` 的写盘循环对 component fn 处理不统一：
+   - front_dir 直文件路径（vue.rs:1557-1588）：**正确**，按 `widget.name` 写盘。
+   - app.at 路径（vue.rs:1447）：`widget.name.to_lowercase()` —— 大小写 bug（`MyCard` 写成 `mycard.vue`，与 import `@/components/MyCard.vue` 不符）。
+   - pages/ 路径（vue.rs:1507-1508）：只取 `widgets.first()`，component fn SFC 被丢弃。
+   - Phase 1 预扫描（vue.rs:1392）调 `ui_build_shadcn_with_widgets`（丢弃 `all_widget_codes`），但他文件 component fn 名字**确实**会经此路径进 `sub_widget_names`（因为 Phase 1 遍历 `result.widgets`，component fn 在其中）。
+
+**方案（auto-lang + auto-man 双侧，最小改动）**:
+
+auto-lang 侧（3 处）:
+1. `parser.rs:11533` — `from` 改为可选。无 `from` 时 `ExtImport.path = ""`，语义=引用同项目已合成的 component fn SFC。
+2. `vue.rs register_ext_imports:1385` — Component 分支：`imp.path.is_empty()` 时生成 `import {sym} from '@/components/{sym}.vue'` + 注册 `ext_tag_keys`，**不**触发文件复制。
+3. `aura/extract.rs` 或 AST — `ExtImport.path` 空串即代表"项目内 component fn"，无需新字段。
+
+auto-man 侧（3 处）:
+1. `collect_ext_import_files:1100` — 跳过 `path.is_empty()` 的 component（否则进 ext_file_set → copy_ext_files 去复制不存在的文件而报错）。
+2. `from_workspace` app.at 路径（vue.rs:1447）— 去掉 `.to_lowercase()`，与 import 大小写对齐。
+3. `from_workspace` pages/ 路径（vue.rs:1507）— 改为遍历 `all_widget_codes` 写盘（需让 lib.rs 的 `ui_build_shadcn_with_widgets_and_stores` 返回它，或新增入口）。
+
+**MVP 范围（本 P2 先做）**: 两文件都在 front_dir 直文件层即可跑通——auto-lang parser + register_ext_imports + collect 跳过空 path；auto-man 写盘修正（app.at lowercase + pages 丢弃）。pages 写盘修正依赖 `all_widget_codes` 透传，单独评估。
+
+**风险**: 跨仓库（auto-man），需协同测试。watch/增量路径（vue.rs:2604 `compile_at_to_vue` 丢弃 all_widget_codes）有同类 bug，但 watch 是独立路径，本 P2 先不强改。
+
+**实施记录（P2 实测后修正）**:
+
+实测推翻了立项时对三处 auto-man 缺口的部分预判：
+
+auto-lang 侧（全部完成）:
+1. ✅ `parser.rs` — `from` 改为可选（仅 `component` kind 允许无 from，fn/composable 仍强制）。空 path = 项目内 component fn 引用。
+2. ✅ `vue.rs register_ext_imports` — 空 path 分支生成 `import {sym} from '@/components/{sym}.vue'` + 注册 ext tag。
+3. ✅ 测试 `test_use_component_no_from_resolves_to_components` 验证。
+
+auto-man 侧（实测后范围缩小）:
+1. ✅ `collect_ext_import_files` — **实测无需改**：`is_local_ext_path("")` 返回 false，空 path 自动不进 ext_file_set，不会触发 copy_ext_files 报错。
+2. ✅ app.at i>0 分支（vue.rs:1430）+ front_dir 直文件分支（vue.rs:1562）— 真正缺口是重新生成 SFC 时 `VueGenerator::new_shadcn()` **未带 sub_widgets**，导致同文件/跨文件 component fn 引用解析失败。已修正为 `.with_sub_widgets(sub_widget_names.clone())`（sub_widget_names 含跨文件 component fn 名，Phase 1 收集）。
+3. ⚠️ app.at lowercase（vue.rs:1447）— **实测不影响**：写盘循环对非 pages 路径用第四元组 `widget_name`（原样），不读第二元组 `name`（lowercase）。
+4. ⏳ pages 路径 component fn SFC 写盘 — 仍残留（见 KNOWN-DEBT），罕见场景，修复需改 lib.rs 公开 API。
+
+**结论**: 跨文件复用的 front_dir 直文件 + app.at 路径已打通（含跨文件 component fn 名收集）。pages 路径作为残留。
+
+### 6.3 残留 3：auto-musk 试点 —— 依赖残留 1，首试候选已定
+
+**复核结论**: auto-musk 当前 0 处使用 component fn / view fn。三视图（chats/specs/wiki）共用 header 收敛（023 §3.1）需要 emit + slot，依赖 Plan 408 Task 2，**不适合首试**。
+
+**首试候选**: `AgentAvatar.vue`（`auto-musk/src/front/components/AgentAvatar.vue`，89 行）—— 纯展示组件（props: professionId/name/size），无 emit/slot/store/lifecycle/v-html，正好验证"逃生舱 .vue → .at component fn 单一真源"路径。
+
+**前置**: 需残留 1（跨文件）落地——AgentAvatar 要被 chats_view.at 和 specs_view.at 同时引用，必须跨文件。**故残留 3 排在残留 1 之后**。
+
+**改写草案**（放在 app.at 或独立 agent_avatar.at，跨文件引用）:
+```auto
+component fn AgentAvatar(professionId: str, name: str, size: str) {
+    span {
+        class: if .size == "xs" { "agent-avatar xs" } else { "agent-avatar md" }
+        text .initials
+    }
+}
+```
+**已知限制**: 颜色映射字典（`professionColors` + hue hash）在 `.at` 中无法表达（无对象字面量字典 + char hash），首试退化为准白名单或保留逃生舱 helper fn（`use { fn: professionColor } from "..."`）。emit/slot 需求的 NavSidebar/WikiNav 等 Task 2 落地后再排期。

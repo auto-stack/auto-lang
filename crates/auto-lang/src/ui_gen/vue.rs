@@ -1384,9 +1384,17 @@ impl VueGenerator {
                 }
                 crate::ast::ExtImportKind::Component => {
                     for sym in &symbols {
-                        // Local `.vue` files are default-exported; everything
-                        // else (npm packages, .ts modules) uses named exports.
-                        let line = if imp.path.ends_with(".vue") {
+                        // Plan 408: empty `from` (no source path) means this is
+                        // a reference to a same-project `component fn` SFC,
+                        // synthesized to `@/components/{Name}.vue`. No file copy
+                        // happens — the SFC is produced by the build itself.
+                        // Treat it like a local .vue (default export, same path
+                        // convention as sub-widget imports in vue.rs:1860).
+                        let line = if imp.path.is_empty() {
+                            format!("import {} from '@/components/{}.vue'\n", sym, sym)
+                        } else if imp.path.ends_with(".vue") {
+                            // Local `.vue` files are default-exported; everything
+                            // else (npm packages, .ts modules) uses named exports.
                             format!("import {} from '{}'\n", sym, specifier)
                         } else {
                             format!("import {{ {} }} from '{}'\n", sym, specifier)

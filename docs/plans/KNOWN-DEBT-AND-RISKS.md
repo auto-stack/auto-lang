@@ -37,7 +37,7 @@
 | 365 | gpui Image/Grid placeholder | gpui 后端的 `View::Image` 渲染为 `[img: src]` 文本占位符，`View::Grid` 做行列分解但无原生 GPUI grid 支持。功能可用但不完整。 | `ui/gpui/auto_render.rs` + `ui/gpui/renderer.rs` |
 | 365 | HostBackend Send bound | `HostBackend::run` 要求 `C::Msg: Send`（iced 的约束传播到方法级）。headless/gpui 本不需要 Send，但 GUI 消息类型按惯例都是 Send，实际无影响。 | `ui/host.rs` |
 | 391 | trait impl 语法 | Auto 不支持 `impl Trait for Type` 语法（D6 仅提供清晰错误："Auto does not support trait impl syntax... Use a static fn/ext method"）。是语言设计决议，非缺陷——用 `ext Type for Spec` 表达外部 trait 实现。 | `parser.rs:4578-4585` |
-| 408 | component fn 仅统一入口 | `component fn` 独立 SFC 合成仅在 `generate_component_from_file`（Plan 361 统一入口，被 `cmd_watch`/`cmd_ui` 使用）生效。legacy 入口（`ui_build_shadcn_with_widgets` / `compile_at_to_vue`，被 `cmd_vue`/auto-man 使用）仅注册 component fn 供 `extract_view_node` 识别，但**不收集成独立 SFC**——引用处会生成 `<Name/>` 标签却无对应 import 产物。设计如此：legacy 路径为旧入口，跨文件复用需联动 auto-man 的 `copy_ext_files`（计划 §3 标 🔴，后续迭代）。 | `lib.rs:4522 ui_build_shadcn_with_widgets` vs `api.rs:414 generate_component_from_file` |
+| 408 | pages 路径 component fn SFC 丢失 | auto-man `from_workspace` 的 pages/ 扫描路径（`vue.rs:1495-1508`）只取 `widgets.first()` 的 SFC，丢弃 `all_widget_codes`——定义在 pages .at 文件里的 `component fn` 不会写盘成独立 SFC。front_dir 直文件 + app.at 路径已正确（本轮 P2 修正了 sub_widgets 注入）。pages 场景罕见（component fn 通常定义在 front_dir 直文件/app.at），修复需让 lib.rs 的 `ui_build_shadcn_with_widgets_and_stores` 返回 `all_widget_codes`，影响公开 API。 | `auto-man/src/vue.rs:1495-1508` |
 
 ---
 
