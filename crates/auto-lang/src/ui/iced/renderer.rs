@@ -3978,9 +3978,12 @@ fn compare_pngs(
         if diff_before != diff_after {
             let cols = state.component.read_state("cols").map(|v| v.as_int()).unwrap_or(9);
             let rows = state.component.read_state("rows").map(|v| v.as_int()).unwrap_or(9);
-            // cell=32px + borders/padding/info-bar overhead
-            let w = ((cols as f32) * 34.0 + 80.0).max(350.0);
-            let h = (rows as f32) * 34.0 + 250.0;
+            // Plan 402: snug window fit. cell=32px(w-8 h-8) + 2px border.
+            // Width: grid + p-6 padding (48px) + a little slack.
+            // Height: info-bar(~60) + difficulty row(~40) + grid + p-6(48) + mt-8(32) + spacing(~20).
+            let cell = 34.0; // 32px button + 2px border
+            let w = ((cols as f32) * cell + 64.0).max(320.0);
+            let h = (rows as f32) * cell + 200.0;
             *state.pending_window_resize.borrow_mut() = Some(iced::Size::new(w, h));
         }
 
@@ -4363,7 +4366,7 @@ fn compare_pngs(
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(600.0, 700.0))
+        .window_size(iced::Size::new(400.0, 520.0))
         .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
             if _state.component.source_path().is_some() {

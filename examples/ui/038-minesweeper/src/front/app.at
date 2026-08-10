@@ -131,7 +131,7 @@ widget App {
                     }
                 }
 
-                style: "w-full max-w-fit p-6 bg-white rounded-2xl shadow-lg items-center mt-8"
+                style: "w-full max-w-fit p-4 bg-white rounded-2xl shadow-lg items-center"
             }
         }
     }
