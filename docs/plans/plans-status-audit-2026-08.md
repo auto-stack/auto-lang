@@ -109,6 +109,7 @@
 | **365** | AutoUI 可插拔 Host | W1-W4 pending，W5 deferred（依赖 364 W1-W3） |
 | **366** | 跨平台 UI 测试 DSL | "设计阶段暂不实现"；366a 5 项验收未勾（1-2 天可落地） |
 | **374** | a2r store/viewfn parity | ✅ 已完成并归档（2026-08-04）。view fn fragment + store composable 全部实现（rust_ui.rs collect_store_decls + ui_gen/rust.rs register_store + parser ViewFragmentDecl）。详见 `archive/374-*.md` |
+| **408** | view fn → 独立 Vue 组件合成 | 📋 计划（2026-08-10 登记，未实施）。a2vue 路径：view fn 内联展开已有（374 修复已移植，api.rs:406-411 注册），**独立 SFC 合成缺失**——本计划扩展 codegen 使 `view fn` 可独立成组件、跨 widget 复用（承接 auto-musk Plan 023 §3.1 共用组件收敛）。详见 `408-view-fn-vue-component-synthesis.md` |
 
 > **377**（统一值表示消除 2-slot）已于 2026-08-01 完成并归档至 `archive/377-*.md`（详见 §1）。
 
