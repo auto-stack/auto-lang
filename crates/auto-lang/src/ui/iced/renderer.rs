@@ -2412,14 +2412,14 @@ fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Va
                     } else {
                         size.to_string()
                     };
-                    // Plan 046:每行一个扁平对象 {name, type, size}(避开 VM 的
-                    // 二维数组 for 循环 bug —— 内层 for cell in row 不迭代)。
-                    // RenderTable 用单层 for row in output.rows + row.name 访问。
-                    serde_json::json!({
-                        "name": name,
-                        "type": file_type,
-                        "size": size_str,
-                    })
+                    // 标准 RenderedCell 格式 {Text: "..."}(对齐 ash-core)。
+                    // Plan 046 已修 VM 二维数组 for 循环 bug(aura_view_builder
+                    // ForLoop 现在先查 bindings),for cell in row 正常迭代。
+                    serde_json::json!([
+                        { "Text": name },
+                        { "Text": file_type },
+                        { "Text": size_str },
+                    ])
                 })
                 .collect();
             let output = serde_json::json!({
@@ -4062,6 +4062,14 @@ fn compare_pngs(
                     }
                 }
             }
+        }
+
+        // Plan 046:PromptBar.Run handler 已清空 .input="",但 :3996 的 retain
+        // 保留了 "Run" 的 input_values entry(="ls"),patch_input_values 会用它
+        // 回填 input widget → 输入框不清空。这里在 Run 之后移除该 entry,
+        // 让 view 渲染时 input value 取 handler 清空后的空值(对齐 vue v-model)。
+        if widget_name == "PromptBar" && event_name == "Run" {
+            state.input_values.remove(&event_name);
         }
 
         // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
