@@ -12624,9 +12624,17 @@ impl<'a> Parser<'a> {
                     value: ViewPropValue::Expr(expr),
                 });
             }
-        } else if self.is_kind(TokenKind::Ident) {
+        } else if self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::Tag)
+            || self.is_kind(TokenKind::Link)
+            || self.is_kind(TokenKind::Task)
+            || self.is_kind(TokenKind::Type)
+        {
             // Plan 354: bare identifier as primary prop (e.g., `badge t` where
             // t is a loop variable). Only when tag has a known primary prop.
+            // Also accept contextual soft keywords (tag/link/task/type) so that
+            // `text tag` where `tag` is a loop variable lexes correctly —
+            // `tag` is TokenKind::Tag (a soft keyword), not TokenKind::Ident.
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
                 let id = self.cur.text.clone();
                 self.next();
