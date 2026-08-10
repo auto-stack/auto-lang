@@ -12524,6 +12524,16 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+        // Plan 408 P3: component fn 支持可选 `computed { }` 块（位于 params 之后、
+        // view body 之前，与 widget 的 computed→view 顺序一致）。view fn 不支持
+        // computed（内联展开后无独立组件宿主）。parse_computed_block_inner 会
+        // 自消费 `computed` 关键字与外层大括号。
+        let computed = if is_component && self.cur.text.as_str() == "computed" {
+            Some(self.parse_computed_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         // Plan 367 P2-3 fix: register params in a fresh scope so the body can
         // reference them. Without this, `check_symbol` flags a parameter used
         // as a bare `if` condition (e.g. `style: if active {..}`) as an
@@ -12540,7 +12550,7 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly

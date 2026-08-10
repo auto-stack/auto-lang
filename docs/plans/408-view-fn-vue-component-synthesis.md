@@ -206,3 +206,28 @@ auto-man 侧（实测后范围缩小）:
 3. 转译器层能力（P1 同文件合成 + P2 跨文件复用 + legacy 验证）已就绪并有测试覆盖。
 
 **后续路径**: auto-musk 应用层替换作为独立后续任务，在 auto-musk 仓库推进。根据试点反馈决定是否扩展 component fn 能力（computed / 字典 / emit / slot）。三视图共用 header 收敛（023 §3.1）需 emit + slot，依赖 Task 2，排期更靠后。
+
+### 6.4 P3：component fn computed 支持（2026-08-11 落地）
+
+**动机**: P2 §6.3 指出 AgentAvatar 试点受阻于 component fn 无 computed。复核代码发现 computed 的**基础设施全在**——`AuraWidget.computed` 字段、VueGenerator 的 `const x = computed(() => ...)` 生成（vue.rs:1967）、widget 的 `computed { }` 块解析（parser.rs:12332）——只是 P1 的 `extract_widget_from_fragment` 把它留空了。本 P3 接通这一层。
+
+**改动**（3 处，全部复用现有基础设施）:
+- `ast/ui.rs`: `ViewFragmentDecl` 加 `computed: Option<ComputedBlock>`（仅 component fn；view fn 恒 None）。
+- `parser.rs parse_fragment_decl_body_tail`: `is_component` 且 cursor 在 `computed` 时调 `parse_computed_block_inner`（复用 widget 的解析，位于 params 之后、view body 之前，与 widget 的 computed→view 顺序一致）。
+- `aura/extract.rs extract_widget_from_fragment`: `frag.computed` → `Vec<AuraComputed>`（镜像 `extract_widget_from_decl` 的 computed 处理）。
+
+**语法**:
+```auto
+component fn Badge(text: str) {
+    computed {
+        label => .text
+        upper => .text
+    }
+    span { text .label }
+}
+```
+→ 生成 `const label = computed(() => ...)` + template `{{ label }}`。
+
+**验证**: `test_component_fn_with_computed`——断言 Badge SFC 含 `const label = computed(...)` + `{{ label }}`；回归断言 view fn 带 computed 会解析失败（computed 仅 component fn 合法）。auto-lang vue 模块 181 + plan408 4 + plan367 6 全绿，零回归。
+
+**AgentAvatar 试点评估更新**: computed 能力已补，但 AgentAvatar 的 `professionColors` 对象字典字面量 + `charCodeAt` hash fallback 仍是 `.at` 语言层缺口（非 component fn 范畴）。AgentAvatar 的颜色映射仍需逃生舱 helper fn（`use { fn: professionColor }`），但组件骨架（props/computed/模板）可用 component fn 表达——属部分替换。完整试点仍待 auto-musk 侧推进。

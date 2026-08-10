@@ -687,6 +687,19 @@ pub fn extract_widget_from_fragment(
         })
         .collect();
 
+    // Plan 408 P3: component fn computed block → AuraComputed (mirrors
+    // extract_widget_from_decl's computed handling). view fn has computed=None.
+    let computed: Vec<AuraComputed> = if let Some(ref computed_block) = frag.computed {
+        computed_block.properties.iter()
+            .map(|p| AuraComputed {
+                name: p.name.as_str().to_string(),
+                expr: p.expr.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // Fragment body is a single root ViewNode (parse_view_fragment_decl_body_tail
     // parses exactly one). Extract it the same way a view block root is.
     let mut view_tree = extract_view_node(&frag.body)?;
@@ -695,7 +708,7 @@ pub fn extract_widget_from_fragment(
     Ok(AuraWidget {
         name: frag.name.as_str().to_string(),
         state_vars: Vec::new(),
-        computed: Vec::new(),
+        computed,
         messages: Vec::new(),
         view_tree,
         handlers: HashMap::new(),

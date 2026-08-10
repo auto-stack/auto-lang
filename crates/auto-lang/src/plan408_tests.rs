@@ -122,4 +122,71 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// Plan 408 P3: `component fn` with a `computed { }` block. Mirrors widget
+    /// computed — derived expressions over props, emitted as
+    /// `const x = computed(() => ...)`. This is the capability gap that blocked
+    /// the auto-musk AgentAvatar pilot (P2 residual 3): component fn had no
+    /// computed, so any展示 component with derived state was unexpressible.
+    #[test]
+    fn test_component_fn_with_computed() {
+        let tmp = std::env::temp_dir().join("plan408_computed_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        // Badge derives `label` from props via computed, then renders it.
+        // Use a plain prop-ref expression (f-string in computed is a separate
+        // transpile concern, out of scope for this P3 capability test).
+        std::fs::write(&at_path, concat!(
+            "component fn Badge(text: str) {\n",
+            "    computed {\n",
+            "        label => .text\n",
+            "    }\n",
+            "    span { text .label }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    view { Badge(text: .heading) }\n",
+            "    model { var heading str = \"hi\" }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("component fn with computed must compile");
+
+        let badge_code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "Badge")
+            .map(|(_, code)| code)
+            .expect("Badge component fn must be synthesized");
+
+        // computed → `const label = computed(() => ...)` (type may be inferred).
+        assert!(
+            badge_code.contains("const label = computed"),
+            "Badge SFC must emit `const label = computed(...)`: {}",
+            badge_code
+        );
+        // template uses the computed ({{ label }}), not the raw prop text.
+        assert!(
+            badge_code.contains("{{ label }}"),
+            "Badge template must render the computed label: {}",
+            badge_code
+        );
+
+        // view fn (inline) does NOT support computed — it has no component host.
+        // A view fn body containing `computed { }` is parsed as a view element
+        // (the `computed` tag + its `{ => ... }` children), which is not valid
+        // view syntax and surfaces as a parse error. This is the desired guard:
+        // computed only belongs in `component fn` (which has a real SFC host).
+        let bad_src = "view fn NoComputed(a: str) { computed { x => .a } div { text .x } }\nwidget W { view { NoComputed(a: .y) } model { var y str = \"\" } }";
+        let session = CompilerSession::ui();
+        let mut parser = crate::Parser::from(bad_src).with_session(session);
+        let parse_outcome = parser.parse();
+        assert!(parse_outcome.is_err(),
+            "view fn with a computed block must NOT parse cleanly (computed is component-fn-only): {:?}",
+            parse_outcome);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
