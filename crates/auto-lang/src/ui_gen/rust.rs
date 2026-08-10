@@ -999,15 +999,8 @@ impl RustGenerator {
         // Plan 365 W1 follow-up: subscription() moved from Component to
         // ComponentIced (de-ice the core trait). Generate a separate
         // `impl ComponentIced` block when tick_interval is set.
-        if let Some(interval_ms) = widget.tick_interval {
-            let msg_name = self.current_msg_name();
-            let struct_name = &widget.name;
-            code.push('\n');
-            code.push_str(&format!(
-                "impl auto_lang::ui::iced::ComponentIced for {} {{\n    fn subscription(&self) -> iced::Subscription<Self::Msg> {{\n        iced::time::every(std::time::Duration::from_millis({})).map(|_| {}::Tick)\n    }}\n}}\n",
-                struct_name, interval_ms, msg_name
-            ));
-        }
+        // Plan 407: ComponentIced disabled — blanket impl in renderer.rs
+        // conflicts with explicit impl. Tick handled by App's update().
 
         code
     }
@@ -1574,7 +1567,7 @@ impl RustGenerator {
         for stmt in stmts {
             match stmt {
                 crate::ast::Stmt::Store(store) => {
-                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const) {
+                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
                         let name = store.name.as_str();
                         // Check if the value is a function call (likely returns Value)
                         if matches!(&store.expr, crate::ast::Expr::Call(_)) {
@@ -1582,12 +1575,21 @@ impl RustGenerator {
                         }
                         // Check if the value is an index into a state Vec<Value>
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
-                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
-                                // Plan 407 R4a: strip leading dot (.board → board) so
-                                // state_types lookup works for store field references.
-                                let coll_name = collection.as_str();
-                                let coll_stripped = coll_name.strip_prefix('.').unwrap_or(coll_name);
-                                if self.state_types.get(coll_stripped)
+                            // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(collection) => {
+                                    let s = collection.as_str();
+                                    Some(s.strip_prefix('.').unwrap_or(s))
+                                }
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(coll) = coll_stripped {
+                                if self.state_types.get(coll)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
@@ -3740,25 +3742,25 @@ impl RustGenerator {
                         // Check if value is an index into a Vec<Value> (e.g., todos[idx])
                         // If so, use &mut borrow so that mutations to todo.field affect the array
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
-                            if let crate::ast::Expr::Ident(collection) = target.as_ref() {
-                                let coll_name = collection.as_str();
-                                let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
+                            // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(collection) => {
+                                    let s = collection.as_str();
+                                    Some(s.strip_prefix('.').unwrap_or(s))
+                                }
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(resolved_coll) = coll_stripped {
                                 if self.state_types.get(resolved_coll)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
-                                    // `let todo = self.todos[idx as usize]` →
-                                    // `let mut todo = &mut self.todos[idx as usize]`
-                                    // Prepend &mut to the collection reference in value
-                                    let target_prefix = if self.state_types.contains_key(resolved_coll) {
-                                        format!("self.{}", resolved_coll)
-                                    } else if resolved_coll != coll_name {
-                                        format!("self.{}", resolved_coll)
-                                    } else {
-                                        coll_name.to_string()
-                                    };
-                                    value = value.replacen(&target_prefix, &format!("&mut {}", target_prefix), 1);
-                                    return format!("let mut {} = {}", name, value);
+                                    return format!("let mut {} = {}.clone()", name, value);
                                 }
                             }
                         }
@@ -3766,6 +3768,23 @@ impl RustGenerator {
                     }
                     crate::ast::StoreKind::Var => {
                         // `var x = expr` → mutable local binding
+                        // Plan 407: if indexing into a Vec<Value>, clone the element.
+                        if let crate::ast::Expr::Index(target, _idx) = &store.expr {
+                            let coll_stripped: Option<&str> = match target.as_ref() {
+                                crate::ast::Expr::Ident(c) => Some(c.as_str().strip_prefix('.').unwrap_or(c.as_str())),
+                                crate::ast::Expr::Dot(inner, field) => {
+                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
+                                        Some(field.as_str())
+                                    } else { None }
+                                }
+                                _ => None,
+                            };
+                            if let Some(coll) = coll_stripped {
+                                if self.state_types.get(coll).map(|t| t.starts_with("Vec<")).unwrap_or(false) {
+                                    return format!("let mut {} = {}.clone()", name, value);
+                                }
+                            }
+                        }
                         if self.state_types.contains_key(resolved) {
                             // Auto-coerce int → String when assigning to a String field
                             if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
@@ -3867,7 +3886,12 @@ impl RustGenerator {
             crate::ast::Stmt::Break => "break".to_string(),
             crate::ast::Stmt::Continue => "continue".to_string(),
             crate::ast::Stmt::Return(expr) => {
-                format!("return {}", self.ast_expr_to_rust(expr))
+                // Plan 407: bare return (Expr::Nil) → `return;` not `return Value::Null`
+                if matches!(expr.as_ref(), crate::ast::Expr::Nil) {
+                    "return".to_string()
+                } else {
+                    format!("return {}", self.ast_expr_to_rust(expr))
+                }
             }
             crate::ast::Stmt::Block(body) => {
                 let stmts: Vec<String> = body.stmts.iter()
@@ -3894,7 +3918,8 @@ impl RustGenerator {
         // String avoids breaking those rewrites.
         if field == "id" || field.ends_with("_id") || field == "idx" || field == "count"
             || field == "x" || field == "y" || field == "adjacent" {
-            format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", obj_expr, field)
+            // Plan 407: parenthesize so callers can safely append .to_string() etc.
+            format!("({}[\"{}\"].as_i64().unwrap_or(0) as i32)", obj_expr, field)
         } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
             || field == "editing" || field == "loading" || field == "dark_mode"
             || field == "show_tag_input" || field.starts_with("is_")
@@ -4145,7 +4170,8 @@ impl RustGenerator {
                             let idx_cast = if idx_str.starts_with("self.")
                                 || (!idx_str.parse::<usize>().is_ok() && idx_str != "0")
                             {
-                                format!("{} as usize", idx_str)
+                                // Plan 407: parenthesize so `as usize` binds to whole expr.
+                                format!("({}) as usize", idx_str)
                             } else {
                                 idx_str
                             };
@@ -4428,6 +4454,9 @@ impl RustGenerator {
                         // .len() returns usize — cast to i32 for AURA compatibility
                         if fn_name.ends_with(".len") {
                             format!("{} as i32", result)
+                        } else if fn_name.ends_with(".pop") {
+                            // Plan 407: Vec::pop returns Option<T>; unwrap_or(0) for i32
+                            format!("{}.unwrap_or(0)", result)
                         } else {
                             result
                         }
@@ -4463,7 +4492,9 @@ impl RustGenerator {
                 let index_cast = if index_str.parse::<usize>().is_ok() {
                     index_str // literal usize, no cast needed
                 } else {
-                    format!("{} as usize", index_str)
+                    // Plan 407: parenthesize the expression so `as usize` binds
+                    // to the whole index, not just the last operand.
+                    format!("({}) as usize", index_str)
                 };
                 format!("{}[{}]", target_str, index_cast)
             }
