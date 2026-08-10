@@ -10624,7 +10624,10 @@ export function getAccentNames(): string[] {
             Expr::Int(n) => n.to_string(),
             Expr::Str(s) | Expr::CStr(s) => format!("'{}'", s.as_str().replace('\'', "\\'")),
             Expr::Bool(b) => b.to_string(),
-            Expr::Array(_) => "[]".to_string(),
+            Expr::Array(elems) => {
+                let parts: Vec<String> = elems.iter().map(Self::store_init_to_js).collect();
+                format!("[{}]", parts.join(", "))
+            }
             // Plan 043 store-codegen: `List<T>.new([])` and similar container
             // constructors parse as a call whose callee ends in `.new`. Treat
             // any `*.new(...)` initializer as an empty array — the common case

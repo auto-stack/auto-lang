@@ -228,6 +228,16 @@ mod tests {
     }
 
     #[test]
+    fn test_brand_green() {
+        // Conduit/RealWorld brand green #5cb85c — must parse as a whole
+        // (not "brand" + "-green" shade split).
+        let color = Color::from_tailwind("brand-green").unwrap();
+        assert_eq!(color, Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c });
+        let (r, g, b) = color.to_rgb8();
+        assert_eq!((r, g, b), (0x5c, 0xb8, 0x5c));
+    }
+
+    #[test]
     fn test_to_rgb_normalized() {
         let color = Color::Rgb { r: 255, g: 0, b: 0 };
         let (r, g, b) = color.to_rgb_normalized();
