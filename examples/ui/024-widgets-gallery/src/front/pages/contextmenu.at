@@ -1,0 +1,98 @@
+// pages/contextmenu.at - ContextMenu component documentation page
+
+widget ContextmenuPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "ContextMenu"
+            text "Displays a menu to the user — such as a set of actions or functions — triggered by a right click."
+
+            h1 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add context-menu") {}
+
+            h1 "Example"
+            preview-card (id: "contextmenu-basic") {
+                context-menu {
+                    context-menu-trigger (style: "flex h-[149px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm") {
+                        text "Right click here"
+                    }
+                    context-menu-content (style: "w-53") {
+                        context-menu-item (text: "Back") {
+                            context-menu-shortcut(text: "⌘[")
+                        }
+                        context-menu-item (text: "Forward", disabled: "true") {
+                            context-menu-shortcut(text: "⌘]")
+                        }
+                        context-menu-item (text: "Reload") {
+                            context-menu-shortcut(text: "⌘R")
+                        }
+                        context-menu-separator {}
+                        context-menu-item "Profile"
+                        context-menu-item "Billing"
+                        context-menu-item "Team"
+                        context-menu-separator {}
+                        context-menu-item "Subscription"
+                    }
+                }
+            }
+
+            h1 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Menu item text"
+                    }
+                    tr {
+                        td "disabled"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Disables the menu item"
+                    }
+                    tr {
+                        td "shortcut"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Keyboard shortcut hint"
+                    }
+                    tr {
+                        td "inset"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Adds inset padding"
+                    }
+                    tr {
+                        td "variant"
+                        td "string"
+                        td "default"
+                        td "default, destructive"
+                        td "Item style variant"
+                    }
+                    tr {
+                        td "class"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Additional CSS classes"
+                    }
+                }
+            }
+        }
+    }
+}

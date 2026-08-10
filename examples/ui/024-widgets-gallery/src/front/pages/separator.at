@@ -1,0 +1,55 @@
+// pages/separator.at - Separator component documentation page
+
+widget SeparatorPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Separator"
+            text "Visually or semantically separates content."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add separator") {}
+
+            h2 "Horizontal"
+            preview-card (id: "separator-horizontal") {
+                col (gap: "4") {
+                    text "Content above"
+                    separator (orientation: "horizontal") {}
+                    text "Content below"
+                }
+            }
+
+            h2 "Vertical"
+            preview-card (id: "separator-vertical") {
+                row (gap: "4", style: "h-8 items-center") {
+                    text "Left"
+                    separator (orientation: "vertical") {}
+                    text "Right"
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "orientation"
+                        td "string"
+                        td "horizontal"
+                        td "horizontal, vertical"
+                        td "Separator orientation"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,11 +1,120 @@
-// pages/index.at — landing page for the verification gallery.
+// pages/index.at - Documentation home page with Hero, search, and categorized component grid
+
 widget IndexPage {
+    msg Msg { Navigate }
+
+    model {
+        searchQuery str = ""
+    }
+
     view {
-        col {
-            style: "space-y-4"
-            h2 "Verification Gallery" { style: "text-xl font-semibold" }
-            text "This gallery tests the 7 codegen fixes from Plan 408 §9. Each page uses a widget that previously required a workaround." { style: "text-muted-foreground" }
-            text "Click the links above to verify each fix." { style: "text-sm text-muted-foreground" }
+        col (style: "gap-10") {
+            // Hero section with gradient background
+            col (style: "relative overflow-hidden rounded-2xl md:rounded-3xl") {
+                div (style: "absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/10") {}
+                div (style: "absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/5 blur-3xl") {}
+                div (style: "absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-accent/5 blur-3xl") {}
+
+                col (style: "relative px-4 py-12 md:py-20 lg:py-24 text-center gap-4") {
+                    badge (variant: "outline", style: "mx-auto mb-2") {
+                        icon (name: "layers", style: "h-3 w-3 mr-1.5") {}
+                        text "v1.0 — 46 Components"
+                    }
+
+                    h1 (text: "Auto UI", style: "text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-accent bg-clip-text text-transparent") {}
+
+                    text (style: "text-base md:text-lg text-muted-foreground max-w-2xl mx-auto") {
+                        "A collection of beautifully designed, fully responsive components."
+                    }
+                    text (style: "text-sm md:text-base text-muted-foreground/80 max-w-xl mx-auto") {
+                        "Built with Auto language, styled with Tailwind CSS, powered by Reka UI."
+                    }
+
+                    row (style: "flex-wrap justify-center gap-3 mt-4") {
+                        button (text: "Get Started", size: "lg", style: "shadow-lg shadow-primary/25") {
+                            icon (name: "arrow-right", style: "h-4 w-4") {}
+                        }
+                        button (text: "Browse Components", variant: "outline", size: "lg") {}
+                    }
+                }
+            }
+
+            // Search bar
+            div (style: "max-w-xl mx-auto w-full relative") {
+                icon (name: "search", style: "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground") {}
+                input (placeholder: "Search components...", style: "pl-10 h-11 rounded-xl", value: .searchQuery) {}
+            }
+
+            // Component categories grid
+            col (style: "gap-10") {
+                // Form category
+                category-section (name: "Form", color: "blue", count: 12) {
+                    component-card (to: "/button", name: "Button", desc: "Clickable actions", icon: "mouse-pointer-click") {}
+                    component-card (to: "/input", name: "Input", desc: "Text fields", icon: "type") {}
+                    component-card (to: "/textarea", name: "Textarea", desc: "Multi-line text", icon: "type") {}
+                    component-card (to: "/checkbox", name: "Checkbox", desc: "Boolean toggles", icon: "square-stack") {}
+                    component-card (to: "/switch", name: "Switch", desc: "Slide toggles", icon: "square-stack") {}
+                    component-card (to: "/select", name: "Select", desc: "Dropdown choices", icon: "layout-grid") {}
+                    component-card (to: "/combobox", name: "Combobox", desc: "Searchable select", icon: "command") {}
+                    component-card (to: "/label", name: "Label", desc: "Form labels", icon: "type") {}
+                    component-card (to: "/form", name: "Form", desc: "Form layouts", icon: "layout-grid") {}
+                    component-card (to: "/slider", name: "Slider", desc: "Range values", icon: "layout-grid") {}
+                    component-card (to: "/calendar", name: "Calendar", desc: "Date display", icon: "layout-grid") {}
+                    component-card (to: "/datepicker", name: "DatePicker", desc: "Date selection", icon: "layout-grid") {}
+                }
+
+                // Display category
+                category-section (name: "Display", color: "emerald", count: 8) {
+                    component-card (to: "/card", name: "Card", desc: "Content containers", icon: "square-stack") {}
+                    component-card (to: "/badge", name: "Badge", desc: "Status labels", icon: "bell") {}
+                    component-card (to: "/avatar", name: "Avatar", desc: "User pictures", icon: "image") {}
+                    component-card (to: "/skeleton", name: "Skeleton", desc: "Loading states", icon: "layout-grid") {}
+                    component-card (to: "/aspectratio", name: "AspectRatio", desc: "Media ratios", icon: "image") {}
+                    component-card (to: "/carousel", name: "Carousel", desc: "Slideshows", icon: "layout-grid") {}
+                    component-card (to: "/table", name: "Table", desc: "Data grids", icon: "layout-grid") {}
+                    component-card (to: "/datatable", name: "DataTable", desc: "Advanced tables", icon: "layout-grid") {}
+                }
+
+                // Feedback category
+                category-section (name: "Feedback", color: "amber", count: 7) {
+                    component-card (to: "/alert", name: "Alert", desc: "Callout messages", icon: "bell") {}
+                    component-card (to: "/progress", name: "Progress", desc: "Progress bars", icon: "layout-grid") {}
+                    component-card (to: "/sonner", name: "Sonner", desc: "Toast notifications", icon: "bell") {}
+                    component-card (to: "/toast", name: "Toast", desc: "Brief alerts", icon: "bell") {}
+                    component-card (to: "/tooltip", name: "Tooltip", desc: "Context hints", icon: "bell") {}
+                }
+
+                // Navigation category
+                category-section (name: "Navigation", color: "purple", count: 9) {
+                    component-card (to: "/breadcrumb", name: "Breadcrumb", desc: "Path navigation", icon: "navigation") {}
+                    component-card (to: "/tabs", name: "Tabs", desc: "Tab panels", icon: "layout-grid") {}
+                    component-card (to: "/menubar", name: "Menubar", desc: "Menu bars", icon: "layout-grid") {}
+                    component-card (to: "/pagination", name: "Pagination", desc: "Page controls", icon: "layout-grid") {}
+                    component-card (to: "/navigationmenu", name: "NavigationMenu", desc: "Site navigation", icon: "navigation") {}
+                    component-card (to: "/sidebar", name: "Sidebar", desc: "Side panels", icon: "layout-grid") {}
+                    component-card (to: "/command", name: "Command", desc: "Command palettes", icon: "command") {}
+                    component-card (to: "/scrollarea", name: "ScrollArea", desc: "Scrollable regions", icon: "layout-grid") {}
+                    component-card (to: "/separator", name: "Separator", desc: "Dividers", icon: "layout-grid") {}
+                }
+
+                // Overlay category
+                category-section (name: "Overlay", color: "rose", count: 10) {
+                    component-card (to: "/dialog", name: "Dialog", desc: "Modal windows", icon: "square-stack") {}
+                    component-card (to: "/alertdialog", name: "AlertDialog", desc: "Alert modals", icon: "bell") {}
+                    component-card (to: "/drawer", name: "Drawer", desc: "Slide panels", icon: "layout-grid") {}
+                    component-card (to: "/sheet", name: "Sheet", desc: "Bottom sheets", icon: "square-stack") {}
+                    component-card (to: "/popover", name: "Popover", desc: "Floating panels", icon: "layout-grid") {}
+                    component-card (to: "/dropdownmenu", name: "DropdownMenu", desc: "Context menus", icon: "layout-grid") {}
+                    component-card (to: "/contextmenu", name: "ContextMenu", desc: "Right-click menus", icon: "layout-grid") {}
+                    component-card (to: "/collapsible", name: "Collapsible", desc: "Expand/collapse", icon: "layout-grid") {}
+                    component-card (to: "/accordion", name: "Accordion", desc: "Collapsible sections", icon: "layout-grid") {}
+                }
+            }
+
+            // Footer
+            col (style: "border-t pt-8 pb-4 text-center text-sm text-muted-foreground") {
+                text "Auto UI Component Gallery — Built with Auto Language"
+            }
         }
     }
 }

@@ -1,19 +1,19 @@
-// pages/slider.at - Slider component documentation page
+// pages/progress.at - Progress component documentation page
 
-widget SliderPage {
+widget ProgressPage {
     model { activeTab str = "preview" }
 
     view {
         col {
-            h1 "Slider"
-            text "An input where the user selects a value from within a given range."
+            h1 "Progress"
+            text "Displays an indicator showing the completion progress of a task."
 
             h2 "Installation"
-            codeblock (lang: "bash", code: "npx shadcn-vue@latest add slider") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add progress") {}
 
             h2 "Simple"
-            preview-card (id: "slider-basic") {
-                slider (min: "0", max: "100", value: "50", style: "w-60") {}
+            preview-card (id: "progress-basic") {
+                progress (value: "33", style: "w-60") {}
             }
 
             h2 "Properties"
@@ -29,11 +29,11 @@ widget SliderPage {
                 }
                 tbody {
                     tr {
-                        td "min"
+                        td "value"
                         td "number"
                         td "0"
-                        td "-"
-                        td "Minimum value"
+                        td "0-100"
+                        td "Progress percentage"
                     }
                     tr {
                         td "max"
@@ -41,13 +41,6 @@ widget SliderPage {
                         td "100"
                         td "-"
                         td "Maximum value"
-                    }
-                    tr {
-                        td "step"
-                        td "number"
-                        td "1"
-                        td "-"
-                        td "Step increment"
                     }
                 }
             }

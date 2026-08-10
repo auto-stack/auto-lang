@@ -1,0 +1,64 @@
+// pages/sheet.at - Sheet component documentation page
+
+widget SheetPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Sheet"
+            text "A panel that slides in from the side of the screen."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add sheet") {}
+
+            h2 "Simple"
+            preview-card (id: "sheet-basic") {
+                row (gap: "4") {
+                    sheet (side: "right") {
+                        sheet-trigger {
+                            button (text: "Open", variant: "outline") {}
+                        }
+                        sheet-content {
+                            sheet-header {
+                                sheet-title "Edit Profile"
+                                sheet-description "Make changes to your profile here."
+                            }
+                            col (gap: "4") {
+                                text "Profile content goes here."
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "side"
+                        td "string"
+                        td (text: "\"right\"") {}
+                        td (text: "\"top\", \"right\", \"bottom\", \"left\"") {}
+                        td "Which side the sheet slides from"
+                    }
+                    tr {
+                        td "open"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Controls the open state"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,19 +1,56 @@
-// pages/pagination.at — Verify #7: Pagination component names corrected.
+// pages/pagination.at - Pagination component documentation page
+
 widget PaginationPage {
+    model { activeTab str = "preview" }
+
     view {
         col {
-            style: "space-y-4"
-            h2 "Pagination (fix #7)" { style: "text-xl font-semibold" }
-            text "Pagination now uses correct shadcn-vue export names (PaginationContent, PaginationItem, PaginationPrevious)." { style: "text-muted-foreground" }
-            pagination {
-                total: 10
-                per_page: 3
-                pagination-list {
-                    pagination-prev {}
-                    pagination-item { text: "1", value: 1 }
-                    pagination-item { text: "2", value: 2 }
-                    pagination-item { text: "3", value: 3 }
-                    pagination-next {}
+            h1 "Pagination"
+            text "A navigation component for paginating through content."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add pagination") {}
+
+            h2 "Simple"
+            preview-card (id: "pagination-basic") {
+                row (gap: "2", style: "items-center") {
+                    pagination (total: 100, itemsPerPage: 10) {}
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "total"
+                        td "number"
+                        td "-"
+                        td "-"
+                        td "Total number of pages"
+                    }
+                    tr {
+                        td "page"
+                        td "number"
+                        td "1"
+                        td "-"
+                        td "Current page number"
+                    }
+                    tr {
+                        td "sibling-count"
+                        td "number"
+                        td "-"
+                        td "-"
+                        td "Number of visible page buttons"
+                    }
                 }
             }
         }

@@ -1,0 +1,281 @@
+// pages/carousel.at - Carousel component documentation page
+
+widget CarouselPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Carousel"
+            text "A carousel with motion and gestures built in using Embla Carousel."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add carousel") {}
+
+            // Basic Example
+            h2 "Basic"
+            preview-card (id: "carousel-basic") {
+                carousel (style: "w-full max-w-xs") {
+                    carousel-content {
+                        carousel-item {
+                            card {
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "1", style: "text-4xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item {
+                            card {
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "2", style: "text-4xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item {
+                            card {
+                                card-content (style: "flex aspect-square items-center justify-center p-6") {
+                                    span (text: "3", style: "text-4xl font-semibold") {}
+                                }
+                            }
+                        }
+                    }
+                    carousel-previous {}
+                    carousel-next {}
+                }
+            }
+
+            // Sizes Example
+            h2 "Sizes"
+            text (text: "Use the basis utility class on CarouselItem to set the size.", style: "text-muted-foreground") {}
+            preview-card (id: "carousel-sizes") {
+                carousel (style: "w-full max-w-sm") {
+                    carousel-content {
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "5", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/2 md:basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "6", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                    }
+                    carousel-previous {}
+                    carousel-next {}
+                }
+            }
+
+            // Spacing Example
+            h2 "Spacing"
+            text (text: "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing.", style: "text-muted-foreground") {}
+            preview-card (id: "carousel-spacing") {
+                carousel (style: "w-full max-w-sm") {
+                    carousel-content (style: "-ml-4") {
+                        carousel-item (style: "pl-4 basis-1/2") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "pl-4 basis-1/2") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "pl-4 basis-1/2") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "pl-4 basis-1/2") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                    }
+                    carousel-previous {}
+                    carousel-next {}
+                }
+            }
+
+            // Orientation Example
+            h2 "Orientation"
+            text (text: "Use the orientation prop to set vertical or horizontal direction.", style: "text-muted-foreground") {}
+            preview-card (id: "carousel-orientation") {
+                div (style: "py-12 flex justify-center") {
+                    carousel (orientation: "vertical", style: "w-full max-w-xs h-[200px]") {
+                        carousel-content (style: "-mt-1 h-[200px]") {
+                            carousel-item (style: "pt-1 md:basis-1/2") {
+                                card {
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "1", style: "text-3xl font-semibold") {}
+                                    }
+                                }
+                            }
+                            carousel-item (style: "pt-1 md:basis-1/2") {
+                                card {
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "2", style: "text-3xl font-semibold") {}
+                                    }
+                                }
+                            }
+                            carousel-item (style: "pt-1 md:basis-1/2") {
+                                card {
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "3", style: "text-3xl font-semibold") {}
+                                    }
+                                }
+                            }
+                            carousel-item (style: "pt-1 md:basis-1/2") {
+                                card {
+                                    card-content (style: "flex items-center justify-center p-6") {
+                                        span (text: "4", style: "text-3xl font-semibold") {}
+                                    }
+                                }
+                            }
+                        }
+                        carousel-previous {}
+                        carousel-next {}
+                    }
+                }
+            }
+
+            // Options Example
+            h2 "Options"
+            text (text: "Pass Embla options using the opts prop.", style: "text-muted-foreground") {}
+            preview-card (id: "carousel-options") {
+                carousel (align: "start", loop: "true", style: "w-full max-w-sm") {
+                    carousel-content {
+                        carousel-item (style: "basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "1", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "2", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "3", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "4", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                        carousel-item (style: "basis-1/3") {
+                            card {
+                                card-content (style: "flex items-center justify-center p-6") {
+                                    span (text: "5", style: "text-3xl font-semibold") {}
+                                }
+                            }
+                        }
+                    }
+                    carousel-previous {}
+                    carousel-next {}
+                }
+            }
+
+            // Properties Table
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "opts"
+                        td "object"
+                        td "{}"
+                        td "-"
+                        td "Embla carousel options"
+                    }
+                    tr {
+                        td "orientation"
+                        td "string"
+                        td (text: "\"horizontal\"") {}
+                        td (text: "\"horizontal\", \"vertical\"") {}
+                        td "Carousel direction"
+                    }
+                    tr {
+                        td "align"
+                        td "string"
+                        td (text: "\"center\"") {}
+                        td (text: "\"start\", \"center\", \"end\"") {}
+                        td "Alignment of slides"
+                    }
+                    tr {
+                        td "loop"
+                        td "boolean"
+                        td "false"
+                        td "true, false"
+                        td "Enable infinite loop"
+                    }
+                    tr {
+                        td "class"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Additional CSS classes"
+                    }
+                }
+            }
+        }
+    }
+}

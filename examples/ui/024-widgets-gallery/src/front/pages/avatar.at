@@ -1,0 +1,59 @@
+// pages/avatar.at - Avatar component documentation page
+
+widget AvatarPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Avatar"
+            text "An image element with a fallback for representing the user."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add avatar") {}
+
+            h2 "Simple"
+            preview-card (id: "avatar-basic") {
+                row (gap: "4") {
+                    avatar (src: "https://github.com/shadcn.png", alt: "@shadcn") {}
+                    avatar (fallback: "CN") {}
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "src"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Image source URL"
+                    }
+                    tr {
+                        td "alt"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Alt text for accessibility"
+                    }
+                    tr {
+                        td "fallback"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Fallback text when image fails"
+                    }
+                }
+            }
+        }
+    }
+}

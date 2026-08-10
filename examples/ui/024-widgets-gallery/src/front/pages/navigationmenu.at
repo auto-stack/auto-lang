@@ -1,0 +1,51 @@
+// pages/navigationmenu.at - NavigationMenu component documentation page
+
+widget NavigationmenuPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "NavigationMenu"
+            text "A collection of navigation links with dropdown support."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add navigation-menu") {}
+
+            h2 "Simple"
+            preview-card (id: "navigationmenu-basic") {
+                row (gap: "4") {
+                    navigation-menu {}
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "text"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Link text"
+                    }
+                    tr {
+                        td "href"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Link destination"
+                    }
+                }
+            }
+        }
+    }
+}

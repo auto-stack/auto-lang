@@ -1,0 +1,53 @@
+// pages/skeleton.at - Skeleton component documentation page
+
+widget SkeletonPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Skeleton"
+            text "Use to show a placeholder while content is loading."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add skeleton") {}
+
+            h2 "Simple"
+            preview-card (id: "skeleton-basic") {
+                skeleton (style: "w-48 h-4") {}
+            }
+
+            h2 "Card Skeleton"
+            preview-card (id: "skeleton-card") {
+                col (gap: "4", style: "w-64") {
+                    skeleton (style: "h-12 w-12 rounded-full") {}
+                    col (gap: "2") {
+                        skeleton (style: "h-4 w-full") {}
+                        skeleton (style: "h-4 w-3/4") {}
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "class"
+                        td "string"
+                        td "-"
+                        td "-"
+                        td "Tailwind classes for sizing"
+                    }
+                }
+            }
+        }
+    }
+}
