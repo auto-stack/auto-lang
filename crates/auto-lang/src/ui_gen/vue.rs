@@ -10626,6 +10626,33 @@ export function cn(...inputs: ClassValue[]) {
         code.push_str("    }\n");
         code.push_str("}\n");
 
+        // Plan 367 P2-4: emit module-level helper functions from the store file
+        // (e.g. `fn format_git_label(...)` declared OUTSIDE the store block).
+        // Handlers call them by bare name; without this the generated actions
+        // would throw `ReferenceError: <fn> is not defined` at runtime.
+        if !store.module_fns.is_empty() {
+            for mfn in &store.module_fns {
+                let param_list = mfn.params.iter()
+                    .map(|p| format!("{}: any", p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_anno = if mfn.ret_ts.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", mfn.ret_ts)
+                };
+                code.push_str(&format!("\nfunction {}({}){} {{\n", mfn.name, param_list, ret_anno));
+                let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+                // Indent every body line for readability (cosmetic only).
+                for line in body.lines() {
+                    code.push_str("    ");
+                    code.push_str(line);
+                    code.push('\n');
+                }
+                code.push_str("}\n");
+            }
+        }
+
         // Plan 360: accent color system. When the store declares an
         // `accent_color` state var, inject the 5-color palette + applyAccent
         // function + onMounted bootstrap. The palette is aligned with
@@ -15151,6 +15178,7 @@ store ShellStore {
                 variants: vec![],
             }],
             computed: vec![],
+            module_fns: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -15220,6 +15248,7 @@ store ShellStore {
                 ],
             }],
             computed: vec![],
+            module_fns: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -15291,6 +15320,7 @@ store ShellStore {
                 },
             ],
             computed: vec![],
+            module_fns: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);
@@ -15361,6 +15391,7 @@ store PlainStore {
                 variants: vec![],
             }],
             computed: vec![],
+            module_fns: vec![],
         };
 
         let code = VueGenerator::generate_store_composable(&store);

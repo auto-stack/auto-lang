@@ -496,6 +496,35 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         api_imports: Vec::new(),
         stream_endpoints: Vec::new(),
         computed,
+        module_fns: Vec::new(),
+    })
+}
+
+/// Extract a plain module-level function into an `AuraModuleFn` for the vue
+/// store composable. Skips `#[api]` handlers (those belong to the HTTP layer,
+/// not the frontend) and test functions.
+pub fn extract_module_fn(fn_decl: &crate::ast::Fn) -> Option<AuraModuleFn> {
+    if fn_decl.api_attrs.is_some() || fn_decl.is_test {
+        return None;
+    }
+    let params: Vec<String> = fn_decl.params.iter()
+        .map(|p| p.name.as_str().to_string())
+        .collect();
+    let ret_ts = match &fn_decl.ret {
+        crate::ast::Type::Void => "".to_string(),
+        crate::ast::Type::StrSlice | crate::ast::Type::StrOwned
+        | crate::ast::Type::StrFixed(_) | crate::ast::Type::CStrLit => "string".to_string(),
+        crate::ast::Type::Int | crate::ast::Type::Uint | crate::ast::Type::USize
+        | crate::ast::Type::I64 | crate::ast::Type::U64
+        | crate::ast::Type::Float | crate::ast::Type::Double => "number".to_string(),
+        crate::ast::Type::Bool => "boolean".to_string(),
+        _ => "any".to_string(),
+    };
+    Some(AuraModuleFn {
+        name: fn_decl.name.as_str().to_string(),
+        params,
+        ret_ts,
+        body: fn_decl.body.stmts.clone(),
     })
 }
 

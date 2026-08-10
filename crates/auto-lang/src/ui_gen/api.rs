@@ -369,12 +369,25 @@ pub fn generate_component_from_file(
     });
     let mut store_composables: Vec<(String, String)> = Vec::new();
     let mut store_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+    // Plan 367 P2-4: module-level plain functions in the store file (siblings of
+    // the `store { ... }` block, e.g. `fn format_git_label` helpers). The vue
+    // codegen emits them into the composable so handlers can call them by name.
+    let module_fns: Vec<crate::aura::AuraModuleFn> = ast.stmts.iter()
+        .filter_map(|stmt| {
+            if let crate::ast::Stmt::Fn(fn_decl) = stmt {
+                crate::aura::extract_module_fn(fn_decl)
+            } else {
+                None
+            }
+        })
+        .collect();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
             let mut store = extract_store_from_decl(store_decl)
                 .map_err(|e| e.to_string())?;
             store.api_imports = api_imports.clone();
             store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
+            store.module_fns = module_fns.clone();
             let (composable, warnings) = VueGenerator::generate_store_composable_full(&store);
             store_warnings.extend(warnings);
             let filename = format!("stores/use{}Store.ts", store.name);

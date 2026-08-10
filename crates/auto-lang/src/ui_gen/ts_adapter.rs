@@ -687,7 +687,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ")").ok();
                             return;
                         }
-                        "to_string" => {
+                        "to_string" | "str" => {
                             write!(out, "(").ok();
                             transpile_expr(object, ctx, out);
                             write!(out, ").toString()").ok();

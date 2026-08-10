@@ -380,6 +380,27 @@ pub struct AuraStore {
 
     /// Computed properties (Plan 367 P2-2: → getters in store composable)
     pub computed: Vec<AuraComputed>,
+
+    /// Module-level plain functions declared in the store file but OUTSIDE the
+    /// `store { ... }` block (e.g. `fn format_git_label(...)` helper). The vue
+    /// codegen emits them as module-level helper functions in the composable so
+    /// handlers can call them by bare name. Without this, such helpers are
+    /// silently dropped and generated handlers throw ReferenceError at runtime.
+    pub module_fns: Vec<AuraModuleFn>,
+}
+
+/// A plain (non-`#[api]`, non-widget) module-level function from a store file.
+/// Transpiled to a TS helper function in the store composable.
+#[derive(Debug, Clone)]
+pub struct AuraModuleFn {
+    /// Function name (e.g. "format_git_label").
+    pub name: String,
+    /// Parameter names in declaration order (→ TS function parameters).
+    pub params: Vec<String>,
+    /// TS return type ("" for no return value / unit).
+    pub ret_ts: String,
+    /// Raw AST body statements (transpiled via the ts_adapter).
+    pub body: Vec<crate::ast::Stmt>,
 }
 
 /// A streaming API endpoint: an `#[api]` function returning `~Stream<T>`.
