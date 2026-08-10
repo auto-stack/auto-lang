@@ -2964,6 +2964,77 @@ impl VueGenerator {
         }
     }
 
+    /// Generate Vue's built-in `<Teleport>` (plan 012 P2 gap 27):
+    /// `teleport (to: "body") { ... }` → `<Teleport to="body">...</Teleport>`.
+    /// - `to:` string literal → static `to="body"`; expression → `:to="expr"`.
+    /// - `disabled:` bool literal → static `disabled`; expression →
+    ///   `:disabled="expr"`.
+    /// Children are emitted normally (recursed via node_to_html).
+    fn generate_teleport_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+        let mut attrs: Vec<String> = Vec::new();
+
+        // `to` target (Vue requires it; without it <Teleport> is a no-op and
+        // Vue logs a runtime warning — surface that at codegen time).
+        match props.get("to") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                attrs.push(format!("to=\"{}\"", s));
+            }
+            Some(AuraPropValue::Expr(expr)) => {
+                let target = self.expr_to_vue_bound_value(expr)?;
+                attrs.push(format!(":to=\"{}\"", target));
+            }
+            Some(AuraPropValue::StyleBinding(_)) => {}
+            None => {
+                self.warn(
+                    "R015",
+                    crate::ui_gen::validators::Severity::Warning,
+                    "teleport element without a `to` prop: Vue's <Teleport> is a \
+                     no-op without a target and logs a runtime warning"
+                        .to_string(),
+                );
+            }
+        }
+
+        // Optional `disabled` toggle.
+        if let Some(value) = props.get("disabled") {
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => {
+                    if *b {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                AuraPropValue::Expr(expr) => {
+                    let cond = self.expr_to_vue_bound_value(expr)?;
+                    attrs.push(format!(":disabled=\"{}\"", cond));
+                }
+                AuraPropValue::StyleBinding(_) => {}
+            }
+        }
+
+        let attr_str = if attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", attrs.join(" "))
+        };
+
+        if children.is_empty() {
+            Ok(format!("{}<Teleport{}></Teleport>\n", ind, attr_str))
+        } else {
+            let mut html = format!("{}<Teleport{}>\n", ind, attr_str);
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+            html.push_str(&format!("{}</Teleport>\n", ind));
+            Ok(html)
+        }
+    }
+
     /// Emit a child of a component instantiation (sub-widget, external
     /// `use { component }`, dyn `<component :is>`, or PascalCase component).
     /// A `slot(name: "x") { ... }` element in this position targets the
@@ -3121,6 +3192,14 @@ impl VueGenerator {
                 // the component children emission sites below.)
                 if tag == "slot" || tag == "Slot" {
                     return self.generate_slot_outlet_html(props, children, indent);
+                }
+
+                // Special handling for teleport element — Vue's built-in
+                // <Teleport>: teleport (to: "body") { ... } →
+                // <Teleport to="body">...</Teleport>. Must run before the
+                // unknown-tag div fallback in map_tag (plan 012 P2 gap 27).
+                if tag == "teleport" || tag == "Teleport" {
+                    return self.generate_teleport_html(props, children, indent);
                 }
 
                 // Special handling for category-section element
@@ -14686,6 +14765,129 @@ widget VHtmlCatchAllProbe {
         assert!(
             matches!(err, GenError::UnsupportedExpr(_)),
             "expected UnsupportedExpr, got: {err:?}"
+        );
+    }
+
+    // ====================================================================
+    // teleport element (plan 012 P2 gap 27) — Vue's built-in <Teleport>.
+    // `teleport (to: "body") { ... }` emits `<Teleport to="body">...</Teleport>`
+    // instead of silently degrading to `<div :to="'body'">` via the
+    // unknown-tag fallback in map_tag.
+    // ====================================================================
+
+    /// Static string target: to: "body" → to="body", children recursed.
+    #[test]
+    fn test_teleport_static_to() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    view {
+        teleport (to: "body") {
+            div { text "x" }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<Teleport to="body">"#),
+            "Teleport with static to:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("</Teleport>"), "Teleport closed:\n{}", sfc);
+        assert!(sfc.contains("x"), "children emitted:\n{}", sfc);
+        assert!(
+            !sfc.contains(r#"<div :to="#),
+            "no unknown-tag div fallback:\n{}",
+            sfc
+        );
+    }
+
+    /// Expression target: to: .target → :to="target".
+    #[test]
+    fn test_teleport_expr_to() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var target str = "body" }
+    view {
+        teleport (to: .target) {
+            text "overlay"
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<Teleport :to="target">"#),
+            "Teleport with bound to:\n{}",
+            sfc
+        );
+    }
+
+    /// Optional disabled toggle: disabled: .off → :disabled="off".
+    #[test]
+    fn test_teleport_disabled_expr() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var off bool = false }
+    view {
+        teleport (to: "body", disabled: .off) {
+            text "overlay"
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<Teleport to="body" :disabled="off">"#),
+            "Teleport with bound disabled:\n{}",
+            sfc
+        );
+    }
+
+    /// teleport nested inside layout containers works normally.
+    #[test]
+    fn test_teleport_nested_in_containers() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    view {
+        col {
+            row {
+                teleport (to: "body") {
+                    div { text "nested" }
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"<Teleport to="body">"#),
+            "Teleport nested in col/row:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("nested"), "children emitted:\n{}", sfc);
+        assert!(
+            !sfc.contains(r#"<div :to="#),
+            "no unknown-tag div fallback:\n{}",
+            sfc
+        );
+    }
+
+    /// Missing `to` prop warns R015 (Vue's <Teleport> is a no-op without it).
+    #[test]
+    fn test_teleport_missing_to_warns_r015() {
+        let (_sfc, warnings) = gen_sfc_and_warnings(r#"
+widget TeleportNoToProbe {
+    view {
+        teleport {
+            text "nowhere"
+        }
+    }
+}
+"#);
+        let r015 = warnings_for_rule(&warnings, "R015");
+        assert_eq!(r015.len(), 1, "one R015 warning, got: {warnings:?}");
+        assert!(
+            r015[0].message.contains("to"),
+            "warning names the missing prop: {}",
+            r015[0].message
         );
     }
 
