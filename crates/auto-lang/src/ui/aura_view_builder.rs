@@ -848,13 +848,25 @@ impl<'a> AuraViewBuilder<'a> {
         let mut builder = View::<DynamicMessage>::col()
             .spacing(spacing)
             .padding(padding);
+        // Plan 048:提取 overflow 标志(builder.with_style 会 move style)。
+        let needs_scroll = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
+        });
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
         for child in child_views {
             builder = builder.child(child);
         }
-        builder.build()
+        let col_view = builder.build();
+        // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
+        if needs_scroll {
+            return View::Scrollable {
+                child: Box::new(col_view),
+                width: None, height: None, style: None,
+            };
+        }
+        col_view
     }
 
     /// Tracked convert_grid — mirrors `convert_grid` but recurses via
@@ -1531,6 +1543,11 @@ impl<'a> AuraViewBuilder<'a> {
             .spacing(spacing)
             .padding(padding);
 
+        // Plan 048:提取 overflow 标志(builder.with_style 会 move style)。
+        let needs_scroll = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
+        });
+
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
@@ -1539,7 +1556,15 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.child(child);
         }
 
-        builder.build()
+        let col_view = builder.build();
+        // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
+        if needs_scroll {
+            return View::Scrollable {
+                child: Box::new(col_view),
+                width: None, height: None, style: None,
+            };
+        }
+        col_view
     }
 
     /// Convert a row element.
