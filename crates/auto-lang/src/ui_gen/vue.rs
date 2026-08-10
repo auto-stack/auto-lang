@@ -2861,6 +2861,15 @@ impl VueGenerator {
                 }
                 continue;
             }
+            // v-html content directive: html: .content → v-html="content"
+            // (raw HTML injection; children are ignored by Vue at runtime).
+            if key == "html" {
+                if let AuraPropValue::Expr(expr) = value {
+                    let content = self.expr_to_vue_bound_value(expr)?;
+                    attrs.push(format!("v-html=\"{}\"", content));
+                }
+                continue;
+            }
             match value {
                 AuraPropValue::Expr(expr) => {
                     // Plan 012 P0#13 follow-up: an unsupported expr form here
@@ -2876,6 +2885,16 @@ impl VueGenerator {
                 }
                 AuraPropValue::StyleBinding(_) => {}
             }
+        }
+
+        // v-html overrides inner content in Vue: warn when the dyn node also
+        // carries children (still emitted; the Vue runtime ignores them).
+        if props.contains_key("html") && !children.is_empty() {
+            self.warn(
+                "R014",
+                crate::ui_gen::validators::Severity::Warning,
+                "v-html on `dyn` overrides its inner content; children ignored at runtime".to_string(),
+            );
         }
 
         // Event listeners (same conventions as plain elements)
@@ -3200,6 +3219,16 @@ impl VueGenerator {
                             }
                             continue;
                         }
+                        // v-html content directive on a component:
+                        // html: .content → v-html="content" (lands on the
+                        // component root; slot children are ignored by Vue).
+                        if key == "html" {
+                            if let AuraPropValue::Expr(expr) = value {
+                                let content = self.expr_to_vue_bound_value(expr)?;
+                                attrs.push(format!("v-html=\"{}\"", content));
+                            }
+                            continue;
+                        }
                         let value_str = match value {
                             // Plan 012 P0#13 follow-up: warn R013 + keep the
                             // old `null` fallback instead of failing the
@@ -3215,6 +3244,16 @@ impl VueGenerator {
                             first_prop_expr = Some(value_str.clone());
                         }
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                    // v-html on a component overrides its default slot: warn
+                    // when the instantiation also carries children (still
+                    // emitted; the Vue runtime ignores them).
+                    if props.contains_key("html") && !children.is_empty() {
+                        self.warn(
+                            "R014",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("v-html on `{}`: children ignored at runtime", tag),
+                        );
                     }
                     // Add :key binding for component reuse identity.
                     //
@@ -3424,6 +3463,15 @@ impl VueGenerator {
                             }
                             continue;
                         }
+                        // v-html content directive: html: .content → v-html="content"
+                        // (raw HTML injection; inner content is ignored by Vue).
+                        if key == "html" {
+                            if let AuraPropValue::Expr(expr) = value {
+                                let content = self.expr_to_vue_bound_value(expr)?;
+                                attrs.push(format!("v-html=\"{}\"", content));
+                            }
+                            continue;
+                        }
                         // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
                         // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
                         // declaration in <script setup> (emitted later from
@@ -3592,6 +3640,17 @@ impl VueGenerator {
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                    }
+
+                    // v-html overrides inner content in Vue: warn when the
+                    // element also carries a `text:` prop or child nodes
+                    // (both still emitted; the Vue runtime ignores them).
+                    if props.contains_key("html") && (text_content.is_some() || !children.is_empty()) {
+                        self.warn(
+                            "R014",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("v-html on `{}`: children ignored at runtime", tag),
+                        );
                     }
 
                     (attrs, text_content, None)
@@ -6061,7 +6120,7 @@ impl VueGenerator {
     /// Returns: (attributes, text_content, generated_children_html)
     /// Pass-through for arbitrary HTML attributes on layout primitives (row/col)
     /// whose `generate_shadcn_attrs` arms only handle class. Emits any prop that
-    /// isn't class/style/gap/text/style_obj/show/ref (handled elsewhere) as a
+    /// isn't class/style/gap/text/style_obj/show/ref/html (handled elsewhere) as a
     /// v-bind expression (`:key="value"`) for Expr values or a static literal
     /// (`key="value"`) for string literals. This lets `row { draggable: "true",
     /// ondragstart: ... }` emit `:draggable="true"` alongside the flex class.
@@ -6073,7 +6132,7 @@ impl VueGenerator {
         props: &HashMap<String, AuraPropValue>,
     ) {
         for (key, value) in props {
-            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref") {
+            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html") {
                 continue;
             }
             match value {
@@ -6140,6 +6199,20 @@ impl VueGenerator {
                     "R013",
                     crate::ui_gen::validators::Severity::Warning,
                     format!("v-show on `{}`: {}; directive not emitted", tag, e),
+                ),
+            }
+        }
+
+        // v-html content directive: html: .content → v-html="content". Handled
+        // generically (like show above) so every shadcn-mapped element
+        // supports it; same infallible context, same R013-on-failure policy.
+        if let Some(AuraPropValue::Expr(expr)) = props.get("html") {
+            match self.expr_to_vue_bound_value(expr) {
+                Ok(content) => attrs.push(format!("v-html=\"{}\"", content)),
+                Err(e) => self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!("v-html on `{}`: {}; directive not emitted", tag, e),
                 ),
             }
         }
@@ -14423,6 +14496,185 @@ widget App {
             sfc
         );
         assert!(!sfc.contains(":show="), "no :show binding leaks:\n{}", sfc);
+    }
+
+    // ====================================================================
+    // v-html (plan 012 P2 gap 22) — `html: <expr>` prop emits
+    // `v-html="<expr>"` instead of a `:html` binding. Vue renders the raw
+    // HTML string as the element's inner content; any children/text are
+    // ignored at runtime (R014 warns on that conflict).
+    // ====================================================================
+
+    /// Dynamic content on a plain element (brace prop form).
+    #[test]
+    fn test_vhtml_plain_element_dynamic() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var content str = "" }
+    view {
+        col {
+            div(html: .content, class: "preview") { }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-html="content""#),
+            "v-html emitted with bound expr:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
+    }
+
+    /// v-html on a dyn (`<component :is>`) node.
+    #[test]
+    fn test_vhtml_on_dyn_component() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    model { var content str = "" }
+    view {
+        col {
+            dyn (.Teleport) {
+                html: .content
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-html="content""#),
+            "v-html on dyn component:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
+    }
+
+    /// v-html on a sub-widget component instantiation (the directive lands
+    /// on the component root, like v-show).
+    #[test]
+    fn test_vhtml_on_sub_widget_component() {
+        let sfc = gen_sfc_with_sub_widgets(r#"
+use tab: EditorTab
+
+widget App {
+    model { var tabs list = [] }
+    model { var content str = "" }
+    view {
+        col {
+            for tab in .tabs {
+                EditorTab(key: tab.path, path: tab.path, html: .content)
+            }
+        }
+    }
+}
+"#, &["EditorTab"]);
+        assert!(
+            sfc.contains(r#"v-html="content""#),
+            "v-html on component:\n{}",
+            sfc
+        );
+        assert!(!sfc.contains(":html="), "no :html binding leaks:\n{}", sfc);
+    }
+
+    /// Conflict: html: + child nodes → R014 warning. v-html is still
+    /// emitted and wins; the children are emitted too (Vue ignores them
+    /// at runtime).
+    #[test]
+    fn test_vhtml_conflicting_children_warns_r014() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget VHtmlConflictProbe {
+    model { var content str = "" }
+    view {
+        col {
+            div(html: .content) {
+                text "ignored"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-html="content""#),
+            "v-html still emitted despite children:\n{sfc}"
+        );
+        let r014 = warnings_for_rule(&warnings, "R014");
+        assert_eq!(r014.len(), 1, "one R014 conflict warning, got: {warnings:?}");
+        assert!(
+            r014[0].message.contains("div"),
+            "warning names the element tag: {}",
+            r014[0].message
+        );
+        assert!(
+            r014[0].message.contains("children ignored"),
+            "warning explains the conflict: {}",
+            r014[0].message
+        );
+    }
+
+    /// Conflict via the `text:` prop form also warns R014.
+    #[test]
+    fn test_vhtml_conflicting_text_prop_warns_r014() {
+        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+widget VHtmlTextConflictProbe {
+    model { var content str = "" }
+    view {
+        col {
+            div(html: .content, text: "ignored") { }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(r#"v-html="content""#),
+            "v-html still emitted despite text prop:\n{sfc}"
+        );
+        let r014 = warnings_for_rule(&warnings, "R014");
+        assert_eq!(r014.len(), 1, "one R014 conflict warning, got: {warnings:?}");
+        assert!(
+            r014[0].message.contains("children ignored"),
+            "warning explains the conflict: {}",
+            r014[0].message
+        );
+    }
+
+    /// v-html on a plain element keeps `?` propagation: an unsupported
+    /// content form is a hard codegen error, not a degraded binding.
+    #[test]
+    fn test_p013_catchall_vhtml_is_hard_error() {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(r#"
+widget VHtmlCatchAllProbe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span (html: .a ?? .b) {
+                text "label"
+            }
+        }
+    }
+}
+"#).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new();
+        let err = gen
+            .generate(&widget)
+            .expect_err("unsupported v-html expr must fail codegen");
+        assert!(
+            matches!(err, GenError::UnsupportedExpr(_)),
+            "expected UnsupportedExpr, got: {err:?}"
+        );
     }
 
     // ====================================================================
