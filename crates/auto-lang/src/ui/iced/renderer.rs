@@ -1207,7 +1207,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Scrollable { child, width, height, style } => {
-                build_scrollable(child.into_iced(), width, height, style.as_ref(), None)
+                // Plan 049:给所有 auto-generated Scrollable 固定 Id(用于 snap_to_end)。
+                build_scrollable(child.into_iced(), width, height, style.as_ref(),
+                    Some("blocklist_scroll".to_string()))
             }
 
             AbstractView::Grid { cols, gap, cells, style } => {
@@ -3149,6 +3151,12 @@ struct DynamicState {
     prompt_input_id: iced::widget::Id,
     /// Plan 047:Set by PromptBar.Run handler; update 结尾据此返回 focus Task。
     needs_prompt_refocus: std::cell::Cell<bool>,
+    /// Plan 049:BlockList scrollable 的固定 Id,用于 snap_to_end 自动滚到底部。
+    blocklist_scroll_id: iced::widget::Id,
+    /// Plan 049:Set when blocks 数量增加;update 结尾返回 snap_to_end Task。
+    needs_scroll_to_bottom: std::cell::Cell<bool>,
+    /// Plan 049:追踪上次 blocks 数量,检测新增 block。
+    last_block_count: std::cell::Cell<usize>,
     /// Split ratio (0..1) for the inner Tree|Inspector divider within the
     /// DevTools panel — `ratio` is the Tree pane's share of the panel width.
     /// Dragged via the inner divider (Plan 309 续篇).
@@ -3386,6 +3394,9 @@ fn compare_pngs(
             elements_scroll_id: iced::widget::Id::unique(),
             prompt_input_id: iced::widget::Id::new("prompt_input"),
             needs_prompt_refocus: std::cell::Cell::new(false),
+            blocklist_scroll_id: iced::widget::Id::new("blocklist_scroll"),
+            needs_scroll_to_bottom: std::cell::Cell::new(false),
+            last_block_count: std::cell::Cell::new(0),
             // Plan 309 续篇: Tree | Inspector 同屏分屏，树占 38%；分隔栏可拖拽。
             inspector_split_ratio: std::cell::RefCell::new(0.38),
             dragging_inner_divider: std::cell::RefCell::new(false),
@@ -4101,14 +4112,27 @@ fn compare_pngs(
             }
         }
 
-        // Plan 046:PromptBar.Run handler 已清空 .input="",但 :3996 的 retain
-        // 保留了 "Run" 的 input_values entry(="ls"),patch_input_values 会用它
-        // 回填 input widget → 输入框不清空。这里在 Run 之后移除该 entry,
-        // 让 view 渲染时 input value 取 handler 清空后的空值(对齐 vue v-model)。
+        // Plan 049:PromptBar.Run handler 清空 widget 本地 .input="",但 iced 0.14
+        // 的 text_input 是单向 value 语义(widget.value 不同步回 state),固定 Id
+        // (Plan 047)让 tree state 跨帧复用,导致 value="" 不生效。
+        // 修复:Run 后显式清空 component state 的 input 字段 + 清 cached_rendered
+        // 强制下一帧完全重建 text_input widget(新实例 value="")。
         if widget_name == "PromptBar" && event_name == "Run" {
+            let _ = state.component.write_state("input", auto_val::Value::str(""));
+            *state.cached_rendered.borrow_mut() = None; // 强制重建(丢弃旧 widget)
+            *state.cached_converted_view.borrow_mut() = None;
+            *state.view_dirty.borrow_mut() = true;
             state.input_values.remove(&event_name);
             // Plan 047:view 重建后恢复 input 焦点(否则 on_submit 第二次不触发)。
             state.needs_prompt_refocus.set(true);
+        }
+
+        // Plan 049:检测 blocks 数量增加 → 自动滚到底部。
+        let cur_block_count = state.component.read_state_as_vec("blocks")
+            .map(|v| v.len()).unwrap_or(0);
+        if cur_block_count > state.last_block_count.get() {
+            state.last_block_count.set(cur_block_count);
+            state.needs_scroll_to_bottom.set(true);
         }
 
         // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
@@ -4409,6 +4433,13 @@ fn compare_pngs(
             state.needs_prompt_refocus.set(false);
             // iced 0.14: widget::operation::focus(id) 直接返回 Task<T>。
             return iced::widget::operation::focus(state.prompt_input_id.clone());
+        }
+
+        // Plan 049:blocks 增加后自动滚到底部(最新 block 可见)。
+        if state.needs_scroll_to_bottom.get() {
+            state.needs_scroll_to_bottom.set(false);
+            // iced 0.14: snap_to_end 在 widget::operation(同 focus)。
+            return iced::widget::operation::snap_to_end(state.blocklist_scroll_id.clone());
         }
 
         scroll_task.unwrap_or_else(iced::Task::none)
