@@ -10562,12 +10562,27 @@ export function cn(...inputs: ClassValue[]) {
                         .map(|(wire, action)| (disc.clone(), wire.clone(), action.clone()))
                         .collect()
                 };
+                // Plan 051 M2 (②-b 预置字段模拟): ash-gui 的 RunOutput/RunResult
+                // 是无参 handler,通过 __sse_* 预置字段读 SSE 数据(VM 限制:不能收
+                // struct 参)。VM 模式下由 renderer 填字段;vue 模式下由这段 codegen
+                // 模拟同样的模式:先把 data 拆填进 __sse_* ref,再调无参 handler。
+                // 检测信号:store 的 state_vars 含 __sse_ 前缀字段(__sse_ 是保留前缀)。
+                // 仅对 legacy fallback 的 RunOutput/RunResult 生效;带 variants 的
+                // 数据驱动流(如 forge)走原带参透传路径,不受影响。
+                let preset_mode = store.state_vars.iter()
+                    .any(|s| s.name.starts_with("__sse_"));
                 for (i, (disc_field, wire_value, action)) in chain.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "else if" };
-                    code.push_str(&format!(
-                        "                {} (data.{} === '{}') {}(data);\n",
-                        kw, disc_field, wire_value, action
-                    ));
+                    if preset_mode {
+                        emit_preset_dispatch(
+                            &mut code, kw, disc_field, wire_value, action,
+                        );
+                    } else {
+                        code.push_str(&format!(
+                            "                {} (data.{} === '{}') {}(data);\n",
+                            kw, disc_field, wire_value, action
+                        ));
+                    }
                 }
                 code.push_str("            } catch { }\n");
                 code.push_str("        };\n");
@@ -10949,6 +10964,59 @@ fn stream_guard_var(path: &str) -> String {
         .trim_matches('_')
         .to_string();
     format!("__streamConnected_{}", suffix)
+}
+
+/// Plan 051 M2 (②-b 预置字段模拟): emit SSE dispatch for stores using the
+/// `__sse_*` preset-field pattern (ash-gui convention). For these stores the
+/// RunOutput/RunResult handlers are parameter-less and read `__sse_*` refs that
+/// the VM renderer pre-fills; in vue we codegen the same pattern: unpack `data`
+/// into the matching `__sse_*` refs, then call the parameter-less handler.
+///
+/// Only the legacy-fallback actions (`RunOutput`/`RunResult`, the ash-gui
+/// `command_output`/`command_result` contract) are handled here. Any other
+/// action falls back to the default `(data)` parameterized call.
+///
+/// Field mapping source: `shell_store.at` RunOutput/RunResult handler comments
+/// + the ShellEvent/CommandResult contract (`api.at`). `command_result` payloads
+/// arrive nested under `data.CommandResult` when the server emits a
+/// tagged-enum frame; `data.CommandResult ?? data` handles both shapes.
+fn emit_preset_dispatch(
+    code: &mut String,
+    kw: &str,
+    disc_field: &str,
+    wire_value: &str,
+    action: &str,
+) {
+    match action {
+        "RunOutput" => {
+            // command_output: { event, block_id, chunk } (flat)
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __sse_block_id.value = data.block_id; __sse_chunk.value = data.chunk; RunOutput(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "RunResult" => {
+            // command_result: payload nested under data.CommandResult when the
+            // server emits a tagged-enum frame (ash-server does). Unwrap both
+            // shapes via `data.CommandResult ?? data`. Then fill the 5 refs and
+            // call the parameter-less handler. status may be a bare string
+            // ("Success"/"Cancelled") or an object ({"Failed": msg}); the .at
+            // handler treats it as a string and the vue side preserves whatever
+            // shape arrived — GAP-B is handled in the .at handler body.
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; RunResult(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        _ => {
+            // Non-legacy action in a preset-field store: fall back to
+            // parameterized dispatch (preserves prior behavior).
+            code.push_str(&format!(
+                "                {} (data.{} === '{}') {}(data);\n",
+                kw, disc_field, wire_value, action
+            ));
+        }
+    }
 }
 
 /// The `cn` class-merge helper emitted at the registry root (`registry/utils.ts`)
