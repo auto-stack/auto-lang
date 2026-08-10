@@ -2346,46 +2346,100 @@ fn handle_show_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::
     }
 }
 
-/// Plan 044 M1: 把命令 stdout 解析成 RenderedOutput JSON(对齐 vue 版 ash-core 渲染)。
-/// 在 renderer 侧实现(不依赖 auto-shell/ash-core,避免循环依赖)。
-fn parse_output_to_structured(cmd: &str, stdout: &str) -> serde_json::Value {
-    let cmd_name = cmd.split_whitespace().next().unwrap_or("").to_lowercase();
-    match cmd_name.as_str() {
-        "ls" | "dir" => parse_ls_to_table(stdout),
-        _ => serde_json::json!({ "Text": stdout }),
+/// Plan 046: 处理 `ls [path]` / `dir [path]` —— renderer 侧用 std::fs::read_dir
+/// 列目录,产出 RenderedOutput::Table 变体(对齐 ash-core ls.rs 的 run_atom 路径)。
+///
+/// 不走 std::process(避免 powershell/dir 文本闪现 + 解析脆弱)。
+/// 列序 ["name","type","size"](短模式,ash-core renderer.rs:329-361 权威)。
+///
+/// 支持参数:ls / ls <path> / ls -a(显示隐藏) / ls -l(忽略,短模式)。
+/// 排序:目录优先 + 字母序(对齐 ash-core fs.rs:274-300)。
+fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
+    let args: Vec<&str> = cmd.split_whitespace().collect();
+    // 解析 flags 和路径(args[0] = "ls"/"dir")
+    let mut show_hidden = false;
+    let mut target_path: Option<&str> = None;
+    for arg in &args[1..] {
+        if arg.starts_with('-') {
+            if arg.contains('a') || arg.contains('A') {
+                show_hidden = true;
+            }
+            // -l / -t / -r 等忽略(MVP 只做短模式)
+        } else if target_path.is_none() {
+            target_path = Some(arg);
+        }
+    }
+
+    // 拼完整路径:绝对路径直用;相对路径拼 cwd。
+    let base = if cwd.is_empty() || cwd == "." {
+        // std::fs 相对进程 CWD(ash-gui-auto 项目目录)
+        std::env::current_dir().unwrap_or_default().to_string_lossy().to_string()
+    } else {
+        cwd.to_string()
+    };
+    let target = match target_path {
+        Some(p) if std::path::Path::new(p).is_absolute() => p.to_string(),
+        Some(p) => format!("{}/{}", base.trim_end_matches('/'), p),
+        None => base,
+    };
+
+    match std::fs::read_dir(&target) {
+        Ok(entries) => {
+            // 收集 (name, is_dir, size),过滤隐藏(除非 -a)。
+            let mut items: Vec<(String, bool, u64)> = Vec::new();
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !show_hidden && name.starts_with('.') {
+                    continue;
+                }
+                let metadata = entry.metadata().ok();
+                let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                items.push((name, is_dir, size));
+            }
+            // 排序:目录优先 + 字母序(不区分大小写)。
+            items.sort_by(|a, b| {
+                b.1.cmp(&a.1) // 目录优先(true > false)
+                    .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
+            });
+
+            let rows: Vec<serde_json::Value> = items
+                .iter()
+                .map(|(name, is_dir, size)| {
+                    let file_type = if *is_dir { "dir" } else { "file" };
+                    let size_str = if *is_dir {
+                        String::new()
+                    } else {
+                        size.to_string()
+                    };
+                    // Plan 046:每行一个扁平对象 {name, type, size}(避开 VM 的
+                    // 二维数组 for 循环 bug —— 内层 for cell in row 不迭代)。
+                    // RenderTable 用单层 for row in output.rows + row.name 访问。
+                    serde_json::json!({
+                        "name": name,
+                        "type": file_type,
+                        "size": size_str,
+                    })
+                })
+                .collect();
+            let output = serde_json::json!({
+                "Table": { "columns": ["name", "type", "size"], "rows": rows }
+            });
+            (serde_json::Value::String("Success".to_string()), output)
+        }
+        Err(e) => (
+            serde_json::json!({"Failed": format!("ls: {}: {}", target, e)}),
+            serde_json::Value::Null,
+        ),
     }
 }
 
-/// 把 ls 的 stdout 解析成 RenderedOutput::Table JSON。
-/// 简化:每行一个文件名,列 [name, type, size]。
-fn parse_ls_to_table(stdout: &str) -> serde_json::Value {
-    let mut rows: Vec<serde_json::Value> = Vec::new();
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.is_empty() { continue; }
-        if line.starts_with("Volume ") || line.starts_with("Directory ") { continue; }
-        if line.starts_with("Total files") || (line.starts_with("  ") && line.contains("File(s)")) { continue; }
-
-        let name = if line.contains("<DIR>") {
-            line.split("<DIR>").nth(1).map(|s| s.trim().to_string()).unwrap_or_else(|| line.to_string())
-        } else {
-            line.split_whitespace().last().map(|s| s.to_string()).unwrap_or_else(|| line.to_string())
-        };
-        if name.is_empty() || name == "." || name == ".." { continue; }
-        let is_dir = line.contains("<DIR>") || name.ends_with('/');
-        let file_type = if is_dir { "dir" } else { "file" };
-        rows.push(serde_json::json!([
-            { "Text": name },
-            { "Text": file_type },
-            { "Text": "" },
-        ]));
-    }
-    if rows.is_empty() {
-        return serde_json::json!({ "Text": stdout });
-    }
-    serde_json::json!({
-        "Table": { "columns": ["name", "type", "size"], "rows": rows }
-    })
+/// Plan 044 M1: 把命令 stdout 解析成 RenderedOutput JSON(对齐 vue 版 ash-core 渲染)。
+/// 在 renderer 侧实现(不依赖 auto-shell/ash-core,避免循环依赖)。
+/// Plan 046: ls/dir 已改为 spawn 前拦截(handle_ls_command),此处只剩 Text 回退。
+fn parse_output_to_structured(cmd: &str, stdout: &str) -> serde_json::Value {
+    let _ = cmd; // cmd_name 不再用(ls/dir 已拦截);保留签名供未来扩展
+    serde_json::json!({ "Text": stdout })
 }
 
 /// merged 模式执行循环:从队列取命令 → std::process::Command 执行 → 推流式 + 结果事件。
@@ -2417,6 +2471,26 @@ async fn merged_exec_loop(
         let cmd_name = cmd.split_whitespace().next().unwrap_or("").to_lowercase();
         if cmd_name == "show" {
             let (status_val, output_val) = handle_show_command(&cmd, &cwd);
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": cwd,
+                    "status": status_val,
+                    "output": output_val,
+                    "duration_ms": 0,
+                })
+                .to_string(),
+            });
+            continue;
+        }
+
+        // Plan 046:ls/dir 同 show —— ash 内置命令,renderer 侧用 std::fs::read_dir
+        // 列目录(对齐 ash-core ls 的 run_atom 路径),不走 std::process。
+        // 解决三个问题:(1) 消除 powershell/dir 文本闪现(无流式 chunk);
+        // (2) 数据来源正确(read_dir 而非解析文本);(3) 同步返回 Table 变体。
+        if cmd_name == "ls" || cmd_name == "dir" {
+            let (status_val, output_val) = handle_ls_command(&cmd, &cwd);
             let _ = tx.send(ShellStreamEvent {
                 event: "command_result".to_string(),
                 payload_json: serde_json::json!({
