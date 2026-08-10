@@ -1,0 +1,12 @@
+// pages/navlink.at — Verify #6: NavLink href forwarded to router-link to.
+widget NavLinkPage {
+    view {
+        col {
+            style: "space-y-4"
+            h2 "NavLink (fix #6)" { style: "text-xl font-semibold" }
+            text "NavLink href prop now maps to router-link's 'to' attribute." { style: "text-muted-foreground" }
+            nav-link { text: "Dashboard", href: "/", icon: "layout-dashboard", active: true }
+            nav-link { text: "Projects", href: "/", icon: "folder" }
+        }
+    }
+}

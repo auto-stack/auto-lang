@@ -1,4 +1,5 @@
-name: "widget-gallery"
+name: "widgets-gallery"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+front_port: 3024

@@ -4510,10 +4510,17 @@ impl VueGenerator {
                 self.use_theme_toggle = true;
                 return "ThemeToggle".to_string();
             }
-            // Plan 408: Toast sub-components now go through the shadcn registry
-            // so the toast component directory is properly scaffolded.
-            // Previously these were mapped to plain div/span, which bypassed
-            // component detection and left the toast component ungenerated.
+            // Plan 408: shadcn-vue deprecated the declarative toast components
+            // (Toast/ToastTitle/ToastDescription) in favor of Sonner, which is
+            // programmatic (toast() + a root-level <Toaster/>). The DSL has no
+            // declarative sonner equivalents, so the toast card structure is
+            // rendered as plain HTML (buildable output). Sonner scaffolding is
+            // triggered by toast-provider below, which maps to <Toaster/> via
+            // the widget registry (previously these tags bypassed component
+            // detection entirely and were mapped to div/span).
+            if tag == "toast" || tag == "toast-title" || tag == "toast-description" {
+                return (if tag == "toast" { "div" } else { "span" }).to_string();
+            }
             if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.register_shadcn_component(tag);
                 return component_name.to_string();

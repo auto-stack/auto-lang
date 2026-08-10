@@ -1,0 +1,11 @@
+// pages/index.at — landing page for the verification gallery.
+widget IndexPage {
+    view {
+        col {
+            style: "space-y-4"
+            h2 "Verification Gallery" { style: "text-xl font-semibold" }
+            text "This gallery tests the 7 codegen fixes from Plan 408 §9. Each page uses a widget that previously required a workaround." { style: "text-muted-foreground" }
+            text "Click the links above to verify each fix." { style: "text-sm text-muted-foreground" }
+        }
+    }
+}

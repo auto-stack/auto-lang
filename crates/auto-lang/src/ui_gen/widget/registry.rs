@@ -1533,12 +1533,12 @@ impl WidgetRegistry {
         });
         self.register(pagination);
 
-        // PaginationList
+        // PaginationList → shadcn-vue exports this as "PaginationContent" (Plan 408)
         let mut pagination_list = WidgetSpec::new("PaginationList", WidgetCategory::Navigation)
             .with_alias("pagination-list");
         pagination_list.has_children = true;
         pagination_list.backends.insert("vue".to_string(), BackendMapping {
-            component: "PaginationList".to_string(),
+            component: "PaginationContent".to_string(),
             import: Some("@/components/ui/pagination".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),

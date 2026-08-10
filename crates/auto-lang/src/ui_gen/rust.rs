@@ -2677,19 +2677,18 @@ impl RustGenerator {
                 "View::empty()".to_string()
             }
 
-            AuraNode::Link { to, text, href, children, .. } => {
+            AuraNode::Link { to, text, href, .. } => {
                 // Render link as a styled text/button (no routing in compiled Rust).
-                let children_code: Vec<String> = children.iter()
-                    .map(|child| self.generate_view_tree(child))
-                    .collect();
-
+                // Label comes from a plain string field only — children are already
+                // rendered Rust expressions, so embedding them inside a string
+                // literal would produce invalid code. Fall back to to/href as the
+                // placeholder label when no explicit text is present.
                 let label = if !text.is_empty() {
                     text.clone()
-                } else if !children_code.is_empty() {
-                    // Use first child's text if available
-                    children_code.join("")
+                } else if !href.is_empty() {
+                    href.clone()
                 } else {
-                    if !href.is_empty() { href.clone() } else { to.clone() }
+                    to.clone()
                 };
                 format!("View::text_styled(\"{}\", \"text-blue-600 underline cursor-pointer\")", label)
             }

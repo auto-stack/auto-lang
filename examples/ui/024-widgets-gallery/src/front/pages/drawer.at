@@ -1,0 +1,22 @@
+// pages/drawer.at — Verify #4: Drawer with vaul-vue dependency.
+widget DrawerPage {
+    view {
+        col {
+            style: "space-y-4"
+            h2 "Drawer (fix #4)" { style: "text-xl font-semibold" }
+            text "Drawer requires vaul-vue npm package. Previously it was missing from package.json." { style: "text-muted-foreground" }
+            drawer {
+                drawer-trigger { text: "Open Drawer" }
+                drawer-content {
+                    drawer-header {
+                        drawer-title { text: "Menu" }
+                        drawer-description { text: "Choose an option." }
+                    }
+                    drawer-footer {
+                        drawer-close { text: "Cancel" }
+                    }
+                }
+            }
+        }
+    }
+}

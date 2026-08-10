@@ -1,0 +1,23 @@
+// pages/toast.at — Verify #5: Toast components now scaffolded.
+// shadcn-vue's toast is Sonner-based: a root-level <Toaster/> (mapped from
+// toast-provider) plus the programmatic toast() from vue-sonner. The declarative
+// toast card below renders as plain HTML; the ui/sonner component directory is
+// scaffolded because toast-provider is used.
+widget ToastPage {
+    view {
+        col {
+            style: "space-y-4"
+            h2 "Toast (fix #5)" { style: "text-xl font-semibold" }
+            text "Toast now triggers the ui/sonner shadcn component scaffolding (Toaster)." { style: "text-muted-foreground" }
+            toast-provider {
+                toast {
+                    variant: "default"
+                    col {
+                        toast-title { text: "Event Created" }
+                        toast-description { text: "Your event has been created successfully." }
+                    }
+                }
+            }
+        }
+    }
+}

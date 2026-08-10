@@ -1,0 +1,36 @@
+// app.at — Codegen fix verification gallery (Plan 408 §9).
+// Tests the 7 previously-broken widgets natively (no workarounds).
+widget App {
+    routes {
+        "/"              -> use index
+        "/grid"          -> use grid
+        "/slider"        -> use slider
+        "/drawer"        -> use drawer
+        "/toast"         -> use toast
+        "/navlink"       -> use navlink
+        "/pagination"    -> use pagination
+    }
+
+    msg Msg { Init }
+
+    view {
+        col {
+            style: "min-h-screen bg-background text-foreground p-8"
+            h1 "Codegen Fix Verification" { style: "text-2xl font-bold mb-4" }
+            row {
+                style: "gap-4 mb-8"
+                link (to: "/grid") { text "Grid" { style: "text-blue-600 underline" } }
+                link (to: "/slider") { text "Slider" { style: "text-blue-600 underline" } }
+                link (to: "/drawer") { text "Drawer" { style: "text-blue-600 underline" } }
+                link (to: "/toast") { text "Toast" { style: "text-blue-600 underline" } }
+                link (to: "/navlink") { text "NavLink" { style: "text-blue-600 underline" } }
+                link (to: "/pagination") { text "Pagination" { style: "text-blue-600 underline" } }
+            }
+            outlet
+        }
+    }
+
+    on {
+        .Init -> { }
+    }
+}

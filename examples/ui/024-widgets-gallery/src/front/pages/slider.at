@@ -1,0 +1,16 @@
+// pages/slider.at — Verify #3: Slider value int → number[] fix.
+widget SliderPage {
+    model {
+        var volume int = 50
+    }
+
+    view {
+        col {
+            style: "space-y-4"
+            h2 "Slider (fix #3)" { style: "text-xl font-semibold" }
+            text "Slider uses :default-value wrapper to avoid TS2322 (int vs number[])." { style: "text-muted-foreground" }
+            slider { value: .volume, min: 0, max: 100 }
+            text "Volume slider at 50" { style: "text-sm text-muted-foreground" }
+        }
+    }
+}

@@ -1923,8 +1923,26 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => Expr::Object(self.object()?),
             // fstr
             TokenKind::FStrStart => self.fstr()?,
-            // grid
+            // grid (Plan 408: 'grid' is no longer a hard keyword — the lexer
+            // emits TokenKind::Ident for it. Detect the AutoData grid(...)
+            // literal textually, mirroring Plan 354's text-based nav() check
+            // in call(). TokenKind::Grid is retained for compatibility but no
+            // longer produced by the lexer.)
             TokenKind::Grid => Expr::Grid(self.grid()?),
+            // Only treat `grid(` as the grid literal (one-token lookahead); a
+            // bare `grid` stays an ordinary identifier (variable reference).
+            TokenKind::Ident if self.cur.text.as_str() == "grid" => {
+                let saved_cur = self.cur.clone();
+                self.next();
+                let is_literal = self.is_kind(TokenKind::LParen);
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+                if is_literal {
+                    Expr::Grid(self.grid()?)
+                } else {
+                    self.atom()?
+                }
+            }
             // dot
             TokenKind::Dot => self.dot_item()?,
             // Plan 095: Compile-time expression #{ expr }
@@ -10791,6 +10809,18 @@ impl<'a> Parser<'a> {
         // Parse identifier or generic type instance (e.g., List or List<int>)
         let name = self.cur.text.clone();
         self.next(); // skip the identifier
+
+        // Plan 408: 'grid' is lexed as Ident now, so the statement-level path
+        // reaches this fn instead of the old TokenKind::Grid arm in parse_expr.
+        // Detect the AutoData grid(...) literal textually: the ident is already
+        // consumed, so the current token is the '(' — put the ident back so
+        // grid() can consume it (mirrors the old keyword path). A bare `grid`
+        // (no paren) falls through to node/ident parsing as usual.
+        if name.as_str() == "grid" && self.is_kind(TokenKind::LParen) {
+            self.lexer.push_token(self.cur.clone());
+            self.cur = self.prev.clone();
+            return Ok(Expr::Grid(self.grid()?));
+        }
 
         // Plan 390 §14 L1: Smart pointer constructors Box(expr) and Arc(expr)
         // must be recognized in argument position too. `args()` routes Ident

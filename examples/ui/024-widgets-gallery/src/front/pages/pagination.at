@@ -1,0 +1,21 @@
+// pages/pagination.at — Verify #7: Pagination component names corrected.
+widget PaginationPage {
+    view {
+        col {
+            style: "space-y-4"
+            h2 "Pagination (fix #7)" { style: "text-xl font-semibold" }
+            text "Pagination now uses correct shadcn-vue export names (PaginationContent, PaginationItem, PaginationPrevious)." { style: "text-muted-foreground" }
+            pagination {
+                total: 10
+                per_page: 3
+                pagination-list {
+                    pagination-prev {}
+                    pagination-item { text: "1", value: 1 }
+                    pagination-item { text: "2", value: 2 }
+                    pagination-item { text: "3", value: 3 }
+                    pagination-next {}
+                }
+            }
+        }
+    }
+}
