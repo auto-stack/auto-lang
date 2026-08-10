@@ -127,7 +127,7 @@ store MinesweeperStore {
                         seed = seed + 2147483647
                     }
                     var rr int = seed % (.rows * .cols)
-                    var rx int = (rr / .cols).to_int()
+                    var rx int = rr / .cols
                     var ry int = rr % .cols
                     // Skip the 3x3 safe zone around the first click (x, y).
                     var dx int = rx - x
