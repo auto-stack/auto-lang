@@ -2289,6 +2289,63 @@ fn json_to_auto_val(v: &serde_json::Value) -> auto_val::Value {
     }
 }
 
+/// Plan 045: 处理 `show <file>` —— 读文件,产出 RenderedOutput::Code 变体。
+///
+/// `show` 是 ash 内置命令(对齐 ash-core show.rs:221-235 的 run_atom 路径),
+/// 系统无 show 可执行文件,故不走 std::process,在 renderer 侧直接读文件。
+///
+/// MVP:每行一个白色(0xff,0xff,0xff)span,无真实语法高亮。
+/// 后续可引 syntect 或手写着色(参考 ash-core code_highlight.rs:117 highlight_code_spans)。
+///
+/// 返回 (status, output):成功 → ("Success", {Code:{lines, language}});
+/// 失败(缺参数/读文件错) → ({"Failed": msg}, null)。
+fn handle_show_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
+    let args: Vec<&str> = cmd.split_whitespace().collect();
+    if args.len() < 2 {
+        return (
+            serde_json::json!({"Failed": "show: missing file path"}),
+            serde_json::Value::Null,
+        );
+    }
+    let filepath = args[1];
+    // 拼路径:绝对路径直用;相对路径拼 cwd。
+    let full_path = if std::path::Path::new(filepath).is_absolute() {
+        filepath.to_string()
+    } else if cwd.is_empty() || cwd == "." {
+        filepath.to_string()
+    } else {
+        format!("{}/{}", cwd.trim_end_matches('/'), filepath)
+    };
+    match std::fs::read_to_string(&full_path) {
+        Ok(content) => {
+            let ext = std::path::Path::new(filepath)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_string();
+            // MVP:每行一个白色 span(r/g/b = 0xff)。
+            let lines: Vec<serde_json::Value> = content
+                .lines()
+                .map(|line| {
+                    serde_json::json!([{
+                        "text": line,
+                        "r": 0xff, "g": 0xff, "b": 0xff,
+                        "bold": false, "italic": false
+                    }])
+                })
+                .collect();
+            let output = serde_json::json!({
+                "Code": { "lines": lines, "language": ext }
+            });
+            (serde_json::Value::String("Success".to_string()), output)
+        }
+        Err(e) => (
+            serde_json::json!({"Failed": format!("show: {}: {}", filepath, e)}),
+            serde_json::Value::Null,
+        ),
+    }
+}
+
 /// Plan 044 M1: 把命令 stdout 解析成 RenderedOutput JSON(对齐 vue 版 ash-core 渲染)。
 /// 在 renderer 侧实现(不依赖 auto-shell/ash-core,避免循环依赖)。
 fn parse_output_to_structured(cmd: &str, stdout: &str) -> serde_json::Value {
@@ -2353,6 +2410,26 @@ async fn merged_exec_loop(
         let block_id = pending.block_id;
         let cmd = pending.cmd;
         let cwd = pending.cwd;
+
+        // Plan 045:show 是 ash 内置命令,系统无 show 可执行文件 —— 若走 std::process
+        // (cmd /C show ...) 会 spawn 失败。故在 spawn 前拦截,renderer 侧读文件 +
+        // 着色,产出 {Code:{lines, language}} 变体(对齐 ash-core show 的 run_atom 路径)。
+        let cmd_name = cmd.split_whitespace().next().unwrap_or("").to_lowercase();
+        if cmd_name == "show" {
+            let (status_val, output_val) = handle_show_command(&cmd, &cwd);
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": cwd,
+                    "status": status_val,
+                    "output": output_val,
+                    "duration_ms": 0,
+                })
+                .to_string(),
+            });
+            continue;
+        }
 
         // 跨平台:Windows 用 cmd /C,Unix 用 sh -c。对齐 ash-server 的执行语义
         // (外部命令经 shell 解析,支持管道/重定向)。
