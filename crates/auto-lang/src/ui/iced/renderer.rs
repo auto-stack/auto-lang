@@ -8006,7 +8006,12 @@ fn devtools_subscription<C: Component + 'static>(
 where
     C::Msg: Send + 'static,
 {
-    let inner = w.inner.subscription().map(WrapperMsg::Inner);
+    let inner = if let (Some(ms), Some(msg)) = (w.inner.tick_interval_ms(), w.inner.tick_msg()) {
+        iced::time::every(std::time::Duration::from_millis(ms as u64))
+            .map(move |_| WrapperMsg::Inner(msg.clone()))
+    } else {
+        w.inner.subscription().map(WrapperMsg::Inner)
+    };
     // Plan 371 Task 19: drain MCP actions into WrapperMsg::Debug events.
     // Two addressing modes, encoded as distinct prefixes so devtools_update
     // can dispatch without string ambiguity:
