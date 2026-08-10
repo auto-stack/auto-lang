@@ -3928,6 +3928,8 @@ impl RustGenerator {
                     .collect();
                 format!("{{ {} }}", stmts.join("; "))
             }
+            crate::ast::Stmt::Comment(_) => String::new(),
+            crate::ast::Stmt::EmptyLine(_) => String::new(),
             _ => format!("/* unhandled stmt */"),
         }
     }

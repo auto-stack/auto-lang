@@ -118,7 +118,7 @@ widget App {
                             gap: 0
                         }
                     }
-                    style: "flex justify-center"
+                    style: "items-center"
                 }
 
                 // —— 游戏结束遮罩 ——
