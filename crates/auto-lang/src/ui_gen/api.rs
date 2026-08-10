@@ -421,8 +421,33 @@ pub fn generate_component_from_file(
         }
     }
 
+    // Plan 408: collect `component fn` declarations as independent components.
+    // Each is synthesized to its own SFC (like a widget) and its name is
+    // registered as a sub-widget so same-file references render as
+    // `<Name :prop/>` + import instead of inline expansion.
+    let mut component_fn_names: Vec<String> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            if frag.is_component {
+                let aura_widget = crate::aura::extract::extract_widget_from_fragment(frag)
+                    .map_err(|e| e.to_string())?;
+                component_fn_names.push(frag.name.as_str().to_string());
+                widgets.push(aura_widget);
+            }
+        }
+    }
+
     if widgets.is_empty() && store_composables.is_empty() {
         return Err("No widget or store declarations found in input file".into());
+    }
+
+    // Plan 408: merge synthesized component fn names into sub_widgets so every
+    // widget/component sees them as referenceable components.
+    let mut all_sub_widgets: Vec<String> = sub_widgets.clone();
+    for name in &component_fn_names {
+        if !all_sub_widgets.contains(name) {
+            all_sub_widgets.push(name.clone());
+        }
     }
 
     // Generate SFC for each widget
@@ -433,7 +458,7 @@ pub fn generate_component_from_file(
         let mut gen = VueGenerator::new()
             .with_mode(VueMode::Shadcn)
             .with_store_deps(store_deps.clone())
-            .with_sub_widgets(sub_widgets.clone());
+            .with_sub_widgets(all_sub_widgets.clone());
         if !api_imports.is_empty() {
             gen = gen.with_project_api_functions(api_imports.clone());
         }

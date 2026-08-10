@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: 📋 计划（2026-08-10 登记，未实施）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ P1 已实施（2026-08-10）。同文件 `component fn` → 独立 Vue SFC 合成已落地，golden 验证通过，既有 view fn 内联行为零破坏。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -111,3 +111,25 @@ view fn ContentHeader(title str, ...) { ... }
 - **Plan 367**（codegen 质量改进）: view fn 顺带提及；本计划是其在 Vue 组件化方向的深化。
 - **auto-musk Plan 023**（`docs/plans/023-view-fn-component-codegen.md`）: 本计划是其转译器侧立项（P5 共用组件收敛的直接依赖）。
 - **KNOWN-DEBT**: 本计划完成后，若部分场景仍需逃生舱（如 useStreamingDocument 增量 JSON），登记残留。
+
+---
+
+## 5. 实施记录（2026-08-10，P1）
+
+**落地范围**: Task 1（同文件合成核心）+ Task 3（降级兼容，设计自带）+ Task 4（golden 验证）。Task 2（slot）经评估由"方案 B（props+条件渲染）"免费获得——component fn 接收 variant/items props，内部 `if` 分支复用既有条件渲染 codegen，无需新机制。
+
+**触发机制**: 新增 `component fn` 关键字（与 `view fn` 形成清晰二分），而非注解。`view fn` 语义完全不变（内联默认），`component fn` 显式 opt-in 独立合成。
+
+**改动清单**:
+- `ast/ui.rs`: `ViewFragmentDecl` 加 `is_component: bool`。
+- `dialect/ui.rs` + `parser.rs`: 新增 `component fn` 关键字路径；`parse_fragment_decl_body_tail(is_component)` 共享 view fn / component fn 的参数+body 解析。
+- `aura/extract.rs`: `extract_view_node` 命中片段后按 `is_component` 分流——true 返回 `AuraNode::Component`（组件引用），false 走原内联；新增 `extract_widget_from_fragment`（params→props + body→view_tree）、`fragment_param_type`、`fragment_to_component_node` 辅助。
+- `ui_gen/api.rs`: `generate_component_from_file` 收集 `is_component` 片段成 AuraWidget（生成独立 SFC）+ 名字并入 sub_widgets（同文件 widget 可 `<Name/>` 引用）。
+- 测试: `test/a2vue/007_component_fn/`（input.at + App.expected.vue + Card.expected.vue）+ `test_a2vue_component_fn`（走完整生产路径 `generate_component_from_file`）。
+
+**验证**: `cargo test -p auto-lang --lib "ui_gen::vue"` 181 全绿（含 7 个 a2vue golden + view fn 内联测试）；零回归（既有失败 dstr/route/ark/vm 在 master 基线同样失败，与本项目无关）。
+
+**残留（后续迭代）**:
+- 跨文件复用（`use { component }` 引用他文件 component fn + ext 复制）——需联动 auto-man `copy_ext_files`，§3 标 🔴，未做。
+- legacy 入口（`ui_build_shadcn_with_widgets`）不支持 component fn 合成——见 KNOWN-DEBT。
+- auto-musk 023 试点验证（§Task 4 第 3 点）——待 auto-musk 侧以 `.at` component fn 替换逃生舱。

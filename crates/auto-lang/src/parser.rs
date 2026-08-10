@@ -12456,6 +12456,22 @@ impl<'a> Parser<'a> {
     /// Parse view fragment declaration body (after 'view' has been consumed).
     fn parse_view_fragment_decl_body(&mut self) -> AutoResult<Stmt> {
         self.expect_ident("fn")?;
+        self.parse_fragment_decl_body_tail(false)
+    }
+
+    /// Plan 408: Parse `component fn Name(...) { ... }` — an independent
+    /// component declaration synthesized to its own Vue SFC. Cursor is at
+    /// `component` on entry. Body parsing is shared with `view fn`.
+    pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("component")?;
+        self.expect_ident("fn")?;
+        self.parse_fragment_decl_body_tail(true)
+    }
+
+    /// Parse the param list + body of a fragment decl, after `fn` has been
+    /// consumed. Shared by `view fn` (is_component=false, inline) and
+    /// `component fn` (is_component=true, independent SFC). Plan 408.
+    fn parse_fragment_decl_body_tail(&mut self, is_component: bool) -> AutoResult<Stmt> {
         let name = self.cur.text.clone();
         self.next();
         let mut params = Vec::new();
@@ -12499,7 +12515,7 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly
