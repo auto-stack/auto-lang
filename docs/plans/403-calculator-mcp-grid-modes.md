@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-09）**: ✅ 代码全部完成。需求 1a/1b/1c/2/3 代码完成 + grid 按钮等宽对齐修复 + VM List 基建修复。**VM 运行时 MCP 表达式验证受阻于 VM 浮点运算缺陷 → 已立项 [Phase 403-F](#phase-403-fvm-浮点运算修复-待办) 修复（🔵 待办）**。vue 路径完整可用。
+> **状态（2026-08-10）**: ✅ **全部完成**。需求 1a/1b/1c/2/3 + grid 修复 + VM List 基建 + [Phase 403-F](#phase-403-fvm-浮点运算修复-已完成) VM 浮点运算修复（✅ `9b9fec81`）。**VM 模式表达式求值全部通过**（2+3=5, 2*(3+4)=14, 3.5+1=4.5）。vue + iced 双路径完整可用。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
@@ -148,8 +148,9 @@ grid {
 
 ---
 
-## Phase 403-F：VM 浮点运算修复（🔵 待办）
+## Phase 403-F：VM 浮点运算修复（✅ 已完成 9b9fec81）
 
+> **状态**：✅ 已完成并合并回 master（`9b9fec81`，merge `0a3d...`）。011-calculator VM 模式表达式求值全部通过；012/013/016 回归无副作用。
 > **背景**：调试表达式引擎的 VM 运行时验证时发现，`var v float = 3.0 + 4.0` 在 VM 中结果损坏（receiver_nv 被错误 nanboxed 为 i32）。深入调查（2026-08-09）定位到 **4 个真实 codegen/engine bug**，都是把本应走 f32/f64 opcode 的运算误派到 i32 路径。整数运算正常，浮点损坏。修复后 011-calculator 的 VM 模式 `=` 求值才能工作。
 
 ### 根因（静态 dispatch 模型）
