@@ -8076,6 +8076,11 @@ where
     iced::Subscription::batch(vec![inner, f12, win, mcp])
 }
 
+/// Plan 407: non-capturing fn for tick subscription map.
+fn tick_map_fn<C: Component + 'static>(_: std::time::Instant) -> WrapperMsg<C> {
+    WrapperMsg::Debug("__tick__".to_string())
+}
+
 /// Run a rust-mode Component with the F12 DevTools layer (Plan 311).
 ///
 /// Mirrors [`run_app`] but instantiates `DevToolsWrapper::<C>` so F12 opens the
@@ -8101,11 +8106,10 @@ where
         let mut subs = vec![devtools_subscription(w)];
         // Plan 407: add tick subscription from the inner component's tick_interval.
         if let (Some(interval), Some(_msg)) = (interval, w.inner.tick_msg()) {
-            // Use iced::time::every with a non-capturing map that constructs
-            // WrapperMsg::Debug("__tick__"), then devtools_update converts it.
+            // Use a non-capturing fn pointer for the map closure.
             subs.push(
                 iced::time::every(interval)
-                    .map(|_| WrapperMsg::Debug("__tick__".to_string()))
+                    .map(tick_map_fn::<C>)
             );
         }
         iced::Subscription::batch(subs)
