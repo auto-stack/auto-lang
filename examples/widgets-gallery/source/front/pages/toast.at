@@ -1,7 +1,23 @@
 // pages/toast.at - Toast component documentation page
+// Uses vue-sonner's toast() function via escape hatch for real interactivity.
+// The <Toaster/> component is mounted once; toast() triggers notifications.
 
 widget ToastPage {
+    use {
+        // vue-sonner's programmatic toast API — toast is a function with
+        // methods: toast(), toast.success(), toast.error(), etc.
+        fn: toast from "vue-sonner"
+        // Toaster component (renders the toast viewport)
+        component: Toaster from "vue-sonner"
+    }
+
     model { activeTab str = "preview" }
+
+    msg Msg {
+        TriggerDefault
+        TriggerSuccess
+        TriggerError
+    }
 
     view {
         col {
@@ -9,16 +25,40 @@ widget ToastPage {
             text "A brief message that appears temporarily and disappears automatically."
 
             h2 "Installation"
-            codeblock (lang: "bash", code: "npx shadcn-vue@latest add toast") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
 
-            h2 "Simple"
+            h2 "Interactive"
             preview-card (id: "toast-basic") {
                 col (gap: "4") {
-                    button (text: "Show Toast", variant: "outline") {}
-                    toast-provider {
-                        toast {
-                            toast-title "Scheduled: Catch up"
-                            toast-description "Friday, February 10, 2023 at 5:57 PM"
+                    row (gap: "2") {
+                        button (text: "Default", variant: "outline", onclick: .TriggerDefault) {}
+                        button (text: "Success", variant: "outline", onclick: .TriggerSuccess) {}
+                        button (text: "Error", variant: "outline", onclick: .TriggerError) {}
+                    }
+                    text "Click the buttons above to trigger real toast notifications." {}
+                }
+            }
+
+            h2 "Static Preview"
+            preview-card (id: "toast-static") {
+                col (gap: "3") {
+                    col {
+                        style: "rounded-lg border p-4 bg-background shadow-lg max-w-sm"
+                        row {
+                            style: "justify-between items-start"
+                            col {
+                                style: "gap-1"
+                                text "Event Created" { style: "text-sm font-semibold" }
+                                text "Your event has been created successfully." { style: "text-sm text-muted-foreground" }
+                            }
+                        }
+                    }
+                    col {
+                        style: "rounded-lg border border-destructive/50 p-4 bg-background shadow-lg max-w-sm"
+                        col {
+                            style: "gap-1"
+                            text "Error" { style: "text-sm font-semibold text-destructive" }
+                            text "Failed to save changes." { style: "text-sm text-muted-foreground" }
                         }
                     }
                 }
@@ -28,37 +68,57 @@ widget ToastPage {
             table {
                 thead {
                     tr {
-                        th "Property"
-                        th "Type"
-                        th "Default"
-                        th "Values"
+                        th "Function"
+                        th "Arguments"
                         th "Description"
                     }
                 }
                 tbody {
                     tr {
-                        td "variant"
-                        td "string"
-                        td (text: "\"default\"") {}
-                        td (text: "\"default\", \"destructive\"") {}
-                        td "Toast style variant"
+                        td "toast()"
+                        td (text: "message, options") {}
+                        td "Show a default toast"
                     }
                     tr {
-                        td "duration"
-                        td "number"
-                        td "5000"
-                        td "-"
-                        td "Duration in ms"
+                        td "toast.success()"
+                        td (text: "message, options") {}
+                        td "Show a success toast"
                     }
                     tr {
-                        td "open"
-                        td "boolean"
-                        td "false"
-                        td "true, false"
-                        td "Controls open state"
+                        td "toast.error()"
+                        td (text: "message, options") {}
+                        td "Show an error toast"
+                    }
+                    tr {
+                        td "toast.warning()"
+                        td (text: "message, options") {}
+                        td "Show a warning toast"
+                    }
+                    tr {
+                        td "toast.info()"
+                        td (text: "message, options") {}
+                        td "Show an info toast"
                     }
                 }
             }
+
+            // Toaster viewport — mounted once, renders all toast() calls
+            Toaster {
+                position: "bottom-right",
+                richColors: true
+            }
+        }
+    }
+
+    on {
+        .TriggerDefault -> {
+            toast("Event created successfully!")
+        }
+        .TriggerSuccess -> {
+            toast.success("Saved!")
+        }
+        .TriggerError -> {
+            toast.error("Failed to save changes.")
         }
     }
 }
