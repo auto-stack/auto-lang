@@ -7900,6 +7900,12 @@ where
 {
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(ref s) if s == "__tick__" => {
+            // Plan 407: tick event — dispatch Tick to inner component.
+            if let Some(msg) = w.inner.tick_msg() {
+                w.inner.on(msg);
+            }
+        }
         WrapperMsg::Debug(s) => {
             // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
             // modes, both resolved against the inner component's typed View tree:
@@ -8080,12 +8086,30 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
+    // Check tick interval at startup
+    let tick = C::default();
+    let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
+    let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+    drop(tick);
+
     iced::application(
         DevToolsWrapper::<C>::default,
         devtools_update,
         devtools_view,
     )
-    .subscription(devtools_subscription)
+    .subscription(move |w| {
+        let mut subs = vec![devtools_subscription(w)];
+        // Plan 407: add tick subscription from the inner component's tick_interval.
+        if let (Some(interval), Some(_msg)) = (interval, w.inner.tick_msg()) {
+            // Use iced::time::every with a non-capturing map that constructs
+            // WrapperMsg::Debug("__tick__"), then devtools_update converts it.
+            subs.push(
+                iced::time::every(interval)
+                    .map(|_| WrapperMsg::Debug("__tick__".to_string()))
+            );
+        }
+        iced::Subscription::batch(subs)
+    })
     .window_size(iced::Size::new(800.0, 600.0))
     .run()
     .map_err(|e| e.into())
