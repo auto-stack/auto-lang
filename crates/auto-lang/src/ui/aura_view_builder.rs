@@ -763,7 +763,7 @@ impl<'a> AuraViewBuilder<'a> {
             // captured at this node's current path (the text element's path),
             // which is what the inspector wants.
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
-                self.convert_text_element_tracked_ctx(tag, props, children, path, probe, bindings)
+                self.convert_text_element_tracked_ctx(tag, props, events, children, path, probe, bindings)
             }
 
             // Leaf/atom widgets with no AuraNode children — fall back to the
@@ -1201,6 +1201,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         probe: &mut BuildProbe,
@@ -1253,6 +1254,19 @@ impl<'a> AuraViewBuilder<'a> {
 
         // Heading styling is applied via the `style` field, not by transforming
         // `content`; matches untracked behaviour.
+        //
+        // If this text element has an onclick/click event, render it as a
+        // Button so the click handler fires (View::Text has no onclick field).
+        if let Some(event) = events.get("onclick").or_else(|| events.get("click")) {
+            let onclick = self.event_to_message_with(event, bindings);
+            return View::Button {
+                label: content,
+                onclick,
+                style,
+                on_right_click: None,
+            };
+        }
+
         View::Text {
             content,
             style,
@@ -1276,7 +1290,7 @@ impl<'a> AuraViewBuilder<'a> {
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
-                self.convert_text_element(tag, props, children, bindings)
+                self.convert_text_element(tag, props, events, children, bindings)
             }
             "button" | "btn" => self.convert_button(props, events, children, bindings),
 
@@ -1898,6 +1912,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
@@ -1943,6 +1958,20 @@ impl<'a> AuraViewBuilder<'a> {
             "h3" => content,
             _ => content,
         };
+
+        // If this text element has an onclick/click event, render it as a
+        // Button so the click handler fires (View::Text has no onclick field).
+        // The Button renderer applies chromeless styling when no bg/border is
+        // present, so the visual appearance matches plain text.
+        if let Some(event) = events.get("onclick").or_else(|| events.get("click")) {
+            let onclick = self.event_to_message_with(event, bindings);
+            return View::Button {
+                label: styled_content,
+                onclick,
+                style,
+                on_right_click: None,
+            };
+        }
 
         View::Text {
             content: styled_content,
