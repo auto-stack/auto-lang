@@ -994,9 +994,14 @@ impl RustGenerator {
             code.push_str(&snapshot);
         }
 
-        // Plan 407: tick_msg() — returns the Tick variant for subscription.
+        // Plan 407: tick_msg() + tick_interval_ms() — for run_app subscription.
         if widget.tick_interval.is_some() {
             let msg_name = self.current_msg_name();
+            let interval = widget.tick_interval.unwrap();
+            code.push_str(&format!(
+                "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
+                interval
+            ));
             code.push_str(&format!(
                 "    fn tick_msg(&self) -> Option<{}> {{ Some({}::Tick) }}\n",
                 msg_name, msg_name
