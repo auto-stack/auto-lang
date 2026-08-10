@@ -4249,6 +4249,22 @@ fn compare_pngs(
             )
         });
 
+        // Plan 402: emit window resize Task if pending (difficulty change).
+        // MUST be before needs_bounds check — needs_bounds returns early on
+        // every MCP-connected frame, so placing resize after it means resize
+        // never fires.
+        if let Some(size) = state.pending_window_resize.borrow_mut().take() {
+            *state.window_size.borrow_mut() = size;
+            return iced::window::oldest()
+                .then(move |maybe_id| {
+                    if let Some(id) = maybe_id {
+                        iced::window::resize::<IcedMessage>(id, size)
+                    } else {
+                        iced::Task::none()
+                    }
+                });
+        }
+
         // Layout bounds collection: deferred to end of update so user events
         // (button clicks, input changes) are processed first (Plan 282).
         // Previously this ran at the top of update(), which caused every user
@@ -4261,19 +4277,6 @@ fn compare_pngs(
                     widget: String::new(),
                     event: "__bounds_collected".to_string(),
                     input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
-                });
-        }
-
-        // Plan 402: emit window resize Task if pending (difficulty change).
-        if let Some(size) = state.pending_window_resize.borrow_mut().take() {
-            *state.window_size.borrow_mut() = size;
-            return iced::window::oldest()
-                .then(move |maybe_id| {
-                    if let Some(id) = maybe_id {
-                        iced::window::resize::<IcedMessage>(id, size)
-                    } else {
-                        iced::Task::none()
-                    }
                 });
         }
 

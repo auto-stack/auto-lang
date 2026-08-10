@@ -16212,28 +16212,5 @@ widget Counter {
         assert_eq!(fn_body_stmt_count("fn f() {\n    let snap = command_list()\n    .cwd = snap.cwd\n    .home = snap.home\n}\n"), 3);
     }
 
-    /// Plan 407 调查: view fn 带不同参数类型（Value vs Any）的最小复现。
-    #[test]
-    fn test_viewfn_param_types_debug() {
-        let prefix = "widget W { model { var x int = 0 } view { col { text \"hi\" } } on { } }\n";
-        let cases = vec![
-            ("Value single", format!("{}view fn T(msg: Value) {{ col {{ text msg.role {{ }} }} }}", prefix)),
-            ("Any single",   format!("{}view fn T(msg: Any) {{ col {{ text msg.role {{ }} }} }}", prefix)),
-            ("Value+bool",   format!("{}view fn T(msg: Value, s: bool) {{ col {{ text msg.role {{ }} }} }}", prefix)),
-            ("no type",      format!("{}view fn T(msg) {{ col {{ text msg.role {{ }} }} }}", prefix)),
-            ("if msg.role",  format!("{}view fn T(msg: Value) {{ col {{ style: if msg.role == \"user\" {{ \"a\" }} else {{ \"b\" }} }} }}", prefix)),
-            ("use+viewfn no widget", format!("use {{ component: S from \"x.vue\" }}\nview fn T(msg: Value) {{ col {{ text msg.role {{ }} }} }}")),
-            ("cm full", include_str!("../../test_tmp_cm.at").to_string()),
-        ];
-        for (label, code) in &cases {
-            let mut p = Parser::from(code.as_str())
-                .with_session(crate::session::CompilerSession::ui());
-            match p.parse() {
-                Ok(_) => eprintln!("DEBUG {} -> OK", label),
-                Err(e) => eprintln!("DEBUG {} -> ERR: {}", label, e),
-            }
-        }
-    }
-
 
 }
