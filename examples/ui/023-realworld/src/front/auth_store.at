@@ -1,27 +1,31 @@
 // auth_store.at — shared auth state. Holds the current user (id=0 = logged
 // out). Profile/follow state lives in ArticleStore (so the profile page uses a
 // single store).
+// NOTE: the field is named `me`, NOT `current_user` — the latter collides with
+// the imported `current_user` api function (codegen emits both an import and a
+// module-level `const current_user = ref(...)`, the const shadows the import,
+// and `Init` then calls `current_user()` on a ref → "not a function").
 use back.api: login, register, current_user
 
 store AuthStore {
     model {
-        var current_user User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+        var me User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     }
 
     msg Msg { Init, Login(str, str), Register(str, str, str), Logout }
 
     on {
         .Init -> {
-            .current_user = current_user()
+            .me = current_user()
         }
         .Login(email str, password str) -> {
-            .current_user = login(email, password)
+            .me = login(email, password)
         }
         .Register(username str, email str, password str) -> {
-            .current_user = register(username, email, password)
+            .me = register(username, email, password)
         }
         .Logout -> {
-            .current_user = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+            .me = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
         }
     }
 }
