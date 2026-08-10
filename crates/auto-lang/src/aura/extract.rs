@@ -741,7 +741,9 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         handler: e.handler.clone(),
                         params: e.params.clone(),
                     };
-                    (e.name.clone(), event)
+                    // Plan 402: normalize event key (strip .prevent/.stop modifiers)
+                    let base_name = e.name.split('.').next().unwrap_or(&e.name).to_string();
+                    (base_name, event)
                 })
                 .collect();
 
@@ -848,7 +850,9 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                         handler: e.handler.clone(),
                         params: e.params.clone(),
                     };
-                    (e.name.clone(), event)
+                    // Plan 402: normalize event key (strip .prevent/.stop modifiers)
+                    let base_name = e.name.split('.').next().unwrap_or(&e.name).to_string();
+                    (base_name, event)
                 })
                 .collect();
 

@@ -3074,6 +3074,8 @@ struct DynamicState {
     window_size: std::cell::RefCell<iced::Size>,
     /// True when user is dragging the DevTools divider handle.
     dragging_divider: std::cell::RefCell<bool>,
+    /// Plan 402: pending window resize (difficulty change triggers snug fit).
+    pending_window_resize: std::cell::RefCell<Option<iced::Size>>,
     /// Line number (0-based) → list of AuraNodeIds whose spans cover that line.
     /// Built from span_map + source code for source-click → component-highlight.
     line_to_aura_ids: std::cell::RefCell<std::collections::HashMap<usize, Vec<AuraNodeId>>>,
@@ -3294,6 +3296,7 @@ fn compare_pngs(
             devtools_panel_width: std::cell::RefCell::new(600.0),
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
+            pending_window_resize: std::cell::RefCell::new(None),
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             mcp_shared: Some(mcp_shared.clone()),
@@ -3883,7 +3886,24 @@ fn compare_pngs(
                 None
             }
         });
+        // Plan 402: track difficulty before handler (for dynamic window resize)
+        let diff_before = state.component.read_state("difficulty")
+            .map(|v| v.as_str().to_string()).unwrap_or_default();
+
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
+
+        // Plan 402: if difficulty changed (SetDifficulty/Init), resize window
+        // to fit the board snugly.
+        let diff_after = state.component.read_state("difficulty")
+            .map(|v| v.as_str().to_string()).unwrap_or_default();
+        if diff_before != diff_after {
+            let cols = state.component.read_state("cols").map(|v| v.as_int()).unwrap_or(9);
+            let rows = state.component.read_state("rows").map(|v| v.as_int()).unwrap_or(9);
+            // cell=32px + borders/padding/info-bar overhead
+            let w = ((cols as f32) * 34.0 + 80.0).max(350.0);
+            let h = (rows as f32) * 34.0 + 250.0;
+            *state.pending_window_resize.borrow_mut() = Some(iced::Size::new(w, h));
+        }
 
         // After handler runs, clear input_values for OTHER inputs whose state
         // fields may have been modified by the handler. For example, the
@@ -4236,6 +4256,19 @@ fn compare_pngs(
                     widget: String::new(),
                     event: "__bounds_collected".to_string(),
                     input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                });
+        }
+
+        // Plan 402: emit window resize Task if pending (difficulty change).
+        if let Some(size) = state.pending_window_resize.borrow_mut().take() {
+            *state.window_size.borrow_mut() = size;
+            return iced::window::oldest()
+                .then(move |maybe_id| {
+                    if let Some(id) = maybe_id {
+                        iced::window::resize::<IcedMessage>(id, size)
+                    } else {
+                        iced::Task::none()
+                    }
                 });
         }
 
