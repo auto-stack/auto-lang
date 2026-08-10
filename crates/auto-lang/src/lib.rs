@@ -654,6 +654,19 @@ async fn execute_autovm_with_path(
             session.add_source_dir(dir.to_path_buf());
         }
     }
+    // Extra module search dirs from AUTO_SOURCE_DIRS (path-list). Split-mode
+    // backends (vue+vm) run api.at standalone, which only seeds the source
+    // file's own directory; the caller sets this to include sibling dirs
+    // (e.g. src/front so `use types` resolves front/types.at).
+    if let Ok(extra) = std::env::var("AUTO_SOURCE_DIRS") {
+        let sep = if cfg!(windows) { ';' } else { ':' };
+        for dir in extra.split(sep) {
+            let dir = dir.trim();
+            if !dir.is_empty() {
+                session.add_source_dir(std::path::PathBuf::from(dir));
+            }
+        }
+    }
     session.collect_rust_imports(code)?; // Plan 212b: collect use.rust imports before resolving deps
     session.collect_py_imports(code)?; // Plan 214: collect use.py imports
     session.resolve_deps(code)?; // Plan 212b: resolve dep statements (triggers compile_dep)

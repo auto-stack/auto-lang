@@ -2094,6 +2094,25 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
     println!("    api.at: {}", api_path.display());
 
     let api_str = api_path.to_string_lossy().to_string();
+    // Seed extra module search dirs for the standalone api.at run. A split-mode
+    // api.at imports `types` from src/front/types.at, but run_file only seeds
+    // the source file's own directory (src/back) — without this, `use types`
+    // fails with "Module not found". Inject src/ + src/front via AUTO_SOURCE_DIRS.
+    let src_dir = project_dir.join("src");
+    let mut extra_dirs: Vec<std::path::PathBuf> = vec![src_dir.join("front")];
+    if !extra_dirs[0].exists() {
+        extra_dirs = Vec::new();
+    }
+    if !extra_dirs.is_empty() {
+        let joined = extra_dirs.iter()
+            .map(|d| d.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(";");
+        let existing = std::env::var("AUTO_SOURCE_DIRS").unwrap_or_default();
+        let combined = if existing.is_empty() { joined } else { format!("{};{}", existing, joined) };
+        std::env::set_var("AUTO_SOURCE_DIRS", &combined);
+        println!("    module search dirs: {}", combined);
+    }
     // Spawn the VM server on a large-stack background thread (the flattened
     // api.at + db.at + types.at exceeds the 1MB default during parse/codegen).
     std::thread::Builder::new()
