@@ -60,6 +60,7 @@ widgets-gallery/
 │       ├── app.at      # 路由 + 响应式布局
 │       ├── components/ # Auto 语言层组件参考定义（不参与 vue 生成）
 │       └── pages/      # 每个 widget 一个文档页（50 页）
+├── vue-ref/            # 手写 Vue 参考实现（旧 component-gallery 原型，仅对比参考）
 └── gen/                # 生成产物（gitignore）
     └── front/vue/
 ```
