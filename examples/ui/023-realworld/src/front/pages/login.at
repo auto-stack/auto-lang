@@ -51,8 +51,8 @@ widget login {
         .PasswordChanged -> { .password = .password }
         .Submit -> {
             store.Login(.email, .password)
-            if .store.current_user != nil {
-                if .store.current_user.id != 0 {
+            if .store.me != nil {
+                if .store.me.id != 0 {
                     router.push("/")
                 } else {
                     .error = "email or password is invalid"

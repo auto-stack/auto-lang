@@ -110,8 +110,8 @@ test('T8: 控制台无实质错误', async ({ page }) => {
 
 // --- Stage 2 tests (T9-T14) ---
 
-test.skip('T9: 新建文章 — 编辑器填表 → 发布 → 出现在 feed', async ({ page }) => {
-  await page.goto('/#/editor')
+test('T9: 新建文章 — 编辑器填表 → 发布 → 出现在 feed', async ({ page }) => {
+  await page.goto('/#/editor/new')
   await page.waitForTimeout(800)
   const title = 'Stage2 Test Article ' + Date.now()
   const slug = 'stage2-test-' + Date.now()
@@ -126,8 +126,8 @@ test.skip('T9: 新建文章 — 编辑器填表 → 发布 → 出现在 feed', 
   expect(body).toContain(title)
 })
 
-test.skip('T10: 编辑文章 — 改 title → 保存 → 详情更新', async ({ page }) => {
-  await page.goto('/#/editor')
+test('T10: 编辑文章 — 改 title → 保存 → 详情更新', async ({ page }) => {
+  await page.goto('/#/editor/new')
   await page.waitForTimeout(800)
   const slug = 'edit-target-' + Date.now()
   await page.locator('input[placeholder="Article Title"]').fill('Original Title')

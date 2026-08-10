@@ -17,14 +17,14 @@ widget settings {
             style: "max-w-md mx-auto px-4 py-8 text-center items-center"
             text "Your Settings" { style: "text-3xl font-semibold mb-4" }
             // Logged in = current_user != nil AND id != 0.
-            if .store.current_user == nil {
+            if .store.me == nil {
                 col {
                     style: "text-gray-500 text-sm"
                     text "You are not logged in." {}
                     link (to: "/login") { text "Sign in" { style: "text-brand-green" } }
                 }
             } else {
-                if .store.current_user.id == 0 {
+                if .store.me.id == 0 {
                     col {
                         style: "text-gray-500 text-sm"
                         text "You are not logged in." {}
@@ -35,22 +35,22 @@ widget settings {
                         style: "text-left gap-3 w-full"
                         input {
                             placeholder: "URL of profile picture",
-                            value: .store.current_user.image,
+                            value: .store.me.image,
                             style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         }
                         input {
                             placeholder: "Username",
-                            value: .store.current_user.username,
+                            value: .store.me.username,
                             style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         }
                         textarea {
                             placeholder: "Short bio about you",
-                            value: .store.current_user.bio,
+                            value: .store.me.bio,
                             style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         }
                         input {
                             placeholder: "Email",
-                            value: .store.current_user.email,
+                            value: .store.me.email,
                             style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         }
                         input {

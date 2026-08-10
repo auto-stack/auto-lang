@@ -1,5 +1,5 @@
 // app.at — App shell. Routes + top nav + outlet. Nav adapts to login state
-// (.store.current_user.id != 0 = logged in). Cf. 018 app.at routes{...} + outlet.
+// (.store.me.id != 0 = logged in). Cf. 018 app.at routes{...} + outlet.
 use auth_store: AuthStore
 
 widget App {
@@ -9,7 +9,6 @@ widget App {
         "/register" -> use register
         "/article/:slug" -> use article_detail
         "/settings" -> use settings
-        "/editor" -> use editor
         "/editor/:slug" -> use editor
         "/profile/:username" -> use profile
     }
@@ -28,12 +27,12 @@ widget App {
                 row {
                     style: "ml-auto gap-4 text-sm"
                     link (to: "/") { text "Home" { style: "text-gray-600" } }
-                    if .store.current_user != nil {
-                        if .store.current_user.id != 0 {
-                            link (to: "/editor") { text "New Post" { style: "text-gray-600" } }
+                    if .store.me != nil {
+                        if .store.me.id != 0 {
+                            link (to: "/editor/new") { text "New Post" { style: "text-gray-600" } }
                             link (to: "/settings") { text "Settings" { style: "text-gray-600" } }
-                            text .store.current_user.username {
-                                onclick: .GoProfile(.store.current_user.username)
+                            text .store.me.username {
+                                onclick: .GoProfile(.store.me.username)
                                 style: "text-gray-600 cursor-pointer"
                             }
                         } else {

@@ -75,7 +75,11 @@ widget editor {
     on {
         .Init -> {
             .slug = router.param("slug")
-            if .slug != "" {
+            // /editor/new = create mode (slug stays empty for the POST);
+            // any other slug = edit mode.
+            if .slug == "new" {
+                .slug = ""
+            } else {
                 .editing = true
                 store.OpenArticle(.slug)
             }
