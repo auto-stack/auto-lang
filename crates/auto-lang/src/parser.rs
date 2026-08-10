@@ -1336,6 +1336,23 @@ impl<'a> Parser<'a> {
         self.errors.len() < self.error_limit
     }
 
+    /// Build the error to return when the error limit is exceeded.
+    ///
+    /// Plan error-spans (jade gap 37a): previously this popped and returned
+    /// only the LAST collected error — typically a derivative of error
+    /// recovery ("Expected term, got RBrace" at some closing brace), while
+    /// the FIRST collected error is the root cause carrying the correct
+    /// span. Return all collected errors as MultipleErrors (same shape as
+    /// the under-limit path) so the root cause and its span survive.
+    fn error_limit_exceeded(&self) -> AutoError {
+        let error_count = self.errors.len();
+        AutoError::MultipleErrors {
+            count: error_count,
+            plural: if error_count > 1 { "s".into() } else { "".into() },
+            errors: self.errors.clone(),
+        }
+    }
+
     /// Plan 122: Add a warning to the warnings collection
     fn warn(&mut self, warning: Warning) {
         self.warnings.push(warning);
@@ -1394,7 +1411,7 @@ impl<'a> Parser<'a> {
                             }
                             .into();
                             if !self.add_error(error) {
-                                return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                                return Err(self.error_limit_exceeded()); // Error limit exceeded
                             }
                             self.synchronize();
                             continue;
@@ -1472,7 +1489,7 @@ impl<'a> Parser<'a> {
                             }
                             // Other EOS errors are added to collection and synchronized
                             if !self.add_error(e) {
-                                return Err(self.errors.pop().unwrap());
+                                return Err(self.error_limit_exceeded());
                             }
                             self.synchronize();
                             0
@@ -1492,7 +1509,7 @@ impl<'a> Parser<'a> {
                     }
                     // Add error to collection and synchronize
                     if !self.add_error(e) {
-                        return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                        return Err(self.error_limit_exceeded()); // Error limit exceeded
                     }
                     self.synchronize();
                 }
@@ -6368,7 +6385,7 @@ impl<'a> Parser<'a> {
                             // Other EOS errors are added to collection and synchronized
                             if !self.add_error(e) {
                                 self.exit_scope();
-                                return Err(self.errors.pop().unwrap());
+                                return Err(self.error_limit_exceeded());
                             }
                             self.synchronize();
                             0
@@ -6385,7 +6402,7 @@ impl<'a> Parser<'a> {
                     // Add error to collection and synchronize
                     if !self.add_error(e) {
                         self.exit_scope();
-                        return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                        return Err(self.error_limit_exceeded()); // Error limit exceeded
                     }
                     self.synchronize();
                 }
@@ -13497,6 +13514,24 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
+        }
+
+        // Plan error-spans (jade gap 37a): if no branch consumed anything, the
+        // current token is an unsupported event argument (e.g. the bool literal
+        // `false` in `."update:open"(false)`). Previously this returned ""
+        // without consuming, so the caller's arg loop spun until its runaway
+        // guard fired; top-level error recovery then churned out derivative
+        // errors and the final report pointed at the view's closing `}` —
+        // far from the offending token. Fail loudly AT the offending token.
+        if parts.is_empty() {
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "unsupported event argument `{}` (expected a model ref like `.field`, a loop variable, a string, a number, a map literal, or `$event`)",
+                    self.cur.text
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
 
         Ok(parts.join(""))

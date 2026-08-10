@@ -4855,6 +4855,9 @@ mod unified_registry_tests;
 mod tests;
 
 #[cfg(test)]
+mod error_spans_tests;
+
+#[cfg(test)]
 mod plan320_tests;
 
 #[cfg(test)]
