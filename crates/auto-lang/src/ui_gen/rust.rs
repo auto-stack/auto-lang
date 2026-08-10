@@ -3436,6 +3436,9 @@ impl RustGenerator {
             "onclick" | "onClick" | "on_click" => {
                 format!("{}.on_click({})", builder, handler_fn)
             }
+            "oncontextmenu" | "oncontextmenu.prevent" => {
+                format!("{}.on_right_click({})", builder, handler_fn)
+            }
             "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
             }
