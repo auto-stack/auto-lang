@@ -859,7 +859,7 @@ fn build_grid<M: Clone + Debug + 'static>(
         rows.push(row_b.into());
     }
 
-    let col_widget = column(rows).spacing(gap as f32);
+    let col_widget = column(rows).spacing(gap as f32).align_x(iced::Alignment::Center);
     apply_column_style(col_widget, 0, style, widget_id)
 }
 
@@ -4248,7 +4248,7 @@ fn compare_pngs(
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(1600.0, 900.0))
+        .window_size(iced::Size::new(600.0, 700.0))
         .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
             if _state.component.source_path().is_some() {

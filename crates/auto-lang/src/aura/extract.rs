@@ -51,8 +51,11 @@ fn key_to_string(key: &Key) -> String {
 /// emitted `:on_select="Handler"`). Only the common DOM event names are
 /// native; anything else starting with `on` is a callback prop.
 fn is_native_event_key(key: &str) -> bool {
+    // Plan 402: strip `.prevent`/`.stop` modifiers (e.g. oncontextmenu.prevent)
+    // before checking, so the base event name is recognized.
+    let base = key.split('.').next().unwrap_or(key);
     matches!(
-        key,
+        base,
         "onclick" | "onClick" | "on_click"
             | "oninput" | "onInput" | "on_input"
             | "onchange" | "onChange" | "on_change"
@@ -60,6 +63,7 @@ fn is_native_event_key(key: &str) -> bool {
             | "onsubmit"
             | "onkeyup" | "onkeydown" | "onkeypress"
             | "onfocus" | "onblur"
+            | "oncontextmenu" | "onContextMenu" | "on_contextmenu"
     )
 }
 
@@ -150,6 +154,12 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                         let handler = extract_event_handler(&pair.value)?;
                         events.insert("onclick".to_string(), handler);
                     }
+                    // Plan 402: contextmenu (right-click) event, with optional
+                    // `.prevent`/`.stop` modifier stripped from the stored key.
+                    k if k.starts_with("oncontextmenu") || k.starts_with("onContextMenu") => {
+                        let handler = extract_event_handler(&pair.value)?;
+                        events.insert("oncontextmenu".to_string(), handler);
+                    }
                     // Regular props
                     _ => {
                         let value = pair.value.as_ref().clone();
@@ -195,7 +205,9 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                                 // `:on_select="Handler"` (function ref).
                                 if is_native_event_key(&key) {
                                     let handler = extract_event_handler(&pair.value)?;
-                                    events.insert(key, handler);
+                                    // Plan 402: normalize event key (strip .prevent/.stop)
+                                    let base_key = key.split('.').next().unwrap_or(&key).to_string();
+                                    events.insert(base_key, handler);
                                 } else {
                                     let value = pair.value.as_ref().clone();
                                     props.insert(key, AuraPropValue::Expr(value));
