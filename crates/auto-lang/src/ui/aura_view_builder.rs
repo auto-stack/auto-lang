@@ -347,6 +347,20 @@ impl<'a> AuraViewBuilder<'a> {
                         None => return View::Empty,
                     }
                 } else {
+                // Plan 046:裸标识符 iterable 可能是外层循环绑定的变量 ——
+                // 先查 bindings(同 tracked 路径修复)。命中则解包成 Array。
+                if let Some(val) = bindings.get(state_name).cloned() {
+                    match val {
+                        Value::Array(arr) => arr,
+                        Value::Int(id) if id >= 4_000_000 => {
+                            auto_val::Array::from(self.bridge.index_list_all(id as usize))
+                        }
+                        Value::VmRef(r) => {
+                            auto_val::Array::from(self.bridge.index_list_all(r.id))
+                        }
+                        _ => return View::Empty,
+                    }
+                } else {
                 // Read the iterable array from VmBridge state
                 match self.read_state(state_name) {
                     Ok(Value::Array(arr)) => arr,
@@ -383,6 +397,7 @@ impl<'a> AuraViewBuilder<'a> {
                     Err(_) => {
                         return View::Empty;
                     }
+                }
                 }
                 };
 
@@ -526,6 +541,24 @@ impl<'a> AuraViewBuilder<'a> {
                         None => return View::Empty,
                     }
                 } else {
+                // Plan 046:裸标识符 iterable(如内层 for 的 `row`)可能是外层循环
+                // 绑定的变量 —— 先查 bindings,命中则解包成 Vec<Value>(同 resolve_iterable
+                // :253-263 的 match 逻辑)。未命中再 fallback 到 read_state_as_vec。
+                if let Some(val) = bindings.get(state_name).cloned() {
+                    match val {
+                        auto_val::Value::Array(arr) => arr.iter().cloned().collect(),
+                        auto_val::Value::Int(id) if id >= 4_000_000 => {
+                            self.bridge.index_list_all(id as usize)
+                        }
+                        auto_val::Value::VmRef(r) => {
+                            self.bridge.index_list_all(r.id)
+                        }
+                        _ => {
+                            log::warn!("view_builder: bindings['{}'] is not iterable: {:?}", state_name, val);
+                            return View::Empty;
+                        }
+                    }
+                } else {
                 // Read the iterable. `read_state_as_vec` handles BOTH an inline
                 // `Value::Array` and a `Value::Int(array_id)` heap-array reference
                 // (the latter is how `var x = []; x.push(...)` arrays are stored —
@@ -537,6 +570,7 @@ impl<'a> AuraViewBuilder<'a> {
                         log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
                         return View::Empty;
                     }
+                }
                 }
                 };
                 let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
@@ -855,13 +889,24 @@ impl<'a> AuraViewBuilder<'a> {
             match n {
                 AuraNode::ForLoop { var, index, iterable, body, .. } => {
                     let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                    // Plan 046:裸标识符 iterable 可能是外层循环变量(嵌套 for),
+                    // 先查 bindings(同主 ForLoop 修复)。未命中再 fallback 到 state。
+                    let array: Vec<Value> = if let Some(val) = bindings.get(state_name).cloned() {
+                        match val {
+                            Value::Array(arr) => arr.iter().cloned().collect(),
+                            Value::Int(id) if id >= 4_000_000 => self.bridge.index_list_all(id as usize),
+                            Value::VmRef(r) => self.bridge.index_list_all(r.id),
+                            _ => continue,
+                        }
+                    } else {
                     // Use read_state_as_vec so heap-array refs (Value::Int(array_id),
                     // the form `var x = []; x.push(...)` produces — e.g. .days) are
                     // iterated, not just inline Value::Array. Otherwise the grid's
                     // `for cell in .days` renders empty even though state is populated.
-                    let array: Vec<Value> = match self.read_state_as_vec(state_name) {
+                    match self.read_state_as_vec(state_name) {
                         Ok(v) => v,
                         _ => continue,
+                    }
                     };
                     let body_len = body.len();
                     for (i, item) in array.iter().enumerate() {
@@ -1549,13 +1594,28 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> Vec<View<DynamicMessage>> {
         let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-        let array = match self.read_state(state_name) {
+        // Plan 046:裸标识符 iterable 可能是外层循环变量(嵌套 for),
+        // 先查 bindings。未命中再 fallback 到 read_state。
+        let array = if let Some(val) = bindings.get(state_name).cloned() {
+            match val {
+                Value::Array(arr) => arr,
+                Value::Int(id) if id >= 4_000_000 => {
+                    auto_val::Array::from(self.bridge.index_list_all(id as usize))
+                }
+                Value::VmRef(r) => {
+                    auto_val::Array::from(self.bridge.index_list_all(r.id))
+                }
+                _ => return Vec::new(),
+            }
+        } else {
+        match self.read_state(state_name) {
             Ok(Value::Array(arr)) => arr,
             Ok(_) => match self.read_state_as_vec(state_name) {
                 Ok(vec) => auto_val::Array::from(vec),
                 Err(_) => return Vec::new(),
             },
             Err(_) => return Vec::new(),
+        }
         };
         array
             .iter()
