@@ -12562,19 +12562,23 @@ impl<'a> Parser<'a> {
         // Also handle ident.field as primary prop: Text item.order → Text (text: item.order)
         let has_primary_prop_value = self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
         let has_dot_primary = self.is_kind(TokenKind::Dot);
-        // Check if identifier is followed by dot (like item.order)
+        // Check if identifier is followed by dot (like item.order) or paren (fn call).
         // Plan 012 P2: 'link'/'task' are contextual keywords (TokenKind::Link/
         // Task) but legitimate loop-var/local names — treat them as
         // identifiers here too, so `text link.title` parses as a field
         // access instead of a router-link node (jade gaps 18/29).
+        // Plan 407: also accept ident followed by LParen so that `text t('nav.chat')`
+        // parses the whole fn-call expr as the primary prop value (Expr::Call),
+        // letting text nodes render i18n `{{ t('nav.chat') }}` without escape hatches.
         let has_ident_field_primary = (self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::Link)
             || self.is_kind(TokenKind::Task)) && {
-            // Peek ahead to see if identifier is followed by dot
+            // Peek ahead: ident 后跟 Dot（字段访问）或 LParen（函数调用）
             if let Ok(next_token) = self.lexer.next() {
-                let is_dot = next_token.kind == TokenKind::Dot;
+                let is_field_or_call = next_token.kind == TokenKind::Dot
+                    || next_token.kind == TokenKind::LParen;
                 self.lexer.push_token(next_token);
-                is_dot
+                is_field_or_call
             } else {
                 false
             }
