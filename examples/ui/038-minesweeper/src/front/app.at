@@ -116,7 +116,7 @@ widget App {
                             gap: 0
                         }
                     }
-                    style: "overflow-x-auto w-full mt-6"
+                    style: "flex justify-center mt-6"
                 }
 
                 // —— 游戏结束遮罩 ——

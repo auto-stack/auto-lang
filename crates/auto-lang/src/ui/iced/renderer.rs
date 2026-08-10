@@ -3808,13 +3808,18 @@ fn compare_pngs(
 
         // Handle periodic tick events (stopwatch, timers)
         if msg.event == TICK_EVENT {
-            // Only tick when running
+            // Plan 402: dispatch Tick to the handler unconditionally — the
+            // store/handler itself decides whether to act (e.g. minesweeper
+            // only increments elapsed when game_state == "playing"). The old
+            // code gated on a stopwatch-specific `running == "true"` field
+            // which minesweeper doesn't have, so Tick never fired.
+            // Stopwatch compatibility: still do the running check + elapsed
+            // formatting for widgets that DO have a `running` field.
+            state.component.on_with_input("Tick", None);
             let running = state.component.read_state("running")
                 .map(|v| v.as_str().to_string())
                 .unwrap_or_default();
             if running == "true" {
-                state.component.on_with_input("Tick", None);
-                // Format elapsed ms into time_display / ms_display
                 if let Ok(elapsed) = state.component.read_state("elapsed").map(|v| v.as_int()) {
                     let total_cs = elapsed / 10; // centiseconds
                     let cs = total_cs % 100;
