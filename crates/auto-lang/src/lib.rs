@@ -2351,6 +2351,16 @@ fn collect_module_imports(
                     out.push(stmt.clone());
                 }
             }
+            // VM multi-store fix: collect StoreDecl (store Name { ... }) from
+            // imported modules so stores used only by route pages (not the root
+            // widget) are compiled into the VM module. Without this, the store's
+            // handlers are undefined at link time. Dedup by store name.
+            crate::ast::Stmt::StoreDecl(sd) => {
+                let key = format!("__storedecl:{}", sd.name);
+                if seen.insert(key) {
+                    out.push(stmt.clone());
+                }
+            }
             _ => {}
         }
     }
@@ -2688,6 +2698,32 @@ fn run_file_dynamic_ui_inner(
                                     registry.register(child_widget);
                                 }
                             }
+                            // VM multi-store fix: also collect StoreDecls declared
+                            // in the page's own source (e.g. home.at has
+                            // `use article_store: ArticleStore` → article_store.at
+                            // has the StoreDecl). Without this, stores only used by
+                            // route pages never enter all_decls → their handlers
+                            // are undefined at link time. This mirrors the root-AST
+                            // store conversion (line ~2582).
+                            if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                                let name = store_decl.name.clone();
+                                child_decls.push(crate::ast::ui::WidgetDecl {
+                                    name: name.clone(),
+                                    messages: store_decl.messages.clone(),
+                                    model: store_decl.model.clone(),
+                                    computed: store_decl.computed.clone(),
+                                    view: None,
+                                    on: store_decl.on.clone(),
+                                    bind: None,
+                                    props: Vec::new(),
+                                    routes: None,
+                                    lifecycle: Vec::new(),
+                                    style: None,
+                                    ext_imports: Vec::new(),
+                                    watch: Vec::new(),
+                                    expose: Vec::new(),
+                                });
+                            }
                         }
                         // Pull in the page's own `use` deps (e.g. a page doing
                         // `use store: BooksStore` or `use back.api: list_books`)
@@ -2733,6 +2769,37 @@ fn run_file_dynamic_ui_inner(
                 expose: Vec::new(),
             };
             store_as_child_decls.push(fake_widget);
+        }
+    }
+    // VM multi-store fix: also extract StoreDecls collected from route-page
+    // imports (import_stmts now carries them via collect_module_imports).
+    // Convert each to a WidgetDecl so its handlers compile into the VM module.
+    // Dedup by store name against what root already collected.
+    let root_store_names: std::collections::HashSet<String> = store_as_child_decls
+        .iter()
+        .map(|d| d.name.to_string())
+        .collect();
+    for stmt in &import_stmts {
+        if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+            let sname = store_decl.name.to_string();
+            if !root_store_names.contains(&sname) {
+                store_as_child_decls.push(crate::ast::ui::WidgetDecl {
+                    name: store_decl.name.clone(),
+                    messages: store_decl.messages.clone(),
+                    model: store_decl.model.clone(),
+                    computed: store_decl.computed.clone(),
+                    view: None,
+                    on: store_decl.on.clone(),
+                    bind: None,
+                    props: Vec::new(),
+                    routes: None,
+                    lifecycle: Vec::new(),
+                    style: None,
+                    ext_imports: Vec::new(),
+                    watch: Vec::new(),
+                    expose: Vec::new(),
+                });
+            }
         }
     }
     // Merge store-as-child decls with actual child widget decls

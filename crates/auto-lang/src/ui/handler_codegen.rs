@@ -31,6 +31,10 @@ use crate::vm::loader::Module;
 thread_local! {
     static STORE_FIELDS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
     static STORE_WIDGET_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    // VM multi-store fix: store_name → its msg variant names, so rewrite_expr
+    // can disambiguate `store.Method()` across multiple stores by matching the
+    // method name to the store that declares it.
+    static STORE_MSG_MAP: RefCell<HashMap<String, HashSet<String>>> = RefCell::new(HashMap::new());
     // Plan 398 §2/§3 BUG-B + BUG-C: current widget's name + message-variant
     // names, so `.SiblingHandler()` calls inside a handler (both store handlers
     // calling sibling store handlers, AND child-widget handlers calling their
@@ -59,6 +63,11 @@ pub fn clear_current_widget() {
 pub fn set_store_context(fields: HashMap<String, Vec<String>>, names: HashMap<String, String>) {
     STORE_FIELDS.with(|s| *s.borrow_mut() = fields);
     STORE_WIDGET_NAMES.with(|s| *s.borrow_mut() = names);
+}
+
+/// Set the store msg-variant map (VM multi-store fix).
+pub fn set_store_msg_map(msgs: HashMap<String, HashSet<String>>) {
+    STORE_MSG_MAP.with(|s| *s.borrow_mut() = msgs);
 }
 
 /// Clear the store context after synthesis.
@@ -181,14 +190,31 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
             }
         }
     }
-    // Plan 370 D-GAP-4 Phase 0: store.X rewriting.
+    // Plan 370 D-GAP-4 Phase 0 + VM multi-store fix: store.X rewriting.
     // store.Method(args) → handler_StoreName_Method(__state, args)
+    // When multiple stores exist, disambiguate by matching Method to the store
+    // that declares it as a msg variant (STORE_MSG_MAP). Fallback to the legacy
+    // alias-based lookup for single-store backward compat.
     if let Expr::Call(call) = e {
         if let Expr::Dot(obj, method) = call.name.as_ref() {
             if let Expr::Ident(alias) = obj.as_ref() {
                 let has_store = STORE_WIDGET_NAMES.with(|s| s.borrow().contains_key(alias.as_str()));
                 if has_store {
-                    let store_name = STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned()).unwrap_or_default();
+                    // Multi-store: find which store owns this method by msg variant.
+                    let store_name = STORE_MSG_MAP.with(|s| {
+                        let map = s.borrow();
+                        // Find a store whose msg variants contain `method`.
+                        let matched: Vec<String> = map.iter()
+                            .filter(|(_, msgs)| msgs.contains(method.as_str()))
+                            .map(|(name, _)| name.clone())
+                            .collect();
+                        if matched.len() == 1 {
+                            matched[0].clone()
+                        } else {
+                            // Ambiguous or not found: fall back to legacy alias lookup.
+                            STORE_WIDGET_NAMES.with(|sn| sn.borrow().get(alias.as_str()).cloned()).unwrap_or_default()
+                        }
+                    });
                     let handler_fn = format!("handler_{}_{}", store_name, method);
                     let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
                     // Clone and rewrite each original arg before adding
@@ -1232,17 +1258,32 @@ pub fn synthesize_from_decl(
         .chain(child_decls.iter())
         .collect();
 
-    // Plan 370 D-GAP-4: build store alias → field names map AND alias → widget name map.
+    // Plan 370 D-GAP-4 + VM multi-store fix: collect ALL stores by their real
+    // name (not a hardcoded "store" key), plus each store's msg variants so
+    // rewrite_expr can match `store.Method()` to the correct store by method
+    // name when multiple stores share the alias "store".
     let mut store_fields_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut store_widget_names: HashMap<String, String> = HashMap::new();
+    let mut store_msg_map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut all_store_names: Vec<String> = Vec::new();
     for d in &all_decls {
         if d.view.is_none() {
             let fields: Vec<String> = d.model
                 .as_ref()
                 .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
                 .unwrap_or_default();
-            if !fields.is_empty() {
-                store_fields_map.insert("store".to_string(), fields.clone());
+            let msgs: HashSet<String> = d.messages
+                .iter()
+                .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
+                .collect();
+            let sname = d.name.to_string();
+            all_store_names.push(sname.clone());
+            store_fields_map.insert(sname.clone(), fields.clone());
+            store_widget_names.insert(sname.clone(), sname.clone());
+            store_msg_map.insert(sname.clone(), msgs);
+            // Backward-compat: also keep the legacy "store" key pointing at
+            // the first store (single-store projects still work unchanged).
+            if !store_widget_names.contains_key("store") {
                 store_widget_names.insert("store".to_string(), d.name.to_string());
             }
         }
@@ -1250,6 +1291,7 @@ pub fn synthesize_from_decl(
 
     // Set thread-local store context so rewrite_expr can access it.
     set_store_context(store_fields_map.clone(), store_widget_names.clone());
+    set_store_msg_map(store_msg_map.clone());
 
     for d in &all_decls {
         let d_tick = extract_tick_interval_from_decl(d);
