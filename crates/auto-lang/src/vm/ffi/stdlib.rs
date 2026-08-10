@@ -7514,9 +7514,23 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             return Err(VMError::RuntimeError("Command.arg: invalid Command handle".into()));
         }
         ("Command", "args") => {
-            let _args_handle = task.ram.pop_i32();
+            // Pop the args array as Vec<String> (same extraction path as
+            // shim_process_spawn's Vec<String> parameter via VMConvertible).
+            let args: Vec<String> = Vec::<String>::pop_from_stack(task, vm)
+                .map_err(|e| VMError::RuntimeError(format!("Command.args: {}", e)))?;
             let handle = task.ram.pop_i32() as u64;
-            task.ram.push_i32(handle as i32);
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                        let mut cmd_guard = cmd.lock().unwrap();
+                        cmd_guard.args(&args);
+                        task.ram.push_i32(handle as i32);
+                        return Ok(());
+                    }
+                }
+            }
+            return Err(VMError::RuntimeError("Command.args: invalid Command handle".into()));
         }
         ("Command", "stdout") => {
             let _stdio_val = task.ram.pop_i32();
