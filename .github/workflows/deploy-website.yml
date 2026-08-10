@@ -2,6 +2,10 @@
 #
 # This workflow builds the Auto Language documentation website
 # and deploys it to GitHub Pages.
+#
+# When examples/widgets-gallery/ changes, the widgets-gallery is rebuilt with
+# the Auto pipeline (auto build → dist) and synced into website/public/ui/gallery
+# so the site serves the fresh Auto-implemented gallery at /ui/gallery/.
 
 name: Deploy Website
 
@@ -11,6 +15,7 @@ on:
     paths:
       - 'website/**'
       - 'docs/**'
+      - 'examples/widgets-gallery/**'
       - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
@@ -47,6 +52,49 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Detect widgets-gallery changes
+        id: gallery
+        uses: dorny/paths-filter@v3
+        with:
+          working-directory: auto-lang
+          filters: |
+            widgets_gallery:
+              - 'examples/widgets-gallery/**'
+
+      # --- widgets-gallery build (only when the gallery source changed) ---
+      - name: Setup Node
+        if: steps.gallery.outputs.widgets_gallery == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        if: steps.gallery.outputs.widgets_gallery == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Setup Rust
+        if: steps.gallery.outputs.widgets_gallery == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build auto CLI
+        if: steps.gallery.outputs.widgets_gallery == 'true'
+        run: cargo build --release -p auto
+        working-directory: auto-lang
+
+      - name: Build widgets-gallery
+        if: steps.gallery.outputs.widgets_gallery == 'true'
+        run: |
+          ./target/release/auto build
+          rm -rf ../website/public/ui/gallery
+          mkdir -p ../website/public/ui/gallery
+          cp -r gen/front/vue/dist/* ../website/public/ui/gallery/
+        working-directory: auto-lang/examples/widgets-gallery
+        env:
+          # shadcn-vue add / pnpm install run inside `auto build`
+          PNPM_HOME: /home/runner/.local/share/pnpm
 
       - name: Install Dependencies
         run: |

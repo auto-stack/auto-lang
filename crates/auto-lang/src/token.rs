@@ -384,7 +384,11 @@ impl Token {
             "as" => Some(TokenKind::As),
             "to" => Some(TokenKind::To),
             "enum" => Some(TokenKind::Enum),
-            "grid" => Some(TokenKind::Grid),
+            // Plan 408: 'grid' is no longer a hard keyword — lexed as Ident so it
+            // can be used as a route name, widget name, or variable. The AutoData
+            // grid(...) literal is parsed via a text-based check in parse_expr
+            // (parser.rs). Mirrors Plan 379's treatment of 'route' and Plan 354's
+            // treatment of 'nav'. "grid" => Some(TokenKind::Grid),
             "alias" => Some(TokenKind::Alias),
             "break" => Some(TokenKind::Break),
             "continue" => Some(TokenKind::Continue),

@@ -1,0 +1,88 @@
+// pages/sidebar.at - Sidebar component documentation page
+
+widget SidebarPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Sidebar"
+            text "A composable sidebar component with support for different sections and navigation items."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add sidebar") {}
+
+            h2 "Simple"
+            preview-card (id: "sidebar-basic") {
+                sidebar {
+                    sidebar-header {
+                        sidebar-menu {
+                            sidebar-menu-item {
+                                sidebar-menu-button {
+                                    text "Dashboard"
+                                }
+                            }
+                        }
+                    }
+                    sidebar-content {
+                        div {
+                            text "Main" { style: "px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground" }
+                            div {
+                                sidebar-menu {
+                                    sidebar-menu-item {
+                                        sidebar-menu-button {
+                                            text "Home"
+                                        }
+                                    }
+                                    sidebar-menu-item {
+                                        sidebar-menu-button {
+                                            text "Settings"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    sidebar-footer {
+                        text "Footer"
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "side"
+                        td "string"
+                        td (text: "\"left\"") {}
+                        td (text: "\"left\", \"right\"") {}
+                        td "Which side the sidebar appears"
+                    }
+                    tr {
+                        td "variant"
+                        td "string"
+                        td (text: "\"sidebar\"") {}
+                        td (text: "\"sidebar\", \"floating\", \"inset\"") {}
+                        td "Sidebar style variant"
+                    }
+                    tr {
+                        td "collapsible"
+                        td "string"
+                        td (text: "\"offcanvas\"") {}
+                        td (text: "\"offcanvas\", \"icon\", \"none\"") {}
+                        td "Collapsible behavior"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,29 +1,34 @@
-import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve,f as s,V as c,e as l,w as a,u as t,G as m,W as f,_ as v,a5 as w,p as R,af as X,ag as Y,ah as Z,ai as y,r as p,j as Ie}from"./index.js";import{_ as u}from"./index3.js";import{_ as D}from"./Checkbox.vue_vue_type_script_setup_true_lang.js";import{_ as ee}from"./Input.vue_vue_type_script_setup_true_lang.js";import{a as oe,b as se,c as ne,d as _,_ as ie}from"./SelectValue.vue_vue_type_script_setup_true_lang.js";import{_ as h}from"./Table.vue_vue_type_script_setup_true_lang.js";import{_ as z,a as d,b as x,c as B,d as n}from"./TableHeader.vue_vue_type_script_setup_true_lang.js";import{C as re}from"./chevron-left.js";import{C as de}from"./chevron-right.js";import{P as Pe}from"./plus.js";import"./isValueEqualOrExist.js";import"./ohash.D__AXeF1.js";import"./useFormControl.js";import"./VisuallyHiddenInput.js";import"./VisuallyHidden.js";import"./RovingFocusItem.js";import"./index4.js";import"./chevron-down.js";/**
+import{c as N,d as Me,K as E,O as Ie,Q as S,R as $,o as l,a as r,b as s,g as n,U as T,e as a,w as o,u as t,G as m,V as k,a5 as w,f as C,_ as v,r as f}from"./index.js";import{_ as u}from"./index3.js";import{_ as D}from"./Checkbox.vue_vue_type_script_setup_true_lang.js";import{_ as X,a as Y,b as Z,c as p}from"./DropdownMenuTrigger.vue_vue_type_script_setup_true_lang.js";import{a as ae,b as oe,c as se,d as _,_ as ne}from"./SelectValue.vue_vue_type_script_setup_true_lang.js";import{_ as B}from"./Table.vue_vue_type_script_setup_true_lang.js";import{_ as z,a as d,b as y,c as R,d as i}from"./TableHeader.vue_vue_type_script_setup_true_lang.js";import{C as ie}from"./chevron-left.js";import{C as re}from"./chevron-right.js";import"./isValueEqualOrExist.js";import"./ohash.D__AXeF1.js";import"./useFormControl.js";import"./useForwardScopeId.js";import"./VisuallyHiddenInput.js";import"./usePrimitiveElement.js";import"./VisuallyHidden.js";import"./RovingFocusItem.js";import"./Collection.js";import"./RovingFocusGroup.js";import"./check.js";import"./MenuPortal.js";import"./PopperContent.js";import"./useSize.js";import"./useArrowNavigation.js";import"./useFocusGuards.js";import"./useTypeahead.js";import"./Teleport.js";import"./chevron-down.js";/**
  * @license lucide-vue-next v0.312.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const te=U("ArrowDownIcon",[["path",{d:"M12 5v14",key:"s699le"}],["path",{d:"m19 12-7 7-7-7",key:"1idqje"}]]);/**
+ */const ee=N("ArrowDownIcon",[["path",{d:"M12 5v14",key:"s699le"}],["path",{d:"m19 12-7 7-7-7",key:"1idqje"}]]);/**
  * @license lucide-vue-next v0.312.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const N=U("ArrowUpDownIcon",[["path",{d:"m21 16-4 4-4-4",key:"f6ql7i"}],["path",{d:"M17 20V4",key:"1ejh1v"}],["path",{d:"m3 8 4-4 4 4",key:"11wl7u"}],["path",{d:"M7 4v16",key:"1glfcx"}]]);/**
+ */const U=N("ArrowUpDownIcon",[["path",{d:"m21 16-4 4-4-4",key:"f6ql7i"}],["path",{d:"M17 20V4",key:"1ejh1v"}],["path",{d:"m3 8 4-4 4 4",key:"11wl7u"}],["path",{d:"M7 4v16",key:"1glfcx"}]]);/**
  * @license lucide-vue-next v0.312.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const le=U("ArrowUpIcon",[["path",{d:"m5 12 7-7 7 7",key:"hav0vg"}],["path",{d:"M12 19V5",key:"x0mq9r"}]]);/**
+ */const le=N("ArrowUpIcon",[["path",{d:"m5 12 7-7 7 7",key:"hav0vg"}],["path",{d:"M12 19V5",key:"x0mq9r"}]]);/**
  * @license lucide-vue-next v0.312.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const ue=U("Columns2Icon",[["rect",{width:"18",height:"18",x:"3",y:"3",rx:"2",key:"afitv7"}],["path",{d:"M12 3v18",key:"108xh3"}]]);/**
+ */const de=N("Columns2Icon",[["rect",{width:"18",height:"18",x:"3",y:"3",rx:"2",key:"afitv7"}],["path",{d:"M12 3v18",key:"108xh3"}]]);/**
  * @license lucide-vue-next v0.312.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const be=U("MoreHorizontalIcon",[["circle",{cx:"12",cy:"12",r:"1",key:"41hilf"}],["circle",{cx:"19",cy:"12",r:"1",key:"1wjl8i"}],["circle",{cx:"5",cy:"12",r:"1",key:"1pcz8c"}]]),Fe={class:"flex flex-col pb-8"},Ee={class:"flex flex-col"},Ne={class:"relative rounded-lg border overflow-hidden"},Ue={class:"flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b"},Le={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},qe={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ge={class:"relative rounded-lg border overflow-hidden"},Ke={class:"flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b"},Oe={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Qe={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},We={class:"rounded-lg border overflow-hidden"},Je={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Xe={class:"border-t"},Ye={key:0,class:"border-t"},Ze={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},_e={class:"flex"},et={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},tt={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},lt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},at={class:"rounded-lg border overflow-hidden"},ot={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},st={class:"border-t"},nt={key:0,class:"border-t"},it={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},rt={class:"flex"},dt={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},ut={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},bt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},mt={class:"rounded-lg border overflow-hidden"},xt={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},ft={class:"flex flex-col"},wt={class:"flex flex-row flex items-center gap-2"},gt={class:"border-t"},ct={key:0,class:"border-t"},vt={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},pt={class:"flex"},Tt={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},kt={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},yt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Ct={class:"rounded-lg border overflow-hidden"},ht={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},zt={class:"flex flex-col"},Bt={class:"flex flex-row flex items-center justify-between"},$t={class:"flex flex-row flex items-center gap-2"},St={class:"flex flex-row"},Rt={class:"border-t"},Dt={key:0,class:"border-t"},At={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},Ht={class:"flex"},jt={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Mt={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Vt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},It={class:"rounded-lg border overflow-hidden"},Pt={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Ft={class:"flex flex-col"},Et={class:"flex flex-row flex items-center justify-between"},Nt={class:"flex flex-row"},Ut={class:"border-t"},Lt={key:0,class:"border-t"},qt={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},Gt={class:"flex"},Kt={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ot={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Qt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Wt={class:"rounded-lg border overflow-hidden"},Jt={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Xt={class:"border-t"},Yt={key:0,class:"border-t"},Zt={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},_t={class:"flex"},el={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},tl={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},ll={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},al={class:"rounded-lg border overflow-hidden"},ol={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},sl={class:"flex flex-col"},nl={class:"flex flex-row flex items-center justify-between"},il={class:"border-t"},rl={key:0,class:"border-t"},dl={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},ul={class:"flex"},bl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},ml={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},xl={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},fl={class:"rounded-lg border overflow-hidden"},wl={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},gl={class:"flex flex-col"},cl={class:"flex flex-row flex items-center justify-between"},vl={class:"flex flex-row"},pl={class:"flex flex-row flex items-center justify-between"},Tl={class:"flex flex-row flex items-center gap-6"},kl={class:"flex flex-row flex items-center gap-2"},yl={class:"flex flex-row"},Cl={class:"border-t"},hl={key:0,class:"border-t"},zl={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},Bl={class:"flex"},$l={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Sl={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Rl={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Dl={class:"flex flex-col py-2"},Al={class:"flex flex-row"},Hl={class:"flex flex-row"},me=`table {
+ */const ue=N("MoreHorizontalIcon",[["circle",{cx:"12",cy:"12",r:"1",key:"41hilf"}],["circle",{cx:"19",cy:"12",r:"1",key:"1wjl8i"}],["circle",{cx:"5",cy:"12",r:"1",key:"1pcz8c"}]]);/**
+ * @license lucide-vue-next v0.312.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const Ae=N("PlusIcon",[["path",{d:"M5 12h14",key:"1ays0h"}],["path",{d:"M12 5v14",key:"s699le"}]]),je={class:"flex flex-col"},Ve={class:"relative rounded-lg border overflow-hidden"},Pe={class:"flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b"},Fe={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ee={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ne={class:"relative rounded-lg border overflow-hidden"},Ue={class:"flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b"},Le={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},qe={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ke={class:"rounded-lg border overflow-hidden"},Ge={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Oe={class:"border-t"},Qe={key:0,class:"border-t"},Je={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},We={class:"flex"},Xe={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ye={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ze={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},_e={class:"rounded-lg border overflow-hidden"},el={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},ll={class:"border-t"},tl={key:0,class:"border-t"},al={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},ol={class:"flex"},sl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},nl={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},il={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},rl={class:"rounded-lg border overflow-hidden"},dl={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},ul={class:"flex flex-col"},bl={class:"border-t"},ml={key:0,class:"border-t"},yl={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},kl={class:"flex"},wl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},xl={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Tl={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},fl={class:"rounded-lg border overflow-hidden"},gl={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},vl={class:"flex flex-col"},cl={class:"flex flex-row items-center justify-between"},Cl={class:"flex flex-row items-center gap-2"},pl={class:"flex flex-row"},hl={class:"border-t"},Bl={key:0,class:"border-t"},zl={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},Rl={class:"flex"},Sl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},$l={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Dl={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Hl={class:"rounded-lg border overflow-hidden"},Ml={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Il={class:"flex flex-col"},Al={class:"flex flex-row items-center justify-between"},jl={class:"flex flex-row"},Vl={class:"border-t"},Pl={key:0,class:"border-t"},Fl={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},El={class:"flex"},Nl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ul={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Ll={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},ql={class:"rounded-lg border overflow-hidden"},Kl={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},Gl={class:"border-t"},Ol={key:0,class:"border-t"},Ql={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},Jl={class:"flex"},Wl={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Xl={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Yl={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Zl={class:"rounded-lg border overflow-hidden"},_l={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},et={class:"flex flex-col"},lt={class:"flex flex-row items-center justify-between"},tt={class:"border-t"},at={key:0,class:"border-t"},ot={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},st={class:"flex"},nt={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},it={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},rt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},dt={class:"rounded-lg border overflow-hidden"},ut={class:"flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900"},bt={class:"flex flex-col"},mt={class:"flex flex-row items-center justify-between"},yt={class:"flex flex-row"},kt={class:"-ml-4",variant:"ghost"},wt={class:"-ml-4",variant:"ghost"},xt={class:"flex flex-row items-center justify-between"},Tt={class:"flex flex-row items-center gap-6"},ft={class:"flex flex-row items-center gap-2"},gt={class:"flex flex-row"},vt={class:"border-t"},ct={key:0,class:"border-t"},Ct={class:"flex items-center justify-between bg-zinc-100 dark:bg-zinc-800"},pt={class:"flex"},ht={key:0,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},Bt={key:1,xmlns:"http://www.w3.org/2000/svg",width:"14",height:"14",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},zt={class:"overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"},Rt={class:"flex flex-col py-2"},St={class:"flex flex-row"},$t={class:"flex flex-row"},be=`table {
     table-header {
         table-row {
             table-head (text: "Status") {}
@@ -34,60 +39,60 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
     table-body {
         table-row {
             table-cell {
-                badge (text: "Success", variant: "default") {}
+                badge (variant: "default", text: "Success") {}
             }
-            table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
+            table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
             table-cell (style: "text-right font-medium", text: "$316.00") {}
         }
         table-row {
             table-cell {
                 badge (variant: "secondary", text: "Pending") {}
             }
-            table-cell (style: "lowercase", text: "abe45@gmail.com") {}
+            table-cell (text: "abe45@gmail.com", style: "lowercase") {}
             table-cell (text: "$242.00", style: "text-right font-medium") {}
         }
         table-row {
             table-cell {
-                badge (variant: "outline", text: "Processing") {}
+                badge (text: "Processing", variant: "outline") {}
             }
             table-cell (style: "lowercase", text: "monserrat44@gmail.com") {}
             table-cell (text: "$837.00", style: "text-right font-medium") {}
         }
     }
 }
-`,xe=`<Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead>Status</TableHead>
-      <TableHead>Email</TableHead>
-      <TableHead class="text-right">Amount</TableHead>
+`,me=`<Table :key="'Table-1'">
+  <TableHeader :key="'TableHeader-2'">
+    <TableRow :key="'TableRow-3'">
+      <TableHead :key="'TableHead-4'">Status</TableHead>
+      <TableHead :key="'TableHead-5'">Email</TableHead>
+      <TableHead class="text-right" :key="'TableHead-6'">Amount</TableHead>
     </TableRow>
   </TableHeader>
-  <TableBody>
-    <TableRow>
-      <TableCell>
-        <Badge variant="default">Success</Badge>
+  <TableBody :key="'TableBody-7'">
+    <TableRow :key="'TableRow-8'">
+      <TableCell :key="'TableCell-9'">
+        <Badge variant="default" :key="'Badge-10'">Success</Badge>
       </TableCell>
-      <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-      <TableCell class="text-right font-medium">$316.00</TableCell>
+      <TableCell class="lowercase" :key="'TableCell-11'">ken99@yahoo.com</TableCell>
+      <TableCell class="text-right font-medium" :key="'TableCell-12'">$316.00</TableCell>
     </TableRow>
-    <TableRow>
-      <TableCell>
-        <Badge variant="secondary">Pending</Badge>
+    <TableRow :key="'TableRow-13'">
+      <TableCell :key="'TableCell-14'">
+        <Badge variant="secondary" :key="'Badge-15'">Pending</Badge>
       </TableCell>
-      <TableCell class="lowercase">abe45@gmail.com</TableCell>
-      <TableCell class="text-right font-medium">$242.00</TableCell>
+      <TableCell class="lowercase" :key="'TableCell-16'">abe45@gmail.com</TableCell>
+      <TableCell class="text-right font-medium" :key="'TableCell-17'">$242.00</TableCell>
     </TableRow>
-    <TableRow>
-      <TableCell>
-        <Badge variant="outline">Processing</Badge>
+    <TableRow :key="'TableRow-18'">
+      <TableCell :key="'TableCell-19'">
+        <Badge variant="outline" :key="'Badge-20'">Processing</Badge>
       </TableCell>
-      <TableCell class="lowercase">monserrat44@gmail.com</TableCell>
-      <TableCell class="text-right font-medium">$837.00</TableCell>
+      <TableCell class="lowercase" :key="'TableCell-21'">monserrat44@gmail.com</TableCell>
+      <TableCell class="text-right font-medium" :key="'TableCell-22'">$837.00</TableCell>
     </TableRow>
   </TableBody>
 </Table>
-`,fe=`table {
+`,ye=`table {
     table-header {
         table-row {
             table-head {
@@ -98,7 +103,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                             icon (name: "arrow-up", style: "ml-2 h-4 w-4") {}
                         }
                         if .sortDirection == "desc" {
-                            icon (name: "arrow-down", style: "ml-2 h-4 w-4") {}
+                            icon (style: "ml-2 h-4 w-4", name: "arrow-down") {}
                         }
                     }
                     if .sortColumn != "status" {
@@ -107,7 +112,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 }
             }
             table-head {
-                button (variant: "ghost", style: "-ml-4", onclick: ..toggleSortEmail) {
+                button (style: "-ml-4", variant: "ghost", onclick: ..toggleSortEmail) {
                     text (text: "Email") {}
                     if .sortColumn == "email" {
                         if .sortDirection == "asc" {
@@ -118,19 +123,19 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                         }
                     }
                     if .sortColumn != "email" {
-                        icon (name: "arrow-up-down", style: "ml-2 h-4 w-4") {}
+                        icon (style: "ml-2 h-4 w-4", name: "arrow-up-down") {}
                     }
                 }
             }
             table-head (style: "text-right") {
-                button (variant: "ghost", style: "-ml-4", onclick: ..toggleSortAmount) {
+                button (style: "-ml-4", variant: "ghost", onclick: ..toggleSortAmount) {
                     text (text: "Amount") {}
                     if .sortColumn == "amount" {
                         if .sortDirection == "asc" {
                             icon (name: "arrow-up", style: "ml-2 h-4 w-4") {}
                         }
                         if .sortDirection == "desc" {
-                            icon (name: "arrow-down", style: "ml-2 h-4 w-4") {}
+                            icon (style: "ml-2 h-4 w-4", name: "arrow-down") {}
                         }
                     }
                     if .sortColumn != "amount" {
@@ -145,10 +150,10 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             if .sortDirection == "asc" {
                 table-row {
                     table-cell {
-                        badge (text: "Success", variant: "default") {}
+                        badge (variant: "default", text: "Success") {}
                     }
                     table-cell (text: "abe45@gmail.com", style: "lowercase") {}
-                    table-cell (style: "text-right font-medium", text: "$242.00") {}
+                    table-cell (text: "$242.00", style: "text-right font-medium") {}
                 }
                 table-row {
                     table-cell {
@@ -159,9 +164,9 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 }
                 table-row {
                     table-cell {
-                        badge (text: "Success", variant: "default") {}
+                        badge (variant: "default", text: "Success") {}
                     }
-                    table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
+                    table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
                     table-cell (style: "text-right font-medium", text: "$316.00") {}
                 }
             }
@@ -170,22 +175,22 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     table-cell {
                         badge (variant: "default", text: "Success") {}
                     }
-                    table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
+                    table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
                     table-cell (style: "text-right font-medium", text: "$316.00") {}
                 }
                 table-row {
                     table-cell {
-                        badge (variant: "destructive", text: "Failed") {}
+                        badge (text: "Failed", variant: "destructive") {}
                     }
-                    table-cell (text: "carmella@hotmail.com", style: "lowercase") {}
+                    table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
                     table-cell (text: "$721.00", style: "text-right font-medium") {}
                 }
                 table-row {
                     table-cell {
                         badge (text: "Success", variant: "default") {}
                     }
-                    table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                    table-cell (style: "text-right font-medium", text: "$242.00") {}
+                    table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                    table-cell (text: "$242.00", style: "text-right font-medium") {}
                 }
             }
         }
@@ -196,13 +201,13 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                         badge (text: "Success", variant: "default") {}
                     }
                     table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                    table-cell (text: "$242.00", style: "text-right font-medium") {}
+                    table-cell (style: "text-right font-medium", text: "$242.00") {}
                 }
                 table-row {
                     table-cell {
                         badge (text: "Success", variant: "default") {}
                     }
-                    table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
+                    table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
                     table-cell (text: "$316.00", style: "text-right font-medium") {}
                 }
                 table-row {
@@ -218,7 +223,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     table-cell {
                         badge (variant: "destructive", text: "Failed") {}
                     }
-                    table-cell (text: "carmella@hotmail.com", style: "lowercase") {}
+                    table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
                     table-cell (text: "$721.00", style: "text-right font-medium") {}
                 }
                 table-row {
@@ -226,14 +231,14 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                         badge (text: "Success", variant: "default") {}
                     }
                     table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
-                    table-cell (text: "$316.00", style: "text-right font-medium") {}
+                    table-cell (style: "text-right font-medium", text: "$316.00") {}
                 }
                 table-row {
                     table-cell {
-                        badge (variant: "default", text: "Success") {}
+                        badge (text: "Success", variant: "default") {}
                     }
-                    table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                    table-cell (text: "$242.00", style: "text-right font-medium") {}
+                    table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                    table-cell (style: "text-right font-medium", text: "$242.00") {}
                 }
             }
         }
@@ -241,7 +246,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             if .sortDirection == "asc" {
                 table-row {
                     table-cell {
-                        badge (variant: "destructive", text: "Failed") {}
+                        badge (text: "Failed", variant: "destructive") {}
                     }
                     table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
                     table-cell (text: "$721.00", style: "text-right font-medium") {}
@@ -251,7 +256,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                         badge (text: "Success", variant: "default") {}
                     }
                     table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                    table-cell (text: "$242.00", style: "text-right font-medium") {}
+                    table-cell (style: "text-right font-medium", text: "$242.00") {}
                 }
                 table-row {
                     table-cell {
@@ -266,21 +271,21 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     table-cell {
                         badge (variant: "default", text: "Success") {}
                     }
-                    table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                    table-cell (style: "text-right font-medium", text: "$242.00") {}
+                    table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                    table-cell (text: "$242.00", style: "text-right font-medium") {}
                 }
                 table-row {
                     table-cell {
                         badge (text: "Success", variant: "default") {}
                     }
-                    table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
-                    table-cell (text: "$316.00", style: "text-right font-medium") {}
+                    table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
+                    table-cell (style: "text-right font-medium", text: "$316.00") {}
                 }
                 table-row {
                     table-cell {
                         badge (text: "Failed", variant: "destructive") {}
                     }
-                    table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
+                    table-cell (text: "carmella@hotmail.com", style: "lowercase") {}
                     table-cell (text: "$721.00", style: "text-right font-medium") {}
                 }
             }
@@ -288,33 +293,33 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
         if .sortColumn == "" {
             table-row {
                 table-cell {
-                    badge (text: "Success", variant: "default") {}
+                    badge (variant: "default", text: "Success") {}
                 }
-                table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
-                table-cell (style: "text-right font-medium", text: "$316.00") {}
+                table-cell (text: "ken99@yahoo.com", style: "lowercase") {}
+                table-cell (text: "$316.00", style: "text-right font-medium") {}
             }
             table-row {
                 table-cell {
                     badge (text: "Success", variant: "default") {}
                 }
-                table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                table-cell (style: "lowercase", text: "abe45@gmail.com") {}
                 table-cell (text: "$242.00", style: "text-right font-medium") {}
             }
             table-row {
                 table-cell {
                     badge (variant: "destructive", text: "Failed") {}
                 }
-                table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
+                table-cell (text: "carmella@hotmail.com", style: "lowercase") {}
                 table-cell (text: "$721.00", style: "text-right font-medium") {}
             }
         }
     }
 }
-`,we=`<Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead>
-        <Button variant="ghost" class="-ml-4" @click="toggleSortStatus">
+`,ke=`<Table :key="'Table-45'">
+  <TableHeader :key="'TableHeader-46'">
+    <TableRow :key="'TableRow-47'">
+      <TableHead :key="'TableHead-48'">
+        <button class="-ml-4" :variant="'ghost'" @click="toggleSortStatus">
           <span>Status</span>
           <template v-if="sortColumn == 'status'">
             <template v-if="sortDirection == 'asc'">
@@ -327,10 +332,10 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
           <template v-if="sortColumn != 'status'">
             <ArrowUpDown class="w-5 h-5 ml-2 h-4 w-4" />
           </template>
-        </Button>
+        </button>
       </TableHead>
-      <TableHead>
-        <Button variant="ghost" class="-ml-4" @click="toggleSortEmail">
+      <TableHead :key="'TableHead-49'">
+        <button class="-ml-4" :variant="'ghost'" @click="toggleSortEmail">
           <span>Email</span>
           <template v-if="sortColumn == 'email'">
             <template v-if="sortDirection == 'asc'">
@@ -343,10 +348,10 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
           <template v-if="sortColumn != 'email'">
             <ArrowUpDown class="w-5 h-5 ml-2 h-4 w-4" />
           </template>
-        </Button>
+        </button>
       </TableHead>
-      <TableHead class="text-right">
-        <Button variant="ghost" class="-ml-4" @click="toggleSortAmount">
+      <TableHead class="text-right" :key="'TableHead-50'">
+        <button class="-ml-4" :variant="'ghost'" @click="toggleSortAmount">
           <span>Amount</span>
           <template v-if="sortColumn == 'amount'">
             <template v-if="sortDirection == 'asc'">
@@ -359,183 +364,183 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
           <template v-if="sortColumn != 'amount'">
             <ArrowUpDown class="w-5 h-5 ml-2 h-4 w-4" />
           </template>
-        </Button>
+        </button>
       </TableHead>
     </TableRow>
   </TableHeader>
-  <TableBody>
+  <TableBody :key="'TableBody-51'">
     <template v-if="sortColumn == 'email'">
       <template v-if="sortDirection == 'asc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-52'">
+          <TableCell :key="'TableCell-53'">
+            <Badge variant="default" :key="'Badge-54'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-55'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-56'">$242.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-57'">
+          <TableCell :key="'TableCell-58'">
+            <Badge variant="destructive" :key="'Badge-59'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-60'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-61'">$721.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-62'">
+          <TableCell :key="'TableCell-63'">
+            <Badge variant="default" :key="'Badge-64'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-65'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-66'">$316.00</TableCell>
         </TableRow>
       </template>
       <template v-if="sortDirection == 'desc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-67'">
+          <TableCell :key="'TableCell-68'">
+            <Badge variant="default" :key="'Badge-69'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-70'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-71'">$316.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-72'">
+          <TableCell :key="'TableCell-73'">
+            <Badge variant="destructive" :key="'Badge-74'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-75'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-76'">$721.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-77'">
+          <TableCell :key="'TableCell-78'">
+            <Badge variant="default" :key="'Badge-79'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-80'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-81'">$242.00</TableCell>
         </TableRow>
       </template>
     </template>
     <template v-if="sortColumn == 'amount'">
       <template v-if="sortDirection == 'asc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-82'">
+          <TableCell :key="'TableCell-83'">
+            <Badge variant="default" :key="'Badge-84'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-85'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-86'">$242.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-87'">
+          <TableCell :key="'TableCell-88'">
+            <Badge variant="default" :key="'Badge-89'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-90'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-91'">$316.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-92'">
+          <TableCell :key="'TableCell-93'">
+            <Badge variant="destructive" :key="'Badge-94'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-95'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-96'">$721.00</TableCell>
         </TableRow>
       </template>
       <template v-if="sortDirection == 'desc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-97'">
+          <TableCell :key="'TableCell-98'">
+            <Badge variant="destructive" :key="'Badge-99'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-100'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-101'">$721.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-102'">
+          <TableCell :key="'TableCell-103'">
+            <Badge variant="default" :key="'Badge-104'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-105'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-106'">$316.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-107'">
+          <TableCell :key="'TableCell-108'">
+            <Badge variant="default" :key="'Badge-109'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-110'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-111'">$242.00</TableCell>
         </TableRow>
       </template>
     </template>
     <template v-if="sortColumn == 'status'">
       <template v-if="sortDirection == 'asc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-112'">
+          <TableCell :key="'TableCell-113'">
+            <Badge variant="destructive" :key="'Badge-114'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-115'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-116'">$721.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-117'">
+          <TableCell :key="'TableCell-118'">
+            <Badge variant="default" :key="'Badge-119'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-120'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-121'">$242.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-122'">
+          <TableCell :key="'TableCell-123'">
+            <Badge variant="default" :key="'Badge-124'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-125'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-126'">$316.00</TableCell>
         </TableRow>
       </template>
       <template v-if="sortDirection == 'desc'">
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-127'">
+          <TableCell :key="'TableCell-128'">
+            <Badge variant="default" :key="'Badge-129'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">abe45@gmail.com</TableCell>
-          <TableCell class="text-right font-medium">$242.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-130'">abe45@gmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-131'">$242.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="default">Success</Badge>
+        <TableRow :key="'TableRow-132'">
+          <TableCell :key="'TableCell-133'">
+            <Badge variant="default" :key="'Badge-134'">Success</Badge>
           </TableCell>
-          <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-          <TableCell class="text-right font-medium">$316.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-135'">ken99@yahoo.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-136'">$316.00</TableCell>
         </TableRow>
-        <TableRow>
-          <TableCell>
-            <Badge variant="destructive">Failed</Badge>
+        <TableRow :key="'TableRow-137'">
+          <TableCell :key="'TableCell-138'">
+            <Badge variant="destructive" :key="'Badge-139'">Failed</Badge>
           </TableCell>
-          <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-          <TableCell class="text-right font-medium">$721.00</TableCell>
+          <TableCell class="lowercase" :key="'TableCell-140'">carmella@hotmail.com</TableCell>
+          <TableCell class="text-right font-medium" :key="'TableCell-141'">$721.00</TableCell>
         </TableRow>
       </template>
     </template>
     <template v-if="sortColumn == ''">
-      <TableRow>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+      <TableRow :key="'TableRow-142'">
+        <TableCell :key="'TableCell-143'">
+          <Badge variant="default" :key="'Badge-144'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-        <TableCell class="text-right font-medium">$316.00</TableCell>
+        <TableCell class="lowercase" :key="'TableCell-145'">ken99@yahoo.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-146'">$316.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+      <TableRow :key="'TableRow-147'">
+        <TableCell :key="'TableCell-148'">
+          <Badge variant="default" :key="'Badge-149'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">abe45@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$242.00</TableCell>
+        <TableCell class="lowercase" :key="'TableCell-150'">abe45@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-151'">$242.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell>
-          <Badge variant="destructive">Failed</Badge>
+      <TableRow :key="'TableRow-152'">
+        <TableCell :key="'TableCell-153'">
+          <Badge variant="destructive" :key="'Badge-154'">Failed</Badge>
         </TableCell>
-        <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-        <TableCell class="text-right font-medium">$721.00</TableCell>
+        <TableCell class="lowercase" :key="'TableCell-155'">carmella@hotmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-156'">$721.00</TableCell>
       </TableRow>
     </template>
   </TableBody>
 </Table>
-`,ge=`col (gap: "4") {
+`,we=`col (gap: "4") {
     row (style: "flex items-center gap-2") {
-        text (style: "text-sm font-medium", text: "Filter:") {}
+        text (text: "Filter:", style: "text-sm font-medium") {}
         input (style: "w-[250px]", placeholder: "Search by email...") {}
     }
     table {
@@ -556,52 +561,52 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             }
             table-row {
                 table-cell {
-                    badge (variant: "default", text: "Success") {}
+                    badge (text: "Success", variant: "default") {}
                 }
-                table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                table-cell (style: "lowercase", text: "abe45@gmail.com") {}
                 table-cell (style: "text-right font-medium", text: "$242.00") {}
             }
         }
     }
 }
-`,ce=`<div class="flex flex-col">
-  <div class="flex flex-row flex items-center gap-2">
+`,xe=`<div class="flex flex-col">
+  <div class="flex flex-row items-center gap-2">
     <span class="text-sm font-medium">Filter:</span>
-    <Input placeholder="Search by email..." class="w-[250px]" />
+    <input class="w-[250px]" :placeholder="'Search by email...'" />
   </div>
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead>Status</TableHead>
-        <TableHead>Email</TableHead>
-        <TableHead class="text-right">Amount</TableHead>
+  <Table :key="'Table-269'">
+    <TableHeader :key="'TableHeader-270'">
+      <TableRow :key="'TableRow-271'">
+        <TableHead :key="'TableHead-272'">Status</TableHead>
+        <TableHead :key="'TableHead-273'">Email</TableHead>
+        <TableHead class="text-right" :key="'TableHead-274'">Amount</TableHead>
       </TableRow>
     </TableHeader>
-    <TableBody>
-      <TableRow>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+    <TableBody :key="'TableBody-275'">
+      <TableRow :key="'TableRow-276'">
+        <TableCell :key="'TableCell-277'">
+          <Badge variant="default" :key="'Badge-278'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-        <TableCell class="text-right font-medium">$316.00</TableCell>
+        <TableCell class="lowercase" :key="'TableCell-279'">ken99@yahoo.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-280'">$316.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+      <TableRow :key="'TableRow-281'">
+        <TableCell :key="'TableCell-282'">
+          <Badge variant="default" :key="'Badge-283'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">abe45@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$242.00</TableCell>
+        <TableCell class="lowercase" :key="'TableCell-284'">abe45@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-285'">$242.00</TableCell>
       </TableRow>
     </TableBody>
   </Table>
 </div>
-`,ve=`col (gap: "4") {
+`,Te=`col (gap: "4") {
     table {
         table-header {
             table-row {
                 table-head (text: "Invoice") {}
                 table-head (text: "Status") {}
-                table-head (style: "text-right", text: "Amount") {}
+                table-head (text: "Amount", style: "text-right") {}
             }
         }
         table-body {
@@ -611,83 +616,83 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 table-cell (text: "$250.00", style: "text-right") {}
             }
             table-row {
-                table-cell (text: "INV002", style: "font-medium") {}
+                table-cell (style: "font-medium", text: "INV002") {}
                 table-cell (text: "Pending") {}
-                table-cell (style: "text-right", text: "$150.00") {}
+                table-cell (text: "$150.00", style: "text-right") {}
             }
         }
     }
     row (style: "flex items-center justify-between") {
         row (style: "flex items-center gap-2") {
-            text (text: "Rows per page", style: "text-sm text-muted-foreground") {}
+            text (style: "text-sm text-muted-foreground", text: "Rows per page") {}
             select (style: "w-[70px]") {
                 select-trigger {
                     select-value (text: "10") {}
                 }
                 select-content {
-                    select-item (value: "10", text: "10") {}
-                    select-item (text: "20", value: "20") {}
+                    select-item (text: "10", value: "10") {}
+                    select-item (value: "20", text: "20") {}
                 }
             }
         }
         text (text: "Page 1 of 10", style: "text-sm text-muted-foreground") {}
         row (gap: "2") {
-            button (size: "icon", variant: "outline", disabled: true) {
-                icon (name: "chevron-left", style: "h-4 w-4") {}
+            button (variant: "outline", disabled: true, size: "icon") {
+                icon (style: "h-4 w-4", name: "chevron-left") {}
             }
-            button (variant: "outline", size: "icon") {
+            button (size: "icon", variant: "outline") {
                 icon (name: "chevron-right", style: "h-4 w-4") {}
             }
         }
     }
 }
-`,pe=`<div class="flex flex-col">
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead>Invoice</TableHead>
-        <TableHead>Status</TableHead>
-        <TableHead class="text-right">Amount</TableHead>
+`,fe=`<div class="flex flex-col">
+  <Table :key="'Table-303'">
+    <TableHeader :key="'TableHeader-304'">
+      <TableRow :key="'TableRow-305'">
+        <TableHead :key="'TableHead-306'">Invoice</TableHead>
+        <TableHead :key="'TableHead-307'">Status</TableHead>
+        <TableHead class="text-right" :key="'TableHead-308'">Amount</TableHead>
       </TableRow>
     </TableHeader>
-    <TableBody>
-      <TableRow>
-        <TableCell class="font-medium">INV001</TableCell>
-        <TableCell>Paid</TableCell>
-        <TableCell class="text-right">$250.00</TableCell>
+    <TableBody :key="'TableBody-309'">
+      <TableRow :key="'TableRow-310'">
+        <TableCell class="font-medium" :key="'TableCell-311'">INV001</TableCell>
+        <TableCell :key="'TableCell-312'">Paid</TableCell>
+        <TableCell class="text-right" :key="'TableCell-313'">$250.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="font-medium">INV002</TableCell>
-        <TableCell>Pending</TableCell>
-        <TableCell class="text-right">$150.00</TableCell>
+      <TableRow :key="'TableRow-314'">
+        <TableCell class="font-medium" :key="'TableCell-315'">INV002</TableCell>
+        <TableCell :key="'TableCell-316'">Pending</TableCell>
+        <TableCell class="text-right" :key="'TableCell-317'">$150.00</TableCell>
       </TableRow>
     </TableBody>
   </Table>
-  <div class="flex flex-row flex items-center justify-between">
-    <div class="flex flex-row flex items-center gap-2">
+  <div class="flex flex-row items-center justify-between">
+    <div class="flex flex-row items-center gap-2">
       <span class="text-sm text-muted-foreground">Rows per page</span>
-      <Select>
-        <SelectTrigger>
-          <SelectValue />
+      <Select class="w-[70px]" :key="'Select-318'">
+        <SelectTrigger :key="'SelectTrigger-319'">
+          <SelectValue :key="'SelectValue-320'">10</SelectValue>
         </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="10">10</SelectItem>
-          <SelectItem value="20">20</SelectItem>
+        <SelectContent :key="'SelectContent-321'">
+          <SelectItem value="10" :key="'SelectItem-322'">10</SelectItem>
+          <SelectItem value="20" :key="'SelectItem-323'">20</SelectItem>
         </SelectContent>
       </Select>
     </div>
     <span class="text-sm text-muted-foreground">Page 1 of 10</span>
     <div class="flex flex-row">
-      <Button variant="outline" size="icon" disabled>
+      <Button variant="outline" size="icon" disabled :key="'Button-324'">
         <ChevronLeft class="w-5 h-5 h-4 w-4" />
       </Button>
-      <Button variant="outline" size="icon">
+      <Button variant="outline" size="icon" :key="'Button-325'">
         <ChevronRight class="w-5 h-5 h-4 w-4" />
       </Button>
     </div>
   </div>
 </div>
-`,Te=`col (gap: "4") {
+`,ge=`col (gap: "4") {
     table {
         table-header {
             table-row {
@@ -708,7 +713,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     badge (variant: "default", text: "Success") {}
                 }
                 table-cell (text: "ken99@yahoo.com") {}
-                table-cell (text: "$316.00", style: "text-right font-medium") {}
+                table-cell (style: "text-right font-medium", text: "$316.00") {}
             }
             table-row {
                 table-cell (style: "w-[50px]") {
@@ -718,7 +723,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     badge (variant: "default", text: "Success") {}
                 }
                 table-cell (text: "abe45@gmail.com") {}
-                table-cell (text: "$242.00", style: "text-right font-medium") {}
+                table-cell (style: "text-right font-medium", text: "$242.00") {}
             }
             table-row {
                 table-cell (style: "w-[50px]") {
@@ -733,69 +738,67 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
         }
     }
     row (style: "flex items-center justify-between") {
-        text (text: "1 of 3 row(s) selected.", style: "text-sm text-muted-foreground") {}
+        text (style: "text-sm text-muted-foreground", text: "1 of 3 row(s) selected.") {}
         row (gap: "2") {
             button (size: "sm", text: "Previous", variant: "outline") {}
-            button (size: "sm", variant: "outline", text: "Next") {}
+            button (size: "sm", text: "Next", variant: "outline") {}
         }
     }
 }
-`,ke=`<div class="flex flex-col">
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead class="w-[50px]">
-          <Checkbox />
+`,ve=`<div class="flex flex-col">
+  <Table :key="'Table-349'">
+    <TableHeader :key="'TableHeader-350'">
+      <TableRow :key="'TableRow-351'">
+        <TableHead class="w-[50px]" :key="'TableHead-352'">
+          <Checkbox :key="'Checkbox-353'" />
         </TableHead>
-        <TableHead>Status</TableHead>
-        <TableHead>Email</TableHead>
-        <TableHead class="text-right">Amount</TableHead>
+        <TableHead :key="'TableHead-354'">Status</TableHead>
+        <TableHead :key="'TableHead-355'">Email</TableHead>
+        <TableHead class="text-right" :key="'TableHead-356'">Amount</TableHead>
       </TableRow>
     </TableHeader>
-    <TableBody>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox />
+    <TableBody :key="'TableBody-357'">
+      <TableRow :key="'TableRow-358'">
+        <TableCell class="w-[50px]" :key="'TableCell-359'">
+          <Checkbox :key="'Checkbox-360'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+        <TableCell :key="'TableCell-361'">
+          <Badge variant="default" :key="'Badge-362'">Success</Badge>
         </TableCell>
-        <TableCell>ken99@yahoo.com</TableCell>
-        <TableCell class="text-right font-medium">$316.00</TableCell>
+        <TableCell :key="'TableCell-363'">ken99@yahoo.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-364'">$316.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox :default-checked="true" />
+      <TableRow :key="'TableRow-365'">
+        <TableCell class="w-[50px]" :key="'TableCell-366'">
+          <Checkbox :model-value="true" :key="'Checkbox-367'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+        <TableCell :key="'TableCell-368'">
+          <Badge variant="default" :key="'Badge-369'">Success</Badge>
         </TableCell>
-        <TableCell>abe45@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$242.00</TableCell>
+        <TableCell :key="'TableCell-370'">abe45@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-371'">$242.00</TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox />
+      <TableRow :key="'TableRow-372'">
+        <TableCell class="w-[50px]" :key="'TableCell-373'">
+          <Checkbox :key="'Checkbox-374'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="outline">Processing</Badge>
+        <TableCell :key="'TableCell-375'">
+          <Badge variant="outline" :key="'Badge-376'">Processing</Badge>
         </TableCell>
-        <TableCell>monserrat44@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$837.00</TableCell>
+        <TableCell :key="'TableCell-377'">monserrat44@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-378'">$837.00</TableCell>
       </TableRow>
     </TableBody>
   </Table>
-  <div class="flex flex-row flex items-center justify-between">
+  <div class="flex flex-row items-center justify-between">
     <span class="text-sm text-muted-foreground">1 of 3 row(s) selected.</span>
     <div class="flex flex-row">
-      <Button variant="outline" size="sm">
-        Previous      </Button>
-      <Button variant="outline" size="sm">
-        Next      </Button>
+      <Button variant="outline" size="sm" :key="'Button-379'">Previous</Button>
+      <Button variant="outline" size="sm" :key="'Button-380'">Next</Button>
     </div>
   </div>
 </div>
-`,ye=`table {
+`,ce=`table {
     table-header {
         table-row {
             table-head (text: "Invoice") {}
@@ -806,7 +809,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
     }
     table-body {
         table-row {
-            table-cell (style: "font-medium", text: "INV001") {}
+            table-cell (text: "INV001", style: "font-medium") {}
             table-cell {
                 badge (text: "Paid", variant: "default") {}
             }
@@ -814,8 +817,8 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             table-cell (style: "w-[50px]") {
                 dropdown-menu {
                     dropdown-menu-trigger {
-                        button (size: "icon", variant: "ghost") {
-                            icon (name: "more-horizontal", style: "h-4 w-4") {}
+                        button (variant: "ghost", size: "icon") {
+                            icon (style: "h-4 w-4", name: "more-horizontal") {}
                         }
                     }
                     dropdown-menu-content {
@@ -828,15 +831,15 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             }
         }
         table-row {
-            table-cell (text: "INV002", style: "font-medium") {}
+            table-cell (style: "font-medium", text: "INV002") {}
             table-cell {
-                badge (variant: "secondary", text: "Pending") {}
+                badge (text: "Pending", variant: "secondary") {}
             }
             table-cell (text: "$150.00", style: "text-right") {}
             table-cell (style: "w-[50px]") {
                 dropdown-menu {
                     dropdown-menu-trigger {
-                        button (variant: "ghost", size: "icon") {
+                        button (size: "icon", variant: "ghost") {
                             icon (name: "more-horizontal", style: "h-4 w-4") {}
                         }
                     }
@@ -849,67 +852,67 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
         }
     }
 }
-`,Ce=`<Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead>Invoice</TableHead>
-      <TableHead>Status</TableHead>
-      <TableHead class="text-right">Amount</TableHead>
-      <TableHead class="w-[50px]"></TableHead>
+`,Ce=`<Table :key="'Table-413'">
+  <TableHeader :key="'TableHeader-414'">
+    <TableRow :key="'TableRow-415'">
+      <TableHead :key="'TableHead-416'">Invoice</TableHead>
+      <TableHead :key="'TableHead-417'">Status</TableHead>
+      <TableHead class="text-right" :key="'TableHead-418'">Amount</TableHead>
+      <TableHead class="w-[50px]" :key="'TableHead-419'"></TableHead>
     </TableRow>
   </TableHeader>
-  <TableBody>
-    <TableRow>
-      <TableCell class="font-medium">INV001</TableCell>
-      <TableCell>
-        <Badge variant="default">Paid</Badge>
+  <TableBody :key="'TableBody-420'">
+    <TableRow :key="'TableRow-421'">
+      <TableCell class="font-medium" :key="'TableCell-422'">INV001</TableCell>
+      <TableCell :key="'TableCell-423'">
+        <Badge variant="default" :key="'Badge-424'">Paid</Badge>
       </TableCell>
-      <TableCell class="text-right">$250.00</TableCell>
-      <TableCell class="w-[50px]">
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button variant="ghost" size="icon">
+      <TableCell class="text-right" :key="'TableCell-425'">$250.00</TableCell>
+      <TableCell class="w-[50px]" :key="'TableCell-426'">
+        <DropdownMenu :key="'DropdownMenu-427'">
+          <DropdownMenuTrigger :key="'DropdownMenuTrigger-428'">
+            <Button variant="ghost" size="icon" :key="'Button-429'">
               <MoreHorizontal class="w-5 h-5 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem />
-            <DropdownMenuItem />
+          <DropdownMenuContent :key="'DropdownMenuContent-430'">
+            <DropdownMenuItem :key="'DropdownMenuItem-431'">Copy ID</DropdownMenuItem>
+            <DropdownMenuItem :key="'DropdownMenuItem-432'">View details</DropdownMenuItem>
             <div />
-            <DropdownMenuItem class="text-destructive" />
+            <DropdownMenuItem class="text-destructive" :key="'DropdownMenuItem-433'">Delete</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
     </TableRow>
-    <TableRow>
-      <TableCell class="font-medium">INV002</TableCell>
-      <TableCell>
-        <Badge variant="secondary">Pending</Badge>
+    <TableRow :key="'TableRow-434'">
+      <TableCell class="font-medium" :key="'TableCell-435'">INV002</TableCell>
+      <TableCell :key="'TableCell-436'">
+        <Badge variant="secondary" :key="'Badge-437'">Pending</Badge>
       </TableCell>
-      <TableCell class="text-right">$150.00</TableCell>
-      <TableCell class="w-[50px]">
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button variant="ghost" size="icon">
+      <TableCell class="text-right" :key="'TableCell-438'">$150.00</TableCell>
+      <TableCell class="w-[50px]" :key="'TableCell-439'">
+        <DropdownMenu :key="'DropdownMenu-440'">
+          <DropdownMenuTrigger :key="'DropdownMenuTrigger-441'">
+            <Button variant="ghost" size="icon" :key="'Button-442'">
               <MoreHorizontal class="w-5 h-5 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem />
-            <DropdownMenuItem />
+          <DropdownMenuContent :key="'DropdownMenuContent-443'">
+            <DropdownMenuItem :key="'DropdownMenuItem-444'">Copy ID</DropdownMenuItem>
+            <DropdownMenuItem :key="'DropdownMenuItem-445'">View details</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>
     </TableRow>
   </TableBody>
 </Table>
-`,he=`col (gap: "4") {
+`,pe=`col (gap: "4") {
     row (style: "flex items-center justify-between") {
-        input (placeholder: "Search...", style: "w-[200px]") {}
+        input (style: "w-[200px]", placeholder: "Search...") {}
         dropdown-menu {
             dropdown-menu-trigger {
                 button (variant: "outline", size: "sm") {
-                    icon (style: "mr-2 h-4 w-4", name: "columns") {}
+                    icon (name: "columns", style: "mr-2 h-4 w-4") {}
                     text (text: "Columns") {}
                 }
             }
@@ -925,7 +928,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
             table-row {
                 table-head (text: "Status") {}
                 table-head (text: "Email") {}
-                table-head (style: "text-right", text: "Amount") {}
+                table-head (text: "Amount", style: "text-right") {}
             }
         }
         table-body {
@@ -939,45 +942,45 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
         }
     }
 }
-`,ze=`<div class="flex flex-col">
-  <div class="flex flex-row flex items-center justify-between">
-    <Input placeholder="Search..." class="w-[200px]" />
-    <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="outline" size="sm">
+`,he=`<div class="flex flex-col">
+  <div class="flex flex-row items-center justify-between">
+    <input class="w-[200px]" :placeholder="'Search...'" />
+    <DropdownMenu :key="'DropdownMenu-479'">
+      <DropdownMenuTrigger :key="'DropdownMenuTrigger-480'">
+        <Button variant="outline" size="sm" :key="'Button-481'">
           <Columns class="w-5 h-5 mr-2 h-4 w-4" />
           <span>Columns</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem />
-        <DropdownMenuItem />
-        <DropdownMenuItem />
+      <DropdownMenuContent :key="'DropdownMenuContent-482'">
+        <DropdownMenuItem :key="'DropdownMenuItem-483'">Status</DropdownMenuItem>
+        <DropdownMenuItem :key="'DropdownMenuItem-484'">Email</DropdownMenuItem>
+        <DropdownMenuItem :key="'DropdownMenuItem-485'">Amount</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead>Status</TableHead>
-        <TableHead>Email</TableHead>
-        <TableHead class="text-right">Amount</TableHead>
+  <Table :key="'Table-486'">
+    <TableHeader :key="'TableHeader-487'">
+      <TableRow :key="'TableRow-488'">
+        <TableHead :key="'TableHead-489'">Status</TableHead>
+        <TableHead :key="'TableHead-490'">Email</TableHead>
+        <TableHead class="text-right" :key="'TableHead-491'">Amount</TableHead>
       </TableRow>
     </TableHeader>
-    <TableBody>
-      <TableRow>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+    <TableBody :key="'TableBody-492'">
+      <TableRow :key="'TableRow-493'">
+        <TableCell :key="'TableCell-494'">
+          <Badge variant="default" :key="'Badge-495'">Success</Badge>
         </TableCell>
-        <TableCell>ken99@yahoo.com</TableCell>
-        <TableCell class="text-right font-medium">$316.00</TableCell>
+        <TableCell :key="'TableCell-496'">ken99@yahoo.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-497'">$316.00</TableCell>
       </TableRow>
     </TableBody>
   </Table>
 </div>
 `,Be=`col (gap: "4") {
     row (style: "flex items-center justify-between") {
-        input (style: "w-[200px]", placeholder: "Filter emails...") {}
+        input (placeholder: "Filter emails...", style: "w-[200px]") {}
         row (gap: "2") {
             dropdown-menu {
                 dropdown-menu-trigger {
@@ -993,7 +996,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 }
             }
             button (size: "sm", variant: "outline") {
-                icon (style: "mr-2 h-4 w-4", name: "plus") {}
+                icon (name: "plus", style: "mr-2 h-4 w-4") {}
                 text (text: "Add Payment") {}
             }
         }
@@ -1007,16 +1010,16 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 table-head {
                     button (variant: "ghost", style: "-ml-4") {
                         text (text: "Status") {}
-                        icon (name: "arrow-up-down", style: "ml-2 h-4 w-4") {}
+                        icon (style: "ml-2 h-4 w-4", name: "arrow-up-down") {}
                     }
                 }
                 table-head {
                     button (variant: "ghost", style: "-ml-4") {
                         text (text: "Email") {}
-                        icon (name: "arrow-up-down", style: "ml-2 h-4 w-4") {}
+                        icon (style: "ml-2 h-4 w-4", name: "arrow-up-down") {}
                     }
                 }
-                table-head (text: "Amount", style: "text-right") {}
+                table-head (style: "text-right", text: "Amount") {}
                 table-head (text: "", style: "w-[50px]") {}
             }
         }
@@ -1026,12 +1029,12 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                     checkbox {}
                 }
                 table-cell {
-                    badge (variant: "default", text: "Success") {}
+                    badge (text: "Success", variant: "default") {}
                 }
                 table-cell (style: "lowercase", text: "ken99@yahoo.com") {}
                 table-cell (text: "$316.00", style: "text-right font-medium") {}
                 table-cell (style: "w-[50px]") {
-                    button (size: "icon", variant: "ghost") {
+                    button (variant: "ghost", size: "icon") {
                         text (text: "...") {}
                     }
                 }
@@ -1043,10 +1046,10 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 table-cell {
                     badge (text: "Success", variant: "default") {}
                 }
-                table-cell (style: "lowercase", text: "abe45@gmail.com") {}
-                table-cell (text: "$242.00", style: "text-right font-medium") {}
+                table-cell (text: "abe45@gmail.com", style: "lowercase") {}
+                table-cell (style: "text-right font-medium", text: "$242.00") {}
                 table-cell (style: "w-[50px]") {
-                    button (variant: "ghost", size: "icon") {
+                    button (size: "icon", variant: "ghost") {
                         text (text: "...") {}
                     }
                 }
@@ -1058,7 +1061,7 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 table-cell {
                     badge (text: "Processing", variant: "outline") {}
                 }
-                table-cell (text: "monserrat44@gmail.com", style: "lowercase") {}
+                table-cell (style: "lowercase", text: "monserrat44@gmail.com") {}
                 table-cell (style: "text-right font-medium", text: "$837.00") {}
                 table-cell (style: "w-[50px]") {
                     button (variant: "ghost", size: "icon") {
@@ -1073,10 +1076,10 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
                 table-cell {
                     badge (text: "Failed", variant: "destructive") {}
                 }
-                table-cell (text: "carmella@hotmail.com", style: "lowercase") {}
+                table-cell (style: "lowercase", text: "carmella@hotmail.com") {}
                 table-cell (text: "$721.00", style: "text-right font-medium") {}
                 table-cell (style: "w-[50px]") {
-                    button (size: "icon", variant: "ghost") {
+                    button (variant: "ghost", size: "icon") {
                         text (text: "...") {}
                     }
                 }
@@ -1087,162 +1090,162 @@ import{c as U,d as je,O as E,Q as Me,R as $,U as S,o as i,a as r,b as o,ae as Ve
         text (style: "text-sm text-muted-foreground", text: "1 of 4 row(s) selected.") {}
         row (style: "flex items-center gap-6") {
             row (style: "flex items-center gap-2") {
-                text (style: "text-sm text-muted-foreground", text: "Rows per page") {}
+                text (text: "Rows per page", style: "text-sm text-muted-foreground") {}
                 select (style: "w-[70px]") {
                     select-trigger {
                         select-value {}
                     }
                     select-content {
                         select-item (text: "5", value: "5") {}
-                        select-item (value: "10", text: "10") {}
+                        select-item (text: "10", value: "10") {}
                     }
                 }
             }
             text (style: "text-sm text-muted-foreground", text: "Page 1 of 1") {}
             row (gap: "2") {
-                button (disabled: true, variant: "outline", size: "icon") {
-                    icon (name: "chevron-left", style: "h-4 w-4") {}
+                button (size: "icon", variant: "outline", disabled: true) {
+                    icon (style: "h-4 w-4", name: "chevron-left") {}
                 }
-                button (size: "icon", disabled: true, variant: "outline") {
+                button (variant: "outline", size: "icon", disabled: true) {
                     icon (name: "chevron-right", style: "h-4 w-4") {}
                 }
             }
         }
     }
 }
-`,$e=`<div class="flex flex-col">
-  <div class="flex flex-row flex items-center justify-between">
-    <Input placeholder="Filter emails..." class="w-[200px]" />
+`,ze=`<div class="flex flex-col">
+  <div class="flex flex-row items-center justify-between">
+    <input class="w-[200px]" :placeholder="'Filter emails...'" />
     <div class="flex flex-row">
-      <DropdownMenu>
-        <DropdownMenuTrigger>
-          <Button variant="outline" size="sm">
+      <DropdownMenu :key="'DropdownMenu-517'">
+        <DropdownMenuTrigger :key="'DropdownMenuTrigger-518'">
+          <Button variant="outline" size="sm" :key="'Button-519'">
             <Columns class="w-5 h-5 mr-2 h-4 w-4" />
             <span>View</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem />
-          <DropdownMenuItem />
-          <DropdownMenuItem />
+        <DropdownMenuContent :key="'DropdownMenuContent-520'">
+          <DropdownMenuItem :key="'DropdownMenuItem-521'">Status</DropdownMenuItem>
+          <DropdownMenuItem :key="'DropdownMenuItem-522'">Email</DropdownMenuItem>
+          <DropdownMenuItem :key="'DropdownMenuItem-523'">Amount</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Button variant="outline" size="sm">
+      <Button variant="outline" size="sm" :key="'Button-524'">
         <Plus class="w-5 h-5 mr-2 h-4 w-4" />
         <span>Add Payment</span>
       </Button>
     </div>
   </div>
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead class="w-[50px]">
-          <Checkbox />
+  <Table :key="'Table-525'">
+    <TableHeader :key="'TableHeader-526'">
+      <TableRow :key="'TableRow-527'">
+        <TableHead class="w-[50px]" :key="'TableHead-528'">
+          <Checkbox :key="'Checkbox-529'" />
         </TableHead>
-        <TableHead>
-          <Button variant="ghost" class="-ml-4">
+        <TableHead :key="'TableHead-530'">
+          <button class="-ml-4" :variant="'ghost'">
             <span>Status</span>
             <ArrowUpDown class="w-5 h-5 ml-2 h-4 w-4" />
-          </Button>
+          </button>
         </TableHead>
-        <TableHead>
-          <Button variant="ghost" class="-ml-4">
+        <TableHead :key="'TableHead-531'">
+          <button class="-ml-4" :variant="'ghost'">
             <span>Email</span>
             <ArrowUpDown class="w-5 h-5 ml-2 h-4 w-4" />
-          </Button>
+          </button>
         </TableHead>
-        <TableHead class="text-right">Amount</TableHead>
-        <TableHead class="w-[50px]"></TableHead>
+        <TableHead class="text-right" :key="'TableHead-532'">Amount</TableHead>
+        <TableHead class="w-[50px]" :key="'TableHead-533'"></TableHead>
       </TableRow>
     </TableHeader>
-    <TableBody>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox />
+    <TableBody :key="'TableBody-534'">
+      <TableRow :key="'TableRow-535'">
+        <TableCell class="w-[50px]" :key="'TableCell-536'">
+          <Checkbox :key="'Checkbox-537'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+        <TableCell :key="'TableCell-538'">
+          <Badge variant="default" :key="'Badge-539'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">ken99@yahoo.com</TableCell>
-        <TableCell class="text-right font-medium">$316.00</TableCell>
-        <TableCell class="w-[50px]">
-          <Button variant="ghost" size="icon">
+        <TableCell class="lowercase" :key="'TableCell-540'">ken99@yahoo.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-541'">$316.00</TableCell>
+        <TableCell class="w-[50px]" :key="'TableCell-542'">
+          <Button variant="ghost" size="icon" :key="'Button-543'">
             <span>...</span>
           </Button>
         </TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox :default-checked="true" />
+      <TableRow :key="'TableRow-544'">
+        <TableCell class="w-[50px]" :key="'TableCell-545'">
+          <Checkbox :model-value="true" :key="'Checkbox-546'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="default">Success</Badge>
+        <TableCell :key="'TableCell-547'">
+          <Badge variant="default" :key="'Badge-548'">Success</Badge>
         </TableCell>
-        <TableCell class="lowercase">abe45@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$242.00</TableCell>
-        <TableCell class="w-[50px]">
-          <Button variant="ghost" size="icon">
+        <TableCell class="lowercase" :key="'TableCell-549'">abe45@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-550'">$242.00</TableCell>
+        <TableCell class="w-[50px]" :key="'TableCell-551'">
+          <Button variant="ghost" size="icon" :key="'Button-552'">
             <span>...</span>
           </Button>
         </TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox />
+      <TableRow :key="'TableRow-553'">
+        <TableCell class="w-[50px]" :key="'TableCell-554'">
+          <Checkbox :key="'Checkbox-555'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="outline">Processing</Badge>
+        <TableCell :key="'TableCell-556'">
+          <Badge variant="outline" :key="'Badge-557'">Processing</Badge>
         </TableCell>
-        <TableCell class="lowercase">monserrat44@gmail.com</TableCell>
-        <TableCell class="text-right font-medium">$837.00</TableCell>
-        <TableCell class="w-[50px]">
-          <Button variant="ghost" size="icon">
+        <TableCell class="lowercase" :key="'TableCell-558'">monserrat44@gmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-559'">$837.00</TableCell>
+        <TableCell class="w-[50px]" :key="'TableCell-560'">
+          <Button variant="ghost" size="icon" :key="'Button-561'">
             <span>...</span>
           </Button>
         </TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell class="w-[50px]">
-          <Checkbox />
+      <TableRow :key="'TableRow-562'">
+        <TableCell class="w-[50px]" :key="'TableCell-563'">
+          <Checkbox :key="'Checkbox-564'" />
         </TableCell>
-        <TableCell>
-          <Badge variant="destructive">Failed</Badge>
+        <TableCell :key="'TableCell-565'">
+          <Badge variant="destructive" :key="'Badge-566'">Failed</Badge>
         </TableCell>
-        <TableCell class="lowercase">carmella@hotmail.com</TableCell>
-        <TableCell class="text-right font-medium">$721.00</TableCell>
-        <TableCell class="w-[50px]">
-          <Button variant="ghost" size="icon">
+        <TableCell class="lowercase" :key="'TableCell-567'">carmella@hotmail.com</TableCell>
+        <TableCell class="text-right font-medium" :key="'TableCell-568'">$721.00</TableCell>
+        <TableCell class="w-[50px]" :key="'TableCell-569'">
+          <Button variant="ghost" size="icon" :key="'Button-570'">
             <span>...</span>
           </Button>
         </TableCell>
       </TableRow>
     </TableBody>
   </Table>
-  <div class="flex flex-row flex items-center justify-between">
+  <div class="flex flex-row items-center justify-between">
     <span class="text-sm text-muted-foreground">1 of 4 row(s) selected.</span>
-    <div class="flex flex-row flex items-center gap-6">
-      <div class="flex flex-row flex items-center gap-2">
+    <div class="flex flex-row items-center gap-6">
+      <div class="flex flex-row items-center gap-2">
         <span class="text-sm text-muted-foreground">Rows per page</span>
-        <Select>
-          <SelectTrigger>
-            <SelectValue />
+        <Select class="w-[70px]" :key="'Select-571'">
+          <SelectTrigger :key="'SelectTrigger-572'">
+            <SelectValue :key="'SelectValue-573'" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="5">5</SelectItem>
-            <SelectItem value="10">10</SelectItem>
+          <SelectContent :key="'SelectContent-574'">
+            <SelectItem value="5" :key="'SelectItem-575'">5</SelectItem>
+            <SelectItem value="10" :key="'SelectItem-576'">10</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <span class="text-sm text-muted-foreground">Page 1 of 1</span>
       <div class="flex flex-row">
-        <Button variant="outline" size="icon" disabled>
+        <Button variant="outline" size="icon" disabled :key="'Button-577'">
           <ChevronLeft class="w-5 h-5 h-4 w-4" />
         </Button>
-        <Button variant="outline" size="icon" disabled>
+        <Button variant="outline" size="icon" disabled :key="'Button-578'">
           <ChevronRight class="w-5 h-5 h-4 w-4" />
         </Button>
       </div>
     </div>
   </div>
 </div>
-`,Se="npx shadcn-vue@latest add table",Re="npm install @tanstack/vue-table",jl=je({__name:"datatable",setup(Ml){const k=p(""),T=p("asc");function De(){}function Ae(){}function He(){}const g=p(""),L=p(!0),A=p("auto"),q=p(!0),H=p("auto"),G=p(!0),j=p("auto"),K=p(!0),M=p("auto"),O=p(!0),V=p("auto"),Q=p(!0),I=p("auto"),W=p(!0),P=p("auto"),J=p(!0),F=p("auto");async function C(ae,e){try{await navigator.clipboard.writeText(ae),g.value=e,setTimeout(()=>{g.value=""},2e3)}catch(b){console.error("Failed to copy:",b)}}return E(A,()=>{$(()=>S.highlightAll())}),E(H,()=>{$(()=>S.highlightAll())}),E(j,()=>{$(()=>S.highlightAll())}),E(M,()=>{$(()=>S.highlightAll())}),E(V,()=>{$(()=>S.highlightAll())}),E(I,()=>{$(()=>S.highlightAll())}),E(P,()=>{$(()=>S.highlightAll())}),E(F,()=>{$(()=>S.highlightAll())}),Me(()=>{$(()=>S.highlightAll())}),(ae,e)=>(i(),r("div",Fe,[o("div",Ee,[e[284]||(e[284]=Ve('<h1 class="text-4xl font-bold tracking-tight" data-v-5591b956>Data Table</h1><span data-v-5591b956>Powerful table and datagrids built using TanStack Table.</span><h2 class="text-2xl font-semibold tracking-tight mt-8" data-v-5591b956>Introduction</h2><span class="text-muted-foreground" data-v-5591b956>The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.</span><h2 class="text-2xl font-semibold tracking-tight mt-8" data-v-5591b956>Installation</h2><span class="font-medium" data-v-5591b956>1. Add the Table component:</span>',6)),o("div",Ne,[o("div",Ue,[e[36]||(e[36]=o("span",{class:"text-xs text-zinc-600 dark:text-zinc-400 font-medium"},"bash",-1)),o("button",{onClick:e[0]||(e[0]=b=>C(Se,"codeblock1")),class:"inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="codeblock1"?(i(),r("svg",Le,[...e[34]||(e[34]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",qe,[...e[35]||(e[35]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="codeblock1"?"Copied!":"Copy"),1)])]),o("pre",{class:"p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"},[o("code",{class:"block font-mono !p-0 language-bash"},c(Se))])]),e[285]||(e[285]=o("span",{class:"font-medium"},"2. Add TanStack Table dependency:",-1)),o("div",Ge,[o("div",Ke,[e[39]||(e[39]=o("span",{class:"text-xs text-zinc-600 dark:text-zinc-400 font-medium"},"bash",-1)),o("button",{onClick:e[1]||(e[1]=b=>C(Re,"codeblock2")),class:"inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="codeblock2"?(i(),r("svg",Oe,[...e[37]||(e[37]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",Qe,[...e[38]||(e[38]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="codeblock2"?"Copied!":"Copy"),1)])]),o("pre",{class:"p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"},[o("code",{class:"block font-mono !p-0 language-bash"},c(Re))])]),e[286]||(e[286]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Basic Table",-1)),e[287]||(e[287]=o("span",{class:"text-muted-foreground"},"Start with a basic table to display your data.",-1)),o("div",We,[o("div",Je,[l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[40]||(e[40]=[s("Status",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[41]||(e[41]=[s("Email",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[42]||(e[42]=[s("Amount",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[43]||(e[43]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[44]||(e[44]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[45]||(e[45]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"secondary"},{default:a(()=>[...e[46]||(e[46]=[s("Pending",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[47]||(e[47]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[48]||(e[48]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"outline"},{default:a(()=>[...e[49]||(e[49]=[s("Processing",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[50]||(e[50]=[s("monserrat44@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[51]||(e[51]=[s("$837.00",-1)])]),_:1})]),_:1})]),_:1})]),_:1})]),o("div",Xe,[o("button",{onClick:e[2]||(e[2]=b=>L.value=!L.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[53]||(e[53]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([L.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[52]||(e[52]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),L.value?(i(),r("div",Ye,[o("div",Ze,[o("div",_e,[o("button",{onClick:e[3]||(e[3]=b=>A.value="auto"),class:m([A.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[4]||(e[4]=b=>A.value="vue"),class:m([A.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[5]||(e[5]=b=>C(A.value==="auto"?me:xe,"datatable-basic")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-basic"?(i(),r("svg",et,[...e[54]||(e[54]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",tt,[...e[55]||(e[55]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-basic"?"Copied!":"Copy"),1)])]),o("pre",lt,[o("code",{class:m("block font-mono !p-0 language-"+(A.value==="auto"?"auto":"html"))},c(A.value==="auto"?me:xe),3)])])):f("",!0)])]),e[288]||(e[288]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Sorting",-1)),e[289]||(e[289]=o("span",{class:"text-muted-foreground"},"Click column headers to sort ascending or descending. Try clicking on each column!",-1)),o("div",at,[o("div",ot,[l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[l(t(v),{variant:"ghost",class:"-ml-4",onClick:De},{default:a(()=>[e[56]||(e[56]=o("span",null,"Status",-1)),k.value=="status"?(i(),r(w,{key:0},[T.value=="asc"?(i(),R(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0),T.value=="desc"?(i(),R(t(te),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)],64)):f("",!0),k.value!="status"?(i(),R(t(N),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)]),_:1})]),_:1}),l(t(x),null,{default:a(()=>[l(t(v),{variant:"ghost",class:"-ml-4",onClick:Ae},{default:a(()=>[e[57]||(e[57]=o("span",null,"Email",-1)),k.value=="email"?(i(),r(w,{key:0},[T.value=="asc"?(i(),R(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0),T.value=="desc"?(i(),R(t(te),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)],64)):f("",!0),k.value!="email"?(i(),R(t(N),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)]),_:1})]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[l(t(v),{variant:"ghost",class:"-ml-4",onClick:He},{default:a(()=>[e[58]||(e[58]=o("span",null,"Amount",-1)),k.value=="amount"?(i(),r(w,{key:0},[T.value=="asc"?(i(),R(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0),T.value=="desc"?(i(),R(t(te),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)],64)):f("",!0),k.value!="amount"?(i(),R(t(N),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):f("",!0)]),_:1})]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[k.value=="email"?(i(),r(w,{key:0},[T.value=="asc"?(i(),r(w,{key:0},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[59]||(e[59]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[60]||(e[60]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[61]||(e[61]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[62]||(e[62]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[63]||(e[63]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[64]||(e[64]=[s("$721.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[65]||(e[65]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[66]||(e[66]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[67]||(e[67]=[s("$316.00",-1)])]),_:1})]),_:1})],64)):f("",!0),T.value=="desc"?(i(),r(w,{key:1},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[68]||(e[68]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[69]||(e[69]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[70]||(e[70]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[71]||(e[71]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[72]||(e[72]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[73]||(e[73]=[s("$721.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[74]||(e[74]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[75]||(e[75]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[76]||(e[76]=[s("$242.00",-1)])]),_:1})]),_:1})],64)):f("",!0)],64)):f("",!0),k.value=="amount"?(i(),r(w,{key:1},[T.value=="asc"?(i(),r(w,{key:0},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[77]||(e[77]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[78]||(e[78]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[79]||(e[79]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[80]||(e[80]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[81]||(e[81]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[82]||(e[82]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[83]||(e[83]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[84]||(e[84]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[85]||(e[85]=[s("$721.00",-1)])]),_:1})]),_:1})],64)):f("",!0),T.value=="desc"?(i(),r(w,{key:1},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[86]||(e[86]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[87]||(e[87]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[88]||(e[88]=[s("$721.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[89]||(e[89]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[90]||(e[90]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[91]||(e[91]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[92]||(e[92]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[93]||(e[93]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[94]||(e[94]=[s("$242.00",-1)])]),_:1})]),_:1})],64)):f("",!0)],64)):f("",!0),k.value=="status"?(i(),r(w,{key:2},[T.value=="asc"?(i(),r(w,{key:0},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[95]||(e[95]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[96]||(e[96]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[97]||(e[97]=[s("$721.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[98]||(e[98]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[99]||(e[99]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[100]||(e[100]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[101]||(e[101]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[102]||(e[102]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[103]||(e[103]=[s("$316.00",-1)])]),_:1})]),_:1})],64)):f("",!0),T.value=="desc"?(i(),r(w,{key:1},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[104]||(e[104]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[105]||(e[105]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[106]||(e[106]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[107]||(e[107]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[108]||(e[108]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[109]||(e[109]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[110]||(e[110]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[111]||(e[111]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[112]||(e[112]=[s("$721.00",-1)])]),_:1})]),_:1})],64)):f("",!0)],64)):f("",!0),k.value==""?(i(),r(w,{key:3},[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[113]||(e[113]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[114]||(e[114]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[115]||(e[115]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[116]||(e[116]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[117]||(e[117]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[118]||(e[118]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[119]||(e[119]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[120]||(e[120]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[121]||(e[121]=[s("$721.00",-1)])]),_:1})]),_:1})],64)):f("",!0)]),_:1})]),_:1})]),o("div",st,[o("button",{onClick:e[6]||(e[6]=b=>q.value=!q.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[123]||(e[123]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([q.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[122]||(e[122]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),q.value?(i(),r("div",nt,[o("div",it,[o("div",rt,[o("button",{onClick:e[7]||(e[7]=b=>H.value="auto"),class:m([H.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[8]||(e[8]=b=>H.value="vue"),class:m([H.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[9]||(e[9]=b=>C(H.value==="auto"?fe:we,"datatable-sorting")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-sorting"?(i(),r("svg",dt,[...e[124]||(e[124]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",ut,[...e[125]||(e[125]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-sorting"?"Copied!":"Copy"),1)])]),o("pre",bt,[o("code",{class:m("block font-mono !p-0 language-"+(H.value==="auto"?"auto":"html"))},c(H.value==="auto"?fe:we),3)])])):f("",!0)])]),o("div",null,[e[144]||(e[144]=o("div",null,null,-1)),o("div",null,[k.value=="status"?(i(),r(w,{key:0},[e[126]||(e[126]=o("div",null,null,-1)),e[127]||(e[127]=o("div",null,null,-1)),T.value=="asc"?(i(),r(w,{key:0},[s(" desc ")],64)):(i(),r(w,{key:1},[s(" asc ")],64))],64)):(i(),r(w,{key:1},[e[128]||(e[128]=o("div",null,null,-1)),e[129]||(e[129]=o("div",null,"status",-1)),e[130]||(e[130]=o("div",null,null,-1)),e[131]||(e[131]=o("div",null,"asc",-1))],64))]),e[145]||(e[145]=o("div",null,null,-1)),o("div",null,[k.value=="email"?(i(),r(w,{key:0},[e[132]||(e[132]=o("div",null,null,-1)),e[133]||(e[133]=o("div",null,null,-1)),T.value=="asc"?(i(),r(w,{key:0},[s(" desc ")],64)):(i(),r(w,{key:1},[s(" asc ")],64))],64)):(i(),r(w,{key:1},[e[134]||(e[134]=o("div",null,null,-1)),e[135]||(e[135]=o("div",null,"email",-1)),e[136]||(e[136]=o("div",null,null,-1)),e[137]||(e[137]=o("div",null,"asc",-1))],64))]),e[146]||(e[146]=o("div",null,null,-1)),o("div",null,[k.value=="amount"?(i(),r(w,{key:0},[e[138]||(e[138]=o("div",null,null,-1)),e[139]||(e[139]=o("div",null,null,-1)),T.value=="asc"?(i(),r(w,{key:0},[s(" desc ")],64)):(i(),r(w,{key:1},[s(" asc ")],64))],64)):(i(),r(w,{key:1},[e[140]||(e[140]=o("div",null,null,-1)),e[141]||(e[141]=o("div",null,"amount",-1)),e[142]||(e[142]=o("div",null,null,-1)),e[143]||(e[143]=o("div",null,"asc",-1))],64))])]),e[290]||(e[290]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Filtering",-1)),e[291]||(e[291]=o("span",{class:"text-muted-foreground"},"Search and filter data across columns.",-1)),o("div",mt,[o("div",xt,[o("div",ft,[o("div",wt,[e[147]||(e[147]=o("span",{class:"text-sm font-medium"},"Filter:",-1)),l(t(ee),{placeholder:"Search by email...",class:"w-[250px]"})]),l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[148]||(e[148]=[s("Status",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[149]||(e[149]=[s("Email",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[150]||(e[150]=[s("Amount",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[151]||(e[151]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[152]||(e[152]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[153]||(e[153]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[154]||(e[154]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[155]||(e[155]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[156]||(e[156]=[s("$242.00",-1)])]),_:1})]),_:1})]),_:1})]),_:1})])]),o("div",gt,[o("button",{onClick:e[10]||(e[10]=b=>G.value=!G.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[158]||(e[158]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([G.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[157]||(e[157]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),G.value?(i(),r("div",ct,[o("div",vt,[o("div",pt,[o("button",{onClick:e[11]||(e[11]=b=>j.value="auto"),class:m([j.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[12]||(e[12]=b=>j.value="vue"),class:m([j.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[13]||(e[13]=b=>C(j.value==="auto"?ge:ce,"datatable-filtering")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-filtering"?(i(),r("svg",Tt,[...e[159]||(e[159]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",kt,[...e[160]||(e[160]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-filtering"?"Copied!":"Copy"),1)])]),o("pre",yt,[o("code",{class:m("block font-mono !p-0 language-"+(j.value==="auto"?"auto":"html"))},c(j.value==="auto"?ge:ce),3)])])):f("",!0)])]),e[292]||(e[292]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Pagination",-1)),e[293]||(e[293]=o("span",{class:"text-muted-foreground"},"Navigate through large datasets with page controls.",-1)),o("div",Ct,[o("div",ht,[o("div",zt,[l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[161]||(e[161]=[s("Invoice",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[162]||(e[162]=[s("Status",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[163]||(e[163]=[s("Amount",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),{class:"font-medium"},{default:a(()=>[...e[164]||(e[164]=[s("INV001",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[165]||(e[165]=[s("Paid",-1)])]),_:1}),l(t(n),{class:"text-right"},{default:a(()=>[...e[166]||(e[166]=[s("$250.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-medium"},{default:a(()=>[...e[167]||(e[167]=[s("INV002",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[168]||(e[168]=[s("Pending",-1)])]),_:1}),l(t(n),{class:"text-right"},{default:a(()=>[...e[169]||(e[169]=[s("$150.00",-1)])]),_:1})]),_:1})]),_:1})]),_:1}),o("div",Bt,[o("div",$t,[e[172]||(e[172]=o("span",{class:"text-sm text-muted-foreground"},"Rows per page",-1)),l(t(ie),null,{default:a(()=>[l(t(oe),null,{default:a(()=>[l(t(se))]),_:1}),l(t(ne),null,{default:a(()=>[l(t(_),{value:"10"},{default:a(()=>[...e[170]||(e[170]=[s("10",-1)])]),_:1}),l(t(_),{value:"20"},{default:a(()=>[...e[171]||(e[171]=[s("20",-1)])]),_:1})]),_:1})]),_:1})]),e[173]||(e[173]=o("span",{class:"text-sm text-muted-foreground"},"Page 1 of 10",-1)),o("div",St,[l(t(v),{variant:"outline",size:"icon",disabled:""},{default:a(()=>[l(t(re),{class:"w-5 h-5 h-4 w-4"})]),_:1}),l(t(v),{variant:"outline",size:"icon"},{default:a(()=>[l(t(de),{class:"w-5 h-5 h-4 w-4"})]),_:1})])])])]),o("div",Rt,[o("button",{onClick:e[14]||(e[14]=b=>K.value=!K.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[175]||(e[175]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([K.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[174]||(e[174]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),K.value?(i(),r("div",Dt,[o("div",At,[o("div",Ht,[o("button",{onClick:e[15]||(e[15]=b=>M.value="auto"),class:m([M.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[16]||(e[16]=b=>M.value="vue"),class:m([M.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[17]||(e[17]=b=>C(M.value==="auto"?ve:pe,"datatable-pagination")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-pagination"?(i(),r("svg",jt,[...e[176]||(e[176]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",Mt,[...e[177]||(e[177]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-pagination"?"Copied!":"Copy"),1)])]),o("pre",Vt,[o("code",{class:m("block font-mono !p-0 language-"+(M.value==="auto"?"auto":"html"))},c(M.value==="auto"?ve:pe),3)])])):f("",!0)])]),e[294]||(e[294]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Row Selection",-1)),e[295]||(e[295]=o("span",{class:"text-muted-foreground"},"Select rows with checkboxes for bulk operations.",-1)),o("div",It,[o("div",Pt,[o("div",Ft,[l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(x),null,{default:a(()=>[...e[178]||(e[178]=[s("Status",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[179]||(e[179]=[s("Email",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[180]||(e[180]=[s("Amount",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[181]||(e[181]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),null,{default:a(()=>[...e[182]||(e[182]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[183]||(e[183]=[s("$316.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D),{"default-checked":!0})]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[184]||(e[184]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),null,{default:a(()=>[...e[185]||(e[185]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[186]||(e[186]=[s("$242.00",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"outline"},{default:a(()=>[...e[187]||(e[187]=[s("Processing",-1)])]),_:1})]),_:1}),l(t(n),null,{default:a(()=>[...e[188]||(e[188]=[s("monserrat44@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[189]||(e[189]=[s("$837.00",-1)])]),_:1})]),_:1})]),_:1})]),_:1}),o("div",Et,[e[192]||(e[192]=o("span",{class:"text-sm text-muted-foreground"},"1 of 3 row(s) selected.",-1)),o("div",Nt,[l(t(v),{variant:"outline",size:"sm"},{default:a(()=>[...e[190]||(e[190]=[s(" Previous ",-1)])]),_:1}),l(t(v),{variant:"outline",size:"sm"},{default:a(()=>[...e[191]||(e[191]=[s(" Next ",-1)])]),_:1})])])])]),o("div",Ut,[o("button",{onClick:e[18]||(e[18]=b=>O.value=!O.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[194]||(e[194]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([O.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[193]||(e[193]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),O.value?(i(),r("div",Lt,[o("div",qt,[o("div",Gt,[o("button",{onClick:e[19]||(e[19]=b=>V.value="auto"),class:m([V.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[20]||(e[20]=b=>V.value="vue"),class:m([V.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[21]||(e[21]=b=>C(V.value==="auto"?Te:ke,"datatable-selection")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-selection"?(i(),r("svg",Kt,[...e[195]||(e[195]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",Ot,[...e[196]||(e[196]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-selection"?"Copied!":"Copy"),1)])]),o("pre",Qt,[o("code",{class:m("block font-mono !p-0 language-"+(V.value==="auto"?"auto":"html"))},c(V.value==="auto"?Te:ke),3)])])):f("",!0)])]),e[296]||(e[296]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Row Actions",-1)),e[297]||(e[297]=o("span",{class:"text-muted-foreground"},"Add action menus to each row.",-1)),o("div",Wt,[o("div",Jt,[l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[197]||(e[197]=[s("Invoice",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[198]||(e[198]=[s("Status",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[199]||(e[199]=[s("Amount",-1)])]),_:1}),l(t(x),{class:"w-[50px]"})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),{class:"font-medium"},{default:a(()=>[...e[200]||(e[200]=[s("INV001",-1)])]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[201]||(e[201]=[s("Paid",-1)])]),_:1})]),_:1}),l(t(n),{class:"text-right"},{default:a(()=>[...e[202]||(e[202]=[s("$250.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(X),null,{default:a(()=>[l(t(Y),null,{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[l(t(be),{class:"w-5 h-5 h-4 w-4"})]),_:1})]),_:1}),l(t(Z),null,{default:a(()=>[l(t(y)),l(t(y)),e[203]||(e[203]=o("div",null,null,-1)),l(t(y),{class:"text-destructive"})]),_:1})]),_:1})]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-medium"},{default:a(()=>[...e[204]||(e[204]=[s("INV002",-1)])]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"secondary"},{default:a(()=>[...e[205]||(e[205]=[s("Pending",-1)])]),_:1})]),_:1}),l(t(n),{class:"text-right"},{default:a(()=>[...e[206]||(e[206]=[s("$150.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(X),null,{default:a(()=>[l(t(Y),null,{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[l(t(be),{class:"w-5 h-5 h-4 w-4"})]),_:1})]),_:1}),l(t(Z),null,{default:a(()=>[l(t(y)),l(t(y))]),_:1})]),_:1})]),_:1})]),_:1})]),_:1})]),_:1})]),o("div",Xt,[o("button",{onClick:e[22]||(e[22]=b=>Q.value=!Q.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[208]||(e[208]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([Q.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[207]||(e[207]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),Q.value?(i(),r("div",Yt,[o("div",Zt,[o("div",_t,[o("button",{onClick:e[23]||(e[23]=b=>I.value="auto"),class:m([I.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[24]||(e[24]=b=>I.value="vue"),class:m([I.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[25]||(e[25]=b=>C(I.value==="auto"?ye:Ce,"datatable-actions")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-actions"?(i(),r("svg",el,[...e[209]||(e[209]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",tl,[...e[210]||(e[210]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-actions"?"Copied!":"Copy"),1)])]),o("pre",ll,[o("code",{class:m("block font-mono !p-0 language-"+(I.value==="auto"?"auto":"html"))},c(I.value==="auto"?ye:Ce),3)])])):f("",!0)])]),e[298]||(e[298]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Column Visibility",-1)),e[299]||(e[299]=o("span",{class:"text-muted-foreground"},"Toggle column visibility with a dropdown menu.",-1)),o("div",al,[o("div",ol,[o("div",sl,[o("div",nl,[l(t(ee),{placeholder:"Search...",class:"w-[200px]"}),l(t(X),null,{default:a(()=>[l(t(Y),null,{default:a(()=>[l(t(v),{variant:"outline",size:"sm"},{default:a(()=>[l(t(ue),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[211]||(e[211]=o("span",null,"Columns",-1))]),_:1})]),_:1}),l(t(Z),null,{default:a(()=>[l(t(y)),l(t(y)),l(t(y))]),_:1})]),_:1})]),l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[212]||(e[212]=[s("Status",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[213]||(e[213]=[s("Email",-1)])]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[214]||(e[214]=[s("Amount",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[215]||(e[215]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),null,{default:a(()=>[...e[216]||(e[216]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[217]||(e[217]=[s("$316.00",-1)])]),_:1})]),_:1})]),_:1})]),_:1})])]),o("div",il,[o("button",{onClick:e[26]||(e[26]=b=>W.value=!W.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[219]||(e[219]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([W.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[218]||(e[218]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),W.value?(i(),r("div",rl,[o("div",dl,[o("div",ul,[o("button",{onClick:e[27]||(e[27]=b=>P.value="auto"),class:m([P.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[28]||(e[28]=b=>P.value="vue"),class:m([P.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[29]||(e[29]=b=>C(P.value==="auto"?he:ze,"datatable-visibility")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-visibility"?(i(),r("svg",bl,[...e[220]||(e[220]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",ml,[...e[221]||(e[221]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-visibility"?"Copied!":"Copy"),1)])]),o("pre",xl,[o("code",{class:m("block font-mono !p-0 language-"+(P.value==="auto"?"auto":"html"))},c(P.value==="auto"?he:ze),3)])])):f("",!0)])]),e[300]||(e[300]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Complete Example",-1)),e[301]||(e[301]=o("span",{class:"text-muted-foreground"},"A full-featured data table with all features combined.",-1)),o("div",fl,[o("div",wl,[o("div",gl,[o("div",cl,[l(t(ee),{placeholder:"Filter emails...",class:"w-[200px]"}),o("div",vl,[l(t(X),null,{default:a(()=>[l(t(Y),null,{default:a(()=>[l(t(v),{variant:"outline",size:"sm"},{default:a(()=>[l(t(ue),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[222]||(e[222]=o("span",null,"View",-1))]),_:1})]),_:1}),l(t(Z),null,{default:a(()=>[l(t(y)),l(t(y)),l(t(y))]),_:1})]),_:1}),l(t(v),{variant:"outline",size:"sm"},{default:a(()=>[l(t(Pe),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[223]||(e[223]=o("span",null,"Add Payment",-1))]),_:1})])]),l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(x),null,{default:a(()=>[l(t(v),{variant:"ghost",class:"-ml-4"},{default:a(()=>[e[224]||(e[224]=o("span",null,"Status",-1)),l(t(N),{class:"w-5 h-5 ml-2 h-4 w-4"})]),_:1})]),_:1}),l(t(x),null,{default:a(()=>[l(t(v),{variant:"ghost",class:"-ml-4"},{default:a(()=>[e[225]||(e[225]=o("span",null,"Email",-1)),l(t(N),{class:"w-5 h-5 ml-2 h-4 w-4"})]),_:1})]),_:1}),l(t(x),{class:"text-right"},{default:a(()=>[...e[226]||(e[226]=[s("Amount",-1)])]),_:1}),l(t(x),{class:"w-[50px]"})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[227]||(e[227]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[228]||(e[228]=[s("ken99@yahoo.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[229]||(e[229]=[s("$316.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[...e[230]||(e[230]=[o("span",null,"...",-1)])]),_:1})]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D),{"default-checked":!0})]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"default"},{default:a(()=>[...e[231]||(e[231]=[s("Success",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[232]||(e[232]=[s("abe45@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[233]||(e[233]=[s("$242.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[...e[234]||(e[234]=[o("span",null,"...",-1)])]),_:1})]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"outline"},{default:a(()=>[...e[235]||(e[235]=[s("Processing",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[236]||(e[236]=[s("monserrat44@gmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[237]||(e[237]=[s("$837.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[...e[238]||(e[238]=[o("span",null,"...",-1)])]),_:1})]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(D))]),_:1}),l(t(n),null,{default:a(()=>[l(t(u),{variant:"destructive"},{default:a(()=>[...e[239]||(e[239]=[s("Failed",-1)])]),_:1})]),_:1}),l(t(n),{class:"lowercase"},{default:a(()=>[...e[240]||(e[240]=[s("carmella@hotmail.com",-1)])]),_:1}),l(t(n),{class:"text-right font-medium"},{default:a(()=>[...e[241]||(e[241]=[s("$721.00",-1)])]),_:1}),l(t(n),{class:"w-[50px]"},{default:a(()=>[l(t(v),{variant:"ghost",size:"icon"},{default:a(()=>[...e[242]||(e[242]=[o("span",null,"...",-1)])]),_:1})]),_:1})]),_:1})]),_:1})]),_:1}),o("div",pl,[e[247]||(e[247]=o("span",{class:"text-sm text-muted-foreground"},"1 of 4 row(s) selected.",-1)),o("div",Tl,[o("div",kl,[e[245]||(e[245]=o("span",{class:"text-sm text-muted-foreground"},"Rows per page",-1)),l(t(ie),null,{default:a(()=>[l(t(oe),null,{default:a(()=>[l(t(se))]),_:1}),l(t(ne),null,{default:a(()=>[l(t(_),{value:"5"},{default:a(()=>[...e[243]||(e[243]=[s("5",-1)])]),_:1}),l(t(_),{value:"10"},{default:a(()=>[...e[244]||(e[244]=[s("10",-1)])]),_:1})]),_:1})]),_:1})]),e[246]||(e[246]=o("span",{class:"text-sm text-muted-foreground"},"Page 1 of 1",-1)),o("div",yl,[l(t(v),{variant:"outline",size:"icon",disabled:""},{default:a(()=>[l(t(re),{class:"w-5 h-5 h-4 w-4"})]),_:1}),l(t(v),{variant:"outline",size:"icon",disabled:""},{default:a(()=>[l(t(de),{class:"w-5 h-5 h-4 w-4"})]),_:1})])])])])]),o("div",Cl,[o("button",{onClick:e[30]||(e[30]=b=>J.value=!J.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[249]||(e[249]=o("span",{class:"font-medium"},"Code",-1)),(i(),r("svg",{class:m([J.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[248]||(e[248]=[o("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),J.value?(i(),r("div",hl,[o("div",zl,[o("div",Bl,[o("button",{onClick:e[31]||(e[31]=b=>F.value="auto"),class:m([F.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),o("button",{onClick:e[32]||(e[32]=b=>F.value="vue"),class:m([F.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),o("button",{onClick:e[33]||(e[33]=b=>C(F.value==="auto"?Be:$e,"datatable-complete")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[g.value!=="datatable-complete"?(i(),r("svg",$l,[...e[250]||(e[250]=[o("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),o("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(i(),r("svg",Sl,[...e[251]||(e[251]=[o("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),s(" "+c(g.value==="datatable-complete"?"Copied!":"Copy"),1)])]),o("pre",Rl,[o("code",{class:m("block font-mono !p-0 language-"+(F.value==="auto"?"auto":"html"))},c(F.value==="auto"?Be:$e),3)])])):f("",!0)])]),e[302]||(e[302]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Features",-1)),e[303]||(e[303]=o("span",{class:"text-muted-foreground"},"The Data Table guide covers:",-1)),o("div",Dl,[o("div",Al,[l(t(u),{variant:"secondary"},{default:a(()=>[...e[252]||(e[252]=[s("Sorting",-1)])]),_:1}),l(t(u),{variant:"secondary"},{default:a(()=>[...e[253]||(e[253]=[s("Filtering",-1)])]),_:1}),l(t(u),{variant:"secondary"},{default:a(()=>[...e[254]||(e[254]=[s("Pagination",-1)])]),_:1})]),o("div",Hl,[l(t(u),{variant:"secondary"},{default:a(()=>[...e[255]||(e[255]=[s("Row Selection",-1)])]),_:1}),l(t(u),{variant:"secondary"},{default:a(()=>[...e[256]||(e[256]=[s("Column Visibility",-1)])]),_:1}),l(t(u),{variant:"secondary"},{default:a(()=>[...e[257]||(e[257]=[s("Row Actions",-1)])]),_:1})])]),e[304]||(e[304]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Table Components",-1)),l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[258]||(e[258]=[s("Component",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[259]||(e[259]=[s("Description",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[260]||(e[260]=[s("Table",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[261]||(e[261]=[s("Main table container",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[262]||(e[262]=[s("TableHeader",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[263]||(e[263]=[s("Header section",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[264]||(e[264]=[s("TableBody",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[265]||(e[265]=[s("Body section",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[266]||(e[266]=[s("TableRow",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[267]||(e[267]=[s("Table row",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[268]||(e[268]=[s("TableHead",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[269]||(e[269]=[s("Header cell",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),null,{default:a(()=>[...e[270]||(e[270]=[s("TableCell",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[271]||(e[271]=[s("Data cell",-1)])]),_:1})]),_:1})]),_:1})]),_:1}),e[305]||(e[305]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"TanStack Table API",-1)),e[306]||(e[306]=o("span",{class:"text-muted-foreground"},"Key API methods from @tanstack/vue-table:",-1)),l(t(h),null,{default:a(()=>[l(t(z),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(x),null,{default:a(()=>[...e[272]||(e[272]=[s("Method",-1)])]),_:1}),l(t(x),null,{default:a(()=>[...e[273]||(e[273]=[s("Description",-1)])]),_:1})]),_:1})]),_:1}),l(t(B),null,{default:a(()=>[l(t(d),null,{default:a(()=>[l(t(n),{class:"font-mono text-sm"},{default:a(()=>[...e[274]||(e[274]=[s("useVueTable",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[275]||(e[275]=[s("Main composable to create table instance",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-mono text-sm"},{default:a(()=>[...e[276]||(e[276]=[s("getCoreRowModel",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[277]||(e[277]=[s("Returns core row model",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-mono text-sm"},{default:a(()=>[...e[278]||(e[278]=[s("getPaginationRowModel",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[279]||(e[279]=[s("Returns pagination row model",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-mono text-sm"},{default:a(()=>[...e[280]||(e[280]=[s("getSortedRowModel",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[281]||(e[281]=[s("Returns sorted row model",-1)])]),_:1})]),_:1}),l(t(d),null,{default:a(()=>[l(t(n),{class:"font-mono text-sm"},{default:a(()=>[...e[282]||(e[282]=[s("getFilteredRowModel",-1)])]),_:1}),l(t(n),null,{default:a(()=>[...e[283]||(e[283]=[s("Returns filtered row model",-1)])]),_:1})]),_:1})]),_:1})]),_:1}),e[307]||(e[307]=o("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Documentation",-1)),e[308]||(e[308]=o("span",{class:"text-muted-foreground"},"For the complete guide with code examples, see the shadcn-vue Data Table documentation.",-1))])]))}}),_l=Ie(jl,[["__scopeId","data-v-5591b956"]]);export{_l as default};
+`,Re="npx shadcn-vue@latest add table",Se="npm install @tanstack/vue-table",na=Me({__name:"datatable",emits:["toggleSortStatus","toggleSortEmail","toggleSortAmount"],setup(Dt,{emit:Ht}){const c=f(""),g=f("asc");function $e(){}function De(){}function He(){}const x=f(""),L=f(!0),H=f("auto"),q=f(!0),M=f("auto"),K=f(!0),I=f("auto"),G=f(!0),A=f("auto"),O=f(!0),j=f("auto"),Q=f(!0),V=f("auto"),J=f(!0),P=f("auto"),W=f(!0),F=f("auto");async function h(te,e){try{await navigator.clipboard.writeText(te),x.value=e,setTimeout(()=>{x.value=""},2e3)}catch(b){console.error("Failed to copy:",b)}}return E(H,()=>{S(()=>$.highlightAll())}),E(M,()=>{S(()=>$.highlightAll())}),E(I,()=>{S(()=>$.highlightAll())}),E(A,()=>{S(()=>$.highlightAll())}),E(j,()=>{S(()=>$.highlightAll())}),E(V,()=>{S(()=>$.highlightAll())}),E(P,()=>{S(()=>$.highlightAll())}),E(F,()=>{S(()=>$.highlightAll())}),Ie(()=>{S(()=>$.highlightAll())}),(te,e)=>(l(),r("div",je,[e[298]||(e[298]=s("h1",null,"Data Table",-1)),e[299]||(e[299]=s("span",null,"Powerful table and datagrids built using TanStack Table.",-1)),e[300]||(e[300]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Introduction",-1)),e[301]||(e[301]=s("span",{class:"text-muted-foreground"},"The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.",-1)),e[302]||(e[302]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Installation",-1)),e[303]||(e[303]=s("span",{class:"font-medium"},"1. Add the Table component:",-1)),s("div",Ve,[s("div",Pe,[e[36]||(e[36]=s("span",{class:"text-xs text-zinc-600 dark:text-zinc-400 font-medium"},"bash",-1)),s("button",{onClick:e[0]||(e[0]=b=>h(Re,"codeblock1")),class:"inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="codeblock1"?(l(),r("svg",Fe,[...e[34]||(e[34]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",Ee,[...e[35]||(e[35]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="codeblock1"?"Copied!":"Copy"),1)])]),s("pre",{class:"p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"},[s("code",{class:"block font-mono !p-0 language-bash"},T(Re))])]),e[304]||(e[304]=s("span",{class:"font-medium"},"2. Add TanStack Table dependency:",-1)),s("div",Ne,[s("div",Ue,[e[39]||(e[39]=s("span",{class:"text-xs text-zinc-600 dark:text-zinc-400 font-medium"},"bash",-1)),s("button",{onClick:e[1]||(e[1]=b=>h(Se,"codeblock2")),class:"inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="codeblock2"?(l(),r("svg",Le,[...e[37]||(e[37]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",qe,[...e[38]||(e[38]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="codeblock2"?"Copied!":"Copy"),1)])]),s("pre",{class:"p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"},[s("code",{class:"block font-mono !p-0 language-bash"},T(Se))])]),e[305]||(e[305]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Basic Table",-1)),e[306]||(e[306]=s("span",{class:"text-muted-foreground"},"Start with a basic table to display your data.",-1)),s("div",Ke,[s("div",Ge,[(l(),a(t(B),{key:"Table-23"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-24"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-25"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-26"},{default:o(()=>[...e[40]||(e[40]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-27"},{default:o(()=>[...e[41]||(e[41]=[n("Email",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-28"},{default:o(()=>[...e[42]||(e[42]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-29"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-30"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-31"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-32"},{default:o(()=>[...e[43]||(e[43]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-33"},{default:o(()=>[...e[44]||(e[44]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-34"},{default:o(()=>[...e[45]||(e[45]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-35"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-36"},{default:o(()=>[(l(),a(t(u),{variant:"secondary",key:"Badge-37"},{default:o(()=>[...e[46]||(e[46]=[n("Pending",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-38"},{default:o(()=>[...e[47]||(e[47]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-39"},{default:o(()=>[...e[48]||(e[48]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-40"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-41"},{default:o(()=>[(l(),a(t(u),{variant:"outline",key:"Badge-42"},{default:o(()=>[...e[49]||(e[49]=[n("Processing",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-43"},{default:o(()=>[...e[50]||(e[50]=[n("monserrat44@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-44"},{default:o(()=>[...e[51]||(e[51]=[n("$837.00",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),s("div",Oe,[s("button",{onClick:e[2]||(e[2]=b=>L.value=!L.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[53]||(e[53]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([L.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[52]||(e[52]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),L.value?(l(),r("div",Qe,[s("div",Je,[s("div",We,[s("button",{onClick:e[3]||(e[3]=b=>H.value="auto"),class:m([H.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[4]||(e[4]=b=>H.value="vue"),class:m([H.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[5]||(e[5]=b=>h(H.value==="auto"?be:me,"datatable-basic")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-basic"?(l(),r("svg",Xe,[...e[54]||(e[54]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",Ye,[...e[55]||(e[55]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-basic"?"Copied!":"Copy"),1)])]),s("pre",Ze,[s("code",{class:m("block font-mono !p-0 language-"+(H.value==="auto"?"auto":"html"))},T(H.value==="auto"?be:me),3)])])):k("",!0)])]),e[307]||(e[307]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Sorting",-1)),e[308]||(e[308]=s("span",{class:"text-muted-foreground"},"Click column headers to sort ascending or descending. Try clicking on each column!",-1)),s("div",_e,[s("div",el,[(l(),a(t(B),{key:"Table-157"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-158"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-159"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-160"},{default:o(()=>[s("button",{class:"-ml-4",variant:"ghost",onClick:De},[e[56]||(e[56]=s("span",null,"Status",-1)),c.value=="status"?(l(),r(w,{key:0},[g.value=="asc"?(l(),a(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0),g.value=="desc"?(l(),a(t(ee),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)],64)):k("",!0),c.value!="status"?(l(),a(t(U),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)])]),_:1})),(l(),a(t(y),{key:"TableHead-161"},{default:o(()=>[s("button",{class:"-ml-4",variant:"ghost",onClick:He},[e[57]||(e[57]=s("span",null,"Email",-1)),c.value=="email"?(l(),r(w,{key:0},[g.value=="asc"?(l(),a(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0),g.value=="desc"?(l(),a(t(ee),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)],64)):k("",!0),c.value!="email"?(l(),a(t(U),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-162"},{default:o(()=>[s("button",{class:"-ml-4",variant:"ghost",onClick:$e},[e[58]||(e[58]=s("span",null,"Amount",-1)),c.value=="amount"?(l(),r(w,{key:0},[g.value=="asc"?(l(),a(t(le),{key:0,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0),g.value=="desc"?(l(),a(t(ee),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)],64)):k("",!0),c.value!="amount"?(l(),a(t(U),{key:1,class:"w-5 h-5 ml-2 h-4 w-4"})):k("",!0)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-163"},{default:o(()=>[c.value=="email"?(l(),r(w,{key:0},[g.value=="asc"?(l(),r(w,{key:0},[(l(),a(t(d),{key:"TableRow-164"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-165"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-166"},{default:o(()=>[...e[59]||(e[59]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-167"},{default:o(()=>[...e[60]||(e[60]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-168"},{default:o(()=>[...e[61]||(e[61]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-169"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-170"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-171"},{default:o(()=>[...e[62]||(e[62]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-172"},{default:o(()=>[...e[63]||(e[63]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-173"},{default:o(()=>[...e[64]||(e[64]=[n("$721.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-174"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-175"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-176"},{default:o(()=>[...e[65]||(e[65]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-177"},{default:o(()=>[...e[66]||(e[66]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-178"},{default:o(()=>[...e[67]||(e[67]=[n("$316.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0),g.value=="desc"?(l(),r(w,{key:1},[(l(),a(t(d),{key:"TableRow-179"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-180"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-181"},{default:o(()=>[...e[68]||(e[68]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-182"},{default:o(()=>[...e[69]||(e[69]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-183"},{default:o(()=>[...e[70]||(e[70]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-184"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-185"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-186"},{default:o(()=>[...e[71]||(e[71]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-187"},{default:o(()=>[...e[72]||(e[72]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-188"},{default:o(()=>[...e[73]||(e[73]=[n("$721.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-189"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-190"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-191"},{default:o(()=>[...e[74]||(e[74]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-192"},{default:o(()=>[...e[75]||(e[75]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-193"},{default:o(()=>[...e[76]||(e[76]=[n("$242.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0)],64)):k("",!0),c.value=="amount"?(l(),r(w,{key:1},[g.value=="asc"?(l(),r(w,{key:0},[(l(),a(t(d),{key:"TableRow-194"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-195"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-196"},{default:o(()=>[...e[77]||(e[77]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-197"},{default:o(()=>[...e[78]||(e[78]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-198"},{default:o(()=>[...e[79]||(e[79]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-199"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-200"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-201"},{default:o(()=>[...e[80]||(e[80]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-202"},{default:o(()=>[...e[81]||(e[81]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-203"},{default:o(()=>[...e[82]||(e[82]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-204"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-205"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-206"},{default:o(()=>[...e[83]||(e[83]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-207"},{default:o(()=>[...e[84]||(e[84]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-208"},{default:o(()=>[...e[85]||(e[85]=[n("$721.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0),g.value=="desc"?(l(),r(w,{key:1},[(l(),a(t(d),{key:"TableRow-209"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-210"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-211"},{default:o(()=>[...e[86]||(e[86]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-212"},{default:o(()=>[...e[87]||(e[87]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-213"},{default:o(()=>[...e[88]||(e[88]=[n("$721.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-214"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-215"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-216"},{default:o(()=>[...e[89]||(e[89]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-217"},{default:o(()=>[...e[90]||(e[90]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-218"},{default:o(()=>[...e[91]||(e[91]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-219"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-220"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-221"},{default:o(()=>[...e[92]||(e[92]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-222"},{default:o(()=>[...e[93]||(e[93]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-223"},{default:o(()=>[...e[94]||(e[94]=[n("$242.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0)],64)):k("",!0),c.value=="status"?(l(),r(w,{key:2},[g.value=="asc"?(l(),r(w,{key:0},[(l(),a(t(d),{key:"TableRow-224"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-225"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-226"},{default:o(()=>[...e[95]||(e[95]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-227"},{default:o(()=>[...e[96]||(e[96]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-228"},{default:o(()=>[...e[97]||(e[97]=[n("$721.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-229"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-230"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-231"},{default:o(()=>[...e[98]||(e[98]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-232"},{default:o(()=>[...e[99]||(e[99]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-233"},{default:o(()=>[...e[100]||(e[100]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-234"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-235"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-236"},{default:o(()=>[...e[101]||(e[101]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-237"},{default:o(()=>[...e[102]||(e[102]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-238"},{default:o(()=>[...e[103]||(e[103]=[n("$316.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0),g.value=="desc"?(l(),r(w,{key:1},[(l(),a(t(d),{key:"TableRow-239"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-240"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-241"},{default:o(()=>[...e[104]||(e[104]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-242"},{default:o(()=>[...e[105]||(e[105]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-243"},{default:o(()=>[...e[106]||(e[106]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-244"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-245"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-246"},{default:o(()=>[...e[107]||(e[107]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-247"},{default:o(()=>[...e[108]||(e[108]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-248"},{default:o(()=>[...e[109]||(e[109]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-249"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-250"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-251"},{default:o(()=>[...e[110]||(e[110]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-252"},{default:o(()=>[...e[111]||(e[111]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-253"},{default:o(()=>[...e[112]||(e[112]=[n("$721.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0)],64)):k("",!0),c.value==""?(l(),r(w,{key:3},[(l(),a(t(d),{key:"TableRow-254"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-255"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-256"},{default:o(()=>[...e[113]||(e[113]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-257"},{default:o(()=>[...e[114]||(e[114]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-258"},{default:o(()=>[...e[115]||(e[115]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-259"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-260"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-261"},{default:o(()=>[...e[116]||(e[116]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-262"},{default:o(()=>[...e[117]||(e[117]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-263"},{default:o(()=>[...e[118]||(e[118]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-264"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-265"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-266"},{default:o(()=>[...e[119]||(e[119]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-267"},{default:o(()=>[...e[120]||(e[120]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-268"},{default:o(()=>[...e[121]||(e[121]=[n("$721.00",-1)])]),_:1}))]),_:1}))],64)):k("",!0)]),_:1}))]),_:1}))]),s("div",ll,[s("button",{onClick:e[6]||(e[6]=b=>q.value=!q.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[123]||(e[123]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([q.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[122]||(e[122]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),q.value?(l(),r("div",tl,[s("div",al,[s("div",ol,[s("button",{onClick:e[7]||(e[7]=b=>M.value="auto"),class:m([M.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[8]||(e[8]=b=>M.value="vue"),class:m([M.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[9]||(e[9]=b=>h(M.value==="auto"?ye:ke,"datatable-sorting")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-sorting"?(l(),r("svg",sl,[...e[124]||(e[124]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",nl,[...e[125]||(e[125]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-sorting"?"Copied!":"Copy"),1)])]),s("pre",il,[s("code",{class:m("block font-mono !p-0 language-"+(M.value==="auto"?"auto":"html"))},T(M.value==="auto"?ye:ke),3)])])):k("",!0)])]),s("div",null,[e[144]||(e[144]=s("div",null,null,-1)),s("div",null,[c.value=="status"?(l(),r(w,{key:0},[e[126]||(e[126]=s("div",null,null,-1)),e[127]||(e[127]=s("div",null,null,-1)),g.value=="asc"?(l(),r(w,{key:0},[n(" desc ")],64)):(l(),r(w,{key:1},[n(" asc ")],64))],64)):(l(),r(w,{key:1},[e[128]||(e[128]=s("div",null,null,-1)),e[129]||(e[129]=s("div",null,"status",-1)),e[130]||(e[130]=s("div",null,null,-1)),e[131]||(e[131]=s("div",null,"asc",-1))],64))]),e[145]||(e[145]=s("div",null,null,-1)),s("div",null,[c.value=="email"?(l(),r(w,{key:0},[e[132]||(e[132]=s("div",null,null,-1)),e[133]||(e[133]=s("div",null,null,-1)),g.value=="asc"?(l(),r(w,{key:0},[n(" desc ")],64)):(l(),r(w,{key:1},[n(" asc ")],64))],64)):(l(),r(w,{key:1},[e[134]||(e[134]=s("div",null,null,-1)),e[135]||(e[135]=s("div",null,"email",-1)),e[136]||(e[136]=s("div",null,null,-1)),e[137]||(e[137]=s("div",null,"asc",-1))],64))]),e[146]||(e[146]=s("div",null,null,-1)),s("div",null,[c.value=="amount"?(l(),r(w,{key:0},[e[138]||(e[138]=s("div",null,null,-1)),e[139]||(e[139]=s("div",null,null,-1)),g.value=="asc"?(l(),r(w,{key:0},[n(" desc ")],64)):(l(),r(w,{key:1},[n(" asc ")],64))],64)):(l(),r(w,{key:1},[e[140]||(e[140]=s("div",null,null,-1)),e[141]||(e[141]=s("div",null,"amount",-1)),e[142]||(e[142]=s("div",null,null,-1)),e[143]||(e[143]=s("div",null,"asc",-1))],64))])]),e[309]||(e[309]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Filtering",-1)),e[310]||(e[310]=s("span",{class:"text-muted-foreground"},"Search and filter data across columns.",-1)),s("div",rl,[s("div",dl,[s("div",ul,[e[156]||(e[156]=s("div",{class:"flex flex-row items-center gap-2"},[s("span",{class:"text-sm font-medium"},"Filter:"),s("input",{class:"w-[250px]",placeholder:"Search by email..."})],-1)),(l(),a(t(B),{key:"Table-286"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-287"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-288"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-289"},{default:o(()=>[...e[147]||(e[147]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-290"},{default:o(()=>[...e[148]||(e[148]=[n("Email",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-291"},{default:o(()=>[...e[149]||(e[149]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-292"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-293"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-294"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-295"},{default:o(()=>[...e[150]||(e[150]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-296"},{default:o(()=>[...e[151]||(e[151]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-297"},{default:o(()=>[...e[152]||(e[152]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-298"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-299"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-300"},{default:o(()=>[...e[153]||(e[153]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-301"},{default:o(()=>[...e[154]||(e[154]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-302"},{default:o(()=>[...e[155]||(e[155]=[n("$242.00",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))])]),s("div",bl,[s("button",{onClick:e[10]||(e[10]=b=>K.value=!K.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[158]||(e[158]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([K.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[157]||(e[157]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),K.value?(l(),r("div",ml,[s("div",yl,[s("div",kl,[s("button",{onClick:e[11]||(e[11]=b=>I.value="auto"),class:m([I.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[12]||(e[12]=b=>I.value="vue"),class:m([I.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[13]||(e[13]=b=>h(I.value==="auto"?we:xe,"datatable-filtering")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-filtering"?(l(),r("svg",wl,[...e[159]||(e[159]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",xl,[...e[160]||(e[160]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-filtering"?"Copied!":"Copy"),1)])]),s("pre",Tl,[s("code",{class:m("block font-mono !p-0 language-"+(I.value==="auto"?"auto":"html"))},T(I.value==="auto"?we:xe),3)])])):k("",!0)])]),e[311]||(e[311]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Pagination",-1)),e[312]||(e[312]=s("span",{class:"text-muted-foreground"},"Navigate through large datasets with page controls.",-1)),s("div",fl,[s("div",gl,[s("div",vl,[(l(),a(t(B),{key:"Table-326"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-327"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-328"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-329"},{default:o(()=>[...e[161]||(e[161]=[n("Invoice",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-330"},{default:o(()=>[...e[162]||(e[162]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-331"},{default:o(()=>[...e[163]||(e[163]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-332"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-333"},{default:o(()=>[(l(),a(t(i),{class:"font-medium",key:"TableCell-334"},{default:o(()=>[...e[164]||(e[164]=[n("INV001",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-335"},{default:o(()=>[...e[165]||(e[165]=[n("Paid",-1)])]),_:1})),(l(),a(t(i),{class:"text-right",key:"TableCell-336"},{default:o(()=>[...e[166]||(e[166]=[n("$250.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-337"},{default:o(()=>[(l(),a(t(i),{class:"font-medium",key:"TableCell-338"},{default:o(()=>[...e[167]||(e[167]=[n("INV002",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-339"},{default:o(()=>[...e[168]||(e[168]=[n("Pending",-1)])]),_:1})),(l(),a(t(i),{class:"text-right",key:"TableCell-340"},{default:o(()=>[...e[169]||(e[169]=[n("$150.00",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1})),s("div",cl,[s("div",Cl,[e[173]||(e[173]=s("span",{class:"text-sm text-muted-foreground"},"Rows per page",-1)),(l(),a(t(ne),{class:"w-[70px]",key:"Select-341"},{default:o(()=>[(l(),a(t(ae),{key:"SelectTrigger-342"},{default:o(()=>[(l(),a(t(oe),{key:"SelectValue-343"},{default:o(()=>[...e[170]||(e[170]=[n("10",-1)])]),_:1}))]),_:1})),(l(),a(t(se),{key:"SelectContent-344"},{default:o(()=>[(l(),a(t(_),{value:"10",key:"SelectItem-345"},{default:o(()=>[...e[171]||(e[171]=[n("10",-1)])]),_:1})),(l(),a(t(_),{value:"20",key:"SelectItem-346"},{default:o(()=>[...e[172]||(e[172]=[n("20",-1)])]),_:1}))]),_:1}))]),_:1}))]),e[174]||(e[174]=s("span",{class:"text-sm text-muted-foreground"},"Page 1 of 10",-1)),s("div",pl,[(l(),a(t(v),{variant:"outline",size:"icon",disabled:"",key:"Button-347"},{default:o(()=>[C(t(ie),{class:"w-5 h-5 h-4 w-4"})]),_:1})),(l(),a(t(v),{variant:"outline",size:"icon",key:"Button-348"},{default:o(()=>[C(t(re),{class:"w-5 h-5 h-4 w-4"})]),_:1}))])])])]),s("div",hl,[s("button",{onClick:e[14]||(e[14]=b=>G.value=!G.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[176]||(e[176]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([G.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[175]||(e[175]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),G.value?(l(),r("div",Bl,[s("div",zl,[s("div",Rl,[s("button",{onClick:e[15]||(e[15]=b=>A.value="auto"),class:m([A.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[16]||(e[16]=b=>A.value="vue"),class:m([A.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[17]||(e[17]=b=>h(A.value==="auto"?Te:fe,"datatable-pagination")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-pagination"?(l(),r("svg",Sl,[...e[177]||(e[177]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",$l,[...e[178]||(e[178]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-pagination"?"Copied!":"Copy"),1)])]),s("pre",Dl,[s("code",{class:m("block font-mono !p-0 language-"+(A.value==="auto"?"auto":"html"))},T(A.value==="auto"?Te:fe),3)])])):k("",!0)])]),e[313]||(e[313]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Row Selection",-1)),e[314]||(e[314]=s("span",{class:"text-muted-foreground"},"Select rows with checkboxes for bulk operations.",-1)),s("div",Hl,[s("div",Ml,[s("div",Il,[(l(),a(t(B),{key:"Table-381"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-382"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-383"},{default:o(()=>[(l(),a(t(y),{class:"w-[50px]",key:"TableHead-384"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-385"}))]),_:1})),(l(),a(t(y),{key:"TableHead-386"},{default:o(()=>[...e[179]||(e[179]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-387"},{default:o(()=>[...e[180]||(e[180]=[n("Email",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-388"},{default:o(()=>[...e[181]||(e[181]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-389"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-390"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-391"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-392"}))]),_:1})),(l(),a(t(i),{key:"TableCell-393"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-394"},{default:o(()=>[...e[182]||(e[182]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{key:"TableCell-395"},{default:o(()=>[...e[183]||(e[183]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-396"},{default:o(()=>[...e[184]||(e[184]=[n("$316.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-397"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-398"},{default:o(()=>[(l(),a(t(D),{"model-value":!0,key:"Checkbox-399"}))]),_:1})),(l(),a(t(i),{key:"TableCell-400"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-401"},{default:o(()=>[...e[185]||(e[185]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{key:"TableCell-402"},{default:o(()=>[...e[186]||(e[186]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-403"},{default:o(()=>[...e[187]||(e[187]=[n("$242.00",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-404"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-405"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-406"}))]),_:1})),(l(),a(t(i),{key:"TableCell-407"},{default:o(()=>[(l(),a(t(u),{variant:"outline",key:"Badge-408"},{default:o(()=>[...e[188]||(e[188]=[n("Processing",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{key:"TableCell-409"},{default:o(()=>[...e[189]||(e[189]=[n("monserrat44@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-410"},{default:o(()=>[...e[190]||(e[190]=[n("$837.00",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1})),s("div",Al,[e[193]||(e[193]=s("span",{class:"text-sm text-muted-foreground"},"1 of 3 row(s) selected.",-1)),s("div",jl,[(l(),a(t(v),{variant:"outline",size:"sm",key:"Button-411"},{default:o(()=>[...e[191]||(e[191]=[n("Previous",-1)])]),_:1})),(l(),a(t(v),{variant:"outline",size:"sm",key:"Button-412"},{default:o(()=>[...e[192]||(e[192]=[n("Next",-1)])]),_:1}))])])])]),s("div",Vl,[s("button",{onClick:e[18]||(e[18]=b=>O.value=!O.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[195]||(e[195]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([O.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[194]||(e[194]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),O.value?(l(),r("div",Pl,[s("div",Fl,[s("div",El,[s("button",{onClick:e[19]||(e[19]=b=>j.value="auto"),class:m([j.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[20]||(e[20]=b=>j.value="vue"),class:m([j.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[21]||(e[21]=b=>h(j.value==="auto"?ge:ve,"datatable-selection")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-selection"?(l(),r("svg",Nl,[...e[196]||(e[196]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",Ul,[...e[197]||(e[197]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-selection"?"Copied!":"Copy"),1)])]),s("pre",Ll,[s("code",{class:m("block font-mono !p-0 language-"+(j.value==="auto"?"auto":"html"))},T(j.value==="auto"?ge:ve),3)])])):k("",!0)])]),e[315]||(e[315]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Row Actions",-1)),e[316]||(e[316]=s("span",{class:"text-muted-foreground"},"Add action menus to each row.",-1)),s("div",ql,[s("div",Kl,[(l(),a(t(B),{key:"Table-446"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-447"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-448"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-449"},{default:o(()=>[...e[198]||(e[198]=[n("Invoice",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-450"},{default:o(()=>[...e[199]||(e[199]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-451"},{default:o(()=>[...e[200]||(e[200]=[n("Amount",-1)])]),_:1})),(l(),a(t(y),{class:"w-[50px]",key:"TableHead-452"}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-453"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-454"},{default:o(()=>[(l(),a(t(i),{class:"font-medium",key:"TableCell-455"},{default:o(()=>[...e[201]||(e[201]=[n("INV001",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-456"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-457"},{default:o(()=>[...e[202]||(e[202]=[n("Paid",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"text-right",key:"TableCell-458"},{default:o(()=>[...e[203]||(e[203]=[n("$250.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-459"},{default:o(()=>[(l(),a(t(X),{key:"DropdownMenu-460"},{default:o(()=>[(l(),a(t(Y),{key:"DropdownMenuTrigger-461"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-462"},{default:o(()=>[C(t(ue),{class:"w-5 h-5 h-4 w-4"})]),_:1}))]),_:1})),(l(),a(t(Z),{key:"DropdownMenuContent-463"},{default:o(()=>[(l(),a(t(p),{key:"DropdownMenuItem-464"},{default:o(()=>[...e[204]||(e[204]=[n("Copy ID",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-465"},{default:o(()=>[...e[205]||(e[205]=[n("View details",-1)])]),_:1})),e[207]||(e[207]=s("div",null,null,-1)),(l(),a(t(p),{class:"text-destructive",key:"DropdownMenuItem-466"},{default:o(()=>[...e[206]||(e[206]=[n("Delete",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-467"},{default:o(()=>[(l(),a(t(i),{class:"font-medium",key:"TableCell-468"},{default:o(()=>[...e[208]||(e[208]=[n("INV002",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-469"},{default:o(()=>[(l(),a(t(u),{variant:"secondary",key:"Badge-470"},{default:o(()=>[...e[209]||(e[209]=[n("Pending",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"text-right",key:"TableCell-471"},{default:o(()=>[...e[210]||(e[210]=[n("$150.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-472"},{default:o(()=>[(l(),a(t(X),{key:"DropdownMenu-473"},{default:o(()=>[(l(),a(t(Y),{key:"DropdownMenuTrigger-474"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-475"},{default:o(()=>[C(t(ue),{class:"w-5 h-5 h-4 w-4"})]),_:1}))]),_:1})),(l(),a(t(Z),{key:"DropdownMenuContent-476"},{default:o(()=>[(l(),a(t(p),{key:"DropdownMenuItem-477"},{default:o(()=>[...e[211]||(e[211]=[n("Copy ID",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-478"},{default:o(()=>[...e[212]||(e[212]=[n("View details",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),s("div",Gl,[s("button",{onClick:e[22]||(e[22]=b=>Q.value=!Q.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[214]||(e[214]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([Q.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[213]||(e[213]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),Q.value?(l(),r("div",Ol,[s("div",Ql,[s("div",Jl,[s("button",{onClick:e[23]||(e[23]=b=>V.value="auto"),class:m([V.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[24]||(e[24]=b=>V.value="vue"),class:m([V.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[25]||(e[25]=b=>h(V.value==="auto"?ce:Ce,"datatable-actions")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-actions"?(l(),r("svg",Wl,[...e[215]||(e[215]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",Xl,[...e[216]||(e[216]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-actions"?"Copied!":"Copy"),1)])]),s("pre",Yl,[s("code",{class:m("block font-mono !p-0 language-"+(V.value==="auto"?"auto":"html"))},T(V.value==="auto"?ce:Ce),3)])])):k("",!0)])]),e[317]||(e[317]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Column Visibility",-1)),e[318]||(e[318]=s("span",{class:"text-muted-foreground"},"Toggle column visibility with a dropdown menu.",-1)),s("div",Zl,[s("div",_l,[s("div",et,[s("div",lt,[e[221]||(e[221]=s("input",{class:"w-[200px]",placeholder:"Search..."},null,-1)),(l(),a(t(X),{key:"DropdownMenu-498"},{default:o(()=>[(l(),a(t(Y),{key:"DropdownMenuTrigger-499"},{default:o(()=>[(l(),a(t(v),{variant:"outline",size:"sm",key:"Button-500"},{default:o(()=>[C(t(de),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[217]||(e[217]=s("span",null,"Columns",-1))]),_:1}))]),_:1})),(l(),a(t(Z),{key:"DropdownMenuContent-501"},{default:o(()=>[(l(),a(t(p),{key:"DropdownMenuItem-502"},{default:o(()=>[...e[218]||(e[218]=[n("Status",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-503"},{default:o(()=>[...e[219]||(e[219]=[n("Email",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-504"},{default:o(()=>[...e[220]||(e[220]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1}))]),(l(),a(t(B),{key:"Table-505"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-506"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-507"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-508"},{default:o(()=>[...e[222]||(e[222]=[n("Status",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-509"},{default:o(()=>[...e[223]||(e[223]=[n("Email",-1)])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-510"},{default:o(()=>[...e[224]||(e[224]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-511"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-512"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-513"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-514"},{default:o(()=>[...e[225]||(e[225]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{key:"TableCell-515"},{default:o(()=>[...e[226]||(e[226]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-516"},{default:o(()=>[...e[227]||(e[227]=[n("$316.00",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))])]),s("div",tt,[s("button",{onClick:e[26]||(e[26]=b=>J.value=!J.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[229]||(e[229]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([J.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[228]||(e[228]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),J.value?(l(),r("div",at,[s("div",ot,[s("div",st,[s("button",{onClick:e[27]||(e[27]=b=>P.value="auto"),class:m([P.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[28]||(e[28]=b=>P.value="vue"),class:m([P.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[29]||(e[29]=b=>h(P.value==="auto"?pe:he,"datatable-visibility")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-visibility"?(l(),r("svg",nt,[...e[230]||(e[230]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",it,[...e[231]||(e[231]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-visibility"?"Copied!":"Copy"),1)])]),s("pre",rt,[s("code",{class:m("block font-mono !p-0 language-"+(P.value==="auto"?"auto":"html"))},T(P.value==="auto"?pe:he),3)])])):k("",!0)])]),e[319]||(e[319]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Complete Example",-1)),e[320]||(e[320]=s("span",{class:"text-muted-foreground"},"A full-featured data table with all features combined.",-1)),s("div",dt,[s("div",ut,[s("div",bt,[s("div",mt,[e[237]||(e[237]=s("input",{class:"w-[200px]",placeholder:"Filter emails..."},null,-1)),s("div",yt,[(l(),a(t(X),{key:"DropdownMenu-579"},{default:o(()=>[(l(),a(t(Y),{key:"DropdownMenuTrigger-580"},{default:o(()=>[(l(),a(t(v),{variant:"outline",size:"sm",key:"Button-581"},{default:o(()=>[C(t(de),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[232]||(e[232]=s("span",null,"View",-1))]),_:1}))]),_:1})),(l(),a(t(Z),{key:"DropdownMenuContent-582"},{default:o(()=>[(l(),a(t(p),{key:"DropdownMenuItem-583"},{default:o(()=>[...e[233]||(e[233]=[n("Status",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-584"},{default:o(()=>[...e[234]||(e[234]=[n("Email",-1)])]),_:1})),(l(),a(t(p),{key:"DropdownMenuItem-585"},{default:o(()=>[...e[235]||(e[235]=[n("Amount",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(v),{variant:"outline",size:"sm",key:"Button-586"},{default:o(()=>[C(t(Ae),{class:"w-5 h-5 mr-2 h-4 w-4"}),e[236]||(e[236]=s("span",null,"Add Payment",-1))]),_:1}))])]),(l(),a(t(B),{key:"Table-587"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-588"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-589"},{default:o(()=>[(l(),a(t(y),{class:"w-[50px]",key:"TableHead-590"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-591"}))]),_:1})),(l(),a(t(y),{key:"TableHead-592"},{default:o(()=>[s("button",kt,[e[238]||(e[238]=s("span",null,"Status",-1)),C(t(U),{class:"w-5 h-5 ml-2 h-4 w-4"})])]),_:1})),(l(),a(t(y),{key:"TableHead-593"},{default:o(()=>[s("button",wt,[e[239]||(e[239]=s("span",null,"Email",-1)),C(t(U),{class:"w-5 h-5 ml-2 h-4 w-4"})])]),_:1})),(l(),a(t(y),{class:"text-right",key:"TableHead-594"},{default:o(()=>[...e[240]||(e[240]=[n("Amount",-1)])]),_:1})),(l(),a(t(y),{class:"w-[50px]",key:"TableHead-595"}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-596"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-597"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-598"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-599"}))]),_:1})),(l(),a(t(i),{key:"TableCell-600"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-601"},{default:o(()=>[...e[241]||(e[241]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-602"},{default:o(()=>[...e[242]||(e[242]=[n("ken99@yahoo.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-603"},{default:o(()=>[...e[243]||(e[243]=[n("$316.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-604"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-605"},{default:o(()=>[...e[244]||(e[244]=[s("span",null,"...",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-606"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-607"},{default:o(()=>[(l(),a(t(D),{"model-value":!0,key:"Checkbox-608"}))]),_:1})),(l(),a(t(i),{key:"TableCell-609"},{default:o(()=>[(l(),a(t(u),{variant:"default",key:"Badge-610"},{default:o(()=>[...e[245]||(e[245]=[n("Success",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-611"},{default:o(()=>[...e[246]||(e[246]=[n("abe45@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-612"},{default:o(()=>[...e[247]||(e[247]=[n("$242.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-613"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-614"},{default:o(()=>[...e[248]||(e[248]=[s("span",null,"...",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-615"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-616"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-617"}))]),_:1})),(l(),a(t(i),{key:"TableCell-618"},{default:o(()=>[(l(),a(t(u),{variant:"outline",key:"Badge-619"},{default:o(()=>[...e[249]||(e[249]=[n("Processing",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-620"},{default:o(()=>[...e[250]||(e[250]=[n("monserrat44@gmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-621"},{default:o(()=>[...e[251]||(e[251]=[n("$837.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-622"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-623"},{default:o(()=>[...e[252]||(e[252]=[s("span",null,"...",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-624"},{default:o(()=>[(l(),a(t(i),{class:"w-[50px]",key:"TableCell-625"},{default:o(()=>[(l(),a(t(D),{key:"Checkbox-626"}))]),_:1})),(l(),a(t(i),{key:"TableCell-627"},{default:o(()=>[(l(),a(t(u),{variant:"destructive",key:"Badge-628"},{default:o(()=>[...e[253]||(e[253]=[n("Failed",-1)])]),_:1}))]),_:1})),(l(),a(t(i),{class:"lowercase",key:"TableCell-629"},{default:o(()=>[...e[254]||(e[254]=[n("carmella@hotmail.com",-1)])]),_:1})),(l(),a(t(i),{class:"text-right font-medium",key:"TableCell-630"},{default:o(()=>[...e[255]||(e[255]=[n("$721.00",-1)])]),_:1})),(l(),a(t(i),{class:"w-[50px]",key:"TableCell-631"},{default:o(()=>[(l(),a(t(v),{variant:"ghost",size:"icon",key:"Button-632"},{default:o(()=>[...e[256]||(e[256]=[s("span",null,"...",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1}))]),_:1})),s("div",xt,[e[261]||(e[261]=s("span",{class:"text-sm text-muted-foreground"},"1 of 4 row(s) selected.",-1)),s("div",Tt,[s("div",ft,[e[259]||(e[259]=s("span",{class:"text-sm text-muted-foreground"},"Rows per page",-1)),(l(),a(t(ne),{class:"w-[70px]",key:"Select-633"},{default:o(()=>[(l(),a(t(ae),{key:"SelectTrigger-634"},{default:o(()=>[(l(),a(t(oe),{key:"SelectValue-635"}))]),_:1})),(l(),a(t(se),{key:"SelectContent-636"},{default:o(()=>[(l(),a(t(_),{value:"5",key:"SelectItem-637"},{default:o(()=>[...e[257]||(e[257]=[n("5",-1)])]),_:1})),(l(),a(t(_),{value:"10",key:"SelectItem-638"},{default:o(()=>[...e[258]||(e[258]=[n("10",-1)])]),_:1}))]),_:1}))]),_:1}))]),e[260]||(e[260]=s("span",{class:"text-sm text-muted-foreground"},"Page 1 of 1",-1)),s("div",gt,[(l(),a(t(v),{variant:"outline",size:"icon",disabled:"",key:"Button-639"},{default:o(()=>[C(t(ie),{class:"w-5 h-5 h-4 w-4"})]),_:1})),(l(),a(t(v),{variant:"outline",size:"icon",disabled:"",key:"Button-640"},{default:o(()=>[C(t(re),{class:"w-5 h-5 h-4 w-4"})]),_:1}))])])])])]),s("div",vt,[s("button",{onClick:e[30]||(e[30]=b=>W.value=!W.value),class:"flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"},[e[263]||(e[263]=s("span",{class:"font-medium"},"Code",-1)),(l(),r("svg",{class:m([W.value?"rotate-180":"","transition-transform duration-200"]),xmlns:"http://www.w3.org/2000/svg",width:"16",height:"16",viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"2","stroke-linecap":"round","stroke-linejoin":"round"},[...e[262]||(e[262]=[s("path",{d:"m6 9 6 6 6-6"},null,-1)])],2))]),W.value?(l(),r("div",ct,[s("div",Ct,[s("div",pt,[s("button",{onClick:e[31]||(e[31]=b=>F.value="auto"),class:m([F.value==="auto"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Auto ",2),s("button",{onClick:e[32]||(e[32]=b=>F.value="vue"),class:m([F.value==="vue"?"bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px":"text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent","px-4 py-2 text-xs font-medium transition-colors"])}," Vue ",2)]),s("button",{onClick:e[33]||(e[33]=b=>h(F.value==="auto"?Be:ze,"datatable-complete")),class:"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"},[x.value!=="datatable-complete"?(l(),r("svg",ht,[...e[264]||(e[264]=[s("rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2"},null,-1),s("path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"},null,-1)])])):(l(),r("svg",Bt,[...e[265]||(e[265]=[s("path",{d:"M20 6 9 17l-5-5"},null,-1)])])),n(" "+T(x.value==="datatable-complete"?"Copied!":"Copy"),1)])]),s("pre",zt,[s("code",{class:m("block font-mono !p-0 language-"+(F.value==="auto"?"auto":"html"))},T(F.value==="auto"?Be:ze),3)])])):k("",!0)])]),e[321]||(e[321]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Features",-1)),e[322]||(e[322]=s("span",{class:"text-muted-foreground"},"The Data Table guide covers:",-1)),s("div",Rt,[s("div",St,[(l(),a(t(u),{variant:"secondary",key:"Badge-641"},{default:o(()=>[...e[266]||(e[266]=[n("Sorting",-1)])]),_:1})),(l(),a(t(u),{variant:"secondary",key:"Badge-642"},{default:o(()=>[...e[267]||(e[267]=[n("Filtering",-1)])]),_:1})),(l(),a(t(u),{variant:"secondary",key:"Badge-643"},{default:o(()=>[...e[268]||(e[268]=[n("Pagination",-1)])]),_:1}))]),s("div",$t,[(l(),a(t(u),{variant:"secondary",key:"Badge-644"},{default:o(()=>[...e[269]||(e[269]=[n("Row Selection",-1)])]),_:1})),(l(),a(t(u),{variant:"secondary",key:"Badge-645"},{default:o(()=>[...e[270]||(e[270]=[n("Column Visibility",-1)])]),_:1})),(l(),a(t(u),{variant:"secondary",key:"Badge-646"},{default:o(()=>[...e[271]||(e[271]=[n("Row Actions",-1)])]),_:1}))])]),e[323]||(e[323]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Table Components",-1)),(l(),a(t(B),{key:"Table-647"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-648"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-649"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-650"},{default:o(()=>[...e[272]||(e[272]=[n("Component",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-651"},{default:o(()=>[...e[273]||(e[273]=[n("Description",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-652"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-653"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-654"},{default:o(()=>[...e[274]||(e[274]=[n("Table",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-655"},{default:o(()=>[...e[275]||(e[275]=[n("Main table container",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-656"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-657"},{default:o(()=>[...e[276]||(e[276]=[n("TableHeader",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-658"},{default:o(()=>[...e[277]||(e[277]=[n("Header section",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-659"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-660"},{default:o(()=>[...e[278]||(e[278]=[n("TableBody",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-661"},{default:o(()=>[...e[279]||(e[279]=[n("Body section",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-662"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-663"},{default:o(()=>[...e[280]||(e[280]=[n("TableRow",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-664"},{default:o(()=>[...e[281]||(e[281]=[n("Table row",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-665"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-666"},{default:o(()=>[...e[282]||(e[282]=[n("TableHead",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-667"},{default:o(()=>[...e[283]||(e[283]=[n("Header cell",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-668"},{default:o(()=>[(l(),a(t(i),{key:"TableCell-669"},{default:o(()=>[...e[284]||(e[284]=[n("TableCell",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-670"},{default:o(()=>[...e[285]||(e[285]=[n("Data cell",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1})),e[324]||(e[324]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"TanStack Table API",-1)),e[325]||(e[325]=s("span",{class:"text-muted-foreground"},"Key API methods from @tanstack/vue-table:",-1)),(l(),a(t(B),{key:"Table-671"},{default:o(()=>[(l(),a(t(z),{key:"TableHeader-672"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-673"},{default:o(()=>[(l(),a(t(y),{key:"TableHead-674"},{default:o(()=>[...e[286]||(e[286]=[n("Method",-1)])]),_:1})),(l(),a(t(y),{key:"TableHead-675"},{default:o(()=>[...e[287]||(e[287]=[n("Description",-1)])]),_:1}))]),_:1}))]),_:1})),(l(),a(t(R),{key:"TableBody-676"},{default:o(()=>[(l(),a(t(d),{key:"TableRow-677"},{default:o(()=>[(l(),a(t(i),{class:"font-mono text-sm",key:"TableCell-678"},{default:o(()=>[...e[288]||(e[288]=[n("useVueTable",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-679"},{default:o(()=>[...e[289]||(e[289]=[n("Main composable to create table instance",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-680"},{default:o(()=>[(l(),a(t(i),{class:"font-mono text-sm",key:"TableCell-681"},{default:o(()=>[...e[290]||(e[290]=[n("getCoreRowModel",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-682"},{default:o(()=>[...e[291]||(e[291]=[n("Returns core row model",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-683"},{default:o(()=>[(l(),a(t(i),{class:"font-mono text-sm",key:"TableCell-684"},{default:o(()=>[...e[292]||(e[292]=[n("getPaginationRowModel",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-685"},{default:o(()=>[...e[293]||(e[293]=[n("Returns pagination row model",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-686"},{default:o(()=>[(l(),a(t(i),{class:"font-mono text-sm",key:"TableCell-687"},{default:o(()=>[...e[294]||(e[294]=[n("getSortedRowModel",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-688"},{default:o(()=>[...e[295]||(e[295]=[n("Returns sorted row model",-1)])]),_:1}))]),_:1})),(l(),a(t(d),{key:"TableRow-689"},{default:o(()=>[(l(),a(t(i),{class:"font-mono text-sm",key:"TableCell-690"},{default:o(()=>[...e[296]||(e[296]=[n("getFilteredRowModel",-1)])]),_:1})),(l(),a(t(i),{key:"TableCell-691"},{default:o(()=>[...e[297]||(e[297]=[n("Returns filtered row model",-1)])]),_:1}))]),_:1}))]),_:1}))]),_:1})),e[326]||(e[326]=s("h2",{class:"text-2xl font-semibold tracking-tight mt-8"},"Documentation",-1)),e[327]||(e[327]=s("span",{class:"text-muted-foreground"},"For the complete guide with code examples, see the shadcn-vue Data Table documentation.",-1))]))}});export{na as default};

@@ -2669,34 +2669,28 @@ impl RustGenerator {
                 )
             }
 
-            // Plan 105: Router outlet and link
+            // Plan 105/408: Router outlet and link.
+            // Rust compiled mode has no router; render placeholders using
+            // existing View API to keep the binary compilable.
             AuraNode::Outlet => {
-                // Rust router outlet placeholder
-                "View::outlet()".to_string()
+                // No router in compiled Rust; render an empty placeholder.
+                "View::empty()".to_string()
             }
 
-            AuraNode::Link { to, text, href, children, .. } => {
-                // Rust router link or external link
-                let children_code: Vec<String> = children.iter()
-                    .map(|child| self.generate_view_tree(child))
-                    .collect();
-
-                if !href.is_empty() {
-                    // External link
-                    let text_content = if text.is_empty() {
-                        children_code.join(", ")
-                    } else {
-                        format!("\"{}\"", text)
-                    };
-                    format!("View::external_link(\"{}\").text({})", href, text_content)
+            AuraNode::Link { to, text, href, .. } => {
+                // Render link as a styled text/button (no routing in compiled Rust).
+                // Label comes from a plain string field only — children are already
+                // rendered Rust expressions, so embedding them inside a string
+                // literal would produce invalid code. Fall back to to/href as the
+                // placeholder label when no explicit text is present.
+                let label = if !text.is_empty() {
+                    text.clone()
+                } else if !href.is_empty() {
+                    href.clone()
                 } else {
-                    let text_arg = if text.is_empty() {
-                        String::new()
-                    } else {
-                        format!(".text(\"{}\")", text)
-                    };
-                    format!("View::link(\"{}\").children(vec![{}]){}.build()", to, children_code.join(", "), text_arg)
-                }
+                    to.clone()
+                };
+                format!("View::text_styled(\"{}\", \"text-blue-600 underline cursor-pointer\")", label)
             }
         }
     }
