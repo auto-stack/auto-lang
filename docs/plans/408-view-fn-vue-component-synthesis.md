@@ -196,21 +196,13 @@ auto-man 侧（实测后范围缩小）:
 
 **结论**: 跨文件复用的 front_dir 直文件 + app.at 路径已打通（含跨文件 component fn 名收集）。pages 路径作为残留。
 
-### 6.3 残留 3：auto-musk 试点 —— 依赖残留 1，首试候选已定
+### 6.3 残留 3：auto-musk 试点 —— 本轮不做（需先扩展 component fn 能力）
 
-**复核结论**: auto-musk 当前 0 处使用 component fn / view fn。三视图（chats/specs/wiki）共用 header 收敛（023 §3.1）需要 emit + slot，依赖 Plan 408 Task 2，**不适合首试**。
+**复核结论（实测后修正）**: auto-musk 当前 0 处使用 component fn / view fn。原以为 `AgentAvatar.vue` 是最简首试候选，但精读源码后发现它含 **computed（`color`/`bgColor`/`textColor`/`initials`/`title` 五个 computed，含 `professionColors` 字典 + char hash fallback）**，超出当前 component fn 能力（P1 的 `extract_widget_from_fragment` 无 computed/字典/动态 style 对象绑定）。
 
-**首试候选**: `AgentAvatar.vue`（`auto-musk/src/front/components/AgentAvatar.vue`，89 行）—— 纯展示组件（props: professionId/name/size），无 emit/slot/store/lifecycle/v-html，正好验证"逃生舱 .vue → .at component fn 单一真源"路径。
+**决策**: 本轮（P2）不在 auto-musk 做试点。理由：
+1. 强行替换 AgentAvatar 要么退化（去掉颜色逻辑，组件失去意义），要么需先给 component fn 加 `computed` 字段（Plan 408 Task 2 范畴）——那是更大的设计决策，不该在试点里仓促做。
+2. auto-musk 是独立仓库（`D:/autostack/auto-musk`），不在当前 plan-408 worktree 边界内。
+3. 转译器层能力（P1 同文件合成 + P2 跨文件复用 + legacy 验证）已就绪并有测试覆盖。
 
-**前置**: 需残留 1（跨文件）落地——AgentAvatar 要被 chats_view.at 和 specs_view.at 同时引用，必须跨文件。**故残留 3 排在残留 1 之后**。
-
-**改写草案**（放在 app.at 或独立 agent_avatar.at，跨文件引用）:
-```auto
-component fn AgentAvatar(professionId: str, name: str, size: str) {
-    span {
-        class: if .size == "xs" { "agent-avatar xs" } else { "agent-avatar md" }
-        text .initials
-    }
-}
-```
-**已知限制**: 颜色映射字典（`professionColors` + hue hash）在 `.at` 中无法表达（无对象字面量字典 + char hash），首试退化为准白名单或保留逃生舱 helper fn（`use { fn: professionColor } from "..."`）。emit/slot 需求的 NavSidebar/WikiNav 等 Task 2 落地后再排期。
+**后续路径**: auto-musk 应用层替换作为独立后续任务，在 auto-musk 仓库推进。根据试点反馈决定是否扩展 component fn 能力（computed / 字典 / emit / slot）。三视图共用 header 收敛（023 §3.1）需 emit + slot，依赖 Task 2，排期更靠后。
