@@ -15930,6 +15930,21 @@ widget NullProbe {
         test_a2vue("004_nested_if_style").expect("a2vue nested_if_style golden mismatch");
     }
 
+    /// Plan 407: text 节点函数调用 primary prop（i18n t() 支持）。
+    /// 验证 `text t("nav.chat")` 生成 `{{ t('nav.chat') }}`。
+    #[test]
+    fn test_a2vue_text_fn_call() {
+        test_a2vue("005_text_fn_call").expect("a2vue text_fn_call golden mismatch");
+    }
+
+    /// Plan 407: 外部组件（lucide 图标）作 HTML 元素子节点 + text 共存。
+    /// 验证 `button { Plus { size: 14 } text "新建" }` 生成
+    /// `<button><Plus :size="14" .../>新建</button>`，覆盖 text+children 共存分支。
+    #[test]
+    fn test_a2vue_icon_child() {
+        test_a2vue("006_icon_child").expect("a2vue icon_child golden mismatch");
+    }
+
     /// Plan 022 限制2: composable 带参调用。验证
     /// `composable: useStreamingDocument(.source) from "..."` 生成
     /// `const streamingDocument = useStreamingDocument(source)`，

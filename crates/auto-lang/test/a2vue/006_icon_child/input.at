@@ -1,0 +1,20 @@
+// a2vue golden case 006 — 外部组件（lucide 图标）作 HTML 元素子节点 + text 共存（Plan 407）。
+// 验证 `button { Plus { size: 14 } text "新建" }` 生成
+//   <button ...><Plus :size="14" :key="..." />新建</button>
+// 覆盖此前未被测试的"text + children 共存"分支（vue.rs:3636-3648）。
+// 这是 auto-musk toolbar emoji→lucide 图标对齐的关键能力。
+widget IconChild {
+    use { component: Plus from "lucide-vue-next" }
+    view {
+        col {
+            button {
+                style: "sidebar-btn"
+                onclick: .Add
+                Plus { size: 14 }
+                text "新建"
+            }
+        }
+    }
+    msg Msg { Add }
+    on { .Add -> { } }
+}

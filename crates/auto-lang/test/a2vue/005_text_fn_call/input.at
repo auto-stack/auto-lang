@@ -1,0 +1,15 @@
+// a2vue golden case 005 — text 节点的函数调用 primary prop（Plan 407）。
+// 验证 `text t("nav.chat")` 解析为 Expr::Call 并生成 `{{ t('nav.chat') }}`。
+// 这是 i18n 接入的关键能力：让 .at text 节点直接表达 t() 调用，
+// 而无需 codegen 后手动改 .vue（消除 auto-musk KNOWN-DEBT）。
+widget TextFnCall {
+    use { fn: t from "vue-i18n" }
+    model { var count int = 0 }
+    view {
+        col {
+            text t("nav.chat") { style: "title" }
+            text t("chat.msgs", { count: .count }) { style: "count" }
+        }
+    }
+    on { }
+}
