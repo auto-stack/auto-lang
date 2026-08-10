@@ -1901,6 +1901,20 @@ impl RustGenerator {
         }
     }
 
+    /// Plan 407: generate a for-loop's map expression for grid cells (no col wrapper).
+    /// Calls generate_view_tree (which produces View::col().children(MAP.collect()).build())
+    /// then strips the col wrapper to get just MAP.
+    fn generate_for_loop_cells(&mut self, node: &AuraNode) -> String {
+        let col_expr = self.generate_view_tree(node);
+        // Strip "View::col().children(" prefix and ").collect::<Vec<_>>()).build()" suffix
+        if col_expr.starts_with("View::col().children(") && col_expr.ends_with(".collect::<Vec<_>>()).build()") {
+            let inner = &col_expr["View::col().children(".len()..col_expr.len() - ".collect::<Vec<_>>()).build()".len()];
+            inner.to_string()
+        } else {
+            col_expr
+        }
+    }
+
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
@@ -1980,7 +1994,22 @@ impl RustGenerator {
                     g = format!("{}.cols({})", g, cols);
                     if gap > 0 { g = format!("{}.spacing({})", g, gap); }
                     for c in children {
-                        g = format!("{}.child({})", g, self.generate_view_tree(c));
+                        // Plan 407: for grid children that are ForLoops, use
+                        // .children() (bulk add) instead of .child() (single).
+                        // A ForLoop generates View::col().children(map.collect()).build(),
+                        // which would be one child (a col) — the grid then treats it as
+                        // a single cell. Instead, unwrap: pass the map directly to
+                        // .children() so each iteration becomes a separate grid cell.
+                        match c {
+                            AuraNode::ForLoop { .. } => {
+                                // Generate the map expression WITHOUT the col wrapper.
+                                let map_expr = self.generate_for_loop_cells(c);
+                                g = format!("{}.children({}.collect::<Vec<_>>())", g, map_expr);
+                            }
+                            _ => {
+                                g = format!("{}.child({})", g, self.generate_view_tree(c));
+                            }
+                        }
                     }
                     if !style_str.is_empty() {
                         g = format!("{}.style(\"{}\")", g, style_str);
