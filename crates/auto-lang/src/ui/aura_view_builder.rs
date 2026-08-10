@@ -848,10 +848,12 @@ impl<'a> AuraViewBuilder<'a> {
         let mut builder = View::<DynamicMessage>::col()
             .spacing(spacing)
             .padding(padding);
-        // Plan 048:提取 overflow 标志(builder.with_style 会 move style)。
+        // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
+        // style_clone 传给 Scrollable,让 build_scrollable 读到 flex-1 → height(Fill)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
             s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
         });
+        let scroll_style = if needs_scroll { style.clone() } else { None };
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
@@ -863,7 +865,7 @@ impl<'a> AuraViewBuilder<'a> {
         if needs_scroll {
             return View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None, style: None,
+                width: None, height: None, style: scroll_style,
             };
         }
         col_view
@@ -1557,10 +1559,11 @@ impl<'a> AuraViewBuilder<'a> {
             .spacing(spacing)
             .padding(padding);
 
-        // Plan 048:提取 overflow 标志(builder.with_style 会 move style)。
+        // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
             s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
         });
+        let scroll_style = if needs_scroll { style.clone() } else { None };
 
         if let Some(s) = style {
             builder = builder.with_style(s);
@@ -1575,7 +1578,7 @@ impl<'a> AuraViewBuilder<'a> {
         if needs_scroll {
             return View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None, style: None,
+                width: None, height: None, style: scroll_style,
             };
         }
         col_view
