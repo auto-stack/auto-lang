@@ -2,8 +2,8 @@
 
 > **纲领**: 遵循 [Plan 401](401-autoui-examples-upgrade.md) 硬指标 + 技术约定。本计划是 401 进度总表里 023-realworld 的子计划。
 > **技能**: 使用 `auto-ui-creator` 技能（`D:/autostack/skills/auto-ui-creator/`，含 25 条 Gotcha + Vue→AutoUI 映射 + 模板 + Toy→Real 重构模式 R1-R4）。
-> **状态（2026-08-09）**: ✅ 阶段 1（8/8）+ 🟡 阶段 2 部分完成（playwright 12/14，T9/T10 编辑器前端 current_user codegen 交互问题留遗留；编辑器后端 curl 验证通过）。
-> **分支/worktree**: 阶段1 `plan401/023-realworld`（已合并）；阶段2 `plan401/023-stage2`（`.worktree/plan401-023-stage2`）
+> **状态（2026-08-10）**: ✅ 完成。阶段 1（认证+feed+详情，8/8）+ 阶段 2（CRUD+评论+关注+收藏+资料，14/14 全绿）。完整 Conduit 写操作端到端可用。
+> **分支/worktree**: 阶段1 `plan401/023-realworld`（已合并）；阶段2 `plan401/023-stage2`（已合并）；编辑器修复 `plan401/023-editor-fix`（已合并）
 > **动机**: 023 现为 227 行单文件玩具（散装 art1_title/art2_author、current_view 字符串切视图、无后端、无交互）。升级为对标 RealWorld (Conduit) 完整 spec 的真实 App。
 > **参考**: RealWorld 官方 spec（19 端点 + 数据模型 + 7 页面 + JWT 认证，`Authorization: Token <jwt>` 前缀是 `Token` 非 `Bearer`）。
 
