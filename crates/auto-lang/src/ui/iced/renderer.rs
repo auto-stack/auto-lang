@@ -3150,6 +3150,9 @@ struct DynamicState {
     dragging_divider: std::cell::RefCell<bool>,
     /// Plan 402: pending window resize (difficulty change triggers snug fit).
     pending_window_resize: std::cell::RefCell<Option<iced::Size>>,
+    /// Plan 402: one-shot flag — resize window to model's window_width/height
+    /// on first update (lets each example declare its own initial window size).
+    initial_resize_done: std::cell::Cell<bool>,
     /// Line number (0-based) → list of AuraNodeIds whose spans cover that line.
     /// Built from span_map + source code for source-click → component-highlight.
     line_to_aura_ids: std::cell::RefCell<std::collections::HashMap<usize, Vec<AuraNodeId>>>,
@@ -3371,6 +3374,7 @@ fn compare_pngs(
             window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
             dragging_divider: std::cell::RefCell::new(false),
             pending_window_resize: std::cell::RefCell::new(None),
+            initial_resize_done: std::cell::Cell::new(false),
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             mcp_shared: Some(mcp_shared.clone()),
@@ -3378,6 +3382,17 @@ fn compare_pngs(
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        // Plan 402: on first update, resize window to model's window_width/window_height
+        // if declared (lets each example specify its own initial window size via Auto).
+        if !state.initial_resize_done.get() {
+            state.initial_resize_done.set(true);
+            let w = state.component.read_state("window_width").map(|v| v.as_int()).unwrap_or(0);
+            let h = state.component.read_state("window_height").map(|v| v.as_int()).unwrap_or(0);
+            if w > 0 && h > 0 {
+                *state.pending_window_resize.borrow_mut() = Some(iced::Size::new(w as f32, h as f32));
+            }
+        }
+
         // Clear component dirty at start of each update cycle.
         // It will be re-set by on_with_input/write_state/reload if state actually changes.
         state.component.clear_dirty();
@@ -4374,7 +4389,7 @@ fn compare_pngs(
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(400.0, 520.0))
+        .window_size(iced::Size::new(800.0, 600.0))
         .subscription(|_state: &DynamicState| {
             let mut subs = vec![];
             if _state.component.source_path().is_some() {
