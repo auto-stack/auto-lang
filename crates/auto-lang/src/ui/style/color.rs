@@ -114,6 +114,8 @@ impl Color {
             "info" => Ok(Color::Info),
             // "border" / "input" / "ring" → subtle surface
             "border" | "input" | "ring" => Ok(Color::Surface),
+            // Conduit/RealWorld brand green (#5cb85c) — used by 023-realworld.
+            "brand-green" | "brand" => Ok(Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c }),
             _ => {
                 // Try to parse "color-shade" format
                 if let Some(pos) = name.find('-') {
@@ -223,6 +225,16 @@ mod tests {
 
         let color = Color::from_tailwind("slate-500").unwrap();
         assert_eq!(color, Color::Slate(500));
+    }
+
+    #[test]
+    fn test_brand_green() {
+        // Conduit/RealWorld brand green #5cb85c — must parse as a whole
+        // (not "brand" + "-green" shade split).
+        let color = Color::from_tailwind("brand-green").unwrap();
+        assert_eq!(color, Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c });
+        let (r, g, b) = color.to_rgb8();
+        assert_eq!((r, g, b), (0x5c, 0xb8, 0x5c));
     }
 
     #[test]

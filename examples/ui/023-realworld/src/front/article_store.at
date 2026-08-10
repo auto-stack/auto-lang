@@ -19,7 +19,7 @@ store ArticleStore {
     }
 
     msg Msg {
-        Init, OpenArticle(str), SetTag(str), ClearTag,
+        Init, LoadFeed, OpenArticle(str), SetTag(str), ClearTag,
         CreateArticle(str, str, str, str, str), UpdateArticle(str, str, str, str),
         DeleteArticle(str), CreateComment(str, str), DeleteComment(int),
         Favorite(str), Unfavorite(str),
@@ -28,6 +28,23 @@ store ArticleStore {
 
     on {
         .Init -> {
+            .loading = true
+            .articles = list_articles()
+            .loading = false
+            .all_tags = ""
+            for article in .articles {
+                if .all_tags == "" {
+                    .all_tags = article.tagList
+                } else {
+                    .all_tags = .all_tags + "," + article.tagList
+                }
+            }
+        }
+        // LoadFeed: same as Init but with a unique name (not shared with
+        // AuthStore.Init) so the VM multi-store disambiguator can route
+        // `store.LoadFeed()` to ArticleStore unambiguously. Used by App's
+        // root Init to trigger article loading without page-Init support.
+        .LoadFeed -> {
             .loading = true
             .articles = list_articles()
             .loading = false

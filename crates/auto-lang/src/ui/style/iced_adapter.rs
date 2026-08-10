@@ -147,6 +147,7 @@ pub struct IcedStyle {
     // Typography (L2)
     pub font_size: Option<IcedFontSize>,
     pub font_weight: Option<IcedFontWeight>,
+    pub font_family: Option<String>, // "serif" | "sans" | "mono"
     pub text_align: Option<IcedTextAlign>,
 
     // Effects (L3)
@@ -313,6 +314,7 @@ impl IcedStyle {
             border_color: None,
             font_size: None,
             font_weight: None,
+            font_family: None,
             text_align: None,
             // L3
             shadow: false,
@@ -563,6 +565,15 @@ impl IcedStyle {
             }
             StyleClass::FontBold => {
                 self.font_weight = Some(IcedFontWeight::Bold);
+            }
+            StyleClass::FontSerif => {
+                self.font_family = Some("serif".to_string());
+            }
+            StyleClass::FontSans => {
+                self.font_family = Some("sans".to_string());
+            }
+            StyleClass::FontMono => {
+                self.font_family = Some("mono".to_string());
             }
             StyleClass::FontMedium => {
                 self.font_weight = Some(IcedFontWeight::Medium);

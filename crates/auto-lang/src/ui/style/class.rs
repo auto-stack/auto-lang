@@ -255,6 +255,15 @@ pub enum StyleClass {
     /// Font weight: font-normal (L2)
     FontNormal,
 
+    /// Font family: font-serif (L2) — iced maps to Serif
+    FontSerif,
+
+    /// Font family: font-sans (L2) — iced maps to SansSerif (default)
+    FontSans,
+
+    /// Font family: font-mono (L2) — iced maps to Monospace
+    FontMono,
+
     /// Text alignment: text-center (L2)
     TextCenter,
 
@@ -633,6 +642,10 @@ impl StyleClass {
         match class {
             "font-bold" => return Ok(StyleClass::FontBold),
             "font-medium" => return Ok(StyleClass::FontMedium),
+            "font-normal" => return Ok(StyleClass::FontNormal),
+            "font-serif" => return Ok(StyleClass::FontSerif),
+            "font-sans" => return Ok(StyleClass::FontSans),
+            "font-mono" => return Ok(StyleClass::FontMono),
             "font-normal" => return Ok(StyleClass::FontNormal),
             "font-light" => return Ok(StyleClass::FontLight),
             "font-extralight" => return Ok(StyleClass::FontExtraLight),

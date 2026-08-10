@@ -1,6 +1,7 @@
 // app.at — App shell. Routes + top nav + outlet. Nav adapts to login state
 // (.store.me.id != 0 = logged in). Cf. 018 app.at routes{...} + outlet.
 use auth_store: AuthStore
+use article_store: ArticleStore
 
 widget App {
     routes {
@@ -53,7 +54,10 @@ widget App {
     }
 
     on {
-        .Init -> { store.Init() }
+        .Init -> {
+            store.Init()
+            store.LoadFeed()
+        }
         .Logout -> { store.Logout() }
         .GoProfile(username str) -> { router.push("/profile/" + username) }
     }
