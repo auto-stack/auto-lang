@@ -4374,13 +4374,16 @@ impl RustGenerator {
                     _ => "?",
                 };
                 let my_prec = bin_op_precedence(op);
-                // Wrap child in parens if its precedence is lower (needs grouping)
+                // Plan 407: wrap children in parens when needed.
+                // Left child: needs parens if lower precedence.
+                // Right child: needs parens if lower OR EQUAL precedence
+                //   (left-associative: a % (b*c) ≠ (a%b)*c at same precedence).
                 let left_wrapped = if bin_child_needs_parens(left, my_prec) {
                     format!("({})", left_str)
                 } else {
                     left_str
                 };
-                let right_wrapped = if bin_child_needs_parens(right, my_prec) {
+                let right_wrapped = if bin_child_needs_parens_side(right, my_prec, true) {
                     format!("({})", right_str)
                 } else {
                     right_str
@@ -4873,15 +4876,24 @@ fn bin_op_precedence(op: &auto_val::Op) -> u8 {
     }
 }
 
-/// Check if a child expression needs parentheses when used inside a parent binary op
 fn bin_child_needs_parens(expr: &crate::ast::Expr, parent_prec: u8) -> bool {
+    bin_child_needs_parens_side(expr, parent_prec, false)
+}
+
+fn bin_child_needs_parens_side(expr: &crate::ast::Expr, parent_prec: u8, is_right: bool) -> bool {
     use crate::ast::Expr;
     use auto_val::Op;
     if let Expr::Bina(_, child_op, _) = expr {
         let child_prec = bin_op_precedence(child_op);
-        // Only needs parens for assignment-like ops or lower precedence
-        !matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq)
-            && child_prec < parent_prec
+        if matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
+            return false;
+        }
+        // Plan 407: right child needs parens at same precedence too (left-assoc).
+        if is_right {
+            child_prec <= parent_prec
+        } else {
+            child_prec < parent_prec
+        }
     } else {
         false
     }
