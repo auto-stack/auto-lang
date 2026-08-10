@@ -284,6 +284,7 @@ fn convert_button(node: &Node) -> ConversionResult<View<String>> {
             label,
             onclick, // Store as string message ID
             style: Some(style),
+            on_right_click: None,
         })
     } else {
         Ok(View::button((label, onclick)))

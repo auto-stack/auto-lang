@@ -832,36 +832,17 @@ fn build_grid<M: Clone + Debug + 'static>(
         }
     }
 
-    // Force EVERY cell to Fill width so all columns are equal. Without this,
-    // content-sized cells (buttons) are narrower than Fill padding cells,
-    // causing misaligned, unevenly-spaced buttons.
-    let cells: Vec<iced::Element<'static, M>> = cells
-        .into_iter()
-        .map(|cell| {
-            // Wrap in a container that forces Fill width, preserving the
-            // cell's own height/layout. Using a 0-padding column is the
-            // simplest way to override width without losing content.
-            iced::widget::column![cell]
-                .width(iced::Length::Fill)
-                .into()
-        })
-        .collect();
-
-    // Each row is forced to full width so its Fill cells distribute into
-    // `cols` equal columns. Consume `cells` by value (push needs owned
-    // elements, and the padding cells above are already owned).
-    //
-    // Plan 402 §13.10: cells are pushed directly (no Fill wrapper). The
-    // button's own width/height classes (e.g. w-8 h-8 → Fixed 32px) or the
-    // default padding fallback (convert_button) give each cell a real size.
-    // Wrapping in a Fill container caused each cell to stretch to its full
-    // column share (= huge whitespace between cells) AND disrupted iced's
-    // widget-tree state retention under frequent heartbeat rebuilds, so
-    // button on_press never fired on real mouse clicks.
+    // Plan 402 §13.10: cells are used directly — the button's own width/height
+    // classes (e.g. w-8 h-8 → Fixed 32px) give each cell a fixed size. No Fill
+    // wrapper (previously each cell was wrapped in column[cell].width(Fill),
+    // which stretched every cell to an equal share of the full row width =
+    // huge whitespace between small buttons). The row itself uses Shrink width
+    // so the grid is a compact N×N block, centered by the parent col's
+    // items-center alignment.
     let mut iter = cells.into_iter();
     let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
     loop {
-        let mut row_b = row([]).spacing(gap as f32).width(iced::Length::Fill);
+        let mut row_b = row([]).spacing(gap as f32);
         let mut count = 0;
         for _ in 0..cols {
             match iter.next() {
@@ -973,7 +954,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Button { label, onclick, style } => {
+            AbstractView::Button { label, onclick, style, on_right_click } => {
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 // Plan 371: multi-line button labels (newline-separated from
@@ -1064,8 +1045,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     });
                 }
 
-                // Wrap in container if margin_top (from mt-*) needs to be applied
+                // Plan 402: wrap button in mouse_area for right-click (contextmenu)
+                // support. iced's button has no native right-click event; mouse_area's
+                // on_right_press fires on right mouse button press.
                 let el: iced::Element<'static, M> = btn.into();
+                let el: iced::Element<'static, M> = if let Some(right_msg) = on_right_click {
+                    if !inspect_capture_active() {
+                        mouse_area(el)
+                            .on_right_press(right_msg)
+                            .into()
+                    } else {
+                        el
+                    }
+                } else {
+                    el
+                };
+                // Wrap in container if margin_top (from mt-*) needs to be applied
                 if let Some(ref is) = iced_style {
                     wrap_with_margin_top(el, is)
                 } else {
@@ -1831,6 +1826,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                         args: vec![],
                     },
                     style: None,
+                    on_right_click: None,
                 },
             ],
             spacing: 0,
@@ -1906,10 +1902,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             label,
             onclick,
             style,
+            on_right_click,
         } => AbstractView::Button {
             label,
             onclick: IcedMessage::from_dynamic(&onclick),
             style,
+            on_right_click: on_right_click.map(|rc| IcedMessage::from_dynamic(&rc)),
         },
 
         AbstractView::Row {
@@ -8518,6 +8516,7 @@ mod tests {
                     label: "1".to_string(),
                     onclick: DynamicMessage::String("pick".to_string()),
                     style: None,
+                    on_right_click: None,
                 },
             ],
             style: None,

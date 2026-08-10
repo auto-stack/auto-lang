@@ -1309,6 +1309,7 @@ impl<'a> AuraViewBuilder<'a> {
                 args: vec![auto_val::Value::str(to)],
             },
             style: None,
+            on_right_click: None,
         }
     }
 
@@ -1914,10 +1915,16 @@ impl<'a> AuraViewBuilder<'a> {
             .map(|event| self.event_to_message_with(event, bindings))
             .unwrap_or_else(|| DynamicMessage::String("click".to_string()));
 
+        // Plan 402: resolve oncontextmenu (right-click) handler for flagging
+        let on_right_click = events.get("oncontextmenu")
+            .or_else(|| events.get("contextmenu"))
+            .map(|event| self.event_to_message_with(event, bindings));
+
         View::Button {
             label,
             onclick,
             style,
+            on_right_click,
         }
     }
 

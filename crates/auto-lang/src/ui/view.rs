@@ -235,6 +235,7 @@ pub enum View<M: Clone + Debug> {
         label: String,
         onclick: M,  // Direct message storage (Auto: `onclick: Msg.Inc`)
         style: Option<Style>,  // ✅ NEW: Unified styling support
+        on_right_click: Option<M>,  // Plan 402: right-click (contextmenu) handler
     },
 
     /// Horizontal layout with optional styling
@@ -760,6 +761,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             ViewBuilderKind::Button => View::Button {
                 label: self.button_label,
                 onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
+                on_right_click: None,
                 style: self.style,
             },
             ViewBuilderKind::Grid => View::Grid {
@@ -847,6 +849,7 @@ impl<M: Clone + Debug> View<M> {
             label: label.into(),
             onclick,
             style: Some(Style::parse(style_str).expect("Invalid style")),
+            on_right_click: None,
         }
     }
 
@@ -1174,10 +1177,11 @@ impl<M: Clone + Debug> View<M> {
         match self {
             View::Empty => View::Empty,
             View::Text { content, style } => View::Text { content, style },
-            View::Button { label, onclick, style } => View::Button {
+            View::Button { label, onclick, style, on_right_click } => View::Button {
                 label,
                 onclick: f(onclick),
                 style,
+                on_right_click: on_right_click.map(|rc| f(rc)),
             },
             View::Row { children, spacing, padding, style } => View::Row {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
@@ -2099,6 +2103,7 @@ impl<M: Clone + Debug> ButtonArg<M> for (String, M) {
             label: self.0,
             onclick: self.1,
             style: None,
+            on_right_click: None,
         }
     }
 }
@@ -2771,11 +2776,13 @@ mod tests {
                     label: "A".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
+                    on_right_click: None,
                 },
                 View::Button {
                     label: "B".to_string(),
                     onclick: TestMsg::Change,
                     style: None,
+                    on_right_click: None,
                 },
             ],
             style: None,
