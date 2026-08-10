@@ -5638,14 +5638,40 @@ impl AutoVM {
                                 } else {
                                     0u64
                                 };
-                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
+                                // Plan 402 §13.10: return the popped element, not a
+                                // fixed 0. The old `let _ = list.elems.pop()` discarded
+                                // the value and pushed 0 — so `var x = stack.pop()` in
+                                // flood-fill always got 0, making the loop never
+                                // terminate (stack grew until OOM → process crash).
+                                let popped: Option<auto_val::Value> = if let Some(arr_ref) = self.get_heap_object(arr_key) {
                                     let mut arr = arr_ref.write().unwrap();
                                     if let Some(list) = arr.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
-                                        let _ = list.elems.pop();
+                                        list.elems.pop()
+                                    } else {
+                                        None
                                     }
+                                } else {
+                                    None
+                                };
+                                // Push the popped value onto the operand stack (replacing receiver)
+                                { task.ram.pop_nv(); } // pop receiver
+                                match popped {
+                                    Some(auto_val::Value::Int(i)) => task.ram.push_nv(auto_val::encode_i32(i)),
+                                    Some(auto_val::Value::Bool(b)) => task.ram.push_nv(auto_val::encode_bool(b)),
+                                    Some(auto_val::Value::Str(s)) => {
+                                        let mut strings = self.strings.write().unwrap();
+                                        let idx = strings.len() as u32;
+                                        strings.push(s.as_bytes().to_vec());
+                                        drop(strings);
+                                        task.ram.push_nv(auto_val::encode_string(idx));
+                                    }
+                                    Some(auto_val::Value::VmRef(r)) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
+                                    Some(other) => {
+                                        // For other types, push as i32 fallback
+                                        task.ram.push_nv(auto_val::encode_i32(0));
+                                    }
+                                    None => task.ram.push_nv(auto_val::encode_i32(0)),
                                 }
-                                // Pop receiver, push 0 (void)
-                                { task.ram.pop_nv(); task.ram.push_i32(0); }
                             }
                             "insert" => {
                                 // Insert element at index in List (arrays DashMap)
