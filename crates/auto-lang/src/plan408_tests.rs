@@ -500,7 +500,46 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §10.3 宿主全局：on handler body 内 document/navigator 不再被
+    /// §10.4 composable facade ref：`use { composable: useX(refs: [field]) }`
+    /// 标注的 ref 字段在 script 表达式里访问时加 `.value`。
+    #[test]
+    fn test_composable_facade_ref_unwrap() {
+        let tmp = std::env::temp_dir().join("plan408_facade_ref_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget Counter {\n",
+            "    use {\n",
+            "        composable: useCounter refs: [count] from \"./useCounter.ts\"\n",
+            "    }\n",
+            "    computed {\n",
+            "        doubled => .counter.count * 2\n",
+            "    }\n",
+            "    view { div { text .doubled } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("facade ref case must compile");
+        let code = result.vue_code.clone();
+
+        // The ref-annotated field must unwrap via .value.
+        assert!(
+            code.contains("counter.count.value"),
+            "facade ref field must unwrap .value: {}", code
+        );
+        // The composable call binds the local.
+        assert!(
+            code.contains("const counter = useCounter()"),
+            "composable must bind local: {}", code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// check_symbol 当未定义变量阻塞。
     #[test]
     fn test_on_handler_host_global() {

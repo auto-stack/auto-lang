@@ -44,6 +44,9 @@ pub struct AuraTsContext {
     /// (widget `use { composable: ... }` locals, e.g. `recentFilesStore`).
     /// Their methods always pass through — they are never arrays.
     facade_names: HashSet<String>,
+    /// Plan 408 P12 §10.4: composable ref 字段标注——key = facade local name，
+    /// value = 标注为 ref 的字段名集合。ts_adapter 的 Dot 分支对命中字段加 `.value`。
+    facade_ref_fields: std::collections::HashMap<String, HashSet<String>>,
     /// Plan 012 Batch A: passthrough notes collected during transpilation.
     /// Drained by the caller into the unified codegen warning channel.
     warnings: std::cell::RefCell<Vec<String>>,
@@ -70,6 +73,7 @@ impl AuraTsContext {
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
             facade_names: HashSet::new(),
+            facade_ref_fields: std::collections::HashMap::new(),
             warnings: std::cell::RefCell::new(Vec::new()),
         }
     }
@@ -153,6 +157,13 @@ impl AuraTsContext {
     /// always pass through — never mapped to `.splice`/`.includes`.
     pub fn with_facade_names(mut self, names: HashSet<String>) -> Self {
         self.facade_names = names;
+        self
+    }
+
+    /// Plan 408 P12 §10.4: composable ref 字段标注。ts_adapter 的 Dot 分支对
+    /// 命中字段注入 `.value`。
+    pub fn with_facade_ref_fields(mut self, fields: std::collections::HashMap<String, HashSet<String>>) -> Self {
+        self.facade_ref_fields = fields;
         self
     }
 
@@ -587,6 +598,27 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             // General field access: object.field
             if try_transpile_builtin_field(obj, field.as_str(), ctx, out) {
                 return;
+            }
+            // Plan 408 P12 §10.4: composable facade ref 字段——当 object 解析为
+            // facade local（裸 Ident 或 self.local）且 field 在 ref_fields 标注里
+            // 时，注入 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
+            let facade_local = match obj.as_ref() {
+                Expr::Ident(local) => Some(local.as_str().to_string()),
+                Expr::Dot(inner, local) if matches!(inner.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") => {
+                    Some(local.as_str().to_string())
+                }
+                _ => None,
+            };
+            if let Some(local) = facade_local {
+                if ctx.is_facade(&local)
+                    && ctx.facade_ref_fields.get(&local)
+                        .map(|fields| fields.contains(field.as_str()))
+                        .unwrap_or(false)
+                {
+                    transpile_expr(obj, ctx, out);
+                    write!(out, ".{}.value", field.as_str()).ok();
+                    return;
+                }
             }
             transpile_expr(obj, ctx, out);
             write!(out, ".{}", field.as_str()).ok();

@@ -11587,6 +11587,27 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen)?;
             }
 
+            // Plan 408 P12 §10.4: 可选 ref 字段标注（仅 composable 消费）：
+            // `composable: useX(refs: [currentSecretary, badgeCount]) from "..."`。
+            // 列出的字段在 script 表达式里加 `.value`。fn/component 忽略。
+            let mut ref_fields: Vec<Name> = Vec::new();
+            if self.cur.text.as_str() == "refs" {
+                self.next(); // consume "refs"
+                self.expect(TokenKind::Colon)?;
+                self.expect(TokenKind::LSquare)?;
+                self.skip_empty_lines();
+                while !self.is_kind(TokenKind::RSquare) {
+                    let fname = self.cur.text.clone();
+                    self.next();
+                    ref_fields.push(fname);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                        self.skip_empty_lines();
+                    }
+                }
+                self.expect(TokenKind::RSquare)?;
+            }
+
             // Plan 408: `from "..."` is optional for `component` imports.
             // Without it, `component: X` references a same-project component
             // synthesized from a `component fn` declaration (import resolves to
@@ -11626,7 +11647,7 @@ impl<'a> Parser<'a> {
                 .into());
             };
 
-            imports.push(ExtImport { kind, symbols, path, call_args });
+            imports.push(ExtImport { kind, symbols, path, call_args, ref_fields });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
