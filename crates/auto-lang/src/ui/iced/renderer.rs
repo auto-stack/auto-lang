@@ -972,12 +972,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Button { label, onclick, style, on_right_click } => {
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
-                // Plan 371: multi-line button labels (newline-separated from
-                // extract_children_text) are rendered as a column of text lines,
-                // so the iced button visually separates title (first line) from
-                // metadata (subsequent lines, e.g. timestamp). Subsequent lines
-                // get a smaller, muted style to match the Vue version.
-                let button_content: iced::Element<'static, M> = if label.contains('\n') {
+                // Plan 408: detect embedded lucide icon marker (\u{EE01}name\u{EE02}).
+                // If present, build button_content as row[svg icon, text label].
+                let button_content: iced::Element<'static, M> = if label.starts_with('\u{EE01}') {
+                    let end = label.find('\u{EE02}').unwrap_or(label.len());
+                    let icon_name = &label[3..end.min(label.len())];
+                    let text_label = &label[end.saturating_add(3).min(label.len())..];
+                    if let Some(svg_str) = lucide_svg(icon_name) {
+                        let handle = get_or_create_svg_handle(
+                            &format!("lucide:{}", icon_name),
+                            svg_str.as_bytes().to_vec(),
+                        );
+                        let icon_el = iced::widget::svg(handle)
+                            .width(iced::Length::Fixed(14.0))
+                            .height(iced::Length::Fixed(14.0));
+                        let mut tw = text(text_label.to_string());
+                        if let Some(ref is) = iced_style {
+                            if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
+                            if let Some(c) = is.text_color { tw = tw.color(c); }
+                        }
+                        iced::widget::row!(icon_el, tw)
+                            .spacing(6)
+                            .align_y(iced::alignment::Vertical::Center)
+                            .into()
+                    } else {
+                        // Unknown icon: fall back to plain text label
+                        text(text_label.to_string()).into()
+                    }
+                } else if label.contains('\n') {
                     let lines: Vec<&str> = label.split('\n').collect();
                     let mut col = iced::widget::Column::<M>::with_capacity(lines.len());
                     for (i, line) in lines.iter().enumerate() {
@@ -1631,6 +1653,39 @@ fn get_or_create_image_handle(url: &str, data: Vec<u8>) -> iced::widget::image::
     let handle = iced::widget::image::Handle::from_bytes(data);
     lock.insert(url.to_string(), handle.clone());
     handle
+}
+
+/// Plan 408: Return a complete SVG string for a lucide icon name.
+/// The SVG uses 16x16 viewport (scaled from lucide's 24x24), stroke-based
+/// rendering matching lucide's visual style.
+fn lucide_svg(name: &str) -> Option<&'static str> {
+    // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
+    // Each entry is the inner elements only.
+    let elements: &str = match name {
+        "bell" => r#"<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>"#,
+        "command" => r#"<path d="M15 6a3 3 0 1 0-3 3"/><path d="M6 15a3 3 0 1 0 3-3"/><path d="M9 9h6v6H9z"/>"#,
+        "image" => r#"<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>"#,
+        "layout-grid" => r#"<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>"#,
+        "menu" => r#"<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>"#,
+        "mouse-pointer-click" => r#"<path d="m9 9 5 12 1.8-5.2L21 14Z"/><path d="M7.2 2.2 8 5.1"/><path d="m5.1 8-2.9-.8"/><path d="M14 4.1 12 6"/><path d="m6 12-1.9 2"/>"#,
+        "navigation" => r#"<polygon points="3 11 22 2 13 21 11 13 3 11"/>"#,
+        "search" => r#"<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>"#,
+        "square-stack" => r#"<path d="M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2"/><path d="M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2"/><rect width="8" height="8" x="14" y="14" rx="2"/>"#,
+        "type" => r#"<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>"#,
+        "home" => r#"<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>"#,
+        "settings" => r#"<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>"#,
+        "layers" => r#"<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>"#,
+        _ => return None,
+    };
+    // Use a small static cache to avoid re-formatting.
+    // The SVG uses width/height=16 for compact button rendering.
+    Some(Box::leak(
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{}</svg>"#,
+            elements
+        )
+        .into_boxed_str()
+    ))
 }
 
 /// Cache svg::Handle by URL to avoid flickering.

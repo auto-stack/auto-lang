@@ -1470,11 +1470,11 @@ impl<'a> AuraViewBuilder<'a> {
             }
             if found.is_empty() { to.to_string() } else { found }
         };
-        // Plan 408: prepend emoji icon if available.
+        // Plan 408: embed icon name in label using PUA markers.
+        // The iced renderer detects \u{EE01}...\u{EE02} and renders a
+        // row[lucide svg icon, text label] instead of plain text.
         if !icon.is_empty() {
-            if let Some(emoji) = Self::icon_to_emoji(icon) {
-                label = format!("{} {}", emoji, label);
-            }
+            label = format!("\u{EE01}{}\u{EE02}{}", icon, label);
         }
         View::Button {
             label,
