@@ -254,7 +254,13 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     };
     iced::widget::button::Style {
         background: is.background_color.map(Background::Color),
-        text_color: is.text_color.unwrap_or(iced::Color::BLACK),
+        text_color: is.text_color.unwrap_or_else(|| {
+            // Plan 408: dark-mode-aware default (equivalent to vue body text-foreground).
+            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                &crate::ui::style::Color::OnBackground,
+            ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+             .unwrap_or(iced::Color::BLACK)
+        }),
         border,
         shadow,
         ..Default::default()
@@ -920,6 +926,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     if let Some(color) = iced_style.text_color {
                         text_widget = text_widget.color(color);
+                    } else {
+                        // Plan 408: no explicit text color → apply dark-mode-aware
+                        // default (equivalent to vue's body { text-foreground }
+                        // inheritance). Without this, iced defaults to BLACK which
+                        // is invisible on dark backgrounds.
+                        if let Some((r, g, b)) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            &crate::ui::style::Color::OnBackground,
+                        ) {
+                            text_widget = text_widget.color(iced::Color::from_rgb8(r, g, b));
+                        }
                     }
                     if let Some(ref weight) = iced_style.font_weight {
                         text_widget = text_widget.font(font_weight_to_iced(weight));

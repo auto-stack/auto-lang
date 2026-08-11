@@ -7,8 +7,12 @@ use super::{Style, StyleClass, SizeValue, Color};
 
 // Plan 370 D-GAP-2/D-GAP-5: thread-local theme state for dark mode + accent.
 // Set by the iced renderer before each render pass from VmBridge state.
+// Plan 408: default to true because the iced window theme is hardcoded to
+// Theme::Dark (renderer.rs ~line 4540). Apps that declare a `dark_mode`
+// state var can override this; apps that don't (like widgets-gallery) get
+// the correct dark palette by default, matching vue's <html class="dark">.
 thread_local! {
-    static DARK_MODE: std::cell::Cell<bool> = std::cell::Cell::new(false);
+    static DARK_MODE: std::cell::Cell<bool> = std::cell::Cell::new(true);
     static ACCENT_NAME: std::cell::RefCell<String> = std::cell::RefCell::new("indigo".to_string());
 }
 
@@ -60,7 +64,7 @@ fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
 }
 
 /// Resolve a semantic color to RGB, considering dark mode and accent.
-fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
+pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     let is_dark = DARK_MODE.with(|d| d.get());
     match color {
         Color::Primary => {
