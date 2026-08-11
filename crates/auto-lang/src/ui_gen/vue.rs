@@ -1857,12 +1857,26 @@ impl VueGenerator {
         // Plan 234: Import custom PascalCase components referenced in template
         // (e.g. A2UIRenderer and other embedded Vue components)
         let mut custom_imports = Vec::new();
+        // Names already bound by a widget `use { component:/fn:/composable:
+        // X from ... }` declaration. The ext declaration is explicit user
+        // intent (it may wrap/rename the real component), so the auto
+        // `@/components/X.vue` import must yield — emitting both binds the
+        // same identifier twice (TS2300).
+        let ext_imported_names: HashSet<&str> = self
+            .ext_import_lines
+            .iter()
+            .flat_map(|(names, _, _)| names.iter().map(String::as_str))
+            .collect();
         for comp in &self.component_refs {
             if *comp == "ThemeToggle" {
                 continue; // Already handled above
             }
             // Skip shadcn components (already imported via generate_shadcn_imports)
             if self.shadcn_components_used.contains(comp) {
+                continue;
+            }
+            // Skip names already imported via an ext `use { ... }` declaration.
+            if ext_imported_names.contains(comp.as_str()) {
                 continue;
             }
             custom_imports.push(format!("import {} from '@/components/{}.vue'\n", comp, comp));
@@ -14116,6 +14130,111 @@ widget App {
         );
         assert!(sfc.contains("<AutoDownEditor"), "component tag:\n{}", sfc);
         assert!(sfc.contains(":content=\"body\""), "prop binding:\n{}", sfc);
+    }
+
+    /// ext `component:` declaration wins over the auto sub-widget import: a
+    /// widget that both declares `component: CommandPalette from "...ext.ts"`
+    /// and references the sibling sub-widget `CommandPalette` in its view must
+    /// emit exactly one `CommandPalette` import (the ext one). Emitting both
+    /// binds the identifier twice (TS2300) — the ext declaration is explicit
+    /// user intent (the ext module may wrap/rename the real component).
+    #[test]
+    fn test_ext_component_shadows_auto_sub_widget_import() {
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
+widget AppShell {
+    use {
+        component: CommandPalette from "src/front/utils/app_shell_ext.ts"
+    }
+    model { var open bool = false }
+    view {
+        col {
+            CommandPalette {
+                open: .open
+            }
+        }
+    }
+}
+"#,
+            &["CommandPalette"],
+        );
+        // The ext declaration's import is emitted (local .ts → @/ext alias).
+        assert!(
+            sfc.contains("import { CommandPalette } from '@/ext/src/front/utils/app_shell_ext'"),
+            "ext component import emitted:\n{}",
+            sfc
+        );
+        // The plan-408 auto `@/components/CommandPalette.vue` import is skipped.
+        assert!(
+            !sfc.contains("from '@/components/CommandPalette.vue'"),
+            "no duplicate auto sub-widget import:\n{}",
+            sfc
+        );
+        // Exactly one import line binds the CommandPalette identifier.
+        let import_lines = sfc
+            .lines()
+            .filter(|l| l.starts_with("import") && l.contains("CommandPalette"))
+            .count();
+        assert_eq!(import_lines, 1, "single CommandPalette import (no TS2300):\n{}", sfc);
+        // Template resolution is untouched: the tag still renders as the
+        // component (registration/resolution logic unchanged).
+        assert!(sfc.contains("<CommandPalette"), "component tag rendered:\n{}", sfc);
+    }
+
+    /// Regression guard: without an ext declaration, the plan-408 auto
+    /// sub-widget import behavior is unchanged.
+    #[test]
+    fn test_auto_sub_widget_import_without_ext_decl_unchanged() {
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
+widget BlockList {
+    view {
+        col {
+            BlockItem { }
+        }
+    }
+}
+"#,
+            &["BlockItem"],
+        );
+        assert!(
+            sfc.contains("import BlockItem from '@/components/BlockItem.vue'"),
+            "auto sub-widget import still emitted:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<BlockItem"), "sub-widget tag rendered:\n{}", sfc);
+    }
+
+    /// The same name-based dedup applies when an ext `fn:` (or composable)
+    /// declaration already binds the identifier — a second default import of
+    /// the same name would still be TS2300.
+    #[test]
+    fn test_ext_fn_name_collision_skips_auto_sub_widget_import() {
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
+widget App {
+    use {
+        fn: Helper from "src/front/utils/helpers.ts"
+    }
+    view {
+        col {
+            Helper { }
+        }
+    }
+}
+"#,
+            &["Helper"],
+        );
+        assert!(
+            sfc.contains("import { Helper } from '@/ext/src/front/utils/helpers'"),
+            "ext fn import emitted:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("from '@/components/Helper.vue'"),
+            "auto sub-widget import skipped on name collision:\n{}",
+            sfc
+        );
     }
 
     // ====================================================================
