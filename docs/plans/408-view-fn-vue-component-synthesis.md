@@ -202,17 +202,32 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 **解锁**: Plan 053 M4（多行续行检测）的 input→textarea 切换。✅ 随 M4 完成
 （`736d5ca9`），单测 `test_plan053_p55_textarea_skips_default_classes`。
 
-### P5-6 🟡 input handler debounce codegen 注入（解锁 Plan 053 M5）
+### P5-6 ✅ 已完成（2026-08-11，Plan 053 M5）
 
 **问题**: `.at` 完全无定时器（`native_catalog.rs` 全表无 setTimeout/setInterval/debounce），
 补全 debounce 无法在 `.at` 层实现（`auto.time.sleep_ms` 是阻塞 sleep，会卡 UI）。
 
-**位置**: `vue.rs` input handler 生成处。
+**位置**: `vue.rs` handler 收集/生成处（`stmts_call_complete` + `debounced_handlers` +
+`generate_debounced_handler_body` + 顶层 `let __completeTimer/__completeSeq` 注入）+
+`ts_adapter.rs` `Stmt::Expr` 赋值守卫（`debounce_seq_var` + `assign_target_is_state_ref`）。
 
-**修复**: input handler body 含 `complete(` 调用时，自动包一层 `setTimeout` debounce
-（80ms + 序列号丢弃过期结果，逻辑照搬 vue 原版 `PromptBar.vue:60-84`）。
+**修复**: `.at` 层把补全逻辑拆成独立 `OnInputComplete` handler（对齐 vue 原版
+`refreshCompletions` 结构）；codegen 识别「handler body 含 `complete(` 调用」自动：
+- 顶层注入 `let __completeTimer: ReturnType<typeof setTimeout> | null = null` + `let __completeSeq = 0`；
+- handler body 整体包 `setTimeout(async () => {...}, 80)`，前置 `clearTimeout` + `++__completeSeq`；
+- body 内 state-ref 赋值（`.suggestions =`）加 `if (__seq === __completeSeq)` 守卫，
+  丢弃过期结果（旧请求慢于新请求时不覆盖）；
+- handler function 本身同步（is_async=false），`async`/`await` 移入 setTimeout 回调。
 
-**解锁**: Plan 053 M5（补全 debounce）。
+触发条件 = `stmts_call_complete`（裸名 `complete` 调用，非全 api 集——避免误伤
+`run_command` 等 eager handler）。逻辑照搬 vue 原版 `PromptBar.vue:60-84`。
+单测 `test_plan053_p56_*`（3 条）+ 既有 plan053 全通过；vite build 成功。
+
+**解锁**: Plan 053 M5（补全 debounce）。✅ 见 plan 053 §M5 实施纪要。
+
+**已知边界**: 守卫对 debounced body 内**所有** state-ref 赋值生效（P5-6 范围内
+`OnInputComplete` 只赋 `.suggestions`，符合预期）；VM 模式无 setTimeout，
+`OnInputComplete` 同步执行 complete（与拆分前 `OnInput` 等价，无新增风险）。
 
 ### P5-7 🔴 widget module fn + use 导入 + 复杂 handler 三重限制（解锁 Plan 053 M3）
 
@@ -248,7 +263,7 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展 ✅ 已完成
 2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全 ✅ 已完成（2026-08-11，见 §5）
-3. **P5-5**（textarea）+ **P5-6**（debounce）—— P5-5 ✅ 随 Plan 053 M4 完成；P5-6 待 M5
+3. **P5-5**（textarea）+ **P5-6**（debounce）—— 均已完成：P5-5 ✅ 随 Plan 053 M4；P5-6 ✅ 随 Plan 053 M5
 4. **P5-2**（auto clean panic）—— 真问题但影响小（手动删可绕过）
 5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）
 
