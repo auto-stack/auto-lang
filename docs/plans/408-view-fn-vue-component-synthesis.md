@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: ✅ P1 已实施（2026-08-10）。同文件 `component fn` → 独立 Vue SFC 合成已落地，golden 验证通过，既有 view fn 内联行为零破坏。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）已实施并合并 master（`c12b407e`）。📋 **P4 立项（2026-08-11）**——来自 auto-musk 023 探针的 4 个 codegen 缺陷修复（见 §7），其中缺陷 1+2（同文件 prop 绑定）和缺陷 4（prop 作 handler / emit 缺口）阻塞 023 P3 试点与 §3.1 共用组件收敛。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -231,3 +231,100 @@ component fn Badge(text: str) {
 **验证**: `test_component_fn_with_computed`——断言 Badge SFC 含 `const label = computed(...)` + `{{ label }}`；回归断言 view fn 带 computed 会解析失败（computed 仅 component fn 合法）。auto-lang vue 模块 181 + plan408 4 + plan367 6 全绿，零回归。
 
 **AgentAvatar 试点评估更新**: computed 能力已补，但 AgentAvatar 的 `professionColors` 对象字典字面量 + `charCodeAt` hash fallback 仍是 `.at` 语言层缺口（非 component fn 范畴）。AgentAvatar 的颜色映射仍需逃生舱 helper fn（`use { fn: professionColor }`），但组件骨架（props/computed/模板）可用 component fn 表达——属部分替换。完整试点仍待 auto-musk 侧推进。
+
+## 7. P4：component fn codegen 缺陷修复（2026-08-11 立项，来自 auto-musk 探针）
+
+> **来源**: auto-musk Plan 023 §3.2 component fn 能力探针（`tmp/probe-component-fn/`，4 场景实测）。P1-P3 的核心机制（合成/props/条件渲染/computed/跨文件复用）验证可用，但暴露 4 个 codegen 缺陷——其中缺陷 4（prop 作 handler）是 023 §3.1 共用组件收敛的硬阻塞，缺陷 1-3 影响产物质量。本 P4 逐个修复。
+
+### 7.1 缺陷 1+2：同文件 component fn 调用点的 prop 绑定（字面量 + `self.` 前缀）
+
+**现象**（探针 A，同文件 `Card` 被 `App` 引用）:
+```
+.at:   Card(title: .heading, active: true)
+       Card(title: "second", active: false)
+产物:  <Card :title=" self .heading" :active="{{ true }}" />
+       <Card :title="second" :active="{{ false }}" />
+```
+- bool 字面量 → `:active="{{ true }}"`（双花括号，TS 语法错）
+- str 字面量 → `:title="second"`（未引号，被当变量引用）
+- 变量 prop → `:title=" self .heading"`（`self` 未定义 + 多余空格）
+
+**根因**（**两条 prop 绑定路径不一致**）:
+
+component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **Phase 1 单文件编译时 `known_sub_widgets` 为空**（vue.rs:15513 注释自证："Phase 1 front files compile WITHOUT known_sub_widgets"）。因此同文件 component fn 调用 tag 命中 `map_tag` 的 **PascalCase fallback → 普通元素路径**（vue.rs:3258 的 `is_known_sub_widget` 分支进不去），该路径用 **`expr_to_vue_text`**（文本模式）渲染 prop 值：
+- `Expr::Bool` 经 `convert_template_to_vue` 包成 `{{ true }}`（vue.rs Str 分支的 mustache 逻辑泄漏到非文本场景）
+- `Expr::Str("second")` 走文本分支返回 `second`（丢引号）
+- `Expr::Dot(self, heading)` 在文本模式保留 `self.`（文本模式的 Dot 分支未剥离 self，而绑定模式 `expr_to_vue_bound_value` 会剥离）
+
+而**跨文件复用**（探针 C）走 `ext_components` → `is_external_component` → vue.rs:3258 分支，用 **`expr_to_vue_bound_value`**（绑定模式，正确：bool→`true`、str→`'second'`、Dot→剥离 self）。这就是探针 C 干净、探针 A 中招的差异。
+
+**解决办法**（两选一）:
+
+- **方案 A（推荐，根治）**: Phase 1 编译时把**本文件 `component fn` 名**注入 `known_sub_widgets`。`generate_component_from_file`（api.rs）已收集 component fn 成 sub_widgets（P1 改动），但单 widget 编译入口（`VueGenerator::new`）的 `known_sub_widgets` 未带上同文件 component fn 名。修 `generate_component_from_file`：为每个 widget 的编译传入"同文件所有 component fn 名"作为 `known_sub_widgets`。这样同文件调用进 vue.rs:3258 分支，用正确的 `expr_to_vue_bound_value`。
+- **方案 B（兜底）**: 普通 PascalCase fallback 路径（vue.rs:3258 之外）的 prop 绑定也从 `expr_to_vue_text` 换成 `expr_to_vue_bound_value`。改动面更大、影响所有 PascalCase fallback 元素（含 `use` 引用的逃生舱），回归风险高。
+
+**建议方案 A**——精准、低回归，且符合"component fn 是本文件 sub_widget"的语义。
+
+**验证**: 扩展 `test/a2vue/007_component_fn/input.at` 增加 bool/str 字面量 prop + 变量 prop 调用，断言 App.expected.vue 含 `:active="true"` / `:title="'second'"` / `:title="heading"`（无 self、无双花括号）。新增 `test_component_fn_literal_props` 单测。
+
+### 7.2 缺陷 3：computed `if` 表达式的多余 IIFE 包装
+
+**现象**（探针 D）:
+```
+.at:   computed { label => if .count > 0 { "有" } else { "无" } }
+产物:  const label = computed<any>(() => (() => { if (props.count > 0) { return '有'; } else { return '无'; } })())
+```
+能跑（IIFE 立即执行返回值），但多余一层 `(() => {...})()`，且类型推断退化为 `any`。
+
+**根因**: computed 表达式转译时，`if` 表达式被 `Expr::If` → TS 语句块（`{ return ...; }`）而非 TS 条件表达式（`cond ? a : b`）。widget 的 computed 走同一路径（vue.rs:1967 附近），故这是**既有 codegen 的 if-as-expression 缺口**，非 component fn 特有——只是 component fn 试点最先暴露。
+
+**解决办法**: `Expr::If` 在**表达式上下文**（computed/prop 绑定，非语句上下文）转译为三元 `cond ? then : else`。需区分上下文——语句上下文（handler body）保留 `{ if ... }`，表达式上下文用三元。
+
+**验证**: `test_component_fn_with_computed` 扩展——断言 `const label = computed<string>(() => props.count > 0 ? '有' : '无')`（三元 + 类型推断）。低优先级（能跑，仅质量）。
+
+### 7.3 缺陷 4：component fn 内部 button onclick 调用 prop 作 handler（emit 缺口）
+
+**现象**（探针 B，023 §3.1 共用组件收敛的硬阻塞）:
+```
+.at:   component fn NavItem(label: str, onselect: msg) {
+           button { onclick: onselect, text .label }
+       }
+产物 NavItem.vue:
+       const props = defineProps<{ label: string; onselect: any }>()
+       function ononselect(): void {     // ← prop 未被当可调用引用
+           // TODO: handler not defined in on-block
+       }
+       <button @click="ononselect">
+```
+父组件侧透传正确（`onselect: .Clicked` → `@select="Clicked"` ✅），但**子组件内部**把 `onclick: onselect` 的 `onselect`（一个 prop 引用）当成未定义的本地 handler，生成空函数。
+
+**根因**: `extract_view_node` 提取 `button { onclick: onselect }` 时，`onselect` 作为 handler 引用进入 `AuraEvent.handler`。Vue 生成阶段（vue.rs:2353）发现 `onselect` 不在 widget 的 `on { }` 块定义的 handler 集合里，于是生成 `// TODO: handler not defined in on-block` 空函数。**component fn 没有识别"handler 名 == prop 名"的情况**——即 prop 作为可调用事件回调。
+
+这等价于**缺 emit**：子组件应通过 `defineEmits` 声明事件、内部 `$emit('select')`，而非调用本地空函数。当前 `extract_widget_from_fragment` 的 `messages: Vec::new()`（硬编码空）使得 component fn 无 emit 声明能力。
+
+**解决办法**（三选一，按复杂度）:
+
+- **方案 A（emit 完整支持，根治）**: `extract_widget_from_fragment` 接入 msg 块——component fn 声明 `msg Msg { Select }`，生成 `defineEmits<{ Select: [] }>()`；内部 `onclick` 绑定到 `$emit('Select')`。**这是 408 Task 2 的核心**，需 parser + extract + vue 三层改动。彻底解决 §3.1。
+- **方案 B（prop-as-callback，轻量）**: component fn 内部识别"handler 名命中 prop 名"时，把 `onclick` 绑定为 `props.<propname>()`（`<button @click="props.onselect()">`）。不改 msg/emit 机制，复用现有 prop 透传。props 类型 `msg` → `() => void`（而非 `any`）。**最小改动**，覆盖 §3.1 的"传入回调"场景（但非标准 Vue emit，父组件需用 `:onselect` 而非 `@select`）。
+- **方案 C（登记，暂不修）**: 维持现状，§3.1 继续阻塞，component fn 仅用于纯展示组件。
+
+**建议**: **方案 B 先行**（解锁 §3.1 的最常见模式——共用 header 传入 click 回调），方案 A（完整 emit）作为 Task 2 正式落地。方案 B 与 A 不冲突——A 落地后 B 的 prop-as-callback 仍可作为轻量替代保留。
+
+**验证**: 探针 B 复现为单测 `test_component_fn_prop_as_handler`——`component fn NavItem(label, onselect: msg)` 内部 `button { onclick: onselect }` → NavItem.vue 含 `@click="props.onselect()"`（方案 B）或 `@click="$emit('Select')"` + `defineEmits`（方案 A）。
+
+### 7.4 P4 实施顺序与优先级
+
+| 缺陷 | 优先级 | 理由 | 方案 |
+|---|---|---|---|
+| **1+2**（同文件 prop 绑定） | 🔴 高 | 阻塞所有同文件 component fn 试点（P3 首试 UserMessage 若同文件即中招）；方案 A 改动小、低回归 | 7.1 方案 A |
+| **4**（prop 作 handler / emit） | 🔴 高 | 023 §3.1 共用组件收敛硬阻塞；方案 B 最小化解锁 | 7.3 方案 B 先行，A 后续 |
+| **3**（computed IIFE） | 🟡 中 | 能跑，仅质量；不阻塞试点 | 7.2，可延后 |
+
+**P4 验收**: auto-musk 探针 A/B/D 重跑后产物 TS 全绿（探针 C 已绿）；新增 3 个 a2vue golden/单测覆盖字面量 prop、prop-as-handler、computed 三元。auto-lang `cargo test -p auto-lang` 零回归。
+
+### 7.5 与 auto-musk 023 的闭环
+
+P4 修复后：
+- **023 P3 试点**（UserMessage 等纯展示逃生舱原生化）：缺陷 1+2 修复即可无障碍推进（同文件或跨文件皆可）。
+- **023 §3.1**（三视图共用组件收敛）：缺陷 4（方案 B 或 A）修复后解锁。
+- auto-musk 侧 023 §3.2/§3.3 已登记本轮探针结论与候选，待 P4 落地后按 §3.3 路径推进。
