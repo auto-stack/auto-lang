@@ -479,7 +479,8 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
-                    return self.render_link_button(&label, &[], &to, bindings);
+                    let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
@@ -703,7 +704,8 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
-                    return self.render_link_button(&label, &[], &to, bindings);
+                    let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
@@ -819,7 +821,8 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(props, "label")
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
-                    return self.render_link_button(&label, &[], &to, bindings);
+                    let icon = self.extract_string(props, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
@@ -1380,7 +1383,8 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(props, "label")
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
-                    return self.render_link_button(&label, &[], &to, bindings);
+                    let icon = self.extract_string(props, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
@@ -1411,15 +1415,48 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// Plan 408: Map common lucide icon names to emoji for vm/iced rendering.
+    /// iced has no icon font; this gives nav-link items visual distinction.
+    fn icon_to_emoji(icon: &str) -> Option<&'static str> {
+        match icon {
+            "bell" => Some("\u{1F514}"),           // 🔔
+            "command" => Some("\u{2318}"),         // ⌘
+            "image" => Some("\u{1F5BC}"),          // 🖼️
+            "layout-grid" => Some("\u{25A6}"),     // ▦
+            "menu" => Some("\u{2630}"),            // ☰
+            "mouse-pointer-click" => Some("\u{1F5B1}"), // 🖱️
+            "navigation" => Some("\u{1F9ED}"),     // 🧭
+            "search" => Some("\u{1F50D}"),         // 🔍
+            "square-stack" => Some("\u{1F4E6}"),   // 📦
+            "type" => Some("\u{1F4DD}"),           // 📝
+            "home" => Some("\u{1F3E0}"),           // 🏠
+            "settings" => Some("\u{2699}"),        // ⚙️
+            "layers" => Some("\u{1F5C2}"),         // 🗂️
+            "arrow-right" => Some("\u{27A1}"),     // ➡️
+            "folder" => Some("\u{1F4C1}"),         // 📁
+            "mail" => Some("\u{1F4E7}"),           // 📧
+            "book" => Some("\u{1F4D6}"),           // 📖
+            "github" => Some("\u{1F47D}"),         // 👽 (no github emoji)
+            "check-square" => Some("\u{2705}"),    // ✅
+            _ => None,
+        }
+    }
+
     /// Plan 401/VM-routing: render a `link (to: "/path")` as a clickable
     /// button. The onclick carries a `__navigate` DynamicMessage with the target
     /// path as its sole arg; the update loop intercepts `__navigate` and sets
     /// `__current_route`, causing `outlet` to re-render the new page. The label
     /// comes from the link's text or its first text child.
+    /// Plan 408: optional icon name is mapped to emoji and prepended to label.
     fn render_link_button(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, _bindings: &Bindings) -> View<DynamicMessage> {
+        self.render_link_button_with_icon(text, children, to, "", _bindings)
+    }
+
+    /// Plan 408: render_link_button with an optional icon name.
+    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, _bindings: &Bindings) -> View<DynamicMessage> {
         // Resolve a display label: prefer explicit text, else the first child's
         // text, else fall back to the path itself.
-        let label = if !text.is_empty() {
+        let mut label = if !text.is_empty() {
             text.to_string()
         } else {
             let mut found = String::new();
@@ -1433,6 +1470,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             if found.is_empty() { to.to_string() } else { found }
         };
+        // Plan 408: prepend emoji icon if available.
+        if !icon.is_empty() {
+            if let Some(emoji) = Self::icon_to_emoji(icon) {
+                label = format!("{} {}", emoji, label);
+            }
+        }
         View::Button {
             label,
             onclick: crate::ui::interpreter::DynamicMessage::Typed {
