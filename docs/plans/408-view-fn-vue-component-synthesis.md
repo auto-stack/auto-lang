@@ -120,23 +120,26 @@ view fn ContentHeader(title str, ...) { ... }
 > 这些项都需在 **auto-lang** 侧修复，阻塞 Plan 053 的某些里程碑或影响 codegen 开发体验。
 > 作为本计划的新 phases（P5-x），独立于 Task 1-4 实施。
 
-### P5-1 🔴 ui-cache.json 缓存不失效（开发体验大坑）
+### P5-1 ✅ 已验证不存在（2026-08-11 复核，误判）
 
-**问题**: 改了 `.at` 源码后，codegen 用 `.auto/ui-cache.json` 的旧缓存生成旧产物——
-**静默，不报错**。Plan 053 M2 实测：改了 `prompt_bar.at` 的 view（stack→row overlay），
-codegen 报 "✓ Regenerated 6 components"，但产物仍是旧 view，直到手动 `rm .auto/ui-cache.json`。
+**原假设**: 改 `.at` 后 codegen 用 ui-cache.json 旧缓存生成旧产物。
 
-**位置**: codegen 的缓存读写逻辑（cache key 应含源码 mtime 或内容 hash）。
+**复核实验**: 改 `prompt_bar.at` 的 placeholder（content 改）+ ghost span style
+（view 结构改），**不删** ui-cache.json 重新 codegen，PromptBar.vue **正确更新**。
+UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`，
+缓存失效机制正常。
 
-**修复**: 缓存 key 加源码文件 mtee/hash 校验，源码变化则失效重生成。
+**真因**: Plan 053 M3 的"删缓存才工作"实际是 **stack widget 不被 codegen 识别**
+（P5-7）+ 操作时序混淆，非缓存问题。UICache（`vue.rs:2594` is_dirty + hash_string）
+机制正确，**无需修复**。
 
-**优先级**: 🔴 高——任何 view 改动都可能被吞，严重影响 codegen 调试循环。
+**优先级**: ❌ 无需实施（误判）。
 
 ### P5-2 🟡 auto clean target.rs panic
 
 **问题**: `auto clean` 在 `crates/auto-man/src/target.rs:285` panic:
 `Invalid target kind: 'root'. Valid options are: app, lib, bag, dep, device, test`。
-导致无法清缓存（配合 P5-1，逼用户手动删 ui-cache.json）。
+导致无法用 auto clean 清理产物缓存（用户需手动删 `.auto/` 或 `gen/`）。
 
 **位置**: `crates/auto-man/src/target.rs:285`。
 
@@ -226,8 +229,12 @@ codegen 报 "✓ Regenerated 6 components"，但产物仍是旧 view，直到手
 
 ## 6. P5 phases 实施优先级建议
 
-1. **P5-1**（缓存失效）+ **P5-2**（clean panic）—— 先修，改善所有后续 codegen 调试循环
-2. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展
-3. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
-4. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展
+2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
+3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+4. **P5-2**（auto clean panic）—— 真问题但影响小（手动删可绕过）
 5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）
+
+> **P5-1（ui-cache 缓存失效）经 2026-08-11 复核为误判，已移除**（见 §5 P5-1）：
+> UICache 的 is_dirty + hash_string 机制正常，改 .at 后产物正确更新。
+> M3 的"删缓存才工作"症状实际是 P5-7（stack widget 不被识别），非缓存。
