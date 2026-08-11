@@ -438,7 +438,105 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §7.2 缺陷 3: computed `if` expression should emit a ternary
+    /// §7.8 缺陷 8 regression: a computed referencing another computed must
+    /// unwrap the inner ComputedRef with `.value` at **field-access** position
+    /// (`b => .a.field` → `a.value.field`), not just at comparison position.
+    /// Fixed by Plan 012 Batch A gap 44; this test pins the cross-computed
+    /// `.value` injection so a future refactor of expr_to_js can't regress it.
+    #[test]
+    fn test_computed_references_computed_unwraps_value() {
+        let tmp = std::env::temp_dir().join("plan408_cross_computed_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        // errandStatus is a computed; hasState compares it (Bool position),
+        // statusLabel accesses its .label field (Dot position). Both must
+        // unwrap via .value.
+        std::fs::write(&at_path, concat!(
+            "widget ErrandCard {\n",
+            "    model { var active bool = false }\n",
+            "    computed {\n",
+            "        errandStatus => if .active { \"done\" } else { \"todo\" }\n",
+            "        statusLabel => .errandStatus\n",
+            "    }\n",
+            "    view { div { text .statusLabel } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("cross-computed case must compile");
+        let code = result.vue_code.clone();
+
+        // statusLabel references errandStatus (another computed) — script-side
+        // access must unwrap via .value: `errandStatus.value`.
+        assert!(
+            code.contains("errandStatus.value"),
+            "cross-computed reference must unwrap .value: {}", code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+
+    /// where `onselect` is a declared prop — must bind `@click="props.onselect()"`
+    /// and NOT synthesize an empty `// TODO: handler not defined` stub. Before
+    /// the fix the bare identifier was mangled into `ononselect` and a stub fn
+    /// was emitted, breaking the 023 §3.1 "parent injects click callback" pattern.
+    #[test]
+    fn test_component_fn_prop_as_handler() {
+        let tmp = std::env::temp_dir().join("plan408_prop_handler_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn NavItem(label: str, onselect: msg) {\n",
+            "    button {\n",
+            "        text .label\n",
+            "        onclick: onselect\n",
+            "    }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var clicked int = 0 }\n",
+            "    view { NavItem(label: \"go\", onselect: .Clicked) }\n",
+            "    on { .Clicked -> { .clicked = .clicked + 1 } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("prop-as-handler case must compile");
+        let nav = result.all_widget_codes.iter()
+            .find(|(n, _)| n == "NavItem")
+            .map(|(_, c)| c.clone())
+            .expect("NavItem component fn must be synthesized");
+
+        // The callback prop is called directly — `@click="props.onselect()"`.
+        assert!(
+            nav.contains("@click=\"props.onselect()\""),
+            "onclick bound to a callback prop must render props.onselect(): {}", nav
+        );
+        // No empty stub function synthesized.
+        assert!(
+            !nav.contains("// TODO: handler not defined"),
+            "must NOT synthesize a handler-not-defined stub for a callback prop: {}", nav
+        );
+        assert!(
+            !nav.contains("ononselect"),
+            "must NOT mangle the bare handler name into ononselect: {}", nav
+        );
+        // The prop is still declared in defineProps.
+        assert!(
+            nav.contains("onselect"),
+            "onselect must remain in defineProps: {}", nav
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// `cond ? then : else`, not an IIFE `(() => { if ... return ... })()`.
     /// The ternary is cleaner and type-inferable. Covers single-expr branches
     /// (multi-stmt branches still fall back to IIFE, which is functionally correct).

@@ -3683,6 +3683,11 @@ impl VueGenerator {
                         } else {
                             self.auto_event_to_vue(event)
                         };
+                        // Plan 408 P10 / §7.3 缺陷 4: callback prop short-circuit.
+                        if let Some(attr) = self.try_callback_prop_attr(aura_event, &vue_event) {
+                            attrs.push(attr);
+                            continue;
+                        }
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -9163,6 +9168,11 @@ impl VueGenerator {
                 continue;
             }
             let vue_event = self.shadcn_event_to_vue(tag, event);
+            // Plan 408 P10 / §7.3 缺陷 4: callback prop short-circuit (shadcn path).
+            if let Some(attr) = self.try_callback_prop_attr(aura_event, &vue_event) {
+                attrs.push(attr);
+                continue;
+            }
             let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             // Track used handler (without params for matching)
             let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -9818,6 +9828,31 @@ impl VueGenerator {
         match pattern.find('(') {
             Some(i) if pattern.ends_with(')') => &pattern[..i],
             _ => pattern,
+        }
+    }
+
+    /// Plan 408 P10 / §7.3 缺陷 4（方案 B prop-as-callback）: if the handler
+    /// is a bare identifier that matches a prop name of the current
+    /// widget/component fn, it's a callback prop — return an assembled
+    /// `@event="props.<name>(...)"` attribute so callers can short-circuit
+    /// the normal handler path (which would mangle it into `on<name>` and
+    /// synthesize an empty stub). Returns None when the handler is not a
+    /// callback prop.
+    fn try_callback_prop_attr(
+        &self,
+        aura_event: &AuraEvent,
+        vue_event: &str,
+    ) -> Option<String> {
+        let bare = Self::base_pattern(&aura_event.handler);
+        if !bare.is_empty()
+            && !bare.starts_with('.')
+            && !bare.contains("::")
+            && self.prop_names.iter().any(|p| p == bare)
+        {
+            let args = aura_event.params.join(", ");
+            Some(format!("{}=\"props.{}({})\"", vue_event, bare, args))
+        } else {
+            None
         }
     }
 
