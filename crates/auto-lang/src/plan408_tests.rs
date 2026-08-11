@@ -189,4 +189,101 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// Plan 408 P4: `component fn` with `msg` / `model` / `on` blocks. The
+    /// component can hold local state (model → `ref<T>`), react to events
+    /// (on → handler functions), and emit messages upward (msg →
+    /// `defineEmits` + `emit()`). Mirrors widget semantics; all downstream
+    /// codegen (defineEmits, ref, handler auto-emit, parent `@Event` binding)
+    /// is reused unchanged.
+    #[test]
+    fn test_component_fn_with_emit() {
+        let tmp = std::env::temp_dir().join("plan408_emit_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        // CollapseBtn toggles its own `collapsed` state AND emits ToggleCollapse
+        // upward so the parent can react. App subscribes via ontoggle.
+        std::fs::write(&at_path, concat!(
+            "component fn CollapseBtn(label: str) {\n",
+            "    msg Msg { ToggleCollapse }\n",
+            "    model { var collapsed bool = false }\n",
+            "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }\n",
+            "    button {\n",
+            "        text .label\n",
+            "        onclick: .ToggleCollapse\n",
+            "    }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    view {\n",
+            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)\n",
+            "    }\n",
+            "    on { .Bump -> { .count = .count + 1 } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("component fn with emit must compile");
+
+        let btn_code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "CollapseBtn")
+            .map(|(_, code)| code)
+            .expect("CollapseBtn component fn must be synthesized");
+        let app_code = result.vue_code.clone();
+
+        // msg → defineEmits<{ ToggleCollapse: [] }>()
+        assert!(
+            btn_code.contains("defineEmits"),
+            "CollapseBtn must declare emits: {}",
+            btn_code
+        );
+        assert!(
+            btn_code.contains("ToggleCollapse"),
+            "CollapseBtn emits must include ToggleCollapse: {}",
+            btn_code
+        );
+        // model → ref<boolean>(false)
+        assert!(
+            btn_code.contains("ref<boolean>(false)"),
+            "CollapseBtn must emit `const collapsed = ref<boolean>(false)`: {}",
+            btn_code
+        );
+        // on handler → function body mutates state + emits
+        assert!(
+            btn_code.contains("collapsed.value = !collapsed.value"),
+            "CollapseBtn handler must mutate collapsed state: {}",
+            btn_code
+        );
+        assert!(
+            btn_code.contains("emit('ToggleCollapse')"),
+            "CollapseBtn handler must emit ToggleCollapse: {}",
+            btn_code
+        );
+
+        // App subscribes to the event. The event name is lowercased by
+        // sub_widget_event_to_vue (ontogglecollapse → @togglecollapse), so the
+        // parent binds `@togglecollapse="Bump"`.
+        assert!(
+            app_code.contains("@togglecollapse"),
+            "App must bind the toggle event on CollapseBtn: {}",
+            app_code
+        );
+
+        // Regression: view fn (inline) does NOT support msg/model/on. A view fn
+        // body containing these blocks must NOT parse cleanly — they belong
+        // only in component fn (which has a real SFC host for state/emit).
+        let bad_src = "view fn NoEmit(a: str) { msg Msg { X } div { text .a } }\nwidget W { view { NoEmit(a: .y) } model { var y str = \"\" } }";
+        let session = CompilerSession::ui();
+        let mut parser = crate::Parser::from(bad_src).with_session(session);
+        let parse_outcome = parser.parse();
+        assert!(parse_outcome.is_err(),
+            "view fn with a msg block must NOT parse cleanly (msg is component-fn-only): {:?}",
+            parse_outcome);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

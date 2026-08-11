@@ -700,6 +700,52 @@ pub fn extract_widget_from_fragment(
         Vec::new()
     };
 
+    // Plan 408 P4: component fn model → state_vars (mirrors
+    // extract_widget_from_decl's model handling). view fn has model=None.
+    let mut state_vars = if let Some(ref model) = frag.model {
+        extract_model_fields(model)?
+    } else {
+        Vec::new()
+    };
+
+    // Plan 408 P4: component fn messages → AuraMessage (mirrors widget). view fn 恒空。
+    let messages: Vec<AuraMessage> = frag.messages.iter()
+        .map(|m| extract_msg_decl(m))
+        .collect();
+
+    // Plan 408 P4: component fn on block → handlers + handler_params (mirrors
+    // extract_widget_from_decl's on handling). Includes the .Tick interval
+    // extraction and .Init/.Destroy lifecycle lift-out, so a component fn with
+    // a timer or lifecycle hooks behaves like a widget. view fn has on=None.
+    let (mut handlers, handler_params) = if let Some(ref on) = frag.on {
+        extract_on_block(on)?
+    } else {
+        (HashMap::new(), HashMap::new())
+    };
+    let tick_interval = if handlers.keys().any(|k| k == ".Tick") {
+        let interval_val = state_vars.iter()
+            .find(|v| v.name == "interval")
+            .and_then(|v| {
+                if let Expr::Int(n) = &v.initial { Some(*n as u32) } else { None }
+            })
+            .or(Some(1000));
+        state_vars.retain(|v| v.name != "interval");
+        interval_val
+    } else {
+        None
+    };
+    let lifecycle_names = [
+        crate::aura::types::lifecycle::INIT,
+        crate::aura::types::lifecycle::DESTROY,
+    ];
+    let lifecycle_events: Vec<crate::aura::types::AuraLifecycle> = lifecycle_names.iter()
+        .filter_map(|name| {
+            handlers.remove(*name).map(|payload| {
+                crate::aura::types::AuraLifecycle::new(&name[1..], payload)
+            })
+        })
+        .collect();
+
     // Fragment body is a single root ViewNode (parse_view_fragment_decl_body_tail
     // parses exactly one). Extract it the same way a view block root is.
     let mut view_tree = extract_view_node(&frag.body)?;
@@ -707,16 +753,16 @@ pub fn extract_widget_from_fragment(
 
     Ok(AuraWidget {
         name: frag.name.as_str().to_string(),
-        state_vars: Vec::new(),
+        state_vars,
         computed,
-        messages: Vec::new(),
+        messages,
         view_tree,
-        handlers: HashMap::new(),
-        handler_params: HashMap::new(),
+        handlers,
+        handler_params,
         props,
         routes: None,
-        lifecycle: Vec::new(),
-        tick_interval: None,
+        lifecycle: lifecycle_events,
+        tick_interval,
         span_map,
         key_bindings: HashMap::new(),
         api_imports: Vec::new(),

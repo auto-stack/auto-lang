@@ -385,3 +385,35 @@ P3 试点实测结论：**当前不可行**——所有纯展示候选都被 P4 
 - **缺陷 4 落地** → 023 §3.1 共用组件收敛解锁
 - **缺陷 6+7 落地** → StreamingTable 可原生化
 - auto-musk 侧 023 §3.2/§3.3 已登记探针结论与候选，待 P4 对应缺陷落地后按序推进。
+
+---
+
+## 8. P4 实施记录：component fn emit + model（2026-08-11 落地）
+
+> 本节是已落地的实施记录，对应 §7.3 缺陷4（emit）的 emit 部分 + model（本地状态）。§7 系列的其余缺陷（1+2/3/5/6/7）仍待逐个落地。
+
+### 8.1 emit + model（对应 §7.3 缺陷4 的 emit 侧 + 本地状态）
+
+**动机**: auto-musk 023 §3.1 的 NavSidebar 共用组件需要 msg/emit（ToggleCollapse 折叠交互）+ model（本地折叠状态）。P3 补了 computed，本节补 emit + model——两者都是 P3 的同构重复（纯接通，复用 widget 现有基础设施）。slot 需结构性改动，留作 P5。
+
+**改动**（3 处，全部复用现有基础设施，codegen 零改动）:
+- `ast/ui.rs`: `ViewFragmentDecl` 加 `messages: Vec<MsgDecl>` + `model: Option<ModelBlock>` + `on: Option<OnBlock>`（仅 component fn；view fn 恒空/None）。
+- `parser.rs parse_fragment_decl_body_tail`: computed 之后、view body 之前，加 msg（循环，支持多块）+ model + on 解析（仅 `is_component`）。model 字段在 enter_scope 后 bind 到 infer_ctx（和 params 一起），让 on handler body 的 `.collapsed` 通过符号检查。on 在 model 字段 bind 之后解析。
+- `aura/extract.rs extract_widget_from_fragment`: 填 `messages`（复用 extract_msg_decl）、`state_vars`（复用 extract_model_fields）、`handlers`/`handler_params`（复用 extract_on_block）、含 .Tick interval 提取 + .Init/.Destroy lifecycle 抽取（完整镜像 extract_widget_from_decl）。
+
+**语法**（params → computed → msg → model → on → view body）:
+```auto
+component fn CollapseBtn(label: str) {
+    msg Msg { ToggleCollapse }
+    model { var collapsed bool = false }
+    on { .ToggleCollapse -> { .collapsed = !.collapsed } }
+    button { text .label onclick: .ToggleCollapse }
+}
+```
+→ 生成 `defineEmits<{ ToggleCollapse: [] }>()` + `const collapsed = ref<boolean>(false)` + handler `collapsed.value = !collapsed.value; emit('ToggleCollapse')`；父侧 `<CollapseBtn ... @togglecollapse="Bump" />`。
+
+**验证**: `test_component_fn_with_emit`——CollapseBtn SFC 含 defineEmits + ref + handler mutate + emit；App SFC 含 `@togglecollapse` 事件绑定；回归断言 view fn 带 msg 块解析失败（msg 仅 component fn 合法）。auto-lang vue 模块 181 + plan408 5 + plan367 6 全绿，零回归（21 个既有失败 dstr/route/ark/vm 与本项目无关）。
+
+**Codegen 零改动验证**: `generate_sfc` 的 messages→emit_events（:1563）、defineEmits（:2044）、handler auto-emit（:2183）、state_vars→ref（:1917）全基于 AuraWidget 字段工作；父侧 `fragment_to_component_node` 已透传 events → `sub_widget_event_to_vue` 转 `@Event`。extract 填进去即自动产出。
+
+**NavSidebar 试点评估更新**: emit + model 已补，NavSidebar 的核心交互（折叠状态 + 向上抛事件）可落地。**仍缺 slot**（列表骨架由各视图注入）——slot 需给 `AuraNode::Component` 加 children 字段 + 重写 node_to_html Component 分支（当前自闭合），结构性改动，作 P5。三视图共用 NavSidebar 的完整收敛（§3.1）需 P5 slot 落地后推进。
