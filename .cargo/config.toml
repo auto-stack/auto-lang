@@ -14,6 +14,10 @@
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
+# Plan 408: VM interpreter UI (iced) renders complex view trees recursively
+# on the main thread. The default 8 MB stack is insufficient for large galleries
+# (~50 pages, deep nesting). /STACK sets the PE-header stack reserve size.
+rustflags = ["-C", "link-arg=/STACK:33554432"]  # 32 MB
 
 [build]
 jobs = 8

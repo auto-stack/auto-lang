@@ -1441,8 +1441,11 @@ impl<'a> AuraViewBuilder<'a> {
             // Found the route. (Param persistence into __route_params is handled
             // by the navigation codegen — render time is read-only here.)
             let _ = params;
-            // Render the page widget (route.module is the widget name).
-            if let Some(page_widget) = registry.get(&route.module) {
+            // Plan 408: look up the page widget via the route module alias map
+            // (route.module → widget.name, e.g. "button" → "ButtonPage").
+            // Using the alias map instead of registry.get avoids shadowing
+            // built-in UI elements like <button>, <input>.
+            if let Some(page_widget) = registry.get_by_route_module(&route.module) {
                 let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
                 let empty_events: HashMap<String, AuraEvent> = HashMap::new();
                 return self.render_child_widget(page_widget, &empty_props, &empty_events, bindings);

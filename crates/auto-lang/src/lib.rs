@@ -2718,6 +2718,12 @@ fn run_file_dynamic_ui_inner(
                             if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                                 if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
                                     child_decls.push(decl.clone());
+                                    // Plan 408: record route.module → widget.name
+                                    // mapping so render_outlet can find the page.
+                                    // Using a separate alias map (not a registry
+                                    // entry) avoids shadowing built-in UI elements
+                                    // like <button>, <input>, etc.
+                                    registry.register_route_alias(&route.module, &child_widget.name);
                                     registry.register(child_widget);
                                 }
                             }
