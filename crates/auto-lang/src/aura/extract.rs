@@ -767,7 +767,7 @@ pub fn extract_widget_from_fragment(
         key_bindings: HashMap::new(),
         api_imports: Vec::new(),
         style_css: None,
-        ext_imports: Vec::new(),
+        ext_imports: frag.ext_imports.clone(),
         watchers: Vec::new(),
         exposes: Vec::new(),
     })

@@ -12541,10 +12541,20 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
-        // Plan 408 P3: component fn 支持可选 `computed { }` 块（位于 params 之后、
-        // view body 之前，与 widget 的 computed→view 顺序一致）。view fn 不支持
-        // computed（内联展开后无独立组件宿主）。parse_computed_block_inner 会
-        // 自消费 `computed` 关键字与外层大括号。
+        // Plan 408 P5: component fn 支持可选 `use { }` 块（fn/composable/component
+        // 逃生舱引入），位于 params 之后、其他块之前——引入声明先于使用。view fn 不
+        // 支持（恒空——内联展开后 fn 引用由宿主 widget 的 use 块承载）。复用 widget
+        // 的 parse_widget_use_block_inner（自消费 `use` 关键字），支持多个 use 块。
+        let mut ext_imports: Vec<ExtImport> = Vec::new();
+        if is_component {
+            while self.cur.text.as_str() == "use" {
+                ext_imports.extend(self.parse_widget_use_block_inner()?);
+                self.skip_empty_lines();
+            }
+        }
+        // Plan 408 P3: component fn 支持可选 `computed { }` 块（位于 use 之后、
+        // view body 之前）。view fn 不支持 computed（内联展开后无独立组件宿主）。
+        // parse_computed_block_inner 会自消费 `computed` 关键字与外层大括号。
         let computed = if is_component && self.cur.text.as_str() == "computed" {
             Some(self.parse_computed_block_inner()?)
         } else {
@@ -12605,7 +12615,7 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly
