@@ -67,6 +67,7 @@ widgets-gallery/
 
 ## 已知边界
 
-- carousel / command / combobox / toggle-group 4 族组件目前退化为占位 div
+- command / combobox / toggle-group 3 族组件目前退化为占位 div
   （缺 WidgetSpec，非 Plan 408 §9 范围），页面与文档正常展示。
+  carousel 已可正常渲染 slide 内容（Basic / Sizes 示例均可见）。
 - 未路由的 blocks 页已移除（避免 chart 组件脚手架风险），后续单独补。

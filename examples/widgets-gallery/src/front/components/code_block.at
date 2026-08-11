@@ -77,7 +77,7 @@ widget CodeBlockDemo {
             row {
                 text "Use "
                 Code (content: "widget") {}
-                text " keyword to define a component."
+                text " keyword to define a widget."
             }
 
             h3 | Multi-language Support

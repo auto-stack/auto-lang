@@ -1,118 +1,109 @@
 {
   "file_hashes": {
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at": 18355756822255374362,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\badge.at": 8854014886364565104,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at": 12042666376112819474,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at": 4623645694842942735,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at": 17709834961389826476,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at": 5669319060243581975,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at": 9565949043731388410,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at": 10431224741005287851,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sidebar.at": 11010743387238374280,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\breadcrumb.at": 7145434476551190823,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at": 16087188070895764905,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at": 17256206917878062211,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at": 4673406173488642511,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at": 6402995450082949826,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at": 9085212577394931577,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at": 15708285254065831272,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toggle.at": 5168921922591385095,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\index.at": 8827219876919921843,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at": 4987900944971565490,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at": 7972590912946364781,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at": 3436232117031278987,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datepicker.at": 9476313263304124338,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at": 13408670859176915184,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\avatar.at": 7261979703828702484,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at": 8096320248668761780,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at": 2684870634818518613,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at": 4222267048001442837,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at": 11917252085598393172,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at": 6491913028634605802,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at": 8621722130798418661,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at": 18373896622598909232,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at": 16429421984766864618,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\togglegroup.at": 637025315379136629,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at": 12466668924561480770,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\checkbox.at": 15322169656293570451,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\card.at": 17224446416308110720,
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\grid.at": 2772415640705361876,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at": 17339819030559375337,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at": 6897319994753881154,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at": 2576864334171446467,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at": 18023833949176488114,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at": 1530994280572916038,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\grid.at": 13670923148310215071,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\skeleton.at": 3312919137763672800,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\menubar.at": 7082024505310905302,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\label.at": 7658627535698028860,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at": 7972590912946364781,
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\select.at": 14545918268134324088,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at": 1350875122193688889,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at": 164762566829889976,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at": 12693541077336863564,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at": 14442340214520198639,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at": 141033973928844040,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at": 902284388372265948,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\breadcrumb.at": 5001870389079219572,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at": 6402995450082949826,
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\separator.at": 13926880532754989455,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toggle.at": 5168921922591385095,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at": 4987900944971565490,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at": 6897319994753881154,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\index.at": 8827219876919921843,
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alertdialog.at": 8722493706312911179,
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at": 6967825144549260180
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toast.at": 7928613540194051462,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sheet.at": 569407717003354200,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at": 4222267048001442837,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at": 9085212577394931577,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sidebar.at": 7655713246696688025,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\avatar.at": 7261979703828702484,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\progress.at": 9399033615837343093,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\button.at": 12388837206059978147,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datepicker.at": 9476313263304124338,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at": 10431224741005287851,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datatable.at": 17915324360008210323,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\calendar.at": 8388713889223068629,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at": 15708285254065831272,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\select.at": 5349977436379343022,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\hovercard.at": 15524733609435738928,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navlink.at": 129903004045693925,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tabs.at": 16737507867261039014,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\popover.at": 6826520903260209657,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at": 13408670859176915184,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at": 11917252085598393172,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sidebar.at": 11010743387238374280,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\badge.at": 8854014886364565104,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\aspectratio.at": 2202619701488602694,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at": 12466668924561480770,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alertdialog.at": 124752557434403019,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dialog.at": 728293414448349205,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dropdownmenu.at": 2476882213856834842,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\checkbox.at": 6752256081199009428,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tooltip.at": 8455902039611377933,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\contextmenu.at": 4704838323735553373,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\breadcrumb.at": 7145434476551190823,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\table.at": 8693637713787713610,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\app.at": 1438682864815138486,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sonner.at": 8763058853932834386,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alert.at": 14912266755567790288,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\avatar.at": 12103696339171166347,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\togglegroup.at": 637025315379136629,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\radiogroup.at": 506262339125927942,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\index.at": 17168624947466424989,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at": 1350875122193688889,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at": 2576864334171446467,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at": 18355756822255374362,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at": 18023833949176488114,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at": 12042666376112819474,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\form.at": 11110010429083149724,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\pagination.at": 12762890087195532951,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at": 17256206917878062211,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at": 9565949043731388410,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at": 12693541077336863564,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at": 17339819030559375337,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\drawer.at": 7355340547698420155,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at": 17709834961389826476,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at": 2684870634818518613,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at": 18373896622598909232,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\checkbox.at": 15322169656293570451,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\togglegroup.at": 9542083581703472966,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at": 16087188070895764905,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\separator.at": 9204261407952233228,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at": 8096320248668761780,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navigationmenu.at": 9544832788826153084,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toggle.at": 13177928846126781524,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\scrollarea.at": 11812381748753620545,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\slider.at": 12195586616898622932,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at": 164762566829889976,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at": 4623645694842942735,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\textarea.at": 8892330165540361116,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at": 14442340214520198639,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\switch.at": 17663093043107618676,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\collapsible.at": 16222929713289481404,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\badge.at": 22844312711700505,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\command.at": 5916016601021207645,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\input.at": 17106991650936074717,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at": 1530994280572916038,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at": 6491913028634605802,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at": 3436232117031278987,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\accordion.at": 15530879757401473333,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\combobox.at": 2891967424188841211,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datepicker.at": 5432746117543297450,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at": 16429421984766864618,
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\carousel.at": 4436040102357512356,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at": 6967825144549260180,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at": 4673406173488642511,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at": 902284388372265948,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at": 141033973928844040,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at": 5669319060243581975,
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at": 8621722130798418661
   },
   "artifacts": {
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at",
-        "widget_name": "MenubarPage",
-        "output_path": "src/pages/menubar.vue",
-        "source_hash": 17709834961389826476,
-        "content_hash": 2848848561505927213,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at",
-        "widget_name": "InputPage",
-        "output_path": "src/pages/input.vue",
-        "source_hash": 4623645694842942735,
-        "content_hash": 18190620673334550408,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at",
-        "widget_name": "CommandPage",
-        "output_path": "src/pages/command.vue",
-        "source_hash": 164762566829889976,
-        "content_hash": 8065524522811270074,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at",
-        "widget_name": "NavLinkPage",
-        "output_path": "src/pages/navlink.vue",
-        "source_hash": 11917252085598393172,
-        "content_hash": 17830659498021006538,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at",
-        "widget_name": "SheetPage",
-        "output_path": "src/pages/sheet.vue",
-        "source_hash": 9085212577394931577,
-        "content_hash": 1324334248583850309,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at",
-        "widget_name": "DropdownmenuPage",
-        "output_path": "src/pages/dropdownmenu.vue",
-        "source_hash": 10431224741005287851,
-        "content_hash": 14752535050393165239,
-        "backend": "vue"
-      }
-    ],
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\breadcrumb.at": [
       {
         "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\breadcrumb.at",
@@ -120,196 +111,6 @@
         "output_path": "src/pages/breadcrumb.vue",
         "source_hash": 7145434476551190823,
         "content_hash": 5371164624017118281,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at",
-        "widget_name": "LabelPage",
-        "output_path": "src/pages/label.vue",
-        "source_hash": 141033973928844040,
-        "content_hash": 2716274773667961771,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at",
-        "widget_name": "ProgressPage",
-        "output_path": "src/pages/progress.vue",
-        "source_hash": 2684870634818518613,
-        "content_hash": 461613157402464738,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at",
-        "widget_name": "ToastPage",
-        "output_path": "src/pages/toast.vue",
-        "source_hash": 7972590912946364781,
-        "content_hash": 1583201061233718624,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at",
-        "widget_name": "FormPage",
-        "output_path": "src/pages/form.vue",
-        "source_hash": 8621722130798418661,
-        "content_hash": 14595777190589390008,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at",
-        "widget_name": "HovercardPage",
-        "output_path": "src/pages/hovercard.vue",
-        "source_hash": 9565949043731388410,
-        "content_hash": 2884339951165137322,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at",
-        "widget_name": "CardPage",
-        "output_path": "src/pages/card.vue",
-        "source_hash": 5669319060243581975,
-        "content_hash": 3048952328616508842,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at",
-        "widget_name": "DialogPage",
-        "output_path": "src/pages/dialog.vue",
-        "source_hash": 12042666376112819474,
-        "content_hash": 16934029256392449554,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at",
-        "widget_name": "ButtonPage",
-        "output_path": "src/pages/button.vue",
-        "source_hash": 18373896622598909232,
-        "content_hash": 10418067646927284711,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at",
-        "widget_name": "TabsPage",
-        "output_path": "src/pages/tabs.vue",
-        "source_hash": 15708285254065831272,
-        "content_hash": 770221053413983857,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at",
-        "widget_name": "TextareaPage",
-        "output_path": "src/pages/textarea.vue",
-        "source_hash": 17256206917878062211,
-        "content_hash": 14224596271146783895,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\separator.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\separator.at",
-        "widget_name": "SeparatorPage",
-        "output_path": "src/pages/separator.vue",
-        "source_hash": 13926880532754989455,
-        "content_hash": 3691898616118575131,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at",
-        "widget_name": "ContextmenuPage",
-        "output_path": "src/pages/contextmenu.vue",
-        "source_hash": 6402995450082949826,
-        "content_hash": 7943625068033535607,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at",
-        "widget_name": "CollapsiblePage",
-        "output_path": "src/pages/collapsible.vue",
-        "source_hash": 18355756822255374362,
-        "content_hash": 9980273681323346765,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\select.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\select.at",
-        "widget_name": "SelectPage",
-        "output_path": "src/pages/select.vue",
-        "source_hash": 14545918268134324088,
-        "content_hash": 10442926464970624727,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at",
-        "widget_name": "DatatablePage",
-        "output_path": "src/pages/datatable.vue",
-        "source_hash": 16429421984766864618,
-        "content_hash": 11527224531928607099,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at",
-        "widget_name": "AccordionPage",
-        "output_path": "src/pages/accordion.vue",
-        "source_hash": 3436232117031278987,
-        "content_hash": 3648415109088520295,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at",
-        "widget_name": "SonnerPage",
-        "output_path": "src/pages/sonner.vue",
-        "source_hash": 6491913028634605802,
-        "content_hash": 6719285126362306175,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at",
-        "widget_name": "TooltipPage",
-        "output_path": "src/pages/tooltip.vue",
-        "source_hash": 2576864334171446467,
-        "content_hash": 15870265590221756086,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at",
-        "widget_name": "AlertPage",
-        "output_path": "src/pages/alert.vue",
-        "source_hash": 4222267048001442837,
-        "content_hash": 1032565723346044503,
         "backend": "vue"
       }
     ],
@@ -323,93 +124,73 @@
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toast.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at",
-        "widget_name": "CalendarPage",
-        "output_path": "src/pages/calendar.vue",
-        "source_hash": 12693541077336863564,
-        "content_hash": 3921969416851978821,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toast.at",
+        "widget_name": "ToastPage",
+        "output_path": "src/pages/toast.vue",
+        "source_hash": 7928613540194051462,
+        "content_hash": 3931318183866024340,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at": [
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at",
-        "widget_name": "CarouselPage",
-        "output_path": "src/pages/carousel.vue",
-        "source_hash": 14442340214520198639,
-        "content_hash": 17554920008899718312,
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sheet.at",
+        "widget_name": "SheetPage",
+        "output_path": "src/pages/sheet.vue",
+        "source_hash": 9085212577394931577,
+        "content_hash": 1324334248583850309,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\menubar.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at",
-        "widget_name": "PopoverPage",
-        "output_path": "src/pages/popover.vue",
-        "source_hash": 13408670859176915184,
-        "content_hash": 13371256171086863746,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\menubar.at",
+        "widget_name": "MenubarPage",
+        "output_path": "src/pages/menubar.vue",
+        "source_hash": 7082024505310905302,
+        "content_hash": 2175929798432404424,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at": [
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at",
-        "widget_name": "RadiogroupPage",
-        "output_path": "src/pages/radiogroup.vue",
-        "source_hash": 17339819030559375337,
-        "content_hash": 11471436592295708231,
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\button.at",
+        "widget_name": "ButtonPage",
+        "output_path": "src/pages/button.vue",
+        "source_hash": 18373896622598909232,
+        "content_hash": 10418067646927284711,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alertdialog.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\checkbox.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alertdialog.at",
-        "widget_name": "AlertdialogPage",
-        "output_path": "src/pages/alertdialog.vue",
-        "source_hash": 8722493706312911179,
-        "content_hash": 4443380118854399099,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\checkbox.at",
+        "widget_name": "CheckboxPage",
+        "output_path": "src/pages/checkbox.vue",
+        "source_hash": 6752256081199009428,
+        "content_hash": 7230530324204224494,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tabs.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at",
-        "widget_name": "NavigationmenuPage",
-        "output_path": "src/pages/navigationmenu.vue",
-        "source_hash": 902284388372265948,
-        "content_hash": 8421469934060267630,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tabs.at",
+        "widget_name": "TabsPage",
+        "output_path": "src/pages/tabs.vue",
+        "source_hash": 16737507867261039014,
+        "content_hash": 15491205374565854671,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at": [
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at",
-        "widget_name": "ScrollAreaPage",
-        "output_path": "src/pages/scrollarea.vue",
-        "source_hash": 8096320248668761780,
-        "content_hash": 3145560889039634493,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at",
-        "widget_name": "ComboboxPage",
-        "output_path": "src/pages/combobox.vue",
-        "source_hash": 6897319994753881154,
-        "content_hash": 17017339053394834578,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at",
-        "widget_name": "SkeletonPage",
-        "output_path": "src/pages/skeleton.vue",
-        "source_hash": 1350875122193688889,
-        "content_hash": 2430822598943988214,
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\label.at",
+        "widget_name": "LabelPage",
+        "output_path": "src/pages/label.vue",
+        "source_hash": 141033973928844040,
+        "content_hash": 2716274773667961771,
         "backend": "vue"
       }
     ],
@@ -423,13 +204,143 @@
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at": [
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at",
-        "widget_name": "PaginationPage",
-        "output_path": "src/pages/pagination.vue",
-        "source_hash": 4987900944971565490,
-        "content_hash": 11918501211695828864,
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at",
+        "widget_name": "DrawerPage",
+        "output_path": "src/pages/drawer.vue",
+        "source_hash": 12466668924561480770,
+        "content_hash": 11459764338587994527,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\badge.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\badge.at",
+        "widget_name": "BadgePage",
+        "output_path": "src/pages/badge.vue",
+        "source_hash": 22844312711700505,
+        "content_hash": 1527054070703140258,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dropdownmenu.at",
+        "widget_name": "DropdownmenuPage",
+        "output_path": "src/pages/dropdownmenu.vue",
+        "source_hash": 10431224741005287851,
+        "content_hash": 14752535050393165239,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\calendar.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\calendar.at",
+        "widget_name": "CalendarPage",
+        "output_path": "src/pages/calendar.vue",
+        "source_hash": 8388713889223068629,
+        "content_hash": 15140187567802644238,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\grid.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\grid.at",
+        "widget_name": "GridPage",
+        "output_path": "src/pages/grid.vue",
+        "source_hash": 13670923148310215071,
+        "content_hash": 15924899113121431733,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\collapsible.at",
+        "widget_name": "CollapsiblePage",
+        "output_path": "src/pages/collapsible.vue",
+        "source_hash": 18355756822255374362,
+        "content_hash": 9980273681323346765,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\button.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\button.at",
+        "widget_name": "ButtonPage",
+        "output_path": "src/pages/button.vue",
+        "source_hash": 12388837206059978147,
+        "content_hash": 2097876295741388816,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\textarea.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\textarea.at",
+        "widget_name": "TextareaPage",
+        "output_path": "src/pages/textarea.vue",
+        "source_hash": 8892330165540361116,
+        "content_hash": 4883532560870276557,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\sonner.at",
+        "widget_name": "SonnerPage",
+        "output_path": "src/pages/sonner.vue",
+        "source_hash": 6491913028634605802,
+        "content_hash": 6719285126362306175,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alertdialog.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alertdialog.at",
+        "widget_name": "AlertdialogPage",
+        "output_path": "src/pages/alertdialog.vue",
+        "source_hash": 8722493706312911179,
+        "content_hash": 4443380118854399099,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\index.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\index.at",
+        "widget_name": "IndexPage",
+        "output_path": "src/pages/index.vue",
+        "source_hash": 17168624947466424989,
+        "content_hash": 5023707134811716623,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\breadcrumb.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\breadcrumb.at",
+        "widget_name": "BreadcrumbPage",
+        "output_path": "src/pages/breadcrumb.vue",
+        "source_hash": 5001870389079219572,
+        "content_hash": 8603212425213837375,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sidebar.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sidebar.at",
+        "widget_name": "SidebarPage",
+        "output_path": "src/pages/sidebar.vue",
+        "source_hash": 7655713246696688025,
+        "content_hash": 3687584747855581596,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navlink.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navlink.at",
+        "widget_name": "NavLinkPage",
+        "output_path": "src/pages/navlink.vue",
+        "source_hash": 129903004045693925,
+        "content_hash": 729073060814412131,
         "backend": "vue"
       }
     ],
@@ -443,13 +354,23 @@
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\accordion.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at",
-        "widget_name": "AspectratioPage",
-        "output_path": "src/pages/aspectratio.vue",
-        "source_hash": 6967825144549260180,
-        "content_hash": 5372730567194332597,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\accordion.at",
+        "widget_name": "AccordionPage",
+        "output_path": "src/pages/accordion.vue",
+        "source_hash": 15530879757401473333,
+        "content_hash": 7821477310194653223,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\pagination.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\pagination.at",
+        "widget_name": "PaginationPage",
+        "output_path": "src/pages/pagination.vue",
+        "source_hash": 12762890087195532951,
+        "content_hash": 5350395963535722178,
         "backend": "vue"
       }
     ],
@@ -463,43 +384,43 @@
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\skeleton.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at",
-        "widget_name": "SwitchPage",
-        "output_path": "src/pages/switch.vue",
-        "source_hash": 1530994280572916038,
-        "content_hash": 6577005081012155518,
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\skeleton.at",
+        "widget_name": "SkeletonPage",
+        "output_path": "src/pages/skeleton.vue",
+        "source_hash": 3312919137763672800,
+        "content_hash": 3218487493072631664,
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at": [
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\contextmenu.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\drawer.at",
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\contextmenu.at",
+        "widget_name": "ContextmenuPage",
+        "output_path": "src/pages/contextmenu.vue",
+        "source_hash": 4704838323735553373,
+        "content_hash": 6898032729598426709,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\carousel.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\carousel.at",
+        "widget_name": "CarouselPage",
+        "output_path": "src/pages/carousel.vue",
+        "source_hash": 4436040102357512356,
+        "content_hash": 248280942703119540,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\drawer.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\drawer.at",
         "widget_name": "DrawerPage",
         "output_path": "src/pages/drawer.vue",
-        "source_hash": 12466668924561480770,
-        "content_hash": 11459764338587994527,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at",
-        "widget_name": "TablePage",
-        "output_path": "src/pages/table.vue",
-        "source_hash": 18023833949176488114,
-        "content_hash": 10728376034839148944,
-        "backend": "vue"
-      }
-    ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at": [
-      {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at",
-        "widget_name": "SliderPage",
-        "output_path": "src/pages/slider.vue",
-        "source_hash": 16087188070895764905,
-        "content_hash": 2665763564591159098,
+        "source_hash": 7355340547698420155,
+        "content_hash": 18224536321940610973,
         "backend": "vue"
       }
     ],
@@ -513,13 +434,83 @@
         "backend": "vue"
       }
     ],
-    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at": [
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at": [
       {
-        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at",
-        "widget_name": "App",
-        "output_path": "src/App.vue",
-        "source_hash": 4673406173488642511,
-        "content_hash": 11557403929820928270,
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tabs.at",
+        "widget_name": "TabsPage",
+        "output_path": "src/pages/tabs.vue",
+        "source_hash": 15708285254065831272,
+        "content_hash": 770221053413983857,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\form.at",
+        "widget_name": "FormPage",
+        "output_path": "src/pages/form.vue",
+        "source_hash": 8621722130798418661,
+        "content_hash": 14595777190589390008,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\card.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\card.at",
+        "widget_name": "CardPage",
+        "output_path": "src/pages/card.vue",
+        "source_hash": 17224446416308110720,
+        "content_hash": 473025031243809147,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navigationmenu.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\navigationmenu.at",
+        "widget_name": "NavigationmenuPage",
+        "output_path": "src/pages/navigationmenu.vue",
+        "source_hash": 9544832788826153084,
+        "content_hash": 7425589939799178043,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dialog.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dialog.at",
+        "widget_name": "DialogPage",
+        "output_path": "src/pages/dialog.vue",
+        "source_hash": 728293414448349205,
+        "content_hash": 5902575085084389987,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\calendar.at",
+        "widget_name": "CalendarPage",
+        "output_path": "src/pages/calendar.vue",
+        "source_hash": 12693541077336863564,
+        "content_hash": 3921969416851978821,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alertdialog.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alertdialog.at",
+        "widget_name": "AlertdialogPage",
+        "output_path": "src/pages/alertdialog.vue",
+        "source_hash": 124752557434403019,
+        "content_hash": 4133757653335914590,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\combobox.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\combobox.at",
+        "widget_name": "ComboboxPage",
+        "output_path": "src/pages/combobox.vue",
+        "source_hash": 2891967424188841211,
+        "content_hash": 2124388961743402434,
         "backend": "vue"
       }
     ],
@@ -533,6 +524,466 @@
         "backend": "vue"
       }
     ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\collapsible.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\collapsible.at",
+        "widget_name": "CollapsiblePage",
+        "output_path": "src/pages/collapsible.vue",
+        "source_hash": 16222929713289481404,
+        "content_hash": 1316019428251002582,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datatable.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datatable.at",
+        "widget_name": "DatatablePage",
+        "output_path": "src/pages/datatable.vue",
+        "source_hash": 17915324360008210323,
+        "content_hash": 12820172638066407979,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\form.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\form.at",
+        "widget_name": "FormPage",
+        "output_path": "src/pages/form.vue",
+        "source_hash": 11110010429083149724,
+        "content_hash": 14488586032098032458,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\accordion.at",
+        "widget_name": "AccordionPage",
+        "output_path": "src/pages/accordion.vue",
+        "source_hash": 3436232117031278987,
+        "content_hash": 3648415109088520295,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\card.at",
+        "widget_name": "CardPage",
+        "output_path": "src/pages/card.vue",
+        "source_hash": 5669319060243581975,
+        "content_hash": 3048952328616508842,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\alert.at",
+        "widget_name": "AlertPage",
+        "output_path": "src/pages/alert.vue",
+        "source_hash": 4222267048001442837,
+        "content_hash": 1032565723346044503,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\slider.at",
+        "widget_name": "SliderPage",
+        "output_path": "src/pages/slider.vue",
+        "source_hash": 16087188070895764905,
+        "content_hash": 2665763564591159098,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\popover.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\popover.at",
+        "widget_name": "PopoverPage",
+        "output_path": "src/pages/popover.vue",
+        "source_hash": 6826520903260209657,
+        "content_hash": 10307012250233832874,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\separator.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\separator.at",
+        "widget_name": "SeparatorPage",
+        "output_path": "src/pages/separator.vue",
+        "source_hash": 9204261407952233228,
+        "content_hash": 10498091081246232822,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\table.at",
+        "widget_name": "TablePage",
+        "output_path": "src/pages/table.vue",
+        "source_hash": 18023833949176488114,
+        "content_hash": 10728376034839148944,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\menubar.at",
+        "widget_name": "MenubarPage",
+        "output_path": "src/pages/menubar.vue",
+        "source_hash": 17709834961389826476,
+        "content_hash": 2848848561505927213,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\scrollarea.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\scrollarea.at",
+        "widget_name": "ScrollAreaPage",
+        "output_path": "src/pages/scrollarea.vue",
+        "source_hash": 11812381748753620545,
+        "content_hash": 11934521694214888236,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\switch.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\switch.at",
+        "widget_name": "SwitchPage",
+        "output_path": "src/pages/switch.vue",
+        "source_hash": 17663093043107618676,
+        "content_hash": 1797809453353866615,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\radiogroup.at",
+        "widget_name": "RadiogroupPage",
+        "output_path": "src/pages/radiogroup.vue",
+        "source_hash": 17339819030559375337,
+        "content_hash": 11471436592295708231,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\input.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\input.at",
+        "widget_name": "InputPage",
+        "output_path": "src/pages/input.vue",
+        "source_hash": 17106991650936074717,
+        "content_hash": 231927752901262142,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\progress.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\progress.at",
+        "widget_name": "ProgressPage",
+        "output_path": "src/pages/progress.vue",
+        "source_hash": 9399033615837343093,
+        "content_hash": 522332578351710671,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navigationmenu.at",
+        "widget_name": "NavigationmenuPage",
+        "output_path": "src/pages/navigationmenu.vue",
+        "source_hash": 902284388372265948,
+        "content_hash": 8421469934060267630,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\popover.at",
+        "widget_name": "PopoverPage",
+        "output_path": "src/pages/popover.vue",
+        "source_hash": 13408670859176915184,
+        "content_hash": 13371256171086863746,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\contextmenu.at",
+        "widget_name": "ContextmenuPage",
+        "output_path": "src/pages/contextmenu.vue",
+        "source_hash": 6402995450082949826,
+        "content_hash": 7943625068033535607,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\hovercard.at",
+        "widget_name": "HovercardPage",
+        "output_path": "src/pages/hovercard.vue",
+        "source_hash": 9565949043731388410,
+        "content_hash": 2884339951165137322,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\textarea.at",
+        "widget_name": "TextareaPage",
+        "output_path": "src/pages/textarea.vue",
+        "source_hash": 17256206917878062211,
+        "content_hash": 14224596271146783895,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\skeleton.at",
+        "widget_name": "SkeletonPage",
+        "output_path": "src/pages/skeleton.vue",
+        "source_hash": 1350875122193688889,
+        "content_hash": 2430822598943988214,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alert.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\alert.at",
+        "widget_name": "AlertPage",
+        "output_path": "src/pages/alert.vue",
+        "source_hash": 14912266755567790288,
+        "content_hash": 13411435894738328928,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\navlink.at",
+        "widget_name": "NavLinkPage",
+        "output_path": "src/pages/navlink.vue",
+        "source_hash": 11917252085598393172,
+        "content_hash": 17830659498021006538,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\combobox.at",
+        "widget_name": "ComboboxPage",
+        "output_path": "src/pages/combobox.vue",
+        "source_hash": 6897319994753881154,
+        "content_hash": 17017339053394834578,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sheet.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sheet.at",
+        "widget_name": "SheetPage",
+        "output_path": "src/pages/sheet.vue",
+        "source_hash": 569407717003354200,
+        "content_hash": 15943830338516979092,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\pagination.at",
+        "widget_name": "PaginationPage",
+        "output_path": "src/pages/pagination.vue",
+        "source_hash": 4987900944971565490,
+        "content_hash": 11918501211695828864,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\input.at",
+        "widget_name": "InputPage",
+        "output_path": "src/pages/input.vue",
+        "source_hash": 4623645694842942735,
+        "content_hash": 18190620673334550408,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\app.at",
+        "widget_name": "App",
+        "output_path": "src/App.vue",
+        "source_hash": 4673406173488642511,
+        "content_hash": 11557403929820928270,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\dialog.at",
+        "widget_name": "DialogPage",
+        "output_path": "src/pages/dialog.vue",
+        "source_hash": 12042666376112819474,
+        "content_hash": 16934029256392449554,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\datatable.at",
+        "widget_name": "DatatablePage",
+        "output_path": "src/pages/datatable.vue",
+        "source_hash": 16429421984766864618,
+        "content_hash": 11527224531928607099,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\radiogroup.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\radiogroup.at",
+        "widget_name": "RadiogroupPage",
+        "output_path": "src/pages/radiogroup.vue",
+        "source_hash": 506262339125927942,
+        "content_hash": 5434570217298708312,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dropdownmenu.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\dropdownmenu.at",
+        "widget_name": "DropdownmenuPage",
+        "output_path": "src/pages/dropdownmenu.vue",
+        "source_hash": 2476882213856834842,
+        "content_hash": 15137236479755301338,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\command.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\command.at",
+        "widget_name": "CommandPage",
+        "output_path": "src/pages/command.vue",
+        "source_hash": 5916016601021207645,
+        "content_hash": 2646379984935607515,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\togglegroup.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\togglegroup.at",
+        "widget_name": "TogglegroupPage",
+        "output_path": "src/pages/togglegroup.vue",
+        "source_hash": 9542083581703472966,
+        "content_hash": 3058738513987022352,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\aspectratio.at",
+        "widget_name": "AspectratioPage",
+        "output_path": "src/pages/aspectratio.vue",
+        "source_hash": 6967825144549260180,
+        "content_hash": 5372730567194332597,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\carousel.at",
+        "widget_name": "CarouselPage",
+        "output_path": "src/pages/carousel.vue",
+        "source_hash": 14442340214520198639,
+        "content_hash": 17554920008899718312,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\app.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\app.at",
+        "widget_name": "App",
+        "output_path": "src/App.vue",
+        "source_hash": 1438682864815138486,
+        "content_hash": 3993038517448056012,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\scrollarea.at",
+        "widget_name": "ScrollAreaPage",
+        "output_path": "src/pages/scrollarea.vue",
+        "source_hash": 8096320248668761780,
+        "content_hash": 3145560889039634493,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\label.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\label.at",
+        "widget_name": "LabelPage",
+        "output_path": "src/pages/label.vue",
+        "source_hash": 7658627535698028860,
+        "content_hash": 8243438000720452506,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\select.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\select.at",
+        "widget_name": "SelectPage",
+        "output_path": "src/pages/select.vue",
+        "source_hash": 5349977436379343022,
+        "content_hash": 622134671386253007,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\separator.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\separator.at",
+        "widget_name": "SeparatorPage",
+        "output_path": "src/pages/separator.vue",
+        "source_hash": 13926880532754989455,
+        "content_hash": 3691898616118575131,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\slider.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\slider.at",
+        "widget_name": "SliderPage",
+        "output_path": "src/pages/slider.vue",
+        "source_hash": 12195586616898622932,
+        "content_hash": 3330659515469440579,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\aspectratio.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\aspectratio.at",
+        "widget_name": "AspectratioPage",
+        "output_path": "src/pages/aspectratio.vue",
+        "source_hash": 2202619701488602694,
+        "content_hash": 9497259373203990989,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\switch.at",
+        "widget_name": "SwitchPage",
+        "output_path": "src/pages/switch.vue",
+        "source_hash": 1530994280572916038,
+        "content_hash": 6577005081012155518,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\hovercard.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\hovercard.at",
+        "widget_name": "HovercardPage",
+        "output_path": "src/pages/hovercard.vue",
+        "source_hash": 15524733609435738928,
+        "content_hash": 5579111724763690943,
+        "backend": "vue"
+      }
+    ],
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\togglegroup.at": [
       {
         "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\togglegroup.at",
@@ -540,6 +991,56 @@
         "output_path": "src/pages/togglegroup.vue",
         "source_hash": 637025315379136629,
         "content_hash": 4770673377089434306,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tooltip.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\tooltip.at",
+        "widget_name": "TooltipPage",
+        "output_path": "src/pages/tooltip.vue",
+        "source_hash": 8455902039611377933,
+        "content_hash": 12907949365611133426,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sonner.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\sonner.at",
+        "widget_name": "SonnerPage",
+        "output_path": "src/pages/sonner.vue",
+        "source_hash": 8763058853932834386,
+        "content_hash": 8883064922353401105,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\toast.at",
+        "widget_name": "ToastPage",
+        "output_path": "src/pages/toast.vue",
+        "source_hash": 7972590912946364781,
+        "content_hash": 1583201061233718624,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\tooltip.at",
+        "widget_name": "TooltipPage",
+        "output_path": "src/pages/tooltip.vue",
+        "source_hash": 2576864334171446467,
+        "content_hash": 15870265590221756086,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\progress.at",
+        "widget_name": "ProgressPage",
+        "output_path": "src/pages/progress.vue",
+        "source_hash": 2684870634818518613,
+        "content_hash": 461613157402464738,
         "backend": "vue"
       }
     ],
@@ -553,6 +1054,16 @@
         "backend": "vue"
       }
     ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toggle.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\toggle.at",
+        "widget_name": "TogglePage",
+        "output_path": "src/pages/toggle.vue",
+        "source_hash": 13177928846126781524,
+        "content_hash": 6785435421975878014,
+        "backend": "vue"
+      }
+    ],
     "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\badge.at": [
       {
         "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\badge.at",
@@ -560,6 +1071,56 @@
         "output_path": "src/pages/badge.vue",
         "source_hash": 8854014886364565104,
         "content_hash": 17091002427322216434,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\select.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\select.at",
+        "widget_name": "SelectPage",
+        "output_path": "src/pages/select.vue",
+        "source_hash": 14545918268134324088,
+        "content_hash": 10442926464970624727,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datepicker.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\datepicker.at",
+        "widget_name": "DatepickerPage",
+        "output_path": "src/pages/datepicker.vue",
+        "source_hash": 5432746117543297450,
+        "content_hash": 10867511656390897461,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\table.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\table.at",
+        "widget_name": "TablePage",
+        "output_path": "src/pages/table.vue",
+        "source_hash": 8693637713787713610,
+        "content_hash": 927858321563843214,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\avatar.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\examples\\widgets-gallery\\src\\front\\pages\\avatar.at",
+        "widget_name": "AvatarPage",
+        "output_path": "src/pages/avatar.vue",
+        "source_hash": 12103696339171166347,
+        "content_hash": 11515983424230360536,
+        "backend": "vue"
+      }
+    ],
+    "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at": [
+      {
+        "source_path": "D:\\autostack\\auto-lang\\.worktree\\fix-408-codegen\\examples\\widgets-gallery\\source\\front\\pages\\command.at",
+        "widget_name": "CommandPage",
+        "output_path": "src/pages/command.vue",
+        "source_hash": 164762566829889976,
+        "content_hash": 8065524522811270074,
         "backend": "vue"
       }
     ]

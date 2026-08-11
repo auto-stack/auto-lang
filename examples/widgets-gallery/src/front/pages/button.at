@@ -3,6 +3,10 @@
 widget ButtonPage {
     model { activeTab str = "preview" }
 
+    on {
+        .showClickToast -> { toast("You Clicked Me!") }
+    }
+
     view {
         col {
             h1 "Button"
@@ -34,6 +38,15 @@ widget ButtonPage {
                     button (text: "Small", size: "sm") {}
                     button "Default"
                     button (text: "Large", size: "lg") {}
+                }
+            }
+
+            h2 "Events"
+            preview-card (id: "button-events") {
+                col (gap: "3") {
+                    button (text: "Click Me", onClick: .showClickToast) {}
+                    text "Click the button to fire a toast via the onClick handler." { style: "text-sm text-muted-foreground" }
+                    toast-provider {}
                 }
             }
 

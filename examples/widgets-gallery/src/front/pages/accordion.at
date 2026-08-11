@@ -23,7 +23,7 @@ widget AccordionPage {
                     accordion-item (value: "item-2") {
                         accordion-trigger "Is it styled?"
                         accordion-content {
-                            text "Yes. It comes with default styles that match the other components."
+                            text "Yes. It comes with default styles that match the other widgets."
                         }
                     }
                     accordion-item (value: "item-3") {

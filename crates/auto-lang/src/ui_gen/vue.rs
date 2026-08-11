@@ -889,6 +889,8 @@ pub struct VueGenerator {
 
     /// Whether theme-toggle component is used
     use_theme_toggle: bool,
+    /// Set when a handler calls toast() so we emit `import { toast } from 'vue-sonner'`.
+    needs_toast_import: bool,
 
     /// Whether CurveType from @unovis/ts is needed (for chart curve-type props)
     use_curve_type: bool,
@@ -1079,6 +1081,7 @@ impl VueGenerator {
             dark_mode_var: None,
             has_accent_color: false,
             use_theme_toggle: false,
+            needs_toast_import: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
             current_loop_var: None,
@@ -1277,6 +1280,7 @@ impl VueGenerator {
         self.dark_mode_var = None;
         self.has_accent_color = false;
         self.use_theme_toggle = false;
+        self.needs_toast_import = false;
         self.global_listeners.clear();
         self.template_refs.clear();
         self.ext_components.clear();
@@ -1956,7 +1960,16 @@ impl VueGenerator {
                 if Self::stmts_call_complete(stmts) {
                     self.debounced_handlers.insert(self.pattern_to_handler_name(pattern));
                 }
+                // Plan 410: detect toast() calls so we import { toast } from vue-sonner.
+                if Self::stmts_call_toast(stmts) {
+                    self.needs_toast_import = true;
+                }
             }
+        }
+
+        // Plan 410: import toast() from vue-sonner when a handler calls it.
+        if self.needs_toast_import {
+            script.push_str("import { toast } from 'vue-sonner'\n");
         }
 
         // Plan 132: Add API imports if needed
@@ -2980,6 +2993,17 @@ impl VueGenerator {
             style.push_str("pre[class*=\"language-\"] {\n");
             style.push_str("  margin: 0;\n");
             style.push_str("}\n\n");
+            // Translucent code-block scrollbars — match ScrollArea's look:
+            // thin, semi-transparent thumb, no track. The codeblock <pre> uses
+            // a dark (zinc-950) background in both themes, so a light thumb
+            // reads on both. WebKit/Blink via ::-webkit-scrollbar, Firefox
+            // via scrollbar-width / scrollbar-color.
+            style.push_str("/* Code block scrollbars: translucent thumb, no track */\n");
+            style.push_str("pre::-webkit-scrollbar { height: 8px; width: 8px; }\n");
+            style.push_str("pre::-webkit-scrollbar-track { background: transparent; }\n");
+            style.push_str("pre::-webkit-scrollbar-thumb { background-color: rgb(244 244 245 / 0.2); border-radius: 9999px; }\n");
+            style.push_str("pre::-webkit-scrollbar-thumb:hover { background-color: rgb(244 244 245 / 0.3); }\n");
+            style.push_str("pre { scrollbar-width: thin; scrollbar-color: rgb(244 244 245 / 0.2) transparent; }\n\n");
         }
 
         style.push_str("/* Component styles */\n");
@@ -3405,7 +3429,12 @@ impl VueGenerator {
                 // If user provides a class prop on form elements, force native HTML
                 // (e.g., TodoMVC needs <input type="checkbox" class="toggle"> not <Checkbox>)
                 let has_user_class = props.contains_key("class") || props.contains_key("style");
-                let force_native_elements = ["checkbox", "input", "button", "textarea"];
+                // "button" is intentionally NOT in this list: a styled button
+                // should still render as shadcn <Button> (with the extra class
+                // overlaid) so it keeps the primary theme color. Only form
+                // elements that need native HTML for their behavior (type attr,
+                // TodoMVC `class="toggle"` on a checkbox) stay here.
+                let force_native_elements = ["checkbox", "input", "textarea"];
                 let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
                 // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
@@ -3603,6 +3632,10 @@ impl VueGenerator {
                 }
 
                 // Build attributes
+                // Plan 410: when a child Text node is hoisted into slot_content
+                // below, record its index so we skip it during child emission —
+                // otherwise the text would render twice (inline + as a child).
+                let mut consumed_text_child_idx: Option<usize> = None;
                 let (attrs, text_content, generated_children) = if is_shadcn_component {
                     // Use shadcn-specific attribute generation (includes event handling)
                     let (shadcn_attrs, mut slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
@@ -3616,11 +3649,12 @@ impl VueGenerator {
                         }
                         // Also check children for a text node
                         if slot_content.is_none() {
-                            for child in children {
+                            for (i, child) in children.iter().enumerate() {
                                 if let AuraNode::Text(content) = child {
                                     match content {
                                         AuraTextContent::Literal(s) => {
                                             slot_content = Some(s.clone());
+                                            consumed_text_child_idx = Some(i);
                                             break;
                                         }
                                         AuraTextContent::Interpolated { template, bindings } => {
@@ -3637,6 +3671,7 @@ impl VueGenerator {
                                                 );
                                             }
                                             slot_content = Some(vue_text);
+                                            consumed_text_child_idx = Some(i);
                                             break;
                                         }
                                     }
@@ -3928,13 +3963,24 @@ impl VueGenerator {
 
                 // Check if we have text content (render as inline content)
                 if let Some(text) = &text_content {
-                    if children.is_empty() {
+                    // Plan 410: a child Text node may have been hoisted into
+                    // `text_content`; count only the remaining children so we
+                    // don't render that text twice.
+                    let has_other_children = children
+                        .iter()
+                        .enumerate()
+                        .any(|(i, _)| Some(i) != consumed_text_child_idx);
+                    if !has_other_children {
                         // <button @click="handler">text</button>
                         Ok(format!("{}<{}{}>{}</{}>\n", ind, html_tag, attr_str, text, html_tag))
                     } else {
                         // Has both text and children - unusual but handle it
                         let mut html = format!("{}<{}{}>{}\n", ind, html_tag, attr_str, text);
-                        for child in children {
+                        for (i, child) in children.iter().enumerate() {
+                            // Skip the child Text node already hoisted into `text`.
+                            if Some(i) == consumed_text_child_idx {
+                                continue;
+                            }
                             // Component children: slot(name:) targets named slots.
                             if is_vue_component {
                                 html.push_str(&self.slot_child_to_html(child, indent + 1)?);
@@ -6042,6 +6088,42 @@ impl VueGenerator {
         stmts.iter().any(|s| walk_stmt(s))
     }
 
+    /// Does this statement list call `toast(...)` (vue-sonner)? If so the
+    /// generated <script setup> needs `import { toast } from 'vue-sonner'`.
+    /// Same recursive walk as `stmts_call_complete`.
+    fn stmts_call_toast(stmts: &[crate::ast::Stmt]) -> bool {
+        use crate::ast::{Expr, Stmt};
+        fn walk_expr(expr: &Expr) -> bool {
+            match expr {
+                Expr::Call(call) => {
+                    if call.get_name_text_safe().map(|n| n.as_str() == "toast").unwrap_or(false) {
+                        return true;
+                    }
+                    call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
+                }
+                Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
+                Expr::Unary(_, e) => walk_expr(e),
+                Expr::Dot(obj, _) => walk_expr(obj),
+                Expr::Array(items) => items.iter().any(|e| walk_expr(e)),
+                Expr::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                _ => false,
+            }
+        }
+        fn walk_stmt(stmt: &Stmt) -> bool {
+            match stmt {
+                Stmt::Expr(expr) => walk_expr(expr),
+                Stmt::Store(store) => walk_expr(&store.expr),
+                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
+                    walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
+                }),
+                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                _ => false,
+            }
+        }
+        stmts.iter().any(|s| walk_stmt(s))
+    }
+
     /// Check if a handler payload contains API calls
     fn handler_has_api_calls(&self, payload: &LogicPayload) -> bool {
         match payload {
@@ -6861,6 +6943,13 @@ impl VueGenerator {
             // User classes are appended after the structural defaults (deduped to avoid repetition).
             "row" => {
                 let mut classes = vec!["flex".to_string(), "flex-row".to_string()];
+                if let Some(value) = props.get("gap") {
+                    if let Some(g) = self.extract_string_value(value) {
+                        if !g.is_empty() {
+                            classes.push(format!("gap-{}", g));
+                        }
+                    }
+                }
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
@@ -6882,6 +6971,13 @@ impl VueGenerator {
 
             "col" | "column" => {
                 let mut classes = vec!["flex".to_string(), "flex-col".to_string()];
+                if let Some(value) = props.get("gap") {
+                    if let Some(g) = self.extract_string_value(value) {
+                        if !g.is_empty() {
+                            classes.push(format!("gap-{}", g));
+                        }
+                    }
+                }
                 if let Some(value) = self.get_style_class(props) {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
@@ -11342,7 +11438,7 @@ const ACCENT_STORAGE_KEY = 'notes-accent-color'
  *  puts `.dark { --primary: ... }` on a root wrapper div, which would
  *  otherwise shadow the value inherited from <html>. We use a microtask
  *  (setTimeout 0) for the .dark pass so Vue has flushed the :class change. */
-export function applyAccent(name: string, isDark = false): void {
+function applyAccent(name: string, isDark = false): void {
   const hsl = ACCENT_PALETTES[name]
   if (!hsl) return
   let finalHsl = hsl
@@ -11386,7 +11482,7 @@ export function applyAccent(name: string, isDark = false): void {
 }
 
 /** Read the saved accent from localStorage, defaulting to 'indigo'. */
-export function getSavedAccent(): string {
+function getSavedAccent(): string {
   try {
     const saved = localStorage.getItem(ACCENT_STORAGE_KEY)
     if (saved && ACCENT_PALETTES[saved]) return saved
@@ -11395,7 +11491,7 @@ export function getSavedAccent(): string {
 }
 
 /** List of accent names for UI rendering (swatch buttons). */
-export function getAccentNames(): string[] {
+function getAccentNames(): string[] {
   return ACCENT_NAMES
 }
 "#;

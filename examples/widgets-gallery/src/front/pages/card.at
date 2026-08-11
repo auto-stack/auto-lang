@@ -158,8 +158,8 @@ widget CardPage {
                 }
             }
 
-            // Components Table
-            h2 "Components"
+            // Widgets Table
+            h2 "Widgets"
             table {
                 thead {
                     tr {

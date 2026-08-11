@@ -417,7 +417,12 @@ fn r004_undefined_handler(sfc: &str, widget: &str, ctx: &ValidationContext) -> V
     let script = extract_script(sfc);
 
     // 提取模板里所有 @xxx="Y" / @xxx="Y(args)" 引用的 handler 名
-    let handler_ref_re = regex_lite(r#"@\w+(?:\.\w+)*\s*=\s*"([a-zA-Z_]\w*)"#);
+    // Only treat as a handler reference when the identifier is followed by `(`
+    // (call) or the closing `"` (bare reference). This excludes inline
+    // assignment expressions like `@click="foo = !foo"` or `@click="bar = 'x'"`
+    // which toggle/set a ref directly and need no function definition —
+    // otherwise R004 false-positives every Code/Tab toggle button.
+    let handler_ref_re = regex_lite(r#"@\w+(?:\.\w+)*\s*=\s*"([a-zA-Z_]\w*)\s*(?:\(|")"#);
     let mut referenced: Vec<String> = Vec::new();
     for cap in handler_ref_re.captures_iter(&template) {
         referenced.push(cap.group(1).to_string());
@@ -904,6 +909,31 @@ defineExpose({ useClock })"#,
         let sfc = make_sfc(
             r#"<button @click="Save">x</button>"#,
             r#"function Save() {}"#,
+        );
+        let ctx = ValidationContext::default();
+        let ws = r004_undefined_handler(&sfc, "Test", &ctx);
+        assert_eq!(ws.len(), 0);
+    }
+
+    #[test]
+    fn r004_ignores_inline_toggle_assignment() {
+        // `@click="foo = !foo"` toggles a ref inline — NOT a handler call.
+        // Must NOT be flagged (regression guard for gallery Code/Tab buttons).
+        let sfc = make_sfc(
+            r#"<button @click="foo = !foo">x</button>"#,
+            r#"const foo = ref(true)"#,
+        );
+        let ctx = ValidationContext::default();
+        let ws = r004_undefined_handler(&sfc, "Test", &ctx);
+        assert_eq!(ws.len(), 0);
+    }
+
+    #[test]
+    fn r004_ignores_inline_setter_assignment() {
+        // `@click="tab = 'auto'"` sets a ref inline — NOT a handler call.
+        let sfc = make_sfc(
+            r#"<button @click="tab = 'auto'">x</button>"#,
+            r#"const tab = ref('auto')"#,
         );
         let ctx = ValidationContext::default();
         let ws = r004_undefined_handler(&sfc, "Test", &ctx);

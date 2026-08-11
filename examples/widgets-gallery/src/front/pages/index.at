@@ -18,7 +18,7 @@ widget IndexPage {
                 col (style: "relative px-4 py-12 md:py-20 lg:py-24 text-center gap-4") {
                     badge (variant: "outline", style: "mx-auto mb-2") {
                         icon (name: "layers", style: "h-3 w-3 mr-1.5") {}
-                        text "v1.0 — 46 Components"
+                        text "v1.0 — 49 Widgets"
                     }
 
                     // Plan 409 §8: "Auto UI" hero in the theme color. The old
@@ -38,7 +38,7 @@ widget IndexPage {
                         button (text: "Get Started", size: "lg", style: "shadow-lg shadow-primary/25") {
                             icon (name: "arrow-right", style: "h-4 w-4") {}
                         }
-                        button (text: "Browse Components", variant: "outline", size: "lg") {}
+                        button (text: "Browse Widgets", variant: "outline", size: "lg") {}
                     }
                 }
             }
@@ -46,13 +46,13 @@ widget IndexPage {
             // Search bar
             div (style: "max-w-xl mx-auto w-full relative") {
                 icon (name: "search", style: "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground") {}
-                input (placeholder: "Search components...", style: "pl-10 h-11 rounded-xl", value: .searchQuery) {}
+                input (placeholder: "Search widgets...", style: "pl-10 h-11 rounded-xl w-full", value: .searchQuery) {}
             }
 
             // Component categories grid
             col (style: "gap-10") {
                 // Form category
-                category-section (name: "Form", color: "blue", count: 12) {
+                category-section (name: "Form", color: "blue", count: 15) {
                     component-card (to: "/button", name: "Button", desc: "Clickable actions", icon: "mouse-pointer-click") {}
                     component-card (to: "/input", name: "Input", desc: "Text fields", icon: "type") {}
                     component-card (to: "/textarea", name: "Textarea", desc: "Multi-line text", icon: "type") {}
@@ -65,10 +65,13 @@ widget IndexPage {
                     component-card (to: "/slider", name: "Slider", desc: "Range values", icon: "layout-grid") {}
                     component-card (to: "/calendar", name: "Calendar", desc: "Date display", icon: "layout-grid") {}
                     component-card (to: "/datepicker", name: "DatePicker", desc: "Date selection", icon: "layout-grid") {}
+                    component-card (to: "/radiogroup", name: "RadioGroup", desc: "Single-choice options", icon: "layout-grid") {}
+                    component-card (to: "/toggle", name: "Toggle", desc: "Toggle buttons", icon: "square-stack") {}
+                    component-card (to: "/togglegroup", name: "ToggleGroup", desc: "Toggle groups", icon: "layout-grid") {}
                 }
 
                 // Display category
-                category-section (name: "Display", color: "emerald", count: 8) {
+                category-section (name: "Display", color: "emerald", count: 9) {
                     component-card (to: "/card", name: "Card", desc: "Content containers", icon: "square-stack") {}
                     component-card (to: "/badge", name: "Badge", desc: "Status labels", icon: "bell") {}
                     component-card (to: "/avatar", name: "Avatar", desc: "User pictures", icon: "image") {}
@@ -77,10 +80,11 @@ widget IndexPage {
                     component-card (to: "/carousel", name: "Carousel", desc: "Slideshows", icon: "layout-grid") {}
                     component-card (to: "/table", name: "Table", desc: "Data grids", icon: "layout-grid") {}
                     component-card (to: "/datatable", name: "DataTable", desc: "Advanced tables", icon: "layout-grid") {}
+                    component-card (to: "/grid", name: "Grid", desc: "Layout grids", icon: "layout-grid") {}
                 }
 
                 // Feedback category
-                category-section (name: "Feedback", color: "amber", count: 7) {
+                category-section (name: "Feedback", color: "amber", count: 5) {
                     component-card (to: "/alert", name: "Alert", desc: "Callout messages", icon: "bell") {}
                     component-card (to: "/progress", name: "Progress", desc: "Progress bars", icon: "layout-grid") {}
                     component-card (to: "/sonner", name: "Sonner", desc: "Toast notifications", icon: "bell") {}
@@ -89,7 +93,7 @@ widget IndexPage {
                 }
 
                 // Navigation category
-                category-section (name: "Navigation", color: "purple", count: 9) {
+                category-section (name: "Navigation", color: "purple", count: 10) {
                     component-card (to: "/breadcrumb", name: "Breadcrumb", desc: "Path navigation", icon: "navigation") {}
                     component-card (to: "/tabs", name: "Tabs", desc: "Tab panels", icon: "layout-grid") {}
                     component-card (to: "/menubar", name: "Menubar", desc: "Menu bars", icon: "layout-grid") {}
@@ -99,6 +103,7 @@ widget IndexPage {
                     component-card (to: "/command", name: "Command", desc: "Command palettes", icon: "command") {}
                     component-card (to: "/scrollarea", name: "ScrollArea", desc: "Scrollable regions", icon: "layout-grid") {}
                     component-card (to: "/separator", name: "Separator", desc: "Dividers", icon: "layout-grid") {}
+                    component-card (to: "/navlink", name: "NavLink", desc: "Navigation links", icon: "navigation") {}
                 }
 
                 // Overlay category
@@ -112,6 +117,7 @@ widget IndexPage {
                     component-card (to: "/contextmenu", name: "ContextMenu", desc: "Right-click menus", icon: "layout-grid") {}
                     component-card (to: "/collapsible", name: "Collapsible", desc: "Expand/collapse", icon: "layout-grid") {}
                     component-card (to: "/accordion", name: "Accordion", desc: "Collapsible sections", icon: "layout-grid") {}
+                    component-card (to: "/hovercard", name: "HoverCard", desc: "Hover popovers", icon: "layout-grid") {}
                 }
             }
 

@@ -20,7 +20,7 @@ widget BreadcrumbPage {
                         }
                         breadcrumb-separator {}
                         breadcrumb-item {
-                            breadcrumb-link (text: "Components", href: "/components") {}
+                            breadcrumb-link (text: "Widgets", href: "/components") {}
                         }
                         breadcrumb-separator {}
                         breadcrumb-item {
