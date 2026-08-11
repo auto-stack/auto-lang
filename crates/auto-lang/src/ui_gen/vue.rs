@@ -14044,6 +14044,44 @@ widget App {
         );
     }
 
+    /// jade 5.3c self-heal lock: a quoted component event whose emit carries
+    /// TWO args (e.g. the editor's `open-wiki-link` (title, blockId)) wires a
+    /// bare handler reference, so Vue passes BOTH args to the handler — and
+    /// the multi-param handler (gap 37b) keeps both params in scope. Locks
+    /// the jade editor_tab migration off the prop-callback channel.
+    #[test]
+    fn test_quoted_component_event_multi_arg_handler() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget EditorTab {
+    msg Msg { OpenWikiLink }
+    model { var tabsStore list = [] }
+    view {
+        col {
+            EditorShell {
+                on "open-wiki-link": .OpenWikiLink
+            }
+        }
+    }
+    on {
+        .OpenWikiLink(title, block_id) -> {
+            log(title)
+            log(block_id)
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@open-wiki-link=\"OpenWikiLink\""),
+            "quoted event wires a bare handler ref (all emit args flow):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function OpenWikiLink(title: any, block_id: any)"),
+            "both handler params in the generated signature:\n{}",
+            sfc
+        );
+    }
+
     // ====================================================================
     // Dynamic components (dyn) and reactive watchers (watch).
     // ====================================================================
