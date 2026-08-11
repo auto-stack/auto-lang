@@ -819,6 +819,15 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             }
         }
 
+        // Plan 408 P12 §10.7: Await expression — `expr.await`.
+        // Transpile the inner expression (recursing so `.path` → `props.path`
+        // and state refs get `.value`), then wrap as `(await <expr>)`.
+        Expr::Await { expr } => {
+            write!(out, "(await ").ok();
+            transpile_expr(expr, ctx, out);
+            write!(out, ")").ok();
+        }
+
         // Binary ops — AURA-aware on both sides
         Expr::Bina(lhs, op, rhs) => {
             // Handle assignment operators specially (target needs StateRef check)
@@ -1324,6 +1333,8 @@ pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
             Expr::Unary(_, e) => walk_expr(e, api_fns),
             Expr::Dot(obj, _) => walk_expr(obj, api_fns),
             Expr::Array(items) => items.iter().any(|e| walk_expr(e, api_fns)),
+            // Plan 408 P12 §10.7: `.await` expressions require an async handler.
+            Expr::Await { .. } => true,
             _ => false,
         }
     }

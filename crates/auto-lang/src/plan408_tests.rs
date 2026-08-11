@@ -500,7 +500,41 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §10.4 composable facade ref：`use { composable: useX(refs: [field]) }`
+    /// §10.7 缺口 A+B：on handler body 含 await → async() =>；props 访问加 props. 前缀。
+    #[test]
+    fn test_on_handler_async_await_and_props() {
+        let tmp = std::env::temp_dir().join("plan408_async_handler_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn Preview(path: str) {\n",
+            "    use { fn: loadText from \"./load.ts\" }\n",
+            "    model { var content str = \"\" }\n",
+            "    on { .Init -> { .content = loadText(.path).await } }\n",
+            "    div { text .content }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("async handler must compile");
+        let code = result.vue_code.clone();
+
+        // 缺口 A: async handler.
+        assert!(code.contains("onMounted(async () =>"),
+            "Init handler with await must be async: {}", code);
+        // 缺口 B: props access in handler body.
+        assert!(code.contains("props.path"),
+            "handler body prop access must use props. prefix: {}", code);
+        // await expression transpiled.
+        assert!(code.contains("await loadText(props.path)"),
+            "await + props.path must both be present: {}", code);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// 标注的 ref 字段在 script 表达式里访问时加 `.value`。
     #[test]
     fn test_composable_facade_ref_unwrap() {
