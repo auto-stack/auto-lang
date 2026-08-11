@@ -192,9 +192,9 @@ auto-man 侧（实测后范围缩小）:
 1. ✅ `collect_ext_import_files` — **实测无需改**：`is_local_ext_path("")` 返回 false，空 path 自动不进 ext_file_set，不会触发 copy_ext_files 报错。
 2. ✅ app.at i>0 分支（vue.rs:1430）+ front_dir 直文件分支（vue.rs:1562）— 真正缺口是重新生成 SFC 时 `VueGenerator::new_shadcn()` **未带 sub_widgets**，导致同文件/跨文件 component fn 引用解析失败。已修正为 `.with_sub_widgets(sub_widget_names.clone())`（sub_widget_names 含跨文件 component fn 名，Phase 1 收集）。
 3. ⚠️ app.at lowercase（vue.rs:1447）— **实测不影响**：写盘循环对非 pages 路径用第四元组 `widget_name`（原样），不读第二元组 `name`（lowercase）。
-4. ⏳ pages 路径 component fn SFC 写盘 — 仍残留（见 KNOWN-DEBT），罕见场景，修复需改 lib.rs 公开 API。
+4. ✅ pages 路径 component fn SFC 写盘 — **P11 已修**（`ui_build_shadcn_all_widget_codes` + auto-man pages 路径改用之，KNOWN-DEBT 清零）。
 
-**结论**: 跨文件复用的 front_dir 直文件 + app.at 路径已打通（含跨文件 component fn 名收集）。pages 路径作为残留。
+**结论**: 跨文件复用的 front_dir 直文件 + app.at + pages 路径全部打通（含跨文件 component fn 名收集）。
 
 ### 6.3 残留 3：auto-musk 试点 —— 本轮不做（需先扩展 component fn 能力）
 
@@ -480,13 +480,13 @@ component fn AgentAvatar(...) {
 
 **优先级**：🟡 中——阻塞 AgentAvatar/RawPreview 等需要动态 inline style 的组件；不影响纯 class 组件。
 
-**绕过**（auto-musk 侧）：把动态 style 逻辑放 forge_helpers fn 返回完整 CSS 字符串，但 `style: .fn(...)` 变量引用仍中招——**当前无有效绕过**（任何 style 动态表达式都触发）。AgentAvatar 暂保留逃生舱。
+**绕过**（auto-musk 侧）：~~把动态 style 逻辑放 forge_helpers fn 返回完整 CSS 字符串，但 `style: .fn(...)` 变量引用仍中招——当前无有效绕过。AgentAvatar 暂保留逃生舱。~~ **✅ P12 §10.1 已修**（`extract_classes` 三元组重构，`__style__` marker 消除，style 走独立 `:style` 通道）。AgentAvatar 解封。
 
 ---
 
 ## 8. P4 实施记录：component fn emit + model（2026-08-11 落地）
 
-> 本节是已落地的实施记录，对应 §7.3 缺陷4（emit）的 emit 部分 + model（本地状态）。§7 系列的其余缺陷（1+2/3/5/6/7）仍待逐个落地。
+> 本节是已落地的实施记录，对应 §7.3 缺陷4（emit）的 emit 部分 + model（本地状态）。§7 系列的其余缺陷（1+2/3/5/6/7）**已全部落地**（P5–P10）。
 
 ### 8.1 emit + model（对应 §7.3 缺陷4 的 emit 侧 + 本地状态）
 
@@ -676,7 +676,7 @@ component fn RawPreview(workspace: str, path: str) {
 - `cargo test -p auto-lang` 零回归。
 - auto-musk 侧：AgentAvatar 原生化（缺陷 9 修复后）+ RawPreview/SessionInfo 原生化（10.2/10.3/10.4 修复后）。
 
-### 10.6 与 auto-musk 023 的闭环
+### 10.7 与 auto-musk 023 的闭环
 
 P12 修复后，auto-musk 剩余 15 个逃生舱的阻塞解除路径：
 - **AgentAvatar** → 10.1（缺陷 9）单点解封。
