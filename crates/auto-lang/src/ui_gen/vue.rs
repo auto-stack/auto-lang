@@ -15387,6 +15387,46 @@ store Graph {
         );
     }
 
+    /// Plan 012 Batch G (gap 10 regression guard): a store handler with
+    /// `return expr` must parse and emit a real `return <value>` in the
+    /// generated action. Returning from a Pinia action is legal, and callers
+    /// of the composable action receive the value — this removes the need
+    /// to move value-returning methods into facade/ext modules. The path
+    /// self-healed once with-value `return` reached the general statement
+    /// layer (batch F) — this test pins the store-side end-to-end path.
+    #[test]
+    fn test_store_handler_return_value() {
+        // Real parse path.
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Counter {
+    model {
+        var count int = 0
+    }
+    msg Msg { Bump, GetCount }
+    on {
+        .Bump -> {
+            .count += 1
+            return .count
+        }
+        .GetCount -> {
+            return .count
+        }
+    }
+}
+"#,
+        ));
+
+        assert!(
+            code.contains("return count.value;"),
+            "return value must emit through state-ref rewriting, got:\n{}",
+            code
+        );
+        // Both actions stay exposed on the composable return object.
+        assert!(code.contains("Bump,"), "Bump exposed:\n{}", code);
+        assert!(code.contains("GetCount,"), "GetCount exposed:\n{}", code);
+    }
+
     /// Plan 012 Batch G (gap 12): a store-level `watch { ... }` block must
     /// parse, extract, and emit as module-level `watch(...)` calls in the
     /// store composable (with the `watch` import added). Mirrors the
