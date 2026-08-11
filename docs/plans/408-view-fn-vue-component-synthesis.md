@@ -449,7 +449,7 @@ TS2367（`ComputedRef` 与 `string` 比较）。**根因**：P9 的 `.value` 注
 
 > **2026-08-11 核查结论（文档滞后）**：缺陷 8 实际**已修复**——commit `06ba08ac`（Plan 012 Batch A gap 44，2026-08-07）比本节文档早 4 天落地。`expr_to_js` 的 `Expr::Dot` 分支递归转译 object 子树，命中 `computed_names` 时注入 `.value`（vue.rs:5355），故 `b => .a.field` → `a.value.field`（字段访问位置正确 unwrap）。P10 新增 `test_computed_references_computed_unwraps_value` 固化此行为。
 >
-> **窄残留**：多语句 computed body（IIFE fallback 路径，vue.rs:5530/5572）走 `ts_adapter::transpile_handler_body`，构造 `AuraTsContext` 时**未传 computed_names**——多语句 computed body 内引用另一个 computed 仍会漏 `.value`。单表达式 computed（含 P9 三元化的 if/else）全部正确。窄场景，后续补 `AuraTsContext.with_computed` 即可。
+> **窄残留（2026-08-11 P10 续 已修复）**：多语句 computed body（IIFE fallback 路径）+ 嵌套 if 深层分支漏 `.value`（a9e4397e TaskPlanCard 暴露）。根因：ts_adapter 的 `AuraTsContext` 无 computed_names 概念，IIFE/Block/handler-body 路径不 unwrap。**已修**：`AuraTsContext` 加 `computed_names` 字段 + `with_computed` setter；`Expr::Dot`/`Expr::Ident` 的 is_computed 分支注入 `.value`；vue.rs 三处 ctx 构造点（:2687/:5537/:5578）传入 `with_computed(self.computed_names...)`。测试 `test_nested_if_computed_value_unwrap` 固化（嵌套 if 所有层都 unwrap）。缺陷 8 现在全覆盖（单层 gap44 + 嵌套 P10 续）。
 
 ---
 

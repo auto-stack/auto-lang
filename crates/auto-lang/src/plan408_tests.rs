@@ -438,7 +438,54 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §7.8 缺陷 8 regression: a computed referencing another computed must
+    /// §7.8 缺陷 8 嵌套残留（a9e4397e TaskPlanCard 暴露）：嵌套 if（else 里
+    /// 再 if）的深层分支引用 computed 时，2+ 层分支此前漏 .value（单层 if
+    /// 正确）。根因：IIFE/多语句 computed body 路径走 ts_adapter，未传
+    /// computed_names。修复：AuraTsContext 加 computed_names + with_computed，
+    /// vue.rs 三处 ctx 构造点传入。本测试固化"嵌套 if 所有层都 unwrap .value"。
+    #[test]
+    fn test_nested_if_computed_value_unwrap() {
+        let tmp = std::env::temp_dir().join("plan408_nested_if_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget Card {\n",
+            "    model { var code str = \"a\" }\n",
+            "    computed {\n",
+            "        status => .code\n",
+            "        label => if .status == \"a\" { \"X\" } else { if .status == \"b\" { \"Y\" } else { \"Z\" } }\n",
+            "    }\n",
+            "    view { div { text .label } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("nested if case must compile");
+        let code = result.vue_code.clone();
+
+        // Count `status.value` — should appear in BOTH the outer and the
+        // nested-inner condition (2 occurrences for this 2-level if).
+        let count = code.matches("status.value").count();
+        assert!(
+            count >= 2,
+            "nested if must unwrap .value at every level (expected >=2 status.value, got {}): {}",
+            count, code
+        );
+        // No bare `status ==` (without .value) left.
+        assert!(
+            !code.contains("status =="),
+            "must not leave a bare status == comparison without .value: {}",
+            code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+
+
     /// unwrap the inner ComputedRef with `.value` at **field-access** position
     /// (`b => .a.field` → `a.value.field`), not just at comparison position.
     /// Fixed by Plan 012 Batch A gap 44; this test pins the cross-computed

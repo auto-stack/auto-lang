@@ -2685,7 +2685,8 @@ impl VueGenerator {
             LogicPayload::AstStmts(stmts) => {
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect());
+                    .with_refs(self.template_refs.iter().cloned().collect())
+                    .with_computed(self.computed_names.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
@@ -5535,7 +5536,8 @@ impl VueGenerator {
             Expr::Block(body) => {
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect());
+                    .with_refs(self.template_refs.iter().cloned().collect())
+                    .with_computed(self.computed_names.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
@@ -5576,7 +5578,8 @@ impl VueGenerator {
                 // Fallback: IIFE (multi-statement branches need a block + return).
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect());
+                    .with_refs(self.template_refs.iter().cloned().collect())
+                    .with_computed(self.computed_names.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
