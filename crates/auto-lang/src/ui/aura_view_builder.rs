@@ -468,6 +468,19 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
+                // Plan 408: nav-link renders as a navigable button (like link).
+                if name == "nav-link" || name == "nav_link" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    let to = self.extract_string(&prop_map, "to")
+                        .or_else(|| self.extract_string(&prop_map, "href"))
+                        .unwrap_or_default();
+                    let label = self.extract_string(&prop_map, "label")
+                        .or_else(|| self.extract_string(&prop_map, "text"))
+                        .unwrap_or_default();
+                    return self.render_link_button(&label, &[], &to, bindings);
+                }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
@@ -679,6 +692,19 @@ impl<'a> AuraViewBuilder<'a> {
                 }
             }
             AuraNode::Component { name, props, events, .. } => {
+                // Plan 408: nav-link renders as a navigable button (like link).
+                if name == "nav-link" || name == "nav_link" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    let to = self.extract_string(&prop_map, "to")
+                        .or_else(|| self.extract_string(&prop_map, "href"))
+                        .unwrap_or_default();
+                    let label = self.extract_string(&prop_map, "label")
+                        .or_else(|| self.extract_string(&prop_map, "text"))
+                        .unwrap_or_default();
+                    return self.render_link_button(&label, &[], &to, bindings);
+                }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
