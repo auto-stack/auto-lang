@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: ✅ **P1–P11 全部完成并合并 master**。P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）+ P4（emit+model）+ P5（use{fn}）+ P6（prop 绑定）+ P7（动态索引）+ P8（table 原生）+ P9（computed 三元）+ P10（prop-as-handler）+ P11（slot + pages 写盘 + 类型收窄）。§7 缺陷表全部修复。**唯一仍开放**：auto-musk 试点（§6.3，跨仓库应用层验证）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ P1–P11 完成（§7 缺陷 1-8 全修复）。📋 **P12 立项（2026-08-11，来自 auto-musk 023 P3 阶段结论）**——剩余 codegen 缺陷 + 能力缺口（§9）：缺陷 9（动态 style）、watch 块、宿主全局标识符（document/navigator）、composable facade ref `.value`。这些阻塞 auto-musk 剩余 15 个逃生舱的原生化。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -563,4 +563,116 @@ widget App {
 
 **验证**: `test_fn_call_field_uses_optional_chain`（`getState(id.value)?.name`）。vue 193 全绿，零回归（通用 `fn().field` → `fn()?.field` 改动不破坏既有测试）。
 
-**P11 整体验证**: auto-lang vue 193 + plan408 15 + auto-man 编译，零回归。
+**P11 整体验验**: auto-lang vue 193 + plan408 15 + auto-man 编译，零回归。
+
+---
+
+## 10. P12：剩余 codegen 缺陷 + 能力缺口（2026-08-11 立项，来自 auto-musk 023 P3 阶段结论）
+
+> **来源**: auto-musk 023 P3 已原生化 6 个逃生舱（消息渲染链：UserMessage/ErrandCard/TaskPlanCard/GenericToolCard/ChatMessage/StreamingTable），剩余 15 个受阻于以下 4 项。每项含精确根因（代码位置）+ 修法 + 验证 + 解锁的组件。调研详见 auto-musk 侧 Explore 报告（2026-08-11）。
+>
+> **总判定**：能力 1/2（composable/template ref）已基本就绪；能力 3/4（watch/宿主全局）是纯缺口（parser 层）；缺陷 9 是 codegen bug（vue.rs `__style__` marker）。修复顺序：缺陷 9 → watch → 宿主全局 → composable facade ref。
+
+### 10.1 缺陷 9 修复：动态 `style:` 与动态 `class:` 共存时 marker 泄漏（对应 §7.9）
+
+**精确根因**（调研修正 §7.9 措辞）：
+- `__style__` marker 设计意图：`style:` 的动态表达式（变量/拼接）经 `extract_classes`（vue.rs:5080-5093）塞进 `dynamic_binding: Option<String>`（本为 class 设计的通道），消费端（vue.rs:3504/9356/2862）按 `__style__` 前缀 strip 后分流到 `:style`。
+- **触发条件**：**动态 style（变量/拼接）+ 动态 class（if/expr）共存于同一节点**。当 class 也动态时，`extract_classes` 的 class 分支（vue.rs:5139/5143 续）把含 `__style__` marker 的 `existing` 包进数组 `[existing, ternary]`。消费端 `dynamic.strip_prefix("__style__")` 对 `[__style__..., ...]`（以 `[` 开头）返回 `None`，整体落到 `:class` 分支 → `:class="[__style__'background: '+bg+..., sizeClass=='xs'?...]"`（TS1005 语法错）。
+- **边界**（重要）：`style: <var>` **单独存在**（无动态 class）时，`dynamic_binding="__style__var"` 经消费端 3504 正确 strip → `:style="var"`，**可用**。缺陷仅在共存时触发。AgentAvatar 恰好 `class: if .size...` + `style: .styleStr` 同时存在，故中招。
+
+**修法**：`extract_classes` 返回独立的 style 表达式通道——从 `(classes, dynamic_binding)` 二元组改为 `(classes, dynamic_class, dynamic_style)` 三元组，让 style 表达式与 class 表达式各自走自己的 `:style`/`:class` 属性，**彻底消除 marker 复用 class 通道的需要**。消费端三处（vue.rs:3500-3509/9355-9361/2861-2867）相应改读 `dynamic_style` 生成 `:style`，不再 strip `__style__` 前缀。
+
+**解锁组件**: AgentAvatar（hsl 颜色按 professionId 动态 inline style）。
+
+**验证**: 探针——`component fn { computed { bg => ... } span { class: if .s=="xs"{..}else{..} style: "background: "+.bg } }` → 产物含 `:class="s=='xs'?..."` + `:style="'background: '+bg"`（两个独立属性，无 `__style__` 泄漏）。新增 `test_dynamic_style_with_dynamic_class`。
+
+### 10.2 watch 块：component fn 不支持 watch（parser + extract 双缺）
+
+**现状**（纯缺口，codegen 已就绪）:
+- parser: `parse_fragment_decl_body_tail`（parser.rs:12543-12646）只解析 use/computed/msg/model/on，**无 `watch` 分支**。widget 的 `parse_widget_decl` 才有（parser.rs:11445 → `parse_watch_block_inner` parser.rs:11631）。
+- extract: `extract_widget_from_fragment` 硬编码 `watchers: Vec::new()`（extract.rs:782）。
+- vue codegen: widget.watchers → `watch()` 调用（vue.rs:2160-2189，含 immediate/deep + props getter 回退 `() => props.x`）**已就绪**——component fn 复用 `generate_sfc`，一旦 extract 填充 `watchers` 即自动产出（零 codegen 改动）。
+
+**修法**（与 P4 emit/model 同构）:
+1. `ast/ui.rs`: `ViewFragmentDecl` 加 `watch: Vec<WatchDecl>`（仅 component fn；view fn 恒空）。
+2. `parser.rs parse_fragment_decl_body_tail`: model 之后、on 之前加 `watch` 分支（复用 `parse_watch_block_inner`，仅 `is_component`）。
+3. `aura/extract.rs extract_widget_from_fragment`: `frag.watch` → `watchers`（复用 widget 的 watch 提取）。
+
+**语法**（params → computed → msg → model → **watch** → on → view body）:
+```auto
+component fn RawPreview(workspace: str, path: str) {
+    use { fn: loadRawFileText from "..." }
+    model { var content str = "" }
+    watch {
+        .path => { .content = loadRawFileText(.workspace, .path) }
+    }
+    ...
+}
+```
+→ `watch(() => props.path, () => { content.value = loadRawFileText(props.workspace, props.path) })`。
+
+**解锁组件**: RawPreview（`watch(() => props.path, load)` 监听路径变化重载）。
+
+**验证**: `test_component_fn_with_watch`——component fn 含 watch 块 → SFC 含 `watch(() => props.x, ...)`；回归断言 view fn 带 watch 解析失败。
+
+### 10.3 宿主全局标识符：`.Init`/`.Destroy` handler body 内 `document`/`navigator`/`window` 被 check_symbol 阻塞
+
+**现状**（parser 层阻塞，codegen 已就绪）:
+- parser: `check_symbol`（parser.rs:10439-10518）在每次 `expr()` 后调用（parser.rs:1740），对未绑定 ident 抛 "undefined variable"。`document`/`navigator`/`window`/`localStorage`/`matchMedia` **未在任何 stdlib/parser/scope 注册**（exists parser.rs:873-906 查 type_store/infer_ctx/py_item_imports 均不命中）→ `document.addEventListener(...)` 在 on handler body 内 → **"undefined variable: document"**，模块解析失败。
+- vue codegen: ts_adapter 对未知 ident 原样直出（ts_adapter.rs:602-604），单测 `document_window_passthrough`（ts_adapter.rs:1603）证明 `document.activeElement`/`window.innerWidth` 直出无误——**但该测试直接构造 Expr 绕过 parser**。即转译器通、parser 不通。
+- 已支持的相关路径：`onclick.window`/`onwheel.document` 事件修饰符（vue.rs:2406-2438 生成 addEventListener/removeEventListener 对）——不依赖 handler body 内裸 `document` 标识符。
+
+**修法**（两选一）:
+- **方案 A（推荐）**: parser 注册一组宿主全局白名单（document/window/navigator/localStorage/sessionStorage/matchMedia/confirm/alert 等），在 `check_symbol` 的 `Expr::Ident` 分支（parser.rs:10477）豁免。最小改动，覆盖所有宿主全局。
+- **方案 B**: 对 on-handler body 关闭 `check_symbol`（`in_on_body` 标志已存在 parser.rs:191/13796，当前未用于豁免）。范围过大，可能放过真正的未定义变量。
+
+**建议方案 A**——精准、低回归。
+
+**解锁组件**: SessionInfo（`document.addEventListener('click', onDocClick)` 点击外部关闭 + `navigator.clipboard.writeText` 复制）。注意：SessionInfo 还依赖 composable（useI18n/store，见 10.4）+ template ref（已支持，见调研能力 2）。
+
+**验证**: `test_on_handler_host_global`——`on { .Init -> { document.addEventListener("click", .OnDocClick) } }` → SFC 含 `onMounted(() => { document.addEventListener('click', onDocClick) })`，无 parser 错误。
+
+### 10.4 composable facade ref `.value`：facade passthrough 不 unwrap Ref 字段
+
+**现状**（部分支持，Ref 访问隐患）:
+- composable 经 `use { composable: useX }` 引入 → `register_ext_imports`（vue.rs:1354-1411）named import + 登记 `ext_composables`。
+- 顶层调用绑定（vue.rs:1843-1847）：`const localName = useX()`（**整体绑定，非解构** `const { a, b } = useX()`）。.at 层无解构语法。
+- composable 字段访问：`localName.field`，local 被识别为 facade（`is_ext_composable_local` vue.rs:2775、`facade_local_names` vue.rs:2781）。ts_adapter 的 `method_map_decision` 对 facade 返回 `PassWarn`（ts_adapter.rs:212-216），方法调用（`localName.resolveGate()`）不被误改——**方法调用 OK**。
+- **隐患**：composable 返回的 **ref 字段**（如 `useGateInbox().currentSecretary` 是 `Ref<PendingGate|null>`）以 facade passthrough 直出 `localName.currentSecretary`，**不加 `.value`**——handler/computed 访问拿到 Ref 对象而非值。与缺陷 8（computed `.value`）同源，但面向 composable facade 尚未处理。
+
+**修法**: ts_adapter 的 `Expr::Dot`/`Expr::Ident` 分支，当 object 是 facade local 且字段是已知 ref（需 composable 返回类型信息，或一律按 ref 处理加 `.value`）时注入 `.value`。复杂度：composable 返回类型在 .at 层不可知——可考虑一律对 facade 字段访问加 `.value`（若字段非 ref，`.value` 在运行时 undefined，TS 报错但可 `as any` 兜底）。或要求 composable 在声明时标注 ref 字段。
+
+**降级**：若 composable 返回的 ref 字段无法精确 unwrap，auto-musk 侧可用 forge_helpers fn 包装 composable 调用（fn 内部解构 + 正确 `.value`，返回扁平值），component fn 调 fn。这绕过 facade ref 问题，但每个 composable 要写一个 wrapper fn。
+
+**解锁组件**: SecretaryMessageWrapper（`useGateInbox().currentSecretary` Ref + `resolveGate()` 方法）、SessionInfo（`useI18n().t` + store reactive）。注意：这些组件还依赖 10.3（宿主全局）。
+
+**验证**: `test_composable_facade_ref_unwrap`——`use { composable: useCounter }` + `computed { count => .counter.value }`（counter 是 facade，.value 是其 ref 字段）→ SFC 含 `counter.value`（而非裸 `counter`）。
+
+### 10.5 P12 实施顺序与解锁路径
+
+| 工作项 | 优先级 | 改动面 | 解锁的 auto-musk 组件 |
+|---|---|---|---|
+| **10.1 缺陷 9**（动态 style） | 🔴 高 | vue.rs extract_classes 三元组重构 | AgentAvatar |
+| **10.2 watch 块** | 🟡 中 | parser + extract 镜像（codegen 零改动） | RawPreview（部分，还需 10.3） |
+| **10.3 宿主全局标识符** | 🔴 高 | parser check_symbol 白名单（最小） | SessionInfo（还需 10.4）、RawPreview（onMounted） |
+| **10.4 composable facade ref** | 🟡 中 | ts_adapter facade 字段 unwrap | SecretaryMessageWrapper、SessionInfo |
+
+**P12 验收**:
+- 缺陷 9：AgentAvatar 探针产物 TS 全绿（动态 style + 动态 class 共存）。
+- watch：component fn 含 watch 块 → `watch()` 调用正确生成。
+- 宿主全局：on handler body 内 `document`/`navigator` 不再 parser 报错。
+- composable facade ref：facade ref 字段访问正确 `.value`。
+- `cargo test -p auto-lang` 零回归。
+- auto-musk 侧：AgentAvatar 原生化（缺陷 9 修复后）+ RawPreview/SessionInfo 原生化（10.2/10.3/10.4 修复后）。
+
+### 10.6 与 auto-musk 023 的闭环
+
+P12 修复后，auto-musk 剩余 15 个逃生舱的阻塞解除路径：
+- **AgentAvatar** → 10.1（缺陷 9）单点解封。
+- **RawPreview** → 10.2（watch）+ 10.3（宿主全局 onMounted）。
+- **SessionInfo** → 10.3（宿主全局 document/navigator）+ 10.4（composable facade ref）。
+- **SecretaryMessageWrapper** → 10.4（composable facade ref）。
+- **StreamingRenderer**（流式增量 JSON useStreamingDocument）→ 仍开放（composable 的复杂响应式用法，待评估，可能超 P12 范畴）。
+- **emit 重交互组件**（RelayRunBox/GateCard/ReportCard/SecretaryMessage/MentionInput/MentionDropdown/WikiNav/QuestionnaireCard/SettingsMenu/WorkspaceSelector）→ emit 已支持（P4/P10），逐个评估交互复杂度，多数应可在 P12 后推进。
+
+auto-musk 侧 023 §3.5 已登记剩余候选分组，待 P12 对应工作项落地后按序推进。
