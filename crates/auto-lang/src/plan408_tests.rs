@@ -286,4 +286,61 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// Plan 408 P5 / §7.4 缺陷 5: `component fn` with a `use { fn: ... }` block.
+    /// The component can import escape-hatch functions (renderMentions, etc.)
+    /// and reference them in computed/view — the generated SFC carries the
+    /// matching `import` statement. This unblocks the auto-musk 023 P3 pilot
+    /// (UserMessage → renderMentions was a hard blocker: computed referenced
+    /// the fn but no import was emitted).
+    #[test]
+    fn test_component_fn_with_use_fn() {
+        let tmp = std::env::temp_dir().join("plan408_use_fn_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        // Notice uses `use { fn: renderMentions from "..." }` to bring an
+        // escape-hatch function into scope, then references it in computed.
+        std::fs::write(&at_path, concat!(
+            "component fn Notice(content: str) {\n",
+            "    use {\n",
+            "        fn: renderMentions from \"src/front/utils/renderMentions.ts\"\n",
+            "    }\n",
+            "    computed {\n",
+            "        html => renderMentions(.content)\n",
+            "    }\n",
+            "    div { text .html }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var msg str = \"hi\" }\n",
+            "    view { Notice(content: .msg) }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("component fn with use{fn} must compile");
+
+        let notice_code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "Notice")
+            .map(|(_, code)| code)
+            .expect("Notice component fn must be synthesized");
+
+        // The fn import must be emitted (the core of defect 5).
+        assert!(
+            notice_code.contains("import { renderMentions }"),
+            "Notice SFC must import renderMentions: {}",
+            notice_code
+        );
+        // The computed references it (no longer a dangling identifier).
+        assert!(
+            notice_code.contains("renderMentions("),
+            "Notice computed must call renderMentions: {}",
+            notice_code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

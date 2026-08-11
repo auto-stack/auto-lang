@@ -337,6 +337,8 @@ computed 内引用的逃生舱 fn 标识符被原样保留，但生成的 SFC **
 
 **验证**: 探针 E2 复现——`component fn UserMessage(content) { use { fn: renderMentions from "..." }; computed { html => renderMentions(.content) } ... }` → UserMessage.vue 含 `import { renderMentions } from '...'` + computed 调用。
 
+> **2026-08-11 P5 落地**（方案 A）：已实施。`ViewFragmentDecl` 加 `ext_imports: Vec<ExtImport>`；`parse_fragment_decl_body_tail` 在 params 之后、computed 之前解析可选 `use { }` 块（复用 `parse_widget_use_block_inner`，支持多块）；`extract_widget_from_fragment` 填 `frag.ext_imports.clone()`（替代硬编码 `Vec::new()`）。codegen 零改动——`register_ext_imports`（vue.rs:1354）已遍历 `widget.ext_imports` 生成 import。语法顺序：params → **use** → computed → msg → model → on → view body。测试 `test_component_fn_with_use_fn` 覆盖。**UserMessage P3 试点解封**。
+
 ### 7.5 缺陷 6+7：动态索引 + 原生 table 标签映射（P3 试点 StreamingTable 暴露）
 
 **现象**（探针 F，auto-musk 023 P3 候选 StreamingTable）:
