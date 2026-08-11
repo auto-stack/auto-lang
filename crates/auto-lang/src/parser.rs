@@ -12551,6 +12551,23 @@ impl<'a> Parser<'a> {
             None
         };
         self.skip_empty_lines();
+        // Plan 408 P4: component fn 支持可选 `msg { }` / `model { }` 块（位于
+        // computed 之后、on/view 之前，对齐 widget 的 msg→model→computed→view→on
+        // 约定中能放在 view 前的部分）。view fn 不支持（恒空/None）。两个解析器都
+        // 自消费关键字与外层大括号。
+        let mut messages: Vec<MsgDecl> = Vec::new();
+        if is_component {
+            while self.cur.text.as_str() == "msg" {
+                messages.push(self.parse_msg_decl_inner()?);
+                self.skip_empty_lines();
+            }
+        }
+        let model = if is_component && self.cur.text.as_str() == "model" {
+            Some(self.parse_model_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         // Plan 367 P2-3 fix: register params in a fresh scope so the body can
         // reference them. Without this, `check_symbol` flags a parameter used
         // as a bare `if` condition (e.g. `style: if active {..}`) as an
@@ -12563,11 +12580,32 @@ impl<'a> Parser<'a> {
                 crate::ast::Type::Unknown,
             );
         }
+        // Plan 408 P4: register model fields in the scope too, so the on-handler
+        // body (parsed next) and the view body can reference them (e.g.
+        // `.collapsed = !.collapsed`). Mirrors how widget on-handlers reference
+        // model state. Model fields are bound as Unknown — name resolution is
+        // finalized in the code generator.
+        if let Some(ref model_block) = model {
+            for field in &model_block.fields {
+                self.infer_ctx.bind_var(
+                    crate::ast::Name::from(field.name.as_str()),
+                    crate::ast::Type::Unknown,
+                );
+            }
+        }
+        // Plan 408 P4: component fn 支持可选 `on { }` 块（位于 model 之后、view
+        // body 之前，让 handler body 能引用 params + model 字段）。view fn 不支持。
+        let on = if is_component && self.cur.text.as_str() == "on" {
+            Some(self.parse_on_block()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         let body = self.parse_view_node()?;
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly

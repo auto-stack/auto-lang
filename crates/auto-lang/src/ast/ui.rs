@@ -192,6 +192,11 @@ pub struct StoreDecl {
 /// 镜像 widget 的 computed——派生 props/state 的表达式，code生成
 /// `const x = computed(() => ...)`。`view fn`（内联）无此字段（内联展开后
 /// computed 无独立组件作宿主）。
+///
+/// `messages`/`model`/`on`（Plan 408 P4）: 仅 `component fn` 支持的可选
+/// `msg { }`/`model { }`/`on { }` 块，让 component fn 既能向上抛事件
+/// （msg → `defineEmits`，on handler → `emit()`），也能持有本地可变状态
+/// （model → `ref<T>()`）。`view fn`（内联）恒空——内联展开后无独立组件宿主。
 #[derive(Debug, Clone)]
 pub struct ViewFragmentDecl {
     pub name: Name,
@@ -199,6 +204,12 @@ pub struct ViewFragmentDecl {
     pub body: ViewNode,
     /// Plan 408 P3: 仅 component fn 支持；view fn 恒为 None。
     pub computed: Option<ComputedBlock>,
+    /// Plan 408 P4: 仅 component fn 支持；view fn 恒空。
+    pub messages: Vec<MsgDecl>,
+    /// Plan 408 P4: 仅 component fn 支持；view fn 恒为 None。
+    pub model: Option<ModelBlock>,
+    /// Plan 408 P4: 仅 component fn 支持；view fn 恒为 None。
+    pub on: Option<OnBlock>,
     /// Plan 408: true = `component fn`（独立 SFC 合成）；false = `view fn`（内联展开）。
     pub is_component: bool,
 }
