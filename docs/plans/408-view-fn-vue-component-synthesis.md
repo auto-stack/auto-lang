@@ -145,7 +145,7 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 **修复**: 处理 `'root'` target kind（跳过或视为合法）。
 
-### P5-3 🔴 view fn 表达式方法映射（第三条路径）
+### P5-3 ✅ 已完成（2026-08-11）
 
 **问题**: view fn body 里的表达式（如 `block_body.at` 的 `field.1.Text.to_float()`）
 **不走 method map**，原样输出 `.to_float()`。这是 Plan 053 M1（字符串方法映射补全）
@@ -160,6 +160,22 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 **证据**: Plan 053 M6 试过 `value: field.1.Text.to_float()`，产物 BlockBody.vue 报
 `Property 'to_float' does not exist on type 'string'`。
+
+**实施**（2026-08-11，branch `auto-shell` commit 见 git log）:
+- `vue.rs` 抽出共享方法映射表 `map_method_to_js`（Plan 053 M1 全表），接入三条
+  view 表达式路径:
+  1. **bound 位置** `expr_to_vue_bound_value` 的 `Expr::Call`（此前 Dot 方法调用
+     原样输出）—— 覆盖 `block_body.at` 的 `value: field.1.Text.to_float()`（B4 直接依赖）
+  2. **文本插值位置** `expr_to_vue_text_raw` 的 `Expr::Call`（此前仅
+     to_string/len/contains 特判）
+  3. **view if 条件** `convert_condition`（字符串 token 替换，覆盖 spaced/紧凑形式，
+     含无参方法 to_lower/to_upper/trim_left/trim_right/is_empty）
+- `expr_to_js` 的旧内联 match 收敛到 `map_method_to_js` 单源（行为不变）。
+- 加单测 `test_plan053_p53_view_expr_method_mapping` 覆盖 bound + if 条件两路。
+- 验证：`field.1.Text.to_float()` 产物 `Number(parseFloat(field[1].Text))`，
+  vue-tsc BlockBody 4 个 TS2339 → 0；vite build 通过。**Plan 053 B4 随之完成**。
+- 遗留：view 表达式路径不做 `contains` 的 R010 receiver 类型门控（与 ts_adapter 对齐，
+  现行为与修复前一致，`expr_to_js` 的门控保留）。
 
 ### P5-4 🟢 纯 module fn 文件不被 codegen
 
@@ -229,8 +245,8 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 ## 6. P5 phases 实施优先级建议
 
-1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展
-2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
+1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展 ✅ 已完成
+2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全 ✅ 已完成（2026-08-11，见 §5）
 3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
 4. **P5-2**（auto clean panic）—— 真问题但影响小（手动删可绕过）
 5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）

@@ -4529,6 +4529,35 @@ impl VueGenerator {
         result = result.replace(" len ( )", ".length");
         // Plan 345 (gap N1): .contains → .includes (JS uses .includes, not .contains)
         result = result.replace(".contains(", ".includes(");
+        // Plan 053 P5-3: view if 条件里的字符串方法同样走 method map
+        // （与 bound/text 表达式路径共享同一张表，libs/string.rs 语义）。
+        // parse_condition_expr 输出空格分隔 token（`s.starts_with ( '7' )`），
+        // 所以 spaced 与紧凑两种形式都替换。无参方法先替换为 JS 名 + 空参。
+        for (auto_name, js_name) in [
+            ("starts_with", "startsWith"),
+            ("ends_with", "endsWith"),
+            ("char_at", "charAt"),
+            ("find", "indexOf"),
+            ("substr", "substring"),
+            ("sub", "substring"),
+            ("slice", "substring"),
+            ("replace", "replaceAll"),
+            ("repeat", "repeat"),
+        ] {
+            result = result.replace(&format!(".{auto_name} ("), &format!(".{js_name}("));
+            result = result.replace(&format!(".{auto_name}("), &format!(".{js_name}("));
+        }
+        for (auto_name, js_expr) in [
+            ("to_lower", "toLowerCase"),
+            ("to_upper", "toUpperCase"),
+            ("trim_left", "trimStart"),
+            ("trim_right", "trimEnd"),
+        ] {
+            result = result.replace(&format!(".{auto_name} ( )"), &format!(".{js_expr}()"));
+            result = result.replace(&format!(".{auto_name}()"), &format!(".{js_expr}()"));
+        }
+        result = result.replace(".is_empty ( )", ".length === 0");
+        result = result.replace(".is_empty()", ".length === 0");
         // Plan 043 M5: Auto's None/nil literal → JS null in view conditions.
         // parse_condition_expr emits tokens space-separated, so `None`/`nil`
         // appear as standalone words. Replace them with `null`.
@@ -5229,6 +5258,58 @@ impl VueGenerator {
             .replace("\t", "\\t")
     }
 
+    /// Map an Auto `.method()` call on a string/array receiver to its JS
+    /// equivalent (Plan 053 M1 table; semantics verified against
+    /// `libs/string.rs`). Returns `None` for unmapped methods so callers fall
+    /// through to pass-through output.
+    ///
+    /// This is the shared single source for the **third** codegen path (view
+    /// expressions: view fn bodies / template attribute values & text
+    /// interpolation) — `expr_to_js` (computed/template) and
+    /// `ts_adapter::transpile_expr` (handler body) carry the same table
+    /// (P5-3: the view paths used to skip it, emitting invalid JS like
+    /// `.to_float()`).
+    fn map_method_to_js(&self, method: &str, object_js: &str, args_js: &[String]) -> Option<String> {
+        let a = args_js.join(", ");
+        Some(match method {
+            "len" => format!("{}.length", object_js),
+            // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
+            "contains" => format!("{}.includes({})", object_js, a),
+            "to_string" => format!("{}.toString()", object_js),
+            "to_int" | "parse_int" => {
+                if args_js.is_empty() {
+                    format!("parseInt({})", object_js)
+                } else {
+                    format!("parseInt({}, {})", object_js, a)
+                }
+            }
+            "to_float" | "to_double" | "parse_float" => format!("parseFloat({})", object_js),
+            // 无参 — 大小写 + trim 方向：
+            "to_lower" | "lower" => format!("{}.toLowerCase()", object_js),
+            "to_upper" | "upper" => format!("{}.toUpperCase()", object_js),
+            "trim_left" => format!("{}.trimStart()", object_js),
+            "trim_right" => format!("{}.trimEnd()", object_js),
+            // 有参 — 前后缀：
+            "starts_with" => format!("{}.startsWith({})", object_js, a),
+            "ends_with" => format!("{}.endsWith({})", object_js, a),
+            // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
+            // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
+            "char_at" => format!("{}.charAt({})", object_js, a),
+            // find 返回 index 或 -1：
+            "find" => format!("{}.indexOf({})", object_js, a),
+            // substr/sub/slice 同一 native，均为 start..end 子串：
+            "substr" | "sub" | "slice" => format!("{}.substring({})", object_js, a),
+            // Rust str::replace 替换所有 → replaceAll：
+            "replace" => format!("{}.replaceAll({})", object_js, a),
+            "repeat" => format!("{}.repeat({})", object_js, a),
+            // 布尔（无参）：
+            "is_empty" => format!("({}.length === 0)", object_js),
+            // JS 无原生字符串 reverse：
+            "reverse" => format!("([...{}].reverse().join(''))", object_js),
+            _ => return None,
+        })
+    }
+
     /// Convert AuraExpr to JS value string
     fn expr_to_js(&self, expr: &crate::ast::Expr) -> GenResult<String> {
         use crate::ast::Expr;
@@ -5409,48 +5490,12 @@ impl VueGenerator {
                             }
                         }
                     }
-                    match method.as_str() {
-                        "len" => Ok(format!("{}.length", object_js)),
-                        // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
-                        "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
-                        "to_string" => Ok(format!("{}.toString()", object_js)),
-                        "to_int" | "parse_int" => {
-                            if args_js.is_empty() {
-                                Ok(format!("parseInt({})", object_js))
-                            } else {
-                                Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
-                            }
-                        }
-                        "to_float" | "to_double" | "parse_float" => Ok(format!("parseFloat({})", object_js)),
-                        // Plan 053 M1: 字符串方法映射补全。原先仅
-                        // len/contains/to_string/to_int/to_float 有映射，其余走
-                        // 兜底 `.{method}()` 原样输出，生成无效 JS（实测
-                        // HistorySearch 产物的 `.to_lower()` 即症状）。这里按
-                        // libs/string.rs 的实际语义补全。
-                        // 无参 — 大小写 + trim 方向：
-                        "to_lower" | "lower" => Ok(format!("{}.toLowerCase()", object_js)),
-                        "to_upper" | "upper" => Ok(format!("{}.toUpperCase()", object_js)),
-                        "trim_left" => Ok(format!("{}.trimStart()", object_js)),
-                        "trim_right" => Ok(format!("{}.trimEnd()", object_js)),
-                        // 有参 — 前后缀：
-                        "starts_with" => Ok(format!("{}.startsWith({})", object_js, args_js.join(", "))),
-                        "ends_with" => Ok(format!("{}.endsWith({})", object_js, args_js.join(", "))),
-                        // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
-                        // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
-                        "char_at" => Ok(format!("{}.charAt({})", object_js, args_js.join(", "))),
-                        // find 返回 index 或 -1：
-                        "find" => Ok(format!("{}.indexOf({})", object_js, args_js.join(", "))),
-                        // substr/sub/slice 同一 native，均为 start..end 子串：
-                        "substr" | "sub" | "slice" => Ok(format!("{}.substring({})", object_js, args_js.join(", "))),
-                        // Rust str::replace 替换所有 → replaceAll：
-                        "replace" => Ok(format!("{}.replaceAll({})", object_js, args_js.join(", "))),
-                        "repeat" => Ok(format!("{}.repeat({})", object_js, args_js.join(", "))),
-                        // 布尔（无参）：
-                        "is_empty" => Ok(format!("({}.length === 0)", object_js)),
-                        // JS 无原生字符串 reverse：
-                        "reverse" => Ok(format!("([...{}].reverse().join(''))", object_js)),
-                        _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
+                    // Plan 053 M1/P5-3: 方法映射表收敛到 map_method_to_js 单源，
+                    // 与 view 表达式路径共享同一张表。
+                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                        return Ok(mapped);
                     }
+                    Ok(format!("{}.{}({})", object_js, method, args_js.join(", ")))
                 } else {
                     // Plain function call: func(args)
                     let name_js = self.expr_to_js(&call.name)?;
@@ -5942,6 +5987,12 @@ impl VueGenerator {
                             let args_str: Vec<String> = args.iter()
                                 .map(|a| self.bound_value_or_warn(a, "method-call arg in text position", "null"))
                                 .collect();
+                            // Plan 053 P5-3: view 文本位置的字符串方法同样走
+                            // method map（此前仅 to_string/len/contains 特判，
+                            // 其余原样输出 `.to_float()` 等坏 JS）。
+                            if let Some(mapped) = self.map_method_to_js(method.as_str(), &obj_str, &args_str) {
+                                return Ok(mapped);
+                            }
                             if is_self {
                                 if args_str.is_empty() {
                                     Ok(format!("{}()", method))
@@ -6097,6 +6148,33 @@ impl VueGenerator {
             // 复用 expr_to_vue_text_raw:5550-5559 的简单调用模板。此前 Expr::Call 落到
             // _ => "null"，导致 fn 调用 prop 被丢弃（getQuestions(.msg) → null）。
             Expr::Call(call) => {
+                // Plan 053 P5-3: 方法调用（view fn / 属性绑定表达式）走共享
+                // method map。此前 Expr::Call 把 Dot(name) 整体当作普通函数名
+                // 输出 `{object}.{method}({args})`，字符串方法原样输出坏 JS
+                // （实测 BlockBody 产物 `field[1].Text.to_float()`）。
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let method = method.clone();
+                    let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
+                    let object_js = self.expr_to_vue_bound_value(object)?;
+                    let args_js: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_vue_bound_value(&a))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                        return Ok(mapped);
+                    }
+                    // 保留既有行为:自调用 `.Method()` → `Method()`(无 self 前缀);
+                    // 普通方法调用原样输出。
+                    if is_self {
+                        return Ok(format!("{}({})", method, args_js.join(", ")));
+                    }
+                    return Ok(format!("{}.{}({})", object_js, method, args_js.join(", ")));
+                }
+                // Plain function call (e.g. component prop: getList(.msg)) →
+                // emit as-is.
                 let name_str = self.expr_to_vue_bound_value(&call.name)?;
                 let args_str: Vec<String> = call.args.args.iter()
                     .filter_map(|a| match a {
@@ -16667,6 +16745,36 @@ widget Plan053Tmpl {
         assert!(sfc.contains(".length === 0"), "computed is_empty:\n{sfc}");
         assert!(!sfc.contains(".to_upper("), "computed to_upper must map:\n{sfc}");
         assert!(!sfc.contains(".starts_with("), "computed starts_with must map:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_p53_view_expr_method_mapping() {
+        // P5-3: view fn / 模板表达式（属性绑定 + 文本插值）此前不走 method
+        // map，字符串方法原样输出坏 JS（实测 BlockBody 产物
+        // `field[1].Text.to_float()` 触发 vue-tsc 报错）。修复后与
+        // expr_to_js / handler body 共享 map_method_to_js 单源。
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053ViewMap {
+    model { var s str = "75%" }
+    view {
+        col {
+            progress {
+                value: .s.to_float()
+                max: 100
+            }
+            if .s.starts_with("7") {
+                text "yes"
+            }
+        }
+    }
+}
+"#);
+        // progress value → bound 位置：to_float → parseFloat
+        assert!(sfc.contains("parseFloat(s)"), "bound to_float → parseFloat:\n{sfc}");
+        assert!(!sfc.contains(".to_float("), "bound to_float must map:\n{sfc}");
+        // view if 条件（同样走 bound 位置）：starts_with → startsWith
+        assert!(sfc.contains(".startsWith("), "bound starts_with → startsWith:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "bound starts_with must map:\n{sfc}");
     }
 
     // --- Plan 053 M3 / P5-7: handler 间自调用识别 ------------------------
