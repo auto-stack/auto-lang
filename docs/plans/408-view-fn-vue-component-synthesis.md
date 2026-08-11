@@ -111,3 +111,94 @@ view fn ContentHeader(title str, ...) { ... }
 - **Plan 367**（codegen 质量改进）: view fn 顺带提及；本计划是其在 Vue 组件化方向的深化。
 - **auto-musk Plan 023**（`docs/plans/023-view-fn-component-codegen.md`）: 本计划是其转译器侧立项（P5 共用组件收敛的直接依赖）。
 - **KNOWN-DEBT**: 本计划完成后，若部分场景仍需逃生舱（如 useStreamingDocument 增量 JSON），登记残留。
+
+---
+
+## 5. Plan 053 移植发现的 codegen 技术债（2026-08-11 登记，新 phases）
+
+> **来源**: auto-shell **Plan 053**（ash-gui-auto 对齐 vue 原版）实施过程中发现。
+> 这些项都需在 **auto-lang** 侧修复，阻塞 Plan 053 的某些里程碑或影响 codegen 开发体验。
+> 作为本计划的新 phases（P5-x），独立于 Task 1-4 实施。
+
+### P5-1 🔴 ui-cache.json 缓存不失效（开发体验大坑）
+
+**问题**: 改了 `.at` 源码后，codegen 用 `.auto/ui-cache.json` 的旧缓存生成旧产物——
+**静默，不报错**。Plan 053 M2 实测：改了 `prompt_bar.at` 的 view（stack→row overlay），
+codegen 报 "✓ Regenerated 6 components"，但产物仍是旧 view，直到手动 `rm .auto/ui-cache.json`。
+
+**位置**: codegen 的缓存读写逻辑（cache key 应含源码 mtime 或内容 hash）。
+
+**修复**: 缓存 key 加源码文件 mtee/hash 校验，源码变化则失效重生成。
+
+**优先级**: 🔴 高——任何 view 改动都可能被吞，严重影响 codegen 调试循环。
+
+### P5-2 🟡 auto clean target.rs panic
+
+**问题**: `auto clean` 在 `crates/auto-man/src/target.rs:285` panic:
+`Invalid target kind: 'root'. Valid options are: app, lib, bag, dep, device, test`。
+导致无法清缓存（配合 P5-1，逼用户手动删 ui-cache.json）。
+
+**位置**: `crates/auto-man/src/target.rs:285`。
+
+**修复**: 处理 `'root'` target kind（跳过或视为合法）。
+
+### P5-3 🔴 view fn 表达式方法映射（第三条路径）
+
+**问题**: view fn body 里的表达式（如 `block_body.at` 的 `field.1.Text.to_float()`）
+**不走 method map**，原样输出 `.to_float()`。这是 Plan 053 M1（字符串方法映射补全）
+未覆盖的**第三条方法映射路径**（另两条已覆盖：`vue.rs expr_to_js` 模板/computed、
+`ts_adapter` handler body）。
+
+**位置**: view fn 表达式生成处（`aura/extract.rs` 或 `vue.rs` view fn 处理，需定位）。
+
+**修复**: view fn 表达式生成时复用既有 method map（`to_float`→`parseFloat` 等）。
+
+**解锁**: Plan 053 B4（MemoryInfo Progress 数值兜底）。
+
+**证据**: Plan 053 M6 试过 `value: field.1.Text.to_float()`，产物 BlockBody.vue 报
+`Property 'to_float' does not exist on type 'string'`。
+
+### P5-4 🟢 纯 module fn 文件不被 codegen
+
+**问题**: 只含 module fn（无 widget/store）的文件被 codegen 跳过（warning:
+`No widget or store declarations found in input file`）。无法建 `lib/` 工具模块。
+
+**位置**: codegen 的文件扫描/模块识别。
+
+**修复**: 支持纯 module fn 文件（生成 lib 工具模块供 import，或允许 module fn 独立导出）。
+
+**workaround**: module fn 放进 widget/store 文件内（Plan 053 abbreviate 改内联）。
+
+**优先级**: 🟢 低——有 workaround，影响代码组织整洁度。
+
+### P5-5 🟡 textarea 加入 user_class_skip_elements（解锁 Plan 053 M4）
+
+**问题**: `vue.rs` 的 `user_class_skip_elements` 含 `"input"` 不含 `"textarea"`，
+导致 textarea 被强加默认 `border rounded px-2 py-1`，无法做透明多行输入框。
+
+**位置**: `crates/auto-lang/src/ui_gen/vue.rs:4909-4918`（`user_class_skip_elements`）。
+
+**修复**: 列表加入 `"textarea"`。
+
+**解锁**: Plan 053 M4（多行续行检测）的 input→textarea 切换。
+
+### P5-6 🟡 input handler debounce codegen 注入（解锁 Plan 053 M5）
+
+**问题**: `.at` 完全无定时器（`native_catalog.rs` 全表无 setTimeout/setInterval/debounce），
+补全 debounce 无法在 `.at` 层实现（`auto.time.sleep_ms` 是阻塞 sleep，会卡 UI）。
+
+**位置**: `vue.rs` input handler 生成处。
+
+**修复**: input handler body 含 `complete(` 调用时，自动包一层 `setTimeout` debounce
+（80ms + 序列号丢弃过期结果，逻辑照搬 vue 原版 `PromptBar.vue:60-84`）。
+
+**解锁**: Plan 053 M5（补全 debounce）。
+
+---
+
+## 6. P5 phases 实施优先级建议
+
+1. **P5-1**（缓存失效）+ **P5-2**（clean panic）—— 先修，改善所有后续 codegen 调试循环
+2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
+3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+4. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround
