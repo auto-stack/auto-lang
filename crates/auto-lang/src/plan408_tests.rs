@@ -500,7 +500,94 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §7.7 类型收窄：`if fn() != None { fn().field }` 两次独立调用 fn()，
+    /// §10.3 宿主全局：on handler body 内 document/navigator 不再被
+    /// check_symbol 当未定义变量阻塞。
+    #[test]
+    fn test_on_handler_host_global() {
+        let src = concat!(
+            "widget Comp {\n",
+            "    on { .Init -> { document.addEventListener(\"click\", .OnClick) } }\n",
+            "    on { .OnClick -> { } }\n",
+            "    view { div { text \"hi\" } }\n",
+            "}\n",
+        );
+        let session = CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect(
+            "host global document must NOT be flagged as undefined variable"
+        );
+        // Parsed cleanly — document was not blocked by check_symbol.
+        assert!(ast.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))),
+            "widget must parse");
+    }
+
+    #[test]
+    fn test_component_fn_with_watch() {
+        let tmp = std::env::temp_dir().join("plan408_watch_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn Preview(path: str) {\n",
+            "    model { var content str = \"\" }\n",
+            "    watch {\n",
+            "        .path -> { .content = .path }\n",
+            "    }\n",
+            "    div { text .content }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var p str = \"a\" }\n",
+            "    view { Preview(path: .p) }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("watch case must compile");
+        let preview = result.all_widget_codes.iter()
+            .find(|(n, _)| n == "Preview")
+            .map(|(_, c)| c.clone())
+            .unwrap();
+
+        assert!(preview.contains("watch("), "Preview must emit watch(): {}", preview);
+        assert!(preview.contains("props.path"), "watch source must be props.path: {}", preview);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_dynamic_style_with_dynamic_class() {
+        let tmp = std::env::temp_dir().join("plan408_dyn_style_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget Avatar {\n",
+            "    model { var bg str = \"red\" }\n",
+            "    view {\n",
+            "        span {\n",
+            "            class: if .bg == \"red\" { \"on\" } else { \"off\" }\n",
+            "            style: .bg\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("dynamic style + class must compile");
+        let code = result.vue_code.clone();
+
+        assert!(code.contains(":style="), "must emit :style: {}", code);
+        assert!(code.contains(":class="), "must emit :class: {}", code);
+        assert!(!code.contains("__style__"), "no marker leak: {}", code);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// TS 不收窄第二次 → TS2531。修复：函数调用结果的字段访问用可选链 `?.`。
     #[test]
     fn test_fn_call_field_uses_optional_chain() {

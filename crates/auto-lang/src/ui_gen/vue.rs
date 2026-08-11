@@ -2854,16 +2854,15 @@ impl VueGenerator {
         }
 
         // Class attribute (both static and dynamic)
-        let (static_classes, dynamic_classes) = self.extract_classes("dyn", props);
+        let (static_classes, dynamic_class, dynamic_style) = self.extract_classes("dyn", props);
         if !static_classes.is_empty() {
             attrs.push(format!("class=\"{}\"", static_classes));
         }
-        if let Some(dynamic) = dynamic_classes {
-            if let Some(style_expr) = dynamic.strip_prefix("__style__") {
-                attrs.push(format!(":style=\"{}\"", style_expr));
-            } else {
-                attrs.push(format!(":class=\"{}\"", dynamic));
-            }
+        if let Some(dc) = dynamic_class {
+            attrs.push(format!(":class=\"{}\"", dc));
+        }
+        if let Some(ds) = dynamic_style {
+            attrs.push(format!(":style=\"{}\"", ds));
         }
 
         // Remaining props as v-bind attributes
@@ -3183,7 +3182,7 @@ impl VueGenerator {
                     let lucide_component = Self::kebab_to_pascal(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
-                    let (static_classes, _dynamic_classes) = self.extract_classes(tag, props);
+                    let (static_classes, _dynamic_class, _dynamic_style) = self.extract_classes(tag, props);
                     let class_str = if static_classes.is_empty() {
                         String::new()
                     } else {
@@ -3493,19 +3492,17 @@ impl VueGenerator {
                     let mut text_content: Option<String> = None;
 
                     // Class attribute (both static and dynamic)
-                    let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
+                    let (static_classes, dynamic_class, dynamic_style) = self.extract_classes(tag, props);
                     if !static_classes.is_empty() {
                         attrs.push(format!("class=\"{}\"", static_classes));
                     }
-                    if let Some(dynamic) = dynamic_classes {
-                        // Plan 043 H5: a "__style__"-prefixed dynamic binding is a
-                        // CSS-string expression (e.g. "color: rgb(...)") → :style,
-                        // not a class condition.
-                        if let Some(style_expr) = dynamic.strip_prefix("__style__") {
-                            attrs.push(format!(":style=\"{}\"", style_expr));
-                        } else {
-                            attrs.push(format!(":class=\"{}\"", dynamic));
-                        }
+                    // Plan 408 P12 §10.1: style and class now have independent
+                    // channels — no more __style__ marker / strip_prefix.
+                    if let Some(dc) = dynamic_class {
+                        attrs.push(format!(":class=\"{}\"", dc));
+                    }
+                    if let Some(ds) = dynamic_style {
+                        attrs.push(format!(":style=\"{}\"", ds));
                     }
 
                     // Auto-add type attribute for checkbox (native HTML needs type="checkbox")
@@ -4910,9 +4907,10 @@ impl VueGenerator {
 
     /// Extract Tailwind classes from tag and props
     /// Returns (static_classes, dynamic_class_binding)
-    fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>) {
+    fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>, Option<String>) {
         let mut classes = Vec::new();
-        let mut dynamic_binding: Option<String> = None;
+        let mut dynamic_class: Option<String> = None;
+        let mut dynamic_style: Option<String> = None;
 
         // Normalize tag to lowercase for matching
         let normalized_tag = Self::normalize_tag(tag);
@@ -5068,7 +5066,7 @@ impl VueGenerator {
                             format!("{}: {}", Self::js_obj_key(&b.style_name), cond)
                         })
                         .collect();
-                    dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
+                    dynamic_class = Some(format!("{{ {} }}", binding_strs.join(", ")));
                 }
                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
                     // Dedup: for layout primitives, split user classes and skip any already present
@@ -5087,18 +5085,20 @@ impl VueGenerator {
                     // Plan 346 + 043 M5 #tag-coloring: conditional style →
                     // Vue :class ternary. Full if/else-if/else chains become
                     // nested ternaries (if_expr_to_style_ternary).
-                    dynamic_binding = Some(self.if_expr_to_style_ternary(if_stmt));
+                    dynamic_class = Some(self.if_expr_to_style_ternary(if_stmt));
                 }
                 AuraPropValue::Expr(other_expr) => {
-                    // Plan 043 H5: a dynamic style expression that is neither a
-                    // string literal nor a conditional — e.g. a string concat
-                    // like `"color: rgb(" + span.r + "," + ...`. These produce a
-                    // CSS declaration string at runtime; emit as a dynamic
-                    // binding via the special "__style__" marker so the caller
-                    // renders `:style="<expr>"` instead of `:class`.
+                    // Plan 043 H5 / Plan 408 P12 §10.1: a dynamic style
+                    // expression that is neither a string literal nor a
+                    // conditional — e.g. a string concat like `"color: rgb("
+                    // + r + "," + ...`. Produces a CSS declaration string at
+                    // runtime → emit as an independent `:style` binding. The
+                    // old `__style__` marker (which shared the class channel
+                    // and leaked when dynamic class coexisted) is gone —
+                    // style now has its own return slot.
                     match self.expr_to_vue_bound_value(other_expr) {
                         Ok(expr_str) => {
-                            dynamic_binding = Some(format!("__style__{}", expr_str));
+                            dynamic_style = Some(expr_str);
                         }
                         // Plan 012 P0#13 follow-up: used to be silently
                         // dropped (the Err branch was unreachable while the
@@ -5135,7 +5135,7 @@ impl VueGenerator {
                 // dynamic `style:` prop (ternary for If, :class expr otherwise).
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
                     let ternary = self.if_expr_to_style_ternary(if_stmt);
-                    dynamic_binding = Some(match dynamic_binding {
+                    dynamic_class = Some(match dynamic_class {
                         Some(existing) => format!("[{}, {}]", existing, ternary),
                         None => ternary,
                     });
@@ -5147,7 +5147,7 @@ impl VueGenerator {
                     // drop the prop) silently — reject with a loud R011.
                     match self.expr_to_vue_bound_value(other_expr) {
                         Ok(expr_str) if expr_str != "null" => {
-                            dynamic_binding = Some(match dynamic_binding {
+                            dynamic_class = Some(match dynamic_class {
                                 Some(existing) => format!("[{}, {}]", existing, expr_str),
                                 None => expr_str,
                             });
@@ -5168,7 +5168,7 @@ impl VueGenerator {
             }
         }
 
-        (classes.join(" "), dynamic_binding)
+        (classes.join(" "), dynamic_class, dynamic_style)
     }
 
     /// Plan 100: Infer TypeScript type from AuraExpr
@@ -9370,19 +9370,18 @@ impl VueGenerator {
     /// because they emit a NATIVE tag there (`label`) or map to a shadcn
     /// component that should still receive user classes via attr fallthrough
     /// (`select`). Mirrors the plain-element path: static `class`, dynamic
-    /// `:class` exprs (Batch A gap 20), conditional ternaries, and the
-    /// `__style__` marker for CSS-string expressions.
+    /// `:class` exprs (Batch A gap 20), conditional ternaries, and dynamic
+    /// `:style` CSS-string expressions (independent channels, Plan 408 P12).
     fn push_native_classes(&self, attrs: &mut Vec<String>, tag: &str, props: &HashMap<String, AuraPropValue>) {
-        let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
+        let (static_classes, dynamic_class, dynamic_style) = self.extract_classes(tag, props);
         if !static_classes.is_empty() {
             attrs.push(format!("class=\"{}\"", static_classes));
         }
-        if let Some(dynamic) = dynamic_classes {
-            if let Some(style_expr) = dynamic.strip_prefix("__style__") {
-                attrs.push(format!(":style=\"{}\"", style_expr));
-            } else {
-                attrs.push(format!(":class=\"{}\"", dynamic));
-            }
+        if let Some(dc) = dynamic_class {
+            attrs.push(format!(":class=\"{}\"", dc));
+        }
+        if let Some(ds) = dynamic_style {
+            attrs.push(format!(":style=\"{}\"", ds));
         }
     }
 
