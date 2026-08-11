@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: ✅ P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）已实施并合并 master（`c12b407e`）。📋 **P4 立项（2026-08-11）**——来自 auto-musk 023 探针的 4 个 codegen 缺陷修复（见 §7），其中缺陷 1+2（同文件 prop 绑定）和缺陷 4（prop 作 handler / emit 缺口）阻塞 023 P3 试点与 §3.1 共用组件收敛。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ **P1–P10 全部完成并合并 master**。P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）+ P4（emit+model）+ P5（use{fn}）+ P6（prop 绑定）+ P7（动态索引）+ P8（table 原生）+ P9（computed 三元）+ P10（prop-as-handler）。§7 缺陷表 5/1+2/4/6/7/3 全部修复（缺陷 8 已由 gap 44 修复）。**仍开放**：slot（§8.1，结构性改动）、§7.7 类型收窄、pages 写盘（KNOWN-DEBT）、auto-musk 试点（§6.3，跨仓库）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -320,6 +320,8 @@ component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **
 
 **验证**: 探针 B 复现为单测 `test_component_fn_prop_as_handler`——`component fn NavItem(label, onselect: msg)` 内部 `button { onclick: onselect }` → NavItem.vue 含 `@click="props.onselect()"`（方案 B）或 `@click="$emit('Select')"` + `defineEmits`（方案 A）。
 
+> **2026-08-11 P10 落地**（方案 B）：已实施。新增 `try_callback_prop_attr` 辅助（vue.rs:9844）——当 handler 是裸标识符且命中 `prop_names` 时，返回 `@event="props.<name>(...)"`。在两条事件绑定路径（普通元素 :3686、shadcn 组件 :9185）的 `handler_to_function_call` 前短路调用，跳过 `used_handlers.insert`（避免空 stub）。P4 的 emit 声明侧（`.Variant` 引用 + defineEmits）与本节方案 B 互补：自包含事件用 msg/emit，父注入回调用 prop-as-handler。测试 `test_component_fn_prop_as_handler` 覆盖。**§3.1 共用组件收敛（NavItem 模式）解锁**。
+
 ### 7.4 缺陷 5：component fn 不支持 `use { fn }`（fn 引入）
 
 **现象**（探针 E2，auto-musk 023 P3 试点 UserMessage）:
@@ -381,14 +383,17 @@ computed 内引用的逃生舱 fn 标识符被原样保留，但生成的 SFC **
 
 | 缺陷 | 优先级 | 理由 | 方案 |
 |---|---|---|---|
-| **5**（component fn 无 use/fn 引入） | 🔴 高 | **P3 试点硬阻塞**——所有依赖逃生舱 fn 的纯展示组件（UserMessage/RawPreview/StreamingRenderer）无法生成有效 SFC | 7.4 方案 A |
-| **1+2**（同文件 prop 绑定） | 🔴 高 | 阻塞同文件 component fn 试点；方案 A 改动小、低回归 | 7.1 方案 A |
-| **4**（prop 作 handler / emit） | 🔴 高 | 023 §3.1 共用组件收敛硬阻塞；方案 B 最小化解锁 | 7.3 方案 B 先行，A 后续 |
-| **6**（动态索引 `row[col]`） | 🟡 中 | 影响所有"对象按键取值"场景；StreamingTable 等表格类组件需要 | 7.5 缺陷 6 |
-| **7**（table 标签映射） | 🟡 中 | 仅影响原生 table/iframe 等需保持 HTML 标签的组件 | 7.5 缺陷 7 |
-| **3**（computed IIFE） | 🟢 低 | 能跑，仅质量；不阻塞试点 | 7.2，可延后 |
+| 缺陷 | 优先级 | 理由 | 方案 | 状态 |
+|---|---|---|---|---|
+| **5**（component fn 无 use/fn 引入） | 🔴 高 | **P3 试点硬阻塞**——所有依赖逃生舱 fn 的纯展示组件（UserMessage/RawPreview/StreamingRenderer）无法生成有效 SFC | 7.4 方案 A | ✅ P5 |
+| **1+2**（同文件 prop 绑定） | 🔴 高 | 阻塞同文件 component fn 试点；方案 A 改动小、低回归 | 7.1 方案 A | ✅ P6 |
+| **4**（prop 作 handler / emit） | 🔴 高 | 023 §3.1 共用组件收敛硬阻塞；方案 B 最小化解锁 | 7.3 方案 B（prop-as-handler）+ 方案 A（emit，P4） | ✅ P4（emit）+ P10（prop-as-handler） |
+| **6**（动态索引 `row[col]`） | 🟡 中 | 影响所有"对象按键取值"场景；StreamingTable 等表格类组件需要 | 7.5 缺陷 6 | ✅ P7 |
+| **7**（table 标签映射） | 🟡 中 | 仅影响原生 table/iframe 等需保持 HTML 标签的组件 | 7.5 缺陷 7 | ✅ P8 |
+| **3**（computed IIFE） | 🟢 低 | 能跑，仅质量；不阻塞试点 | 7.2 | ✅ P9 |
+| **8**（computed 互引 `.value`） | 🔴 高 | 阻塞派生状态组件 | 7.8 | ✅ gap 44（06ba08ac，2026-08-07） |
 
-**P4 验收**: auto-musk 探针 A/B/D/E2 重跑后产物 TS 全绿；新增 a2vue golden/单测覆盖字面量 prop、prop-as-handler、computed 三元、fn import、动态索引。auto-lang `cargo test -p auto-lang` 零回归。
+**P4–P10 验收**: auto-musk 探针 A/B/D/E2/F/G 重跑后产物 TS 全绿（§7.7 类型收窄除外，见下）；新增 a2vue golden/单测覆盖字面量 prop、prop-as-handler、computed 三元、fn import、动态索引、cross-computed `.value`、原生 table。auto-lang `cargo test -p auto-lang` 零回归。
 
 ### 7.7 与 auto-musk 023 的闭环（2026-08-11 P3 试点后修订）
 
@@ -441,6 +446,10 @@ TS2367（`ComputedRef` 与 `string` 比较）。**根因**：P9 的 `.value` 注
 **验证**: 探针扩展——`component fn { computed { a => ...; b => .a.field } }` → `b = computed(() => a.value.field)`。ErrandCard 真实迁移作 e2e。
 
 **优先级**: 🔴 高（与缺陷 3 合并修复）——阻塞几乎所有有派生状态的组件原生化。
+
+> **2026-08-11 核查结论（文档滞后）**：缺陷 8 实际**已修复**——commit `06ba08ac`（Plan 012 Batch A gap 44，2026-08-07）比本节文档早 4 天落地。`expr_to_js` 的 `Expr::Dot` 分支递归转译 object 子树，命中 `computed_names` 时注入 `.value`（vue.rs:5355），故 `b => .a.field` → `a.value.field`（字段访问位置正确 unwrap）。P10 新增 `test_computed_references_computed_unwraps_value` 固化此行为。
+>
+> **窄残留**：多语句 computed body（IIFE fallback 路径，vue.rs:5530/5572）走 `ts_adapter::transpile_handler_body`，构造 `AuraTsContext` 时**未传 computed_names**——多语句 computed body 内引用另一个 computed 仍会漏 `.value`。单表达式 computed（含 P9 三元化的 if/else）全部正确。窄场景，后续补 `AuraTsContext.with_computed` 即可。
 
 ---
 
