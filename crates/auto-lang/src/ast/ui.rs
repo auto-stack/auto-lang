@@ -224,6 +224,8 @@ pub struct ViewFragmentDecl {
     pub on: Option<OnBlock>,
     /// Plan 408 P5: 仅 component fn 支持；view fn 恒空。
     pub ext_imports: Vec<ExtImport>,
+    /// Plan 408 P12: 仅 component fn 支持；view fn 恒空。
+    pub watch: Vec<WatchDecl>,
     /// Plan 408: true = `component fn`（独立 SFC 合成）；false = `view fn`（内联展开）。
     pub is_component: bool,
 }

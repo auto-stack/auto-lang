@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: ✅ P1–P11 完成（§7 缺陷 1-8 全修复）。📋 **P12 立项（2026-08-11，来自 auto-musk 023 P3 阶段结论）**——剩余 codegen 缺陷 + 能力缺口（§9）：缺陷 9（动态 style）、watch 块、宿主全局标识符（document/navigator）、composable facade ref `.value`。这些阻塞 auto-musk 剩余 15 个逃生舱的原生化。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ **P1–P12 全部完成并合并 master**。§7 缺陷 1-9 全修复 + §10 能力缺口（watch/宿主全局）已补 + §10.4 composable facade ref 采用降级方案。**唯一仍开放**：auto-musk 试点（§6.3，跨仓库应用层验证）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -648,7 +648,18 @@ component fn RawPreview(workspace: str, path: str) {
 
 **验证**: `test_composable_facade_ref_unwrap`——`use { composable: useCounter }` + `computed { count => .counter.value }`（counter 是 facade，.value 是其 ref 字段）→ SFC 含 `counter.value`（而非裸 `counter`）。
 
-### 10.5 P12 实施顺序与解锁路径
+### 10.5 P12 落地记录（2026-08-11）
+
+| 工作项 | 状态 | 说明 |
+|---|---|---|
+| **10.1 缺陷 9**（动态 style） | ✅ 已修 | `extract_classes` 二元组→三元组 `(classes, dynamic_class, dynamic_style)`，`__style__` marker 彻底消除。style 走独立 `:style` 通道，与 `:class` 互不干扰。测试 `test_dynamic_style_with_dynamic_class`。 |
+| **10.2 watch 块** | ✅ 已修 | `ViewFragmentDecl` 加 `watch: Vec<WatchDecl>`；parser 加 watch 分支（model 后、on 前）；extract 填 watchers（复用 widget 提取）。codegen 零改动。测试 `test_component_fn_with_watch`。 |
+| **10.3 宿主全局** | ✅ 已修 | `check_symbol` 的 `Expr::Ident` 分支加 `HOST_GLOBALS` 白名单（document/window/navigator/localStorage/matchMedia 等 ~40 个 browser API），豁免未定义变量检查。测试 `test_on_handler_host_global`。 |
+| **10.4 composable facade ref** | ⏳ 降级 | 采用 §10.4 降级方案（auto-musk 侧 forge_helpers fn 包装 composable）。理由：无类型信息无法精确区分 facade 的 ref 字段 vs 普通值/方法——自动加 `.value` 会破坏方法调用（`facade.resolveGate()`）和非 ref 字段。降级安全且明确。 |
+
+**P12 验证**: auto-lang plan408 18 + vue 193 全绿，零回归。10.1/10.2/10.3 三项实打实修复，10.4 采用降级。auto-musk 解锁路径：AgentAvatar（10.1）+ RawPreview（10.2+10.3）+ SessionInfo（10.3+10.4 降级）。
+
+### 10.6 P12 实施顺序与解锁路径
 
 | 工作项 | 优先级 | 改动面 | 解锁的 auto-musk 组件 |
 |---|---|---|---|

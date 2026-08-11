@@ -10436,6 +10436,20 @@ impl<'a> Parser<'a> {
         false
     }
 
+    /// Plan 408 P12 §10.3: browser/宿主全局标识符白名单——parser 豁免，
+    /// codegen（ts_adapter）原样直出。Vue script-setup 运行时这些是全局可用的。
+    const HOST_GLOBALS: &'static [&'static str] = &[
+        "document", "window", "navigator", "localStorage", "sessionStorage",
+        "matchMedia", "confirm", "alert", "prompt", "location", "history",
+        "console", "fetch", "requestAnimationFrame", "cancelAnimationFrame",
+        "setTimeout", "setInterval", "clearTimeout", "clearInterval",
+        "HTMLElement", "Event", "EventTarget", "IntersectionObserver",
+        "ResizeObserver", "MutationObserver", "URL", "URLSearchParams",
+        "FormData", "Blob", "File", "FileReader", "Headers", "Request",
+        "Response", "ReadableStream", "WritableStream", "TextEncoder",
+        "TextDecoder", "crypto", "performance", "screen",
+    ];
+
     pub fn check_symbol(&mut self, expr: Expr) -> AutoResult<Expr> {
         if self.skip_check {
             return Ok(expr);
@@ -10475,6 +10489,13 @@ impl<'a> Parser<'a> {
                 _ => Ok(expr),
             },
             Expr::Ident(name) => {
+                // Plan 408 P12 §10.3:豁免宿主全局标识符（browser API）——
+                // document/window/navigator/localStorage 等在 .at 运行时
+                // （Vue script setup）是全局可用的，parser 不应把它们当
+                // 未定义变量。codegen（ts_adapter）原样直出，无需特殊处理。
+                if Self::HOST_GLOBALS.contains(&name.as_str()) {
+                    return Ok(expr);
+                }
                 if !self.exists(&name) {
                     let candidates = self.get_defined_names();
                     return Err(NameError::undefined_variable(
@@ -12630,6 +12651,14 @@ impl<'a> Parser<'a> {
                 );
             }
         }
+        // Plan 408 P12 §10.2: component fn 支持可选 `watch { }` 块（位于 model
+        // 之后、on 之前）。复用 widget 的 parse_watch_block_inner。view fn 不支持。
+        let watch: Vec<WatchDecl> = if is_component && self.cur.text.as_str() == "watch" {
+            self.parse_watch_block_inner()?
+        } else {
+            Vec::new()
+        };
+        self.skip_empty_lines();
         // Plan 408 P4: component fn 支持可选 `on { }` 块（位于 model 之后、view
         // body 之前，让 handler body 能引用 params + model 字段）。view fn 不支持。
         let on = if is_component && self.cur.text.as_str() == "on" {
@@ -12642,7 +12671,7 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, watch, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly

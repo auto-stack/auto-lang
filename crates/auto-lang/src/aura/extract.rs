@@ -778,7 +778,14 @@ pub fn extract_widget_from_fragment(
         api_imports: Vec::new(),
         style_css: None,
         ext_imports: frag.ext_imports.clone(),
-        watchers: Vec::new(),
+        watchers: frag.watch.iter()
+            .map(|w| crate::aura::types::AuraWatch {
+                sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
+                immediate: w.immediate,
+                deep: w.deep,
+                payload: LogicPayload::AstStmts(w.body.stmts.clone()),
+            })
+            .collect(),
         exposes: Vec::new(),
     })
 }
