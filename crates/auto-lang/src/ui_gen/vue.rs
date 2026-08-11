@@ -4954,9 +4954,9 @@ impl VueGenerator {
                 "article" => classes.push("prose max-w-none".to_string()),
 
                 // Typography
-                "h1" => classes.push("text-3xl font-bold tracking-tight".to_string()),
-                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8".to_string()),
-                "h3" => classes.push("text-xl font-semibold".to_string()),
+                "h1" => classes.push("text-3xl font-bold tracking-tight mb-4".to_string()),
+                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8 mb-4".to_string()),
+                "h3" => classes.push("text-xl font-semibold mb-3".to_string()),
                 "text" => classes.push("text-muted-foreground leading-7".to_string()),
 
                 // Content
