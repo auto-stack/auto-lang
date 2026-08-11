@@ -1092,8 +1092,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
                 } else {
                     // No style prop at all: chromeless instead of iced Primary.
+                    // Plan 408: chromeless + dark-mode-aware text color.
+                    let default_text = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                        &crate::ui::style::Color::OnBackground,
+                    ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                     .unwrap_or(iced::Color::WHITE);
                     btn = btn.style(move |_, _| iced::widget::button::Style {
                         background: None,
+                        text_color: default_text,
                         ..Default::default()
                     });
                 }
