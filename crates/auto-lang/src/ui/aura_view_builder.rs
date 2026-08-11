@@ -811,6 +811,16 @@ impl<'a> AuraViewBuilder<'a> {
 
             // Child widget lookup or fallback.
             _ => {
+                // Plan 408: nav-link renders as a navigable button (like link).
+                if tag == "nav-link" || tag == "nav_link" {
+                    let to = self.extract_string(props, "to")
+                        .or_else(|| self.extract_string(props, "href"))
+                        .unwrap_or_default();
+                    let label = self.extract_string(props, "label")
+                        .or_else(|| self.extract_string(props, "text"))
+                        .unwrap_or_default();
+                    return self.render_link_button(&label, &[], &to, bindings);
+                }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
                         return self.render_child_widget(child_widget, props, events, bindings);
@@ -1359,6 +1369,19 @@ impl<'a> AuraViewBuilder<'a> {
 
             // Child widget lookup or fallback
             _ => {
+                // Plan 408: nav-link renders as a navigable button (like link).
+                // nav-link is parsed as an Element (not Component), so handle it
+                // here in the fallback before child-widget lookup. Extract the
+                // `to`/`href` prop for navigation and `label`/`text` for display.
+                if tag == "nav-link" || tag == "nav_link" {
+                    let to = self.extract_string(props, "to")
+                        .or_else(|| self.extract_string(props, "href"))
+                        .unwrap_or_default();
+                    let label = self.extract_string(props, "label")
+                        .or_else(|| self.extract_string(props, "text"))
+                        .unwrap_or_default();
+                    return self.render_link_button(&label, &[], &to, bindings);
+                }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
