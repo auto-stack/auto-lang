@@ -6,7 +6,7 @@ widget DatepickerPage {
     view {
         col {
             h1 "DatePicker"
-            text "A date picker component with a calendar popover for selecting dates."
+            text "DatePicker combines a text input with a calendar popover, letting users either type a date or pick one visually. Ideal for forms with date fields like event creation, booking, and reporting. The calendar popup appears on focus and disappears on selection."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add date-picker") {}

@@ -6,7 +6,7 @@ widget SidebarPage {
     view {
         col {
             h1 "Sidebar"
-            text "A composable sidebar component with support for different sections and navigation items."
+            text "Sidebar is a composable navigation component with support for grouped sections, collapsible categories, icons, and badges. Designed for dashboards, admin panels, and applications with deep navigation hierarchies. Each section can contain NavLinks with active states and external link indicators."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sidebar") {}

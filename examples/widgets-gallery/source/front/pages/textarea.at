@@ -6,7 +6,7 @@ widget TextareaPage {
     view {
         col {
             h1 "Textarea"
-            text "Displays a form textarea or a component that looks like a textarea."
+            text "Textarea is a multi-line text input for longer content — messages, descriptions, comments, and notes. Supports configurable row count, placeholder text, and disabled state. Pair with Label and FormField for accessible form layouts."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add textarea") {}

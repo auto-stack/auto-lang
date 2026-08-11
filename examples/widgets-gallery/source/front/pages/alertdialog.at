@@ -6,7 +6,7 @@ widget AlertdialogPage {
     view {
         col {
             h1 "AlertDialog"
-            text "A modal dialog that interrupts the user with important content and requires confirmation."
+            text "AlertDialog is a modal dialog used for confirmations that require explicit user action before proceeding. It interrupts the user's workflow to present a critical decision — such as deleting data, confirming irreversible actions, or accepting terms. Unlike a regular Dialog, it cannot be dismissed by clicking outside, ensuring the user makes a deliberate choice."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert-dialog") {}

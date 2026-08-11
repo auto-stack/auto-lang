@@ -6,7 +6,7 @@ widget AspectratioPage {
     view {
         col {
             h1 "AspectRatio"
-            text "Displays content within a desired ratio."
+            text "AspectRatio maintains a consistent width-to-height ratio for its children, preventing layout shift as images and videos load. Essential for responsive media galleries, video players, and card thumbnails where maintaining proportions across screen sizes matters. Common ratios include 16:9 for video, 4:3 for photos, and 1:1 for avatars."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add aspect-ratio") {}

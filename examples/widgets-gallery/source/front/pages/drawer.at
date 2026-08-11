@@ -6,7 +6,7 @@ widget DrawerPage {
     view {
         col {
             h1 "Drawer"
-            text "A drawer that slides in from the side of the screen."
+            text "Drawer is a panel that slides in from the edge of the screen, typically from the bottom on mobile. Ideal for mobile-friendly menus, filter panels, and quick-access actions. Unlike Dialog (centered modal), Drawer occupies the side or bottom edge, leaving part of the page visible for context."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add drawer") {}

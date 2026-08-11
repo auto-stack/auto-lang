@@ -6,7 +6,7 @@ widget BadgePage {
     view {
         col {
             h1 "Badge"
-            text "Displays a badge or a label that draws attention and labels items."
+            text "Badge is a small label that draws attention to status, counts, categories, or tags. Commonly seen on notification icons, list items, navigation entries, and product labels. Four variants — default, secondary, destructive, and outline — cover contexts from subtle categorization to urgent alerts."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add badge") {}

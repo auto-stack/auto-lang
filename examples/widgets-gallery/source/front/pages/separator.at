@@ -6,7 +6,7 @@ widget SeparatorPage {
     view {
         col {
             h1 "Separator"
-            text "Visually or semantically separates content."
+            text "Separator divides content into logical sections — either horizontally between stacked elements or vertically between side-by-side elements. Use it in toolbars, menus, card layouts, and form sections to improve visual hierarchy. The orientation prop controls the direction."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add separator") {}

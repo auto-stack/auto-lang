@@ -6,7 +6,7 @@ widget ButtonPage {
     view {
         col {
             h1 "Button"
-            text "A clickable button component with multiple variants."
+            text "Button triggers an action or event — submitting a form, opening a dialog, navigating to a page, or toggling a state. Six variants (default, secondary, destructive, outline, ghost, link) and three sizes (sm, default, lg) cover most interaction patterns. Use the disabled state to prevent interaction during loading or when prerequisites are unmet."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add button") {}

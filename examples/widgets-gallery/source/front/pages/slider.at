@@ -6,7 +6,7 @@ widget SliderPage {
     view {
         col {
             h1 "Slider"
-            text "An input where the user selects a value from within a given range."
+            text "Slider lets users select a numeric value by dragging a handle along a track between a minimum and maximum. Configure the step size for discrete increments. Ideal for volume controls, price range filters, opacity sliders, and any setting with a bounded numeric range."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add slider") {}

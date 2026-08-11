@@ -6,7 +6,7 @@ widget AvatarPage {
     view {
         col {
             h1 "Avatar"
-            text "An image element with a fallback for representing the user."
+            text "Avatar displays a user's profile image with a text fallback when the image fails to load or is not provided. Ideal for user lists, comment sections, profile cards, and navigation bars. Supports small, medium, and large sizes to fit different UI densities."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add avatar") {}

@@ -6,7 +6,7 @@ widget NavigationmenuPage {
     view {
         col {
             h1 "NavigationMenu"
-            text "A collection of navigation links with dropdown support."
+            text "NavigationMenu is a horizontal navigation bar with support for dropdown panels that reveal categorized links. Each top-level item can be a simple link or a trigger that opens a content panel. Ideal for site headers, documentation navigation, and multi-level product menus."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add navigation-menu") {}

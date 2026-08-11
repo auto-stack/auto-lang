@@ -6,7 +6,7 @@ widget FormPage {
     view {
         col {
             h1 "Form"
-            text "A form component with validation support using VeeValidate and Zod schemas."
+            text "Form provides accessible form layout primitives — FormField, FormLabel, FormControl, FormDescription, and FormMessage — for building inputs with proper label association, help text, and validation feedback. Use it to structure login forms, registration flows, settings panels, and any data-entry UI."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add form") {}

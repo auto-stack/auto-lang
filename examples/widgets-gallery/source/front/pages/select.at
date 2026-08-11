@@ -6,7 +6,7 @@ widget SelectPage {
     view {
         col {
             h1 "Select"
-            text "Displays a list of options for the user to pick from."
+            text "Select is a dropdown that lets users choose one option from a collapsible list. Ideal when the set of options is known and moderately sized (5-20 items). For larger sets, consider Combobox (searchable) or Command (keyboard-driven). Supports grouped options with labels and scrollable lists."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add select") {}

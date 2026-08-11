@@ -6,7 +6,7 @@ widget TogglePage {
     view {
         col {
             h1 "Toggle"
-            text "A two-state button that can be toggled on or off, useful for formatting controls."
+            text "Toggle is a two-state button that can be pressed (active) or unpressed (inactive). Ideal for formatting controls in editors — bold, italic, underline — and filter chips that can be turned on or off. Visual state reflects whether the toggle is currently active."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add toggle") {}

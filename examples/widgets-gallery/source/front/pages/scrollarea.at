@@ -6,7 +6,7 @@ widget ScrollAreaPage {
     view {
         col {
             h1 "ScrollArea"
-            text "A scrollable container with custom styled scrollbars."
+            text "ScrollArea provides a custom-styled scrollable region with consistent scrollbar appearance across browsers and platforms. Configure scrollbar visibility to auto (default), always, scroll, or hover. Ideal for sidebars, chat logs, and content panels where native scrollbars look inconsistent."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add scroll-area") {}

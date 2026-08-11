@@ -6,7 +6,7 @@ widget SwitchPage {
     view {
         col {
             h1 "Switch"
-            text "A control that allows the user to toggle between checked and not checked."
+            text "Switch is a toggle that represents an on/off state — airplane mode, Wi-Fi, dark mode, notifications. Unlike Checkbox (which confirms a choice in a form), Switch represents a live setting that takes effect immediately. Supports checked, unchecked, and disabled states."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add switch") {}

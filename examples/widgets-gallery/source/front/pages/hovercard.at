@@ -6,7 +6,7 @@ widget HovercardPage {
     view {
         col {
             h1 "HoverCard"
-            text "A card that appears when hovering over an element, useful for displaying additional context."
+            text "HoverCard displays a rich content preview — such as a user profile or link summary — when the user hovers over a trigger element. Unlike Tooltip (which shows brief text hints), HoverCard can contain images, buttons, and structured layouts. Ideal for social previews, link cards, and contextual detail popovers."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add hover-card") {}

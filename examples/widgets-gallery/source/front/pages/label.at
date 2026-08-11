@@ -6,7 +6,7 @@ widget LabelPage {
     view {
         col {
             h1 "Label"
-            text "Renders an accessible label associated with controls."
+            text "Label renders an accessible text label associated with a form control, enabling screen readers to announce the field's purpose when the user focuses it. Use the for attribute to link it to an input by id. Essential for form accessibility and usability."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add label") {}

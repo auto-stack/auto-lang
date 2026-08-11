@@ -6,7 +6,7 @@ widget SonnerPage {
     view {
         col {
             h1 "Sonner"
-            text "An opinionated toast component built on top of Sonner library."
+            text "Sonner is an opinionated toast notification system built on vue-sonner. Toasts stack, auto-dismiss after a configurable duration, and support success, error, warning, and info variants with rich colors. Position the viewport anywhere on screen and trigger toasts programmatically via toast.success(), toast.error(), etc."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}

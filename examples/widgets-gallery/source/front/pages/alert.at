@@ -6,7 +6,7 @@ widget AlertPage {
     view {
         col {
             h1 "Alert"
-            text "Displays a callout for user attention."
+            text "Alerts display short, important messages in a way that attracts the user's attention without interrupting their workflow. Use them for inline notifications, form validation feedback, or system status updates. The destructive variant highlights critical errors that require immediate attention."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert") {}

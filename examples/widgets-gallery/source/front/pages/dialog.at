@@ -6,7 +6,7 @@ widget DialogPage {
     view {
         col {
             h1 "Dialog"
-            text "A modal dialog that displays content on top of the page."
+            text "Dialog is a modal window that appears on top of the page content, blocking interaction with the underlying page until dismissed. Use it for forms, detail views, quick edits, and any interaction that benefits from focused attention. Contains header (title + description), content, and footer (action buttons) sections."
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dialog") {}
             h2 "Simple"

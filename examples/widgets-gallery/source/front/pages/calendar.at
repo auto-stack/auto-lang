@@ -6,7 +6,7 @@ widget CalendarPage {
     view {
         col {
             h1 "Calendar"
-            text "A date field component that allows users to select a date or date range."
+            text "Calendar provides a monthly grid where users pick a single date by clicking a day cell. Supports month navigation via previous/next buttons and highlights the selected date. Ideal for date pickers in forms, booking systems, and scheduling interfaces."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add calendar") {}

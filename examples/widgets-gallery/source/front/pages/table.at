@@ -6,7 +6,7 @@ widget TablePage {
     view {
         col {
             h1 "Table"
-            text "A responsive table component."
+            text "Table displays data in rows and columns with semantic markup (thead, tbody, tfoot). Supports captions, headers, footers for totals, and column spanning. For interactive features like sorting and filtering, use DataTable instead."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}

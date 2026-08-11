@@ -6,7 +6,7 @@ widget ContextmenuPage {
     view {
         col {
             h1 "ContextMenu"
-            text "Displays a menu to the user — such as a set of actions or functions — triggered by a right click."
+            text "ContextMenu displays a list of context-appropriate actions when the user right-clicks on a target element. Common actions include copy, paste, edit, delete, and navigation. Use it to provide quick access to operations relevant to the specific element the user clicked, such as a table row, image, or file."
 
             h1 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add context-menu") {}

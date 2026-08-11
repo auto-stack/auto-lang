@@ -6,7 +6,7 @@ widget SkeletonPage {
     view {
         col {
             h1 "Skeleton"
-            text "Use to show a placeholder while content is loading."
+            text "Skeleton renders a gray pulsing placeholder that mimics the shape and size of content that hasn't loaded yet. Use it to prevent layout shift and give users immediate visual feedback while data is fetching. Common patterns include card skeletons, profile skeletons, and text block skeletons."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add skeleton") {}

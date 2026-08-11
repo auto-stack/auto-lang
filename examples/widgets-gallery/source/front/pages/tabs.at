@@ -6,7 +6,7 @@ widget TabsPage {
     view {
         col {
             h1 "Tabs"
-            text "A set of layered sections of content, known as tab panels, that display one panel of content at a time."
+            text "Tabs organize content into switchable panels — only one panel is visible at a time. Use tabs to group related views without overwhelming the user, such as Settings (Account / Password / Notifications) or Product Details (Specs / Reviews / Q&A). The active tab is controlled by matching value props on trigger and content."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add tabs") {}

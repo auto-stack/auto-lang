@@ -23,7 +23,7 @@ widget DatatablePage {
     view {
         col {
             h1 "Data Table"
-            text "Powerful table and datagrids built using TanStack Table."
+            text "DataTable is a feature-rich table with built-in sorting, filtering, row selection, pagination, and column visibility toggling. Built on TanStack Table for robust state management. Ideal for admin dashboards, data exploration, and CRUD interfaces where users need to find and act on records efficiently."
 
             h2 "Introduction"
             text (text: "The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.", style: "text-muted-foreground") {}

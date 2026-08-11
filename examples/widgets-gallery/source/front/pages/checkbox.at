@@ -6,7 +6,7 @@ widget CheckboxPage {
     view {
         col {
             h1 "Checkbox"
-            text "A control that allows the user to toggle between checked and not checked."
+            text "Checkbox lets users select one or more options from a set, or confirm a binary choice like accepting terms. Unlike a Switch (which represents an on/off state), a checkbox implies a yes/no decision within a form or list. Supports checked, unchecked, and disabled states."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add checkbox") {}

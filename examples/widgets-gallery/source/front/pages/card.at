@@ -6,7 +6,7 @@ widget CardPage {
     view {
         col {
             h1 "Card"
-            text "Displays a card with header, content, and footer."
+            text "Card is a flexible container that groups related content into a visually distinct block with optional header, content, and footer sections. The header holds a title and description; the content area carries the main payload; the footer typically contains action buttons. Three variants — default, outlined, and elevated — adjust the visual prominence for different layouts."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add card") {}

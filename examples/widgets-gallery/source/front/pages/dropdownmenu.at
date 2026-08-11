@@ -6,7 +6,7 @@ widget DropdownmenuPage {
     view {
         col {
             h1 "DropdownMenu"
-            text "A menu that drops down from a trigger element."
+            text "DropdownMenu reveals a list of actions or navigation links when the user clicks a trigger button. Common in toolbar menus, row action menus, and user account menus. Supports labels, separators, disabled items, and nested submenus for organizing complex action sets."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dropdown-menu") {}

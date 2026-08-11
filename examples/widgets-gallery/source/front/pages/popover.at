@@ -6,7 +6,7 @@ widget PopoverPage {
     view {
         col {
             h1 "Popover"
-            text "A floating content that appears near a trigger element."
+            text "Popover displays floating content — forms, menus, or rich panels — anchored to a trigger element. It appears on click and closes when the user clicks outside or presses Escape. Ideal for quick configuration panels, color pickers, and contextual toolbars without the weight of a full Dialog."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add popover") {}

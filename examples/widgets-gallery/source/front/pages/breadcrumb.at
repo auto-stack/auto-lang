@@ -6,7 +6,7 @@ widget BreadcrumbPage {
     view {
         col {
             h1 "Breadcrumb"
-            text "Shows the user's current location within a navigational hierarchy."
+            text "Breadcrumb shows the user's current location within a hierarchical navigation structure. Each segment is a clickable link except the last, which represents the current page. Particularly useful in deep content hierarchies like file managers, admin dashboards, and documentation sites with multiple category levels."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}

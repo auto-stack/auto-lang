@@ -6,7 +6,7 @@ widget CarouselPage {
     view {
         col {
             h1 "Carousel"
-            text "A carousel with motion and gestures built in using Embla Carousel."
+            text "Carousel displays a rotating series of slides — images, cards, or custom content — with built-in drag gestures, autoplay, and loop support. Powered by Embla Carousel for smooth, performant transitions. Ideal for product galleries, hero banners, testimonials, and feature showcases where space is limited but content is rich."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add carousel") {}

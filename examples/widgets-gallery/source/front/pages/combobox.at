@@ -6,7 +6,7 @@ widget ComboboxPage {
     view {
         col {
             h1 "Combobox"
-            text "An autocomplete input with a listbox, combining a text input with a dropdown."
+            text "Combobox combines a text input with a filterable dropdown list, letting users either type freely or pick from suggestions. Ideal for searchable selects, tag inputs, and autocomplete fields with large option sets. The list filters in real-time as the user types."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add combobox") {}

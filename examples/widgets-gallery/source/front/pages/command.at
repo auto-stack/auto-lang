@@ -6,7 +6,7 @@ widget CommandPage {
     view {
         col {
             h1 "Command"
-            text "A command menu for searching and performing actions quickly. Often used with keyboard shortcuts."
+            text "Command is a searchable action palette — like VS Code's Ctrl+P or Spotlight — that lets users find and execute commands quickly via keyboard. Supports fuzzy search, grouped results, and keyboard navigation (arrow keys + Enter). Ideal for power-user shortcuts in complex applications."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add command") {}

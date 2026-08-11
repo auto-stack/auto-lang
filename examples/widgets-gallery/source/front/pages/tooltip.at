@@ -6,7 +6,7 @@ widget TooltipPage {
     view {
         col {
             h1 "Tooltip"
-            text "A popup that displays information related to an element when hovering or focusing."
+            text "Tooltip displays a brief help label when the user hovers over or focuses on an element. Use it to explain icon-only buttons, clarify abbreviations, or provide keyboard shortcuts hints. Keep tooltip text concise — for richer content, use HoverCard instead."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add tooltip") {}

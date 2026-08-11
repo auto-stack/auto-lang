@@ -6,7 +6,7 @@ widget SheetPage {
     view {
         col {
             h1 "Sheet"
-            text "A panel that slides in from the side of the screen."
+            text "Sheet is a panel that slides in from the side of the screen (left, right, top, or bottom). Ideal for mobile navigation, filter panels, and multi-step forms that need more space than a Dialog. The side prop controls which edge the panel animates from."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sheet") {}

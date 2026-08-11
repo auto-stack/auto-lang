@@ -6,7 +6,7 @@ widget ProgressPage {
     view {
         col {
             h1 "Progress"
-            text "Displays an indicator showing the completion progress of a task."
+            text "Progress displays a horizontal bar indicating the completion status of a task — file uploads, multi-step forms, or background processing. The bar fills proportionally from 0 to 100% based on the value prop. Use it to give users confidence that an operation is proceeding."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add progress") {}

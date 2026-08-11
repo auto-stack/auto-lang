@@ -6,7 +6,7 @@ widget MenubarPage {
     view {
         col {
             h1 "Menubar"
-            text "A horizontal menu bar with dropdown menus for navigation."
+            text "Menubar is a horizontal menu bar with dropdown menus, mimicking the classic desktop application menu (File, Edit, View, etc.). Each menu contains a trigger button and a dropdown with items, separators, and checkbox items. Ideal for tool-heavy applications, editors, and dashboards with many actions."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add menubar") {}

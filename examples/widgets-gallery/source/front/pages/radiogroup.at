@@ -6,7 +6,7 @@ widget RadiogroupPage {
     view {
         col {
             h1 "RadioGroup"
-            text "A set of checkable buttons, known as radio buttons, where no more than one of the buttons can be checked at a time."
+            text "RadioGroup is a set of mutually exclusive options where selecting one automatically deselects the others. Use it when the user must choose exactly one item from a known set — payment methods, shipping options, or preference settings. Unlike Checkbox (multi-select), RadioGroup enforces a single selection."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add radio-group") {}

@@ -9,7 +9,7 @@ widget CollapsiblePage {
     view {
         col {
             h1 "Collapsible"
-            text "An interactive component which expands or collapses a content panel."
+            text "Collapsible expands or collapses a content section with a trigger button, ideal for progressive disclosure in sidebars, filter panels, and long forms. Use it to keep the UI clean by hiding secondary options until the user needs them. The CollapsibleTrigger toggles visibility of the CollapsibleContent."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add collapsible") {}

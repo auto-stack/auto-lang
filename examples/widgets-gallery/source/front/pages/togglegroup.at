@@ -6,7 +6,7 @@ widget TogglegroupPage {
     view {
         col {
             h1 "ToggleGroup"
-            text "A group of toggle buttons that can be configured for single or multiple selection."
+            text "ToggleGroup coordinates a set of Toggle buttons for single-select or multi-select behavior. In single mode, pressing one toggle releases the others (like a RadioGroup with button styling). In multiple mode, any number can be active simultaneously. Ideal for alignment controls, view mode switches, and filter groups."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add toggle-group") {}

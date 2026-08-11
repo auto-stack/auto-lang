@@ -1,12 +1,93 @@
-// pages/navlink.at — Verify #6: NavLink href forwarded to router-link to.
+// pages/navlink.at - NavLink component documentation page
+
 widget NavLinkPage {
+    model { activeTab str = "preview" }
+
     view {
         col {
-            style: "space-y-4"
-            h2 "NavLink (fix #6)" { style: "text-xl font-semibold" }
-            text "NavLink href prop now maps to router-link's 'to' attribute." { style: "text-muted-foreground" }
-            nav-link { text: "Dashboard", href: "/", icon: "layout-dashboard", active: true }
-            nav-link { text: "Projects", href: "/", icon: "folder" }
+            h1 "NavLink"
+            text "NavLink is a navigation link with built-in active state, icon support, and optional badges. The active state highlights the current page in the sidebar or nav bar. Use badges for unread counts, notifications, or status indicators next to link labels."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "# NavLink is a layout primitive — no install needed") {}
+
+            h2 "States"
+            preview-card (id: "navlink-states") {
+                col {
+                    style: "gap-2 max-w-xs"
+                    nav-link { text: "Dashboard", href: "#", icon: "layout-dashboard", active: true }
+                    nav-link { text: "Projects", href: "#", icon: "folder" }
+                    nav-link { text: "Settings", href: "#", icon: "settings" }
+                }
+            }
+
+            h2 "With Badge"
+            preview-card (id: "navlink-badge") {
+                col {
+                    style: "gap-2 max-w-xs"
+                    nav-link { text: "Inbox", href: "#", icon: "mail", badge: "12" }
+                    nav-link { text: "Tasks", href: "#", icon: "check-square", badge: "3" }
+                }
+            }
+
+            h2 "External Links"
+            preview-card (id: "navlink-external") {
+                col {
+                    style: "gap-2 max-w-xs"
+                    nav-link { text: "Documentation", href: "#", icon: "book", external: true }
+                    nav-link { text: "GitHub", href: "#", icon: "github", external: true }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "text"
+                        td "string"
+                        td (text: "\"\"") {}
+                        td "Link label text"
+                    }
+                    tr {
+                        td "href"
+                        td "string"
+                        td (text: "\"\"") {}
+                        td "Target URL or route path"
+                    }
+                    tr {
+                        td "active"
+                        td "boolean"
+                        td "false"
+                        td "Highlights the link as current page"
+                    }
+                    tr {
+                        td "icon"
+                        td "string"
+                        td (text: "\"\"") {}
+                        td "Lucide icon name"
+                    }
+                    tr {
+                        td "badge"
+                        td "string"
+                        td (text: "\"\"") {}
+                        td "Optional badge text (counts, status)"
+                    }
+                    tr {
+                        td "external"
+                        td "boolean"
+                        td "false"
+                        td "Opens link in new tab"
+                    }
+                }
+            }
         }
     }
 }

@@ -1,12 +1,85 @@
-// pages/grid.at — Verify #1: 'grid' is no longer a reserved keyword.
-// This page + route name 'grid' would previously fail to parse.
+// pages/grid.at - Grid layout component documentation page
+
 widget GridPage {
+    model { activeTab str = "preview" }
+
     view {
         col {
-            style: "space-y-4"
-            h2 "Grid (route name fix #1)" { style: "text-xl font-semibold" }
-            text "This page's widget is named GridPage and its route is '/grid'. Previously 'grid' was a reserved keyword and caused a parse error." { style: "text-muted-foreground" }
-            text "If you can see this page, fix #1 works." { style: "text-sm font-medium" }
+            h1 "Grid"
+            text "Grid arranges children into a responsive column layout, adjusting the number of columns based on screen width. Use CSS grid utilities (grid-cols-N, md:grid-cols-M, lg:grid-cols-K) for responsive breakpoints. Ideal for product grids, card layouts, dashboards, and photo galleries."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "# No install needed — uses Tailwind CSS grid utilities") {}
+
+            h2 "Basic Grid"
+            preview-card (id: "grid-basic") {
+                col {
+                    style: "grid grid-cols-3 gap-4 w-full max-w-lg"
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "1" {}
+                    }
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "2" {}
+                    }
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "3" {}
+                    }
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "4" {}
+                    }
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "5" {}
+                    }
+                    col {
+                        style: "rounded-lg border p-4 text-center"
+                        text "6" {}
+                    }
+                }
+            }
+
+            h2 "Responsive"
+            preview-card (id: "grid-responsive") {
+                col {
+                    style: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full"
+                    col { style: "rounded-lg border bg-card p-4", text "1" {} }
+                    col { style: "rounded-lg border bg-card p-4", text "2" {} }
+                    col { style: "rounded-lg border bg-card p-4", text "3" {} }
+                    col { style: "rounded-lg border bg-card p-4", text "4" {} }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Effect"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "grid-cols-{1-12}"
+                        td "Fixed number of columns"
+                    }
+                    tr {
+                        td "md:grid-cols-{N}"
+                        td "Column count at medium breakpoint"
+                    }
+                    tr {
+                        td "lg:grid-cols-{N}"
+                        td "Column count at large breakpoint"
+                    }
+                    tr {
+                        td "gap-{N}"
+                        td "Spacing between grid items"
+                    }
+                }
+            }
         }
     }
 }

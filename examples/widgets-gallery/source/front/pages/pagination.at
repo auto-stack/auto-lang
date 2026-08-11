@@ -6,7 +6,7 @@ widget PaginationPage {
     view {
         col {
             h1 "Pagination"
-            text "A navigation component for paginating through content."
+            text "Pagination splits content across multiple pages, letting users navigate with previous/next buttons and page number links. Essential for tables, search results, and any list too long to display at once. Supports first/last buttons, ellipsis for large ranges, and active page highlighting."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add pagination") {}

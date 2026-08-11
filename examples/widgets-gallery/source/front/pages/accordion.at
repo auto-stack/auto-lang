@@ -6,7 +6,7 @@ widget AccordionPage {
     view {
         col {
             h1 "Accordion"
-            text "A vertically stacked set of interactive headings that each reveal a section of content."
+            text "Accordions are best used to toggle sections of content visibility, helping users manage large amounts of information in limited space. Common in FAQ sections, settings panels, and filter sidebars. Each item can be expanded or collapsed independently, or configured to allow only one open at a time (single mode)."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add accordion") {}

@@ -22,7 +22,7 @@ widget ToastPage {
     view {
         col {
             h1 "Toast"
-            text "A brief message that appears temporarily and disappears automatically."
+            text "Toast displays a brief, auto-dismissing notification that appears temporarily without blocking the user's workflow. Powered by vue-sonner for stacking, animations, and rich color variants. Trigger toasts programmatically via toast(), toast.success(), toast.error(), toast.warning(), and toast.info()."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
