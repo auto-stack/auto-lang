@@ -10998,13 +10998,17 @@ fn emit_preset_dispatch(
         "RunResult" => {
             // command_result: payload nested under data.CommandResult when the
             // server emits a tagged-enum frame (ash-server does). Unwrap both
-            // shapes via `data.CommandResult ?? data`. Then fill the 5 refs and
+            // shapes via `data.CommandResult ?? data`. Then fill the refs and
             // call the parameter-less handler. status may be a bare string
             // ("Success"/"Cancelled") or an object ({"Failed": msg}); the .at
             // handler treats it as a string and the vue side preserves whatever
             // shape arrived — GAP-B is handled in the .at handler body.
+            //
+            // Plan 052: __sse_output.value = r.output ?? {} 透传整个 RenderedOutput
+            // 对象(可能是 Table/Record/Code/Error/Text/"Empty"),store 的 RunResult
+            // 据此赋 b.output。保留 __sse_output_text(只取 .Text)供兼容/调试。
             code.push_str(&format!(
-                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; RunResult(); }}\n",
+                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; RunResult(); }}\n",
                 kw = kw, disc = disc_field, wire = wire_value,
             ));
         }
