@@ -24,6 +24,12 @@ pub struct AuraTsContext {
     /// Names of template refs declared in the view (`ref: "menuEl"`).
     /// `.menuEl` maps to `menuEl.value!` (the DOM element behind the ref).
     pub ref_names: HashSet<String>,
+    /// Plan 408 P10 / §7.8 缺陷 8: names of computed properties (need
+    /// `.value` in Vue script, same as state — a ComputedRef is unwrapped
+    /// the same way a ref is). Wired into `Expr::Dot`/`Expr::Ident` so the
+    /// IIFE/multi-statement computed-body paths (ts_adapter) unwrap computed
+    /// refs consistently with the single-expr path (vue.rs expr_to_js).
+    pub computed_names: HashSet<String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
     /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
@@ -59,6 +65,7 @@ impl AuraTsContext {
             state_names,
             prop_names: HashSet::new(),
             ref_names: HashSet::new(),
+            computed_names: HashSet::new(),
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
@@ -69,6 +76,14 @@ impl AuraTsContext {
 
     pub fn with_props(mut self, prop_names: HashSet<String>) -> Self {
         self.prop_names = prop_names;
+        self
+    }
+
+    /// Plan 408 P10: set computed property names so the IIFE/multi-statement
+    /// computed-body paths unwrap ComputedRef via `.value`, matching the
+    /// single-expr path in vue.rs::expr_to_js.
+    pub fn with_computed(mut self, computed_names: HashSet<String>) -> Self {
+        self.computed_names = computed_names;
         self
     }
 
@@ -114,6 +129,11 @@ impl AuraTsContext {
 
     fn is_prop(&self, name: &str) -> bool {
         self.prop_names.contains(name)
+    }
+
+    /// Plan 408 P10: a computed property name — unwraps via `.value` like state.
+    fn is_computed(&self, name: &str) -> bool {
+        self.computed_names.contains(name)
     }
 
     fn is_ref(&self, name: &str) -> bool {
@@ -549,7 +569,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     if ctx.is_prop(field_name) {
                         // Props need `props.` prefix in script
                         write!(out, "props.{}", field_name).ok();
-                    } else if ctx.is_state(field_name) {
+                    } else if ctx.is_state(field_name) || ctx.is_computed(field_name) {
+                        // State ref OR computed ref → unwrap `.value` (Vue).
                         write!(out, "{}.value", field_name).ok();
                     } else if ctx.is_ref(field_name) {
                         // Template ref: `.menuEl` → `menuEl.value!` (the DOM
@@ -573,7 +594,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Identifier — check if it's a reactive state variable
         Expr::Ident(name) => {
-            if ctx.is_state(name.as_str()) {
+            if ctx.is_state(name.as_str()) || ctx.is_computed(name.as_str()) {
                 write!(out, "{}.value", name.as_str()).ok();
             } else if name.as_str() == "self" || name.as_str() == "." {
                 // In Vue <script setup>, self/this is not needed
