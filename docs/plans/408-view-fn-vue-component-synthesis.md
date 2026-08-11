@@ -808,7 +808,7 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 **优先级**: 🟢 低——有 workaround，影响代码组织整洁度。
 
-### P5-5 🟡 textarea 加入 user_class_skip_elements（解锁 Plan 053 M4）
+### P5-5 ✅ 已完成（2026-08-11，Plan 053 M4）
 
 **问题**: `vue.rs` 的 `user_class_skip_elements` 含 `"input"` 不含 `"textarea"`，
 导致 textarea 被强加默认 `border rounded px-2 py-1`，无法做透明多行输入框。
@@ -817,7 +817,8 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 **修复**: 列表加入 `"textarea"`。
 
-**解锁**: Plan 053 M4（多行续行检测）的 input→textarea 切换。
+**解锁**: Plan 053 M4（多行续行检测）的 input→textarea 切换。✅ 随 M4 完成
+（`736d5ca9`），单测 `test_plan053_p55_textarea_skips_default_classes`。
 
 ### P5-6 🟡 input handler debounce codegen 注入（解锁 Plan 053 M5）
 
@@ -865,7 +866,7 @@ UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`
 
 1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展 ✅ 已完成
 2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全 ✅ 已完成（2026-08-11，见 §5）
-3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+3. **P5-5**（textarea）+ **P5-6**（debounce）—— P5-5 ✅ 随 Plan 053 M4 完成；P5-6 待 M5
 4. **P5-2**（auto clean panic）—— 真问题但影响小（手动删可绕过）
 5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）
 
