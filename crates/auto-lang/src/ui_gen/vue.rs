@@ -2250,6 +2250,14 @@ impl VueGenerator {
             self.handlers.push((handler_name.clone(), body, is_async));
         }
 
+        // P5-7: Auto-recognize sibling-handler self-calls (`.X()` / `self.X()`)
+        // inside used handlers' bodies and mark targets used, so they emit as
+        // functions instead of being skipped by the used_handlers filter below
+        // (which would otherwise cause TS2304 "Cannot find name 'X'"). Fixpoint
+        // covers transitive chains (A -> B -> C). Replaces the manual
+        // `expose { .X }` workaround for handler-to-handler calls.
+        self.mark_self_called_handlers(widget);
+
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
         // Plan 132: Add async keyword for handlers with API calls
@@ -5687,6 +5695,118 @@ impl VueGenerator {
                 }
             }
             LogicPayload::Bytecode(_) => false,
+        }
+    }
+
+    /// Scan handler-body statements for sibling-handler self-method calls
+    /// (`.X()` / `self.X()`), returning the called method names. Mirrors the
+    /// ts_adapter self-call recognition (`Expr::Dot(Ident "."/"self", method)`).
+    /// Caller MUST gate results against declared handler names — `.save()` /
+    /// `.push()` / `.contains()` etc. share the self-call shape but are
+    /// store/builtin calls, not handlers (`mark_self_called_handlers` gates).
+    fn collect_self_handler_calls(stmts: &[crate::ast::Stmt]) -> Vec<String> {
+        use crate::ast::{Expr, Stmt};
+        fn is_self_receiver(object: &Expr) -> bool {
+            matches!(object, Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self")
+        }
+        fn scan_expr(expr: &Expr, out: &mut Vec<String>) {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Dot(object, method) = call.name.as_ref() {
+                        if is_self_receiver(object) {
+                            out.push(method.as_str().to_string());
+                        }
+                    }
+                    scan_expr(&call.name, out);
+                    for arg in &call.args.args {
+                        scan_expr(&arg.get_expr(), out);
+                    }
+                }
+                Expr::Dot(object, _) => scan_expr(object, out),
+                Expr::Bina(l, _, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Unary(_, e) => scan_expr(e, out),
+                Expr::Array(items) | Expr::Tuple(items) => {
+                    for item in items { scan_expr(item, out); }
+                }
+                Expr::Index(arr, idx) => { scan_expr(arr, out); scan_expr(idx, out); }
+                Expr::NullCoalesce(l, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Cast { expr, .. } | Expr::To { expr, .. } => scan_expr(expr, out),
+                Expr::Block(body) => {
+                    for s in &body.stmts { scan_stmt(s, out); }
+                }
+                Expr::If(if_stmt) => scan_if(if_stmt, out),
+                _ => {}
+            }
+        }
+        fn scan_if(if_stmt: &crate::ast::If, out: &mut Vec<String>) {
+            for branch in &if_stmt.branches {
+                scan_expr(&branch.cond, out);
+                for s in &branch.body.stmts { scan_stmt(s, out); }
+            }
+            if let Some(else_body) = &if_stmt.else_ {
+                for s in &else_body.stmts { scan_stmt(s, out); }
+            }
+        }
+        fn scan_stmt(stmt: &Stmt, out: &mut Vec<String>) {
+            match stmt {
+                Stmt::Expr(expr) => scan_expr(expr, out),
+                Stmt::Store(store) => scan_expr(&store.expr, out),
+                Stmt::If(if_stmt) => scan_if(if_stmt, out),
+                Stmt::For(for_) => {
+                    scan_expr(&for_.range, out);
+                    for s in &for_.body.stmts { scan_stmt(s, out); }
+                }
+                Stmt::Try(t) => {
+                    for s in &t.body.stmts { scan_stmt(s, out); }
+                    for s in &t.catch_body.stmts { scan_stmt(s, out); }
+                    if let Some(fb) = &t.finally_body {
+                        for s in &fb.stmts { scan_stmt(s, out); }
+                    }
+                }
+                Stmt::Block(body) => {
+                    for s in &body.stmts { scan_stmt(s, out); }
+                }
+                Stmt::Return(e) | Stmt::Reply(e) => scan_expr(e, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for stmt in stmts { scan_stmt(stmt, &mut out); }
+        out
+    }
+
+    /// Mark handlers as used when invoked via `.X()` / `self.X()` from the body
+    /// of another *used* handler. Runs to fixpoint so transitive chains
+    /// (A -> B -> C) are fully captured. Only targets that are actually
+    /// declared handlers in this widget are marked — this filters out
+    /// store/builtin calls (`.save()`, `.push()`, `.new()`, ...) that share the
+    /// self-call shape. Replaces the manual `expose { .X }` workaround.
+    fn mark_self_called_handlers(&mut self, widget: &AuraWidget) {
+        use std::collections::{HashMap, HashSet};
+        let mut calls_by_handler: HashMap<String, Vec<String>> = HashMap::new();
+        let mut declared: HashSet<String> = HashSet::new();
+        for (pattern, payload) in &widget.handlers {
+            let fn_name = self.pattern_to_handler_name(pattern);
+            let calls = match payload {
+                LogicPayload::AstStmts(stmts) => Self::collect_self_handler_calls(stmts),
+                LogicPayload::Bytecode(_) => Vec::new(),
+            };
+            declared.insert(fn_name.clone());
+            calls_by_handler.insert(fn_name, calls);
+        }
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let snapshot: Vec<String> = self.used_handlers.iter().cloned().collect();
+            for used_name in &snapshot {
+                if let Some(targets) = calls_by_handler.get(used_name) {
+                    for target in targets {
+                        if declared.contains(target) && self.used_handlers.insert(target.clone()) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -16547,6 +16667,59 @@ widget Plan053Tmpl {
         assert!(sfc.contains(".length === 0"), "computed is_empty:\n{sfc}");
         assert!(!sfc.contains(".to_upper("), "computed to_upper must map:\n{sfc}");
         assert!(!sfc.contains(".starts_with("), "computed starts_with must map:\n{sfc}");
+    }
+
+    // --- Plan 053 M3 / P5-7: handler 间自调用识别 ------------------------
+
+    #[test]
+    fn test_plan053_p57_self_called_handler_is_emitted() {
+        // P5-7: handler 被 OnInput/AcceptGhost/Word 自调用，无模板绑定，不 expose。
+        // mark_self_called_handlers 应把它标 used → 生成 function（否则 TS2304）。
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053SelfCall {
+    model { var x str = "" }
+    on {
+        .Run -> {
+            .Helper()
+        }
+        .Helper -> {
+            .x = "done"
+        }
+    }
+    view { col { button "go" { onclick: .Run } text .x } }
+}
+"#);
+        assert!(
+            sfc.contains("function Helper"),
+            "Helper (called via .Helper() from Run, no template binding, no expose) must be emitted:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("Helper()"),
+            "Run body must call Helper():\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_plan053_p57_self_call_does_not_promote_non_handler() {
+        // P5-7 gate: .save()/.push() share the self-call shape but are NOT
+        // handlers — must NOT be marked used (no false "function save" etc).
+        // (They emit as method calls regardless; this test just ensures the
+        // scanner doesn't crash on them or pollute used_handlers.)
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Gate {
+    model { var items []str = [] }
+    on {
+        .Run -> {
+            .items.push("x")
+        }
+    }
+    view { col { button "go" { onclick: .Run } } }
+}
+"#);
+        assert!(
+            !sfc.contains("function push"),
+            ".push() is a store method, must NOT be emitted as a handler function:\n{sfc}"
+        );
     }
 
     // --- gap 47: != null / == null semantics ------------------------------
