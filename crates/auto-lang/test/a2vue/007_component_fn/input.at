@@ -1,0 +1,18 @@
+// Plan 408: component fn → independent Vue SFC.
+//
+// Card is synthesized to its own Card.vue (defineProps), and the App widget
+// references it via <Card :title=.../> instead of inlining the fragment body.
+// This is the minimal same-file synthesis + reference scenario.
+component fn Card(title: str) {
+    col {
+        style: "p-2"
+        text .title
+    }
+}
+
+widget App {
+    model { var heading str = "demo" }
+    view {
+        Card(title: .heading)
+    }
+}

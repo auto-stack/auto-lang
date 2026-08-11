@@ -11547,19 +11547,44 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RParen)?;
             }
 
-            self.expect_ident("from")?;
-            if !self.is_kind(TokenKind::Str) {
+            // Plan 408: `from "..."` is optional for `component` imports.
+            // Without it, `component: X` references a same-project component
+            // synthesized from a `component fn` declaration (import resolves to
+            // `@/components/{X}.vue`, no file copy). fn/composable still require
+            // an explicit `from` since they only make sense for external sources.
+            let path = if self.cur.text.as_str() == "from" {
+                self.next();
+                if !self.is_kind(TokenKind::Str) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected string import path after 'from' in widget use block, got '{}'",
+                            self.cur.text
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                let p = self.cur.text.clone();
+                self.next();
+                p
+            } else if kind == ExtImportKind::Component {
+                // No `from` → project-internal component fn reference.
+                AutoStr::from("")
+            } else {
                 return Err(SyntaxError::Generic {
                     message: format!(
-                        "Expected string import path after 'from' in widget use block, got '{}'",
+                        "Expected 'from' in widget use block ({} imports require a source path), got '{}'",
+                        match kind {
+                            ExtImportKind::Fn => "fn",
+                            ExtImportKind::Composable => "composable",
+                            ExtImportKind::Component => "component",
+                        },
                         self.cur.text
                     ),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
-            }
-            let path = self.cur.text.clone();
-            self.next();
+            };
 
             imports.push(ExtImport { kind, symbols, path, call_args });
             self.skip_empty_lines();
@@ -12473,6 +12498,22 @@ impl<'a> Parser<'a> {
     /// Parse view fragment declaration body (after 'view' has been consumed).
     fn parse_view_fragment_decl_body(&mut self) -> AutoResult<Stmt> {
         self.expect_ident("fn")?;
+        self.parse_fragment_decl_body_tail(false)
+    }
+
+    /// Plan 408: Parse `component fn Name(...) { ... }` — an independent
+    /// component declaration synthesized to its own Vue SFC. Cursor is at
+    /// `component` on entry. Body parsing is shared with `view fn`.
+    pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("component")?;
+        self.expect_ident("fn")?;
+        self.parse_fragment_decl_body_tail(true)
+    }
+
+    /// Parse the param list + body of a fragment decl, after `fn` has been
+    /// consumed. Shared by `view fn` (is_component=false, inline) and
+    /// `component fn` (is_component=true, independent SFC). Plan 408.
+    fn parse_fragment_decl_body_tail(&mut self, is_component: bool) -> AutoResult<Stmt> {
         let name = self.cur.text.clone();
         self.next();
         let mut params = Vec::new();
@@ -12500,6 +12541,16 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+        // Plan 408 P3: component fn 支持可选 `computed { }` 块（位于 params 之后、
+        // view body 之前，与 widget 的 computed→view 顺序一致）。view fn 不支持
+        // computed（内联展开后无独立组件宿主）。parse_computed_block_inner 会
+        // 自消费 `computed` 关键字与外层大括号。
+        let computed = if is_component && self.cur.text.as_str() == "computed" {
+            Some(self.parse_computed_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         // Plan 367 P2-3 fix: register params in a fresh scope so the body can
         // reference them. Without this, `check_symbol` flags a parameter used
         // as a bare `if` condition (e.g. `style: if active {..}`) as an
@@ -12516,7 +12567,7 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly

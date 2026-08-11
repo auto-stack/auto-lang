@@ -4885,6 +4885,10 @@ mod plan370_store_vm_tests;
 #[cfg(test)]
 mod plan367_viewfn_tests;
 
+// Plan 408: component fn → independent Vue SFC synthesis (P2 residuals).
+#[cfg(test)]
+mod plan408_tests;
+
 #[cfg(test)]
 mod native_css_tests;
 

@@ -37,6 +37,7 @@
 | 365 | gpui Image/Grid placeholder | gpui 后端的 `View::Image` 渲染为 `[img: src]` 文本占位符，`View::Grid` 做行列分解但无原生 GPUI grid 支持。功能可用但不完整。 | `ui/gpui/auto_render.rs` + `ui/gpui/renderer.rs` |
 | 365 | HostBackend Send bound | `HostBackend::run` 要求 `C::Msg: Send`（iced 的约束传播到方法级）。headless/gpui 本不需要 Send，但 GUI 消息类型按惯例都是 Send，实际无影响。 | `ui/host.rs` |
 | 391 | trait impl 语法 | Auto 不支持 `impl Trait for Type` 语法（D6 仅提供清晰错误："Auto does not support trait impl syntax... Use a static fn/ext method"）。是语言设计决议，非缺陷——用 `ext Type for Spec` 表达外部 trait 实现。 | `parser.rs:4578-4585` |
+| 408 | pages 路径 component fn SFC 丢失 | auto-man `from_workspace` 的 pages/ 扫描路径（`vue.rs:1495-1508`）只取 `widgets.first()` 的 SFC，丢弃 `all_widget_codes`——定义在 pages .at 文件里的 `component fn` 不会写盘成独立 SFC。front_dir 直文件 + app.at 路径已正确（本轮 P2 修正了 sub_widgets 注入）。pages 场景罕见（component fn 通常定义在 front_dir 直文件/app.at），修复需让 lib.rs 的 `ui_build_shadcn_with_widgets_and_stores` 返回 `all_widget_codes`，影响公开 API。 | `auto-man/src/vue.rs:1495-1508` |
 
 ---
 

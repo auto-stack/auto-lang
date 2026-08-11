@@ -182,11 +182,25 @@ pub struct StoreDecl {
 // ============================================================================
 
 /// A view fragment declaration: `view fn NoteItem(note: Note, active: bool) { ... }`
+///
+/// Plan 408: `is_component` 区分两种语义：
+/// - `false`（`view fn`，默认）— 片段在调用点**内联展开**（Plan 367 P2-3 既有行为，不变）。
+/// - `true`（`component fn`）— 片段**合成为独立 Vue SFC**，调用点改为组件引用 `<Name :prop/>`
+///   而非内联；它成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
+///
+/// `computed`（Plan 408 P3）: 仅 `component fn` 支持的可选 `computed { }` 块，
+/// 镜像 widget 的 computed——派生 props/state 的表达式，code生成
+/// `const x = computed(() => ...)`。`view fn`（内联）无此字段（内联展开后
+/// computed 无独立组件作宿主）。
 #[derive(Debug, Clone)]
 pub struct ViewFragmentDecl {
     pub name: Name,
     pub params: Vec<(Name, String)>,
     pub body: ViewNode,
+    /// Plan 408 P3: 仅 component fn 支持；view fn 恒为 None。
+    pub computed: Option<ComputedBlock>,
+    /// Plan 408: true = `component fn`（独立 SFC 合成）；false = `view fn`（内联展开）。
+    pub is_component: bool,
 }
 
 // ============================================================================

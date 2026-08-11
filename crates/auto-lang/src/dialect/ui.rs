@@ -24,8 +24,9 @@ impl Dialect for UiDialect {
 
     /// Ident 路径的关键字。不含 view/on —— 它们是真实 TokenKind，
     /// 走 try_parse_token_stmt。
+    /// Plan 408: 加 `component`（`component fn` 独立组件声明）。
     fn keywords(&self) -> &'static [&'static str] {
-        &["widget", "msg", "model"]
+        &["widget", "msg", "model", "component"]
     }
 
     fn try_parse_stmt(&self, p: &mut Parser, kw: &str) -> AutoResult<Option<Stmt>> {
@@ -33,6 +34,8 @@ impl Dialect for UiDialect {
             "widget" => p.parse_widget_decl()?,
             "msg" => p.parse_msg_decl()?,
             "model" => p.parse_model_block()?,
+            // Plan 408: `component fn Name(...) { ... }` → 独立 Vue 组件声明。
+            "component" => p.parse_component_fn_decl()?,
             _ => return Ok(None),
         };
         Ok(Some(stmt))

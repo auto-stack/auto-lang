@@ -1384,9 +1384,17 @@ impl VueGenerator {
                 }
                 crate::ast::ExtImportKind::Component => {
                     for sym in &symbols {
-                        // Local `.vue` files are default-exported; everything
-                        // else (npm packages, .ts modules) uses named exports.
-                        let line = if imp.path.ends_with(".vue") {
+                        // Plan 408: empty `from` (no source path) means this is
+                        // a reference to a same-project `component fn` SFC,
+                        // synthesized to `@/components/{Name}.vue`. No file copy
+                        // happens — the SFC is produced by the build itself.
+                        // Treat it like a local .vue (default export, same path
+                        // convention as sub-widget imports in vue.rs:1860).
+                        let line = if imp.path.is_empty() {
+                            format!("import {} from '@/components/{}.vue'\n", sym, sym)
+                        } else if imp.path.ends_with(".vue") {
+                            // Local `.vue` files are default-exported; everything
+                            // else (npm packages, .ts modules) uses named exports.
                             format!("import {} from '{}'\n", sym, specifier)
                         } else {
                             format!("import {{ {} }} from '{}'\n", sym, specifier)
@@ -16490,6 +16498,76 @@ widget NullProbe {
     #[test]
     fn test_a2vue_icon_child() {
         test_a2vue("006_icon_child").expect("a2vue icon_child golden mismatch");
+    }
+
+    /// Plan 408: `component fn` → independent Vue SFC synthesis.
+    ///
+    /// `component fn Card(title str)` must be synthesized to its own Card.vue
+    /// (with `defineProps<{ title: string }>()`), and the App widget must
+    /// reference it via `<Card :title=.../>` + `import Card from ...` instead
+    /// of inlining the fragment body. Verifies the full production path
+    /// (`generate_component_from_file`), not just extraction.
+    #[test]
+    fn test_a2vue_component_fn() {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let at_path = d.join("test/a2vue/007_component_fn/input.at");
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("007_component_fn generation failed");
+
+        // App is the first widget; Card is synthesized after it.
+        let app_code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "App")
+            .map(|(_, code)| code)
+            .expect("App widget not in all_widget_codes");
+        let card_code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "Card")
+            .map(|(_, code)| code)
+            .expect("Card component fn not synthesized into all_widget_codes");
+
+        // App references Card as a component, not inlined DOM.
+        let app_n = normalize_vue_output(app_code);
+        let card_n = normalize_vue_output(card_code);
+
+        // Write golden files (created on first run / updated intentionally).
+        let app_golden = d.join("test/a2vue/007_component_fn/App.expected.vue");
+        let card_golden = d.join("test/a2vue/007_component_fn/Card.expected.vue");
+        let app_expected = normalize_vue_output(
+            &std::fs::read_to_string(&app_golden).unwrap_or_default()
+        );
+        let card_expected = normalize_vue_output(
+            &std::fs::read_to_string(&card_golden).unwrap_or_default()
+        );
+
+        if app_n != app_expected {
+            let wrong = d.join("test/a2vue/007_component_fn/App.wrong.vue");
+            std::fs::write(&wrong, app_code).unwrap();
+            panic!(
+                "007_component_fn App mismatch. See App.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                app_expected, app_n
+            );
+        }
+        if card_n != card_expected {
+            let wrong = d.join("test/a2vue/007_component_fn/Card.wrong.vue");
+            std::fs::write(&wrong, card_code).unwrap();
+            panic!(
+                "007_component_fn Card mismatch. See Card.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                card_expected, card_n
+            );
+        }
+
+        // Structural assertions: the key Plan 408 invariants.
+        assert!(app_code.contains("import Card from '@/components/Card.vue'"),
+            "App must import Card component: {}", app_code);
+        assert!(app_code.contains("<Card"),
+            "App must reference Card via a component tag: {}", app_code);
+        assert!(!app_code.contains("text-muted-foreground"),
+            "App must NOT inline Card's body DOM (no text-muted-foreground): {}", app_code);
+        assert!(card_code.contains("defineProps"),
+            "Card SFC must define props: {}", card_code);
+        assert!(card_code.contains("title"),
+            "Card SFC must declare the title prop: {}", card_code);
     }
 
     /// Plan 022 限制2: composable 带参调用。验证

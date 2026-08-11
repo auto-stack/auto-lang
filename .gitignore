@@ -25,6 +25,7 @@ history.txt
 *.wrong.h
 *.wrong.rs
 *.wrong.ts
+*.wrong.vue
 *.wrong.out
 *.wrong.result
 *.wrong.ets
