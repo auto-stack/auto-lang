@@ -369,6 +369,10 @@ computed 内引用的逃生舱 fn 标识符被原样保留，但生成的 SFC **
 >
 > **修复**：`dot_item()`（parser.rs:2039）在链式 Dot 解析后、赋值检查前，加 `[...]` 索引循环——每次 `LSquare` → `parse_expr` 解析索引 → `RSquare`，包装 `Expr::Index(lhs, index)`。这样 `.row[.col]` 保持单节点 → 产物 `{{ row[col] }}`。修复点是通用 `dot_item`，对所有 view 表达式（不止 component fn）生效。测试 `test_dynamic_index_dot_field` 覆盖。vue 186 + plan408 8 + plan367 6 全绿，零回归。缺陷 7（table 标签映射）仍待做。
 
+> **2026-08-11 P8 落地**（缺陷 7）：已修复。实测发现 `map_tag` 的 shadcn 分支（vue.rs:4649 `shadcn_component_name`）把小写 `table` 映射成 `import { Table } from '@/components/ui/table'` + `<Table>`（thead/tbody/tr/th/td 子标签已是原生，只有 `table` 被映射）。
+>
+> **修复**：`map_tag`（vue.rs:4649）shadcn 查询前，加 table 核心标签排除——`table/thead/tbody/tfoot/tr/th/td` 直接返回原 tag（保持原生 HTML）。PascalCase `Table` 仍可通过 sub-widget/ext-component 路径走 shadcn 组件（二分清晰：小写=原生，PascalCase=shadcn）。**`col`/`colgroup`/`caption` 故意排除**——`col` 与 Auto layout 的 `col`（→ div/flex）撞名，加入会破坏既有 layout 用法（test_shadcn_map_tag 回归验证）。测试 `test_native_table_not_mapped_to_shadcn` 覆盖。vue 186 + plan408 9 + plan367 6 全绿，零回归。
+
 ### 7.6 P4 实施顺序与优先级（2026-08-11 P3 试点后修订）
 
 | 缺陷 | 优先级 | 理由 | 方案 |

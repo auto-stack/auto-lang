@@ -437,4 +437,58 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// §7.5 缺陷 7: native HTML table elements (table/thead/tbody/tr/th/td)
+    /// must stay native in shadcn mode — not be mapped to the shadcn <Table>
+    /// component. PascalCase `Table` still resolves to shadcn via the
+    /// sub-widget/ext-component path.
+    #[test]
+    fn test_native_table_not_mapped_to_shadcn() {
+        let tmp = std::env::temp_dir().join("plan408_native_table_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget TableView {\n",
+            "    view {\n",
+            "        table {\n",
+            "            thead {\n",
+            "                tr {\n",
+            "                    th { text \"Name\" }\n",
+            "                }\n",
+            "            }\n",
+            "            tbody {\n",
+            "                tr {\n",
+            "                    td { text \"Alice\" }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        )).unwrap();
+
+        // shadcn mode (real build path).
+        let (vue_code, _widgets, _stores) = crate::ui_build_shadcn_with_widgets_and_stores(
+            at_path.to_str().unwrap(), None, None,
+        ).expect("native table case must compile");
+
+        // Native `<table>`, not shadcn <Table>.
+        assert!(
+            vue_code.contains("<table>"),
+            "table tag must stay native HTML: {}",
+            vue_code
+        );
+        assert!(
+            !vue_code.contains("import { Table }"),
+            "must NOT import shadcn Table for a native table: {}",
+            vue_code
+        );
+        assert!(
+            !vue_code.contains("<Table"),
+            "must NOT render shadcn <Table>: {}",
+            vue_code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
