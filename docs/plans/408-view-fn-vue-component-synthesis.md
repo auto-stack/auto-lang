@@ -194,11 +194,40 @@ codegen 报 "✓ Regenerated 6 components"，但产物仍是旧 view，直到手
 
 **解锁**: Plan 053 M5（补全 debounce）。
 
+### P5-7 🔴 widget module fn + use 导入 + 复杂 handler 三重限制（解锁 Plan 053 M3）
+
+**问题（三连，Plan 053 M3 实测全被阻塞）**:
+1. **widget 文件的顶层 module fn 不被 codegen**（P5-4 扩展）：不只纯 module fn
+   文件,widget 文件（prompt_bar.at）顶层的 module fn（tokenize）也不生成;
+   只有 store 文件的 module fn 生成。
+2. **use 不能导入 module fn**：`use shell_store: tokenize_input` 被误解为导入
+   store（产物 `import { usetokenize_inputStore }`）。use 只认 store/widget/component。
+3. **widget handler 的复杂 body 不生成 function**：DoTokenize handler（tokenize
+   状态机:struct 数组 + push + 嵌套 for/break + 7 分支 if/else if 链,~80 行）
+   静默未生成 function（同文件其他简单 handler 正常生成）→ 产物 TS2304
+   Cannot find name 'DoTokenize'。
+
+**位置**:
+- module fn 扫描:codegen 文件处理（widget vs store 的 module fn 区别）
+- use 解析:use 的 item 类型识别（store/widget vs module fn）
+- handler 生成:`vue.rs` / `ts_adapter` 对复杂 handler body（struct 数组 push +
+  嵌套循环 + 长 if/else if）的生成路径
+
+**修复**:
+- widget 文件也生成顶层 module fn;或支持 module fn 跨文件 use 导入
+- handler 生成支持复杂 body（struct 数组 + push + 嵌套循环 + 长 if/else if）
+
+**解锁**: Plan 053 M3（输入框语法高亮）。tokenize 逻辑已保留在 prompt_bar.at
+为死代码（DoTokenize handler）,待本项修复后连接 view overlay。
+
+**证据**: PromptBar.vue 生成了所有简单 handler function,唯独 DoTokenize 缺失。
+
 ---
 
 ## 6. P5 phases 实施优先级建议
 
 1. **P5-1**（缓存失效）+ **P5-2**（clean panic）—— 先修，改善所有后续 codegen 调试循环
-2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
-3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
-4. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround
+2. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展
+3. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全
+4. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）
