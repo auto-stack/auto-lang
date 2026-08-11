@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态**: ✅ **P1–P10 全部完成并合并 master**。P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）+ P4（emit+model）+ P5（use{fn}）+ P6（prop 绑定）+ P7（动态索引）+ P8（table 原生）+ P9（computed 三元）+ P10（prop-as-handler）。§7 缺陷表 5/1+2/4/6/7/3 全部修复（缺陷 8 已由 gap 44 修复）。**仍开放**：slot（§8.1，结构性改动）、§7.7 类型收窄、pages 写盘（KNOWN-DEBT）、auto-musk 试点（§6.3，跨仓库）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
+> **状态**: ✅ **P1–P11 全部完成并合并 master**。P1（同文件 SFC 合成）+ P2（跨文件复用）+ P3（computed）+ P4（emit+model）+ P5（use{fn}）+ P6（prop 绑定）+ P7（动态索引）+ P8（table 原生）+ P9（computed 三元）+ P10（prop-as-handler）+ P11（slot + pages 写盘 + 类型收窄）。§7 缺陷表全部修复。**唯一仍开放**：auto-musk 试点（§6.3，跨仓库应用层验证）。承接 auto-musk Plan 023（`view fn → 独立组件 codegen`）的转译器侧立项。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
@@ -512,4 +512,55 @@ component fn CollapseBtn(label: str) {
 
 **Codegen 零改动验证**: `generate_sfc` 的 messages→emit_events（:1563）、defineEmits（:2044）、handler auto-emit（:2183）、state_vars→ref（:1917）全基于 AuraWidget 字段工作；父侧 `fragment_to_component_node` 已透传 events → `sub_widget_event_to_vue` 转 `@Event`。extract 填进去即自动产出。
 
-**NavSidebar 试点评估更新**: emit + model 已补，NavSidebar 的核心交互（折叠状态 + 向上抛事件）可落地。**仍缺 slot**（列表骨架由各视图注入）——slot 需给 `AuraNode::Component` 加 children 字段 + 重写 node_to_html Component 分支（当前自闭合），结构性改动，作 P5。三视图共用 NavSidebar 的完整收敛（§3.1）需 P5 slot 落地后推进。
+**NavSidebar 试点评估更新**: emit + model 已补，NavSidebar 的核心交互（折叠状态 + 向上抛事件）可落地。~~仍缺 slot~~（**P11 已补**，见下）。
+
+---
+
+## 9. P11：slot + pages 写盘 + 类型收窄（2026-08-11 落地）
+
+审查驱动的最后一轮——解决全部剩余开放项（slot / pages 写盘 / §7.7 类型收窄）。
+
+### 9.1 slot 支持（§8.1 残留）
+
+**改动**（结构性，影响面经核查极小——1 个穷举 match + 3 个构造点）:
+- `aura/types.rs`: `AuraNode::Component` 加 `children: Vec<AuraNode>` 字段。
+- `aura/extract.rs`: `fragment_to_component_node` 加 children 参数；Element PascalCase 调用点（:879）提取 ViewNode children → `Vec<AuraNode>` 透传；`assign_node_ids_recursive` 的 Component 分支递归 children 分配 debug id；ViewNode::Component 分支（无 children）传 `Vec::new()`。
+- `ui_gen/vue.rs`: `node_to_html` Component 分支（:3936）改非自闭合——children 非空时用 `slot_child_to_html` 渲染（`slot(name:"x")` → `<template #x>`，镜像 sub-widget 路径 :3433）。
+- `lib.rs`: 新增 `ui_build_shadcn_all_widget_codes`（见 9.2）。
+
+**语法**：
+```auto
+component fn Card(title: str) {
+    col { slot(name: "header") { text .title } }   // 子组件声明 outlet
+}
+widget App {
+    view {
+        Card(title: .heading) {                      // 父注入 slot 内容
+            slot(name: "header") { text "custom" }
+        }
+    }
+}
+```
+→ 父侧 `<Card ...><template #header>custom</template></Card>`（非自闭合）。
+
+**验证**: `test_component_fn_slot_injection`。
+
+### 9.2 pages 写盘（KNOWN-DEBT 清零）
+
+**问题**: auto-man `from_workspace` 的 pages 路径只取 `widgets.first()` 的 SFC，丢弃 component fn SFC。
+
+**改动**:
+- `lib.rs`: 新增 `ui_build_shadcn_all_widget_codes`（返回完整 `GeneratedComponent` 含 `all_widget_codes`，不破坏既有 `ui_build_shadcn_with_widgets_and_stores` 的签名/调用方）。
+- `auto-man/src/vue.rs`: pages 路径（scan_pages_dir，:1496）改用新函数；额外 SFC（all_widget_codes 除 first 外）push 到 `all_components`，写 components/。
+
+**验证**: auto-man 编译通过；KNOWN-DEBT 条目移除。
+
+### 9.3 §7.7 类型收窄（函数调用结果字段访问）
+
+**问题**: `if fn() != None { fn().field }` 两次独立调用 fn()，TS 不收窄 → TS2531。
+
+**修复**: `expr_to_js` 的 `Expr::Dot` 分支（vue.rs:5413）——当 object 是 `Expr::Call`（函数调用，返回值 TS 不收窄）时，用可选链 `?.` 替代 `.`。`?.` 对非 null 值等价于 `.`，功能安全。
+
+**验证**: `test_fn_call_field_uses_optional_chain`（`getState(id.value)?.name`）。vue 193 全绿，零回归（通用 `fn().field` → `fn()?.field` 改动不破坏既有测试）。
+
+**P11 整体验证**: auto-lang vue 193 + plan408 15 + auto-man 编译，零回归。

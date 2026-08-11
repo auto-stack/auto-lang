@@ -4585,6 +4585,29 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
     Ok((result.vue_code, result.widgets, store_composables))
 }
 
+/// Plan 408 P11 / KNOWN-DEBT pages 写盘：薄包装，返回完整 `GeneratedComponent`
+/// （含 `all_widget_codes`——每个 component fn / widget 一个 SFC），让调用方
+/// （auto-man `from_workspace` 的 pages 路径）能把 component fn SFC 也写盘到
+/// components/，而非只取 first widget 的 vue_code。与
+/// `ui_build_shadcn_with_widgets_and_stores` 同语义，只是不丢弃 all_widget_codes。
+pub fn ui_build_shadcn_all_widget_codes(
+    path: &str,
+    root_dir: Option<&str>,
+) -> AutoResult<crate::ui_gen::GeneratedComponent> {
+    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
+    let at_path = std::path::Path::new(path);
+    let stream_endpoints = root_dir
+        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let opts = ComponentGenOptions {
+        stream_endpoints,
+        ..Default::default()
+    };
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
+    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
+    Ok(result)
+}
+
 /// Like `ui_build_shadcn_with_widgets`, but accepts a list of known sub-widget names
 /// to avoid naming collisions with shadcn-vue components (e.g. custom "Sidebar" widget
 /// should not be mapped to shadcn's Sidebar).

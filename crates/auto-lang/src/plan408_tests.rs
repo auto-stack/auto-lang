@@ -438,7 +438,101 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// §7.8 缺陷 8 嵌套残留（a9e4397e TaskPlanCard 暴露）：嵌套 if（else 里
+    /// §8.1 / Plan 408 P11 slot 支持：父组件往 component fn 注入 slot 内容。
+    /// component fn Card 声明 `slot(name: "header")` outlet；父 App 用
+    /// `Card(...) { slot(name: "header") { ... } }` 注入 header slot。
+    /// 产物应为 `<Card ...><template #header>...</template></Card>`（非自闭合）。
+    #[test]
+    fn test_component_fn_slot_injection() {
+        let tmp = std::env::temp_dir().join("plan408_slot_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn Card(title: str) {\n",
+            "    col {\n",
+            "        slot(name: \"header\") { text .title }\n",
+            "    }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var heading str = \"hi\" }\n",
+            "    view {\n",
+            "        Card(title: .heading) {\n",
+            "            slot(name: \"header\") {\n",
+            "                text \"custom header\"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("slot case must compile");
+        let app = result.vue_code.clone();
+        let card = result.all_widget_codes.iter()
+            .find(|(n, _)| n == "Card")
+            .map(|(_, c)| c.clone())
+            .unwrap();
+
+        // Card declares the slot outlet.
+        assert!(card.contains("<slot name=\"header\""), "Card must declare slot outlet: {}", card);
+        // App injects slot content as a non-self-closing Card with template #header.
+        assert!(
+            app.contains("<Card"),
+            "App must render <Card>: {}", app
+        );
+        assert!(
+            app.contains("#header"),
+            "App must inject slot content via template #header: {}", app
+        );
+        assert!(
+            app.contains("custom header"),
+            "App slot content must reach the output: {}", app
+        );
+        assert!(
+            !app.contains("<Card ") || !app.trim_end_matches('\n').ends_with("/>"),
+            "App Card must NOT be self-closing when it has slot children: {}", app
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// §7.7 类型收窄：`if fn() != None { fn().field }` 两次独立调用 fn()，
+    /// TS 不收窄第二次 → TS2531。修复：函数调用结果的字段访问用可选链 `?.`。
+    #[test]
+    fn test_fn_call_field_uses_optional_chain() {
+        let tmp = std::env::temp_dir().join("plan408_narrowing_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget Card {\n",
+            "    use { fn: getState from \"./state.ts\" }\n",
+            "    model { var id int = 0 }\n",
+            "    computed {\n",
+            "        label => if getState(.id) != None { getState(.id).name } else { \"unknown\" }\n",
+            "    }\n",
+            "    view { div { text .label } }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("narrowing case must compile");
+        let code = result.vue_code.clone();
+
+        assert!(
+            code.contains(")?.name"),
+            "fn().field must use optional chaining: {}", code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// 再 if）的深层分支引用 computed 时，2+ 层分支此前漏 .value（单层 if
     /// 正确）。根因：IIFE/多语句 computed body 路径走 ts_adapter，未传
     /// computed_names。修复：AuraTsContext 加 computed_names + with_computed，

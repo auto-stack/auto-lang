@@ -850,6 +850,11 @@ pub enum AuraNode {
         /// Event handlers
         events: HashMap<String, AuraEvent>,
 
+        /// Plan 408 P11: child nodes passed to the component — `slot(name:"x")`
+        /// elements become `<template #x>…</template>`, plain children go to
+        /// the default slot. Empty when the call site is self-closing.
+        children: Vec<AuraNode>,
+
         /// Source span: (byte_offset, byte_length) in the .at file
         span: Option<(usize, usize)>,
 
