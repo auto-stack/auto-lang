@@ -1049,10 +1049,16 @@ fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
                 }
             }
         }
-        View::Textarea { on_change, .. } => {
+        View::Textarea { on_change, on_submit, .. } => {
             if let Some(m) = on_change {
                 if let Some((w, e)) = extract_dyn_msg(m) {
                     out.push(("onchange".into(), format!("{}.{}", w, e)));
+                }
+            }
+            // Plan 053 M4: textarea Enter → onsubmit (mirrors Input).
+            if let Some(m) = on_submit {
+                if let Some((w, e)) = extract_dyn_msg(m) {
+                    out.push(("onsubmit".into(), format!("{}.{}", w, e)));
                 }
             }
         }
@@ -2031,8 +2037,10 @@ fn extract_action_from_view(
             on_change.as_ref().and_then(|m| extract_dyn_msg(m))
         }
         // submit → on_submit(Enter 键)。ash-gui M1:命令输入栏回车执行。
-        // Textarea 没有 on_submit(多行用 Shift+Enter 换行),只有 Input 有。
-        View::Input { on_submit, .. } if action_name == "submit" => {
+        // Plan 053 M4: textarea 也有 on_submit(onenter → OnEnter)。
+        View::Input { on_submit, .. } | View::Textarea { on_submit, .. }
+            if action_name == "submit" =>
+        {
             on_submit.as_ref().and_then(|m| extract_dyn_msg(m))
         }
         View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
@@ -2115,11 +2123,14 @@ fn execute_action_vnode(
             .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
         let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
             .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
-        // ash-gui M1:submit 模拟 onenter(如 PromptBar 的 `onenter: .Run(.input)`)。
-        // handler 带 .input 参数,但 submit 不自带 value —— 从 target_view(Input)
-        // 读当前 value 字段作为 handler 参数,使 Run(cmd) 收到命令文本。
+        // ash-gui M1:submit 模拟 onenter(如 PromptBar 的 `onenter: .OnEnter`)。
+        // handler 带 .input 参数,但 submit 不自带 value —— 从 target_view
+        // (Input/Textarea)读当前 value 字段作为 handler 参数,使 Run(cmd) 收到
+        // 命令文本。
         if action == UiActionType::Submit && input_value.is_none() {
             if let View::Input { value: v, .. } = target_view {
+                input_value = Some(v.clone());
+            } else if let View::Textarea { value: v, .. } = target_view {
                 input_value = Some(v.clone());
             }
         }

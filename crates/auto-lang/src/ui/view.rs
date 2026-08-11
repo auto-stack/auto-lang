@@ -270,6 +270,7 @@ pub enum View<M: Clone + Debug> {
         placeholder: String,
         value: String,
         on_change: Option<M>,
+        on_submit: Option<M>,  // Fires on Enter key press (Plan 053 M4)
         height: Option<u16>,
         style: Option<Style>,
     },
@@ -901,6 +902,7 @@ impl<M: Clone + Debug> View<M> {
             placeholder: placeholder.into(),
             value: String::new(),
             on_change: None,
+            on_submit: None,
             height: None,
             style: None,
         }
@@ -1223,10 +1225,11 @@ impl<M: Clone + Debug> View<M> {
                 password,
                 style,
             },
-            View::Textarea { placeholder, value, on_change, height, style } => View::Textarea {
+            View::Textarea { placeholder, value, on_change, on_submit, height, style } => View::Textarea {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
+                on_submit: on_submit.map(|m| f(m)),
                 height,
                 style,
             },
@@ -1541,6 +1544,7 @@ pub struct ViewTextareaBuilder<M: Clone + Debug> {
     placeholder: String,
     value: String,
     on_change: Option<M>,
+    on_submit: Option<M>,
     height: Option<u16>,
     style: Option<Style>,
 }
@@ -1553,6 +1557,12 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
 
     pub fn on_change(mut self, msg: M) -> Self {
         self.on_change = Some(msg);
+        self
+    }
+
+    /// Fires on Enter key press (Plan 053 M4 — textarea continuation/submit).
+    pub fn on_submit(mut self, msg: M) -> Self {
+        self.on_submit = Some(msg);
         self
     }
 
@@ -1626,6 +1636,7 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
             placeholder: self.placeholder,
             value: self.value,
             on_change: self.on_change,
+            on_submit: self.on_submit,
             height: self.height,
             style: self.style,
         }

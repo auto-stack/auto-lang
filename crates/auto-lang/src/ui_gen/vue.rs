@@ -2208,7 +2208,15 @@ impl VueGenerator {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
                 let already_notifies_parent = body.contains(&callback_key);
-                if !already_notifies_parent {
+                // Plan 053 M4 (P5-7 residual): internal helper handlers that are
+                // only self-called (`.DoContinuation()` from OnInput/OnEnter,
+                // `.DoTokenize()` from OnInput) skip the trailing emit('X') —
+                // no parent listens, and they are NOT in the defineEmits type
+                // (that's built from template-bound handlers *before*
+                // mark_self_called_handlers runs), so emitting would be a
+                // TS2769 "not assignable to parameter" (observed for DoTokenize).
+                // Template-bound handlers are already in used_handlers here.
+                if !already_notifies_parent && self.used_handlers.contains(&handler_name) {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
                     // Plan 043 M5 B-3: when the handler is a loop-param handler
@@ -4910,7 +4918,7 @@ impl VueGenerator {
             // Typography
             "h1", "h2", "h3", "h4", "h5", "h6", "text", "p",
             // Form
-            "button", "input", "checkbox", "link", "label",
+            "button", "input", "checkbox", "link", "label", "textarea",
             // Data
             "tree", "tree_item", "tree-item",
         ];
@@ -16827,6 +16835,67 @@ widget Plan053Gate {
         assert!(
             !sfc.contains("function push"),
             ".push() is a store method, must NOT be emitted as a handler function:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_plan053_p55_textarea_skips_default_classes() {
+        // P5-5: textarea was missing from user_class_skip_elements → user
+        // style still got the default `border rounded px-2 py-1` forced in.
+        // With user class present, defaults must be skipped (mirrors `input`).
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Textarea {
+    model { var s str = "" }
+    view {
+        col {
+            textarea {
+                value: .s
+                rows: 1
+                style: "w-full resize-none"
+            }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("<textarea"), "textarea tag:\n{sfc}");
+        assert!(sfc.contains("resize-none"), "user class kept:\n{sfc}");
+        assert!(
+            !sfc.contains("border rounded"),
+            "textarea must skip default border classes when user class present:\n{sfc}"
+        );
+        assert!(sfc.contains(":rows=\"1\""), "rows attr:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_p57_residual_self_called_handler_no_emit() {
+        // P5-7 residual (Plan 053 M4 companion): self-called-only handlers
+        // must NOT get a trailing emit('X') — they aren't in the defineEmits
+        // type (built from template-bound handlers before
+        // mark_self_called_handlers), so emitting would be TS2769
+        // (observed on DoTokenize).
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053NoEmit {
+    msg Msg { Run, Helper }
+    model { var x str = "" }
+    on {
+        .Run -> {
+            .Helper()
+        }
+        .Helper -> {
+            .x = "done"
+        }
+    }
+    view { col { button "go" { onclick: .Run } text .x } }
+}
+"#);
+        assert!(sfc.contains("function Helper"), "self-called handler emitted:\n{sfc}");
+        assert!(
+            !sfc.contains("emit('Helper')"),
+            "self-called-only handler must not emit (not in defineEmits type):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("emit('Run')"),
+            "template-bound handler keeps its emit:\n{sfc}"
         );
     }
 

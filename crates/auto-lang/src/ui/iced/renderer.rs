@@ -1122,7 +1122,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 input_widget.into()
             }
 
-            AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
+            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style: _ } => {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
@@ -1133,9 +1133,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     None => iced::Length::Fixed(100.0),
                 });
 
+                // Plan 053 M4: Enter fires on_submit (onenter) — the newline is
+                // already inserted by content.perform; input_value carries the
+                // post-Enter content so the handler's bound field picks it up.
+                let is_enter = |action: &text_editor::Action| {
+                    matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
+                };
                 if let Some(msg) = on_change {
                     let action_key = key.clone();
+                    let submit_clone = on_submit.clone();
                     editor.on_action(move |action| {
+                        if is_enter(&action) {
+                            if let Some(sm) = submit_clone.clone() {
+                                let text = textarea_perform_action(&action_key, action);
+                                INPUT_TEXT.with(|t| *t.borrow_mut() = text);
+                                return sm.clone();
+                            }
+                        }
                         let text = textarea_perform_action(&action_key, action);
                         INPUT_TEXT.with(|t| *t.borrow_mut() = text);
                         msg.clone()
@@ -1979,12 +1993,14 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             placeholder,
             value,
             on_change,
+            on_submit,
             height,
             style,
         } => AbstractView::Textarea {
             placeholder,
             value,
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            on_submit: on_submit.map(|m| IcedMessage::from_dynamic(&m)),
             height,
             style,
         },
@@ -4052,7 +4068,21 @@ fn compare_pngs(
         // → App.RunCommand 在 vm 不发生。这里模拟该 emit:PromptBar.Run 执行后,若它
         // 带了 cmd 值(submit 传入的 input 当前值),直接触发 store.RunCommand(cmd)。
         // 这是 ash-gui 特定知识(widget=PromptBar,event=Run),而非通用 emit 修复。
-        if widget_name == "PromptBar" && event_name == "Run" {
+        // Plan 053 M4:OnEnter(submit 目标)内部调用 Run 执行命令 — Run 清空
+        // .input。若 OnEnter 消息处理后 .input 为空且携带了命令,视为命令已执行,
+        // 走同一 bridge(Run 的 cmd 从 handler 参数传入,不经 IcedMessage)。
+        let cmd_ran = if widget_name == "PromptBar" && event_name == "Run" {
+            true
+        } else if widget_name == "PromptBar" && event_name == "OnEnter" {
+            state
+                .component
+                .read_state("input")
+                .map(|v| v.as_str().is_empty())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        if cmd_ran {
             // saved_input_value 在 handler 执行前已补值(见上方 EDGE-15 注释):
             // on_submit 无 input_value 时从 state.input 抢救,故此处直接用。
             if let Some(cmd) = saved_input_value.as_deref() {
@@ -4117,7 +4147,8 @@ fn compare_pngs(
         // (Plan 047)让 tree state 跨帧复用,导致 value="" 不生效。
         // 修复:Run 后显式清空 component state 的 input 字段 + 清 cached_rendered
         // 强制下一帧完全重建 text_input widget(新实例 value="")。
-        if widget_name == "PromptBar" && event_name == "Run" {
+        // Plan 053 M4:OnEnter 内部 Run 后同样需要强制重建(cmd_ran 已判)。
+        if cmd_ran {
             let _ = state.component.write_state("input", auto_val::Value::str(""));
             *state.cached_rendered.borrow_mut() = None; // 强制重建(丢弃旧 widget)
             *state.cached_converted_view.borrow_mut() = None;
@@ -7159,9 +7190,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, height, style: _ } => {
+        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style: _ } => {
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
+                .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
                 .unwrap_or_else(|| format!("__textarea_{}", placeholder.len()));
 
             let content = get_textarea_content(&key, &value);
@@ -7179,17 +7211,72 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // In inspect-capture mode, render read-only (no on_action) so
                 // wrap_debug's mouse_area can capture hover/click.
                 let on_change = if inspect_capture_active() { None } else { on_change };
+                let on_submit = if inspect_capture_active() { None } else { on_submit };
+                // Plan 053 M4: Enter fires the on_submit (onenter) handler
+                // instead of on_change — the textarea already inserted the
+                // newline (content.perform), and the handler (PromptBar.OnEnter)
+                // decides to run or continue. input_value carries the post-Enter
+                // content so .input picks up the newline via input_state_map.
+                let is_enter = |action: &text_editor::Action| {
+                    matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
+                };
                 if let Some(msg) = on_change {
-                let msg_clone = msg.clone();
-                editor.on_action(move |action| {
-                    let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
-                    let text = textarea_perform_action(&action_key, action);
-                    IcedMessage {
-                        widget: msg_clone.widget.clone(),
-                        event: msg_clone.event.clone(),
-                        input_value: Some(text),
-                    }
-                }).into()
+                    let msg_clone = msg.clone();
+                    let submit_clone = on_submit.clone();
+                    editor.on_action(move |action| {
+                        let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
+                        if is_enter(&action) {
+                            if let Some(sm) = submit_clone.clone() {
+                                let text = textarea_perform_action(&action_key, action);
+                                IcedMessage {
+                                    widget: sm.widget.clone(),
+                                    event: sm.event.clone(),
+                                    input_value: Some(text),
+                                }
+                            } else {
+                                // No submit handler — fall through to change.
+                                let text = textarea_perform_action(&action_key, action);
+                                IcedMessage {
+                                    widget: msg_clone.widget.clone(),
+                                    event: msg_clone.event.clone(),
+                                    input_value: Some(text),
+                                }
+                            }
+                        } else {
+                            let text = textarea_perform_action(&action_key, action);
+                            IcedMessage {
+                                widget: msg_clone.widget.clone(),
+                                event: msg_clone.event.clone(),
+                                input_value: Some(text),
+                            }
+                        }
+                    }).into()
+                } else if let Some(sm) = on_submit {
+                    // No on_change — wire submit only (Enter fires it; other
+                    // actions still apply to content but emit nothing).
+                    let sm_clone = sm.clone();
+                    let action_key = format!("{}_{}", sm.widget, sm.event);
+                    editor.on_action(move |action| {
+                        let enter = is_enter(&action);
+                        let text = textarea_perform_action(&action_key, action);
+                        if enter {
+                            IcedMessage {
+                                widget: sm_clone.widget.clone(),
+                                event: sm_clone.event.clone(),
+                                input_value: Some(text),
+                            }
+                        } else {
+                            // Non-Enter edits without a change handler: keep the
+                            // typed text flowing as change anyway (no-op if the
+                            // widget has no on_change binding — the content sync
+                            // happens via get_textarea_content on rebuild).
+                            IcedMessage {
+                                widget: sm_clone.widget.clone(),
+                                event: sm_clone.event.clone(),
+                                input_value: Some(text),
+                            }
+                        }
+                    }).into()
                 } else {
                     editor.into()
                 }
@@ -8053,9 +8140,12 @@ fn extract_handler_from_view<M: Clone + Debug>(
 ) -> Option<M> {
     match (view, action_str) {
         (AbstractView::Button { onclick, .. }, "press") => Some(onclick.clone()),
-        (AbstractView::Input { on_change, .. } | AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => {
-            on_change.clone()
+        (AbstractView::Input { on_change, .. }, "type_text" | "clear") => on_change.clone(),
+        // Plan 053 M4: textarea Enter/submit (mirrors Input.on_submit).
+        (AbstractView::Input { on_submit, .. } | AbstractView::Textarea { on_submit, .. }, "submit") => {
+            on_submit.clone()
         }
+        (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::Checkbox { on_toggle, .. }, "toggle") => on_toggle.clone(),
         (AbstractView::Radio { on_select, .. }, "press" | "select") => on_select.clone(),
         _ => None,

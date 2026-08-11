@@ -267,12 +267,15 @@ export default defineConfig({
 }
 
 fn generate_tsconfig() -> String {
+    // Plan 053 M4: ES2020 → ES2021 — the codegen maps `.at` `replace` to
+    // JS `replaceAll` (Rust str::replace is full-replace), which needs the
+    // es2021 lib for vue-tsc. WebView2/Chromium supports it (Chrome 85+).
     r#"{
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2021",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

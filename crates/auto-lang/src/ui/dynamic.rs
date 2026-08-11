@@ -1164,11 +1164,23 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
                     .or_else(|| crate::aura::aura_events_get_base(events, "change"))
                     .map(|e| clean_handler_name(&e.handler));
 
-                if let (Some(field), Some(event)) = (state_field, event_name) {
+                if let (Some(field), Some(event)) = (state_field.clone(), event_name) {
                     // Don't overwrite: first match wins (e.g., header input's
                     // "EditInputChanged → input" should not be overwritten by
                     // a later edit input's "EditInputChanged → edit_text").
                     map.entry(event).or_insert(field);
+                }
+                // Plan 053 M4: also map the textarea's `onenter` (OnEnter) so
+                // Enter (on_submit) updates the bound field before the handler
+                // reads it (the on_change lookup above only keeps the first
+                // found event, which for PromptBar is oninput → OnInput).
+                if let Some(field) = state_field {
+                    if let Some(event) = crate::aura::aura_events_get_base(events, "onenter")
+                        .or_else(|| crate::aura::aura_events_get_base(events, "enter"))
+                        .map(|e| clean_handler_name(&e.handler))
+                    {
+                        map.entry(event).or_insert(field);
+                    }
                 }
             }
             for child in children {
