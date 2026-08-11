@@ -1205,12 +1205,18 @@ impl<'a> Parser<'a> {
 
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
-        // Skip newlines after 'return' to allow expression on next line
-        while self.is_kind(TokenKind::Newline) {
-            self.next();
-        }
-        if self.is_kind(TokenKind::Semi)
-            || self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF)
+        // Plan 012 batch F (early return): a newline after `return` ends the
+        // statement — bare early return. Previously newlines were skipped to
+        // allow the value on the next line, which silently swallowed the
+        // following statement as the return expression:
+        //     return
+        //     .count += 1   // parsed as `return (.count += 1)`
+        // Now the return value must be on the same line as `return`; no
+        // source in the repo used the next-line form.
+        if self.is_kind(TokenKind::Newline)
+            || self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::RBrace)
+            || self.is_kind(TokenKind::EOF)
         {
             return Ok(Stmt::Return(Box::new(Expr::Nil)));
         }
@@ -16079,7 +16085,13 @@ widget Test {
 
     #[test]
     fn test_return_with_newline() {
-        // "return\n42" should parse as return(42), not return(nil) + expr(42)
+        // Plan 012 batch F (early return): "return\n42" now parses as a bare
+        // return followed by a separate expression statement — a newline
+        // terminates the return statement. The return value must be on the
+        // same line as `return`. This reverts Plan 241's next-line-value
+        // rule, which made bare early return impossible: the statement after
+        // `return` was silently swallowed as the return value. No source in
+        // the repo used the next-line form.
         let code = "fn test() int {\n    return\n        42\n}";
         let ast = parse_once(code);
         let fn_decl = match ast.stmts.first() {
@@ -16087,19 +16099,22 @@ widget Test {
             _ => panic!("expected fn decl"),
         };
         let body = &fn_decl.body.stmts;
-        // Should have exactly one statement: return 42
-        assert_eq!(body.len(), 1, "expected 1 stmt, got {}: {:?}", body.len(), body);
+        assert_eq!(body.len(), 2, "expected bare return + expr stmt, got {}: {:?}", body.len(), body);
         match &body[0] {
             Stmt::Return(expr) => {
-                // Should be Int(42), not Nil
                 assert!(
-                    matches!(expr.as_ref(), Expr::Int(42)),
-                    "expected return Int(42), got: {:?}",
+                    matches!(expr.as_ref(), Expr::Nil),
+                    "expected bare return Nil, got: {:?}",
                     expr
                 );
             }
             other => panic!("expected Return stmt, got: {:?}", other),
         }
+        assert!(
+            matches!(&body[1], Stmt::Expr(Expr::Int(42))),
+            "second stmt is the standalone expr, got: {:?}",
+            body[1]
+        );
     }
 
     #[test]
@@ -16382,6 +16397,46 @@ widget Counter {
         assert_eq!(fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"), 2);
         // let + dot assigns (no action) → 3 stmts.
         assert_eq!(fn_body_stmt_count("fn f() {\n    let snap = command_list()\n    .cwd = snap.cwd\n    .home = snap.home\n}\n"), 3);
+    }
+
+    /// Plan 012 batch F (gap 6): a bare `return` at end of line parses as
+    /// `Stmt::Return(Nil)` and the next line stays a separate statement.
+    /// Regression lock for the old newline-skipping behavior that swallowed
+    /// the following statement as the return value.
+    #[test]
+    fn test_bare_return_newline_terminates_statement() {
+        let code = "fn f() {\n    return\n    .x = 1\n}\n";
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("should parse");
+        let fd = ast.stmts.iter().find_map(|s| match s {
+            Stmt::Fn(f) => Some(f),
+            _ => None,
+        }).expect("fn present");
+        assert_eq!(fd.body.stmts.len(), 2, "bare return + following stmt");
+        assert!(
+            matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Nil)),
+            "first stmt is bare return, got {:?}",
+            fd.body.stmts[0]
+        );
+    }
+
+    /// Plan 012 batch F (gap 6): same-line return value still parses.
+    #[test]
+    fn test_return_value_same_line_still_works() {
+        let code = "fn f() {\n    return 42\n}\n";
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("should parse");
+        let fd = ast.stmts.iter().find_map(|s| match s {
+            Stmt::Fn(f) => Some(f),
+            _ => None,
+        }).expect("fn present");
+        assert!(
+            matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Int(42))),
+            "return value on same line, got {:?}",
+            fd.body.stmts[0]
+        );
     }
 
 

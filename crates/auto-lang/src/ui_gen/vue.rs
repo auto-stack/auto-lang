@@ -16610,4 +16610,81 @@ widget CompWithComposable {
             "无参 composable 应仍是 useClock()，实际:\n{}", output
         );
     }
+
+    /// Plan 012 batch F (gap 6): early return inside an on-handler guard.
+    /// `if .busy { return }` emits an early `return;` inside the if; the
+    /// statements after the guard are still emitted (unreachable at runtime
+    /// when the guard holds — same as JS semantics).
+    #[test]
+    fn test_early_return_guarded_if() {
+        // Real parse path (plan 012 batch C idiom).
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Guarded {
+    msg Msg { Save }
+    model {
+        var count int = 0
+        var busy bool = false
+    }
+    view { col { button "save" onclick: .Save } }
+    on {
+        .Save -> {
+            if .busy { return }
+            .count += 1
+        }
+    }
+}
+"#,
+        );
+        assert!(sfc.contains("function Save()"), "handler emitted:\n{}", sfc);
+        assert!(
+            sfc.contains("if (busy.value) {return;"),
+            "early return inside guard:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("count.value += 1;"),
+            "statements after the guard still emitted:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 012 batch F (gap 6): a bare `return` at end of line is an early
+    /// return, NOT a return of the next statement. Regression lock for the
+    /// old newline-skipping parse that turned
+    ///     return
+    ///     .count += 1
+    /// into `return count.value += 1;`.
+    #[test]
+    fn test_early_return_bare_newline_terminates_statement() {
+        // Real parse path.
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget TopLevel {
+    msg Msg { Save }
+    model { var count int = 0 }
+    view { col { button "save" onclick: .Save } }
+    on {
+        .Save -> {
+            return
+            .count += 1
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            !sfc.contains("return count.value"),
+            "bare return must not swallow the next statement:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("return;"), "bare return emitted:\n{}", sfc);
+        // The following statement is still emitted (runtime-unreachable,
+        // matching JS semantics of code after `return;`).
+        assert!(
+            sfc.contains("count.value += 1;"),
+            "statement after bare return still emitted:\n{}",
+            sfc
+        );
+    }
 }
