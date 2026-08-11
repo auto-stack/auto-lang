@@ -3936,8 +3936,14 @@ impl VueGenerator {
                         }
                         continue;
                     }
-                    let value_str = self.prop_to_attr_value(&AuraPropValue::Expr(value.clone()))?;
-                    attrs.push(format!(":{}={}", key, value_str));
+                    // Plan 408 P6 / §7.1 缺陷 1+2: use the binding-mode
+                    // translator (expr_to_vue_bound_value) so literal props
+                    // render correctly — bool→true, str→'second', Dot→self
+                    // stripped. The previous prop_to_attr_value path used the
+                    // text-mode translator, leaking mustaches (`{{ true }}`),
+                    // dropping quotes (`second`), and keeping `self.` prefixes.
+                    let value_str = self.expr_to_vue_bound_value(value)?;
+                    attrs.push(format!(":{}=\"{}\"", key, value_str));
                 }
 
                 // Event handlers
