@@ -805,7 +805,7 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
-            "img" | "image" => self.convert_image(props),
+            "img" | "image" | "icon" => self.convert_image_or_icon(props),
             "progress" => self.convert_progress(props),
             "spacer" => self.convert_spacer(props),
             "divider" | "hr" => self.convert_divider(props),
@@ -1361,8 +1361,8 @@ impl<'a> AuraViewBuilder<'a> {
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "container" | "div" => self.convert_container(props, children, bindings),
 
-            // Image placeholder
-            "img" | "image" => self.convert_image(props),
+            // Image / Icon
+            "img" | "image" | "icon" => self.convert_image_or_icon(props),
 
             // Utility widgets
             "progress" => self.convert_progress(props),
@@ -1952,11 +1952,21 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert an image element: create View::Image for actual rendering.
-    fn convert_image(
+    /// Convert an image or icon element.
+    /// Plan 408: `icon (name: "bell")` uses a `lucide:{name}` synthetic src
+    /// that the iced renderer resolves to a bundled SVG glyph.
+    fn convert_image_or_icon(
         &self,
         props: &HashMap<String, AuraPropValue>,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
+        // icon: name → "lucide:{name}" synthetic src
+        if let Some(name) = self.extract_string(props, "name") {
+            if !name.is_empty() {
+                return View::Image { src: format!("lucide:{}", name), style };
+            }
+        }
+        // image: src as-is
         let src = self.extract_string(props, "src").unwrap_or_default();
         View::Image { src, style }
     }

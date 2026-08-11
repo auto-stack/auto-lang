@@ -1,0 +1,24 @@
+// stdlib/aura/widgets/display/Icon.at
+
+#[spec(category = Display, primary_prop = "name")]
+#[backend(ark, component = "Image")]
+#[backend(jet, component = "Icon")]
+#[backend(vue, component = "icon")]
+
+/// Icon component for displaying vector icons from the lucide icon set.
+///
+/// # Props
+/// - name: Icon name (lucide icon set, e.g. "bell", "check", "chevron-down")
+///
+/// # Example
+/// ```auto
+/// icon (name: "bell", style: "h-4 w-4") {}
+/// icon (name: "chevron-down") {}
+/// ```
+widget Icon {
+    model {
+        #[primary]
+        name str = ""
+    }
+    view {}
+}

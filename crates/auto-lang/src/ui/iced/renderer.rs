@@ -1530,6 +1530,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Image { src, style } => {
+                // Plan 408: lucide: icon prefix → render bundled SVG glyph.
+                if src.starts_with("lucide:") {
+                    let icon_name = &src[7..];
+                    let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                    let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
+                    let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                    if let Some(svg_str) = lucide_svg(icon_name) {
+                        let handle = get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
+                        let mut svg_widget = iced::widget::svg(handle);
+                        svg_widget = svg_widget.width(w.unwrap_or(iced::Length::Fixed(16.0)));
+                        svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));
+                        return container(svg_widget).into();
+                    }
+                    // Unknown icon name: render empty placeholder
+                    return container(iced::widget::text("")).into();
+                }
                 let bytes = load_image_bytes(&src);
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.map(|w| iced_length(&w)));
@@ -1675,6 +1691,21 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "home" => r#"<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>"#,
         "settings" => r#"<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>"#,
         "layers" => r#"<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>"#,
+        "chevron-left" => r#"<path d="m15 18-6-6 6-6"/>"#,
+        "chevron-right" => r#"<path d="m9 18 6-6-6-6"/>"#,
+        "chevron-down" => r#"<path d="m6 9 6 6 6-6"/>"#,
+        "chevron-up" => r#"<path d="m18 15-6-6-6 6"/>"#,
+        "arrow-up-down" => r#"<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>"#,
+        "arrow-up" => r#"<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>"#,
+        "arrow-down" => r#"<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>"#,
+        "arrow-right" => r#"<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>"#,
+        "x" => r#"<path d="M18 6 6 18"/><path d="m6 6 12 12"/>"#,
+        "check" => r#"<path d="M20 6 9 17l-5-5"/>"#,
+        "plus" => r#"<path d="M5 12h14"/><path d="M12 5v14"/>"#,
+        "minus" => r#"<path d="M5 12h14"/>"#,
+        "mail" => r#"<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>"#,
+        "book" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>"#,
+        "folder" => r#"<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
         _ => return None,
     };
     // Use a small static cache to avoid re-formatting.
