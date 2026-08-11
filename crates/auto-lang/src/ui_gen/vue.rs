@@ -5406,14 +5406,41 @@ impl VueGenerator {
                         // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
                         "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
                         "to_string" => Ok(format!("{}.toString()", object_js)),
-                        "to_int" => {
+                        "to_int" | "parse_int" => {
                             if args_js.is_empty() {
                                 Ok(format!("parseInt({})", object_js))
                             } else {
                                 Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
                             }
                         }
-                        "to_float" | "to_double" => Ok(format!("parseFloat({})", object_js)),
+                        "to_float" | "to_double" | "parse_float" => Ok(format!("parseFloat({})", object_js)),
+                        // Plan 053 M1: 字符串方法映射补全。原先仅
+                        // len/contains/to_string/to_int/to_float 有映射，其余走
+                        // 兜底 `.{method}()` 原样输出，生成无效 JS（实测
+                        // HistorySearch 产物的 `.to_lower()` 即症状）。这里按
+                        // libs/string.rs 的实际语义补全。
+                        // 无参 — 大小写 + trim 方向：
+                        "to_lower" | "lower" => Ok(format!("{}.toLowerCase()", object_js)),
+                        "to_upper" | "upper" => Ok(format!("{}.toUpperCase()", object_js)),
+                        "trim_left" => Ok(format!("{}.trimStart()", object_js)),
+                        "trim_right" => Ok(format!("{}.trimEnd()", object_js)),
+                        // 有参 — 前后缀：
+                        "starts_with" => Ok(format!("{}.startsWith({})", object_js, args_js.join(", "))),
+                        "ends_with" => Ok(format!("{}.endsWith({})", object_js, args_js.join(", "))),
+                        // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
+                        // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
+                        "char_at" => Ok(format!("{}.charAt({})", object_js, args_js.join(", "))),
+                        // find 返回 index 或 -1：
+                        "find" => Ok(format!("{}.indexOf({})", object_js, args_js.join(", "))),
+                        // substr/sub/slice 同一 native，均为 start..end 子串：
+                        "substr" | "sub" | "slice" => Ok(format!("{}.substring({})", object_js, args_js.join(", "))),
+                        // Rust str::replace 替换所有 → replaceAll：
+                        "replace" => Ok(format!("{}.replaceAll({})", object_js, args_js.join(", "))),
+                        "repeat" => Ok(format!("{}.repeat({})", object_js, args_js.join(", "))),
+                        // 布尔（无参）：
+                        "is_empty" => Ok(format!("({}.length === 0)", object_js)),
+                        // JS 无原生字符串 reverse：
+                        "reverse" => Ok(format!("([...{}].reverse().join(''))", object_js)),
                         _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
                     }
                 } else {
@@ -16441,6 +16468,85 @@ widget RemoveProbe {
                 .all(|w| !w.message.contains("`name`")),
             "no passthrough note for a proven string receiver: {warnings:?}"
         );
+    }
+
+    // --- Plan 053 M1: 字符串方法映射补全 --------------------------------
+    // 原先仅 len/contains/to_string/to_int/to_float 有映射，其余 .at 字符串
+    // 方法走兜底 `.{method}()` 原样输出，生成无效 JS（HistorySearch 产物的
+    // `.to_lower()` 是实测症状）。下面覆盖两条 codegen 路径。
+
+    #[test]
+    fn test_plan053_string_mapping_handler_body() {
+        // handler body → ts_adapter::transpile_handler_body 路径
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Str {
+    model {
+        var s str = "Hello"
+        var sink str = ""
+    }
+    on {
+        .Run -> {
+            .sink = .s.to_lower()
+            .sink = .s.lower()
+            .sink = .s.to_upper()
+            .sink = .s.starts_with("He")
+            .sink = .s.ends_with("lo")
+            .sink = .s.char_at(0)
+            .sink = .s.find("ll")
+            .sink = .s.substr(1, 3)
+            .sink = .s.slice(0, 2)
+            .sink = .s.replace("l", "L")
+            .sink = .s.repeat(2)
+            .sink = .s.trim_left()
+            .sink = .s.trim_right()
+        }
+    }
+    view { col { button "run" { onclick: .Run } text .sink } }
+}
+"#);
+        assert!(sfc.contains(".toLowerCase()"), "to_lower/lower→toLowerCase:\n{sfc}");
+        assert!(sfc.contains(".toUpperCase()"), "to_upper→toUpperCase:\n{sfc}");
+        assert!(sfc.contains(".startsWith("), "starts_with→startsWith:\n{sfc}");
+        assert!(sfc.contains(".endsWith("), "ends_with→endsWith:\n{sfc}");
+        assert!(sfc.contains(".charAt("), "char_at→charAt:\n{sfc}");
+        assert!(sfc.contains(".indexOf("), "find→indexOf:\n{sfc}");
+        assert!(sfc.contains(".substring("), "substr/sub/slice→substring:\n{sfc}");
+        assert!(sfc.contains(".replaceAll("), "replace→replaceAll:\n{sfc}");
+        assert!(sfc.contains(".repeat("), "repeat→repeat:\n{sfc}");
+        assert!(sfc.contains(".trimStart()"), "trim_left→trimStart:\n{sfc}");
+        assert!(sfc.contains(".trimEnd()"), "trim_right→trimEnd:\n{sfc}");
+        // 关键回归：坏 JS（原样输出）不得再出现
+        assert!(!sfc.contains(".to_lower("), "to_lower must map, not pass through:\n{sfc}");
+        assert!(!sfc.contains(".lower("), "lower must map:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "starts_with must map:\n{sfc}");
+        assert!(!sfc.contains(".char_at("), "char_at must map:\n{sfc}");
+        assert!(!sfc.contains(".substr("), "substr must map:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_string_mapping_computed_expr() {
+        // computed 单表达式 → vue.rs expr_to_js 路径（与 handler body 的
+        // ts_adapter 路径相对，覆盖第一处 codegen 改动）
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Tmpl {
+    model { var s str = "hi" }
+    computed {
+        upper => .s.to_upper()
+        low => .s.lower()
+        sw => .s.starts_with("h")
+        ch => .s.char_at(0)
+        ie => .s.is_empty()
+    }
+    view { col { text .upper } }
+}
+"#);
+        assert!(sfc.contains(".toUpperCase()"), "computed to_upper:\n{sfc}");
+        assert!(sfc.contains(".toLowerCase()"), "computed lower:\n{sfc}");
+        assert!(sfc.contains(".startsWith("), "computed starts_with:\n{sfc}");
+        assert!(sfc.contains(".charAt("), "computed char_at:\n{sfc}");
+        assert!(sfc.contains(".length === 0"), "computed is_empty:\n{sfc}");
+        assert!(!sfc.contains(".to_upper("), "computed to_upper must map:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "computed starts_with must map:\n{sfc}");
     }
 
     // --- gap 47: != null / == null semantics ------------------------------

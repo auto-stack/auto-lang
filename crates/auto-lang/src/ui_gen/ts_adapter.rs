@@ -675,13 +675,13 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     }
                     // Handle common method call conversions
                     match method.as_str() {
-                        "to_int" => {
+                        "to_int" | "parse_int" => {
                             write!(out, "parseInt(").ok();
                             transpile_expr(object, ctx, out);
                             write!(out, ")").ok();
                             return;
                         }
-                        "to_float" | "to_double" => {
+                        "to_float" | "to_double" | "parse_float" => {
                             write!(out, "parseFloat(").ok();
                             transpile_expr(object, ctx, out);
                             write!(out, ")").ok();
@@ -722,6 +722,64 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 write!(out, "0").ok();
                             }
                             write!(out, ", 1)").ok();
+                            return;
+                        }
+                        // Plan 053 M1: 字符串方法映射补全（原先仅
+                        // len/contains/to_string/to_int/to_float，其余走兜底
+                        // `.{method}()` 原样输出，生成无效 JS）。语义对照
+                        // libs/string.rs。
+                        // 无参 — 大小写 + trim 方向：
+                        "to_lower" | "lower" | "to_upper" | "upper" | "trim_left" | "trim_right" => {
+                            let js_method = match method.as_str() {
+                                "to_lower" | "lower" => "toLowerCase",
+                                "to_upper" | "upper" => "toUpperCase",
+                                "trim_left" => "trimStart",
+                                "trim_right" => "trimEnd",
+                                _ => unreachable!(),
+                            };
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".{}()", js_method).ok();
+                            return;
+                        }
+                        // 有参 — 前后缀 / 字符 / 查找 / 子串 / 替换 / 重复：
+                        "starts_with" | "ends_with" | "char_at" | "find"
+                        | "substr" | "sub" | "slice" | "replace" | "repeat" => {
+                            let js_method = match method.as_str() {
+                                "starts_with" => "startsWith",
+                                "ends_with" => "endsWith",
+                                // char_at 返回 1 字符 string（.at 按 Unicode
+                                // char 索引；JS charAt 按 UTF-16 code unit）
+                                "char_at" => "charAt",
+                                // find 返回 index 或 -1
+                                "find" => "indexOf",
+                                // substr/sub/slice 同一 native，start..end 子串
+                                "substr" | "sub" | "slice" => "substring",
+                                // Rust str::replace 替换所有 → replaceAll
+                                "replace" => "replaceAll",
+                                "repeat" => "repeat",
+                                _ => unreachable!(),
+                            };
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".{}(", js_method).ok();
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ").ok();
+                                }
+                                transpile_expr(&arg.get_expr(), ctx, out);
+                            }
+                            write!(out, ")").ok();
+                            return;
+                        }
+                        "is_empty" => {
+                            transpile_expr(object, ctx, out);
+                            write!(out, ".length === 0").ok();
+                            return;
+                        }
+                        // JS 无原生字符串 reverse
+                        "reverse" => {
+                            write!(out, "[...").ok();
+                            transpile_expr(object, ctx, out);
+                            write!(out, "].reverse().join('')").ok();
                             return;
                         }
                         _ => {}
