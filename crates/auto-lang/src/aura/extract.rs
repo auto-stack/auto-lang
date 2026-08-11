@@ -839,6 +839,7 @@ fn fragment_to_component_node(
     name: &str,
     props: &[ViewProp],
     events: &[ViewEvent],
+    children: Vec<AuraNode>,
     span: Option<(usize, usize)>,
 ) -> AuraNode {
     let aura_props: Vec<(String, Expr)> = props.iter()
@@ -856,6 +857,7 @@ fn fragment_to_component_node(
         name: name.to_string(),
         props: aura_props,
         events: aura_events,
+        children,
         span,
         debug_id: None,
     }
@@ -876,7 +878,12 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                     // Plan 408: `component fn` → independent SFC, emit a
                     // component reference instead of inline-expanding.
                     if frag.is_component {
-                        return Ok(fragment_to_component_node(tag, props, events, *span));
+                        // Plan 408 P11: extract slot children (the call site's
+                        // body) so the parent can inject <template #x> content.
+                        let aura_children: Vec<AuraNode> = children.iter()
+                            .map(|c| extract_view_node(c))
+                            .collect::<ExtractResult<_>>()?;
+                        return Ok(fragment_to_component_node(tag, props, events, aura_children, *span));
                     }
                     // `view fn` → inline-expand (Plan 367 P2-3, unchanged).
                     // Build substitution map: param_name → call expression
@@ -1019,7 +1026,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             if let Some(frag) = fragment {
                 // Plan 408: `component fn` → independent SFC reference.
                 if frag.is_component {
-                    return Ok(fragment_to_component_node(name, props, events, *span));
+                    return Ok(fragment_to_component_node(name, props, events, Vec::new(), *span));
                 }
                 // `view fn` → inline-expand (Plan 367 P2-3, unchanged).
                 // Build parameter substitution map: arg0 → call_expr, arg1 → ...
@@ -1067,6 +1074,7 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 name: name.clone(),
                 props: aura_props,
                 events: aura_events,
+                children: Vec::new(),
                 span: *span,
                 debug_id: None,
             })
@@ -1416,13 +1424,17 @@ fn assign_node_ids_recursive(
                 }
             }
         }
-        AuraNode::Component { name, props: _, events: _, span, debug_id } => {
+        AuraNode::Component { name, props: _, events: _, children, span, debug_id } => {
             *debug_id = Some(id);
             span_map.insert(id, SpanInfo {
                 span: *span,
                 aura_tag: name.clone(),
                 user_id: None,
             });
+            // Plan 408 P11: recurse into slot children so they get debug ids too.
+            for child in children.iter_mut() {
+                assign_node_ids_recursive(child, next_id, span_map);
+            }
         }
         AuraNode::Outlet => {
             // Outlet doesn't get a debug_id

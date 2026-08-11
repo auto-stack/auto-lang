@@ -3933,15 +3933,15 @@ impl VueGenerator {
                 self.emit_conditional(node, indent, false)
             }
 
-            AuraNode::Component { name, props, events, .. } => {
+            AuraNode::Component { name, props, events, children, .. } => {
                 // Build props as bindings
                 let mut attrs = Vec::new();
                 for (key, value) in props {
                     // Template ref escape hatch on a child component:
                     // `ref: "canvasRef"` → static `ref="canvasRef"` attribute
                     // + a script-setup ref declaration (typed `any` — the
-                    // child's defineExpose surface is unknown here). Lets the
-                    // parent call exposed methods via `.canvasRef.method()`.
+                    // child's defineExpose surface is unknown here). Lets
+                    // handlers call exposed methods via `.canvasRef`.
                     if key == "ref" {
                         let ref_name = match value {
                             crate::ast::Expr::Str(n) | crate::ast::Expr::Ident(n) => n.to_string(),
@@ -3969,6 +3969,12 @@ impl VueGenerator {
                 // Event handlers
                 for (event, aura_event) in events {
                     let vue_event = self.auto_event_to_vue(event);
+                    // Plan 408 P10: callback-prop short-circuit (consistency
+                    // with the element/shadcn event paths).
+                    if let Some(attr) = self.try_callback_prop_attr(aura_event, &vue_event) {
+                        attrs.push(attr);
+                        continue;
+                    }
                     let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                     // Track used handler (without params for matching)
                     let handler_name = self.handler_to_function_call(&aura_event.handler);
@@ -3983,7 +3989,20 @@ impl VueGenerator {
                 };
 
                 self.component_refs.push(name.clone());
-                Ok(format!("{}<{}{} />\n", ind, name, attr_str))
+                // Plan 408 P11: render slot children when present. A child
+                // `slot(name:"x")` becomes `<template #x>…</template>`; plain
+                // children go to the default slot. Mirrors the sub-widget path
+                // (is_known_sub_widget children handling, ~:3433).
+                if children.is_empty() {
+                    Ok(format!("{}<{}{} />\n", ind, name, attr_str))
+                } else {
+                    let mut html = format!("{}<{}{}>\n", ind, name, attr_str);
+                    for child in children {
+                        html.push_str(&self.slot_child_to_html(child, indent + 1)?);
+                    }
+                    html.push_str(&format!("{}</{}>\n", ind, name));
+                    Ok(html)
+                }
             }
 
             // Plan 105: Router outlet and link
@@ -5392,7 +5411,13 @@ impl VueGenerator {
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
                     Ok(format!("{}[{}]", object_js, field))
                 } else {
-                    Ok(format!("{}.{}", object_js, field))
+                    // Plan 408 P11 / §7.7: when the object is a function call
+                    // (whose return type TS treats as un-narrowable across
+                    // separate invocations), use optional chaining so `fn().field`
+                    // compiles even when `fn() != None` was just checked in a
+                    // sibling expression. `?.` is a no-op for non-null values.
+                    let op = if matches!(object.as_ref(), Expr::Call(_)) { "?." } else { "." };
+                    Ok(format!("{}{}{}", object_js, op, field))
                 }
             }
             Expr::Call(call) => {

@@ -1493,8 +1493,11 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
-                        Ok((vue_code, widgets, stores)) => {
+                    match auto_lang::ui_build_shadcn_all_widget_codes(path.to_str().unwrap(), Some(root_dir.to_str().unwrap())) {
+                        Ok(result) => {
+                            let vue_code = result.vue_code.clone();
+                            let widgets = result.widgets.clone();
+                            let stores = result.store_composables.clone();
                             collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);
                             for comp in &components {
@@ -1507,6 +1510,16 @@ export default router
                             }
                             let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(file_stem);
                             all_components.push((rel_path, file_stem.to_string(), vue_code, widget_name.to_string()));
+                            // Plan 408 P11 / KNOWN-DEBT: write any additional
+                            // component fn SFCs from this pages .at file to
+                            // components/ (previously discarded — only the first
+                            // widget's vue_code was kept). The first entry is
+                            // the page widget (already pushed above as a page);
+                            // the rest are component fn SFCs.
+                            for (i, (cname, ccode)) in result.all_widget_codes.iter().enumerate() {
+                                if i == 0 { continue; }
+                                all_components.push(("".to_string(), cname.clone(), ccode.clone(), cname.clone()));
+                            }
                             all_store_files.extend(stores);
                         }
                         Err(e) => {
