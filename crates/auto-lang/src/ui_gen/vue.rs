@@ -10816,6 +10816,35 @@ export function getAccentNames(): string[] {
                 let parts: Vec<String> = elems.iter().map(Self::store_init_to_js).collect();
                 format!("[{}]", parts.join(", "))
             }
+            // Plan 012 Batch G (gap 15): map literal initializers
+            // (`var x map = {}` / `{ k: v, ... }`) parse as Expr::Object.
+            // Previously they fell into the `_ => null` arm, so a store var
+            // declared with a map literal started life as `ref(null)` while
+            // the same initializer in a widget model kept the literal —
+            // divergent behavior that null-deref'd any early `.x` access.
+            // Emit the object literal verbatim (same shape as the widget
+            // path via ts_adapter's Expr::Object arm).
+            Expr::Object(pairs) => {
+                let parts: Vec<String> = pairs
+                    .iter()
+                    .map(|pair| {
+                        let key = match &pair.key {
+                            crate::ast::Key::NamedKey(name) => name.as_str().to_string(),
+                            crate::ast::Key::IntKey(n) => n.to_string(),
+                            crate::ast::Key::BoolKey(b) => b.to_string(),
+                            crate::ast::Key::StrKey(s) => {
+                                format!("\"{}\"", s.as_str().replace('"', "\\\""))
+                            }
+                        };
+                        format!("{}: {}", key, Self::store_init_to_js(&pair.value))
+                    })
+                    .collect();
+                if parts.is_empty() {
+                    "{}".to_string()
+                } else {
+                    format!("{{ {} }}", parts.join(", "))
+                }
+            }
             // Plan 043 store-codegen: `List<T>.new([])` and similar container
             // constructors parse as a call whose callee ends in `.new`. Treat
             // any `*.new(...)` initializer as an empty array — the common case
@@ -15274,6 +15303,48 @@ store ShellStore {
         assert!(
             code.contains("export function useShellStoreStore()"),
             "composable function name, got:\n{}",
+            code
+        );
+    }
+
+    /// Plan 012 Batch G (gap 15): a store `var x map = {}` initializer must
+    /// emit the object literal verbatim (`ref({})`), matching the widget-side
+    /// behavior. Previously `store_init_to_js` had no `Expr::Object` arm, so
+    /// map-typed inits silently degraded to `ref(null)` and any early `.x`
+    /// field access null-deref'd at runtime.
+    #[test]
+    fn test_store_map_literal_init_preserved() {
+        // Real parse path.
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Graph {
+    model {
+        var settings map = {}
+        var ui map = { mode: "editor", depth: 1, dark: true }
+        var blocks list = []
+        var cwd str = ""
+    }
+}
+"#,
+        ));
+
+        assert!(
+            code.contains("const settings = ref<any>({})"),
+            "empty map init must render as an object literal, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const ui = ref<any>({ mode: 'editor', depth: 1, dark: true })"),
+            "populated map init must render its pairs, got:\n{}",
+            code
+        );
+        // Existing literal kinds keep working unchanged.
+        assert!(code.contains("const blocks = ref<any>([])"), "array init:\n{}", code);
+        assert!(code.contains("const cwd = ref<any>('')"), "str init:\n{}", code);
+        // No state var may degrade to null anymore.
+        assert!(
+            !code.contains("ref<any>(null)"),
+            "no map/array/str init may fall back to null, got:\n{}",
             code
         );
     }
