@@ -267,6 +267,10 @@ component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **
 
 **验证**: 扩展 `test/a2vue/007_component_fn/input.at` 增加 bool/str 字面量 prop + 变量 prop 调用，断言 App.expected.vue 含 `:active="true"` / `:title="'second'"` / `:title="heading"`（无 self、无双花括号）。新增 `test_component_fn_literal_props` 单测。
 
+> **2026-08-11 P6 落地**（实际根因修正 + 修复）：实测发现根因与上述分析略有出入。P2 的 `all_sub_widgets` 合并（api.rs:446）确实已让 Card 进 `known_sub_widgets`，import 也正确生成。但 `fragment_to_component_node`（extract.rs）把 component fn 调用产出为 `AuraNode::Component`，而 `node_to_html` 的 **AuraNode::Component 专门分支**（vue.rs:3916）用 `prop_to_attr_value`（文本模式）渲染 prop——`prop_to_attr_value` 对 Bool/Str 走 `expr_to_vue_text`（包双花括号、丢引号、保留 self），对 Dot 也用文本模式（不剥离 self）。
+>
+> **修复**：将 `AuraNode::Component` 分支（vue.rs:3939）的 prop 渲染从 `prop_to_attr_value` 换成 `expr_to_vue_bound_value`（绑定模式：bool→true、str→'second'、Dot→剥离 self）。只改这一处调用，不动 `prop_to_attr_value` 本体（它还被 category-section 等 3 处用，避免回归）。007 golden App.expected.vue 更新（`:title="heading"` 替代旧的 `:title=" self .heading"`）。新增 `test_component_fn_literal_props` 覆盖 bool/str/变量三种 prop。vue 181 + plan408 7 全绿，零回归。
+
 ### 7.2 缺陷 3：computed `if` 表达式的多余 IIFE 包装
 
 **现象**（探针 D）:

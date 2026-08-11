@@ -287,6 +287,54 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// §7.1 缺陷 1+2 诊断：同文件 component fn 调用点的字面量/变量 prop 绑定。
+    /// P2 的 all_sub_widgets 合并改动理应已让同文件调用走 known_sub_widgets 分支
+    /// （用 expr_to_vue_bound_value，正确），本测试验证并固化该行为。
+    #[test]
+    fn test_component_fn_literal_props() {
+        let tmp = std::env::temp_dir().join("plan408_literal_props_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn Card(title: str, active: bool) {\n",
+            "    col { text .title }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var heading str = \"hi\" }\n",
+            "    view {\n",
+            "        col {\n",
+            "            Card(title: .heading, active: true)\n",
+            "            Card(title: \"second\", active: false)\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("literal props case must compile");
+        let app_code = result.vue_code.clone();
+
+        // bool 字面量 → :active="true" / "false"（无双花括号）
+        assert!(app_code.contains(":active=\"true\""),
+            "bool true literal must bind as :active=\"true\": {}", app_code);
+        assert!(app_code.contains(":active=\"false\""),
+            "bool false literal must bind as :active=\"false\": {}", app_code);
+        assert!(!app_code.contains("{{"),
+            "no double-mustache leakage in props: {}", app_code);
+        // str 字面量 → :title="'second'"（带引号，不被当变量）
+        assert!(app_code.contains(":title=\"'second'\""),
+            "str literal must be quoted as :title=\"'second'\": {}", app_code);
+        // 变量 prop → :title="heading"（剥离 self 前缀，无多余空格）
+        assert!(app_code.contains(":title=\"heading\""),
+            "var prop must bind as :title=\"heading\" (no self prefix): {}", app_code);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// Plan 408 P5 / §7.4 缺陷 5: `component fn` with a `use { fn: ... }` block.
     /// The component can import escape-hatch functions (renderMentions, etc.)
     /// and reference them in computed/view — the generated SFC carries the

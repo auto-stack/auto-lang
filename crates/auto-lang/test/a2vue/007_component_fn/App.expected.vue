@@ -10,7 +10,7 @@ const heading = ref<string>('demo')
 </script>
 
 <template>
-    <Card :title=" self .heading" />
+    <Card :title="heading" />
 
 </template>
 
