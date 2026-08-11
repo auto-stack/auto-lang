@@ -952,6 +952,10 @@ pub struct VueGenerator {
     /// Composables from `use { composable: ... }` to call once at
     /// `<script setup>` top level: (local const name, callee name).
     ext_composables: Vec<(String, String, String)>,
+    /// Plan 408 P12 §10.4: composable ref 字段标注——`use { composable: useX(refs: [a, b]) }`
+    /// → key = local name（"x"），value = 标注为 ref 的字段名集合。script 表达式
+    /// 访问这些字段时加 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
+    facade_ref_fields: std::collections::HashMap<String, std::collections::HashSet<String>>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -1078,6 +1082,7 @@ impl VueGenerator {
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
+            facade_ref_fields: std::collections::HashMap::new(),
         }
     }
 
@@ -1264,6 +1269,7 @@ impl VueGenerator {
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
+        self.facade_ref_fields.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1377,8 +1383,16 @@ impl VueGenerator {
                             .collect::<Vec<_>>()
                             .join(", ");
                         for sym in &symbols {
+                            let local = Self::ext_composable_local_name(sym);
                             self.ext_composables
-                                .push((Self::ext_composable_local_name(sym), sym.clone(), args_js.clone()));
+                                .push((local.clone(), sym.clone(), args_js.clone()));
+                            // Plan 408 P12 §10.4: 收集 ref 字段标注。
+                            if !imp.ref_fields.is_empty() {
+                                self.facade_ref_fields.insert(
+                                    local,
+                                    imp.ref_fields.iter().map(|f| f.as_str().to_string()).collect(),
+                                );
+                            }
                         }
                     }
                 }
@@ -2694,7 +2708,8 @@ impl VueGenerator {
                 // the .remove/.contains method-mapping gate.
                 let (arrays, strings) = self.typed_collection_names();
                 ctx = ctx.with_typed_collections(arrays, strings)
-                    .with_facade_names(self.facade_local_names());
+                    .with_facade_names(self.facade_local_names())
+                    .with_facade_ref_fields(self.facade_ref_fields_map());
                 let body = crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 Ok(body)
@@ -2780,6 +2795,12 @@ impl VueGenerator {
     /// imports, for the ts_adapter facade gate.
     fn facade_local_names(&self) -> std::collections::HashSet<String> {
         self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect()
+    }
+
+    /// Plan 408 P12 §10.4: ref 字段标注的 flat map（local name → field set），
+    /// 传给 AuraTsContext 让 ts_adapter 在字段访问时注入 `.value`。
+    fn facade_ref_fields_map(&self) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+        self.facade_ref_fields.clone()
     }
 
     /// Generate <template> content from view tree
@@ -5401,7 +5422,18 @@ impl VueGenerator {
                         }
                     }
                 }
+                // Plan 408 P12 §10.4: composable facade ref 字段——当转译后的
+                // object 是 facade local 且 field 在 ref_fields 标注里时，注入
+                // `.value`。检查在 object_js 层（而非 AST 层），因为 `.counter`
+                // 的 AST 是 Dot(Ident("."), "counter")，转译后才是裸 "counter"。
                 let object_js = self.expr_to_js(object)?;
+                if self.is_ext_composable_local(&object_js)
+                    && self.facade_ref_fields.get(&object_js)
+                        .map(|fields| fields.contains(field.as_str()))
+                        .unwrap_or(false)
+                {
+                    return Ok(format!("{}.{}.value", object_js, field));
+                }
                 // Plan 043: numeric field (tuple/element index, e.g. `field.0`)
                 // must render as `field[0]` — `field.0` is valid JS but invalid
                 // TypeScript in Vue templates (TS treats `.0` as a property, not
@@ -5566,7 +5598,8 @@ impl VueGenerator {
                 }
                 let (arrays, strings) = self.typed_collection_names();
                 ctx = ctx.with_typed_collections(arrays, strings)
-                    .with_facade_names(self.facade_local_names());
+                    .with_facade_names(self.facade_local_names())
+                    .with_facade_ref_fields(self.facade_ref_fields_map());
                 let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
@@ -5608,7 +5641,8 @@ impl VueGenerator {
                 }
                 let (arrays, strings) = self.typed_collection_names();
                 ctx = ctx.with_typed_collections(arrays, strings)
-                    .with_facade_names(self.facade_local_names());
+                    .with_facade_names(self.facade_local_names())
+                    .with_facade_ref_fields(self.facade_ref_fields_map());
                 let mut out = String::from("(() => { ");
                 for (i, branch) in if_expr.branches.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "else if" };

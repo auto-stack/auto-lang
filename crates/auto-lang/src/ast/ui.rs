@@ -151,6 +151,11 @@ pub struct ExtImport {
     /// `composable: useX(.arg) from "..."` → call_args = [Expr::Dot(...)]。
     /// fn/component 声明忽略此字段。空 Vec = 无参调用（向后兼容）。
     pub call_args: Vec<Expr>,
+    /// Plan 408 P12 §10.4: composable 的 ref 字段标注。语法：
+    /// `composable: useX(refs: [currentSecretary, badgeCount]) from "..."`。
+    /// 列出的字段在 script 表达式里访问时加 `.value`（因为 composable 返回
+    /// 普通对象时，ref 字段不会自动 unwrap）。reactive composable 无需标注。
+    pub ref_fields: Vec<Name>,
 }
 
 // ============================================================================
