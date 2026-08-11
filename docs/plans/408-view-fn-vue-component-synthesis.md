@@ -312,19 +312,76 @@ component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **
 
 **验证**: 探针 B 复现为单测 `test_component_fn_prop_as_handler`——`component fn NavItem(label, onselect: msg)` 内部 `button { onclick: onselect }` → NavItem.vue 含 `@click="props.onselect()"`（方案 B）或 `@click="$emit('Select')"` + `defineEmits`（方案 A）。
 
-### 7.4 P4 实施顺序与优先级
+### 7.4 缺陷 5：component fn 不支持 `use { fn }`（fn 引入）
+
+**现象**（探针 E2，auto-musk 023 P3 试点 UserMessage）:
+```
+.at:   component fn UserMessage(content: str) {
+           computed { html => renderMentions(.content) }
+           div { html: .html }
+       }
+产物:  const html = computed<any>(() => renderMentions(props.content))   ← 标识符原样输出
+       // 缺 import { renderMentions } from '...'                         ← TS2304 Cannot find name
+```
+computed 内引用的逃生舱 fn 标识符被原样保留，但生成的 SFC **不带 import 语句**。
+
+**根因**: `parse_fragment_decl_body_tail`（parser.rs）只解析 `params + computed + view body`——**不解析 `use { }` 块**；`extract_widget_from_fragment` 的 `ext_imports: Vec::new()`（硬编码空）+ `api_imports: Vec::new()`。component fn 无任何 import 来源，故 computed/视图里引用的外部 fn 全部变成悬空标识符。
+
+**这是 P3 试点的硬阻塞**：auto-musk 的纯展示逃生舱几乎都依赖逃生舱 fn（UserMessage→renderMentions、RawPreview→rawFileUrl/loadRawFileText、StreamingRenderer→useStreamingDocument）。无 fn 引入能力，这些组件的原生化都无法生成有效 SFC。
+
+**解决办法**:
+- **方案 A（use 块支持）**: `parse_fragment_decl_body_tail` 在 computed 之后、view body 之前可选解析 `use { }` 块（复用 widget 的 `parse_use_block`）；`extract_widget_from_fragment` 把 use 声明的 fn/composable 填入 `ext_imports`/`api_imports`，Vue 生成时输出对应 import。**完整方案**，component fn 可引入任意逃生舱 fn/composable。
+- **方案 B（仅 fn，最小）**: component fn 不加 use 块语法，但允许在**调用方 widget** 的 use 块声明 fn 后，codegen 自动给同项目 component fn SFC 补 import。语义模糊（跨文件作用域泄漏），不推荐。
+
+**建议方案 A**——component fn 作为独立 SFC 宿主，自带 use 块是自洽的语义，且复用 widget 现有解析。
+
+**验证**: 探针 E2 复现——`component fn UserMessage(content) { use { fn: renderMentions from "..." }; computed { html => renderMentions(.content) } ... }` → UserMessage.vue 含 `import { renderMentions } from '...'` + computed 调用。
+
+### 7.5 缺陷 6+7：动态索引 + 原生 table 标签映射（P3 试点 StreamingTable 暴露）
+
+**现象**（探针 F，auto-musk 023 P3 候选 StreamingTable）:
+```
+.at:   td { text .row[.col] }            // 行对象按列名取值
+产物:  <td><span>{{ row }}</span><div>{{ col }}</div><div /></td>   ← 完全错位
+
+.at:   table { thead { tr { th {...} } } ... }   // 原生 HTML table
+产物:  import { Table } from '@/components/ui/table'  ← 被映射成 shadcn Table
+       <Table :key="..."><thead class="bg-muted/50">...
+```
+
+**根因**:
+- **缺陷 6（动态索引 `.row[.col]`）**: `.at` 的 `text` 节点对 `Expr::Index(Expr::Dot(...), ident)` 这类"对象按动态键取值"表达式解析/生成不完整——`row[col]` 被拆成多个节点。这是 view 树表达式提取的缺口（非 component fn 特有，但 component fn 试点最先暴露）。
+- **缺陷 7（table 标签映射）**: `map_tag` 把 `table/thead/tbody/tr/th/td` 一律映射到 shadcn `Table` 组件族（vue.rs shadcn 注册表）。逃生舱 StreamingTable.vue 用原生 `<table>`，原生化时无法表达"保持原生 HTML 标签"——需 `native` 标记或 force_native 机制（现仅 checkbox/input/button/textarea 有 force_native）。
+
+**解决办法**:
+- **缺陷 6**: 修 view 树 `Expr::Index` 的 text 节点生成——`row[col]` → `{{ row[col] }}`（单 mustache，对象按动态键取值）。需在 `expr_to_vue_text`/`expr_to_vue_bound_value` 的 Index 分支确认动态键（Ident）场景。
+- **缺陷 7**: 扩展 `force_native_elements`（vue.rs:3235）纳入 `table/thead/tbody/tr/th/td`，或加 `native` 前缀/属性让用户显式声明"此标签不映射"。
+
+**优先级**: 🟡 中——StreamingTable 是 P3 候选之一，但不是唯一路径；缺陷 5（fn import）修复后可先原生化不依赖动态索引的组件。缺陷 6 影响所有"对象按键取值"场景，范围更广，应优先于 7。
+
+### 7.6 P4 实施顺序与优先级（2026-08-11 P3 试点后修订）
 
 | 缺陷 | 优先级 | 理由 | 方案 |
 |---|---|---|---|
-| **1+2**（同文件 prop 绑定） | 🔴 高 | 阻塞所有同文件 component fn 试点（P3 首试 UserMessage 若同文件即中招）；方案 A 改动小、低回归 | 7.1 方案 A |
+| **5**（component fn 无 use/fn 引入） | 🔴 高 | **P3 试点硬阻塞**——所有依赖逃生舱 fn 的纯展示组件（UserMessage/RawPreview/StreamingRenderer）无法生成有效 SFC | 7.4 方案 A |
+| **1+2**（同文件 prop 绑定） | 🔴 高 | 阻塞同文件 component fn 试点；方案 A 改动小、低回归 | 7.1 方案 A |
 | **4**（prop 作 handler / emit） | 🔴 高 | 023 §3.1 共用组件收敛硬阻塞；方案 B 最小化解锁 | 7.3 方案 B 先行，A 后续 |
-| **3**（computed IIFE） | 🟡 中 | 能跑，仅质量；不阻塞试点 | 7.2，可延后 |
+| **6**（动态索引 `row[col]`） | 🟡 中 | 影响所有"对象按键取值"场景；StreamingTable 等表格类组件需要 | 7.5 缺陷 6 |
+| **7**（table 标签映射） | 🟡 中 | 仅影响原生 table/iframe 等需保持 HTML 标签的组件 | 7.5 缺陷 7 |
+| **3**（computed IIFE） | 🟢 低 | 能跑，仅质量；不阻塞试点 | 7.2，可延后 |
 
-**P4 验收**: auto-musk 探针 A/B/D 重跑后产物 TS 全绿（探针 C 已绿）；新增 3 个 a2vue golden/单测覆盖字面量 prop、prop-as-handler、computed 三元。auto-lang `cargo test -p auto-lang` 零回归。
+**P4 验收**: auto-musk 探针 A/B/D/E2 重跑后产物 TS 全绿；新增 a2vue golden/单测覆盖字面量 prop、prop-as-handler、computed 三元、fn import、动态索引。auto-lang `cargo test -p auto-lang` 零回归。
 
-### 7.5 与 auto-musk 023 的闭环
+### 7.7 与 auto-musk 023 的闭环（2026-08-11 P3 试点后修订）
 
-P4 修复后：
-- **023 P3 试点**（UserMessage 等纯展示逃生舱原生化）：缺陷 1+2 修复即可无障碍推进（同文件或跨文件皆可）。
-- **023 §3.1**（三视图共用组件收敛）：缺陷 4（方案 B 或 A）修复后解锁。
-- auto-musk 侧 023 §3.2/§3.3 已登记本轮探针结论与候选，待 P4 落地后按 §3.3 路径推进。
+P3 试点实测结论：**当前不可行**——所有纯展示候选都被 P4 缺陷阻塞：
+- UserMessage → 缺陷 5（fn import）
+- StreamingTable → 缺陷 6（动态索引）+ 7（table 映射）
+- RawPreview → 缺陷 5（fn import）+ 生命周期/正则（超 component fn 范畴）
+- ChatMessage → 链式依赖（UserMessage + StreamingRenderer 均未原生化）
+
+**P4 修复后路径**:
+- **缺陷 5 + 1+2 落地** → UserMessage 可原生化（P3 首试解封）
+- **缺陷 4 落地** → 023 §3.1 共用组件收敛解锁
+- **缺陷 6+7 落地** → StreamingTable 可原生化
+- auto-musk 侧 023 §3.2/§3.3 已登记探针结论与候选，待 P4 对应缺陷落地后按序推进。
