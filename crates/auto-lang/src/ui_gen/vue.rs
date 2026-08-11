@@ -815,6 +815,12 @@ pub struct VueGenerator {
     /// Event handler definitions (name, body, is_async)
     handlers: Vec<(String, String, bool)>,
 
+    /// Plan 053 M5/P5-6: handlers whose body calls `complete(...)` (backend
+    /// completion). They get wrapped in a setTimeout(80ms) debounce with a
+    /// sequence guard so rapid typing fires one request per pause and a stale
+    /// (slower) result can't clobber the newest suggestions.
+    debounced_handlers: HashSet<String>,
+
     /// Event names for emit
     emit_events: Vec<String>,
 
@@ -1041,6 +1047,7 @@ impl VueGenerator {
             codegen_warnings: std::cell::RefCell::new(Vec::new()),
             computed_names: std::collections::HashSet::new(),
             handlers: Vec::new(),
+            debounced_handlers: HashSet::new(),
             emit_events: Vec::new(),
             has_emit: false,
             component_refs: Vec::new(),
@@ -1940,6 +1947,18 @@ impl VueGenerator {
             }
         }
 
+        // Plan 053 M5/P5-6: identify debounced complete-handlers (body calls
+        // `complete`). Their function bodies get wrapped in setTimeout(80ms)
+        // with a sequence guard so rapid typing fires one backend request per
+        // pause, and a stale (slower) result can't clobber the newest one.
+        for (pattern, payload) in &widget.handlers {
+            if let LogicPayload::AstStmts(stmts) = payload {
+                if Self::stmts_call_complete(stmts) {
+                    self.debounced_handlers.insert(self.pattern_to_handler_name(pattern));
+                }
+            }
+        }
+
         // Plan 132: Add API imports if needed
         if !self.api_functions_used.is_empty() {
             let api_funcs: Vec<String> = self.api_functions_used.iter().cloned().collect();
@@ -1973,6 +1992,18 @@ impl VueGenerator {
         }
 
         if !widget.state_vars.is_empty() {
+            script.push('\n');
+        }
+
+        // Plan 053 M5/P5-6: debounce infrastructure for complete-handlers.
+        // `let` (not const) — clearTimeout() and ++__completeSeq mutate them.
+        if !self.debounced_handlers.is_empty() {
+            if self.use_typescript {
+                script.push_str("let __completeTimer: ReturnType<typeof setTimeout> | null = null\n");
+            } else {
+                script.push_str("let __completeTimer = null\n");
+            }
+            script.push_str("let __completeSeq = 0\n");
             script.push('\n');
         }
 
@@ -2228,7 +2259,14 @@ impl VueGenerator {
             let handler_name = self.pattern_to_handler_name(pattern);
             handler_base_patterns
                 .insert(handler_name.clone(), Self::base_pattern(pattern).to_string());
-            let mut body = self.generate_handler_body(payload)?;
+            // Plan 053 M5/P5-6: complete-handlers get a debounced body
+            // (setTimeout 80ms + seq guard); other handlers transpile normally.
+            let is_debounced = self.debounced_handlers.contains(&handler_name);
+            let mut body = if is_debounced {
+                self.generate_debounced_handler_body(payload)?
+            } else {
+                self.generate_handler_body(payload)?
+            };
             // Auto-emit events for sub-widget handlers that match emit declarations.
             // Plan 367 P0-1: Skip emit if the handler already notifies the parent
             // via a callback prop (props.on_xxx()). In that case the emit is
@@ -2318,8 +2356,10 @@ impl VueGenerator {
                     body.push_str("; applyAccent(accent_color.value, document.documentElement.classList.contains('dark'))");
                 }
             }
-            // Plan 132: Check if handler contains API calls (needs async)
-            let is_async = self.handler_has_api_calls(payload);
+            // Plan 132: Check if handler contains API calls (needs async).
+            // Plan 053 M5/P5-6: debounced handlers move async/await into the
+            // setTimeout callback, so the function itself is synchronous.
+            let is_async = self.handler_has_api_calls(payload) && !is_debounced;
             self.handlers.push((handler_name.clone(), body, is_async));
         }
 
@@ -2758,25 +2798,59 @@ impl VueGenerator {
     }
 
     /// Generate handler function body from LogicPayload
+    /// Build the AuraTsContext used for handler-body transpilation. Plan 053
+    /// M5/P5-6 factored this out so the debounced variant can layer the
+    /// seq-guard on top of the same base context without duplicating it.
+    fn handler_ts_ctx(&self) -> crate::ui_gen::ts_adapter::AuraTsContext {
+        let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
+            .with_props(self.prop_names.iter().cloned().collect())
+            .with_refs(self.template_refs.iter().cloned().collect())
+            .with_computed(self.computed_names.iter().cloned().collect());
+        if !self.project_api_functions.is_empty() {
+            ctx = ctx.with_api_functions(self.project_api_functions.clone());
+        }
+        // Plan 012 Batch A (gap 19): proven array/string receivers for
+        // the .remove/.contains method-mapping gate.
+        let (arrays, strings) = self.typed_collection_names();
+        ctx.with_typed_collections(arrays, strings)
+            .with_facade_names(self.facade_local_names())
+            .with_facade_ref_fields(self.facade_ref_fields_map())
+    }
+
     fn generate_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
-                    .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect())
-                    .with_computed(self.computed_names.iter().cloned().collect());
-                if !self.project_api_functions.is_empty() {
-                    ctx = ctx.with_api_functions(self.project_api_functions.clone());
-                }
-                // Plan 012 Batch A (gap 19): proven array/string receivers for
-                // the .remove/.contains method-mapping gate.
-                let (arrays, strings) = self.typed_collection_names();
-                ctx = ctx.with_typed_collections(arrays, strings)
-                    .with_facade_names(self.facade_local_names())
-                    .with_facade_ref_fields(self.facade_ref_fields_map());
+                let ctx = self.handler_ts_ctx();
                 let body = crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 Ok(body)
+            }
+            LogicPayload::Bytecode(_) => {
+                Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
+            }
+        }
+    }
+
+    /// Plan 053 M5/P5-6: generate a debounced complete-handler body. The
+    /// original body is transpiled with a seq-guard context (state-ref
+    /// assignments get `if (__seq === __completeSeq)` guards so a stale,
+    /// slower complete result can't overwrite newer suggestions), then wrapped
+    /// in a setTimeout(80ms) debounce with a sequence counter. The handler
+    /// function itself stays synchronous (is_async=false) — the
+    /// `async`/`await` moves into the setTimeout callback.
+    fn generate_debounced_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
+        match payload {
+            LogicPayload::AstStmts(stmts) => {
+                let ctx = self.handler_ts_ctx().with_debounce_seq_var("__seq".to_string());
+                let inner = crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx);
+                self.drain_ctx_warnings(&ctx);
+                // setTimeout wrapper: clear any pending timer, bump the seq,
+                // schedule the body. The async callback retains the
+                // `await complete(...)`; the seq guards on `.suggestions =`
+                // ensure only the newest result writes.
+                Ok(format!(
+                    "if (__completeTimer) clearTimeout(__completeTimer)\nconst __seq = ++__completeSeq\n__completeTimer = setTimeout(async () => {{\n{inner}\n}}, 80)"
+                ))
             }
             LogicPayload::Bytecode(_) => {
                 Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
@@ -5927,6 +6001,45 @@ impl VueGenerator {
         for stmt in stmts {
             walk_stmt(stmt, &all_fn_refs, &mut self.api_functions_used);
         }
+    }
+
+    /// Plan 053 M5/P5-6: does this statement list call `complete(...)` (the
+    /// backend completion fn)? Such handlers get debounced via setTimeout.
+    /// Uses the same recursive walk as `extract_api_calls_from_ast_stmts` but
+    /// matches the specific bare-call name `complete` (a `use back.api:
+    /// complete` import), NOT the full api set — we don't want every
+    /// API-calling handler debounced (e.g. run_command on Enter stays eager).
+    fn stmts_call_complete(stmts: &[crate::ast::Stmt]) -> bool {
+        use crate::ast::{Expr, Stmt};
+        fn walk_expr(expr: &Expr) -> bool {
+            match expr {
+                Expr::Call(call) => {
+                    if call.get_name_text_safe().map(|n| n.as_str() == "complete").unwrap_or(false) {
+                        return true;
+                    }
+                    call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
+                }
+                Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
+                Expr::Unary(_, e) => walk_expr(e),
+                Expr::Dot(obj, _) => walk_expr(obj),
+                Expr::Array(items) => items.iter().any(|e| walk_expr(e)),
+                Expr::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                _ => false,
+            }
+        }
+        fn walk_stmt(stmt: &Stmt) -> bool {
+            match stmt {
+                Stmt::Expr(expr) => walk_expr(expr),
+                Stmt::Store(store) => walk_expr(&store.expr),
+                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
+                    walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
+                }),
+                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                _ => false,
+            }
+        }
+        stmts.iter().any(|s| walk_stmt(s))
     }
 
     /// Check if a handler payload contains API calls
@@ -17575,6 +17688,126 @@ widget Plan053Gate {
             !sfc.contains("function push"),
             ".push() is a store method, must NOT be emitted as a handler function:\n{sfc}"
         );
+    }
+
+    // --- Plan 053 M5 / P5-6: complete-handler debounce injection -----------
+
+    #[test]
+    fn test_plan053_p56_complete_handler_is_debounced() {
+        // P5-6: a handler whose body calls `complete(...)` gets wrapped in
+        // setTimeout(80ms) with a sequence counter; the widget gains top-level
+        // `let __completeTimer` / `let __completeSeq` declarations.
+        // (complete's `await`/import come from `use back.api` in real code;
+        // here we only exercise the debounce wrapping, which keys off the
+        // bare call name, so the use-decl is unnecessary in the fixture.)
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Debounce {
+    model {
+        var input str = ""
+        var suggestions []str = []
+    }
+    on {
+        .OnInputComplete -> {
+            if .input.trim() != "" {
+                var items []str = complete(.input, .input.len())
+                .suggestions = items
+            } else {
+                .suggestions = []
+            }
+        }
+    }
+    view {
+        col {
+            textarea {
+                value: .input
+                oninput: .OnInputComplete
+            }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("let __completeTimer"), "timer decl:\n{sfc}");
+        assert!(sfc.contains("let __completeSeq = 0"), "seq decl:\n{sfc}");
+        assert!(sfc.contains("clearTimeout(__completeTimer)"), "clear pending timer:\n{sfc}");
+        assert!(sfc.contains("++__completeSeq"), "bump seq:\n{sfc}");
+        assert!(sfc.contains("setTimeout(async () => {"), "setTimeout wrapper:\n{sfc}");
+        assert!(sfc.contains("}, 80)"), "80ms delay:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_p56_debounce_guard_on_state_assign() {
+        // P5-6: inside the debounced body, state-ref assignments
+        // (`.suggestions =`) get a seq guard so a stale complete result can't
+        // clobber the newest suggestions. Local `var items` is NOT guarded.
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053DebounceGuard {
+    model {
+        var input str = ""
+        var suggestions []str = []
+    }
+    on {
+        .OnInputComplete -> {
+            if .input.trim() != "" {
+                var items []str = complete(.input, .input.len())
+                .suggestions = items
+            } else {
+                .suggestions = []
+            }
+        }
+    }
+    view {
+        col {
+            textarea {
+                value: .input
+                oninput: .OnInputComplete
+            }
+        }
+    }
+}
+"#);
+        // Both branches' `.suggestions =` are guarded; `let items` is not.
+        assert!(
+            sfc.contains("if (__seq === __completeSeq) { suggestions.value ="),
+            "state-ref assignment must be seq-guarded:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("if (__seq === __completeSeq) { suggestions.value = []"),
+            "empty-list branch assignment must also be guarded:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_plan053_p56_non_complete_handler_not_debounced() {
+        // P5-6 gate: handlers that DON'T call complete stay eager — no timer,
+        // no setTimeout wrapper, no seq infrastructure emitted at all.
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053NoDebounce {
+    model {
+        var input str = ""
+        var ghost str = ""
+    }
+    on {
+        .OnInput -> {
+            .ghost = ""
+            if .input != "" {
+                .ghost = "x"
+            }
+        }
+    }
+    view {
+        col {
+            textarea {
+                value: .input
+                onkeyup: .OnInput
+            }
+        }
+    }
+}
+"#);
+        assert!(!sfc.contains("__completeTimer"), "no timer for non-complete handler:\n{sfc}");
+        assert!(!sfc.contains("setTimeout"), "no setTimeout wrapper:\n{sfc}");
+        assert!(!sfc.contains("__completeSeq"), "no seq for non-complete handler:\n{sfc}");
+        assert!(sfc.contains("function OnInput"), "handler still emitted:\n{sfc}");
     }
 
     #[test]

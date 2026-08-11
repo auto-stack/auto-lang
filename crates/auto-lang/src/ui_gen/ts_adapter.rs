@@ -47,6 +47,13 @@ pub struct AuraTsContext {
     /// Plan 408 P12 §10.4: composable ref 字段标注——key = facade local name，
     /// value = 标注为 ref 的字段名集合。ts_adapter 的 Dot 分支对命中字段加 `.value`。
     facade_ref_fields: std::collections::HashMap<String, HashSet<String>>,
+    /// Plan 053 M5/P5-6: when Some(seq_var), this context is transpiling the
+    /// body of a debounced complete-handler (wrapped in setTimeout). State-ref
+    /// assignments (`.suggestions = x`) get guarded with
+    /// `if (<seq_var> === __completeSeq) { ... }` so a stale complete result
+    /// (an older in-flight request resolving after a newer one) can't clobber
+    /// the current suggestions. None = normal (non-debounced) transpilation.
+    debounce_seq_var: Option<String>,
     /// Plan 012 Batch A: passthrough notes collected during transpilation.
     /// Drained by the caller into the unified codegen warning channel.
     warnings: std::cell::RefCell<Vec<String>>,
@@ -74,6 +81,7 @@ impl AuraTsContext {
             typed_strings: HashSet::new(),
             facade_names: HashSet::new(),
             facade_ref_fields: std::collections::HashMap::new(),
+            debounce_seq_var: None,
             warnings: std::cell::RefCell::new(Vec::new()),
         }
     }
@@ -164,6 +172,15 @@ impl AuraTsContext {
     /// 命中字段注入 `.value`。
     pub fn with_facade_ref_fields(mut self, fields: std::collections::HashMap<String, HashSet<String>>) -> Self {
         self.facade_ref_fields = fields;
+        self
+    }
+
+    /// Plan 053 M5/P5-6: mark this context as transpiling a debounced
+    /// complete-handler body. `seq_var` is the local holding the captured
+    /// sequence number (e.g. `__seq`); state-ref assignments inside the body
+    /// get guarded against stale complete results.
+    pub fn with_debounce_seq_var(mut self, seq_var: String) -> Self {
+        self.debounce_seq_var = Some(seq_var);
         self
     }
 
@@ -390,6 +407,22 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Expression statements — AURA-aware (API calls, print, etc.)
         Stmt::Expr(expr) => {
+            // Plan 053 M5/P5-6: inside a debounced complete-handler body,
+            // guard state-ref assignments so a stale (older, slower) complete
+            // result can't overwrite the suggestions produced by the newest
+            // request. Only plain `.state = rhs` self-assignments are guarded;
+            // local `let` declarations (Stmt::Store) and non-state writes pass
+            // through unchanged.
+            if let Some(seq_var) = &ctx.debounce_seq_var {
+                if let Expr::Bina(lhs, auto_val::Op::Asn, _) = expr {
+                    if assign_target_is_state_ref(lhs, ctx) {
+                        write!(out, "if ({} === __completeSeq) {{ ", seq_var).ok();
+                        transpile_expr(expr, ctx, out);
+                        writeln!(out, "; }}").ok();
+                        return;
+                    }
+                }
+            }
             // Plan 354: NavCall in handler body → router.push(path)
             if let Expr::NavCall { path, .. } = expr {
                 write!(out, "router.push(").ok();
@@ -1162,6 +1195,25 @@ fn transpile_assign_target(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) 
         }
         _ => delegate_expr(expr, ctx, out),
     }
+}
+
+/// Plan 053 M5/P5-6: is this expression a self state-ref assignment target
+/// (`.field` / `self.field` where `field` is a reactive state var)? Used to
+/// decide whether to wrap the assignment in a debounce seq-guard. Mirrors the
+/// self-receiver check in `transpile_assign_target` (`.field` → `field.value`).
+fn assign_target_is_state_ref(expr: &Expr, ctx: &AuraTsContext) -> bool {
+    if let Expr::Dot(obj, field) = expr {
+        if let Expr::Ident(name) = obj.as_ref() {
+            let obj_str = name.as_str();
+            // `.field` (placeholder self ".") and `self.field` both denote a
+            // self state write; match the self-receiver recognition used by
+            // collect_self_handler_calls (P5-7).
+            if obj_str == "self" || obj_str == "." {
+                return ctx.is_state(field.as_str());
+            }
+        }
+    }
+    false
 }
 
 /// Delegate expression to a2ts transpiler for standard transpilation.
