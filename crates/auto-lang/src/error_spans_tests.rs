@@ -227,3 +227,67 @@ fn gap46_text_fn_call_parses_as_call_expr() {
     });
     assert!(is_call, "text primary prop must be a Call expr: {:?}", text_props);
 }
+
+/// Plan 410: `check_symbol`'s UndefinedVariable span must point at the
+/// expression start — for a bare identifier that IS the offending token —
+/// not at the parser cursor, which has already moved past the whole
+/// expression (onto the `{` here) when check_symbol runs.
+///
+/// NOTE: check_symbol only inspects three whole-expression forms (bare
+/// Ident / Dot-left identifier / Call), so the condition must BE the bare
+/// identifier — `missingVar + 1` is a Bina(Add) and is not checked at all.
+#[test]
+fn plan410_undefined_ident_span_points_at_expression_start() {
+    let code = concat!(
+        "fn main() {\n",
+        "  if missingVar {\n",
+        "  }\n",
+        "}\n"
+    );
+    let mut parser = Parser::from(code);
+    let err = parser.parse().expect_err("undefined variable must fail");
+
+    let ident_off = code.find("missingVar").unwrap();
+    let label_off = first_label_offset(&err).expect("error must carry a label");
+    assert_eq!(
+        label_off, ident_off,
+        "error span must point at the offending identifier `missingVar` (code[..] = {:?})",
+        &code[label_off..(label_off + 10).min(code.len())]
+    );
+    assert_eq!(&code[label_off..label_off + 10], "missingVar");
+}
+
+/// Plan 410, nested call site: the span hint is recorded by EVERY
+/// parse_expr caller, so an undefined identifier in argument position
+/// (`args()` → `parse_expr`) also points at itself, not at the token
+/// after the argument (the `)` here).
+#[test]
+fn plan410_undefined_ident_in_call_arg_span_points_at_itself() {
+    let code = concat!(
+        "fn main() {\n",
+        "  log(missingVar)\n",
+        "}\n"
+    );
+    let mut parser = Parser::from(code);
+    let err = parser.parse().expect_err("undefined variable in arg must fail");
+
+    let ident_off = code.find("missingVar").unwrap();
+    let label_off = first_label_offset(&err).expect("error must carry a label");
+    assert_eq!(
+        label_off, ident_off,
+        "error span must point at the offending identifier `missingVar` (code[..] = {:?})",
+        &code[label_off..(label_off + 10).min(code.len())]
+    );
+    assert_eq!(&code[label_off..label_off + 10], "missingVar");
+}
+
+// Plan 410 NOTE (no test possible): check_symbol's `Bina(Op::Dot)` arm
+// ("dot-left identifier undefined") is currently UNREACHABLE from source —
+// field access `a.b` lowers to the dedicated `Expr::Dot` variant (see the
+// `Op::Dot` arm in `expr_pratt_with_left`), and `Expr::Dot` is not checked
+// by check_symbol at all. The arm's span was still switched to the passed
+// hint so it stays correct if it ever becomes reachable; extending
+// check_symbol to `Expr::Dot` is a semantic change (today `x = a.b` with
+// undefined `a` parses fine) and is out of this plan's scope.
+
+

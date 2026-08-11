@@ -1727,17 +1727,22 @@ impl<'a> Parser<'a> {
             self.lexer.push_token(after);
             if is_closure_prefix {
                 self.next(); // consume 'move'
+                let start_pos = self.cur.pos; // Plan 410: expression start for check_symbol's error span
                 let mut exp = self.expr_pratt(0)?;
                 if let Expr::Closure(ref mut c) = exp {
                     c.is_move = true;
                 }
-                exp = self.check_symbol(exp)?;
+                exp = self.check_symbol(exp, pos_to_span(start_pos))?;
                 return Ok(exp);
             }
         }
 
+        // Plan 410: record the expression start BEFORE expr_pratt so
+        // check_symbol's UndefinedVariable span points at the offending
+        // identifier, not at the cursor (which has moved past the expression).
+        let start_pos = self.cur.pos;
         let mut exp = self.expr_pratt(0)?;
-        exp = self.check_symbol(exp)?;
+        exp = self.check_symbol(exp, pos_to_span(start_pos))?;
         Ok(exp)
     }
 
@@ -10450,7 +10455,11 @@ impl<'a> Parser<'a> {
         "TextDecoder", "crypto", "performance", "screen",
     ];
 
-    pub fn check_symbol(&mut self, expr: Expr) -> AutoResult<Expr> {
+    /// Plan 410: `err_span` is the expression-start span recorded by the caller
+    /// BEFORE the expression was parsed. UndefinedVariable errors point there
+    /// (the offending identifier for the checked forms) instead of at the
+    /// cursor, which has already moved past the whole expression.
+    pub fn check_symbol(&mut self, expr: Expr, err_span: SourceSpan) -> AutoResult<Expr> {
         if self.skip_check {
             return Ok(expr);
         }
@@ -10477,7 +10486,7 @@ impl<'a> Parser<'a> {
                                 let candidates = self.get_defined_names();
                                 return Err(NameError::undefined_variable(
                                     name.to_string(),
-                                    pos_to_span(self.cur.pos),
+                                    err_span,
                                     &candidates,
                                 )
                                 .into());
@@ -10500,7 +10509,7 @@ impl<'a> Parser<'a> {
                     let candidates = self.get_defined_names();
                     return Err(NameError::undefined_variable(
                         name.to_string(),
-                        pos_to_span(self.cur.pos),
+                        err_span,
                         &candidates,
                     )
                     .into());
@@ -10866,6 +10875,10 @@ impl<'a> Parser<'a> {
         // Parse identifier or generic type instance (e.g., List or List<int>)
         let name = self.cur.text.clone();
         self.next(); // skip the identifier
+        // Plan 410: prev is now the expression's first token — its position is
+        // the error span hint for check_symbol (UndefinedVariable must point at
+        // the identifier, not at the cursor after the whole expression).
+        let start_pos = self.prev.pos;
 
         // Plan 408: 'grid' is lexed as Ident now, so the statement-level path
         // reaches this fn instead of the old TokenKind::Grid arm in parse_expr.
@@ -11192,7 +11205,7 @@ impl<'a> Parser<'a> {
                     .into());
                 }
                 let expr = self.expr_pratt_with_left(ident, 0)?;
-                let expr = self.check_symbol(expr)?;
+                let expr = self.check_symbol(expr, pos_to_span(start_pos))?;
                 Ok(expr)
             }
         }
@@ -11216,7 +11229,11 @@ impl<'a> Parser<'a> {
             generic_args: Vec::new(), // Plan 395: explicit turbofish args
             pos: Some(call_pos),
         });
-        self.check_symbol(expr)
+        // Plan 410: the Call branch of check_symbol emits no UndefinedVariable
+        // error (the function-name check is disabled), so keep the original
+        // cursor-based span here rather than threading a start position
+        // through this fn's 3 callers for zero behavioral gain.
+        self.check_symbol(expr, pos_to_span(self.cur.pos))
     }
 
     /// Parse nav() function call for router navigation (Plan 105)
