@@ -381,6 +381,14 @@ pub struct AuraStore {
     /// Computed properties (Plan 367 P2-2: → getters in store composable)
     pub computed: Vec<AuraComputed>,
 
+    /// Reactive watchers from the store-level `watch { ... }` block
+    /// (Plan 012 Batch G / gap 12). The Vue backend emits them as
+    /// module-level `watch(source, handler, opts)` calls in the store
+    /// composable (store refs are module-level singletons, so the watcher
+    /// lives for the app lifetime — the same semantics jade previously
+    /// hand-wrote in its facade modules); other backends ignore them.
+    pub watchers: Vec<AuraWatch>,
+
     /// Module-level plain functions declared in the store file but OUTSIDE the
     /// `store { ... }` block (e.g. `fn format_git_label(...)` helper). The vue
     /// codegen emits them as module-level helper functions in the composable so

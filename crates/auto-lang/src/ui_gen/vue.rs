@@ -10408,7 +10408,11 @@ export function cn(...inputs: ClassValue[]) {
         use crate::ui_gen::ts_adapter::{transpile_handler_body, AuraTsContext};
 
         let mut code = String::new();
-        code.push_str("import { ref } from 'vue'\n");
+        if store.watchers.is_empty() {
+            code.push_str("import { ref } from 'vue'\n");
+        } else {
+            code.push_str("import { ref, watch } from 'vue'\n");
+        }
         // API functions used in handler bodies (from `use back.api`).
         // Streaming endpoints (~Stream<T>) are consumed via SSE in this composable,
         // not via a fetch client, so api.ts does NOT export them — exclude their
@@ -10454,6 +10458,40 @@ export function cn(...inputs: ClassValue[]) {
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
             .with_typed_collections(typed_arrays, typed_strings);
+
+        // Plan 012 Batch G (gap 12): store-level `watch { ... }` block →
+        // module-level Vue watch() calls. The store refs are module-level
+        // singletons, so watching them at module scope is valid (the watcher
+        // lives for the app lifetime — same shape as the facade-module
+        // workaround this replaces). Sources are always store state fields
+        // (no props in a store), so they are watched directly; multi-source
+        // entries emit the array form. Mirrors the widget-side emission.
+        for watcher in &store.watchers {
+            let body = match &watcher.payload {
+                crate::aura::LogicPayload::AstStmts(stmts) => transpile_handler_body(stmts, &ctx),
+                _ => String::new(),
+            };
+            let source = if watcher.sources.len() == 1 {
+                watcher.sources[0].clone()
+            } else {
+                format!("[{}]", watcher.sources.join(", "))
+            };
+            let opts = match (watcher.immediate, watcher.deep) {
+                (false, false) => String::new(),
+                (immediate, deep) => {
+                    let mut parts = Vec::new();
+                    if immediate {
+                        parts.push("immediate: true");
+                    }
+                    if deep {
+                        parts.push("deep: true");
+                    }
+                    format!(", {{ {} }}", parts.join(", "))
+                }
+            };
+            let indented = Self::indent_body(&body, "  ");
+            code.push_str(&format!("watch({}, () => {{\n{}\n}}{})\n\n", source, indented, opts));
+        }
 
         // Plan 360: detect accent_color state so we can inject the palette
         // helpers and expose `accent_names` as a computed getter.
@@ -15349,7 +15387,70 @@ store Graph {
         );
     }
 
-    /// Plan 012 Batch G (gap 1 regression guard): store msg variants with a
+    /// Plan 012 Batch G (gap 12): a store-level `watch { ... }` block must
+    /// parse, extract, and emit as module-level `watch(...)` calls in the
+    /// store composable (with the `watch` import added). Mirrors the
+    /// widget-side watch support; replaces the facade-module workaround.
+    #[test]
+    fn test_store_watch_block_emits_module_watch() {
+        // Real parse path.
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store Tabs {
+    model {
+        var active_id str = ""
+        var open_tabs list = []
+        var saved bool = true
+    }
+
+    watch {
+        .active_id -> { .saved = false }
+        .open_tabs.deep -> { .saved = false }
+    }
+}
+"#,
+        ));
+
+        assert!(
+            code.contains("import { ref, watch } from 'vue'"),
+            "watch import, got:\n{}",
+            code
+        );
+        // Module-level watch calls (store refs are module-level singletons,
+        // so the calls sit outside the composable function).
+        assert!(
+            code.contains("watch(active_id, () => {"),
+            "single-source watch, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("watch(open_tabs, () => {"),
+            "deep watch source, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("{ deep: true }"),
+            "deep modifier options, got:\n{}",
+            code
+        );
+        // The handler body writes through .value (state-ref rewriting).
+        assert!(
+            code.contains("saved.value = false"),
+            "state-ref rewrite in watch body, got:\n{}",
+            code
+        );
+        // Watch calls are module-level: they must appear BEFORE the
+        // composable export function.
+        let watch_pos = code.find("watch(active_id").expect("watch call");
+        let fn_pos = code.find("export function useTabsStore()").expect("export fn");
+        assert!(
+            watch_pos < fn_pos,
+            "module-level watch must precede the composable fn, got:\n{}",
+            code
+        );
+    }
+
+
     /// multi-type payload (`Open(str, str)`) must parse, and the handler
     /// `.Open(a, b) ->` must bind both payload slots as action parameters.
     /// This self-healed via the Plan 043 M5 msg-payload work (MsgDecl.payload
@@ -15468,6 +15569,7 @@ store Files {
                 variants: vec![],
             }],
             computed: vec![],
+            watchers: vec![],
             module_fns: vec![],
         };
 
@@ -15538,6 +15640,7 @@ store Files {
                 ],
             }],
             computed: vec![],
+            watchers: vec![],
             module_fns: vec![],
         };
 
@@ -15610,6 +15713,7 @@ store Files {
                 },
             ],
             computed: vec![],
+            watchers: vec![],
             module_fns: vec![],
         };
 
@@ -15681,6 +15785,7 @@ store PlainStore {
                 variants: vec![],
             }],
             computed: vec![],
+            watchers: vec![],
             module_fns: vec![],
         };
 

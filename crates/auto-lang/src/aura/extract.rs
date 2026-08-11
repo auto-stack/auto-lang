@@ -496,6 +496,16 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         api_imports: Vec::new(),
         stream_endpoints: Vec::new(),
         computed,
+        // Plan 012 Batch G (gap 12): store-level watch block, same mapping
+        // as the widget-level one.
+        watchers: decl.watch.iter()
+            .map(|w| crate::aura::types::AuraWatch {
+                sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
+                immediate: w.immediate,
+                deep: w.deep,
+                payload: LogicPayload::AstStmts(w.body.stmts.clone()),
+            })
+            .collect(),
         module_fns: Vec::new(),
     })
 }

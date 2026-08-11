@@ -11834,6 +11834,7 @@ impl<'a> Parser<'a> {
         let mut model = None;
         let mut on = None;
         let mut computed = None;
+        let mut watch = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -11854,10 +11855,16 @@ impl<'a> Parser<'a> {
                 "on" => {
                     on = Some(self.parse_on_block()?);
                 }
+                // Plan 012 Batch G (gap 12): store-level `watch { ... }` —
+                // same syntax/semantics as the widget-level block, emitted
+                // as module-level watch() calls in the store composable.
+                "watch" => {
+                    watch.extend(self.parse_watch_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
                         message: format!(
-                            "Expected 'model', 'msg', 'computed', or 'on' in store, got '{}'",
+                            "Expected 'model', 'msg', 'computed', 'on', or 'watch' in store, got '{}'",
                             ident
                         ),
                         span: pos_to_span(self.cur.pos),
@@ -11875,6 +11882,7 @@ impl<'a> Parser<'a> {
             model,
             computed,
             on,
+            watch,
         }))
     }
 

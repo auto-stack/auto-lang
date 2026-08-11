@@ -175,6 +175,13 @@ pub struct StoreDecl {
 
     /// Event handlers
     pub on: Option<OnBlock>,
+
+    /// Reactive watchers declared in a store-level `watch { ... }` block
+    /// (Plan 012 Batch G / gap 12 — same syntax as the widget-level block).
+    /// The Vue backend emits them as module-level `watch(...)` calls in the
+    /// store composable (the refs are module-level singletons); other
+    /// backends ignore them.
+    pub watch: Vec<WatchDecl>,
 }
 
 // ============================================================================
