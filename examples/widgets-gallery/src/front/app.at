@@ -116,12 +116,7 @@ widget App {
                     scroll (style: "flex-1 px-3 py-4") {
                         // Overview group
                         text (text: "Overview", style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        link (to: "/") {
-                            row (style: "items-center gap-2 rounded-md px-2 py-1.5 text-sm") {
-                                icon (name: "home", style: "h-4 w-4") {}
-                                text (text: "Home") {}
-                            }
-                        }
+                        nav-link (to: "/", icon: "home", label: "Home") {}
 
                         // Form group
                         text (text: "Form", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
