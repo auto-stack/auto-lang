@@ -5246,6 +5246,20 @@ impl VueGenerator {
             .replace("\t", "\\t")
     }
 
+    /// Plan 408 P9 / §7.2 缺陷 3: if a statement list is a single expression
+    /// statement (`Expr(e)`), return its JS form so callers can use it as a
+    /// ternary branch value. Returns None for multi-statement bodies (which
+    /// need the IIFE block+return form) or when the expression fails to
+    /// transpile (falls back to IIFE).
+    fn single_body_expr_js(&self, stmts: &[crate::ast::Stmt]) -> Option<String> {
+        if stmts.len() == 1 {
+            if let crate::ast::Stmt::Expr(e) = &stmts[0] {
+                return self.expr_to_js(e).ok();
+            }
+        }
+        None
+    }
+
     /// Convert AuraExpr to JS value string
     fn expr_to_js(&self, expr: &crate::ast::Expr) -> GenResult<String> {
         use crate::ast::Expr;
@@ -5513,12 +5527,34 @@ impl VueGenerator {
                 self.drain_ctx_warnings(&ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
             }
-            // Plan 043 M5: if/else-if/else in expression position (e.g. a
-            // `computed { status_glyph => if ... else if ... else ... }`)
-            // → IIFE so it evaluates to a value. Previously Expr::If fell
-            // through to the catch-all and emitted `undefined`, so status
-            // glyphs/classes silently vanished from generated components.
+            // Plan 043 M5 / Plan 408 P9 (§7.2 缺陷 3): if/else-if/else in
+            // expression position (e.g. `computed { x => if ... else ... }`).
+            // When every branch body is a single expression, emit a ternary
+            // `cond ? then : else` — clean, type-inferable, no IIFE wrapper.
+            // Fall back to the IIFE form for non-expression bodies (multi-stmt
+            // branches), so complex cases still evaluate to a value.
             Expr::If(if_expr) => {
+                // Try the ternary path: every branch + else must be a single
+                // Stmt::Expr so each side is a pure expression.
+                let branch_exprs: Vec<Option<String>> = if_expr.branches.iter()
+                    .map(|b| self.single_body_expr_js(&b.body.stmts))
+                    .collect();
+                let else_expr = if_expr.else_.as_ref()
+                    .and_then(|b| self.single_body_expr_js(&b.stmts));
+                let all_single = branch_exprs.iter().all(|e| e.is_some())
+                    && (if_expr.else_.is_none() || else_expr.is_some());
+                if all_single {
+                    // Build the ternary from the inside out (last branch first).
+                    let mut acc = else_expr.as_deref().map(|s| s.to_string())
+                        .unwrap_or_else(|| "undefined".to_string());
+                    for (branch, then_expr) in if_expr.branches.iter().rev().zip(branch_exprs.iter().rev()) {
+                        let cond = self.expr_to_js(&branch.cond)?;
+                        let then_str = then_expr.clone().unwrap();
+                        acc = format!("{} ? {} : ({})", cond, then_str, acc);
+                    }
+                    return Ok(acc);
+                }
+                // Fallback: IIFE (multi-statement branches need a block + return).
                 let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
                     .with_props(self.prop_names.iter().cloned().collect())
                     .with_refs(self.template_refs.iter().cloned().collect());
@@ -13001,7 +13037,7 @@ widget Icon(language: str) {
     /// emitted `undefined`, so status glyphs/classes silently vanished
     /// (generated `computed<any>(() => undefined)`).
     #[test]
-    fn test_computed_if_chain_transpiles_to_iife() {
+    fn test_computed_if_chain_transpiles_to_ternary() {
         // Real parse path (plan 012 batch C): `status` is now a real prop, so
         // the accessor is `props.status.kind` — the previous hand-built widget
         // had NO props/state, an undeclared-ref shape the DSL cannot express.
@@ -13016,15 +13052,18 @@ widget StatusIcon(status: Any) {
 "#,
         );
 
-        // Plan 043 H1: the IIFE must RETURN each branch's value (previously the
-        // branches were bare expression statements, so the IIFE evaluated to
-        // undefined and the computed — e.g. a status glyph — silently vanished).
+        // Plan 408 P9 / §7.2 缺陷 3: a computed if/else-if/else chain now
+        // transpiles to a nested ternary (cleaner + type-inferable) instead of
+        // the previous IIFE. Plan 043 H1's invariant — each branch's value is
+        // preserved (no silent `undefined`) — carries over: the ternary yields
+        // the matched branch's expression.
         assert!(
-            sfc.contains("const glyph = computed<any>(() => (() => { if (props.status.kind === 'Success') { return '✓'; }else if (props.status.kind === 'Failed') { return '✗'; } else { return '…'; } })())"),
-            "computed if chain must be an IIFE that RETURNS each branch's value:\n{}",
+            sfc.contains("const glyph = computed<any>(() => props.status.kind === 'Success' ? '✓' : (props.status.kind === 'Failed' ? '✗' : ('…')))"),
+            "computed if chain must transpile to a nested ternary preserving each branch value:\n{}",
             sfc
         );
         assert!(!sfc.contains("=> undefined"), "Expr::If must not fall through to undefined:\n{}", sfc);
+        assert!(!sfc.contains("(() => {"), "computed if must NOT use the legacy IIFE wrapper:\n{}", sfc);
     }
 
     /// Bug: bare identifiers (`lang => language`) and plain function calls
