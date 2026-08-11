@@ -15045,6 +15045,142 @@ widget Dispatch {
         );
     }
 
+    /// Plan 012 batch F (gap 54): the jade three-branch shape —
+    /// loading / error / content — emits v-if / v-else-if / v-else as
+    /// contiguous siblings, in source order (Vue requires adjacency).
+    #[test]
+    fn test_view_else_if_three_branch_loading_error_content() {
+        // Real parse path.
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Triple {
+    model {
+        var loading bool = false
+        var error str = ""
+    }
+    view {
+        if .loading {
+            text "Loading..."
+        } else if .error != "" {
+            text "Error"
+        } else {
+            text "Canvas"
+        }
+    }
+}
+"#);
+        let pos_if = sfc
+            .find(r#"<template v-if="loading">"#)
+            .expect("v-if arm present:\n");
+        let pos_elseif = sfc
+            .find(r#"<template v-else-if="error != ''">"#)
+            .expect("v-else-if arm present");
+        let pos_else = sfc
+            .find("<template v-else>")
+            .expect("v-else arm present");
+        // Chain arms emitted in source order (adjacent siblings).
+        assert!(
+            pos_if < pos_elseif && pos_elseif < pos_else,
+            "arms in source order: if={} elseif={} else={}\n{}",
+            pos_if, pos_elseif, pos_else, sfc
+        );
+        // Exactly one chain: the else-if arm is a continuation, not a fresh v-if.
+        assert_eq!(
+            sfc.matches("<template v-if=").count(),
+            1,
+            "single chain head:\n{}",
+            sfc
+        );
+        // Branch contents landed in their arms.
+        assert!(sfc.contains("Loading..."), "then arm:\n{}", sfc);
+        assert!(sfc.contains("Error"), "else-if arm:\n{}", sfc);
+        assert!(sfc.contains("Canvas"), "else arm:\n{}", sfc);
+    }
+
+    /// Plan 012 batch F (gap 54): two-branch `if / else` (no else-if) emits
+    /// v-if + v-else as adjacent siblings.
+    #[test]
+    fn test_view_if_else_single_else() {
+        // Real parse path.
+        let sfc = gen_sfc_from_widget_src(r#"
+widget LoadState {
+    model { var loading bool = true }
+    view {
+        if .loading {
+            text "loading"
+        } else {
+            text "content"
+        }
+    }
+}
+"#);
+        let pos_if = sfc
+            .find(r#"<template v-if="loading">"#)
+            .expect("v-if arm present");
+        let pos_else = sfc
+            .find("<template v-else>")
+            .expect("v-else arm present");
+        assert!(pos_if < pos_else, "if before else:\n{}", sfc);
+        assert!(
+            !sfc.contains("v-else-if"),
+            "no v-else-if in a two-branch chain:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 012 batch F (gap 54): else-if chain arms compose freely — a for
+    /// loop inside the v-if arm, a `show:` prop inside the v-else-if arm, and
+    /// a nested layout in the else arm. Props do not interact with the chain.
+    #[test]
+    fn test_view_else_if_chain_composes_loop_and_props() {
+        // Real parse path.
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Mixed {
+    model {
+        var kind str = "list"
+        var items list = []
+        var active bool = true
+    }
+    view {
+        if .kind == "list" {
+            for item in .items {
+                text "row"
+            }
+        } else if .kind == "grid" {
+            button(show: .active) { text "grid" }
+        } else {
+            col { text "empty" }
+        }
+    }
+}
+"#);
+        // Chain shape.
+        assert!(
+            sfc.contains(r#"<template v-if="kind == 'list'">"#),
+            "v-if arm:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(r#"<template v-else-if="kind == 'grid'">"#),
+            "v-else-if arm:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("<template v-else>"), "v-else arm:\n{}", sfc);
+        // The for loop survives inside the v-if arm.
+        assert!(
+            sfc.contains(r#"v-for="item in items""#),
+            "loop inside v-if arm:\n{}",
+            sfc
+        );
+        // show: prop still emits v-show inside the v-else-if arm.
+        assert!(
+            sfc.contains(r#"v-show="active""#),
+            "show: prop inside v-else-if arm:\n{}",
+            sfc
+        );
+        // Else arm content present.
+        assert!(sfc.contains("empty"), "else arm content:\n{}", sfc);
+    }
+
     /// Plan 043 M5 #2: a multi-statement computed body must render its logic
     /// (not collapse to `undefined`). Previously expr_to_js had no Block branch
     /// so `x => { ...; return y }` emitted `computed(() => undefined)`.
