@@ -1,6 +1,6 @@
 # Plan 409: Widgets Gallery — 三模式一致性 + link 子组件 VM 缺口 + 主题色
 
-> **状态**: §1–§8 ✅ **已完成**；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。
+> **状态**: §1–§9 ✅；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。§9 为本会话 vue 模式审查修复批次（codegen bug + 内容一致性 + 交互演示 + 样式），CodeBlock/PreviewCard 改纯 Auto widget 暂缓。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui/{iced/renderer.rs, aura_view_builder.rs, widget_registry.rs, style/iced_adapter.rs}` + `ui_gen/{vue.rs, rust.rs}` + `token.rs` + `lib.rs` + `aura/types.rs`）；gallery 产物在 `examples/widgets-gallery/`。
 > **背景**: `examples/widgets-gallery` 是覆盖全部 ~50 个 AutoUI widget 的组件画廊，同时作为 vue/vm/rust 三模式一致性与 codegen 缺口的试金石。本计划把 gallery 推进过程中暴露并修复的 **VM 一致性 + Vue codegen** 问题统一登记，并把仍开放的 **`link` 子组件 VM 渲染缺口** 作为唯一待办立项。
 > **说明**: §1–§5 的修复在历史上多挂在 Plan 408（VM/gallery track）名下提交，此处按"按计划修复"的视角统一归档为 Plan 409 的已完成项；引用的 commit hash 可追溯。
@@ -251,3 +251,68 @@ examples/widgets-gallery/          # app.at + 49 pages + pac.at
 | 色板浮层定位 | ⚪ 接受 | VM 无 absolute → 色板顶栏下方内联展开；vue absolute 浮动弹出 |
 | `ring-*` 类 | ⚪ 部分 | VM 不支持 ring（active 高亮在 vue 生效、VM 忽略）；gallery 用 `ring-primary` 仅在 vue 完整 |
 | 渐变文字 | ⚪ 移除 | `bg-gradient text-transparent` iced 不可渲染，Home 大字改纯 `text-primary` |
+
+---
+
+## 9. ✅ 本会话修复批次（vue 模式审查 + codegen bug + 交互演示）
+
+> 用户在 vue 模式下逐页审查 gallery，暴露并修复一批 codegen bug、内容缺口、
+> 交互演示缺失。改动分布在 `ui_gen/{vue.rs, validators.rs, widget/registry.rs}`
+> 与 gallery 的 `.at` / README。提交：`1e59c791`（plan-410 批次）+ `1f3a0440`
+> （tooltip 白屏 + toast 动态）。
+
+### 9.1 Codegen bug 修复
+
+| 子项 | 现象 | 修复 |
+|---|---|---|
+| 9.1.1 text 字面量重复 | `text (style:"…") { "字面量" }` 渲染两遍（首页 Hero 介绍文案重复） | shadcn path 把子 Text 节点 hoist 到 `slot_content` 时记录被消费的子节点索引（`consumed_text_child_idx`），输出时跳过该子节点 |
+| 9.1.2 App.vue 非法 export | `<script setup>` 内主题色辅助函数带 `export function` → vite `Pre-transform error` → 白屏 | codegen 模板去掉 `applyAccent`/`getSavedAccent`/`getAccentNames` 的 `export`（`<script setup>` 不允许 ES exports） |
+| 9.1.3 R004 lint 误报 | 170 个「handler 缺失」警告（实际 button 用内联赋值表达式 `@click="X=!X"`） | R004 正则只匹配纯引用/函数调用（标识符后紧跟 `(` 或 `"`），排除赋值表达式；+ 2 防回归测试（`r004_ignores_inline_*_assignment`） |
+| 9.1.4 button force_native | 带 `style` 的 button 被降级为原生 `<button>`（丢 shadcn `bg-primary` 主题色，Get Started 按钮） | `force_native_elements` 移除 `"button"`（shadcn Button 支持额外 class 叠加，只有 input/checkbox/textarea 保留原生） |
+| 9.1.5 row/col gap 丢失 | `row (gap:"2")` 生成为 `<div class="flex flex-row">`（无 `gap-2`） | shadcn path 的 row/col 加 `gap` prop → `gap-N` class 转换（之前只有 native path 处理 gap） |
+| 9.1.6 toast() import 检测 | handler 调 `toast()`/`toast.success()` 但不生成 `import { toast } from 'vue-sonner'` | 新增 `stmts_call_toast`（照 `stmts_call_complete`）扫描 AST；直接检查 `call.name` 的 Expr 结构（Ident 或 `Dot(Ident "toast", _)`）——`get_name_text_safe` 对方法调用返回 None，必须直查 Expr |
+
+### 9.2 Gallery 内容与一致性
+
+| 子项 | 内容 |
+|---|---|
+| 9.2.1 sidebar 补全 | hovercard/radiogroup/toggle/togglegroup 4 个组件补进 sidebar 导航 + 首页卡片（之前有路由但无导航链接） |
+| 9.2.2 首页数量一致 | 标题 46→49；首页补 grid/navlink 卡片；Feedback count 7→5（之前声明数与实际卡片数不符） |
+| 9.2.3 Components→Widgets | 所有 UI 文本「Components」改「Widgets」（header/mobile 导航、Hero 标题/按钮、搜索 placeholder、章节标题、表头、面包屑、描述文案，12 处） |
+| 9.2.4 搜索框居中 | Home 搜索框 input 加 `w-full`（之前容器 `mx-auto` 居中但 input 未占满，视觉偏左） |
+| 9.2.5 slider value 类型 | 核查确认 codegen 已正确转 `:default-value="[50]"`（number[]），无需改 |
+| 9.2.6 README | 「已知边界」更新：carousel 移出占位列表（已能渲染 slide 内容），剩 command/combobox/toggle-group 3 族 |
+
+### 9.3 组件交互演示
+
+| 子项 | 现象 | 修复 |
+|---|---|---|
+| 9.3.1 button onclick toast | gallery 此前无任何 onclick 事件示例 | `button.at` 加 Events 示例（`onClick: .showClickToast` + `toast-provider`），点击弹 toast；依赖 9.1.6 自动 import |
+| 9.3.2 tooltip 白屏 | `/tooltip` 整页空白（header/sidebar 在但 main 空） | 三层 codegen 修复：(a) `registry.rs` 加 `TooltipProvider` WidgetSpec（generate_shadcn_imports 才能生成 import）；(b) `map_tag` 识别 `tooltip-provider` tag → `<TooltipProvider>`；(c) `tooltip-trigger` 自动加 `as-child`（reka-ui TooltipTrigger 渲染自身 `<button>`，内嵌 `<Button>` 会嵌套 button 白屏）。`.at` 加 `tooltip-provider` 包裹 |
+| 9.3.3 toast 动态演示 | toast 页只有静态卡片预览，无动态触发 | `toast.at` 加 Live Demo（Success/Error/Info 三按钮 `onClick` 触发 `toast.success/error/info` + `toast-provider`），依赖 9.1.6 的方法调用检测 |
+
+### 9.4 样式
+
+| 子项 | 内容 |
+|---|---|
+| 9.4.1 代码框滚动条 | codeblock 的 `<pre>` 横向滚动条改半透明细条（zinc-200/20 thumb、透明 track、无 tracker），与 ScrollArea 视觉一致。在 `generate_style` 给有 codeblock 的页面注入 `pre::-webkit-scrollbar` + Firefox `scrollbar-color` |
+| 9.4.2 Tabs 下划线 | shadcn `<Tabs>` 默认「分段控件」风（灰胶囊 + 白按钮）改「下划线」风（TabsList 底线、TabsTrigger active 主题色 `border-b-2 border-primary`），与 CodeBlock 的 Auto/Vue tab 一致。改 shadcn 组件 `TabsList.vue`/`TabsTrigger.vue`（gen 产物，本地修改） |
+
+### 9.5 验证
+
+- **dev server 逐页核查**（vue 模式）：首页 Hero 文案不重复、Get Started 主题色、搜索框居中、标题「49 Widgets」、sidebar 50 项、`/tooltip` 不白屏（Hover me 按钮）、`/toast` Live Demo（3 按钮）、`/button` Events onclick toast、各页「Components」→「Widgets」、row gap 生效。
+- **测试**：`cargo test -p auto-lang r004` 5 项全绿（含 2 防回归）；`cargo build --bin auto` 无错误。
+- **gen 产物核对**：App.vue 无 `export function`、tooltip.vue 含 `TooltipProvider` import + `<TooltipTrigger as-child>`、toast.vue 含 `import { toast } from 'vue-sonner'`、index.vue Hero 文案单行、button.vue 含 `showClickToast` handler。
+
+### 9.6 暂缓
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| CodeBlock/PreviewCard 改纯 Auto widget | ⚪ 暂缓 | 当前是「Auto 声明壳 + codegen 硬编码 UI」混合模式（`.at` 的 view 是占位 `div`，真实 UI 在 `generate_codeblock_html`/`generate_previewcard_html`）。改成纯 Auto 需把 Prism 高亮 / clipboard / setTimeout / Auto-Vue tab 切换等命令式逻辑搬进 `.at` 的 model/on/computed/view，codegen transpile 这些浏览器/API 调用的能力需先验证。作为后续独立任务。 |
+
+### 9.7 提交与文件
+
+- `1e59c791` feat(plan-410): toast() import 检测 + widget gallery 更新 — §9.1.3/9.1.5/9.1.6 + §9.2 全部 + §9.3.1 + §9.4.1（vue.rs 110 行 + validators.rs + 8 个 .at + README）
+- `1f3a0440` fix(widget-gallery): tooltip 白屏 + toast 动态演示 — §9.3.2/9.3.3 + §9.1.6 方法调用补丁（vue.rs 后续 + registry.rs TooltipProvider spec + toast.at/tooltip.at）
+- §9.1.1/9.1.2/9.1.4 含在 `1e59c791` 的 vue.rs 批次内
+- §9.4.2 TabsList/TabsTrigger 是 shadcn add 生成（gen/，gitignore），本地修改未入库
