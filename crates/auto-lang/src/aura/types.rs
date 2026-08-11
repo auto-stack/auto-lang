@@ -747,9 +747,13 @@ pub fn aura_events_get_base<'a>(
     if let Some(ev) = events.get(base) {
         return Some(ev);
     }
+    // Plan 409 §8: match case-insensitively — .at sources commonly write
+    // `onClick:` (Vue convention) while VM lookups use lowercase `onclick`.
     events
         .iter()
-        .find(|(k, _)| split_aura_event_key(k).0 == base)
+        .find(|(k, _)| {
+            split_aura_event_key(k).0.eq_ignore_ascii_case(base)
+        })
         .map(|(_, v)| v)
 }
 

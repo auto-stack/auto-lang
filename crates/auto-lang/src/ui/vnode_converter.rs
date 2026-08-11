@@ -503,6 +503,7 @@ mod tests {
             onclick: TestMsg::Click,
             style: None,
             on_right_click: None,
+            content: None,
         };
 
         let tree = view_to_vtree(view);
@@ -888,6 +889,7 @@ mod tests {
                     onclick: TestMsg::Click,
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
             ],
             spacing: 10,
@@ -941,6 +943,7 @@ mod tests {
                     onclick: TestMsg::Click,
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
             ],
             spacing: 10,
@@ -973,7 +976,7 @@ mod tests {
             children: vec![
                 View::Text { content: "a".into(), style: None },
                 View::Row { children: vec![
-                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None },
+                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None },
                 ], spacing: 0, padding: 0, style: None },
             ],
             spacing: 0, padding: 0, style: None,
@@ -1240,6 +1243,8 @@ mod tests_with_events {
             label: "Click Me".to_string(),
             onclick: DynamicMessage::String("button-clicked".to_string()),
             style: None,
+            on_right_click: None,
+            content: None,
         };
 
         let (vtree, router) = view_to_vtree_with_events(view);
@@ -1270,11 +1275,15 @@ mod tests_with_events {
                     label: "Button 1".to_string(),
                     onclick: DynamicMessage::String("click-1".to_string()),
                     style: None,
+                    on_right_click: None,
+                    content: None,
                 },
                 View::Button {
                     label: "Button 2".to_string(),
                     onclick: DynamicMessage::String("click-2".to_string()),
                     style: None,
+                    on_right_click: None,
+                    content: None,
                 },
             ],
             spacing: 10,

@@ -80,9 +80,12 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 text_div.into_any()
             }
 
-            AbstractView::Button { label, onclick: _, style } => {
+            AbstractView::Button { label, onclick: _, style, on_right_click: _, content: _ } => {
                 // Button with click handler - note: we can't directly handle messages
                 // in GPUI's Button without proper context. This is a simplified version.
+                // Plan 409 §6: `content` (link children) is not rendered by the gpui
+                // backend; the label falls back to the derived text so the text
+                // remains visible.
                 button_counter += 1;
                 let label_clone = label.clone();
                 let mut button = Button::new(("button", button_counter))

@@ -1289,12 +1289,14 @@ impl<'a> AuraViewBuilder<'a> {
 
         let mut style = self.extract_style(props);
 
-        // Apply default heading styles, merging with user-provided styles
+        // Apply default heading styles, merging with user-provided styles.
+        // Plan 409 §8: headings carry the theme color (text-primary) so page
+        // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold").ok(),
-                "h2" => Style::parse("text-3xl font-bold").ok(),
-                "h3" => Style::parse("text-xl font-semibold").ok(),
+                "h1" => Style::parse("text-4xl font-bold text-primary").ok(),
+                "h2" => Style::parse("text-3xl font-bold text-primary").ok(),
+                "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
                 _ => None,
             };
             if let Some(mut default) = default {
@@ -1318,6 +1320,7 @@ impl<'a> AuraViewBuilder<'a> {
                 onclick,
                 style,
                 on_right_click: None,
+                content: None,
             };
         }
 
@@ -1453,37 +1456,68 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Plan 408: render_link_button with an optional icon name.
-    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, _bindings: &Bindings) -> View<DynamicMessage> {
-        // Resolve a display label: prefer explicit text, else the first child's
-        // text, else fall back to the path itself.
+    ///
+    /// Plan 409 §6: when the link has child nodes, convert them into a content
+    /// container rendered *inside* the button — vue parity for
+    /// `link (to:) { text / row / icon ... }`. The `label` is still derived
+    /// from the children (for the snapshot builder / accessibility), but the
+    /// rendered content is the container, not a flattened `to` string.
+    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, bindings: &Bindings) -> View<DynamicMessage> {
+        // Plan 409 §6: convert child nodes into a content subtree. When
+        // non-empty, the button renders this container instead of the label
+        // string (link is no longer a leaf).
+        let content: Option<Box<View<DynamicMessage>>> = if children.is_empty() {
+            None
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !matches!(v, View::Empty))
+                .collect();
+            if views.is_empty() {
+                None
+            } else if views.len() == 1 {
+                Some(Box::new(views.into_iter().next().unwrap()))
+            } else {
+                Some(Box::new(View::Row {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                }))
+            }
+        };
+
+        // Resolve a display label: prefer explicit text, else the children's
+        // text (recursively — so a `text (text: "Docs")` child yields "Docs",
+        // not the raw path), else fall back to the path itself.
         let mut label = if !text.is_empty() {
             text.to_string()
+        } else if let Some(derived) = self.extract_children_text(children, bindings) {
+            derived
         } else {
-            let mut found = String::new();
-            for child in children {
-                if let crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) = child {
-                    if !s.is_empty() {
-                        found = s.clone();
-                        break;
-                    }
-                }
-            }
-            if found.is_empty() { to.to_string() } else { found }
+            to.to_string()
         };
-        // Plan 408: embed icon name in label using PUA markers.
-        // The iced renderer detects \u{EE01}...\u{EE02} and renders a
-        // row[lucide svg icon, text label] instead of plain text.
-        if !icon.is_empty() {
+        // Plan 408: embed icon name in label using PUA markers. Only applies to
+        // the label fallback (nav-link passes empty children → content is
+        // None); when a content container is present the icon belongs to the
+        // children subtree instead.
+        if !icon.is_empty() && content.is_none() {
             label = format!("\u{EE01}{}\u{EE02}{}", icon, label);
         }
         View::Button {
             label,
+            content,
             onclick: crate::ui::interpreter::DynamicMessage::Typed {
                 widget_name: self.widget_name.clone(),
                 event_name: "__navigate".to_string(),
                 args: vec![auto_val::Value::str(to)],
             },
-            style: None,
+            // Plan 409 §8: link 文字默认用主题色（text-primary），与 vue 侧
+            // router-link 的主题色链接一致。无 children 时直接给 label 上色；
+            // 有 children 时由 renderer 把按钮 text_color 继承给无显式颜色的
+            // Text 子节点。
+            style: Style::parse("text-primary").ok(),
             on_right_click: None,
         }
     }
@@ -2085,12 +2119,14 @@ impl<'a> AuraViewBuilder<'a> {
 
         let mut style = self.extract_style(props);
 
-        // Apply default heading styles, merging with user-provided styles
+        // Apply default heading styles, merging with user-provided styles.
+        // Plan 409 §8: headings carry the theme color (text-primary) so page
+        // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold").ok(),
-                "h2" => Style::parse("text-3xl font-bold").ok(),
-                "h3" => Style::parse("text-xl font-semibold").ok(),
+                "h1" => Style::parse("text-4xl font-bold text-primary").ok(),
+                "h2" => Style::parse("text-3xl font-bold text-primary").ok(),
+                "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
                 _ => None,
             };
             if let Some(mut default) = default {
@@ -2121,6 +2157,7 @@ impl<'a> AuraViewBuilder<'a> {
                 onclick,
                 style,
                 on_right_click: None,
+                content: None,
             };
         }
 
@@ -2145,11 +2182,12 @@ impl<'a> AuraViewBuilder<'a> {
 
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
-        // via the renderer's class-driven style); "primary" = filled blue.
+        // via the renderer's class-driven style); "primary" = theme-colored
+        // filled button (Plan 409 §8: theme-aware instead of hardcoded blue).
         let variant = self.extract_string_with(props, "variant", bindings)
             .unwrap_or_default();
         let preset: &str = match variant.as_str() {
-            "primary" => "bg-blue-500 hover:bg-blue-600 text-white font-medium rounded",
+            "primary" => "bg-primary text-primary-foreground font-medium rounded",
             // "text" and any other/absent value: no preset — chromeless by default.
             _ => "",
         };
@@ -2184,6 +2222,7 @@ impl<'a> AuraViewBuilder<'a> {
             onclick,
             style,
             on_right_click,
+            content: None,
         }
     }
 
@@ -3495,6 +3534,7 @@ mod tests {
             name: "BlockItem".to_string(),
             props: vec![],
             events: HashMap::new(),
+            children: vec![],
             span: None,
             debug_id: None,
         };

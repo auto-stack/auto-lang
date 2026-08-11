@@ -236,6 +236,12 @@ pub enum View<M: Clone + Debug> {
         onclick: M,  // Direct message storage (Auto: `onclick: Msg.Inc`)
         style: Option<Style>,  // ✅ NEW: Unified styling support
         on_right_click: Option<M>,  // Plan 402: right-click (contextmenu) handler
+        /// Plan 409 §6: optional content subtree rendered inside the button.
+        /// `link (to:) { text/row/icon ... }` converts its children into this
+        /// container and renders them as the button's content (vue parity),
+        /// instead of flattening to the `to` string. `None` keeps the
+        /// label-only behaviour (label string rendered as the content).
+        content: Option<Box<View<M>>>,
     },
 
     /// Horizontal layout with optional styling
@@ -769,6 +775,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
                 on_right_click: self.button_on_right_click,
                 style: self.style,
+                content: None,
             },
             ViewBuilderKind::Grid => View::Grid {
                 cols: self.cols.max(1),
@@ -863,6 +870,7 @@ impl<M: Clone + Debug> View<M> {
             onclick,
             style: Some(Style::parse(style_str).expect("Invalid style")),
             on_right_click: None,
+            content: None,
         }
     }
 
@@ -1190,8 +1198,9 @@ impl<M: Clone + Debug> View<M> {
         match self {
             View::Empty => View::Empty,
             View::Text { content, style } => View::Text { content, style },
-            View::Button { label, onclick, style, on_right_click } => View::Button {
+            View::Button { label, content, onclick, style, on_right_click } => View::Button {
                 label,
+                content: content.map(|c| Box::new(c.map_msg_with_arc(f))),
                 onclick: f(onclick),
                 style,
                 on_right_click: on_right_click.map(|rc| f(rc)),
@@ -2117,6 +2126,7 @@ impl<M: Clone + Debug> ButtonArg<M> for (String, M) {
             onclick: self.1,
             style: None,
             on_right_click: None,
+            content: None,
         }
     }
 }
@@ -2790,12 +2800,14 @@ mod tests {
                     onclick: TestMsg::Click,
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
                 View::Button {
                     label: "B".to_string(),
                     onclick: TestMsg::Change,
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
             ],
             style: None,

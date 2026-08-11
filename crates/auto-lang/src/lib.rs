@@ -4924,6 +4924,11 @@ mod native_css_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan370_015_behavior_tests;
 
+// Plan 409 §6: link 子组件 VM 渲染缺口 regression tests (needs the gallery
+// sources + the ui-iced interpreter path).
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan409_tests;
+
 #[cfg(test)]
 mod plan352_tests;
 

@@ -564,7 +564,7 @@ fn generate_index_css() -> String {
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
+    --primary: 239 84% 67%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -581,7 +581,7 @@ fn generate_index_css() -> String {
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 239 84% 67%;
 
     --radius: 0.5rem;
   }
@@ -596,7 +596,7 @@ fn generate_index_css() -> String {
     --popover: 222.2 47% 10%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
+    --primary: 239 84% 77%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
     --secondary: 217.2 32.6% 17.5%;
@@ -613,7 +613,7 @@ fn generate_index_css() -> String {
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 239 84% 77%;
   }
 }
 

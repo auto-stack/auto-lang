@@ -21,7 +21,11 @@ widget IndexPage {
                         text "v1.0 — 46 Components"
                     }
 
-                    h1 (text: "Auto UI", style: "text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-accent bg-clip-text text-transparent") {}
+                    // Plan 409 §8: "Auto UI" hero in the theme color. The old
+                    // bg-gradient via-primary + bg-clip-text text-transparent
+                    // is not renderable in vm (iced has no text-gradient /
+                    // transparent text), so use solid text-primary instead.
+                    h1 (text: "Auto UI", style: "text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight text-primary") {}
 
                     text (style: "text-base md:text-lg text-muted-foreground max-w-2xl mx-auto") {
                         "A collection of beautifully designed, fully responsive components."

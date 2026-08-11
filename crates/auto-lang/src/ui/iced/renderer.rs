@@ -9,7 +9,7 @@ use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize};
-use crate::ui::style::Style;
+use crate::ui::style::{Style, StyleClass, Color};
 use std::fmt::Debug;
 use std::collections::HashMap;
 use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
@@ -985,12 +985,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Button { label, onclick, style, on_right_click } => {
+            AbstractView::Button { label, content, onclick, style, on_right_click } => {
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
-                // Plan 408: detect embedded lucide icon marker (\u{EE01}name\u{EE02}).
-                // If present, build button_content as row[svg icon, text label].
-                let button_content: iced::Element<'static, M> = if label.starts_with('\u{EE01}') {
+                // Plan 409 §6: if the button carries a content subtree (a `link`
+                // with children — `link (to:) { text/row/icon ... }`), render it
+                // directly as the button content. The label is kept for the
+                // snapshot builder / accessibility.
+                // Plan 409 §8: inherit the button's own text color into the
+                // content subtree — Text children without an explicit color
+                // (e.g. `link (to: "/") { text "Docs" }`) become theme-colored
+                // instead of falling back to the body default (vue parity).
+                let inherit_color = style.as_ref().and_then(|s| {
+                    s.classes.iter().find_map(|c| match c {
+                        StyleClass::TextColor(color) => Some(*color),
+                        _ => None,
+                    })
+                });
+                let button_content: iced::Element<'static, M> = if let Some(mut content_view) = content {
+                    if let Some(color) = inherit_color {
+                        inherit_text_color(&mut content_view, color);
+                    }
+                    (*content_view).into_iced()
+                } else if label.starts_with('\u{EE01}') {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
@@ -1693,6 +1710,57 @@ fn get_or_create_image_handle(url: &str, data: Vec<u8>) -> iced::widget::image::
     handle
 }
 
+/// Plan 409 §8: recursively apply an inherited text color to every Text node
+/// in the view that has no explicit `text-{color}` class. This gives the vue
+/// equivalent of CSS text-color inheritance — a `link (to:) { text "Docs" }`
+/// child inherits the button's theme color (text-primary) instead of falling
+/// back to the body default (text-foreground). Only leaves that carry no
+/// explicit color are touched; everything else (layout containers, images,
+/// buttons) is preserved.
+fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color) {
+    match view {
+        AbstractView::Text { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
+            }
+        }
+        AbstractView::Button { content, .. } => {
+            if let Some(c) = content {
+                inherit_text_color(c, color);
+            }
+        }
+        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } | AbstractView::List { items: children, .. } => {
+            for child in children {
+                inherit_text_color(child, color);
+            }
+        }
+        AbstractView::Grid { cells, .. } => {
+            for cell in cells {
+                inherit_text_color(cell, color);
+            }
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            inherit_text_color(child, color);
+        }
+        AbstractView::Table { headers, rows, .. } => {
+            for h in headers {
+                inherit_text_color(h, color);
+            }
+            for row in rows {
+                for cell in row {
+                    inherit_text_color(cell, color);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Plan 408: Return a complete SVG string for a lucide icon name.
 /// The SVG uses 16x16 viewport (scaled from lucide's 24x24), stroke-based
 /// rendering matching lucide's visual style.
@@ -1726,6 +1794,7 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "plus" => r#"<path d="M5 12h14"/><path d="M12 5v14"/>"#,
         "minus" => r#"<path d="M5 12h14"/>"#,
         "mail" => r#"<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>"#,
+        "palette" => r#"<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>"#,
         "book" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>"#,
         "folder" => r#"<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
         _ => return None,
@@ -1952,6 +2021,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                     },
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
             ],
             spacing: 0,
@@ -2025,11 +2095,13 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         AbstractView::Button {
             label,
+            content,
             onclick,
             style,
             on_right_click,
         } => AbstractView::Button {
             label,
+            content: content.map(|c| Box::new(convert_view_messages(*c))),
             onclick: IcedMessage::from_dynamic(&onclick),
             style,
             on_right_click: on_right_click.map(|rc| IcedMessage::from_dynamic(&rc)),
@@ -8958,6 +9030,7 @@ mod tests {
                     onclick: DynamicMessage::String("pick".to_string()),
                     style: None,
                     on_right_click: None,
+                    content: None,
                 },
             ],
             style: None,

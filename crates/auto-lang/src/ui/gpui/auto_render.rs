@@ -311,7 +311,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 text_div.into_any()
             }
 
-            View::Button { label, onclick, style } => {
+            View::Button { label, content, onclick, style, on_right_click: _ } => {
                 let msg = onclick;
                 let handle_msg_clone = handle_msg.clone();
                 // Create a 'static string for the button ID
@@ -319,7 +319,9 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 let id = (label_static, button_counter);
                 button_counter += 1;
 
-                // Apply unified styling if present
+                // Apply unified styling if present. Plan 409 §6: `content`
+                // (link children) is not rendered by the gpui backend; the
+                // label falls back to the derived text so the text is visible.
                 let mut button = Button::new(id).label(label);
                 if let Some(style) = style {
                     button = apply_style_to_button(button, &style);
@@ -823,14 +825,16 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 text_div.into_any()
             }
 
-            View::Button { label, onclick, style } => {
+            View::Button { label, content: _, onclick, style, on_right_click: _ } => {
                 let msg = onclick.clone();
                 // Create a 'static string for the button ID
                 let label_static: &'static str = Box::leak(label.clone().into_boxed_str());
                 let id = (label_static, button_counter);
                 button_counter += 1;
 
-                // Apply unified styling if present
+                // Apply unified styling if present. Plan 409 §6: `content`
+                // (link children) is not rendered by the gpui backend; the
+                // label falls back to the derived text so the text is visible.
                 let mut button = Button::new(id).label(label);
                 if let Some(style) = style {
                     button = apply_style_to_button(button, &style);

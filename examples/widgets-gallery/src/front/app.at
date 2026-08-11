@@ -64,6 +64,12 @@ widget App {
         sidebarOpen bool = false
         searchOpen bool = false
         searchQuery str = ""
+        // Plan 409 §8: theme color picker state. accent_color drives the
+        // primary color in both vm (iced_adapter ACCENT_NAME) and vue
+        // (applyAccent → --primary). Palette: indigo/coral/ocean/sage/amber
+        // (aligned with auto-forge).
+        themeOpen bool = false
+        accent_color str = "indigo"
     }
 
     on {
@@ -71,6 +77,8 @@ widget App {
         .closeSidebar -> { sidebarOpen = false }
         .openSearch -> { searchOpen = true }
         .closeSearch -> { searchOpen = false }
+        .openThemePicker -> { themeOpen = !themeOpen }
+        .SetAccent(name) -> { accent_color = name }
     }
 
     view {
@@ -100,7 +108,22 @@ widget App {
                     // Right actions
                     row (style: "ml-auto items-center gap-1") {
                         button (variant: "ghost", style: "hidden md:flex h-9 w-9", icon: "search", onClick: .openSearch) {}
+                        // Plan 409 §8: theme color picker toggle (palette icon)
+                        button (variant: "ghost", style: "h-9 w-9", icon: "palette", onClick: .openThemePicker) {}
                     }
+                }
+            }
+
+            // Plan 409 §8: theme color picker panel. VM ignores `absolute`
+            // (iced limitation) so it renders inline below the header; vue
+            // uses absolute positioning for a floating popover.
+            if .themeOpen {
+                row (style: "absolute right-4 top-14 z-50 items-center gap-1.5 rounded-lg border bg-popover p-2 shadow-lg") {
+                    button (onClick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "h-5 w-5 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-indigo-500 hover:scale-110 transition-transform" }) {}
+                    button (onClick: .SetAccent("coral"), style: if .accent_color == "coral" { "h-5 w-5 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-rose-500 hover:scale-110 transition-transform" }) {}
+                    button (onClick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "h-5 w-5 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-blue-500 hover:scale-110 transition-transform" }) {}
+                    button (onClick: .SetAccent("sage"), style: if .accent_color == "sage" { "h-5 w-5 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-emerald-500 hover:scale-110 transition-transform" }) {}
+                    button (onClick: .SetAccent("amber"), style: if .accent_color == "amber" { "h-5 w-5 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-popover ring-primary" } else { "h-5 w-5 rounded-full bg-amber-500 hover:scale-110 transition-transform" }) {}
                 }
             }
 

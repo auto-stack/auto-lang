@@ -31,6 +31,12 @@ pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
             .map(|d| PathBuf::from(d).join(format!("../../{}", rel))),
         Some(PathBuf::from(&rel)),
         Some(PathBuf::from(format!("../../{}", rel))),
+        // Plan 409 §8: top-level examples (widgets-gallery) live directly under
+        // examples/, not examples/ui/.
+        std::env::var("CARGO_MANIFEST_DIR")
+            .ok()
+            .map(|d| PathBuf::from(d).join(format!("../../examples/{}/src/front/app.at", example))),
+        Some(PathBuf::from(format!("examples/{}/src/front/app.at", example))),
     ];
     candidates.into_iter().flatten().find(|p| p.exists())
 }

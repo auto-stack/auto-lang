@@ -877,6 +877,10 @@ pub struct VueGenerator {
     /// Name of the dark mode state variable (e.g. "isDark" or "dark_mode")
     dark_mode_var: Option<String>,
 
+    /// Plan 409 §8: whether the widget owns an `accent_color` state var —
+    /// triggers widget-path applyAccent() injection (mirrors the store path).
+    has_accent_color: bool,
+
     /// Whether theme-toggle component is used
     use_theme_toggle: bool,
 
@@ -1066,6 +1070,7 @@ impl VueGenerator {
             used_handlers: HashSet::new(),
             has_dark_mode: false,
             dark_mode_var: None,
+            has_accent_color: false,
             use_theme_toggle: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
@@ -1263,6 +1268,7 @@ impl VueGenerator {
         self.codegen_warnings.borrow_mut().clear();
         self.has_dark_mode = false;
         self.dark_mode_var = None;
+        self.has_accent_color = false;
         self.use_theme_toggle = false;
         self.global_listeners.clear();
         self.template_refs.clear();
@@ -1537,6 +1543,10 @@ impl VueGenerator {
         self.dark_mode_var = widget.state_vars.iter()
             .find(|s| s.name == "isDark" || s.name == "dark_mode")
             .map(|s| s.name.clone());
+        // Plan 409 §8: widget-path accent support — the widget owns the
+        // `accent_color` state (mirrors the store composable detection at
+        // Plan 360; gallery App is a widget, not a store).
+        self.has_accent_color = widget.state_vars.iter().any(|s| s.name == "accent_color");
         // Also check if ToggleDarkMode handler exists (D1 fix: removed
         // format!("{:?}", widget.view_tree) which caused OOM on large
         // view trees with Expr::If nodes — handler check is sufficient)
@@ -1756,6 +1766,10 @@ impl VueGenerator {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }
+        }
+        // Plan 409 §8: accent bootstrap needs onMounted (applyAccent restore).
+        if self.has_accent_color && !imports.contains(&"onMounted") {
+            imports.push("onMounted");
         }
         // Lifecycle: .Init → onMounted, .Destroy → onUnmounted
         let has_init = widget.lifecycle.iter().any(|l| l.name == "Init");
@@ -2283,6 +2297,19 @@ impl VueGenerator {
                     }
                 }
             }
+            // Plan 409 §8: widget-path accent support — when the widget owns an
+            // `accent_color` state, the SetAccent / ToggleDarkMode handlers must
+            // also call applyAccent() so the --primary CSS variable tracks the
+            // VM-side palette. Mirrors the store composable path (Plan 360).
+            // isDark is resolved from the DOM (.dark class) rather than a state
+            // var, since gallery apps hardcode `<html class="dark">`.
+            if self.has_accent_color {
+                if handler_name == "SetAccent" {
+                    body.push_str("; applyAccent(name, document.documentElement.classList.contains('dark'))");
+                } else if handler_name == "ToggleDarkMode" {
+                    body.push_str("; applyAccent(accent_color.value, document.documentElement.classList.contains('dark'))");
+                }
+            }
             // Plan 132: Check if handler contains API calls (needs async)
             let is_async = self.handler_has_api_calls(payload);
             self.handlers.push((handler_name.clone(), body, is_async));
@@ -2692,6 +2719,23 @@ impl VueGenerator {
         // exposing the ref object directly is correct.
         if !widget.exposes.is_empty() {
             script.push_str(&format!("defineExpose({{ {} }})\n", widget.exposes.join(", ")));
+        }
+
+        // Plan 409 §8: widget-path accent color system. When the widget owns an
+        // `accent_color` state, inject the same 5-color palette + applyAccent
+        // helper used by the store composable path (Plan 360), plus an onMounted
+        // bootstrap that restores the saved choice from localStorage. The
+        // palette is aligned with auto-forge (indigo/coral/ocean/sage/amber).
+        if self.has_accent_color {
+            script.push('\n');
+            script.push_str(Self::ACCENT_PALETTE_JS);
+            script.push_str("\n// Restore saved accent on mount.\n");
+            script.push_str("onMounted(() => {\n");
+            script.push_str("  const saved = getSavedAccent()\n");
+            script.push_str("  accent_color.value = saved\n");
+            script.push_str("  applyAccent(saved, document.documentElement.classList.contains('dark'))\n");
+            script.push_str("})\n");
+            script.push('\n');
         }
 
         Ok(script)
@@ -4062,7 +4106,9 @@ impl VueGenerator {
                     } else {
                         text.clone()
                     };
-                    Ok(format!("{}<router-link to=\"{}\" class=\"group block\" active-class=\"\" exact-active-class=\"router-link-exact-active\">\n{}{}</router-link>\n", ind, to, children_html, ind))
+                    // Vue Router link. Plan 409 §8: links use the theme color
+                    // (text-primary) — matches the VM link rendering.
+                    Ok(format!("{}<router-link to=\"{}\" class=\"group block text-primary\" active-class=\"\" exact-active-class=\"router-link-exact-active\">\n{}{}</router-link>\n", ind, to, children_html, ind))
                 }
             }
         }
@@ -4995,16 +5041,18 @@ impl VueGenerator {
                 "footer" => classes.push("w-full border-t bg-background".to_string()),
                 "article" => classes.push("prose max-w-none".to_string()),
 
-                // Typography
-                "h1" => classes.push("text-3xl font-bold tracking-tight mb-4".to_string()),
-                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8 mb-4".to_string()),
-                "h3" => classes.push("text-xl font-semibold mb-3".to_string()),
+                // Typography. Plan 409 §8: headings / links use the theme
+                // color (text-primary) so page titles & nav are accent-driven.
+                "h1" => classes.push("text-3xl font-bold tracking-tight mb-4 text-primary".to_string()),
+                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8 mb-4 text-primary".to_string()),
+                "h3" => classes.push("text-xl font-semibold mb-3 text-primary".to_string()),
                 "text" => classes.push("text-muted-foreground leading-7".to_string()),
 
                 // Content
                 "button" => classes.push("px-4 py-2 rounded".to_string()),
-                "input" => classes.push("border rounded px-2 py-1".to_string()),
-                "textarea" => classes.push("border rounded px-2 py-1".to_string()),
+                // Plan 409 §8: input/textarea borders use the theme color.
+                "input" => classes.push("border-primary rounded px-2 py-1".to_string()),
+                "textarea" => classes.push("border-primary rounded px-2 py-1".to_string()),
                 "checkbox" => classes.push("w-4 h-4".to_string()),
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
@@ -17367,6 +17415,60 @@ widget TopLevel {
         assert!(
             sfc.contains("count.value += 1;"),
             "statement after bare return still emitted:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 409 §8: a widget (non-store) that owns an `accent_color` state
+    /// must get the widget-path applyAccent injection — palette JS,
+    /// onMounted restore, and `applyAccent(...)` calls appended to the
+    /// SetAccent handler (mirrors the store composable path at Plan 360).
+    #[test]
+    fn test_widget_accent_color_injects_apply_accent() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget ThemeApp {
+    msg Msg { SetAccent(str) }
+    model {
+        themeOpen bool = false
+        accent_color str = "indigo"
+    }
+    view {
+        col {
+            button "palette" onclick: .toggleTheme
+            button "coral" onclick: .SetAccent("coral")
+        }
+    }
+    on {
+        .toggleTheme -> { themeOpen = !themeOpen }
+        .SetAccent(name) -> { accent_color = name }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("const ACCENT_PALETTES"),
+            "widget path must inject the accent palette JS:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function applyAccent"),
+            "widget path must inject applyAccent():\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("getSavedAccent()"),
+            "widget path must restore saved accent on mount:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("applyAccent(name, document.documentElement.classList.contains('dark'))"),
+            "SetAccent handler must call applyAccent with the new accent:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("accent_color = ref"),
+            "accent_color must be declared as a ref from the model:\n{}",
             sfc
         );
     }

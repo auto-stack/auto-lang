@@ -285,6 +285,7 @@ fn convert_button(node: &Node) -> ConversionResult<View<String>> {
             onclick, // Store as string message ID
             style: Some(style),
             on_right_click: None,
+            content: None,
         })
     } else {
         Ok(View::button((label, onclick)))
@@ -1064,7 +1065,7 @@ fn convert_button_dynamic(
         .unwrap_or_else(|| String::from("Button"));
     let onclick = extract_event_handler(node, "onclick", metadata.map(|(name, _)|name))?;
     let style = extract_style(node)?;
-    Ok(View::Button { label, onclick, style })
+    Ok(View::Button { label, onclick, style, on_right_click: None, content: None })
 }
 
 #[cfg(feature = "interpreter")]
