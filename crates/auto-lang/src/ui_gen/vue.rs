@@ -5902,7 +5902,12 @@ impl VueGenerator {
                     for (branch, then_expr) in if_expr.branches.iter().rev().zip(branch_exprs.iter().rev()) {
                         let cond = self.expr_to_js(&branch.cond)?;
                         let then_str = then_expr.clone().unwrap();
-                        acc = format!("{} ? {} : ({})", cond, then_str, acc);
+                        // Plan 054 M6: wrap the whole ternary in parens so it's
+                        // safe inside string concatenation (`'fw:' + (c ? a : b)`).
+                        // Without the outer parens, JS `+` binds tighter than `?:`,
+                        // so `'fw:' + c ? a : b` parses as `('fw:' + c) ? a : b`
+                        // (always truthy → always 'a', e.g. CodeView恒 bold).
+                        acc = format!("({} ? {} : {})", cond, then_str, acc);
                     }
                     return Ok(acc);
                 }
@@ -9776,7 +9781,13 @@ impl VueGenerator {
     /// implementation only read `branches.first()` + the final `else`, so
     /// else-if chains silently dropped every branch after the first.
     fn if_expr_to_style_ternary(&self, if_stmt: &crate::ast::If) -> String {
-        self.build_style_ternary(&if_stmt.branches, &if_stmt.else_)
+        let t = self.build_style_ternary(&if_stmt.branches, &if_stmt.else_);
+        // Plan 054 M6: wrap the whole ternary in parens so it's safe inside
+        // string concatenation (`'fw:' + (c ? a : b)`). Without the outer
+        // parens, JS `+` binds tighter than `?:`, so `'fw:' + c ? a : b`
+        // parses as `('fw:' + c) ? a : b` — always truthy, always the
+        // then-branch (observed: CodeView恒 bold/italic regardless of span).
+        format!("({})", t)
     }
 
     fn build_style_ternary(
@@ -11310,6 +11321,16 @@ export function cn(...inputs: ClassValue[]) {
                 }
                 code.push_str("            } catch { }\n");
                 code.push_str("        };\n");
+                // Plan 054 M4: SSE onerror 自动重连(退避 2s)。后端重启或网络
+                // 断开时 readyState 变 CLOSED,重置 per-path guard 并延迟重调
+                // composable —— composable 内 `if (!guard)` 会重新 new EventSource。
+                // 此前无 onerror,后端一重启前端就永久失联(需手动刷新页面)。
+                code.push_str("        es.onerror = () => {\n");
+                code.push_str(&format!(
+                    "            if (es.readyState === EventSource.CLOSED) {{ {} = false; setTimeout({}, 2000); }}\n",
+                    guard, fn_name
+                ));
+                code.push_str("        };\n");
                 code.push_str("    }\n");
             }
         }
@@ -11761,7 +11782,7 @@ fn emit_preset_dispatch(
             // 对象(可能是 Table/Record/Code/Error/Text/"Empty"),store 的 RunResult
             // 据此赋 b.output。保留 __sse_output_text(只取 .Text)供兼容/调试。
             code.push_str(&format!(
-                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; RunResult(); }}\n",
+                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; __sse_exit_code.value = r.exit_code; RunResult(); }}\n",
                 kw = kw, disc = disc_field, wire = wire_value,
             ));
         }
