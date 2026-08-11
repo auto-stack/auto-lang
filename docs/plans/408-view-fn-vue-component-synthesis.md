@@ -365,6 +365,10 @@ computed 内引用的逃生舱 fn 标识符被原样保留，但生成的 SFC **
 
 **优先级**: 🟡 中——StreamingTable 是 P3 候选之一，但不是唯一路径；缺陷 5（fn import）修复后可先原生化不依赖动态索引的组件。缺陷 6 影响所有"对象按键取值"场景，范围更广，应优先于 7。
 
+> **2026-08-11 P7 落地**（缺陷 6）：已修复。根因实测——`text .row[.col]` 走 `has_dot_primary` 分支（parser.rs:12761），调 `dot_item()` 只解析 `.row`，**`[.col]` 残留在 token 流**里被当成后续 children/props，导致拆成 3 个错位节点（`<span>{{ row }}</span><div>{{ col }}</div><div />`）。
+>
+> **修复**：`dot_item()`（parser.rs:2039）在链式 Dot 解析后、赋值检查前，加 `[...]` 索引循环——每次 `LSquare` → `parse_expr` 解析索引 → `RSquare`，包装 `Expr::Index(lhs, index)`。这样 `.row[.col]` 保持单节点 → 产物 `{{ row[col] }}`。修复点是通用 `dot_item`，对所有 view 表达式（不止 component fn）生效。测试 `test_dynamic_index_dot_field` 覆盖。vue 186 + plan408 8 + plan367 6 全绿，零回归。缺陷 7（table 标签映射）仍待做。
+
 ### 7.6 P4 实施顺序与优先级（2026-08-11 P3 试点后修订）
 
 | 缺陷 | 优先级 | 理由 | 方案 |

@@ -2063,6 +2063,19 @@ impl<'a> Parser<'a> {
             lhs = Expr::Dot(Box::new(lhs), field_name);
         }
 
+        // Plan 408 P7 / §7.5 缺陷 6: handle dynamic indexing on a dot lhs,
+        // e.g. `.row[.col]` (object value by dynamic key) or `.list[.i]`.
+        // dot_item previously returned just `.row`, leaving `[.col]` in the
+        // token stream — which then parsed as stray children/props, breaking
+        // `text .row[.col]` into multiple nodes. Wrap as Expr::Index so the
+        // whole expression stays one node → `{{ row[col] }}`.
+        while self.is_kind(TokenKind::LSquare) {
+            self.next(); // skip [
+            let index = self.parse_expr()?;
+            self.expect(TokenKind::RSquare)?;
+            lhs = Expr::Index(Box::new(lhs), Box::new(index));
+        }
+
         // Plan 043: `.field = expr` — consume the assignment here so the
         // resulting Dot-lhs never re-enters expr_pratt_with_left's Asn path
         // (which recursed deeply for ash-gui api.at). Only fires when the dot

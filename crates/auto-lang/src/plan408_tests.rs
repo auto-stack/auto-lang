@@ -391,4 +391,50 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// §7.5 缺陷 6: 动态索引 `.row[.col]`（对象按动态键取值）此前被拆成多个
+    /// 节点（`<span>{{ row }}</span><div>{{ col }}</div><div />`），因为
+    /// `dot_item` 只解析 `.row`，把 `[.col]` 残留在 token 流里。修复后应产出
+    /// 单节点 `{{ row[col] }}`。覆盖 `text` primary-prop 路径 + Expr::Index codegen。
+    #[test]
+    fn test_dynamic_index_dot_field() {
+        let tmp = std::env::temp_dir().join("plan408_dyn_index_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget TableView {\n",
+            "    model {\n",
+            "        var rows []map = []\n",
+            "        var col str = \"name\"\n",
+            "    }\n",
+            "    view {\n",
+            "        for row in .rows {\n",
+            "            td { text .row[.col] }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("dynamic index case must compile");
+        let code = result.vue_code.clone();
+
+        // Single interpolated node `{{ row[col] }}`, not three split nodes.
+        assert!(
+            code.contains("{{ row[col] }}"),
+            "dynamic index must render as a single {{ row[col] }} node: {}",
+            code
+        );
+        // No stray split nodes.
+        assert!(
+            !code.contains("<div>{{ col }}</div>"),
+            "dynamic index must NOT split into a stray {{ col }} node: {}",
+            code
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
