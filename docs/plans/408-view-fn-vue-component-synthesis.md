@@ -428,6 +428,14 @@ TS 报错：`Property 'status' does not type 'ComputedRef<any>'`（`errandStatus
 
 **关联现象（类型收窄缺口）**: 尝试用"每个 computed 独立调 fn"绕过缺陷 8 时，触发另一缺口——`.at` 的 `if getErrandState(...) != None { getErrandState(...).field }` 编译为 TS 后，`if (getErrandState(...) != null) { getErrandState(...).field }` 报 `Object is possibly null`（TS2531）。两次独立调用 getErrandState，TS 不收窄第二次的类型。**根因**：.at 的 `!= None` 分支未利用条件收窄后续同表达式调用的类型。这影响所有"fn 返回 Option/可能 null + if 判 None + 后续访问字段"模式（比缺陷 8 更普遍）。建议与缺陷 8 一并修：要么 codegen 对 `if X != None { X.field }` 生成 `?.` 或临时变量收窄，要么 .at 层引入 `?.` 操作符（缺陷 6 同源）。
 
+**关联现象 2（嵌套 if 深层 .value 漏加，2026-08-11 TaskPlanCard 暴露）**: P9 修复缺陷 8 时，单层 if（`cond ? a.value : b`）的 `.value` unwrap 正确，但**嵌套 if 的深层（2+ 层）分支漏加**。例如 `statusLabel => if .status == "a" { "X" } else { if .status == "b" { "Y" } else { "Z" } }`（.status 是 computed）生成：
+```ts
+const statusLabel = computed(() => { if (status.value === 'a') { return 'X'; }       // ✅ 第一层有 .value
+  else { if (status == 'b') { return 'Y'; }                                          // ❌ 第二层漏 .value
+  else { return 'Z'; } } })
+```
+TS2367（`ComputedRef` 与 `string` 比较）。**根因**：P9 的 `.value` 注入只处理了顶层三元转换，嵌套 else 分支里的 if 仍走旧路径（漏 unwrap）。**影响**：任何"基于 computed 的嵌套 if 映射"（如状态码→标签查找）中招——常见于卡片组件。**绕过**：把映射逻辑放 forge_helpers fn（component fn 调用，fn 内部用字典），消除嵌套 if。auto-musk TaskPlanCard 的 statusLabel 已用此绕过（`taskPlanStatusLabel(status)` fn）。**建议**：P9 的 `.value` 注入应递归处理嵌套 if 的所有分支，不仅顶层。
+
 **解决办法**: computed codegen 在生成 `<expr>` 时，对所有"解析为同 widget computed 名"的标识符引用，统一在**字段访问/方法调用**位置也注入 `.value`（当前只在不跟随 `.` 的位置注入）。需修 vue.rs 的 computed 表达式生成（与缺陷 3 的 `if→三元` 一并处理更经济）。
 
 **验证**: 探针扩展——`component fn { computed { a => ...; b => .a.field } }` → `b = computed(() => a.value.field)`。ErrandCard 真实迁移作 e2e。
