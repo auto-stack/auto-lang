@@ -114,8 +114,8 @@ view fn ContentHeader(title str, ...) { ... }
 
 ---
 
-## 5. 实施记录（2026-08-10，P1）
 
+## 5. 实施记录（2026-08-10，P1）
 **落地范围**: Task 1（同文件合成核心）+ Task 3（降级兼容，设计自带）+ Task 4（golden 验证）。Task 2（slot）经评估由"方案 B（props+条件渲染）"免费获得——component fn 接收 variant/items props，内部 `if` 分支复用既有条件渲染 codegen，无需新机制。
 
 **触发机制**: 新增 `component fn` 关键字（与 `view fn` 形成清晰二分），而非注解。`view fn` 语义完全不变（内联默认），`component fn` 显式 opt-in 独立合成。
@@ -728,3 +728,147 @@ P12 修复后，auto-musk 剩余 15 个逃生舱的阻塞解除路径：
 - **emit 重交互组件**（RelayRunBox/GateCard/ReportCard/SecretaryMessage/MentionInput/MentionDropdown/WikiNav/QuestionnaireCard/SettingsMenu/WorkspaceSelector）→ emit 已支持（P4/P10），逐个评估交互复杂度，多数应可在 P12 后推进。
 
 auto-musk 侧 023 §3.5 已登记剩余候选分组，待 P12 对应工作项落地后按序推进。
+
+---
+
+
+## 11. Plan 053 移植发现的 codegen 技术债（2026-08-11 登记，新 phases）
+
+> **来源**: auto-shell **Plan 053**（ash-gui-auto 对齐 vue 原版）实施过程中发现。
+> 这些项都需在 **auto-lang** 侧修复，阻塞 Plan 053 的某些里程碑或影响 codegen 开发体验。
+> 作为本计划的新 phases（P5-x），独立于 Task 1-4 实施。
+
+### P5-1 ✅ 已验证不存在（2026-08-11 复核，误判）
+
+**原假设**: 改 `.at` 后 codegen 用 ui-cache.json 旧缓存生成旧产物。
+
+**复核实验**: 改 `prompt_bar.at` 的 placeholder（content 改）+ ghost span style
+（view 结构改），**不删** ui-cache.json 重新 codegen，PromptBar.vue **正确更新**。
+UICache 的 `is_dirty`（`ui_cache.rs:82`）正确比较 `hash_string(&content)`，
+缓存失效机制正常。
+
+**真因**: Plan 053 M3 的"删缓存才工作"实际是 **stack widget 不被 codegen 识别**
+（P5-7）+ 操作时序混淆，非缓存问题。UICache（`vue.rs:2594` is_dirty + hash_string）
+机制正确，**无需修复**。
+
+**优先级**: ❌ 无需实施（误判）。
+
+### P5-2 🟡 auto clean target.rs panic
+
+**问题**: `auto clean` 在 `crates/auto-man/src/target.rs:285` panic:
+`Invalid target kind: 'root'. Valid options are: app, lib, bag, dep, device, test`。
+导致无法用 auto clean 清理产物缓存（用户需手动删 `.auto/` 或 `gen/`）。
+
+**位置**: `crates/auto-man/src/target.rs:285`。
+
+**修复**: 处理 `'root'` target kind（跳过或视为合法）。
+
+### P5-3 ✅ 已完成（2026-08-11）
+
+**问题**: view fn body 里的表达式（如 `block_body.at` 的 `field.1.Text.to_float()`）
+**不走 method map**，原样输出 `.to_float()`。这是 Plan 053 M1（字符串方法映射补全）
+未覆盖的**第三条方法映射路径**（另两条已覆盖：`vue.rs expr_to_js` 模板/computed、
+`ts_adapter` handler body）。
+
+**位置**: view fn 表达式生成处（`aura/extract.rs` 或 `vue.rs` view fn 处理，需定位）。
+
+**修复**: view fn 表达式生成时复用既有 method map（`to_float`→`parseFloat` 等）。
+
+**解锁**: Plan 053 B4（MemoryInfo Progress 数值兜底）。
+
+**证据**: Plan 053 M6 试过 `value: field.1.Text.to_float()`，产物 BlockBody.vue 报
+`Property 'to_float' does not exist on type 'string'`。
+
+**实施**（2026-08-11，branch `auto-shell` commit 见 git log）:
+- `vue.rs` 抽出共享方法映射表 `map_method_to_js`（Plan 053 M1 全表），接入三条
+  view 表达式路径:
+  1. **bound 位置** `expr_to_vue_bound_value` 的 `Expr::Call`（此前 Dot 方法调用
+     原样输出）—— 覆盖 `block_body.at` 的 `value: field.1.Text.to_float()`（B4 直接依赖）
+  2. **文本插值位置** `expr_to_vue_text_raw` 的 `Expr::Call`（此前仅
+     to_string/len/contains 特判）
+  3. **view if 条件** `convert_condition`（字符串 token 替换，覆盖 spaced/紧凑形式，
+     含无参方法 to_lower/to_upper/trim_left/trim_right/is_empty）
+- `expr_to_js` 的旧内联 match 收敛到 `map_method_to_js` 单源（行为不变）。
+- 加单测 `test_plan053_p53_view_expr_method_mapping` 覆盖 bound + if 条件两路。
+- 验证：`field.1.Text.to_float()` 产物 `Number(parseFloat(field[1].Text))`，
+  vue-tsc BlockBody 4 个 TS2339 → 0；vite build 通过。**Plan 053 B4 随之完成**。
+- 遗留：view 表达式路径不做 `contains` 的 R010 receiver 类型门控（与 ts_adapter 对齐，
+  现行为与修复前一致，`expr_to_js` 的门控保留）。
+
+### P5-4 🟢 纯 module fn 文件不被 codegen
+
+**问题**: 只含 module fn（无 widget/store）的文件被 codegen 跳过（warning:
+`No widget or store declarations found in input file`）。无法建 `lib/` 工具模块。
+
+**位置**: codegen 的文件扫描/模块识别。
+
+**修复**: 支持纯 module fn 文件（生成 lib 工具模块供 import，或允许 module fn 独立导出）。
+
+**workaround**: module fn 放进 widget/store 文件内（Plan 053 abbreviate 改内联）。
+
+**优先级**: 🟢 低——有 workaround，影响代码组织整洁度。
+
+### P5-5 🟡 textarea 加入 user_class_skip_elements（解锁 Plan 053 M4）
+
+**问题**: `vue.rs` 的 `user_class_skip_elements` 含 `"input"` 不含 `"textarea"`，
+导致 textarea 被强加默认 `border rounded px-2 py-1`，无法做透明多行输入框。
+
+**位置**: `crates/auto-lang/src/ui_gen/vue.rs:4909-4918`（`user_class_skip_elements`）。
+
+**修复**: 列表加入 `"textarea"`。
+
+**解锁**: Plan 053 M4（多行续行检测）的 input→textarea 切换。
+
+### P5-6 🟡 input handler debounce codegen 注入（解锁 Plan 053 M5）
+
+**问题**: `.at` 完全无定时器（`native_catalog.rs` 全表无 setTimeout/setInterval/debounce），
+补全 debounce 无法在 `.at` 层实现（`auto.time.sleep_ms` 是阻塞 sleep，会卡 UI）。
+
+**位置**: `vue.rs` input handler 生成处。
+
+**修复**: input handler body 含 `complete(` 调用时，自动包一层 `setTimeout` debounce
+（80ms + 序列号丢弃过期结果，逻辑照搬 vue 原版 `PromptBar.vue:60-84`）。
+
+**解锁**: Plan 053 M5（补全 debounce）。
+
+### P5-7 🔴 widget module fn + use 导入 + 复杂 handler 三重限制（解锁 Plan 053 M3）
+
+**问题（三连，Plan 053 M3 实测全被阻塞）**:
+1. **widget 文件的顶层 module fn 不被 codegen**（P5-4 扩展）：不只纯 module fn
+   文件,widget 文件（prompt_bar.at）顶层的 module fn（tokenize）也不生成;
+   只有 store 文件的 module fn 生成。
+2. **use 不能导入 module fn**：`use shell_store: tokenize_input` 被误解为导入
+   store（产物 `import { usetokenize_inputStore }`）。use 只认 store/widget/component。
+3. **widget handler 的复杂 body 不生成 function**：DoTokenize handler（tokenize
+   状态机:struct 数组 + push + 嵌套 for/break + 7 分支 if/else if 链,~80 行）
+   静默未生成 function（同文件其他简单 handler 正常生成）→ 产物 TS2304
+   Cannot find name 'DoTokenize'。
+
+**位置**:
+- module fn 扫描:codegen 文件处理（widget vs store 的 module fn 区别）
+- use 解析:use 的 item 类型识别（store/widget vs module fn）
+- handler 生成:`vue.rs` / `ts_adapter` 对复杂 handler body（struct 数组 push +
+  嵌套循环 + 长 if/else if）的生成路径
+
+**修复**:
+- widget 文件也生成顶层 module fn;或支持 module fn 跨文件 use 导入
+- handler 生成支持复杂 body（struct 数组 + push + 嵌套循环 + 长 if/else if）
+
+**解锁**: Plan 053 M3（输入框语法高亮）。tokenize 逻辑已保留在 prompt_bar.at
+为死代码（DoTokenize handler）,待本项修复后连接 view overlay。
+
+**证据**: PromptBar.vue 生成了所有简单 handler function,唯独 DoTokenize 缺失。
+
+---
+
+## 12. P5 phases 实施优先级建议
+
+1. **P5-7**（widget module fn + 复杂 handler）—— 解锁 Plan 053 M3，且是 codegen 表达能力的关键扩展 ✅ 已完成
+2. **P5-3**（view fn 方法映射）—— 解锁 Plan 053 B4，且是方法映射一致性的补全 ✅ 已完成（2026-08-11，见 §5）
+3. **P5-5**（textarea）+ **P5-6**（debounce）—— 随 Plan 053 M4/M5 推进时实施
+4. **P5-2**（auto clean panic）—— 真问题但影响小（手动删可绕过）
+5. **P5-4**（纯 module fn 文件）—— 低优先，有 workaround（P5-7 部分覆盖）
+
+> **P5-1（ui-cache 缓存失效）经 2026-08-11 复核为误判，已移除**（见 §5 P5-1）：
+> UICache 的 is_dirty + hash_string 机制正常，改 .at 后产物正确更新。
+> M3 的"删缓存才工作"症状实际是 P5-7（stack widget 不被识别），非缓存。

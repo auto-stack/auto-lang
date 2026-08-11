@@ -2301,9 +2301,17 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| aura_events_get_base(events, "update"))
             .map(|event| self.event_to_message(&event.handler));
 
+        // Plan 053 M4: textarea Enter → on_submit (mirrors convert_input).
+        let on_submit = aura_events_get_base(events, "onenter")
+            .or_else(|| aura_events_get_base(events, "enter"))
+            .map(|event| self.event_to_message(&event.handler));
+
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
         if let Some(msg) = on_change {
             builder = builder.on_change(msg);
+        }
+        if let Some(msg) = on_submit {
+            builder = builder.on_submit(msg);
         }
         if let Some(h) = height {
             builder = builder.height(h);

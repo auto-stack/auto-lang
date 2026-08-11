@@ -2260,7 +2260,15 @@ impl VueGenerator {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
                 let already_notifies_parent = body.contains(&callback_key);
-                if !already_notifies_parent {
+                // Plan 053 M4 (P5-7 residual): internal helper handlers that are
+                // only self-called (`.DoContinuation()` from OnInput/OnEnter,
+                // `.DoTokenize()` from OnInput) skip the trailing emit('X') —
+                // no parent listens, and they are NOT in the defineEmits type
+                // (that's built from template-bound handlers *before*
+                // mark_self_called_handlers runs), so emitting would be a
+                // TS2769 "not assignable to parameter" (observed for DoTokenize).
+                // Template-bound handlers are already in used_handlers here.
+                if !already_notifies_parent && self.used_handlers.contains(&handler_name) {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
                     // Plan 043 M5 B-3: when the handler is a loop-param handler
@@ -2314,6 +2322,14 @@ impl VueGenerator {
             let is_async = self.handler_has_api_calls(payload);
             self.handlers.push((handler_name.clone(), body, is_async));
         }
+
+        // P5-7: Auto-recognize sibling-handler self-calls (`.X()` / `self.X()`)
+        // inside used handlers' bodies and mark targets used, so they emit as
+        // functions instead of being skipped by the used_handlers filter below
+        // (which would otherwise cause TS2304 "Cannot find name 'X'"). Fixpoint
+        // covers transitive chains (A -> B -> C). Replaces the manual
+        // `expose { .X }` workaround for handler-to-handler calls.
+        self.mark_self_called_handlers(widget);
 
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
@@ -4642,6 +4658,35 @@ impl VueGenerator {
         result = result.replace(" len ( )", ".length");
         // Plan 345 (gap N1): .contains → .includes (JS uses .includes, not .contains)
         result = result.replace(".contains(", ".includes(");
+        // Plan 053 P5-3: view if 条件里的字符串方法同样走 method map
+        // （与 bound/text 表达式路径共享同一张表，libs/string.rs 语义）。
+        // parse_condition_expr 输出空格分隔 token（`s.starts_with ( '7' )`），
+        // 所以 spaced 与紧凑两种形式都替换。无参方法先替换为 JS 名 + 空参。
+        for (auto_name, js_name) in [
+            ("starts_with", "startsWith"),
+            ("ends_with", "endsWith"),
+            ("char_at", "charAt"),
+            ("find", "indexOf"),
+            ("substr", "substring"),
+            ("sub", "substring"),
+            ("slice", "substring"),
+            ("replace", "replaceAll"),
+            ("repeat", "repeat"),
+        ] {
+            result = result.replace(&format!(".{auto_name} ("), &format!(".{js_name}("));
+            result = result.replace(&format!(".{auto_name}("), &format!(".{js_name}("));
+        }
+        for (auto_name, js_expr) in [
+            ("to_lower", "toLowerCase"),
+            ("to_upper", "toUpperCase"),
+            ("trim_left", "trimStart"),
+            ("trim_right", "trimEnd"),
+        ] {
+            result = result.replace(&format!(".{auto_name} ( )"), &format!(".{js_expr}()"));
+            result = result.replace(&format!(".{auto_name}()"), &format!(".{js_expr}()"));
+        }
+        result = result.replace(".is_empty ( )", ".length === 0");
+        result = result.replace(".is_empty()", ".length === 0");
         // Plan 043 M5: Auto's None/nil literal → JS null in view conditions.
         // parse_condition_expr emits tokens space-separated, so `None`/`nil`
         // appear as standalone words. Replace them with `null`.
@@ -5006,7 +5051,7 @@ impl VueGenerator {
             // Typography
             "h1", "h2", "h3", "h4", "h5", "h6", "text", "p",
             // Form
-            "button", "input", "checkbox", "link", "label",
+            "button", "input", "checkbox", "link", "label", "textarea",
             // Data
             "tree", "tree_item", "tree-item",
         ];
@@ -5370,6 +5415,58 @@ impl VueGenerator {
         None
     }
 
+    /// Map an Auto `.method()` call on a string/array receiver to its JS
+    /// equivalent (Plan 053 M1 table; semantics verified against
+    /// `libs/string.rs`). Returns `None` for unmapped methods so callers fall
+    /// through to pass-through output.
+    ///
+    /// This is the shared single source for the **third** codegen path (view
+    /// expressions: view fn bodies / template attribute values & text
+    /// interpolation) — `expr_to_js` (computed/template) and
+    /// `ts_adapter::transpile_expr` (handler body) carry the same table
+    /// (P5-3: the view paths used to skip it, emitting invalid JS like
+    /// `.to_float()`).
+    fn map_method_to_js(&self, method: &str, object_js: &str, args_js: &[String]) -> Option<String> {
+        let a = args_js.join(", ");
+        Some(match method {
+            "len" => format!("{}.length", object_js),
+            // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
+            "contains" => format!("{}.includes({})", object_js, a),
+            "to_string" => format!("{}.toString()", object_js),
+            "to_int" | "parse_int" => {
+                if args_js.is_empty() {
+                    format!("parseInt({})", object_js)
+                } else {
+                    format!("parseInt({}, {})", object_js, a)
+                }
+            }
+            "to_float" | "to_double" | "parse_float" => format!("parseFloat({})", object_js),
+            // 无参 — 大小写 + trim 方向：
+            "to_lower" | "lower" => format!("{}.toLowerCase()", object_js),
+            "to_upper" | "upper" => format!("{}.toUpperCase()", object_js),
+            "trim_left" => format!("{}.trimStart()", object_js),
+            "trim_right" => format!("{}.trimEnd()", object_js),
+            // 有参 — 前后缀：
+            "starts_with" => format!("{}.startsWith({})", object_js, a),
+            "ends_with" => format!("{}.endsWith({})", object_js, a),
+            // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
+            // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
+            "char_at" => format!("{}.charAt({})", object_js, a),
+            // find 返回 index 或 -1：
+            "find" => format!("{}.indexOf({})", object_js, a),
+            // substr/sub/slice 同一 native，均为 start..end 子串：
+            "substr" | "sub" | "slice" => format!("{}.substring({})", object_js, a),
+            // Rust str::replace 替换所有 → replaceAll：
+            "replace" => format!("{}.replaceAll({})", object_js, a),
+            "repeat" => format!("{}.repeat({})", object_js, a),
+            // 布尔（无参）：
+            "is_empty" => format!("({}.length === 0)", object_js),
+            // JS 无原生字符串 reverse：
+            "reverse" => format!("([...{}].reverse().join(''))", object_js),
+            _ => return None,
+        })
+    }
+
     /// Convert AuraExpr to JS value string
     fn expr_to_js(&self, expr: &crate::ast::Expr) -> GenResult<String> {
         use crate::ast::Expr;
@@ -5567,21 +5664,12 @@ impl VueGenerator {
                             }
                         }
                     }
-                    match method.as_str() {
-                        "len" => Ok(format!("{}.length", object_js)),
-                        // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
-                        "contains" => Ok(format!("{}.includes({})", object_js, args_js.join(", "))),
-                        "to_string" => Ok(format!("{}.toString()", object_js)),
-                        "to_int" => {
-                            if args_js.is_empty() {
-                                Ok(format!("parseInt({})", object_js))
-                            } else {
-                                Ok(format!("parseInt({}, {})", object_js, args_js.join(", ")))
-                            }
-                        }
-                        "to_float" | "to_double" => Ok(format!("parseFloat({})", object_js)),
-                        _ => Ok(format!("{}.{}({})", object_js, method, args_js.join(", "))),
+                    // Plan 053 M1/P5-3: 方法映射表收敛到 map_method_to_js 单源，
+                    // 与 view 表达式路径共享同一张表。
+                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                        return Ok(mapped);
                     }
+                    Ok(format!("{}.{}({})", object_js, method, args_js.join(", ")))
                 } else {
                     // Plain function call: func(args)
                     let name_js = self.expr_to_js(&call.name)?;
@@ -5855,6 +5943,118 @@ impl VueGenerator {
         }
     }
 
+    /// Scan handler-body statements for sibling-handler self-method calls
+    /// (`.X()` / `self.X()`), returning the called method names. Mirrors the
+    /// ts_adapter self-call recognition (`Expr::Dot(Ident "."/"self", method)`).
+    /// Caller MUST gate results against declared handler names — `.save()` /
+    /// `.push()` / `.contains()` etc. share the self-call shape but are
+    /// store/builtin calls, not handlers (`mark_self_called_handlers` gates).
+    fn collect_self_handler_calls(stmts: &[crate::ast::Stmt]) -> Vec<String> {
+        use crate::ast::{Expr, Stmt};
+        fn is_self_receiver(object: &Expr) -> bool {
+            matches!(object, Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self")
+        }
+        fn scan_expr(expr: &Expr, out: &mut Vec<String>) {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Dot(object, method) = call.name.as_ref() {
+                        if is_self_receiver(object) {
+                            out.push(method.as_str().to_string());
+                        }
+                    }
+                    scan_expr(&call.name, out);
+                    for arg in &call.args.args {
+                        scan_expr(&arg.get_expr(), out);
+                    }
+                }
+                Expr::Dot(object, _) => scan_expr(object, out),
+                Expr::Bina(l, _, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Unary(_, e) => scan_expr(e, out),
+                Expr::Array(items) | Expr::Tuple(items) => {
+                    for item in items { scan_expr(item, out); }
+                }
+                Expr::Index(arr, idx) => { scan_expr(arr, out); scan_expr(idx, out); }
+                Expr::NullCoalesce(l, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Cast { expr, .. } | Expr::To { expr, .. } => scan_expr(expr, out),
+                Expr::Block(body) => {
+                    for s in &body.stmts { scan_stmt(s, out); }
+                }
+                Expr::If(if_stmt) => scan_if(if_stmt, out),
+                _ => {}
+            }
+        }
+        fn scan_if(if_stmt: &crate::ast::If, out: &mut Vec<String>) {
+            for branch in &if_stmt.branches {
+                scan_expr(&branch.cond, out);
+                for s in &branch.body.stmts { scan_stmt(s, out); }
+            }
+            if let Some(else_body) = &if_stmt.else_ {
+                for s in &else_body.stmts { scan_stmt(s, out); }
+            }
+        }
+        fn scan_stmt(stmt: &Stmt, out: &mut Vec<String>) {
+            match stmt {
+                Stmt::Expr(expr) => scan_expr(expr, out),
+                Stmt::Store(store) => scan_expr(&store.expr, out),
+                Stmt::If(if_stmt) => scan_if(if_stmt, out),
+                Stmt::For(for_) => {
+                    scan_expr(&for_.range, out);
+                    for s in &for_.body.stmts { scan_stmt(s, out); }
+                }
+                Stmt::Try(t) => {
+                    for s in &t.body.stmts { scan_stmt(s, out); }
+                    for s in &t.catch_body.stmts { scan_stmt(s, out); }
+                    if let Some(fb) = &t.finally_body {
+                        for s in &fb.stmts { scan_stmt(s, out); }
+                    }
+                }
+                Stmt::Block(body) => {
+                    for s in &body.stmts { scan_stmt(s, out); }
+                }
+                Stmt::Return(e) | Stmt::Reply(e) => scan_expr(e, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for stmt in stmts { scan_stmt(stmt, &mut out); }
+        out
+    }
+
+    /// Mark handlers as used when invoked via `.X()` / `self.X()` from the body
+    /// of another *used* handler. Runs to fixpoint so transitive chains
+    /// (A -> B -> C) are fully captured. Only targets that are actually
+    /// declared handlers in this widget are marked — this filters out
+    /// store/builtin calls (`.save()`, `.push()`, `.new()`, ...) that share the
+    /// self-call shape. Replaces the manual `expose { .X }` workaround.
+    fn mark_self_called_handlers(&mut self, widget: &AuraWidget) {
+        use std::collections::{HashMap, HashSet};
+        let mut calls_by_handler: HashMap<String, Vec<String>> = HashMap::new();
+        let mut declared: HashSet<String> = HashSet::new();
+        for (pattern, payload) in &widget.handlers {
+            let fn_name = self.pattern_to_handler_name(pattern);
+            let calls = match payload {
+                LogicPayload::AstStmts(stmts) => Self::collect_self_handler_calls(stmts),
+                LogicPayload::Bytecode(_) => Vec::new(),
+            };
+            declared.insert(fn_name.clone());
+            calls_by_handler.insert(fn_name, calls);
+        }
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let snapshot: Vec<String> = self.used_handlers.iter().cloned().collect();
+            for used_name in &snapshot {
+                if let Some(targets) = calls_by_handler.get(used_name) {
+                    for target in targets {
+                        if declared.contains(target) && self.used_handlers.insert(target.clone()) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Convert prop value to HTML attribute value
     /// For static values: produces `"value"`
     /// For dynamic values (StateRef, FieldAccess): produces `"name"` (caller must prefix with `:`)
@@ -5987,6 +6187,12 @@ impl VueGenerator {
                             let args_str: Vec<String> = args.iter()
                                 .map(|a| self.bound_value_or_warn(a, "method-call arg in text position", "null"))
                                 .collect();
+                            // Plan 053 P5-3: view 文本位置的字符串方法同样走
+                            // method map（此前仅 to_string/len/contains 特判，
+                            // 其余原样输出 `.to_float()` 等坏 JS）。
+                            if let Some(mapped) = self.map_method_to_js(method.as_str(), &obj_str, &args_str) {
+                                return Ok(mapped);
+                            }
                             if is_self {
                                 if args_str.is_empty() {
                                     Ok(format!("{}()", method))
@@ -6142,6 +6348,33 @@ impl VueGenerator {
             // 复用 expr_to_vue_text_raw:5550-5559 的简单调用模板。此前 Expr::Call 落到
             // _ => "null"，导致 fn 调用 prop 被丢弃（getQuestions(.msg) → null）。
             Expr::Call(call) => {
+                // Plan 053 P5-3: 方法调用（view fn / 属性绑定表达式）走共享
+                // method map。此前 Expr::Call 把 Dot(name) 整体当作普通函数名
+                // 输出 `{object}.{method}({args})`，字符串方法原样输出坏 JS
+                // （实测 BlockBody 产物 `field[1].Text.to_float()`）。
+                if let Expr::Dot(object, method) = call.name.as_ref() {
+                    let method = method.clone();
+                    let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
+                    let object_js = self.expr_to_vue_bound_value(object)?;
+                    let args_js: Vec<String> = call.args.args.iter()
+                        .filter_map(|a| match a {
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            _ => None,
+                        })
+                        .map(|a| self.expr_to_vue_bound_value(&a))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                        return Ok(mapped);
+                    }
+                    // 保留既有行为:自调用 `.Method()` → `Method()`(无 self 前缀);
+                    // 普通方法调用原样输出。
+                    if is_self {
+                        return Ok(format!("{}({})", method, args_js.join(", ")));
+                    }
+                    return Ok(format!("{}.{}({})", object_js, method, args_js.join(", ")));
+                }
+                // Plain function call (e.g. component prop: getList(.msg)) →
+                // emit as-is.
                 let name_str = self.expr_to_vue_bound_value(&call.name)?;
                 let args_str: Vec<String> = call.args.args.iter()
                     .filter_map(|a| match a {
@@ -10821,12 +11054,27 @@ export function cn(...inputs: ClassValue[]) {
                         .map(|(wire, action)| (disc.clone(), wire.clone(), action.clone()))
                         .collect()
                 };
+                // Plan 051 M2 (②-b 预置字段模拟): ash-gui 的 RunOutput/RunResult
+                // 是无参 handler,通过 __sse_* 预置字段读 SSE 数据(VM 限制:不能收
+                // struct 参)。VM 模式下由 renderer 填字段;vue 模式下由这段 codegen
+                // 模拟同样的模式:先把 data 拆填进 __sse_* ref,再调无参 handler。
+                // 检测信号:store 的 state_vars 含 __sse_ 前缀字段(__sse_ 是保留前缀)。
+                // 仅对 legacy fallback 的 RunOutput/RunResult 生效;带 variants 的
+                // 数据驱动流(如 forge)走原带参透传路径,不受影响。
+                let preset_mode = store.state_vars.iter()
+                    .any(|s| s.name.starts_with("__sse_"));
                 for (i, (disc_field, wire_value, action)) in chain.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "else if" };
-                    code.push_str(&format!(
-                        "                {} (data.{} === '{}') {}(data);\n",
-                        kw, disc_field, wire_value, action
-                    ));
+                    if preset_mode {
+                        emit_preset_dispatch(
+                            &mut code, kw, disc_field, wire_value, action,
+                        );
+                    } else {
+                        code.push_str(&format!(
+                            "                {} (data.{} === '{}') {}(data);\n",
+                            kw, disc_field, wire_value, action
+                        ));
+                    }
                 }
                 code.push_str("            } catch { }\n");
                 code.push_str("        };\n");
@@ -11237,6 +11485,63 @@ fn stream_guard_var(path: &str) -> String {
         .trim_matches('_')
         .to_string();
     format!("__streamConnected_{}", suffix)
+}
+
+/// Plan 051 M2 (②-b 预置字段模拟): emit SSE dispatch for stores using the
+/// `__sse_*` preset-field pattern (ash-gui convention). For these stores the
+/// RunOutput/RunResult handlers are parameter-less and read `__sse_*` refs that
+/// the VM renderer pre-fills; in vue we codegen the same pattern: unpack `data`
+/// into the matching `__sse_*` refs, then call the parameter-less handler.
+///
+/// Only the legacy-fallback actions (`RunOutput`/`RunResult`, the ash-gui
+/// `command_output`/`command_result` contract) are handled here. Any other
+/// action falls back to the default `(data)` parameterized call.
+///
+/// Field mapping source: `shell_store.at` RunOutput/RunResult handler comments
+/// + the ShellEvent/CommandResult contract (`api.at`). `command_result` payloads
+/// arrive nested under `data.CommandResult` when the server emits a
+/// tagged-enum frame; `data.CommandResult ?? data` handles both shapes.
+fn emit_preset_dispatch(
+    code: &mut String,
+    kw: &str,
+    disc_field: &str,
+    wire_value: &str,
+    action: &str,
+) {
+    match action {
+        "RunOutput" => {
+            // command_output: { event, block_id, chunk } (flat)
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __sse_block_id.value = data.block_id; __sse_chunk.value = data.chunk; RunOutput(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "RunResult" => {
+            // command_result: payload nested under data.CommandResult when the
+            // server emits a tagged-enum frame (ash-server does). Unwrap both
+            // shapes via `data.CommandResult ?? data`. Then fill the refs and
+            // call the parameter-less handler. status may be a bare string
+            // ("Success"/"Cancelled") or an object ({"Failed": msg}); the .at
+            // handler treats it as a string and the vue side preserves whatever
+            // shape arrived — GAP-B is handled in the .at handler body.
+            //
+            // Plan 052: __sse_output.value = r.output ?? {} 透传整个 RenderedOutput
+            // 对象(可能是 Table/Record/Code/Error/Text/"Empty"),store 的 RunResult
+            // 据此赋 b.output。保留 __sse_output_text(只取 .Text)供兼容/调试。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; RunResult(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        _ => {
+            // Non-legacy action in a preset-field store: fall back to
+            // parameterized dispatch (preserves prior behavior).
+            code.push_str(&format!(
+                "                {} (data.{} === '{}') {}(data);\n",
+                kw, disc_field, wire_value, action
+            ));
+        }
+    }
 }
 
 /// The `cn` class-merge helper emitted at the registry root (`registry/utils.ts`)
@@ -17107,6 +17412,229 @@ widget RemoveProbe {
                 .iter()
                 .all(|w| !w.message.contains("`name`")),
             "no passthrough note for a proven string receiver: {warnings:?}"
+        );
+    }
+
+    // --- Plan 053 M1: 字符串方法映射补全 --------------------------------
+    // 原先仅 len/contains/to_string/to_int/to_float 有映射，其余 .at 字符串
+    // 方法走兜底 `.{method}()` 原样输出，生成无效 JS（HistorySearch 产物的
+    // `.to_lower()` 是实测症状）。下面覆盖两条 codegen 路径。
+
+    #[test]
+    fn test_plan053_string_mapping_handler_body() {
+        // handler body → ts_adapter::transpile_handler_body 路径
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Str {
+    model {
+        var s str = "Hello"
+        var sink str = ""
+    }
+    on {
+        .Run -> {
+            .sink = .s.to_lower()
+            .sink = .s.lower()
+            .sink = .s.to_upper()
+            .sink = .s.starts_with("He")
+            .sink = .s.ends_with("lo")
+            .sink = .s.char_at(0)
+            .sink = .s.find("ll")
+            .sink = .s.substr(1, 3)
+            .sink = .s.slice(0, 2)
+            .sink = .s.replace("l", "L")
+            .sink = .s.repeat(2)
+            .sink = .s.trim_left()
+            .sink = .s.trim_right()
+        }
+    }
+    view { col { button "run" { onclick: .Run } text .sink } }
+}
+"#);
+        assert!(sfc.contains(".toLowerCase()"), "to_lower/lower→toLowerCase:\n{sfc}");
+        assert!(sfc.contains(".toUpperCase()"), "to_upper→toUpperCase:\n{sfc}");
+        assert!(sfc.contains(".startsWith("), "starts_with→startsWith:\n{sfc}");
+        assert!(sfc.contains(".endsWith("), "ends_with→endsWith:\n{sfc}");
+        assert!(sfc.contains(".charAt("), "char_at→charAt:\n{sfc}");
+        assert!(sfc.contains(".indexOf("), "find→indexOf:\n{sfc}");
+        assert!(sfc.contains(".substring("), "substr/sub/slice→substring:\n{sfc}");
+        assert!(sfc.contains(".replaceAll("), "replace→replaceAll:\n{sfc}");
+        assert!(sfc.contains(".repeat("), "repeat→repeat:\n{sfc}");
+        assert!(sfc.contains(".trimStart()"), "trim_left→trimStart:\n{sfc}");
+        assert!(sfc.contains(".trimEnd()"), "trim_right→trimEnd:\n{sfc}");
+        // 关键回归：坏 JS（原样输出）不得再出现
+        assert!(!sfc.contains(".to_lower("), "to_lower must map, not pass through:\n{sfc}");
+        assert!(!sfc.contains(".lower("), "lower must map:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "starts_with must map:\n{sfc}");
+        assert!(!sfc.contains(".char_at("), "char_at must map:\n{sfc}");
+        assert!(!sfc.contains(".substr("), "substr must map:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_string_mapping_computed_expr() {
+        // computed 单表达式 → vue.rs expr_to_js 路径（与 handler body 的
+        // ts_adapter 路径相对，覆盖第一处 codegen 改动）
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Tmpl {
+    model { var s str = "hi" }
+    computed {
+        upper => .s.to_upper()
+        low => .s.lower()
+        sw => .s.starts_with("h")
+        ch => .s.char_at(0)
+        ie => .s.is_empty()
+    }
+    view { col { text .upper } }
+}
+"#);
+        assert!(sfc.contains(".toUpperCase()"), "computed to_upper:\n{sfc}");
+        assert!(sfc.contains(".toLowerCase()"), "computed lower:\n{sfc}");
+        assert!(sfc.contains(".startsWith("), "computed starts_with:\n{sfc}");
+        assert!(sfc.contains(".charAt("), "computed char_at:\n{sfc}");
+        assert!(sfc.contains(".length === 0"), "computed is_empty:\n{sfc}");
+        assert!(!sfc.contains(".to_upper("), "computed to_upper must map:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "computed starts_with must map:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_p53_view_expr_method_mapping() {
+        // P5-3: view fn / 模板表达式（属性绑定 + 文本插值）此前不走 method
+        // map，字符串方法原样输出坏 JS（实测 BlockBody 产物
+        // `field[1].Text.to_float()` 触发 vue-tsc 报错）。修复后与
+        // expr_to_js / handler body 共享 map_method_to_js 单源。
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053ViewMap {
+    model { var s str = "75%" }
+    view {
+        col {
+            progress {
+                value: .s.to_float()
+                max: 100
+            }
+            if .s.starts_with("7") {
+                text "yes"
+            }
+        }
+    }
+}
+"#);
+        // progress value → bound 位置：to_float → parseFloat
+        assert!(sfc.contains("parseFloat(s)"), "bound to_float → parseFloat:\n{sfc}");
+        assert!(!sfc.contains(".to_float("), "bound to_float must map:\n{sfc}");
+        // view if 条件（同样走 bound 位置）：starts_with → startsWith
+        assert!(sfc.contains(".startsWith("), "bound starts_with → startsWith:\n{sfc}");
+        assert!(!sfc.contains(".starts_with("), "bound starts_with must map:\n{sfc}");
+    }
+
+    // --- Plan 053 M3 / P5-7: handler 间自调用识别 ------------------------
+
+    #[test]
+    fn test_plan053_p57_self_called_handler_is_emitted() {
+        // P5-7: handler 被 OnInput/AcceptGhost/Word 自调用，无模板绑定，不 expose。
+        // mark_self_called_handlers 应把它标 used → 生成 function（否则 TS2304）。
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053SelfCall {
+    model { var x str = "" }
+    on {
+        .Run -> {
+            .Helper()
+        }
+        .Helper -> {
+            .x = "done"
+        }
+    }
+    view { col { button "go" { onclick: .Run } text .x } }
+}
+"#);
+        assert!(
+            sfc.contains("function Helper"),
+            "Helper (called via .Helper() from Run, no template binding, no expose) must be emitted:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("Helper()"),
+            "Run body must call Helper():\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_plan053_p57_self_call_does_not_promote_non_handler() {
+        // P5-7 gate: .save()/.push() share the self-call shape but are NOT
+        // handlers — must NOT be marked used (no false "function save" etc).
+        // (They emit as method calls regardless; this test just ensures the
+        // scanner doesn't crash on them or pollute used_handlers.)
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Gate {
+    model { var items []str = [] }
+    on {
+        .Run -> {
+            .items.push("x")
+        }
+    }
+    view { col { button "go" { onclick: .Run } } }
+}
+"#);
+        assert!(
+            !sfc.contains("function push"),
+            ".push() is a store method, must NOT be emitted as a handler function:\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_plan053_p55_textarea_skips_default_classes() {
+        // P5-5: textarea was missing from user_class_skip_elements → user
+        // style still got the default `border rounded px-2 py-1` forced in.
+        // With user class present, defaults must be skipped (mirrors `input`).
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053Textarea {
+    model { var s str = "" }
+    view {
+        col {
+            textarea {
+                value: .s
+                rows: 1
+                style: "w-full resize-none"
+            }
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("<textarea"), "textarea tag:\n{sfc}");
+        assert!(sfc.contains("resize-none"), "user class kept:\n{sfc}");
+        assert!(
+            !sfc.contains("border rounded"),
+            "textarea must skip default border classes when user class present:\n{sfc}"
+        );
+        assert!(sfc.contains(":rows=\"1\""), "rows attr:\n{sfc}");
+    }
+
+    #[test]
+    fn test_plan053_p57_residual_self_called_handler_no_emit() {
+        // P5-7 residual (Plan 053 M4 companion): self-called-only handlers
+        // must NOT get a trailing emit('X') — they aren't in the defineEmits
+        // type (built from template-bound handlers before
+        // mark_self_called_handlers), so emitting would be TS2769
+        // (observed on DoTokenize).
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget Plan053NoEmit {
+    msg Msg { Run, Helper }
+    model { var x str = "" }
+    on {
+        .Run -> {
+            .Helper()
+        }
+        .Helper -> {
+            .x = "done"
+        }
+    }
+    view { col { button "go" { onclick: .Run } text .x } }
+}
+"#);
+        assert!(sfc.contains("function Helper"), "self-called handler emitted:\n{sfc}");
+        assert!(
+            !sfc.contains("emit('Helper')"),
+            "self-called-only handler must not emit (not in defineEmits type):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("emit('Run')"),
+            "template-bound handler keeps its emit:\n{sfc}"
         );
     }
 
