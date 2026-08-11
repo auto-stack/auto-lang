@@ -4646,6 +4646,17 @@ impl VueGenerator {
             if tag == "toast" || tag == "toast-title" || tag == "toast-description" {
                 return (if tag == "toast" { "div" } else { "span" }).to_string();
             }
+            // Plan 408 P8 / §7.5 缺陷 7: keep native HTML table elements as-is.
+            // These are semantic HTML tags; mapping `table` to shadcn <Table>
+            // forced an unwanted import + component wrapper for users who want
+            // plain `<table>` (e.g. escape-hatch StreamingTable → component fn
+            // with native table markup). PascalCase `Table` still resolves to
+            // the shadcn component via the sub-widget/ext-component path above.
+            // Note: `col`/`caption`/`colgroup` are intentionally excluded —
+            // `col` collides with the Auto layout `col` (→ div/flex column).
+            if matches!(tag, "table" | "thead" | "tbody" | "tfoot" | "tr" | "th" | "td") {
+                return tag.to_string();
+            }
             if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.register_shadcn_component(tag);
                 return component_name.to_string();
