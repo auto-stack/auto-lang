@@ -3636,7 +3636,7 @@ impl VueGenerator {
                 // below, record its index so we skip it during child emission —
                 // otherwise the text would render twice (inline + as a child).
                 let mut consumed_text_child_idx: Option<usize> = None;
-                let (attrs, text_content, generated_children) = if is_shadcn_component {
+                let (mut attrs, text_content, generated_children) = if is_shadcn_component {
                     // Use shadcn-specific attribute generation (includes event handling)
                     let (shadcn_attrs, mut slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
                     // Plan 354: if no slot content from props, check primary positional text.
@@ -3930,6 +3930,13 @@ impl VueGenerator {
                     (attrs, text_content, None)
                 };
 
+                // reka-ui TooltipTrigger renders its own <button>; as-child
+                // avoids nesting when it wraps a <Button> (invalid HTML,
+                // white-screen). Applied at the unified attr-assembly point so
+                // it lands regardless of which tag-resolution path was taken.
+                if tag == "tooltip-trigger" {
+                    attrs.push("as-child".to_string());
+                }
                 let attr_str = if attrs.is_empty() {
                     String::new()
                 } else {
@@ -4906,6 +4913,14 @@ impl VueGenerator {
                 self.component_refs.push("ThemeToggle".to_string());
                 self.use_theme_toggle = true;
                 return "ThemeToggle".to_string();
+            }
+            // tooltip-provider → TooltipProvider. reka-ui <Tooltip> requires a
+            // <TooltipProvider> ancestor (inject context); without it the page
+            // white-screens. Insert into shadcn_components_used so the import is
+            // auto-generated from the registry (tooltip → @/components/ui/tooltip).
+            if tag == "tooltip-provider" {
+                self.shadcn_components_used.insert("TooltipProvider".to_string());
+                return "TooltipProvider".to_string();
             }
             // Plan 408: shadcn-vue deprecated the declarative toast components
             // (Toast/ToastTitle/ToastDescription) in favor of Sonner, which is
@@ -6096,7 +6111,15 @@ impl VueGenerator {
         fn walk_expr(expr: &Expr) -> bool {
             match expr {
                 Expr::Call(call) => {
-                    if call.get_name_text_safe().map(|n| n.as_str() == "toast").unwrap_or(false) {
+                    // toast() → name is Ident("toast")
+                    // toast.success()/error()/info() → name is Dot(Ident("toast"), method)
+                    // (get_name_text_safe returns None for Dot, so check the Expr directly)
+                    let is_toast = match call.name.as_ref() {
+                        Expr::Ident(n) => n.as_str() == "toast",
+                        Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                        _ => false,
+                    };
+                    if is_toast {
                         return true;
                     }
                     call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
