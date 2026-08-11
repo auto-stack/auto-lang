@@ -695,6 +695,11 @@ on { .Init -> { .textContent = loadRawFileText(.workspace, .path).await } }
 
 **验证**：`test_on_handler_async_await`（`.Init -> { .x = fn().await }` → `onMounted(async () => { x.value = await fn() })`）+ `test_on_handler_props_access`（`.Init -> { .y = .field }` → `onMounted(() => { y.value = props.field })`）。
 
+> **2026-08-11 P12 续落地**：两个缺口均修复。
+> - **缺口 A**（async handler）：`stmts_contain_api_call_with` 的 `walk_expr` 加 `Expr::Await { .. } => true` 分支（ts_adapter.rs:1328）——await 检测覆盖。watch 回调（vue.rs:2203）+ .Destroy（vue.rs:2424）加 `handler_has_api_calls` 检测 + async 前缀。普通 on handler 已有（:2285）。
+> - **缺口 B**（props 前缀）：根因是 ts_adapter 的 `transpile_expr` **无 `Expr::Await` 分支**——Await 走默认 `_ =>`（参数未递归 transpile → props 前缀丢失）。新增 `Expr::Await { expr }` 分支（ts_adapter.rs:822）递归 transpile inner expr（`loadText(.path)` 的 `.path` 正确走 Dot self → `props.path`）。
+> - 测试 `test_on_handler_async_await_and_props`：`onMounted(async () => { content.value = (await loadText(props.path)) })`。plan408 20 + vue 193 全绿，零回归。**RawPreview 解锁**。
+
 ### 10.6 P12 实施顺序与解锁路径
 
 | 工作项 | 优先级 | 改动面 | 解锁的 auto-musk 组件 |

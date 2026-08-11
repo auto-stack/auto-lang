@@ -2199,7 +2199,9 @@ impl VueGenerator {
                 }
             };
             let indented = Self::indent_body(&body, "  ");
-            script.push_str(&format!("watch({}, () => {{\n{}\n}}{})\n\n", source, indented, opts));
+            // Plan 408 P12 §10.7: watch 回调含 await/API 调用时用 async。
+            let async_kw = if self.handler_has_api_calls(&watcher.payload) { "async " } else { "" };
+            script.push_str(&format!("watch({}, {}() => {{\n{}\n}}{})\n\n", source, async_kw, indented, opts));
         }
 
         // Generate event handlers
@@ -2414,7 +2416,9 @@ impl VueGenerator {
         // .Destroy → onUnmounted
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
             let body = self.generate_handler_body(&destroy.payload).unwrap_or_default();
-            script.push_str(&format!("onUnmounted(() => {{\n  {}\n}})\n\n", body));
+            // Plan 408 P12 §10.7: .Destroy 含 await/API 调用时用 async。
+            let async_kw = if self.handler_has_api_calls(&destroy.payload) { "async " } else { "" };
+            script.push_str(&format!("onUnmounted({}() => {{\n  {}\n}})\n\n", async_kw, body));
         }
 
         // Global (window/document-level) event listeners declared in the view
