@@ -1,0 +1,76 @@
+// pages/toast.at - Toast component documentation page (vm-compatible version)
+// Note: vue-sonner escape hatch is vue-only. This version uses static
+// cards for vm/rust compatibility. In vue mode, the Toaster component
+// is mounted separately in App for programmatic toast() calls.
+
+widget ToastPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Toast"
+            text "Toast displays a brief, auto-dismissing notification that appears temporarily without blocking the user's workflow. Powered by vue-sonner for stacking, animations, and rich color variants. Trigger toasts programmatically via toast(), toast.success(), toast.error(), toast.warning(), and toast.info()."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
+
+            h2 "Variants (static preview)"
+            preview-card (id: "toast-basic") {
+                col (gap: "3") {
+                    col {
+                        style: "rounded-lg border p-4 bg-background shadow-lg max-w-sm"
+                        col {
+                            style: "gap-1"
+                            text "Event Created" { style: "text-sm font-semibold" }
+                            text "Your event has been created successfully." { style: "text-sm text-muted-foreground" }
+                        }
+                    }
+                    col {
+                        style: "rounded-lg border border-green-500/50 p-4 bg-green-500/10 shadow-lg max-w-sm"
+                        col {
+                            style: "gap-1"
+                            text "Saved" { style: "text-sm font-semibold text-green-600" }
+                            text "Your changes have been saved." { style: "text-sm text-muted-foreground" }
+                        }
+                    }
+                    col {
+                        style: "rounded-lg border border-destructive/50 p-4 bg-destructive/10 shadow-lg max-w-sm"
+                        col {
+                            style: "gap-1"
+                            text "Error" { style: "text-sm font-semibold text-destructive" }
+                            text "Failed to save changes." { style: "text-sm text-muted-foreground" }
+                        }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Function"
+                        th "Arguments"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr {
+                        td "toast()"
+                        td (text: "message, options") {}
+                        td "Show a default toast"
+                    }
+                    tr {
+                        td "toast.success()"
+                        td (text: "message, options") {}
+                        td "Show a success toast"
+                    }
+                    tr {
+                        td "toast.error()"
+                        td (text: "message, options") {}
+                        td "Show an error toast"
+                    }
+                }
+            }
+        }
+    }
+}
