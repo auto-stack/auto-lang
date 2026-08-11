@@ -15349,6 +15349,64 @@ store Graph {
         );
     }
 
+    /// Plan 012 Batch G (gap 1 regression guard): store msg variants with a
+    /// multi-type payload (`Open(str, str)`) must parse, and the handler
+    /// `.Open(a, b) ->` must bind both payload slots as action parameters.
+    /// This self-healed via the Plan 043 M5 msg-payload work (MsgDecl.payload
+    /// is `Vec<Type>`); this test pins the store-side end-to-end path so it
+    /// cannot regress back to single-type-only.
+    #[test]
+    fn test_store_msg_multi_type_payload() {
+        // Real parse path.
+        let store = store_from_src(
+            r#"
+store Files {
+    model {
+        var path str = ""
+    }
+    msg Msg { Open(str, str), Close }
+    on {
+        .Open(a, b) -> {
+            .path = a
+        }
+        .Close -> {
+            .path = ""
+        }
+    }
+}
+"#,
+        );
+
+        // AST level: the variant carries both payload types.
+        let open = store
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter())
+            .find(|v| v.name == "Open")
+            .expect("Open variant");
+        assert_eq!(open.payload.len(), 2, "Open payload types: {:?}", open);
+
+        // Handler params bind both slots.
+        let params = store
+            .handler_params
+            .get(".Open(a, b)")
+            .expect("Open handler params");
+        assert_eq!(params, &vec!["a".to_string(), "b".to_string()]);
+
+        // Codegen: the action takes both parameters.
+        let code = VueGenerator::generate_store_composable(&store);
+        assert!(
+            code.contains("const Open = (a: any, b: any) =>"),
+            "two-arg action signature, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const Close = () =>"),
+            "zero-arg action signature, got:\n{}",
+            code
+        );
+    }
+
     /// Parse a store source and extract its AuraStore (real parse path,
     /// plan 012 batch C). NOTE: the standalone parse path does NOT populate
     /// `api_imports` / `stream_endpoints` — the full build fills those from
