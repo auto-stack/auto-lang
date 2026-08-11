@@ -451,6 +451,37 @@ TS2367（`ComputedRef` 与 `string` 比较）。**根因**：P9 的 `.value` 注
 >
 > **窄残留（2026-08-11 P10 续 已修复）**：多语句 computed body（IIFE fallback 路径）+ 嵌套 if 深层分支漏 `.value`（a9e4397e TaskPlanCard 暴露）。根因：ts_adapter 的 `AuraTsContext` 无 computed_names 概念，IIFE/Block/handler-body 路径不 unwrap。**已修**：`AuraTsContext` 加 `computed_names` 字段 + `with_computed` setter；`Expr::Dot`/`Expr::Ident` 的 is_computed 分支注入 `.value`；vue.rs 三处 ctx 构造点（:2687/:5537/:5578）传入 `with_computed(self.computed_names...)`。测试 `test_nested_if_computed_value_unwrap` 固化（嵌套 if 所有层都 unwrap）。缺陷 8 现在全覆盖（单层 gap44 + 嵌套 P10 续）。
 
+### 7.9 缺陷 9：动态 `style:` 拼接/变量错误塞进 class 数组（AgentAvatar 暴露）
+
+**现象**（auto-musk 023 P3 续 AgentAvatar，2026-08-11）:
+```auto
+component fn AgentAvatar(...) {
+    computed { bg => ...; text => ...; styleStr => "background: " + .bg + "; color: " + .text }
+    span {
+        class: if .size == "xs" { "agent-avatar xs" } else { ... }
+        style: .styleStr              // ❌ 变量引用
+        // 或：style: "background: " + .bg + "; color: " + .text   // ❌ 行内拼接
+    }
+}
+```
+产物（两种写法都错）：
+```vue
+<span :class="[__style__'background: ' + bg + '; color: ' + text, sizeClass == 'xs' ? ...]" ...>
+                    ^^^^^^^^^^ style 值被塞进 class 数组，带 __style__ 前缀，TS1005 语法错
+```
+- `style: .styleStr`（computed 变量）→ `__style__styleStr` 未定义引用（TS2339）
+- `style: "..." + .bg + ...`（行内拼接）→ `[__style__'...' + bg + ...]`（style 塞进 class 数组 + 前缀，语法错）
+
+**根因**：codegen 对 `style:` prop 的**动态表达式**（变量/拼接）处理错误——它把 style 值加 `__style__` 前缀后塞进 `:class` 数组（而非生成独立 `:style` 绑定）。静态 `style: "x"` 正确（生成 `class="x"`），行内 if 表达式正确（生成 `:class`），但**变量引用 + 字符串拼接**走错路径。
+
+**影响范围**：🟡 中——影响所有"按数据动态计算 inline CSS"的组件（AgentAvatar 的 hsl 颜色、RawPreview 的 iframe 尺寸等）。需要动态 inline style 的组件无法原生化。不影响纯 class 组件（已迁移的 6 个都不用 inline style）。
+
+**解决办法**：codegen 的 `style:` prop 处理：对动态表达式（变量/拼接）应生成独立 `:style="<expr>"` 绑定（inline CSS 字符串），而非塞进 class 数组。需修 vue.rs 的 style prop codegen 路径。
+
+**优先级**：🟡 中——阻塞 AgentAvatar/RawPreview 等需要动态 inline style 的组件；不影响纯 class 组件。
+
+**绕过**（auto-musk 侧）：把动态 style 逻辑放 forge_helpers fn 返回完整 CSS 字符串，但 `style: .fn(...)` 变量引用仍中招——**当前无有效绕过**（任何 style 动态表达式都触发）。AgentAvatar 暂保留逃生舱。
+
 ---
 
 ## 8. P4 实施记录：component fn emit + model（2026-08-11 落地）
