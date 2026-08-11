@@ -659,6 +659,42 @@ component fn RawPreview(workspace: str, path: str) {
 
 **P12 验证**: auto-lang plan408 18 + vue 193 全绿，零回归。10.1/10.2/10.3 三项实打实修复，10.4 采用降级。auto-musk 解锁路径：AgentAvatar（10.1）+ RawPreview（10.2+10.3）+ SessionInfo（10.3+10.4 降级）。
 
+### 10.7 P12 后续：RawPreview 暴露 async handler + on/watch body props 访问缺口（2026-08-11）
+
+> auto-musk 023 P3 续 RawPreview 迁移（10.2 watch + 10.3 宿主全局解锁后尝试）暴露两个新缺口。AgentAvatar 已成功原生化（验证 10.1），但 RawPreview 因这两点暂缓。
+
+**缺口 A：on/watch handler body 不支持 `await`（async handler）**
+
+现象：component fn 的 on handler / watch 回调里用 `.await`（调 async fn）：
+```auto
+on { .Init -> { .textContent = loadRawFileText(.workspace, .path).await } }
+```
+产物：`onMounted(() => { textContent.value = loadRawFileText(workspace, path).await; })` → TS1308 `'await' expressions are only allowed within async functions`。
+
+根因：codegen 生成 on handler 为 `() => { ... }`（同步箭头函数），watch 回调为 `() => { ... }`（同步）。当 body 含 `await` 表达式时，应生成 `async () => { ... }`。
+
+修法：codegen 生成 on handler / watch 回调前，检测 body 是否含 `await`（Expr::Await 或 `.await` 后缀），含则用 `async` 前缀。影响 vue.rs 的 onMounted/watch 生成路径。
+
+**缺口 B：on/watch handler body 内 props 访问未加 `props.` 前缀**
+
+现象：on handler body 里 `.workspace` / `.path`（props 字段）：
+```auto
+on { .Init -> { .textContent = loadRawFileText(.workspace, .path).await } }
+```
+产物：`loadRawFileText(workspace, path)` → TS2304 `Cannot find name 'workspace'`。
+
+根因：on handler body 的表达式转译对 props 字段访问（`.field` → 应 `props.field`）未处理——view body 里 `.field` 正确生成（Vue 模板自动 unwrap），但 **script 块的 handler/computed/watch 回调里** `.field` 应生成 `props.field`。computed 回调正确（缺陷 8 修复时处理了），但 on handler / watch 回调漏了。
+
+修法：ts_adapter / vue.rs 的 on handler / watch 回调表达式转译，对 `.field`（解析为 prop 名）生成 `props.field`（镜像 computed 回调的处理）。
+
+**影响**：A + B 共同阻塞所有"async 操作 + model 更新"的组件（RawPreview 的 fetch + loadRawFileText、未来任何 API 调用组件）。这是比 P12 各项更深的 handler body codegen 问题。
+
+**优先级**：🟡 中——阻塞 RawPreview 及 async 操作类组件；不影响已迁移的 7 个（都不用 async）。
+
+**解锁**：RawPreview（async loadRawFileText + props.workspace/path）。
+
+**验证**：`test_on_handler_async_await`（`.Init -> { .x = fn().await }` → `onMounted(async () => { x.value = await fn() })`）+ `test_on_handler_props_access`（`.Init -> { .y = .field }` → `onMounted(() => { y.value = props.field })`）。
+
 ### 10.6 P12 实施顺序与解锁路径
 
 | 工作项 | 优先级 | 改动面 | 解锁的 auto-musk 组件 |
@@ -680,7 +716,7 @@ component fn RawPreview(workspace: str, path: str) {
 
 P12 修复后，auto-musk 剩余 15 个逃生舱的阻塞解除路径：
 - **AgentAvatar** → 10.1（缺陷 9）单点解封。
-- **RawPreview** → 10.2（watch）+ 10.3（宿主全局 onMounted）。
+- **RawPreview** → 10.2（watch）+ 10.3（宿主全局）**已解锁，但迁移暴露 §10.7 缺口**（async handler + on/watch body props 访问）——待 §10.7 修复后完成。
 - **SessionInfo** → 10.3（宿主全局 document/navigator）+ 10.4（composable facade ref）。
 - **SecretaryMessageWrapper** → 10.4（composable facade ref）。
 - **StreamingRenderer**（流式增量 JSON useStreamingDocument）→ 仍开放（composable 的复杂响应式用法，待评估，可能超 P12 范畴）。
