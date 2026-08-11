@@ -404,6 +404,36 @@ P3 试点实测结论：**当前不可行**——所有纯展示候选都被 P4 
 - **缺陷 6+7 落地** → StreamingTable 可原生化
 - auto-musk 侧 023 §3.2/§3.3 已登记探针结论与候选，待 P4 对应缺陷落地后按序推进。
 
+### 7.8 缺陷 8：computed 互相引用时未 unwrap `.value`（P3 续 ErrandCard 暴露）
+
+**现象**（auto-musk 023 P3 续 ErrandCard，2026-08-11 探针 G + 真实迁移）:
+```auto
+computed {
+    errandStatus => getErrandState(.errands, .tc)   // computed A
+    hasState => .errandStatus != None               // computed B 引用 A
+    status => if .hasState { .errandStatus.status } else { "running" }  // C 引用 A+B
+}
+```
+产物：
+```ts
+const errandStatus = computed<any>(() => getErrandState(props.errands, props.tc))
+const hasState = computed<boolean>(() => errandStatus.value != null)           // ✅ 有 .value
+const status = computed<any>(() => { if (hasState.value) { return errandStatus.status; } ... })  // ❌ errandStatus.status 缺 .value
+```
+TS 报错：`Property 'status' does not type 'ComputedRef<any>'`（`errandStatus` 是 ComputedRef，脚本里访问字段必须先 `.value`）。
+
+**根因**: computed codegen（vue.rs computed→`const x = computed(() => <expr>)`）对 `<expr>` 中**其他 computed 引用的 unwrap 不一致**——比较/传参位置（`errandStatus != null`）正确加 `.value`，但**字段访问位置**（`errandStatus.status`）漏加。这是缺陷 3（IIFE）的同源问题：computed 表达式的 codegen 未统一处理"标识符是 ComputedRef 时需 `.value`"。
+
+**影响范围**: 🔴 **严重**——任何"computed 引用其他 computed"的组件都中招。这是有派生状态组件的常见模式（ErrandCard/TaskPlanCard/GenericToolCard 等几乎所有非平凡卡片）。UserMessage 没中招是因为它只有一个 computed（不引用其他 computed）。
+
+**关联现象（类型收窄缺口）**: 尝试用"每个 computed 独立调 fn"绕过缺陷 8 时，触发另一缺口——`.at` 的 `if getErrandState(...) != None { getErrandState(...).field }` 编译为 TS 后，`if (getErrandState(...) != null) { getErrandState(...).field }` 报 `Object is possibly null`（TS2531）。两次独立调用 getErrandState，TS 不收窄第二次的类型。**根因**：.at 的 `!= None` 分支未利用条件收窄后续同表达式调用的类型。这影响所有"fn 返回 Option/可能 null + if 判 None + 后续访问字段"模式（比缺陷 8 更普遍）。建议与缺陷 8 一并修：要么 codegen 对 `if X != None { X.field }` 生成 `?.` 或临时变量收窄，要么 .at 层引入 `?.` 操作符（缺陷 6 同源）。
+
+**解决办法**: computed codegen 在生成 `<expr>` 时，对所有"解析为同 widget computed 名"的标识符引用，统一在**字段访问/方法调用**位置也注入 `.value`（当前只在不跟随 `.` 的位置注入）。需修 vue.rs 的 computed 表达式生成（与缺陷 3 的 `if→三元` 一并处理更经济）。
+
+**验证**: 探针扩展——`component fn { computed { a => ...; b => .a.field } }` → `b = computed(() => a.value.field)`。ErrandCard 真实迁移作 e2e。
+
+**优先级**: 🔴 高（与缺陷 3 合并修复）——阻塞几乎所有有派生状态的组件原生化。
+
 ---
 
 ## 8. P4 实施记录：component fn emit + model（2026-08-11 落地）
