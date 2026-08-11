@@ -6,6 +6,12 @@
 widget ToastPage {
     model { activeTab str = "preview" }
 
+    on {
+        .showSuccessToast -> { toast.success("Action completed successfully!") }
+        .showErrorToast -> { toast.error("Something went wrong.") }
+        .showInfoToast -> { toast.info("Here is a quick update.") }
+    }
+
     view {
         col {
             h1 "Toast"
@@ -41,6 +47,19 @@ widget ToastPage {
                             text "Failed to save changes." { style: "text-sm text-muted-foreground" }
                         }
                     }
+                }
+            }
+
+            h2 "Live Demo"
+            preview-card (id: "toast-demo") {
+                col (gap: "3") {
+                    row (gap: "2") {
+                        button (text: "Success", variant: "outline", onClick: .showSuccessToast) {}
+                        button (text: "Error", variant: "outline", onClick: .showErrorToast) {}
+                        button (text: "Info", variant: "outline", onClick: .showInfoToast) {}
+                    }
+                    text "Click a button to fire a live toast. Toasts stack and auto-dismiss." { style: "text-sm text-muted-foreground" }
+                    toast-provider {}
                 }
             }
 

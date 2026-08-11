@@ -2438,6 +2438,21 @@ impl WidgetRegistry {
         });
         self.register(tooltip_content);
 
+        // TooltipProvider — reka-ui <Tooltip> requires a <TooltipProvider>
+        // ancestor (inject context); without it the page white-screens.
+        let mut tooltip_provider = WidgetSpec::new("TooltipProvider", WidgetCategory::Overlay)
+            .with_alias("tooltip-provider");
+        tooltip_provider.has_children = true;
+        tooltip_provider.backends.insert("vue".to_string(), BackendMapping {
+            component: "TooltipProvider".to_string(),
+            import: Some("@/components/ui/tooltip".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: None,
+        });
+        self.register(tooltip_provider);
+
         // HoverCard
         let mut hover_card = WidgetSpec::new("HoverCard", WidgetCategory::Overlay)
             .with_alias("hover-card");

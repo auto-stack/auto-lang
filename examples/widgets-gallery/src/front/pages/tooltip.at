@@ -14,12 +14,14 @@ widget TooltipPage {
             h2 "Simple"
             preview-card (id: "tooltip-basic") {
                 row (gap: "4") {
-                    tooltip {
-                        tooltip-trigger {
-                            button (text: "Hover me", variant: "outline") {}
-                        }
-                        tooltip-content {
-                            text "Add to library"
+                    tooltip-provider {
+                        tooltip {
+                            tooltip-trigger {
+                                button (text: "Hover me", variant: "outline") {}
+                            }
+                            tooltip-content {
+                                text "Add to library"
+                            }
                         }
                     }
                 }
