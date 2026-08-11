@@ -286,6 +286,10 @@ component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **
 
 **验证**: `test_component_fn_with_computed` 扩展——断言 `const label = computed<string>(() => props.count > 0 ? '有' : '无')`（三元 + 类型推断）。低优先级（能跑，仅质量）。
 
+> **2026-08-11 P9 落地**（缺陷 3）：已修复。`expr_to_js` 的 `Expr::If` 分支（vue.rs:5535）原先一律用 IIFE `(() => { if ... return ... })()`。改为：当**每个分支 body 都是单表达式语句**（`Stmt::Expr`）时，转成嵌套三元 `cond ? then : (cond2 ? then2 : else)`；多语句分支 fallback 到 IIFE（功能正确，复杂场景仍需 block+return）。
+>
+> **修复点**：新增 `single_body_expr_js` 辅助（vue.rs:5250）——body.stmts 长度 1 且为 `Stmt::Expr` 时返回表达式的 JS 形式，否则 None。`Expr::If` 分支据此选择三元或 IIFE 路径。既有测试 `test_computed_if_chain_transpiles_to_iife` 更新为 `test_computed_if_chain_transpiles_to_ternary`（期望嵌套三元，不再期望 IIFE）。新增 `test_computed_if_emits_ternary`（component fn computed if → 三元，无 IIFE）。vue 186 + plan408 10 + plan367 6 全绿，零回归。**类型推断仍为 `<any>`**（`expr_to_ts_type` 对 Expr::If 未实现，属独立改进，不影响功能）。
+
 ### 7.3 缺陷 4：component fn 内部 button onclick 调用 prop 作 handler（emit 缺口）
 
 **现象**（探针 B，023 §3.1 共用组件收敛的硬阻塞）:

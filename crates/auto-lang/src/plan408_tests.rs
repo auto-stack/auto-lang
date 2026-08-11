@@ -438,6 +438,54 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// §7.2 缺陷 3: computed `if` expression should emit a ternary
+    /// `cond ? then : else`, not an IIFE `(() => { if ... return ... })()`.
+    /// The ternary is cleaner and type-inferable. Covers single-expr branches
+    /// (multi-stmt branches still fall back to IIFE, which is functionally correct).
+    #[test]
+    fn test_computed_if_emits_ternary() {
+        let tmp = std::env::temp_dir().join("plan408_computed_if_test");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "component fn Badge(count: int) {\n",
+            "    computed {\n",
+            "        label => if .count > 0 { \"has\" } else { \"none\" }\n",
+            "    }\n",
+            "    span { text .label }\n",
+            "}\n",
+            "\n",
+            "widget App {\n",
+            "    model { var n int = 0 }\n",
+            "    view { Badge(count: .n) }\n",
+            "}\n",
+        )).unwrap();
+
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("computed if case must compile");
+        let badge = result.all_widget_codes.iter()
+            .find(|(n, _)| n == "Badge")
+            .map(|(_, c)| c.clone())
+            .unwrap();
+
+        // Ternary form, not IIFE.
+        assert!(
+            badge.contains("? 'has' :"),
+            "computed if must emit a ternary with the then-branch: {}",
+            badge
+        );
+        assert!(
+            !badge.contains("(() => {"),
+            "computed if must NOT use an IIFE wrapper: {}",
+            badge
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// §7.5 缺陷 7: native HTML table elements (table/thead/tbody/tr/th/td)
     /// must stay native in shadcn mode — not be mapped to the shadcn <Table>
     /// component. PascalCase `Table` still resolves to shadcn via the
