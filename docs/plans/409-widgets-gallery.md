@@ -1,6 +1,6 @@
 # Plan 409: Widgets Gallery — 三模式一致性 + link 子组件 VM 缺口 + 主题色
 
-> **状态**: §1–§9 ✅；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。§9 为本会话 vue 模式审查修复批次（codegen bug + 内容一致性 + 交互演示 + 样式），CodeBlock/PreviewCard 改纯 Auto widget 暂缓。**§10 进行中**（2026-08-12 新一轮 VM 模式审查，6 个残留差距，worktree `plan-409`）。
+> **状态**: §1–§9 ✅；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。§9 为本会话 vue 模式审查修复批次（codegen bug + 内容一致性 + 交互演示 + 样式），CodeBlock/PreviewCard 改纯 Auto widget 暂缓。**§10 ✅**（2026-08-12 新一轮 VM 模式审查，6 个残留差距已全部修复，worktree `plan-409`）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui/{iced/renderer.rs, aura_view_builder.rs, widget_registry.rs, style/iced_adapter.rs}` + `ui_gen/{vue.rs, rust.rs}` + `token.rs` + `lib.rs` + `aura/types.rs`）；gallery 产物在 `examples/widgets-gallery/`。
 > **背景**: `examples/widgets-gallery` 是覆盖全部 ~50 个 AutoUI widget 的组件画廊，同时作为 vue/vm/rust 三模式一致性与 codegen 缺口的试金石。本计划把 gallery 推进过程中暴露并修复的 **VM 一致性 + Vue codegen** 问题统一登记，并把仍开放的 **`link` 子组件 VM 渲染缺口** 作为唯一待办立项。
 > **说明**: §1–§5 的修复在历史上多挂在 Plan 408（VM/gallery track）名下提交，此处按"按计划修复"的视角统一归档为 Plan 409 的已完成项；引用的 commit hash 可追溯。
@@ -319,7 +319,7 @@ examples/widgets-gallery/          # app.at + 49 pages + pac.at
 
 ---
 
-## 10. ⏳ 本批次待修：VM 视觉差距 6 项（2026-08-12 审查）
+## 10. ✅ 本批次已修：VM 视觉差距 6 项（2026-08-12 审查）
 
 > §1–§9 完成后，对 VM 模式做新一轮逐页审查，发现 6 个残留视觉/交互差距。
 > 本节登记并修复，工作在 worktree `plan-409`（分支 `plan-409`）。
@@ -385,10 +385,30 @@ examples/widgets-gallery/          # app.at + 49 pages + pac.at
 - **VM 主渲染走 untracked 路径**（`convert_node_with`→`convert_element` untracked 的 `_` fallback），不是 tracked。调试时 eprintln 加到 untracked `_` fallback 才命中（组 E 同样适用）。
 - **toast 降级**：`handler_codegen.rs` `rewrite_expr`（搜 "vue-only escape hatch"）把 vue-only 调用降级为 `Expr::Bool(false)`，避免 VM link 失败。
 
-### 10.4 文件（预计触及）
+### 10.4 实际改动文件
 
 ```
-crates/auto-lang/src/ui/aura_view_builder.rs  # 组 A/C/D/E 主战场
-crates/auto-lang/src/ui/handler_codegen.rs    # 组 B（handler 执行，若需）
-examples/widgets-gallery/src/front/app.at     # 验证场景（对照）
+crates/auto-lang/src/ui/aura_view_builder.rs  # 组 A convert_button icon PUA / 组 C themed 参数 / 组 E preview-card+codeblock
+crates/auto-lang/src/ui/iced/renderer.rs      # 组 C logo icon: lucide SVG 读 text_color 注入 stroke（per-color cache）
+crates/auto-lang/src/plan409_tests.rs         # §6 测试断言 Components→Widgets（§9.2.3 同步）
 ```
+
+> 组 B（onClick handler）与组 D（路由 `/` 匹配）**未改代码**——基座已在 §8.10（`aura_events_get_base` 大小写不敏感）与 §1.1（`render_outlet` 初始路由默认 `/`）修好，本轮 VM 实测确认两者均已生效。
+
+### 10.5 验证（VM + AutoUI MCP）
+
+启动 VM（`pac.at render:"vm"`），通过 AutoUI MCP（`autoui_snapshot` / `vtree` / `action` / `state` + `screenshot`）逐组验证：
+
+| 组 | 验证手段 | 结果 |
+|---|---|---|
+| A | snapshot：header 三 button label | `menu` / `search` / `palette`（PUA 标记），不再是 "Button"；screenshot 确认 icon 可见 |
+| B | action press palette + state | `handler: .App.openThemePicker`，`themeOpen: false → true`（handler 执行正常） |
+| C | vtree Docs button + logo icon | 均为 `fg: #7679f3`（indigo 主题色）；screenshot 确认 logo icon + Docs/Widgets 呈紫色 |
+| D | snapshot 启动 + action press nav-link | 启动即显示 Home（IndexPage）；点 Button → `__current_route: "/" → "/button"` |
+| E | snapshot Button 页 | codeblock 显示 `bash: npx shadcn-vue@latest add button`（之前 View::Empty）；preview-card children（Simple/Variants/Sizes/Events）正常渲染 |
+
+**回归测试**：`cargo test -p auto-lang --features ui-iced --lib plan409` → **4 passed**（含 §6 `link_children_render_as_button_content`，顺手把过时断言 `Components`→`Widgets` 同步 §9.2.3 的 app.at 改动）。
+
+### 10.6 提交
+
+提交在 worktree `plan-409` 分支；合并 master 后 commit hash 可追溯。

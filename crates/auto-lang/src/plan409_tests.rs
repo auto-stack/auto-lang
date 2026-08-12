@@ -147,7 +147,7 @@ fn link_children_render_as_button_content() {
     // The two top-nav links must render their text children as button labels
     // (not the raw `to` path) AND carry a content subtree.
     let docs = buttons.iter().find(|(label, _)| *label == "Docs");
-    let components = buttons.iter().find(|(label, _)| *label == "Components");
+    let widgets = buttons.iter().find(|(label, _)| *label == "Widgets");
 
     assert!(
         docs.is_some(),
@@ -156,15 +156,15 @@ fn link_children_render_as_button_content() {
         buttons.iter().map(|(l, _)| *l).collect::<Vec<_>>()
     );
     assert!(
-        components.is_some(),
-        "top-nav link (to: \"/button\") {{ text \"Components\" }} must render as a button \
-         labelled \"Components\"; got buttons: {:?}",
+        widgets.is_some(),
+        "top-nav link (to: \"/button\") {{ text \"Widgets\" }} must render as a button \
+         labelled \"Widgets\"; got buttons: {:?}",
         buttons.iter().map(|(l, _)| *l).collect::<Vec<_>>()
     );
 
     // Both links carry a converted content subtree (the styled `text` child),
     // not a flattened path string.
-    for (label, content) in [docs.unwrap(), components.unwrap()] {
+    for (label, content) in [docs.unwrap(), widgets.unwrap()] {
         assert!(
             content.is_some(),
             "link button \"{}\" must carry a content container (its child nodes), not just a label",
