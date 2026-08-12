@@ -842,6 +842,12 @@ impl<'a> AuraViewBuilder<'a> {
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
+            // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
+            // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
+            "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
+                self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
 
             // Text-bearing elements. The text/interpolation state bindings are
             // captured at this node's current path (the text element's path),
@@ -980,6 +986,52 @@ impl<'a> AuraViewBuilder<'a> {
             };
         }
         col_view
+    }
+
+    /// Tracked convert_scroll — mirrors `convert_scroll` but recurses via
+    /// `convert_node_tracked_ctx` (path/probe tracking).
+    fn convert_scroll_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let padding = self.extract_u16(props, "padding").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                path.push(i);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                path.pop();
+                v
+            })
+            .filter(|v| !is_visually_empty(v))
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::col()
+            .spacing(spacing)
+            .padding(padding);
+        let scroll_style = style.clone();
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+        for child in child_views {
+            builder = builder.child(child);
+        }
+        let col_view = builder.build();
+        View::Scrollable {
+            child: Box::new(col_view),
+            width: None,
+            height: None,
+            style: scroll_style,
+        }
     }
 
     /// Tracked convert_grid — mirrors `convert_grid` but recurses via
@@ -1421,6 +1473,13 @@ impl<'a> AuraViewBuilder<'a> {
             "col" | "column" => self.convert_column(props, children, bindings),
             "row" => self.convert_row(props, children, bindings),
             "grid" => self.convert_grid(props, children, bindings),
+            // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
+            // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
+            // 无滚动条、Home 页溢出被裁。scroll → 可滚动 column;其余 → container。
+            "scroll" | "scrollable" => self.convert_scroll(props, children, bindings),
+            "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
+                self.convert_container(props, children, bindings)
+            }
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
@@ -1852,6 +1911,46 @@ impl<'a> AuraViewBuilder<'a> {
             };
         }
         col_view
+    }
+
+    /// Convert a scroll element — always scrollable (schema: Scrollable container).
+    // Tracked twin: convert_scroll_tracked_ctx — keep widget logic in sync.
+    // Plan 409 §10 续 3: scroll 标签之前落 fallback 丢 style(padding/flex/overflow)。
+    fn convert_scroll(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let padding = self.extract_u16(props, "padding").unwrap_or(0);
+        let style = self.extract_style(props);
+
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .map(|n| self.convert_node_with(n, bindings))
+            .filter(|v| !is_visually_empty(v))
+            .collect();
+
+        let mut builder = View::<DynamicMessage>::col()
+            .spacing(spacing)
+            .padding(padding);
+        // style(px-3 py-4 padding + flex-1/h-full)进内层 col;Scrollable 层也带
+        // style(flex-1/h-full → build_scrollable 读 Fill 得有界高度才能真正滚动)。
+        let scroll_style = style.clone();
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
+        for child in child_views {
+            builder = builder.child(child);
+        }
+        let col_view = builder.build();
+        View::Scrollable {
+            child: Box::new(col_view),
+            width: None,
+            height: None,
+            style: scroll_style,
+        }
     }
 
     /// Convert a row element.
