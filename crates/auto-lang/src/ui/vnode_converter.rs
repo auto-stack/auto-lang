@@ -205,6 +205,8 @@ where
 {
     match view {
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
+        // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
+        View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
 
         View::Text { content, .. } => (
             VNodeKind::Text,

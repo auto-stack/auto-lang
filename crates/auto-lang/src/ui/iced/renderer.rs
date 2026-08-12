@@ -836,6 +836,36 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     input_widget
 }
 
+/// Plan 409 §10 续 5: Overlay 浮层定位 —— Fill 宽 + 水平对齐(right/left)+
+/// top spacer(top offset)。content 自带 style(bg-popover/border/shadow)。
+fn build_floating_layer<M: Clone + Debug + 'static>(
+    content: iced::Element<'static, M>,
+    position: crate::ui::view::OverlayPosition,
+) -> iced::Element<'static, M> {
+    let mut col = iced::widget::Column::<M>::with_capacity(2);
+    if let Some(top) = position.top {
+        if top > 0.0 {
+            col = col.push(iced::widget::Space::new().height(iced::Length::Fixed(top)));
+        }
+    }
+    let mut cont = container(content);
+    if let Some(right) = position.right {
+        cont = cont
+            .width(iced::Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .padding(iced::Padding { top: 0.0, right, bottom: 0.0, left: 0.0 });
+    } else if let Some(left) = position.left {
+        cont = cont
+            .width(iced::Length::Fill)
+            .align_x(iced::alignment::Horizontal::Left)
+            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left });
+    } else {
+        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+    }
+    col = col.push(cont);
+    col.into()
+}
+
 /// Build a CSS-Grid-like layout from pre-built cell elements: wrap `cells`
 /// into rows of `cols`, pad the final incomplete row with empty Fill cells
 /// (so every track is reserved), force each row to full width (so its
@@ -1344,6 +1374,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let els: Vec<iced::Element<'static, M>> =
                     cells.into_iter().map(|c| c.into_iced()).collect();
                 build_grid(cols, gap, els, style.as_ref(), None)
+            }
+
+            // Plan 409 §10 续 5: Overlay = iced Stack 分层。base 在底,content 浮
+            // 在上层(按 position 定位),不挤压 base 布局。opaque 吃点击穿透。
+            AbstractView::Overlay { base, content, position } => {
+                let base_el = base.into_iced();
+                let content_el = build_floating_layer(content.into_iced(), position);
+                iced::widget::stack![base_el, iced::widget::opaque(content_el)].into()
             }
 
             AbstractView::Radio {
@@ -7352,6 +7390,8 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
 fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
     match view {
         AbstractView::Empty => None,
+        // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
+        AbstractView::Overlay { .. } => None,
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
@@ -7381,6 +7421,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
         AbstractView::Empty => "empty",
+        AbstractView::Overlay { .. } => "overlay",
         AbstractView::Text { .. } => "text",
         AbstractView::Button { .. } => "button",
         AbstractView::Checkbox { .. } => "checkbox",
