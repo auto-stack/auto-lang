@@ -56,6 +56,26 @@ impl Style {
         self.classes.push(class);
         self
     }
+
+    /// Plan 409 §10 续: display:none 语义——含 Hidden 且无任何 display class 覆盖。
+    /// Tailwind 中 `hidden md:flex` 在 md+ 下 display 胜出(特异性更高);VM 桌面
+    /// 窗口按 md+ 语义,所以同时有 display(Flex/Grid/Block/Inline/...)时不隐藏。
+    pub fn is_hidden(&self) -> bool {
+        let has_hidden = self.classes.iter().any(|c| matches!(c, StyleClass::Hidden));
+        if !has_hidden {
+            return false;
+        }
+        let has_display = self.classes.iter().any(|c| matches!(
+            c,
+            StyleClass::Flex
+                | StyleClass::Grid
+                | StyleClass::Block
+                | StyleClass::Inline
+                | StyleClass::InlineBlock
+                | StyleClass::InlineFlex
+        ));
+        !has_display
+    }
 }
 
 impl From<&str> for Style {

@@ -829,6 +829,12 @@ impl<'a> AuraViewBuilder<'a> {
             probe.record_raw_class(&rc_path, raw_class);
         }
 
+        // Plan 409 §10 续: hidden/md:hidden 元素按桌面语义不渲染(放在 raw_class
+        // 探针之后,inspector 仍能看到节点;event/raw_class 已先记录)。
+        if self.extract_style(props).map_or(false, |s| s.is_hidden()) {
+            return View::Empty;
+        }
+
         match tag {
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -1405,6 +1411,11 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // Plan 409 §10 续: hidden/md:hidden 元素按桌面语义不渲染(is_hidden:
+        // 含 Hidden 且无 display 覆盖,见 Style::is_hidden)。
+        if self.extract_style(props).map_or(false, |s| s.is_hidden()) {
+            return View::Empty;
+        }
         match tag {
             // Core layout widgets
             "col" | "column" => self.convert_column(props, children, bindings),
@@ -2302,10 +2313,12 @@ impl<'a> AuraViewBuilder<'a> {
                 .unwrap_or_default();
             format!("\u{EE01}{}\u{EE02}{}", icon, text_part)
         } else {
+            // Plan 409 §10 续: 无 text/label/children 的 button(如主题色板的纯
+            // 色块)用空 label,而非占位 "Button"(对齐 vue 空 slot 行为)。
             self.extract_string_with(props, "text", bindings)
                 .or_else(|| self.extract_string_with(props, "label", bindings))
                 .or_else(|| self.extract_children_text(children, bindings))
-                .unwrap_or_else(|| "Button".to_string())
+                .unwrap_or_default()
         };
 
         // `variant` selects a base style preset (Tailwind classes); the user's

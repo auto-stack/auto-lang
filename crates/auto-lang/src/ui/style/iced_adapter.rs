@@ -696,8 +696,12 @@ impl IcedStyle {
             }
 
             // ========== Layout styles ==========
-            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol => {
-                // Flex is implicit in Iced's Column/Row — no extra action needed
+            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol
+            | StyleClass::Block | StyleClass::Inline | StyleClass::InlineBlock
+            | StyleClass::InlineFlex => {
+                // Flex is implicit in Iced's Column/Row — no extra action needed.
+                // block/inline/inline-block/inline-flex: iced 无 inline/block 区别,
+                // 自然渲染即可(Plan 409 §10 续,主要用于响应式覆盖 Hidden)。
             }
             StyleClass::Flex1 => {
                 // flex-1: expand to fill available space along the main axis.

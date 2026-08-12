@@ -1012,10 +1012,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
                     if let Some(svg_str) = lucide_svg(icon_name) {
-                        let handle = get_or_create_svg_handle(
-                            &format!("lucide:{}", icon_name),
-                            svg_str.as_bytes().to_vec(),
-                        );
+                        // Plan 409 §10 续: PUA icon(button label 内嵌的 nav-link
+                        // 图标)用 button 的 text_color 染色,与文字同色。iced SVG
+                        // 无 CSS currentColor 上下文,需把具体颜色注入 stroke;key
+                        // 与 View::Image 的 lucide 染色一致,共享 SVG cache。
+                        let text_color = iced_style.as_ref().and_then(|is| is.text_color);
+                        let (handle_key, svg_bytes) = match text_color {
+                            Some(tc) => {
+                                let (r, g, b) = (
+                                    (tc.r * 255.0) as u8,
+                                    (tc.g * 255.0) as u8,
+                                    (tc.b * 255.0) as u8,
+                                );
+                                let rgba = format!("rgba({},{},{},{})", r, g, b, tc.a);
+                                let colored = svg_str.replace("currentColor", &rgba);
+                                let key = format!("lucide:{}#{:02x}{:02x}{:02x}", icon_name, r, g, b);
+                                (key, colored.into_bytes())
+                            }
+                            None => (format!("lucide:{}", icon_name), svg_str.as_bytes().to_vec()),
+                        };
+                        let handle = get_or_create_svg_handle(&handle_key, svg_bytes);
                         let icon_el = iced::widget::svg(handle)
                             .width(iced::Length::Fixed(14.0))
                             .height(iced::Length::Fixed(14.0));
