@@ -1,0 +1,13 @@
+// a2vue golden case 009 — col（shadcn 布局基元）上的动态 class 绑定 (PLAN-026 缺陷①)。
+// 验证 `col { class: .rowClass }` 生成 `class="flex flex-col" :class="rowClass"`，
+// 而非丢弃动态绑定只剩 `class="flex flex-col"`。
+widget ShadcnColDynamic {
+    model { var isActive bool = false }
+    computed { rowClass => if .isActive { "row-active" } else { "row-idle" } }
+    view {
+        col {
+            class: .rowClass
+            text "test"
+        }
+    }
+}

@@ -1,0 +1,16 @@
+// a2vue golden case 010 — component fn 的 `style { }` 块 (PLAN-026 缺陷②)。
+// 验证 component fn（非 widget）的 style 块 emit 到 SFC `<style scoped>`，
+// 而非被丢弃（之前 extract_widget_from_fragment 硬编码 style_css: None）。
+// 注意：style 块必须在 view body 之前（parser 在 on 之后、body 之前捕获）。
+component fn StyledCard(title: str) {
+    style {
+        .card-title {
+            font-weight: bold;
+            color: red;
+        }
+    }
+    col {
+        style: "p-2"
+        text .title
+    }
+}

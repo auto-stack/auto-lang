@@ -1,0 +1,13 @@
+// a2vue golden case 008 — `!= ""` / `== ""` 在 computed（脚本上下文）必须翻译成
+// truthy/falsy 检查 (PLAN-026 缺陷③)。严格 `!== ''` 会让 undefined 字段误判为
+// true（`undefined !== ''`），导致 hasError/hasThinking 等守卫永远成立。
+widget NeqEmptySafe {
+    model { var x str = "" }
+    computed {
+        hasX => .x != ""
+        emptyX => .x == ""
+    }
+    view {
+        col { text "test" }
+    }
+}

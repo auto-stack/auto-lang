@@ -12705,11 +12705,19 @@ impl<'a> Parser<'a> {
             None
         };
         self.skip_empty_lines();
+        // PLAN-026 缺陷②: component fn 支持可选 `style { }` 块（镜像 widget 的
+        // parse_style_block_inner）。view fn 不支持（恒 None）。
+        let style: Option<String> = if is_component && self.cur.text.as_str() == "style" {
+            Some(self.parse_style_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         let body = self.parse_view_node()?;
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, watch, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, watch, style, is_component }))
     }
 
     /// Parse view block, returning the ViewBlock directly
