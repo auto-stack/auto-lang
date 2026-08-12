@@ -10430,6 +10430,36 @@ impl VueGenerator {
         }
     }
 
+    /// Plan 055 Phase E(b): recover handler parameter types by zipping the
+    /// handler's parameter names (`store.handler_params[pattern]`) with the
+    /// matching message variant's payload types (`store.messages[].variants`).
+    /// Returns (name, ts_type) pairs; unmatched params fall back to `any`.
+    /// Uses `store_ref_ts_type` so user-defined payload types stay `any`
+    /// (avoiding "Cannot find name" until Phase E(e) imports land).
+    fn handler_param_types(
+        store: &crate::aura::AuraStore,
+        pattern: &str,
+    ) -> Vec<(String, String)> {
+        let after_dot = pattern.trim_start_matches('.');
+        let action = after_dot.split('(').next().unwrap_or(after_dot);
+        let names = match store.handler_params.get(pattern) {
+            Some(n) => n,
+            None => return Vec::new(),
+        };
+        for msg in &store.messages {
+            for v in &msg.variants {
+                if v.name == action {
+                    return names
+                        .iter()
+                        .zip(v.payload.iter())
+                        .map(|(n, ty)| (n.clone(), Self::store_ref_ts_type(ty)))
+                        .collect();
+                }
+            }
+        }
+        names.iter().map(|n| (n.clone(), "any".to_string())).collect()
+    }
+
     /// Strip a trailing param list from an on-block handler pattern key.
     /// Plan 374 embeds param names in handler keys (".Scrolled(e)") so the
     /// Rust backend can recover them; the Vue backend matches handlers by
@@ -11274,9 +11304,12 @@ export function cn(...inputs: ClassValue[]) {
                 }
             }
             let is_async = body.contains("await");
-            let params = store.handler_params.get(pattern)
-                .map(|p| p.iter().map(|n| format!("{}: any", n)).collect::<Vec<_>>().join(", "))
-                .unwrap_or_default();
+            // Plan 055 Phase E(b): handler 参数类型化(scalar;User 回退 any)。
+            let params = Self::handler_param_types(store, pattern)
+                .iter()
+                .map(|(n, t)| format!("{}: {}", n, t))
+                .collect::<Vec<_>>()
+                .join(", ");
             let async_kw = if is_async { "async " } else { "" };
             code.push_str(&format!(
                 "    const {} = {}({}) => {{ {} }}\n",
