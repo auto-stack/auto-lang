@@ -416,6 +416,26 @@ pub enum View<M: Clone + Debug> {
         cells: Vec<View<M>>,
         style: Option<Style>,
     },
+
+    /// Plan 409 §10 续 5: 悬浮层(VM 无 absolute 定位,用 iced Stack 分层)。
+    /// convert_column 把 position:absolute 的子节点 hoist 成 Overlay(base =
+    /// 正常流式内容,content = 浮层如主题色板 row)。renderer 用 stack![base,
+    /// opaque(...)] 实现"浮在内容之上、不挤压布局"。
+    Overlay {
+        base: Box<View<M>>,
+        content: Box<View<M>>,
+        position: OverlayPosition,
+    },
+}
+
+/// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
+/// right-N/top-N/left-N/bottom-N 解析;iced_adapter 已解析但之前忽略)。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OverlayPosition {
+    pub top: Option<f32>,
+    pub right: Option<f32>,
+    pub bottom: Option<f32>,
+    pub left: Option<f32>,
 }
 
 /// View builder for fluent layout construction
@@ -1199,6 +1219,12 @@ impl<M: Clone + Debug> View<M> {
     {
         match self {
             View::Empty => View::Empty,
+            // Plan 409 §10 续 5: Overlay 递归映射 base + content 的 message。
+            View::Overlay { base, content, position } => View::Overlay {
+                base: Box::new(base.map_msg_with_arc(f)),
+                content: Box::new(content.map_msg_with_arc(f)),
+                position,
+            },
             View::Text { content, style } => View::Text { content, style },
             View::Button { label, content, onclick, style, on_right_click } => View::Button {
                 label,

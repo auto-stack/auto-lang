@@ -1884,6 +1884,17 @@ impl<'a> AuraViewBuilder<'a> {
             .filter(|v| !is_visually_empty(v))
             .collect();
 
+        // Plan 409 §10 续 5: 把 position:absolute 的子节点 hoist 出流式布局(用
+        // Overlay 悬浮,不挤压布局)。色板的 `row(style:"absolute right-4 ...")` 走这。
+        let mut floats: Vec<(View<DynamicMessage>, crate::ui::view::OverlayPosition)> = Vec::new();
+        let child_views: Vec<View<DynamicMessage>> = child_views
+            .into_iter()
+            .filter_map(|v| match extract_absolute_position(&v) {
+                Some(pos) => { floats.push((v, pos)); None }
+                None => Some(v),
+            })
+            .collect();
+
         let mut builder = View::<DynamicMessage>::col()
             .spacing(spacing)
             .padding(padding);
@@ -1904,13 +1915,20 @@ impl<'a> AuraViewBuilder<'a> {
 
         let col_view = builder.build();
         // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
-        if needs_scroll {
-            return View::Scrollable {
+        let base = if needs_scroll {
+            View::Scrollable {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
-            };
+            }
+        } else {
+            col_view
+        };
+        // Plan 409 §10 续 5: 有 absolute 子节点 → 包成 Overlay(浮在 base 上层,不挤压)。
+        if let Some((content, position)) = floats.into_iter().next() {
+            View::Overlay { base: Box::new(base), content: Box::new(content), position }
+        } else {
+            base
         }
-        col_view
     }
 
     /// Convert a scroll element — always scrollable (schema: Scrollable container).
@@ -3488,6 +3506,28 @@ fn eval_initial_without_vm(expr: &Expr) -> Value {
 /// and should be dropped from layouts to avoid spurious blank space. Covers
 /// `View::Empty` and `View::Text { content: "", .. }` (the latter renders as
 /// a one-line-tall `text("")` spacer in iced).
+/// Plan 409 §10 续 5: 读 View 的 style,若 position:absolute 返回其
+/// top/right/bottom/left offset(用于 Overlay 浮层定位)。
+fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view::OverlayPosition> {
+    use crate::ui::style::iced_adapter::{IcedStyle, IcedPosition};
+    let style = match v {
+        View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => style.as_ref()?,
+        _ => return None,
+    };
+    let is = IcedStyle::from_style(style);
+    // 只 hoist popup-like:absolute + z-N(如主题色板 z-50)。Home hero 的
+    // absolute 装饰背景(渐变 div,无 z)留在流式,不破坏 hero 结构。
+    if !matches!(is.position, Some(IcedPosition::Absolute)) || is.z_index.is_none() {
+        return None;
+    }
+    Some(crate::ui::view::OverlayPosition {
+        top: is.top_offset,
+        right: is.right_offset,
+        bottom: is.bottom_offset,
+        left: is.left_offset,
+    })
+}
+
 fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
     match v {
         View::Empty => true,

@@ -77,6 +77,14 @@ impl SnapshotBuilder {
                 actions: vec![],
                 children: vec![],
             },
+            // Plan 409 §10 续 5: Overlay 在 snapshot 里展示为占位(base/content 不展开)。
+            View::Overlay { .. } => UiNode {
+                id,
+                kind: "Overlay".to_string(),
+                props: vec![],
+                actions: vec![],
+                children: vec![],
+            },
 
             View::Text { content, .. } => UiNode {
                 id,
