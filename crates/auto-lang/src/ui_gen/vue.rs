@@ -10407,6 +10407,29 @@ impl VueGenerator {
         }
     }
 
+    /// Plan 055 Phase E(a): TS type for a store state ref declaration. Scalars
+    /// (str/int/bool) and arrays of scalars get real types; user-defined types
+    /// fall back to `any` — importing them needs a separate pass (Phase E(e))
+    /// to avoid "Cannot find name 'Block'" when the store file hasn't imported
+    /// the api.ts interface. This is a safe first step: `var input str` →
+    /// `ref<string>`, `var next_id int` → `ref<number>`, while `var blocks
+    /// List<Block>` stays `ref<any[]>` until imports land.
+    fn store_ref_ts_type(ty: &crate::ast::Type) -> String {
+        use crate::ast::Type;
+        match ty {
+            Type::List(inner) => {
+                // Array of user/unknown type → any[] (can't import element yet).
+                if matches!(inner.as_ref(), Type::User(_) | Type::Array(_) | Type::Slice(_) | Type::List(_)) {
+                    "any[]".to_string()
+                } else {
+                    format!("{}[]", Self::auto_type_to_ts_type(inner))
+                }
+            }
+            Type::User(_) => "any".to_string(),
+            _ => Self::auto_type_to_ts_type(ty),
+        }
+    }
+
     /// Strip a trailing param list from an on-block handler pattern key.
     /// Plan 374 embeds param names in handler keys (".Scrolled(e)") so the
     /// Rust backend can recover them; the Vue backend matches handlers by
@@ -11105,7 +11128,10 @@ export function cn(...inputs: ClassValue[]) {
         // Module-level ref declarations (singleton state).
         for sv in &store.state_vars {
             let init = Self::store_init_to_js(&sv.initial);
-            code.push_str(&format!("const {} = ref<any>({})\n", sv.name, init));
+            // Plan 055 Phase E(a): scalar ref 类型化(str/int/bool 及其数组)。
+            // User 类型回退 any(import pass E(e)后做)。
+            let ty = Self::store_ref_ts_type(&sv.type_info);
+            code.push_str(&format!("const {} = ref<{}>({})\n", sv.name, ty, init));
         }
         code.push('\n');
 
