@@ -1,6 +1,6 @@
 # Plan 409: Widgets Gallery — 三模式一致性 + link 子组件 VM 缺口 + 主题色
 
-> **状态**: §1–§9 ✅；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。§9 为本会话 vue 模式审查修复批次（codegen bug + 内容一致性 + 交互演示 + 样式），CodeBlock/PreviewCard 改纯 Auto widget 暂缓。
+> **状态**: §1–§9 ✅；§6（`link` 子组件 VM 渲染缺口）与 §8（主题色支持）均已按方案实施并通过回归测试。§9 为本会话 vue 模式审查修复批次（codegen bug + 内容一致性 + 交互演示 + 样式），CodeBlock/PreviewCard 改纯 Auto widget 暂缓。**§10 ✅**（2026-08-12 新一轮 VM 模式审查，6 个残留差距已全部修复，worktree `plan-409`）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui/{iced/renderer.rs, aura_view_builder.rs, widget_registry.rs, style/iced_adapter.rs}` + `ui_gen/{vue.rs, rust.rs}` + `token.rs` + `lib.rs` + `aura/types.rs`）；gallery 产物在 `examples/widgets-gallery/`。
 > **背景**: `examples/widgets-gallery` 是覆盖全部 ~50 个 AutoUI widget 的组件画廊，同时作为 vue/vm/rust 三模式一致性与 codegen 缺口的试金石。本计划把 gallery 推进过程中暴露并修复的 **VM 一致性 + Vue codegen** 问题统一登记，并把仍开放的 **`link` 子组件 VM 渲染缺口** 作为唯一待办立项。
 > **说明**: §1–§5 的修复在历史上多挂在 Plan 408（VM/gallery track）名下提交，此处按"按计划修复"的视角统一归档为 Plan 409 的已完成项；引用的 commit hash 可追溯。
@@ -316,3 +316,99 @@ examples/widgets-gallery/          # app.at + 49 pages + pac.at
 - `1f3a0440` fix(widget-gallery): tooltip 白屏 + toast 动态演示 — §9.3.2/9.3.3 + §9.1.6 方法调用补丁（vue.rs 后续 + registry.rs TooltipProvider spec + toast.at/tooltip.at）
 - §9.1.1/9.1.2/9.1.4 含在 `1e59c791` 的 vue.rs 批次内
 - §9.4.2 TabsList/TabsTrigger 是 shadcn add 生成（gen/，gitignore），本地修改未入库
+
+---
+
+## 10. ✅ 本批次已修：VM 视觉差距 6 项（2026-08-12 审查）
+
+> §1–§9 完成后，对 VM 模式做新一轮逐页审查，发现 6 个残留视觉/交互差距。
+> 本节登记并修复，工作在 worktree `plan-409`（分支 `plan-409`）。
+> 6 项按根因合并为 4 组（原问题 1+2 渲染部分合一、原问题 4+5 路由合一）。
+
+### 10.1 环境与验证前置
+
+- **Rust toolchain**：见 `rust-toolchain.toml`。
+- **冷启动验证序列**（复制即跑）：
+  1. `examples/widgets-gallery/pac.at` 设 `render: "vm"`
+  2. 改 codegen 前先 `taskkill //F //IM auto.exe` 释放占用（auto.exe 被占会导致 build 失败）
+  3. `cargo build --bin auto`（首次较慢）
+  4. `D:/autostack/auto-lang/.worktree/plan-409/target/debug/auto.exe run`
+  5. VM 启动后 AutoUI MCP 监听 `http://127.0.0.1:9247/mcp`（Streamable HTTP, JSON-RPC 2.0）
+  6. 拿 snapshot：
+     ```bash
+     curl -X POST http://127.0.0.1:9247/mcp -H "Content-Type: application/json" \
+       -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"autoui_snapshot","arguments":{}},"id":2}'
+     ```
+  7. 工具：`autoui_snapshot`（UI 树）/ `autoui_action`（点击，验证导航/state）/ `autoui_inspect`（节点详情）/ `autoui_screenshot`（截图）
+- **vue 对照基准**：`pac.at` 设 `render: "vue"` → `auto run` → 浏览器看"正确答案"。
+
+### 10.2 待修问题（合并为 4 组 + 1 独立）
+
+#### 组 A：icon-only button 渲染 "Button" 文本（原问题 1+2 渲染部分）
+
+- **现象**：header 汉堡菜单（`button style:"md:hidden -ml-2" icon:"menu"`）、search/theme 按钮（`button variant:"ghost" style:"h-9 w-9" icon:"search"/"palette"`）——有 icon 无 text 的 button，VM 渲染默认 "Button" 文本。
+- **根因**：`convert_button`（`aura_view_builder.rs`）对 icon-only button（有 icon 无 text）未取 icon 作内容，回退默认 "Button" label。
+- **修复方向**：`convert_button` 对"有 icon 无 text"的 button，渲染 icon（`View::Image { src: "lucide:xxx" }`）而非 "Button" 文本。
+- **验证**：`autoui_snapshot` → header 不再出现 "Button" 字样；汉堡/search/theme 三处显示对应 icon。
+
+#### 组 B：VM onClick handler 执行（原问题 2 交互部分）
+
+- **现象**：search/theme 按钮 `onClick:.openSearch/.openThemePicker`（切 `searchOpen`/`themeOpen` state），VM 点击无效。
+- **修复方向**：VM onClick handler 执行机制（参考 §8.10 的 `aura_events_get_base` 大小写修复经验，确认 handler 编译/分发路径）。
+- **验证**：`autoui_action` 点 theme 按钮 → snapshot 出现色板块（state `themeOpen` 翻转）。
+
+#### 组 C：header logo icon + Docs/Widgets 主题色（原问题 3）
+
+- **现象**：header 的 logo icon（`row { icon name:"layers" }`）+ Docs/Widgets link 应 `text-primary`（主题色），当前是普通色——被 §8.3 的 nav-link 普通色修复带歪（`render_link_button` 直接调 `render_link_button_with_icon`，header link 也走了 `style:None`）。
+- **修复方向**：`render_link_button_with_icon` 加 `themed: bool` 参数——`render_link_button`（header link）传 `themed=true`（`text-primary`），nav-link/component-card 传 `themed=false`（普通色）。
+- **⚠️ 易漏点**：header logo icon（`row` 里的 `icon name:"layers"`）也要加 `text-primary`，别只顾 link。
+- **验证**：`autoui_snapshot` + `autoui_screenshot` → logo icon 与 Docs/Widgets 文字呈主题色（indigo）。
+
+#### 组 D：路由 `/` 匹配（原问题 4+5）
+
+- **现象**：（a）VM 启动 main 区不显示 Home（IndexPage），要点 sidebar 才出现；（b）点 Home（nav-link `to:"/"`）不切换首页，但点其它组件（`/button` 等）可切换。
+- **修复方向**：`render_outlet`（`aura_view_builder.rs`，搜 "render the page widget matching"）——初始路由设 `/` + `/` 根路由匹配 IndexPage。
+- **验证**：VM 启动 → snapshot main 区有 Home 内容；`autoui_action` 点 Home → main 切回 Home。
+
+#### 组 E：CodePreview block VM 识别（原问题 6）
+
+- **⚠️ 注意**：此问题与 §9.6 的"CodeBlock/PreviewCard 改纯 Auto widget"不同——§9.6 是 **vue 侧**混合模式改造（暂缓），本项是 **VM 侧** view_builder 不识别 `preview-card`/`codeblock` tag → `View::Empty` 被过滤。
+- **现象**：点 Button 等组件页，VM 只渲染标题+描述+表格，CodePreview block（`preview-card`/`codeblock`，含示例预览+代码+Auto/Vue tab+copy）缺失。
+- **根因**：`preview-card`/`codeblock` 是 vue codegen 特殊处理（`vue.rs` `generate_previewcard_html` ~4254 / `generate_codeblock_html` ~4414），VM 不识别。
+- **修复方向**：VM view_builder 加 `preview-card`/`codeblock` 识别（参考 category-section 的修复模式——untracked `_` fallback + tracked `_` fallback 双保险）：
+  - `preview-card` → 容器（col，含 preview 区 + code toggle footer），递归 children
+  - `codeblock` → 简化（`View::Text`（code 内容），或 `<pre>` 样式）
+- **验证**：`autoui_snapshot` 点 Button 页 → 能找到 preview-card/codeblock 子树（至少代码文本可见）。
+
+### 10.3 关键经验（沿用）
+
+- **VM 主渲染走 untracked 路径**（`convert_node_with`→`convert_element` untracked 的 `_` fallback），不是 tracked。调试时 eprintln 加到 untracked `_` fallback 才命中（组 E 同样适用）。
+- **toast 降级**：`handler_codegen.rs` `rewrite_expr`（搜 "vue-only escape hatch"）把 vue-only 调用降级为 `Expr::Bool(false)`，避免 VM link 失败。
+
+### 10.4 实际改动文件
+
+```
+crates/auto-lang/src/ui/aura_view_builder.rs  # 组 A convert_button icon PUA / 组 C themed 参数 / 组 E preview-card+codeblock
+crates/auto-lang/src/ui/iced/renderer.rs      # 组 C logo icon: lucide SVG 读 text_color 注入 stroke（per-color cache）
+crates/auto-lang/src/plan409_tests.rs         # §6 测试断言 Components→Widgets（§9.2.3 同步）
+```
+
+> 组 B（onClick handler）与组 D（路由 `/` 匹配）**未改代码**——基座已在 §8.10（`aura_events_get_base` 大小写不敏感）与 §1.1（`render_outlet` 初始路由默认 `/`）修好，本轮 VM 实测确认两者均已生效。
+
+### 10.5 验证（VM + AutoUI MCP）
+
+启动 VM（`pac.at render:"vm"`），通过 AutoUI MCP（`autoui_snapshot` / `vtree` / `action` / `state` + `screenshot`）逐组验证：
+
+| 组 | 验证手段 | 结果 |
+|---|---|---|
+| A | snapshot：header 三 button label | `menu` / `search` / `palette`（PUA 标记），不再是 "Button"；screenshot 确认 icon 可见 |
+| B | action press palette + state | `handler: .App.openThemePicker`，`themeOpen: false → true`（handler 执行正常） |
+| C | vtree Docs button + logo icon | 均为 `fg: #7679f3`（indigo 主题色）；screenshot 确认 logo icon + Docs/Widgets 呈紫色 |
+| D | snapshot 启动 + action press nav-link | 启动即显示 Home（IndexPage）；点 Button → `__current_route: "/" → "/button"` |
+| E | snapshot Button 页 | codeblock 显示 `bash: npx shadcn-vue@latest add button`（之前 View::Empty）；preview-card children（Simple/Variants/Sizes/Events）正常渲染 |
+
+**回归测试**：`cargo test -p auto-lang --features ui-iced --lib plan409` → **4 passed**（含 §6 `link_children_render_as_button_content`，顺手把过时断言 `Components`→`Widgets` 同步 §9.2.3 的 app.at 改动）。
+
+### 10.6 提交
+
+提交在 worktree `plan-409` 分支；合并 master 后 commit hash 可追溯。

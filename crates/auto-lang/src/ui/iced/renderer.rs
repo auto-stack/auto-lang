@@ -1590,7 +1590,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
                     if let Some(svg_str) = lucide_svg(icon_name) {
-                        let handle = get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
+                        // Plan 409 §10 组 C: tint the glyph with the style's text_color
+                        // (e.g. logo `icon (style:"...text-primary")`). iced's svg
+                        // renderer has no CSS currentColor context, so we substitute
+                        // the concrete color into the SVG stroke and cache per color.
+                        let (handle_key, svg_bytes) =
+                            match is.as_ref().and_then(|is| is.text_color) {
+                                Some(tc) => {
+                                    let (r, g, b) = (
+                                        (tc.r * 255.0) as u8,
+                                        (tc.g * 255.0) as u8,
+                                        (tc.b * 255.0) as u8,
+                                    );
+                                    let rgba = format!("rgba({},{},{},{})", r, g, b, tc.a);
+                                    let colored = svg_str.replace("currentColor", &rgba);
+                                    let key = format!("{}#{:02x}{:02x}{:02x}", src, r, g, b);
+                                    (key, colored.into_bytes())
+                                }
+                                None => (src.to_string(), svg_str.as_bytes().to_vec()),
+                            };
+                        let handle = get_or_create_svg_handle(&handle_key, svg_bytes);
                         let mut svg_widget = iced::widget::svg(handle);
                         svg_widget = svg_widget.width(w.unwrap_or(iced::Length::Fixed(16.0)));
                         svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));

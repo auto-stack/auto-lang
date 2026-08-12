@@ -480,7 +480,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Plan 410: category-section → column (recurse component-card
                 // children). Vue codegen builds a fancy card grid; VM renders a
@@ -505,7 +505,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
                     let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
@@ -730,7 +730,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Plan 410: category-section → column (recurse component-card
                 // children). Vue codegen builds a fancy card grid; VM renders a
@@ -755,7 +755,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
                     let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
@@ -872,7 +872,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
@@ -893,7 +893,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let desc = self.extract_string(props, "desc").unwrap_or_default();
                     let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Fallback: recurse children with path tracking, filtering Empty.
                 let views: Vec<View<DynamicMessage>> = children
@@ -1453,7 +1453,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Plan 410: category-section → column (recurse component-card
                 // children). Vue codegen builds a fancy card grid; VM renders a
@@ -1466,6 +1466,30 @@ impl<'a> AuraViewBuilder<'a> {
                         .collect();
                     return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
                 }
+                // Plan 409 §10 组 E: preview-card / codeblock VM 识别。vue codegen
+                // 对它们做特殊处理(generate_previewcard_html / generate_codeblock_html
+                // 生成预览区 + code toggle + Auto/Vue tabs + copy);VM 无这些命令式
+                // 能力,简化:preview-card → Column(递归 children,即真正的预览 UI),
+                // codeblock → Text(代码内容;否则空 children 落到 Empty,安装命令整
+                // 段消失)。
+                if tag == "preview-card" || tag == "preview_card" || tag == "previewcard" {
+                    let child_views: Vec<View<DynamicMessage>> = children
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                }
+                if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
+                    // 内容优先级对齐 vue codegen(vue.rs ~4462):code → text → children text.
+                    let code = self.extract_string(props, "code")
+                        .or_else(|| self.extract_string(props, "text"))
+                        .or_else(|| self.extract_children_text(children, bindings))
+                        .unwrap_or_default();
+                    let lang = self.extract_string(props, "lang").unwrap_or_default();
+                    let content = if lang.is_empty() { code } else { format!("{}: {}", lang, code) };
+                    return View::Text { content, style: None };
+                }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
                     let to = self.extract_string(props, "to").unwrap_or_default();
@@ -1473,7 +1497,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let desc = self.extract_string(props, "desc").unwrap_or_default();
                     let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
@@ -1538,7 +1562,10 @@ impl<'a> AuraViewBuilder<'a> {
     /// comes from the link's text or its first text child.
     /// Plan 408: optional icon name is mapped to emoji and prepended to label.
     fn render_link_button(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, _bindings: &Bindings) -> View<DynamicMessage> {
-        self.render_link_button_with_icon(text, children, to, "", _bindings)
+        // Plan 409 §10 组 C: header link（AuraNode::Link，如 Docs/Widgets）走这里，
+        // 用主题色 text-primary。nav-link/component-card 不走这里（它们直接调
+        // render_link_button_with_icon 并传 themed=false）。
+        self.render_link_button_with_icon(text, children, to, "", _bindings, true)
     }
 
     /// Plan 408: render_link_button with an optional icon name.
@@ -1548,7 +1575,7 @@ impl<'a> AuraViewBuilder<'a> {
     /// `link (to:) { text / row / icon ... }`. The `label` is still derived
     /// from the children (for the snapshot builder / accessibility), but the
     /// rendered content is the container, not a flattened `to` string.
-    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, bindings: &Bindings) -> View<DynamicMessage> {
+    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, bindings: &Bindings, themed: bool) -> View<DynamicMessage> {
         // Plan 409 §6: convert child nodes into a content subtree. When
         // non-empty, the button renders this container instead of the label
         // string (link is no longer a leaf).
@@ -1599,11 +1626,11 @@ impl<'a> AuraViewBuilder<'a> {
                 event_name: "__navigate".to_string(),
                 args: vec![auto_val::Value::str(to)],
             },
-            // nav-link/link 文字用普通文字色（不跟主题色）：深色主题浅色、
-            // 浅色主题深色，图标（PUA 标记）与文字同色。与 vue sidebar 导航
-            // 一致。Button 无显式 text_color 时 renderer 用 OnBackground 默认色
-            // （§3.2/3.4），所以这里不设 text-primary。
-            style: None,
+            // Plan 409 §10 组 C: themed=true → text-primary（header Docs/Widgets
+            // link，走 AuraNode::Link，与 vue router-link 默认 text-primary 一致）；
+            // themed=false → None（nav-link/component-card 普通色，§8.3 与 sidebar
+            // 一致）。Button 无显式 text_color 时 renderer 用 OnBackground 默认色。
+            style: if themed { Style::parse("text-primary").ok() } else { None },
             on_right_click: None,
         }
     }
@@ -2261,10 +2288,25 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let label = self.extract_string_with(props, "text", bindings)
-            .or_else(|| self.extract_string_with(props, "label", bindings))
-            .or_else(|| self.extract_children_text(children, bindings))
-            .unwrap_or_else(|| "Button".to_string());
+        // Plan 409 §10 组 A: icon-only buttons (header hamburger / search /
+        // theme) previously fell back to the default "Button" text because the
+        // `icon` prop was ignored. When an `icon` is present, embed it in the
+        // label via PUA markers (same scheme nav-link uses, §2.3) and only use
+        // a real text/label/child text if provided — so `button (icon:"menu")`
+        // renders just the icon, not "Button".
+        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
+        let label = if !icon.is_empty() {
+            let text_part = self.extract_string_with(props, "text", bindings)
+                .or_else(|| self.extract_string_with(props, "label", bindings))
+                .or_else(|| self.extract_children_text(children, bindings))
+                .unwrap_or_default();
+            format!("\u{EE01}{}\u{EE02}{}", icon, text_part)
+        } else {
+            self.extract_string_with(props, "text", bindings)
+                .or_else(|| self.extract_string_with(props, "label", bindings))
+                .or_else(|| self.extract_children_text(children, bindings))
+                .unwrap_or_else(|| "Button".to_string())
+        };
 
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
