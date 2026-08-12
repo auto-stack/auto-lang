@@ -674,17 +674,9 @@ fn build_row<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let eff_spacing = effective_spacing(spacing, style);
-    let mut justify = style
+    let justify = style
         .map(|s| IcedStyle::from_style(s).justify_content)
         .and_then(|j| j);
-    // Plan 409 §10 续: absolute right-N(VM 无 absolute 定位)→ 近似右对齐:
-    // apply_row_style 的 justify 分支会给 row width Fill,End 的 lead spacer
-    // 把内容推到右侧(色板浮在 icon 下方右侧,而非左对齐流式)。
-    if justify.is_none()
-        && style.map_or(false, |s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
-    {
-        justify = Some(IcedJustify::End);
-    }
     let (lead, between, trail) = row_justify_spacers(justify);
     let mut row_widget = row([]).spacing(eff_spacing);
     if lead {
