@@ -139,6 +139,13 @@ pub enum StyleClass {
     /// Flex container
     Flex,
 
+    /// display: block / inline / inline-block / inline-flex (Plan 409 §10 续)
+    /// — iced 无 inline/block 区别,主要用于响应式覆盖 Hidden(hidden md:flex)。
+    Block,
+    Inline,
+    InlineBlock,
+    InlineFlex,
+
     /// Flex: 1 (grow to fill space) - L2
     Flex1,
 
@@ -452,6 +459,15 @@ impl StyleClass {
             return Err("Empty style class".to_string());
         }
 
+        // Plan 409 §10 续: VM 桌面窗口按 md+/lg+ 宽屏语义,剥离 Tailwind
+        // min-width 响应前缀(sm/md/lg/xl/2xl),让基础 utility 生效。必须在
+        // arbitrary value 提取之前 strip,否则 md:text-[14px] 的方括号识别会
+        // 把 prefix 误判为 "md:text-"。max-* 变体语义相反,gallery 未用,留作后续。
+        let class = match class.split_once(':') {
+            Some(("sm" | "md" | "lg" | "xl" | "2xl", rest)) => rest,
+            _ => class,
+        };
+
         // Support Tailwind arbitrary value syntax: text-[#6CB0DD], bg-[#fff]
         // Extract bracket content as `arbitrary_value`, keep prefix as `class`
         let (class, arbitrary_value): (&str, Option<&str>) =
@@ -756,6 +772,20 @@ impl StyleClass {
         // Parse flex
         if class == "flex" {
             return Ok(StyleClass::Flex);
+        }
+
+        // Plan 409 §10 续: display 变体(主要用于响应式覆盖 Hidden)
+        if class == "block" {
+            return Ok(StyleClass::Block);
+        }
+        if class == "inline" {
+            return Ok(StyleClass::Inline);
+        }
+        if class == "inline-block" {
+            return Ok(StyleClass::InlineBlock);
+        }
+        if class == "inline-flex" {
+            return Ok(StyleClass::InlineFlex);
         }
 
         // Parse flex-1
