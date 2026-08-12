@@ -760,10 +760,39 @@ fn build_scrollable<M: Clone + Debug + 'static>(
         if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
         if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
     }
+    // Plan 409 §10 续 4: 半透明悬浮滚动条(接近 vue:thumb 半透明、track 透明、细)。
+    s = s.style(|_theme: &iced::Theme, _status: scrollable::Status| scrollbar_style());
     if let Some(id) = widget_id {
         s = s.id(id);
     }
     s.into()
+}
+
+/// Plan 409 §10 续 4: vue 风格滚动条 — thumb 半透明、track 透明、细圆角。
+fn scrollbar_style() -> scrollable::Style {
+    let border = iced::Border {
+        width: 0.0,
+        radius: iced::border::Radius::new(3.0),
+        color: iced::Color::TRANSPARENT,
+    };
+    let thumb = iced::Background::Color(iced::Color::from_rgba(0.9, 0.9, 0.9, 0.3));
+    let rail = scrollable::Rail {
+        background: None,
+        border,
+        scroller: scrollable::Scroller { background: thumb, border },
+    };
+    scrollable::Style {
+        container: container::Style::default(),
+        vertical_rail: rail,
+        horizontal_rail: rail,
+        gap: None,
+        auto_scroll: scrollable::AutoScroll {
+            background: iced::Background::Color(iced::Color::TRANSPARENT),
+            border,
+            shadow: iced::Shadow::default(),
+            icon: iced::Color::TRANSPARENT,
+        },
+    }
 }
 
 /// Build a `TextInput` shape: placeholder, value, and width. The width logic
