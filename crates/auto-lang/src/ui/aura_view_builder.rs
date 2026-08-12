@@ -467,7 +467,7 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
             }
-            AuraNode::Component { name, props, events, .. } => {
+            AuraNode::Component { name, props, events, children, .. } => {
                 // Plan 408: nav-link renders as a navigable button (like link).
                 if name == "nav-link" || name == "nav_link" {
                     let prop_map: HashMap<String, AuraPropValue> = props.iter()
@@ -479,6 +479,31 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
+                    let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                }
+                // Plan 410: category-section → column (recurse component-card
+                // children). Vue codegen builds a fancy card grid; VM renders a
+                // simple column so the home page's component list isn't blank.
+                if name == "category-section" || name == "category_section" {
+                    let child_views: Vec<View<DynamicMessage>> = children
+                        .iter()
+                        .filter_map(|n| {
+                            let v = self.convert_node_with(n, bindings);
+                            if matches!(v, View::Empty) { None } else { Some(v) }
+                        })
+                        .collect();
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                }
+                // Plan 410: component-card → navigable link button (to + name + desc).
+                if name == "component-card" || name == "component_card" || name == "componentcard" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    let to = self.extract_string(&prop_map, "to").unwrap_or_default();
+                    let card_name = self.extract_string(&prop_map, "name").unwrap_or_default();
+                    let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
+                    let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
@@ -692,7 +717,7 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
             }
-            AuraNode::Component { name, props, events, .. } => {
+            AuraNode::Component { name, props, events, children, .. } => {
                 // Plan 408: nav-link renders as a navigable button (like link).
                 if name == "nav-link" || name == "nav_link" {
                     let prop_map: HashMap<String, AuraPropValue> = props.iter()
@@ -704,6 +729,31 @@ impl<'a> AuraViewBuilder<'a> {
                     let label = self.extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
+                    let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                }
+                // Plan 410: category-section → column (recurse component-card
+                // children). Vue codegen builds a fancy card grid; VM renders a
+                // simple column so the home page's component list isn't blank.
+                if name == "category-section" || name == "category_section" {
+                    let child_views: Vec<View<DynamicMessage>> = children
+                        .iter()
+                        .filter_map(|n| {
+                            let v = self.convert_node_with(n, bindings);
+                            if matches!(v, View::Empty) { None } else { Some(v) }
+                        })
+                        .collect();
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                }
+                // Plan 410: component-card → navigable link button (to + name + desc).
+                if name == "component-card" || name == "component_card" || name == "componentcard" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    let to = self.extract_string(&prop_map, "to").unwrap_or_default();
+                    let card_name = self.extract_string(&prop_map, "name").unwrap_or_default();
+                    let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
+                    let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
@@ -828,6 +878,22 @@ impl<'a> AuraViewBuilder<'a> {
                     if let Some(child_widget) = registry.get(tag) {
                         return self.render_child_widget(child_widget, props, events, bindings);
                     }
+                }
+                // Plan 410: category-section → column container (recurse its
+                // component-card children). Vue codegen builds a fancy card grid;
+                // VM renders a simple column so the home page's component list
+                // isn't blank (View::Empty).
+                if tag == "category-section" || tag == "category_section" {
+                    return self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
+                }
+                // Plan 410: component-card → navigable link button (to + name).
+                if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
+                    let to = self.extract_string(props, "to").unwrap_or_default();
+                    let name = self.extract_string(props, "name").unwrap_or_default();
+                    let desc = self.extract_string(props, "desc").unwrap_or_default();
+                    let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
+                    let icon = self.extract_string(props, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
                 // Fallback: recurse children with path tracking, filtering Empty.
                 let views: Vec<View<DynamicMessage>> = children
@@ -1389,6 +1455,26 @@ impl<'a> AuraViewBuilder<'a> {
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
                 }
+                // Plan 410: category-section → column (recurse component-card
+                // children). Vue codegen builds a fancy card grid; VM renders a
+                // simple column so the home page's component list isn't blank.
+                if tag == "category-section" || tag == "category_section" {
+                    let child_views: Vec<View<DynamicMessage>> = children
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                }
+                // Plan 410: component-card → navigable link button (to + name + desc).
+                if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
+                    let to = self.extract_string(props, "to").unwrap_or_default();
+                    let name = self.extract_string(props, "name").unwrap_or_default();
+                    let desc = self.extract_string(props, "desc").unwrap_or_default();
+                    let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
+                    let icon = self.extract_string(props, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
@@ -1513,11 +1599,11 @@ impl<'a> AuraViewBuilder<'a> {
                 event_name: "__navigate".to_string(),
                 args: vec![auto_val::Value::str(to)],
             },
-            // Plan 409 §8: link 文字默认用主题色（text-primary），与 vue 侧
-            // router-link 的主题色链接一致。无 children 时直接给 label 上色；
-            // 有 children 时由 renderer 把按钮 text_color 继承给无显式颜色的
-            // Text 子节点。
-            style: Style::parse("text-primary").ok(),
+            // nav-link/link 文字用普通文字色（不跟主题色）：深色主题浅色、
+            // 浅色主题深色，图标（PUA 标记）与文字同色。与 vue sidebar 导航
+            // 一致。Button 无显式 text_color 时 renderer 用 OnBackground 默认色
+            // （§3.2/3.4），所以这里不设 text-primary。
+            style: None,
             on_right_click: None,
         }
     }
