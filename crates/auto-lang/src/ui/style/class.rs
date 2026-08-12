@@ -573,9 +573,15 @@ impl StyleClass {
             return Ok(StyleClass::MarginRight(size));
         }
 
-        // Parse gap: gap-{0-12} or gap-[Npx]
+        // Parse gap: gap-{0-12} or gap-[Npx] or fractional gap-{0.5/1.5/2.5...}
         if let Some(rest) = class.strip_prefix("gap-") {
-            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            let size = parse_size_value_arbitrary(rest, arbitrary_value).or_else(|_| {
+                // Plan 409 §10 续: SizeValue::Fixed 是 u16,不支持 fractional。
+                // Tailwind 0.5/1.5/2.5/3.5 常用(1 unit = 4px)→ 用 Pixels。
+                rest.parse::<f32>()
+                    .map(|f| SizeValue::Pixels(f * 4.0))
+                    .map_err(|e| e.to_string())
+            })?;
             return Ok(StyleClass::Gap(size));
         }
 
