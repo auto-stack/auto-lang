@@ -674,9 +674,17 @@ fn build_row<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let eff_spacing = effective_spacing(spacing, style);
-    let justify = style
+    let mut justify = style
         .map(|s| IcedStyle::from_style(s).justify_content)
         .and_then(|j| j);
+    // Plan 409 §10 续: absolute right-N(VM 无 absolute 定位)→ 近似右对齐:
+    // apply_row_style 的 justify 分支会给 row width Fill,End 的 lead spacer
+    // 把内容推到右侧(色板浮在 icon 下方右侧,而非左对齐流式)。
+    if justify.is_none()
+        && style.map_or(false, |s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+    {
+        justify = Some(IcedJustify::End);
+    }
     let (lead, between, trail) = row_justify_spacers(justify);
     let mut row_widget = row([]).spacing(eff_spacing);
     if lead {
@@ -1016,7 +1024,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // 图标)用 button 的 text_color 染色,与文字同色。iced SVG
                         // 无 CSS currentColor 上下文,需把具体颜色注入 stroke;key
                         // 与 View::Image 的 lucide 染色一致,共享 SVG cache。
-                        let text_color = iced_style.as_ref().and_then(|is| is.text_color);
+                        // Plan 409 §10 续: nav-link 等 style=None 的 button,iced_style
+                        // 为 None → 用 OnBackground 默认色(与 chromeless button 的
+                        // text_color 一致, renderer §3.4),避免 icon 用 SVG 默认深色。
+                        let text_color = iced_style.as_ref().and_then(|is| is.text_color)
+                            .or_else(|| {
+                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::OnBackground,
+                                ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            });
                         let (handle_key, svg_bytes) = match text_color {
                             Some(tc) => {
                                 let (r, g, b) = (
