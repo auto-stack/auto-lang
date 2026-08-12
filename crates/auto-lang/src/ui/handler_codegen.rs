@@ -163,6 +163,21 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
+    // Plan 410: vue-only escape hatch — toast()/toast.success()/etc. is
+    // vue-sonner, unavailable in VM. Drop the call (no-op) so VM handlers
+    // don't fail to link with "Undefined symbol: toast". Vue codegen still
+    // emits the real toast() call (its own stmts_call_toast detection path).
+    if let Expr::Call(call) = e {
+        let is_toast = match call.name.as_ref() {
+            Expr::Ident(n) => n.as_str() == "toast",
+            Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+            _ => false,
+        };
+        if is_toast {
+            *e = Expr::Bool(false);
+            return;
+        }
+    }
     // Plan 401/VM-routing: `router.param("id")` → read the captured dynamic
     // segment from the __route_params state object: `__state.__route_params.id`.
     // __route_params is populated by the outlet renderer (render_outlet) when it

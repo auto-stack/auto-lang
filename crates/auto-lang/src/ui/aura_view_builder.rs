@@ -829,6 +829,22 @@ impl<'a> AuraViewBuilder<'a> {
                         return self.render_child_widget(child_widget, props, events, bindings);
                     }
                 }
+                // Plan 410: category-section → column container (recurse its
+                // component-card children). Vue codegen builds a fancy card grid;
+                // VM renders a simple column so the home page's component list
+                // isn't blank (View::Empty).
+                if tag == "category-section" || tag == "category_section" {
+                    return self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
+                }
+                // Plan 410: component-card → navigable link button (to + name).
+                if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
+                    let to = self.extract_string(props, "to").unwrap_or_default();
+                    let name = self.extract_string(props, "name").unwrap_or_default();
+                    let desc = self.extract_string(props, "desc").unwrap_or_default();
+                    let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
+                    let icon = self.extract_string(props, "icon").unwrap_or_default();
+                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings);
+                }
                 // Fallback: recurse children with path tracking, filtering Empty.
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
