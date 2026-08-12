@@ -5567,7 +5567,7 @@ impl VueGenerator {
             "len" => format!("{}.length", object_js),
             // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
             "contains" => format!("{}.includes({})", object_js, a),
-            "to_string" => format!("{}.toString()", object_js),
+            "to_string" | "str" => format!("{}.toString()", object_js),
             "to_int" | "parse_int" => {
                 if args_js.is_empty() {
                     format!("parseInt({})", object_js)
