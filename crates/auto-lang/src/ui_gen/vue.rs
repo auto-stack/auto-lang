@@ -11317,6 +11317,9 @@ export function cn(...inputs: ClassValue[]) {
                     vec![
                         ("event".to_string(), "command_output".to_string(), "RunOutput".to_string()),
                         ("event".to_string(), "command_result".to_string(), "RunResult".to_string()),
+                        // Plan 055 Phase A.3: 作业控制事件(实时 jobs dispatch)。
+                        ("event".to_string(), "job_started".to_string(), "JobStarted".to_string()),
+                        ("event".to_string(), "job_done".to_string(), "JobDone".to_string()),
                     ]
                 } else {
                     ep.variants.iter()
@@ -11809,6 +11812,20 @@ fn emit_preset_dispatch(
             // 据此赋 b.output。保留 __sse_output_text(只取 .Text)供兼容/调试。
             code.push_str(&format!(
                 "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; __sse_exit_code.value = r.exit_code; RunResult(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "JobStarted" => {
+            // Plan 055 Phase A.3: job_started {event, job_id, block_id, cmd}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __sse_job_id.value = data.job_id; __sse_job_cmd.value = data.cmd; JobStarted(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "JobDone" => {
+            // Plan 055 Phase A.3: job_done {event, job_id, exit_code, cmd}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __sse_job_id.value = data.job_id; __sse_job_exit.value = data.exit_code; JobDone(); }}\n",
                 kw = kw, disc = disc_field, wire = wire_value,
             ));
         }
