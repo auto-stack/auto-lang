@@ -5652,6 +5652,23 @@ impl VueGenerator {
                     let op_js = if matches!(op, Op::Eq) { "==" } else { "!=" };
                     return Ok(format!("{} {} null", other_js, op_js));
                 }
+                // PLAN-026 缺陷③: `x != ""` / `x == ""` 必须按 truthy/falsy 处理，
+                // 不能翻译成严格 `!== ''` —— 后者对 undefined 字段（属性缺失）
+                // 误判为 true（`undefined !== ''`），导致 hasError/hasThinking 等
+                // 守卫永远成立（渲染空的 error/thinking 占位）。镜像 `!!x` 语义。
+                let empty_str = |e: &crate::ast::Expr| {
+                    matches!(e, Expr::Str(s) if s.is_empty())
+                };
+                if matches!(op, Op::Eq | Op::Neq) && (empty_str(left) || empty_str(right)) {
+                    let other = if empty_str(left) { right } else { left };
+                    let other_js = self.expr_to_js(other)?;
+                    // `x != ""` → !!x（非空·非 null·非 undefined）；`x == ""` → !x
+                    return Ok(if matches!(op, Op::Neq) {
+                        format!("!!({})", other_js)
+                    } else {
+                        format!("!({})", other_js)
+                    });
+                }
                 let left_js = self.expr_to_js(left)?;
                 let right_js = self.expr_to_js(right)?;
                 let op_js = Self::op_to_js(op);
@@ -6986,6 +7003,8 @@ impl VueGenerator {
                                 classes.push(c.to_string());
                             }
                         }
+                    } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
+                        attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -7014,6 +7033,8 @@ impl VueGenerator {
                                 classes.push(c.to_string());
                             }
                         }
+                    } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
+                        attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -7044,6 +7065,8 @@ impl VueGenerator {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
                         classes.push(user_class.to_string());
+                    } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
+                        attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -7068,6 +7091,8 @@ impl VueGenerator {
                         if user_class.contains("max-w-") {
                             classes.push("mx-auto".to_string());
                         }
+                    } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
+                        attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -7093,6 +7118,8 @@ impl VueGenerator {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
                         classes.push(user_class.to_string());
+                    } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
+                        attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -10038,6 +10065,27 @@ impl VueGenerator {
         props.get("style").or_else(|| props.get("class"))
     }
 
+    /// PLAN-026 缺陷①: 布局基元（col/row/grid/center/container）的动态 class 绑定。
+    ///
+    /// `generate_shadcn_attrs` 的布局分支用 `extract_string_value` 取 class，但它对
+    /// 非静态字符串（`Expr::If` / computed / ident）返回 None，导致
+    /// `col { class: .rowClass }` 的动态绑定被静默丢弃。这里补齐：
+    /// `Expr::If` → 三元；其他 `Expr` → `:class` 表达式。静态 `Expr::Str` 返回 None
+    /// （由调用方按字符串追加到 classes）。
+    fn layout_dynamic_class_attr(&self, value: &AuraPropValue) -> Option<String> {
+        use crate::ast::Expr;
+        match value {
+            AuraPropValue::Expr(Expr::If(if_stmt)) => {
+                Some(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
+            }
+            AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
+                Ok(s) if s != "null" => Some(format!(":class=\"{}\"", s)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Build a `:kebab-attr="value"` binding for a boolean-style prop that
     /// also accepts an expression reference (e.g. `can_edit: .editable`).
     ///
@@ -12308,6 +12356,16 @@ mod tests {
 
     /// Plan musk-022 Phase 3: golden-test helper for the a2vue codegen.
     fn test_a2vue(case: &str) -> Result<(), Box<dyn std::error::Error>> {
+        test_a2vue_with(case, false)
+    }
+
+    /// PLAN-026 缺陷①: shadcn-mode variant — col/row/grid/center/container 是
+    /// shadcn 布局基元，走 `generate_shadcn_attrs`，需用 `new_shadcn()` 测试。
+    fn test_a2vue_shadcn(case: &str) -> Result<(), Box<dyn std::error::Error>> {
+        test_a2vue_with(case, true)
+    }
+
+    fn test_a2vue_with(case: &str, shadcn: bool) -> Result<(), Box<dyn std::error::Error>> {
         let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let src_path = d.join(format!("test/a2vue/{}/input.at", case));
         let src = std::fs::read_to_string(&src_path)
@@ -12328,7 +12386,7 @@ mod tests {
             return Err("No widget declarations found in input file".into());
         }
 
-        let mut gen = VueGenerator::new();
+        let mut gen = if shadcn { VueGenerator::new_shadcn() } else { VueGenerator::new() };
         let output = gen.generate_sfc(&widgets[0])?;
 
         let exp_path = d.join(format!("test/a2vue/{}/input.expected.vue", case));
@@ -18156,6 +18214,52 @@ widget NullProbe {
     #[test]
     fn test_a2vue_counter() {
         test_a2vue("001_counter").expect("a2vue counter golden mismatch");
+    }
+
+    /// PLAN-026 缺陷③: `!= ""` / `== ""` in computed (script ctx) must emit
+    /// truthy/falsy (`!!x` / `!x`), not strict `!== ''` — the latter misclassifies
+    /// a missing field (undefined) as non-empty (`undefined !== ''` is true).
+    #[test]
+    fn test_a2vue_neq_empty_safe() {
+        test_a2vue("008_neq_empty_safe").expect("a2vue neq-empty-safe golden mismatch");
+    }
+
+    /// PLAN-026 缺陷①: col（shadcn 布局基元）上的动态 class 绑定。验证
+    /// `col { class: .rowClass }` 生成 `:class="rowClass"`（而非被丢弃）。
+    #[test]
+    fn test_a2vue_shadcn_col_dynamic_class() {
+        test_a2vue_shadcn("009_shadcn_col_dynamic_class")
+            .expect("a2vue shadcn col dynamic class mismatch");
+    }
+
+    /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style
+    /// scoped>`（之前 extract_widget_from_fragment 硬编码 style_css: None 丢弃）。
+    #[test]
+    fn test_a2vue_component_fn_style() {
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let at_path = d.join("test/a2vue/010_component_fn_style/input.at");
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("010_component_fn_style generation failed");
+
+        let code = result.all_widget_codes.iter()
+            .find(|(name, _)| name == "StyledCard")
+            .map(|(_, code)| code)
+            .expect("StyledCard component fn not synthesized");
+        let golden = d.join("test/a2vue/010_component_fn_style/StyledCard.expected.vue");
+        let expected = normalize_vue_output(&std::fs::read_to_string(&golden).unwrap_or_default());
+        let actual = normalize_vue_output(code);
+        if actual != expected {
+            let wrong = d.join("test/a2vue/010_component_fn_style/StyledCard.wrong.vue");
+            std::fs::write(&wrong, code).unwrap();
+            panic!(
+                "010_component_fn_style mismatch. See StyledCard.wrong.vue.\n--- expected ---\n{}\n--- actual ---\n{}",
+                expected, actual
+            );
+        }
+        assert!(code.contains("<style scoped>"), "component fn SFC must have <style scoped>: {}", code);
+        assert!(code.contains(".card-title"), "<style> must contain the CSS rule: {}", code);
     }
 
     /// Plan 022 Phase 7c: markdown content prop binding (fixes §10).

@@ -776,7 +776,7 @@ pub fn extract_widget_from_fragment(
         span_map,
         key_bindings: HashMap::new(),
         api_imports: Vec::new(),
-        style_css: None,
+        style_css: frag.style.clone(), // PLAN-026 缺陷②: component fn 的 style 块
         ext_imports: frag.ext_imports.clone(),
         watchers: frag.watch.iter()
             .map(|w| crate::aura::types::AuraWatch {

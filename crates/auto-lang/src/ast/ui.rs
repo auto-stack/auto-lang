@@ -231,6 +231,10 @@ pub struct ViewFragmentDecl {
     pub ext_imports: Vec<ExtImport>,
     /// Plan 408 P12: 仅 component fn 支持；view fn 恒空。
     pub watch: Vec<WatchDecl>,
+    /// PLAN-026 缺陷②: component fn 的 widget-level `style { ... }` 块（原始 CSS，
+    /// 由 parse_style_block_inner 逐字捕获），镜像 WidgetDecl.style。view fn 恒 None。
+    /// Emit 到 SFC `<style scoped>`（extract → AuraWidget.style_css → generate_sfc）。
+    pub style: Option<String>,
     /// Plan 408: true = `component fn`（独立 SFC 合成）；false = `view fn`（内联展开）。
     pub is_component: bool,
 }
