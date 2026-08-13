@@ -803,6 +803,31 @@ fn auto_type_to_rust(auto_type: &str) -> String {
             let inner = s.trim_start_matches(|c: char| c == '[' || c == ']' || c.is_numeric());
             format!("Vec<{}>", auto_type_to_rust(inner))
         }
+        // Tuple type (T1, T2, ...): map each element individually
+        // (e.g. (str, RenderedCell) → (String, RenderedCell)). Without this
+        // arm the whole tuple string fell through to the passthrough below,
+        // leaving AutoLang `str` as rust `str` (unsized → derive Deserialize
+        // fails). Split at top-level commas so nested ()/[]/{} element types
+        // don't trip the split.
+        s if s.starts_with('(') && s.ends_with(')') => {
+            let inner = &s[1..s.len() - 1];
+            let mut parts: Vec<String> = Vec::new();
+            let mut depth = 0i32;
+            let mut last = 0usize;
+            for (i, c) in inner.char_indices() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => depth -= 1,
+                    ',' if depth == 0 => {
+                        parts.push(auto_type_to_rust(&inner[last..i]));
+                        last = i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            parts.push(auto_type_to_rust(&inner[last..]));
+            format!("({})", parts.join(", "))
+        }
         s => s.to_string(),
     }
 }
@@ -1522,6 +1547,30 @@ fn generate_api_rs(
             } else {
                 // Non-void, no path, no SSE: wrap the db fn result directly.
                 lines.push(format!("    JsonResponse::<{}>({})", json_inner, call));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Plan 053 后续: action endpoints — declared return type is NOT the
+        // primary CRUD resource (e.g. command_list -> BootSnapshot, complete ->
+        // Vec<CompletionItem>, run_command -> StatusCode). The CRUD template
+        // below assumes the primary type and emits bodies that mismatch the
+        // declared return type (the backend's compile errors). For these, emit
+        // a compiling Default stub instead. This is a non-functional scaffold;
+        // real logic lives in ash-core (see back/api.at header), not generated.
+        let is_crud_resource_return = json_inner == primary_type
+            || json_inner == format!("Vec<{}>", primary_type)
+            || json_inner == format!("Option<{}>", primary_type)
+            || json_inner == format!("Option<Vec<{}>>", primary_type);
+        if !is_crud_resource_return {
+            if is_void {
+                lines.push("    StatusCode::OK".to_string());
+            } else if needs_result {
+                lines.push(format!("    Ok(JsonResponse::<{}>(Default::default()))", json_inner));
+            } else {
+                lines.push(format!("    JsonResponse::<{}>(Default::default())", json_inner));
             }
             lines.push("}".to_string());
             lines.push("".to_string());

@@ -949,6 +949,18 @@ pub struct VueGenerator {
     /// is unknown to the parent.
     component_ref_names: HashSet<String>,
 
+    /// Plan 053 后续: `scroll(auto_scroll: "<prop>")` specs accumulated during
+    /// template generation. Each entry = (watch source prop, sentinel ref name).
+    /// Drained in generate_script to emit
+    /// `watch(() => props.<prop>, () => nextTick(() => sentinel.scrollIntoView()))`.
+    scroll_auto_scroll: Vec<(String, String)>,
+
+    /// Pending sentinel ref name set by the scroll arm of generate_shadcn_attrs
+    /// and consumed (taken) in node_to_html right before child recursion, so the
+    /// sentinel <div ref="..."> can be injected as the last child of the
+    /// ScrollArea. Option because it's a hand-off between the two methods.
+    pending_scroll_sentinel: Option<String>,
+
     /// External Vue components declared via the widget-level
     /// `use { component: Name from "..." }` block. Keyed by every accepted
     /// view tag form (exact name, snake_case, kebab-case) so `FancyBadge`,
@@ -1094,6 +1106,8 @@ impl VueGenerator {
             global_listeners: Vec::new(),
             template_refs: Vec::new(),
             component_ref_names: HashSet::new(),
+            scroll_auto_scroll: Vec::new(),
+            pending_scroll_sentinel: None,
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
@@ -1749,6 +1763,16 @@ impl VueGenerator {
             imports.push("nextTick");
             imports.push("onMounted");
         }
+        // Plan 053 后续: scroll auto_scroll needs watch + nextTick for the
+        // generated scroll-to-bottom watcher (ref is pulled in by template_refs).
+        if !self.scroll_auto_scroll.is_empty() {
+            if !imports.contains(&"watch") {
+                imports.push("watch");
+            }
+            if !imports.contains(&"nextTick") {
+                imports.push("nextTick");
+            }
+        }
         // Timer/tick mechanism needs onMounted + onUnmounted
         if widget.tick_interval.is_some() {
             // The tick timer (`const tickTimer = ref<...>(null)`) always uses
@@ -2260,6 +2284,17 @@ impl VueGenerator {
             // Plan 408 P12 §10.7: watch 回调含 await/API 调用时用 async。
             let async_kw = if self.handler_has_api_calls(&watcher.payload) { "async " } else { "" };
             script.push_str(&format!("watch({}, {}() => {{\n{}\n}}{})\n\n", source, async_kw, indented, opts));
+        }
+
+        // Plan 053 后续: scroll auto_scroll — emit a scroll-to-bottom watcher for
+        // each scroll node that opted in via `auto_scroll: "<prop>"`. deep:true
+        // fires on push AND on streamed-text mutation, so the view stays pinned
+        // to the bottom while command output streams in.
+        for (src, ref_name) in &self.scroll_auto_scroll {
+            script.push_str(&format!(
+                "watch(() => props.{}, () => {{ nextTick(() => {{ {}.value?.scrollIntoView({{ block: 'end' }}) }}) }}, {{ deep: true }})\n\n",
+                src, ref_name
+            ));
         }
 
         // Generate event handlers
@@ -3968,6 +4003,11 @@ impl VueGenerator {
                     attr_str
                 };
 
+                // Plan 053 后续: capture the scroll auto_scroll sentinel (set in
+                // the scroll arm of generate_shadcn_attrs above) before any child
+                // recursion below, so nested scrolls can't clobber the hand-off.
+                let scroll_sentinel: Option<String> = self.pending_scroll_sentinel.take();
+
                 // Check if we have text content (render as inline content)
                 if let Some(text) = &text_content {
                     // Plan 410: a child Text node may have been hoisted into
@@ -4018,6 +4058,13 @@ impl VueGenerator {
                         } else {
                             html.push_str(&self.node_to_html(child, indent + 1)?);
                         }
+                    }
+                    // Plan 053 后续: scroll auto_scroll — inject the trailing
+                    // sentinel div whose ref drives the watch(()=>props.<src>,
+                    // nextTick(scrollIntoView({block:'end'}))) emitted in
+                    // generate_script. Placed last so it pins the view to bottom.
+                    if let Some(ref_name) = &scroll_sentinel {
+                        html.push_str(&format!("{}<div ref=\"{}\"></div>\n", "  ".repeat(indent + 1), ref_name));
                     }
                     html.push_str(&format!("{}</{}>\n", ind, html_tag));
                     Ok(html)
@@ -7054,6 +7101,22 @@ impl VueGenerator {
                 if let Some(value) = props.get("hide_delay") {
                     if let Some(delay) = self.extract_int_value(value) {
                         attrs.push(format!(":scroll-hide-delay=\"{}\"", delay));
+                    }
+                }
+                // Plan 053 后续: auto_scroll: "<prop>" — auto-scroll to bottom when
+                // the watched prop (a list, e.g. blocks) changes. Registers a
+                // sentinel template ref + a spec; node_to_html injects a trailing
+                // <div ref="..."> as the last child and generate_script emits the
+                // watch + nextTick(scrollIntoView). VM target ignores this prop.
+                if let Some(value) = props.get("auto_scroll") {
+                    if let Some(src) = self.extract_string_value(value) {
+                        let idx = self.scroll_auto_scroll.len();
+                        let ref_name = format!("__scrollBottom{}", idx);
+                        if !self.template_refs.contains(&ref_name) {
+                            self.template_refs.push(ref_name.clone());
+                        }
+                        self.scroll_auto_scroll.push((src.to_string(), ref_name.clone()));
+                        self.pending_scroll_sentinel = Some(ref_name);
                     }
                 }
             }
