@@ -633,6 +633,18 @@ fn generate_index_css() -> String {
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
+
+/* Plan 053 后续: AutoUI 风格(细 / 半透明 / 圆角)的原生滚动条。
+   reka-ui ScrollArea 在其 viewport 上隐藏原生滚动条并自绘 ScrollBar,但自绘
+   bar 需「确定高度」才能检测溢出 —— 与 max-h(限高)不兼容(block 输出限高时
+   reka-ui bar 不显示 → 看不见)。故限高容器用原生 overflow-y-auto + 此
+   .ash-scroll 样式,视觉与 reka-ui bar 一致(用 --border,随明暗主题)。
+   仅作用于带 .ash-scroll 的元素,不干扰 reka-ui 的 ScrollArea。 */
+.ash-scroll { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+.ash-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ash-scroll::-webkit-scrollbar-track { background: transparent; }
+.ash-scroll::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); border-radius: 9999px; }
+.ash-scroll::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--muted-foreground)); }
 "#.to_string()
 }
 
