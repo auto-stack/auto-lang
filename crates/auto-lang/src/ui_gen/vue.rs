@@ -7042,7 +7042,11 @@ impl VueGenerator {
                         }
                     }
                 }
-                if let Some(value) = self.get_style_class(props) {
+                // Plan 053 后续: class 与 style prop 分开处理。class(类名)→ :class;
+                // style(CSS 声明串,如 "display:grid; ... " + expr)→ :style。之前
+                // get_style_class(style 优先)把动态 style 误送进 layout_dynamic_class_attr
+                // → 产 :class → CSS 声明被当类名失效(表格 grid 列对齐就是这么坏的)。
+                if let Some(value) = props.get("class") {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
                         for c in user_class.split_whitespace() {
@@ -7052,6 +7056,19 @@ impl VueGenerator {
                         }
                     } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
                         attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
+                    }
+                }
+                if let Some(value) = props.get("style") {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        // 静态 style(历史 Tailwind-in-style 用法)合并进 class。
+                        for c in user_class.split_whitespace() {
+                            if !classes.iter().any(|d| d == c) {
+                                classes.push(c.to_string());
+                            }
+                        }
+                    } else if let Some(style_attr) = self.layout_dynamic_style_attr(value) {
+                        attrs.push(style_attr); // 动态 CSS 声明 → :style
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -7072,7 +7089,11 @@ impl VueGenerator {
                         }
                     }
                 }
-                if let Some(value) = self.get_style_class(props) {
+                // Plan 053 后续: class 与 style prop 分开处理。class(类名)→ :class;
+                // style(CSS 声明串,如 "display:grid; ... " + expr)→ :style。之前
+                // get_style_class(style 优先)把动态 style 误送进 layout_dynamic_class_attr
+                // → 产 :class → CSS 声明被当类名失效(表格 grid 列对齐就是这么坏的)。
+                if let Some(value) = props.get("class") {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
                         for c in user_class.split_whitespace() {
@@ -7082,6 +7103,19 @@ impl VueGenerator {
                         }
                     } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
                         attrs.push(class_attr); // PLAN-026 缺陷①: 动态 class 绑定
+                    }
+                }
+                if let Some(value) = props.get("style") {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    if !user_class.is_empty() {
+                        // 静态 style(历史 Tailwind-in-style 用法)合并进 class。
+                        for c in user_class.split_whitespace() {
+                            if !classes.iter().any(|d| d == c) {
+                                classes.push(c.to_string());
+                            }
+                        }
+                    } else if let Some(style_attr) = self.layout_dynamic_style_attr(value) {
+                        attrs.push(style_attr); // 动态 CSS 声明 → :style
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
@@ -10143,6 +10177,27 @@ impl VueGenerator {
             }
             AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
                 Ok(s) if s != "null" => Some(format!(":class=\"{}\"", s)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Plan 053 后续: 布局基元的动态 **style** 绑定(CSS 声明串,如
+    /// `"display:grid; grid-template-columns: repeat(" + n + ", 1fr)"`)。
+    ///
+    /// 镜像 `layout_dynamic_class_attr`,但产出 `:style`(CSS 声明必须走 style 通道,
+    /// 走 :class 会被当类名而失效)。之前 row/col 用 get_style_class(style 优先)
+    /// 把 style prop 的动态值喂给 layout_dynamic_class_attr → 误产 :class →
+    /// 表格 grid 列对齐失效(整个 Table 渲染虽不报错,但 grid 不生效)。
+    fn layout_dynamic_style_attr(&self, value: &AuraPropValue) -> Option<String> {
+        use crate::ast::Expr;
+        match value {
+            AuraPropValue::Expr(Expr::If(if_stmt)) => {
+                Some(format!(":style=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
+            }
+            AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
+                Ok(s) if s != "null" => Some(format!(":style=\"{}\"", s)),
                 _ => None,
             },
             _ => None,
