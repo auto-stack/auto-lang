@@ -87,7 +87,7 @@ widget App {
             header (style: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur") {
                 row (style: "h-14 items-center px-4 md:px-6 w-full gap-3") {
                     // Mobile hamburger (hidden on md+)
-                    button (style: "md:hidden -ml-2", icon: "menu", onClick: .openSidebar) {}
+                    button (variant: "ghost", style: "md:hidden -ml-2", icon: "menu", onClick: .openSidebar) {}
 
                     // Logo
                     row (style: "items-center gap-2 mr-4 shrink-0") {
@@ -230,13 +230,13 @@ widget App {
                         text (text: "Home", style: "text-[10px]") {}
                     }
                 }
-                button (onClick: .openSidebar) {
+                button (variant: "ghost", onClick: .openSidebar) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "layout-grid", style: "h-5 w-5") {}
                         text (text: "Widgets", style: "text-[10px]") {}
                     }
                 }
-                button (onClick: .openSearch) {
+                button (variant: "ghost", onClick: .openSearch) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "search", style: "h-5 w-5") {}
                         text (text: "Search", style: "text-[10px]") {}

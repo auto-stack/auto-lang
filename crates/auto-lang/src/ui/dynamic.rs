@@ -131,6 +131,24 @@ pub struct DynamicComponent {
 
     /// EDGE-16 第五层:root widget 的 computed 属性表,供 view 渲染求值。
     computed: Vec<crate::aura::AuraComputed>,
+
+    /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab),跨 view() 重建持久。
+    /// 非 VM state(.at model 未声明),与 routes/computed 同范式由 DynamicComponent 持有。
+    pub(crate) preview_states: std::collections::HashMap<String, PreviewCardUiState>,
+}
+
+/// Plan 409 §10 续 19: preview-card 的展开/tab 状态(局部 UI state)。
+#[derive(Clone, Copy, Default, PartialEq)]
+pub(crate) enum PreviewTab {
+    #[default]
+    Auto,
+    Vue,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PreviewCardUiState {
+    pub show: bool,
+    pub tab: PreviewTab,
 }
 
 
@@ -187,6 +205,7 @@ impl DynamicComponent {
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
             routes: Vec::new(),
             computed: Vec::new(),
+            preview_states: Default::default(),
         })
     }
 
@@ -257,6 +276,7 @@ impl DynamicComponent {
             widget_registry: registry,
             routes: Vec::new(),
             computed: Vec::new(),
+            preview_states: Default::default(),
         })
     }
 
@@ -327,6 +347,7 @@ impl DynamicComponent {
             widget_registry: registry,
             routes,
             computed: view_widget.computed.clone(),
+            preview_states: Default::default(),
         })
     }
 
@@ -364,6 +385,7 @@ impl DynamicComponent {
             widget_registry: crate::ui::widget_registry::WidgetRegistry::new(),
             routes: Vec::new(),
             computed: Vec::new(),
+            preview_states: Default::default(),
         })
     }
     // ========================================================================
@@ -464,7 +486,7 @@ impl DynamicComponent {
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_preview_states(&self.preview_states);
         builder.build_with_debug(&self.view_template)
     }
 
@@ -478,7 +500,7 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed).with_preview_states(&self.preview_states);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
@@ -901,7 +923,7 @@ impl DynamicComponent {
 /// Format: `{event}(\u{1F}{typechar}\u{1F}{value})*` — zero or more type-tagged
 /// args, supporting multi-arg handlers like `.Reveal(cell.x, cell.y)` (Plan 402
 /// bug 4). Previously only a single arg was decoded.
-fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {
+pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {
     const SEP: char = '\u{1F}';
     let Some(idx) = event_name.find(SEP) else {
         return (event_name.to_string(), Vec::new());

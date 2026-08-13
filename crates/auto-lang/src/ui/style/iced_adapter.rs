@@ -26,6 +26,21 @@ pub fn set_accent_name(name: &str) {
     ACCENT_NAME.with(|n| *n.borrow_mut() = name.to_string());
 }
 
+// Plan 409 §10 续 11: 窗口宽度,供 VM builder 做响应式布局(如 category-section
+// 的 grid 列数)。renderer 在 view() 前设值(同 set_dark_mode);window_resized
+// 时 mark view_dirty 触发重建,让列数随窗口宽度更新。
+thread_local! {
+    static WINDOW_WIDTH: std::cell::Cell<f32> = std::cell::Cell::new(1024.0);
+}
+/// Set the current window width (called by renderer before rendering).
+pub fn set_window_width(w: f32) {
+    WINDOW_WIDTH.with(|c| c.set(w));
+}
+/// Read the current window width (for responsive layout in view builder).
+pub fn window_width() -> f32 {
+    WINDOW_WIDTH.with(|c| c.get())
+}
+
 /// HSL → RGB conversion (for accent palettes).
 fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
     let h = h as f64 / 360.0;

@@ -1146,7 +1146,17 @@ fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<C
         })?;
 
     if alpha < 100 {
-        // 乘 alpha:从 color 取 RGB,转 Rgba。
+        // Plan 409 §10 回归修复:语义色(Background/Surface/Primary/…)必须
+        // dark-mode-aware 解析。直接 to_rgb8() 会取硬编码 light 值
+        // (Background→白),在深色主题下丢失深色信息 —— 表现为 header
+        // `bg-background/95` 被画成白色。故语义色优先 resolve_semantic_rgb
+        // 取主题正确 RGB 再乘 alpha;resolve_semantic_rgb 对非语义色返回
+        // None,自然落到下面的 to_rgb8() 路径(Tailwind 色板/hex/rgb)。
+        if let Some((r, g, b)) = super::iced_adapter::resolve_semantic_rgb(&color) {
+            let a = (alpha as u32 * 255 / 100).min(255) as u8;
+            return Ok(Color::Rgba { r, g, b, a });
+        }
+        // 非语义色:乘 alpha,转 Rgba。
         let (r, g, b) = color.to_rgb8();
         let a = (alpha as u32 * 255 / 100).min(255) as u8;
         Ok(Color::Rgba { r, g, b, a })
@@ -1262,6 +1272,36 @@ mod tests {
     fn test_parse_colors() {
         assert!(matches!(StyleClass::parse_single("bg-white"), Ok(StyleClass::BackgroundColor(_))));
         assert!(matches!(StyleClass::parse_single("text-slate-500"), Ok(StyleClass::TextColor(_))));
+    }
+
+    #[test]
+    fn test_semantic_color_with_alpha_is_dark_aware() {
+        // Plan 409 §10 回归:bg-background/95 在深色主题下应是 gray-900 (17,24,39)
+        // + alpha≈242,而非 to_rgb8() 拍平出的白色 (255,255,255)。
+        crate::ui::style::iced_adapter::set_dark_mode(true);
+        match StyleClass::parse_single("bg-background/95") {
+            Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
+                assert_eq!((r, g, b), (17, 24, 39), "深色主题下 background 应为 gray-900,而非白色");
+                assert_eq!(a, 242, "95% alpha → 242");
+            }
+            other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
+        }
+        // bg-primary/10:语义色 + 小 alpha 应保留 alpha 且取主题 primary,
+        // 而非丢失 alpha 变全饱和色。
+        match StyleClass::parse_single("bg-primary/10") {
+            Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
+                assert_ne!((r, g, b), (255, 255, 255), "primary 不应是白色");
+                assert_eq!(a, 25, "10% alpha → 25");
+            }
+            other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
+        }
+        // 非语义色不受影响:bg-gray-500/50 仍走 to_rgb8() 乘 alpha。
+        match StyleClass::parse_single("bg-gray-500/50") {
+            Ok(StyleClass::BackgroundColor(Color::Rgba { a, .. })) => {
+                assert_eq!(a, 127, "50% alpha → 127");
+            }
+            other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
+        }
     }
 
     #[test]
