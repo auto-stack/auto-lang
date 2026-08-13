@@ -1245,6 +1245,13 @@ fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
         }
         Expr::Call(call) => {
             let mut new_call = call.clone();
+            // Plan 053 后续: also substitute the callee (`call.name`), not just
+            // args. Method chains on a view-fn param live in the callee — e.g.
+            // `output.columns.len()` is Call{ name: Dot(Dot(output,columns),len) }.
+            // Without this, the callee's `output` was left unsubstituted (only
+            // args were), so the generated :style/:class kept `output.columns`
+            // instead of `output.Table.columns` → runtime undefined.
+            new_call.name = Box::new(substitute_expr(&call.name, subs));
             new_call.args.args = call.args.args.iter()
                 .map(|a| match a {
                     crate::ast::Arg::Pos(e) => crate::ast::Arg::Pos(substitute_expr(e, subs)),
