@@ -1748,7 +1748,12 @@ let tabs_inner = View::Row {
                             children: col_kids, spacing: 0, padding: 0, style: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
-                        style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden").ok(),
+                        // Plan 411: p-[1px] 模拟 CSS border-box 语义 —— iced 的
+                        // border 画在边界内侧但不参与布局,子元素全宽叠在边框上:
+                        // 自带背景的 toolbar/code 盖住边框画到边缘,无背景的预览区
+                        // 露出边框,视觉上预览区比下方窄 1px。1px 内边距让子元素
+                        // 整体收进边框,两侧对齐(vue 中 border 本就在 content box 外)。
+                        style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden p-[1px]").ok(),
                     };
                 }
                 if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
