@@ -457,9 +457,15 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
 /// `".PrevMonth"` / `"Msg::PrevMonth"` → `"PrevMonth"`. Mirrors the private
 /// helper in `vm_bridge.rs` so this module is self-contained.
 pub fn handler_fn_name(pattern: &str) -> String {
+    format!("handler_{}", bare_handler_name(pattern))
+}
+
+/// The bare event name of a handler pattern: strips the leading `.` and any
+/// `Msg::`-style qualifier. Shared by [`handler_fn_name`] and the sibling-call
+/// visibility sets below (Plan 056 blocker A).
+pub fn bare_handler_name(pattern: &str) -> &str {
     let name = pattern.trim_start_matches('.');
-    let bare = name.rfind("::").map(|p| &name[p + 2..]).unwrap_or(name);
-    format!("handler_{}", bare)
+    name.rfind("::").map(|p| &name[p + 2..]).unwrap_or(name)
 }
 
 /// Plan 320: namespaced handler fn name: `handler_<WidgetName>_<EventName>`.
@@ -818,6 +824,23 @@ pub fn synthesize_widget_module(
             .collect();
         let w_state_type = synthesize_state_type(w);
 
+        // Plan 056 blocker A (AuraWidget path): set the current-widget context
+        // (msg variants + this widget's own handler/lifecycle patterns) so
+        // `.Sibling()` calls inside handler bodies rewrite to
+        // `handler_<W>_<Sibling>(__state, args)` — same as the decl path below.
+        let mut w_msg_variants: HashSet<String> = w
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
+            .collect();
+        for (pattern, _) in &w.handlers {
+            w_msg_variants.insert(bare_handler_name(pattern).to_string());
+        }
+        for lc in &w.lifecycle {
+            w_msg_variants.insert(lc.name.clone());
+        }
+        set_current_widget(&w.name, w_msg_variants);
+
         // State type declaration.
         if let Err(e) = codegen.compile_stmt(&Stmt::TypeDecl(w_state_type.clone())) {
             log::warn!("handler_codegen: {} state type failed: {}", w.name, e);
@@ -862,6 +885,8 @@ pub fn synthesize_widget_module(
     // compiled the types (Note), field_names fall back to "_unknown" and struct
     // field access (note.title) fails. new_with_imports loads this into the VM.
     let registry = std::mem::take(&mut codegen.generic_registry);
+    clear_store_context();
+    clear_current_widget();
     Ok((codegen.finish(widget.name.clone()), registry))
 }
 
@@ -1333,11 +1358,26 @@ pub fn synthesize_from_decl(
         // bodies that call a sibling handler (`.Sibling()`) rewrite to
         // `handler_<Widget>_<Sibling>(__state, args)` instead of a bogus
         // `<Widget>_State.Sibling` field access.
-        let d_msg_variants: HashSet<String> = d
+        //
+        // Plan 056 blocker A: the sibling-call target may also be an `on`-block
+        // handler or a lifecycle fn — those compile to the same
+        // `handler_<W>_<H>` symbols as msg variants, but were missing from the
+        // visibility set, so e.g. PromptBar's `.OnInput` calling
+        // `.OnInputComplete()` fell through to the field-access path and linked
+        // against the nonexistent `PromptBar_State.OnInputComplete`.
+        let mut d_msg_variants: HashSet<String> = d
             .messages
             .iter()
             .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
             .collect();
+        if let Some(on) = &d.on {
+            for h in &on.handlers {
+                d_msg_variants.insert(bare_handler_name(&h.pattern).to_string());
+            }
+        }
+        for lc in &d.lifecycle {
+            d_msg_variants.insert(lc.name.clone());
+        }
         set_current_widget(d.name.to_string().as_str(), d_msg_variants);
 
         let d_state_type = synthesize_state_type_from_decl(d, d_tick);
