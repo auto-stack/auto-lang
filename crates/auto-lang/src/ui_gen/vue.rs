@@ -4449,53 +4449,52 @@ impl VueGenerator {
 {ind}  <!-- Preview Area -->
 {ind}  <div class="flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900">
 {ind}    {children_html}{ind}  </div>
-{ind}  <!-- Toggle Code Footer -->
-{ind}  <div class="border-t">
-{ind}    <button
-{ind}      @click="show{id_cap}Code = !show{id_cap}Code"
-{ind}      class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
-{ind}    >
-{ind}      <span class="font-medium">Code</span>
-{ind}      <svg
-{ind}        :class="show{id_cap}Code ? 'rotate-180' : ''"
-{ind}        xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-{ind}        class="transition-transform duration-200"
+{ind}  <!-- Toolbar: language tabs left, copy + toggle right (Plan 411 merged row) -->
+{ind}  <div class="flex items-center justify-between border-t bg-zinc-100 dark:bg-zinc-800">
+{ind}    <div class="flex">
+{ind}      <button
+{ind}        @click="active{id_cap}Tab = 'auto'"
+{ind}        :class="active{id_cap}Tab === 'auto' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
+{ind}        class="px-4 py-2 text-xs font-medium transition-colors"
 {ind}      >
-{ind}        <path d="m6 9 6 6 6-6"/>
-{ind}      </svg>
-{ind}    </button>
-{ind}    <!-- Expandable Code Block -->
-{ind}    <div v-if="show{id_cap}Code" class="border-t">
-{ind}      <!-- Tabs (gray title bar) -->
-{ind}      <div class="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800">
-{ind}        <div class="flex">
-{ind}          <button
-{ind}            @click="active{id_cap}Tab = 'auto'"
-{ind}            :class="active{id_cap}Tab === 'auto' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
-{ind}            class="px-4 py-2 text-xs font-medium transition-colors"
-{ind}          >
-{ind}            Auto
-{ind}          </button>
-{ind}          <button
-{ind}            @click="active{id_cap}Tab = 'vue'"
-{ind}            :class="active{id_cap}Tab === 'vue' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
-{ind}            class="px-4 py-2 text-xs font-medium transition-colors"
-{ind}          >
-{ind}            Vue
-{ind}          </button>
-{ind}        </div>
-{ind}        <button
-{ind}          @click="copyCode(active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode, '{id}')"
-{ind}          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
-{ind}        >
-{ind}          <svg v-if="copiedCode !== '{id}'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-{ind}          <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-{ind}          {{{{ copiedCode === '{id}' ? 'Copied!' : 'Copy' }}}}
-{ind}        </button>
-{ind}      </div>
-{ind}      <!-- Code content with syntax highlighting -->
-{ind}      <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'block font-mono !p-0 language-' + (active{id_cap}Tab === 'auto' ? 'auto' : 'html')">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
+{ind}        Auto
+{ind}      </button>
+{ind}      <button
+{ind}        @click="active{id_cap}Tab = 'vue'"
+{ind}        :class="active{id_cap}Tab === 'vue' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
+{ind}        class="px-4 py-2 text-xs font-medium transition-colors"
+{ind}      >
+{ind}        Vue
+{ind}      </button>
 {ind}    </div>
+{ind}    <div class="flex items-center gap-1 pr-2">
+{ind}      <button
+{ind}        @click="copyCode(active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode, '{id}')"
+{ind}        :title="copiedCode === '{id}' ? 'Copied!' : 'Copy code'"
+{ind}        class="inline-flex items-center rounded-md px-2 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+{ind}      >
+{ind}        <svg v-if="copiedCode !== '{id}'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+{ind}        <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+{ind}      </button>
+{ind}      <button
+{ind}        @click="show{id_cap}Code = !show{id_cap}Code"
+{ind}        :title="show{id_cap}Code ? 'Hide code' : 'Show code'"
+{ind}        class="inline-flex items-center rounded-md px-2 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+{ind}      >
+{ind}        <svg
+{ind}          :class="show{id_cap}Code ? 'rotate-180' : ''"
+{ind}          xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+{ind}          class="transition-transform duration-200"
+{ind}        >
+{ind}          <path d="m6 9 6 6 6-6"/>
+{ind}        </svg>
+{ind}      </button>
+{ind}    </div>
+{ind}  </div>
+{ind}  <!-- Expandable Code Block -->
+{ind}  <div v-if="show{id_cap}Code" class="border-t">
+{ind}    <!-- Code content with syntax highlighting -->
+{ind}    <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'block font-mono !p-0 language-' + (active{id_cap}Tab === 'auto' ? 'auto' : 'html')">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
 {ind}  </div>
 {ind}</div>
 "#,
