@@ -223,6 +223,56 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 }
 
 /// Build an Iced button::Style from IcedStyle.
+/// Plan 409 §10 续 20: 简单代码语法高亮(auto/vue/bash 通用)→ 着色 Span 列表。
+/// tokenizer:comment / string / number / keyword / punct / ident。
+fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
+    use iced::widget::text::Span;
+    const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
+        "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
+        "textarea", "scroll", "grid", "link", "if", "else", "return", "true", "false",
+        "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
+        "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
+        "primary", "secondary", "destructive", "default"];
+    const C_KW: iced::Color = iced::Color::from_rgb8(0xc7, 0x92, 0xea);  // 紫
+    const C_STR: iced::Color = iced::Color::from_rgb8(0xc3, 0xe8, 0x8d);  // 绿
+    const C_COM: iced::Color = iced::Color::from_rgb8(0x6b, 0x72, 0x80);  // 灰
+    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf7, 0x8c, 0x6c);  // 橙
+    const C_PUN: iced::Color = iced::Color::from_rgb8(0x89, 0xdd, 0xff);  // 青
+    let push = |spans: &mut Vec<Span<'static, ()>>, text: String, color: Option<iced::Color>| {
+        if !text.is_empty() { spans.push(Span::new(text).color_maybe(color)); }
+    };
+    let bytes = code.as_bytes();
+    let n = bytes.len();
+    let mut i = 0;
+    let mut spans: Vec<Span<'static, ()>> = Vec::new();
+    while i < n {
+        let b = bytes[i];
+        if (b == b'/' && i + 1 < n && bytes[i + 1] == b'/') || b == b'#' {
+            let s = i; while i < n && bytes[i] != b'\n' { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_COM));
+        } else if b == b'"' || b == b'\'' || b == b'`' {
+            let q = b; let s = i; i += 1;
+            while i < n && bytes[i] != q { if bytes[i] == b'\\' && i + 1 < n { i += 1; } i += 1; }
+            if i < n { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_STR));
+        } else if b.is_ascii_digit() {
+            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_NUM));
+        } else if b.is_ascii_alphabetic() || b == b'_' {
+            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') { i += 1; }
+            let t = &code[s..i];
+            push(&mut spans, t.to_string(), if KW.contains(&t) { Some(C_KW) } else { None });
+        } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
+            let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
+            push(&mut spans, code[s..i].to_string(), None);
+        } else {
+            push(&mut spans, code[i..i + 1].to_string(), Some(C_PUN));
+            i += 1;
+        }
+    }
+    spans
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let radius = is.border_radius.unwrap_or(0.0);
@@ -975,6 +1025,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Text { content, style } => {
+                // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
+                let is_code = style.as_ref()
+                    .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
+                    .unwrap_or(false);
+                if is_code {
+                    let spans = highlight_code(&content);
+                    let mut rich = iced::widget::text::Rich::<(), M>::with_spans(spans)
+                        .font(iced::Font { family: iced::font::Family::Monospace, ..iced::Font::DEFAULT });
+                    if let Some(ref s) = style {
+                        if let Some(fs) = effective_font_size(&IcedStyle::from_style(s)) {
+                            rich = rich.size(fs);
+                        }
+                    }
+                    let el: iced::Element<'static, M> = rich.into();
+                    if let Some(ref s) = style {
+                        wrap_with_margin_top(el, &IcedStyle::from_style(s))
+                    } else {
+                        el
+                    }
+                } else {
                 let mut text_widget = text(content);
 
                 if let Some(ref s) = style {
@@ -1041,6 +1111,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     wrap_with_margin_top(el, &iced_style)
                 } else {
                     el
+                }
                 }
             }
 
