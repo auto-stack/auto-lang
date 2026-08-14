@@ -11,12 +11,12 @@ shadcn widgets：每个组件一个页面，含示例预览（`preview-card`）�
 ## 布局（`source/front/app.at`）
 
 - **Header** — sticky，含移动端汉堡菜单 + 搜索
-- **Sidebar**（桌面端）— 分组导航：Overview / Form / Display / Feedback /
-  Navigation / Overlay
+- **Sidebar**（桌面端）— 分组导航：Overview / **Layout（Plan 412）** / Form /
+  Display / Feedback / Navigation / Overlay
 - **内容区** — `outlet`，每个路由是一个组件文档页
 - **移动端** — 底部导航栏 + drawer
 
-## Widgets / 路由（50）
+## Widgets / 路由（62）
 
 accordion, alert, alertdialog, aspectratio, avatar, badge, breadcrumb, button,
 calendar, card, carousel, checkbox, collapsible, combobox, command, contextmenu,
@@ -24,7 +24,9 @@ datatable, datepicker, dialog, drawer, dropdownmenu, form, grid, hovercard,
 input, label, menubar, navigationmenu, navlink, pagination, popover, progress,
 radiogroup, scrollarea, select, separator, sheet, sidebar, skeleton, slider,
 sonner, switch, table, tabs, textarea, toast, toggle, togglegroup, tooltip +
-`/` index。
+`/` index；**Layout 分组（Plan 412，sky 色）**：row, col, center, flex,
+alignment, spacing, sizing, scroll, position, responsive, grid（重写迁入）,
+grid-span。
 
 ## Plan 408 §9 修复在这里验证
 
@@ -59,7 +61,7 @@ widgets-gallery/
 │   └── front/
 │       ├── app.at      # 路由 + 响应式布局
 │       ├── components/ # Auto 语言层组件参考定义（不参与 vue 生成）
-│       └── pages/      # 每个 widget 一个文档页（50 页）
+│       └── pages/      # 每个 widget 一个文档页（62 页，含 12 页 Layout 分组）
 ├── vue-ref/            # 手写 Vue 参考实现（旧 component-gallery 原型，仅对比参考）
 └── gen/                # 生成产物（gitignore）
     └── front/vue/
@@ -71,3 +73,6 @@ widgets-gallery/
   （缺 WidgetSpec，非 Plan 408 §9 范围），页面与文档正常展示。
   carousel 已可正常渲染 slide 内容（Basic / Sizes 示例均可见）。
 - 未路由的 blocks 页已移除（避免 chart 组件脚手架风险），后续单独补。
+- **Layout 分组的降级矩阵**（flex-wrap / absolute 定位 / order / self-* /
+  row-span / fixed / sticky 在 VM 的行为对照）见 `/position` 页内表格与
+  `docs/plans/412-layout-gallery.md` §5。
