@@ -1653,20 +1653,32 @@ impl<'a> AuraViewBuilder<'a> {
                         vg.gen_previewcard_code(props, children)
                     };
                     let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
-                    let mk_tab = |label: &str, tab_str: &str, active: bool| View::Button {
-                        label: label.to_string(),
-                        content: None,
-                        onclick: crate::ui::interpreter::DynamicMessage::Typed {
-                            widget_name: self.widget_name.clone(),
-                            event_name: "__preview_tab".to_string(),
-                            args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
-                        },
-                        style: Style::parse(if active {
-                            "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100 border-b-2 border-primary"
-                        } else {
-                            "px-4 py-2 text-xs text-zinc-400 border-b-2 border-input"
-                        }).ok(),
-                        on_right_click: None,
+                    // Plan 411: active tab 下划线用独立 2px 主题色条实现 ——
+                    // border-b-2(仅底边)解析器不支持,且 iced button 边框四边统一,
+                    // 画不出底边专属线;条形占位让 active/inactive tab 等高对齐。
+                    let mk_tab = |label: &str, tab_str: &str, active: bool| {
+                        let btn = View::Button {
+                            label: label.to_string(),
+                            content: None,
+                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: "__preview_tab".to_string(),
+                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
+                            },
+                            style: Style::parse(if active {
+                                "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100"
+                            } else {
+                                "px-4 py-2 text-xs text-zinc-400"
+                            }).ok(),
+                            on_right_click: None,
+                        };
+                        let underline = View::Container {
+                            child: Box::new(View::Empty),
+                            padding: 0, width: None, height: None,
+                            center_x: false, center_y: false,
+                            style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
+                        };
+                        View::Column { children: vec![btn, underline], spacing: 0, padding: 0, style: None }
                     };
                     let tabs_inner = View::Row {
                         children: vec![
@@ -1700,12 +1712,15 @@ impl<'a> AuraViewBuilder<'a> {
                     };
                     let right_icons = View::Row {
                         children: vec![copy_btn, toggle],
-                        spacing: 4, padding: 0, style: None,
+                        spacing: 4, padding: 0,
+                        // Plan 411: tabs 贴 toolbar 左缘(vue 无容器内边距),右侧
+                        // icon 组留 pr-2 呼吸位 —— 此前容器 px-2 让 Auto 左侧多出空白。
+                        style: Style::parse("pr-2").ok(),
                     };
                     let toolbar = View::Row {
                         children: vec![tabs_inner, right_icons],
                         spacing: 0, padding: 0,
-                        style: Style::parse("items-center justify-between border-t bg-zinc-800 px-2 w-full").ok(),
+                        style: Style::parse("items-center justify-between border-t bg-zinc-800 w-full").ok(),
                     };
                     let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
                     // 展开时:代码区(按 tab 选 auto/vue)。
