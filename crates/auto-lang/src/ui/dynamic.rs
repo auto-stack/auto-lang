@@ -149,12 +149,14 @@ pub(crate) enum PreviewTab {
 pub(crate) struct PreviewCardUiState {
     pub show: bool,
     pub tab: PreviewTab,
+    /// Plan 411: copy 按钮「已复制」反馈(切 tab / 开合面板时复位)。
+    pub copied: bool,
 }
 
 // Plan 409 §10 续 21: preview-card 的代码默认展开(对齐 vue 首屏可见代码)。
 impl Default for PreviewCardUiState {
     fn default() -> Self {
-        Self { show: true, tab: PreviewTab::default() }
+        Self { show: true, tab: PreviewTab::default(), copied: false }
     }
 }
 

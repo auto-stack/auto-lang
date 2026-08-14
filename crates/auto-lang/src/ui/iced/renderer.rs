@@ -2008,6 +2008,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "arrow-down" => r#"<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>"#,
         "arrow-right" => r#"<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>"#,
         "x" => r#"<path d="M18 6 6 18"/><path d="m6 6 12 12"/>"#,
+        // Plan 411: preview-card copy button (lucide "copy": two stacked rects)
+        "copy" => r#"<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>"#,
         "check" => r#"<path d="M20 6 9 17l-5-5"/>"#,
         "plus" => r#"<path d="M5 12h14"/><path d="M12 5v14"/>"#,
         "minus" => r#"<path d="M5 12h14"/>"#,
@@ -3868,13 +3870,17 @@ fn compare_pngs(
         }
 
         // Plan 409 §10 续 19: preview-card 的 toggle/tab(局部 UI state,存 DynamicComponent)。
-        if msg.event.starts_with("__preview_toggle") || msg.event.starts_with("__preview_tab") {
+        if msg.event.starts_with("__preview_toggle")
+            || msg.event.starts_with("__preview_tab")
+            || msg.event.starts_with("__preview_copy")
+        {
             let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
             match name.as_str() {
                 "__preview_toggle" => {
                     if let Some(auto_val::Value::Str(id)) = args.get(0) {
                         let st = state.component.preview_states.entry(id.to_string()).or_default();
                         st.show = !st.show;
+                        st.copied = false;
                         *state.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
@@ -3887,6 +3893,27 @@ fn compare_pngs(
                         } else {
                             crate::ui::dynamic::PreviewTab::Auto
                         };
+                        st.copied = false;
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                    return iced::Task::none();
+                }
+                // Plan 411: preview-card copy icon — args [id, code]. Writes the
+                // current tab's code to the system clipboard (arboard) and flips
+                // the copied flag so the icon swaps to a check until the next
+                // tab/toggle interaction (vue parity: instant copy feedback).
+                "__preview_copy" => {
+                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(code))) = (args.get(0), args.get(1)) {
+                        match arboard::Clipboard::new() {
+                            Ok(mut cb) => {
+                                if let Err(e) = cb.set_text(code.as_str().to_string()) {
+                                    eprintln!("preview copy failed: {}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("clipboard unavailable: {}", e),
+                        }
+                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                        st.copied = true;
                         *state.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();

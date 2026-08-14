@@ -1644,8 +1644,15 @@ impl<'a> AuraViewBuilder<'a> {
                         style: Style::parse("min-h-[100px] w-full p-4").ok(),
                     };
                     // Plan 409 §10 续 21: 合并 Code title 行与 Auto/Vue tab 行为一行
-                    // toolbar:[Auto][Vue] ... [▼](展开/收起)。代码区在下方(展开时)。
-                    let arrow = if ui.show { "▼" } else { "▶" };
+                    // toolbar:[Auto][Vue] ... [copy][chevron](展开/收起)。代码区在
+                    // 下方(展开时)。Plan 411: 对齐 vue 合并版 —— 右侧 copy icon
+                    // (点击写入系统剪贴板,icon 换 check)+ chevron 图标;Code 文字不用。
+                    // 当前 tab 的代码同时供 copy 参数与展示区使用。
+                    let (auto_code, vue_code) = {
+                        let mut vg = VueGenerator::new();
+                        vg.gen_previewcard_code(props, children)
+                    };
+                    let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
                     let mk_tab = |label: &str, tab_str: &str, active: bool| View::Button {
                         label: label.to_string(),
                         content: None,
@@ -1668,28 +1675,41 @@ impl<'a> AuraViewBuilder<'a> {
                         ],
                         spacing: 0, padding: 0, style: None,
                     };
+                    let icon_btn_style = "px-2 py-1.5 text-xs text-muted-foreground bg-transparent";
+                    let copy_btn = View::Button {
+                        label: format!("\u{EE01}{}\u{EE02}", if ui.copied { "check" } else { "copy" }),
+                        content: None,
+                        onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: "__preview_copy".to_string(),
+                            args: vec![auto_val::Value::str(&id), auto_val::Value::str(&code)],
+                        },
+                        style: Style::parse(icon_btn_style).ok(),
+                        on_right_click: None,
+                    };
                     let toggle = View::Button {
-                        label: arrow.to_string(),
+                        label: format!("\u{EE01}{}\u{EE02}", if ui.show { "chevron-down" } else { "chevron-right" }),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
                             widget_name: self.widget_name.clone(),
                             event_name: "__preview_toggle".to_string(),
                             args: vec![auto_val::Value::str(&id)],
                         },
-                        style: Style::parse("px-3 py-2 text-sm text-muted-foreground bg-transparent").ok(),
+                        style: Style::parse(icon_btn_style).ok(),
                         on_right_click: None,
                     };
+                    let right_icons = View::Row {
+                        children: vec![copy_btn, toggle],
+                        spacing: 4, padding: 0, style: None,
+                    };
                     let toolbar = View::Row {
-                        children: vec![tabs_inner, toggle],
+                        children: vec![tabs_inner, right_icons],
                         spacing: 0, padding: 0,
                         style: Style::parse("items-center justify-between border-t bg-zinc-800 px-2 w-full").ok(),
                     };
                     let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
                     // 展开时:代码区(按 tab 选 auto/vue)。
                     if ui.show {
-                        let mut vg = VueGenerator::new();
-                        let (auto_code, vue_code) = vg.gen_previewcard_code(props, children);
-                        let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
                         let code_text = View::Text {
                             content: code,
                             style: Style::parse("font-mono text-sm text-zinc-50").ok(),
