@@ -13,7 +13,7 @@ widget SeparatorPage {
 
             h2 "Horizontal"
             preview-card (id: "separator-horizontal") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     text "Content above"
                     separator (orientation: "horizontal") {}
                     text "Content below"
@@ -22,7 +22,7 @@ widget SeparatorPage {
 
             h2 "Vertical"
             preview-card (id: "separator-vertical") {
-                row (gap: "4", style: "h-8 items-center") {
+                row (style: "gap-4 h-8 items-center") {
                     text "Left"
                     separator (orientation: "vertical") {}
                     text "Right"

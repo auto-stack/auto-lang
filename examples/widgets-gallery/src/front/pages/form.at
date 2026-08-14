@@ -14,7 +14,7 @@ widget FormPage {
             h2 "Simple"
             preview-card (id: "form-basic") {
                 form {
-                    col (gap: "4") {
+                    col (style: "gap-4") {
                         div {
                             form-label "Username"
                             input (placeholder: "Enter username") {}

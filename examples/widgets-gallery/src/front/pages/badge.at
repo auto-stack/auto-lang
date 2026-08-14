@@ -18,7 +18,7 @@ widget BadgePage {
 
             h2 "Variants"
             preview-card (id: "badge-variants") {
-                row (gap: "2") {
+                row (style: "gap-2") {
                     badge "Default"
                     badge (text: "Secondary", variant: "secondary") {}
                     badge (text: "Destructive", variant: "destructive") {}

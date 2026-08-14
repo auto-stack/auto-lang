@@ -22,7 +22,7 @@ widget ButtonPage {
 
             h2 "Variants"
             preview-card (id: "button-variants") {
-                row (gap: "2") {
+                row (style: "gap-2") {
                     button "Default"
                     button (text: "Secondary", variant: "secondary") {}
                     button (text: "Destructive", variant: "destructive") {}
@@ -34,7 +34,7 @@ widget ButtonPage {
 
             h2 "Sizes"
             preview-card (id: "button-sizes") {
-                row (gap: "2") {
+                row (style: "gap-2") {
                     button (text: "Small", size: "sm") {}
                     button "Default"
                     button (text: "Large", size: "lg") {}
@@ -43,7 +43,7 @@ widget ButtonPage {
 
             h2 "Events"
             preview-card (id: "button-events") {
-                col (gap: "3") {
+                col (style: "gap-3") {
                     button (text: "Click Me", onClick: .showClickToast) {}
                     text "Click the button to fire a toast via the onClick handler." { style: "text-sm text-muted-foreground" }
                     toast-provider {}

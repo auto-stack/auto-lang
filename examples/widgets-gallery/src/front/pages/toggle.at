@@ -13,7 +13,7 @@ widget TogglePage {
 
             h2 "Simple"
             preview-card (id: "toggle-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     toggle (variant: "outline", aria-label: "Toggle bold") {
                         text "B"
                     }

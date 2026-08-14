@@ -41,12 +41,12 @@ widget CardPage {
                     }
                     card-content {
                         form {
-                            col (gap: "6") {
-                                col (gap: "2") {
+                            col (style: "gap-6") {
+                                col (style: "gap-2") {
                                     label (text: "Email", for: "email") {}
                                     input (id: "email", type: "email", placeholder: "m@example.com") {}
                                 }
-                                col (gap: "2") {
+                                col (style: "gap-2") {
                                     row (style: "flex items-center") {
                                         label (text: "Password", for: "password") {}
                                         link (text: "Forgot your password?", href: "#", style: "ml-auto inline-block text-sm underline-offset-4 hover:underline") {}
@@ -72,12 +72,12 @@ widget CardPage {
                         card-description "Deploy your new project in one-click."
                     }
                     card-content {
-                        col (gap: "4") {
-                            col (gap: "2") {
+                        col (style: "gap-4") {
+                            col (style: "gap-2") {
                                 label "Name"
                                 input (placeholder: "Name of your project") {}
                             }
-                            col (gap: "2") {
+                            col (style: "gap-2") {
                                 label "Framework"
                                 select {
                                     select-trigger {
@@ -109,22 +109,22 @@ widget CardPage {
                         card-description "You have 3 unread messages."
                     }
                     card-content (style: "grid gap-4") {
-                        col (gap: "4") {
+                        col (style: "gap-4") {
                             row (style: "flex items-center justify-between") {
-                                col (gap: "1") {
+                                col (style: "gap-1") {
                                     text (text: "Push Notifications", style: "text-sm font-medium") {}
                                     text (text: "Send notifications to device.", style: "text-sm text-muted-foreground") {}
                                 }
                                 switch {}
                             }
                             separator {}
-                            col (gap: "4") {
+                            col (style: "gap-4") {
                                 row (style: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/01.png", alt: "Avatar") {}
                                         avatar-fallback "OM"
                                     }
-                                    col (gap: "1", style: "grid gap-1") {
+                                    col (style: "grid gap-1") {
                                         text (text: "Your call has been confirmed.", style: "text-sm") {}
                                         text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
                                     }
@@ -134,7 +134,7 @@ widget CardPage {
                                         avatar-image (src: "/avatars/02.png", alt: "Avatar") {}
                                         avatar-fallback "JD"
                                     }
-                                    col (gap: "1", style: "grid gap-1") {
+                                    col (style: "grid gap-1") {
                                         text (text: "You have a new message!", style: "text-sm") {}
                                         text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
                                     }
@@ -144,7 +144,7 @@ widget CardPage {
                                         avatar-image (src: "/avatars/03.png", alt: "Avatar") {}
                                         avatar-fallback "WW"
                                     }
-                                    col (gap: "1", style: "grid gap-1") {
+                                    col (style: "grid gap-1") {
                                         text (text: "Your subscription is expiring soon!", style: "text-sm") {}
                                         text (text: "2 hours ago", style: "text-sm text-muted-foreground") {}
                                     }

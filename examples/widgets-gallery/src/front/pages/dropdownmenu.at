@@ -13,7 +13,7 @@ widget DropdownmenuPage {
 
             h2 "Simple"
             preview-card (id: "dropdownmenu-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     dropdown-menu {
                         dropdown-menu-trigger {
                             button (text: "Open", variant: "outline") {}

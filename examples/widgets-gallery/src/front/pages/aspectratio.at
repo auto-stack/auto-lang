@@ -22,8 +22,8 @@ widget AspectratioPage {
 
             h2 "Common Ratios"
             preview-card (id: "aspectratio-ratios") {
-                row (gap: "4", style: "flex-wrap") {
-                    col (gap: "2", style: "w-[150px]") {
+                row (style: "gap-4 flex-wrap") {
+                    col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.0) {
                                 div (style: "flex items-center justify-center w-full h-full bg-primary/10") {
@@ -33,7 +33,7 @@ widget AspectratioPage {
                         }
                         text (text: "Square (1:1)", style: "text-sm text-muted-foreground") {}
                     }
-                    col (gap: "2", style: "w-[150px]") {
+                    col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.777) {
                                 div (style: "flex items-center justify-center w-full h-full bg-primary/10") {
@@ -43,7 +43,7 @@ widget AspectratioPage {
                         }
                         text (text: "Widescreen (16:9)", style: "text-sm text-muted-foreground") {}
                     }
-                    col (gap: "2", style: "w-[150px]") {
+                    col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 0.5625) {
                                 div (style: "flex items-center justify-center w-full h-full bg-primary/10") {
@@ -53,7 +53,7 @@ widget AspectratioPage {
                         }
                         text (text: "Portrait (9:16)", style: "text-sm text-muted-foreground") {}
                     }
-                    col (gap: "2", style: "w-[150px]") {
+                    col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.333) {
                                 div (style: "flex items-center justify-center w-full h-full bg-primary/10") {

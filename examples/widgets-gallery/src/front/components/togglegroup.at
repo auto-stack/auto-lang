@@ -68,9 +68,9 @@ widget ToggleGroupDemo {
     }
 
     view {
-        col (gap: "4") {
+        col (style: "gap-4") {
             // Single selection
-            col (gap: "2") {
+            col (style: "gap-2") {
                 label | Alignment
                 ToggleGroup (type: "single", value: .alignment) {
                     ToggleItem (value: "left", text: "Left", pressed: .alignment == "left") {}
@@ -80,7 +80,7 @@ widget ToggleGroupDemo {
             }
 
             // Multiple selection (simulated)
-            col (gap: "2") {
+            col (style: "gap-2") {
                 label | Style
                 ToggleGroup (type: "multiple", orientation: "horizontal") {
                     ToggleItem (value: "bold", text: "B") {}

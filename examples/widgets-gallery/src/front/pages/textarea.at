@@ -23,7 +23,7 @@ widget TextareaPage {
 
             h2 "With Label"
             preview-card (id: "textarea-label") {
-                col (gap: "1.5", style: "w-64") {
+                col (style: "gap-1.5 w-64") {
                     label (text: "Email", for: "email") {}
                     input (id: "email", placeholder: "Enter your email") {}
                 }

@@ -13,7 +13,7 @@ widget SheetPage {
 
             h2 "Simple"
             preview-card (id: "sheet-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     sheet (side: "right") {
                         sheet-trigger {
                             button (text: "Open", variant: "outline") {}
@@ -23,7 +23,7 @@ widget SheetPage {
                                 sheet-title "Edit Profile"
                                 sheet-description "Make changes to your profile here."
                             }
-                            col (gap: "4") {
+                            col (style: "gap-4") {
                                 text "Profile content goes here."
                             }
                         }

@@ -13,7 +13,7 @@ widget TooltipPage {
 
             h2 "Simple"
             preview-card (id: "tooltip-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     tooltip-provider {
                         tooltip {
                             tooltip-trigger {

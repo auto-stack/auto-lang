@@ -13,7 +13,7 @@ widget DrawerPage {
 
             h2 "Simple"
             preview-card (id: "drawer-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     drawer {
                         drawer-trigger "Open Drawer"
                         drawer-content {

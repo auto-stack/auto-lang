@@ -13,7 +13,7 @@ widget HovercardPage {
 
             h2 "Simple"
             preview-card (id: "hovercard-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     hovercard {
                         hover-card-trigger {
                             avatar {
@@ -22,13 +22,13 @@ widget HovercardPage {
                             }
                         }
                         hover-card-content {
-                            col (gap: "3", style: "w-80") {
-                                row (gap: "4") {
+                            col (style: "gap-3 w-80") {
+                                row (style: "gap-4") {
                                     avatar {
                                         avatar-image (src: "https://github.com/shadcn.png") {}
                                         avatar-fallback "SC"
                                     }
-                                    col (gap: "1") {
+                                    col (style: "gap-1") {
                                         h4 "@shadcn"
                                         text "Vue component library"
                                     }

@@ -13,13 +13,13 @@ widget PopoverPage {
 
             h2 "Simple"
             preview-card (id: "popover-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     popover {
                         popover-trigger {
                             button (text: "Open Popover", variant: "outline") {}
                         }
                         popover-content {
-                            col (gap: "4") {
+                            col (style: "gap-4") {
                                 h4 (text: "Dimensions", style: "font-medium") {}
                                 text "Set the dimensions for the layer."
                             }

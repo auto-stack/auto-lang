@@ -288,7 +288,7 @@ widget DatatablePage {
             h2 "Filtering"
             text (text: "Search and filter data across columns.", style: "text-muted-foreground") {}
             preview-card (id: "datatable-filtering") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     row (style: "flex items-center gap-2") {
                         text (text: "Filter:", style: "text-sm font-medium") {}
                         input (placeholder: "Search by email...", style: "w-[250px]") {}
@@ -321,7 +321,7 @@ widget DatatablePage {
             h2 "Pagination"
             text (text: "Navigate through large datasets with page controls.", style: "text-muted-foreground") {}
             preview-card (id: "datatable-pagination") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     table {
                         table-header {
                             table-row {
@@ -355,7 +355,7 @@ widget DatatablePage {
                             }
                         }
                         text (text: "Page 1 of 10", style: "text-sm text-muted-foreground") {}
-                        row (gap: "2") {
+                        row (style: "gap-2") {
                             button (variant: "outline", size: "icon", disabled: true) {
                                 icon (name: "chevron-left", style: "h-4 w-4") {}
                             }
@@ -371,7 +371,7 @@ widget DatatablePage {
             h2 "Row Selection"
             text (text: "Select rows with checkboxes for bulk operations.", style: "text-muted-foreground") {}
             preview-card (id: "datatable-selection") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     table {
                         table-header {
                             table-row {
@@ -404,7 +404,7 @@ widget DatatablePage {
                     }
                     row (style: "flex items-center justify-between") {
                         text (text: "1 of 3 row(s) selected.", style: "text-sm text-muted-foreground") {}
-                        row (gap: "2") {
+                        row (style: "gap-2") {
                             button (text: "Previous", variant: "outline", size: "sm") {}
                             button (text: "Next", variant: "outline", size: "sm") {}
                         }
@@ -472,7 +472,7 @@ widget DatatablePage {
             h2 "Column Visibility"
             text (text: "Toggle column visibility with a dropdown menu.", style: "text-muted-foreground") {}
             preview-card (id: "datatable-visibility") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     row (style: "flex items-center justify-between") {
                         input (placeholder: "Search...", style: "w-[200px]") {}
                         dropdown-menu {
@@ -512,10 +512,10 @@ widget DatatablePage {
             h2 "Complete Example"
             text (text: "A full-featured data table with all features combined.", style: "text-muted-foreground") {}
             preview-card (id: "datatable-complete") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     row (style: "flex items-center justify-between") {
                         input (placeholder: "Filter emails...", style: "w-[200px]") {}
-                        row (gap: "2") {
+                        row (style: "gap-2") {
                             dropdown-menu {
                                 dropdown-menu-trigger {
                                     button (variant: "outline", size: "sm") {
@@ -600,7 +600,7 @@ widget DatatablePage {
                                 }
                             }
                             text (text: "Page 1 of 1", style: "text-sm text-muted-foreground") {}
-                            row (gap: "2") {
+                            row (style: "gap-2") {
                                 button (variant: "outline", size: "icon", disabled: true) {
                                     icon (name: "chevron-left", style: "h-4 w-4") {}
                                 }
@@ -616,13 +616,13 @@ widget DatatablePage {
             // Features Overview
             h2 "Features"
             text (text: "The Data Table guide covers:", style: "text-muted-foreground") {}
-            col (gap: "2", style: "py-2") {
-                row (gap: "2") {
+            col (style: "gap-2 py-2") {
+                row (style: "gap-2") {
                     badge (text: "Sorting", variant: "secondary") {}
                     badge (text: "Filtering", variant: "secondary") {}
                     badge (text: "Pagination", variant: "secondary") {}
                 }
-                row (gap: "2") {
+                row (style: "gap-2") {
                     badge (text: "Row Selection", variant: "secondary") {}
                     badge (text: "Column Visibility", variant: "secondary") {}
                     badge (text: "Row Actions", variant: "secondary") {}

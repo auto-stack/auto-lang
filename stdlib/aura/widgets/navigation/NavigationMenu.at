@@ -30,7 +30,7 @@
 ///         NavigationMenuItem {
 ///             NavigationMenuTrigger { text: "Products" }
 ///             NavigationMenuContent {
-///                 col (gap: "2") {
+///                 col (style: "gap-2") {
 ///                     NavigationMenuLink (text: "Product 1", href: "/products/1") {}
 ///                     NavigationMenuLink (text: "Product 2", href: "/products/2") {}
 ///                 }
@@ -192,7 +192,7 @@ widget NavigationMenuLink {
 /// # Example
 /// ```auto
 /// NavigationMenuContent {
-///     col (gap: "2") {
+///     col (style: "gap-2") {
 ///         NavigationMenuLink (text: "Item 1", href: "/item1") {}
 ///         NavigationMenuLink (text: "Item 2", href: "/item2") {}
 ///     }

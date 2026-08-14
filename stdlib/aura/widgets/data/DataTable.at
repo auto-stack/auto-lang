@@ -157,7 +157,7 @@ widget DataTableNavButtons {
     }
 
     view {
-        row { gap: "2" }
+        row (style: "gap-2") {}
     }
 }
 

@@ -57,8 +57,8 @@ widget ToggleDemo {
     }
 
     view {
-        col (gap: "4") {
-            row (gap: "2") {
+        col (style: "gap-4") {
+            row (style: "gap-2") {
                 Toggle (pressed: .bold) {
                     text (text: "B", style: "font-bold") {}
                 }

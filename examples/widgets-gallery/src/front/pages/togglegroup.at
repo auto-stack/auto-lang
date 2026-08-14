@@ -13,7 +13,7 @@ widget TogglegroupPage {
 
             h2 "Simple"
             preview-card (id: "togglegroup-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     togglegroup (type: "multiple", variant: "outline") {
                         togglegroup-item (value: "bold", aria-label: "Toggle bold") {
                             text "B"

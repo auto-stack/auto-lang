@@ -20,7 +20,7 @@ widget AlertPage {
 
             h2 "Variants"
             preview-card (id: "alert-variants") {
-                col (gap: "4") {
+                col (style: "gap-4") {
                     alert (variant: "default") {
                         text "Default alert"
                     }

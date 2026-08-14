@@ -13,7 +13,7 @@ widget MenubarPage {
 
             h2 "Simple"
             preview-card (id: "menubar-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     menubar {}
                 }
             }

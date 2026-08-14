@@ -11,7 +11,7 @@ widget DialogPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dialog") {}
             h2 "Simple"
             preview-card (id: "dialog-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     dialog {
                         dialog-trigger "Open Dialog"
                         dialog-content {

@@ -38,7 +38,7 @@ widget Toast {
 
     view {
         div { style: .toastClass, role: "alert", "aria-live": "assertive" } {
-            col (gap: "1") {
+            col (style: "gap-1") {
                 if .title != "" {
                     ToastTitle (text: .title) {}
                 }

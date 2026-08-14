@@ -13,8 +13,8 @@ widget SonnerPage {
 
             h2 "Simple"
             preview-card (id: "sonner-basic") {
-                col (gap: "4") {
-                    row (gap: "2") {
+                col (style: "gap-4") {
+                    row (style: "gap-2") {
                         button (text: "Show Toast", variant: "outline") {}
                         button (text: "Show Success", variant: "outline") {}
                     }

@@ -18,9 +18,9 @@ widget SkeletonPage {
 
             h2 "Card Skeleton"
             preview-card (id: "skeleton-card") {
-                col (gap: "4", style: "w-64") {
+                col (style: "gap-4 w-64") {
                     skeleton (style: "h-12 w-12 rounded-full") {}
-                    col (gap: "2") {
+                    col (style: "gap-2") {
                         skeleton (style: "h-4 w-full") {}
                         skeleton (style: "h-4 w-3/4") {}
                     }

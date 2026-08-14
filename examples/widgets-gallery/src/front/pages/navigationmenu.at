@@ -13,7 +13,7 @@ widget NavigationmenuPage {
 
             h2 "Simple"
             preview-card (id: "navigationmenu-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     navigation-menu {}
                 }
             }

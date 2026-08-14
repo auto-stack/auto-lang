@@ -13,7 +13,7 @@ widget AvatarPage {
 
             h2 "Simple"
             preview-card (id: "avatar-basic") {
-                row (gap: "4") {
+                row (style: "gap-4") {
                     avatar (src: "https://github.com/shadcn.png", alt: "@shadcn") {}
                     avatar (fallback: "CN") {}
                 }

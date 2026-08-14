@@ -22,7 +22,7 @@ widget ToastPage {
 
             h2 "Variants (static preview)"
             preview-card (id: "toast-basic") {
-                col (gap: "3") {
+                col (style: "gap-3") {
                     col {
                         style: "rounded-lg border p-4 bg-background shadow-lg max-w-sm"
                         col {
@@ -52,8 +52,8 @@ widget ToastPage {
 
             h2 "Live Demo"
             preview-card (id: "toast-demo") {
-                col (gap: "3") {
-                    row (gap: "2") {
+                col (style: "gap-3") {
+                    row (style: "gap-2") {
                         button (text: "Success", variant: "outline", onClick: .showSuccessToast) {}
                         button (text: "Error", variant: "outline", onClick: .showErrorToast) {}
                         button (text: "Info", variant: "outline", onClick: .showInfoToast) {}
