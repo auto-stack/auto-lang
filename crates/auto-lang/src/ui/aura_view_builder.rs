@@ -914,45 +914,11 @@ impl<'a> AuraViewBuilder<'a> {
                         return self.render_child_widget(child_widget, props, events, bindings);
                     }
                 }
-                // Plan 410: category-section → column container (recurse its
-                // component-card children). Vue codegen builds a fancy card grid;
-                // VM renders a simple column so the home page's component list
-                // isn't blank (View::Empty).
-                if tag == "category-section" || tag == "category_section" {
-                    return self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
-                }
-                // Plan 410: component-card → navigable link button (to + name).
-                if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
-                    let to = self.extract_string(props, "to").unwrap_or_default();
-                    let name = self.extract_string(props, "name").unwrap_or_default();
-                    let desc = self.extract_string(props, "desc").unwrap_or_default();
-                    let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
-                    let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
-                }
-                // Fallback: recurse children with path tracking, filtering Empty.
-                let views: Vec<View<DynamicMessage>> = children
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, n)| {
-                        path.push(i);
-                        let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                        path.pop();
-                        if matches!(v, View::Empty) { None } else { Some(v) }
-                    })
-                    .collect();
-                if views.is_empty() {
-                    View::Empty
-                } else if views.len() == 1 {
-                    views.into_iter().next().unwrap()
-                } else {
-                    View::Column {
-                        children: views,
-                        spacing: 0,
-                        padding: 0,
-                        style: None,
-                    }
-                }
+                // Plan 409 §10 续 22: 其余 tag(category-section/component-card/
+                // preview-card/codeblock/table 等)delegate 到 untracked convert_element,
+                // 复用其完整实现(响应式 grid/卡片/代码块/表格/toggle 等),避免在
+                // tracked 重复维护。这些纯展示组件无 debug probe 需求(渲染正确即可)。
+                self.convert_element(tag, props, events, children, bindings)
             }
         }
     }
@@ -969,7 +935,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
@@ -1025,7 +991,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
@@ -1200,7 +1166,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
@@ -1677,48 +1643,53 @@ impl<'a> AuraViewBuilder<'a> {
                         center_x: true, center_y: true,
                         style: Style::parse("min-h-[100px] w-full p-4").ok(),
                     };
-                    // Code toggle footer(点击 __preview_toggle)。
+                    // Plan 409 §10 续 21: 合并 Code title 行与 Auto/Vue tab 行为一行
+                    // toolbar:[Auto][Vue] ... [▼](展开/收起)。代码区在下方(展开时)。
                     let arrow = if ui.show { "▼" } else { "▶" };
+                    let mk_tab = |label: &str, tab_str: &str, active: bool| View::Button {
+                        label: label.to_string(),
+                        content: None,
+                        onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: "__preview_tab".to_string(),
+                            args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
+                        },
+                        style: Style::parse(if active {
+                            "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100 border-b-2 border-primary"
+                        } else {
+                            "px-4 py-2 text-xs text-zinc-400 border-b-2 border-input"
+                        }).ok(),
+                        on_right_click: None,
+                    };
+                    let tabs_inner = View::Row {
+                        children: vec![
+                            mk_tab("Auto", "auto", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto)),
+                            mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
+                        ],
+                        spacing: 0, padding: 0, style: None,
+                    };
                     let toggle = View::Button {
-                        label: format!("Code  {}", arrow),
+                        label: arrow.to_string(),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
                             widget_name: self.widget_name.clone(),
                             event_name: "__preview_toggle".to_string(),
                             args: vec![auto_val::Value::str(&id)],
                         },
-                        style: Style::parse("w-full px-4 py-2 text-sm text-muted-foreground border-t").ok(),
+                        style: Style::parse("px-3 py-2 text-sm text-muted-foreground bg-transparent").ok(),
                         on_right_click: None,
                     };
-                    let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toggle];
-                    // 展开时:Auto/Vue tab + 代码区。
+                    let toolbar = View::Row {
+                        children: vec![tabs_inner, toggle],
+                        spacing: 0, padding: 0,
+                        style: Style::parse("items-center justify-between border-t bg-zinc-800 px-2 w-full").ok(),
+                    };
+                    let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
+                    // 展开时:代码区(按 tab 选 auto/vue)。
                     if ui.show {
                         let mut vg = VueGenerator::new();
                         let (auto_code, vue_code) = vg.gen_previewcard_code(props, children);
                         let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
-                        let mk_tab = |label: &str, tab_str: &str, active: bool| View::Button {
-                            label: label.to_string(),
-                            content: None,
-                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
-                                widget_name: self.widget_name.clone(),
-                                event_name: "__preview_tab".to_string(),
-                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
-                            },
-                            style: Style::parse(if active {
-                                "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100 border-b-2 border-primary"
-                            } else {
-                                "px-4 py-2 text-xs text-zinc-400 border-b-2 border-transparent"
-                            }).ok(),
-                            on_right_click: None,
-                        };
-                        let tabs = View::Row {
-                            children: vec![
-                                mk_tab("Auto", "auto", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto)),
-                                mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
-                            ],
-                            spacing: 0, padding: 0,
-                            style: Style::parse("border-t bg-zinc-800").ok(),
-                        };
                         let code_text = View::Text {
                             content: code,
                             style: Style::parse("font-mono text-sm text-zinc-50").ok(),
@@ -1728,7 +1699,6 @@ impl<'a> AuraViewBuilder<'a> {
                             padding: 0, width: None, height: None, center_x: false, center_y: false,
                             style: Style::parse("p-4 bg-zinc-950 border-t w-full").ok(),
                         };
-                        col_kids.push(tabs);
                         col_kids.push(code_area);
                     }
                     return View::Container {
@@ -2194,7 +2164,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
@@ -2267,7 +2237,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
@@ -2308,7 +2278,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let spacing = self.extract_u16(props, "spacing")
-            .or_else(|| self.extract_u16(props, "gap"))
+            .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);

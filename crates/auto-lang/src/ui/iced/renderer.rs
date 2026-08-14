@@ -1233,6 +1233,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // it. The button keeps its custom `move |_, _| bs` style below,
                 // so it still renders normally (status is ignored). Alt (capture
                 // off) restores the native onclick.
+                // Plan 409 §10 续 21: Fixed-height button 的 content 垂直居中
+                // (iced button padded 默认 content 顶部对齐,h-9/h-10/h-11 会偏上)。
+                // 包一层 Fill+center_y 容器让文字纵向居中。
+                let button_content: iced::Element<'static, M> = if iced_style.as_ref().map_or(false, |is| is.height.is_some()) {
+                    iced::widget::container(button_content)
+                        .height(iced::Length::Fill)
+                        .align_y(iced::alignment::Vertical::Center)
+                        .into()
+                } else {
+                    button_content
+                };
                 let mut btn = button(button_content);
                 if !inspect_capture_active() {
                     btn = btn.on_press(onclick);

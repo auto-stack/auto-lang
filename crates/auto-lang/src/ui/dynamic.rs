@@ -145,10 +145,17 @@ pub(crate) enum PreviewTab {
     Vue,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct PreviewCardUiState {
     pub show: bool,
     pub tab: PreviewTab,
+}
+
+// Plan 409 §10 续 21: preview-card 的代码默认展开(对齐 vue 首屏可见代码)。
+impl Default for PreviewCardUiState {
+    fn default() -> Self {
+        Self { show: true, tab: PreviewTab::default() }
+    }
 }
 
 

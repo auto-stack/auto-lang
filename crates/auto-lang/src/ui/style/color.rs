@@ -364,6 +364,7 @@ palette!(tailwind_zinc, [
     700 => (63, 63, 70),
     800 => (39, 39, 42),
     900 => (24, 24, 27),
+    950 => (9, 9, 11),
 ]);
 
 // Tailwind Neutral (neutral-50 through neutral-900)
