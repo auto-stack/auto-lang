@@ -1223,6 +1223,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(ref weight) = is.font_weight {
                             text_widget = text_widget.font(font_weight_to_iced(weight));
                         }
+                        // Plan 411: text-center/left/right on button labels — wide
+                        // buttons (e.g. preview-card tabs) need horizontal alignment.
+                        // Unlike the Text arm, ALWAYS Fill the label: is.width is the
+                        // BUTTON's width class (w-full here), not the text's, so the
+                        // is_none() guard would skip Fill and align_x would no-op.
+                        if let Some(ref align) = is.text_align {
+                            let _ = align;
+                            text_widget = text_widget.width(iced::Length::Fill);
+                            match align {
+                                crate::ui::style::iced_adapter::IcedTextAlign::Center => {
+                                    text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                crate::ui::style::iced_adapter::IcedTextAlign::Right => {
+                                    text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
+                            }
+                        }
                     }
                     text_widget.into()
                 };

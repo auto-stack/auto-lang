@@ -1654,19 +1654,26 @@ impl<'a> AuraViewBuilder<'a> {
                     };
                     let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
                     // Plan 411: active tab 下划线用 2px 主题色条实现 ——
-                    // border-b-2(仅底边)解析器不支持,且 iced button 边框四边统一,
-                    // 画不出底边专属线。条放在 button content 内(文字+条),button
-                    // 本体 p-0:Fill 条在 Shrink content 里自然收缩包裹,下划线宽度
-                    // = 含 px-4 内边距的完整 tab 宽(对齐 vue border-b-2),且不会
-                    // 像 content 外 w-full 条那样把 tab 列撑宽/左缘溢出 1px。
+                    // border-b-2(仅底边)解析器不支持,iced button 边框四边统一。
+                    // 结构:定宽列(w-[72px]) + Button(w-full + text-center,px-4
+                    // py-2 保证正常高度) + 2px 条(w-full)。Fill 只在 Fixed 宽度
+                    // 父级内解析 —— 此前条放在 Shrink 环境里导致 tab 被撑宽/
+                    // 左缘溢出;文字内边距写在 Text 上无效(py 丢失致高度塌陷)。
                     let mk_tab = |label: &str, tab_str: &str, active: bool| {
-                        let tab_text = View::Text {
-                            content: label.to_string(),
+                        let btn = View::Button {
+                            label: label.to_string(),
+                            content: None,
+                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: "__preview_tab".to_string(),
+                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
+                            },
                             style: Style::parse(if active {
-                                "px-4 py-2 text-xs font-medium text-zinc-100"
+                                "w-full px-4 py-2 text-xs font-medium text-center bg-zinc-900 text-zinc-100"
                             } else {
-                                "px-4 py-2 text-xs text-zinc-400"
+                                "w-full px-4 py-2 text-xs text-center text-zinc-400"
                             }).ok(),
+                            on_right_click: None,
                         };
                         let underline = View::Container {
                             child: Box::new(View::Empty),
@@ -1674,23 +1681,13 @@ impl<'a> AuraViewBuilder<'a> {
                             center_x: false, center_y: false,
                             style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
                         };
-                        let content = View::Column {
-                            children: vec![tab_text, underline],
-                            spacing: 0, padding: 0, style: None,
-                        };
-                        View::Button {
-                            label: label.to_string(),
-                            content: Some(Box::new(content)),
-                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
-                                widget_name: self.widget_name.clone(),
-                                event_name: "__preview_tab".to_string(),
-                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
-                            },
-                            style: Style::parse(if active { "p-0 bg-zinc-900" } else { "p-0" }).ok(),
-                            on_right_click: None,
+                        View::Column {
+                            children: vec![btn, underline],
+                            spacing: 0, padding: 0,
+                            style: Style::parse("w-[72px]").ok(),
                         }
                     };
-                    let tabs_inner = View::Row {
+let tabs_inner = View::Row {
                         children: vec![
                             mk_tab("Auto", "auto", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto)),
                             mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
