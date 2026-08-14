@@ -1905,6 +1905,24 @@ export default router
 
     /// Generate scaffolding only (package.json, vite.config, tsconfig, etc.)
     /// WITHOUT overwriting component .vue files that were already written incrementally.
+    /// Write src/router/index.ts when routes exist. main.ts unconditionally
+    /// imports './router' for routed projects, so every scaffold/run path
+    /// must leave this file in place — the incremental scaffolding path
+    /// historically skipped it, breaking vite import resolution.
+    pub fn ensure_router_file(&self) -> AutoResult<()> {
+        if !self.has_routes {
+            return Ok(());
+        }
+        let router_dir = self.output_dir.join("src/router");
+        fs::create_dir_all(&router_dir)
+            .map_err(|e| format!("Failed to create src/router: {}", e))?;
+        let router_content = self.generate_router_file();
+        fs::write(router_dir.join("index.ts"), router_content)
+            .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
+        println!("{}", "  ✓ Generated src/router/index.ts".bright_green());
+        Ok(())
+    }
+
     pub fn generate_scaffolding_only(&self) -> AutoResult<()> {
         let output_path = &self.output_dir;
         let src_dir = output_path.join("src");
@@ -1968,6 +1986,9 @@ export default router
         let tsconfig = generate_tsconfig();
         fs::write(output_path.join("tsconfig.json"), &tsconfig)
             .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
+
+        // Router file — main.ts imports './router' whenever routes exist.
+        self.ensure_router_file()?;
 
         println!("{}", "✓ Generated scaffolding (preserved incremental components)".bright_green());
 
@@ -2893,6 +2914,9 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.generate_scaffolding_only()?;
     } else if changed_count == 0 {
         println!("▶ Step {}/{}: Checking source files...", current_step, total_steps);
+        // Self-heal router/index.ts — older scaffolding-only runs left it
+        // missing, which breaks `import router from './router'` in main.ts.
+        project.ensure_router_file()?;
     }
 
     // Copy handmade theme assets if available
