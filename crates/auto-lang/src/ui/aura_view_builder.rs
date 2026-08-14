@@ -1653,24 +1653,20 @@ impl<'a> AuraViewBuilder<'a> {
                         vg.gen_previewcard_code(props, children)
                     };
                     let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
-                    // Plan 411: active tab 下划线用独立 2px 主题色条实现 ——
+                    // Plan 411: active tab 下划线用 2px 主题色条实现 ——
                     // border-b-2(仅底边)解析器不支持,且 iced button 边框四边统一,
-                    // 画不出底边专属线;条形占位让 active/inactive tab 等高对齐。
+                    // 画不出底边专属线。条放在 button content 内(文字+条),button
+                    // 本体 p-0:Fill 条在 Shrink content 里自然收缩包裹,下划线宽度
+                    // = 含 px-4 内边距的完整 tab 宽(对齐 vue border-b-2),且不会
+                    // 像 content 外 w-full 条那样把 tab 列撑宽/左缘溢出 1px。
                     let mk_tab = |label: &str, tab_str: &str, active: bool| {
-                        let btn = View::Button {
-                            label: label.to_string(),
-                            content: None,
-                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
-                                widget_name: self.widget_name.clone(),
-                                event_name: "__preview_tab".to_string(),
-                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
-                            },
+                        let tab_text = View::Text {
+                            content: label.to_string(),
                             style: Style::parse(if active {
-                                "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100"
+                                "px-4 py-2 text-xs font-medium text-zinc-100"
                             } else {
                                 "px-4 py-2 text-xs text-zinc-400"
                             }).ok(),
-                            on_right_click: None,
                         };
                         let underline = View::Container {
                             child: Box::new(View::Empty),
@@ -1678,7 +1674,21 @@ impl<'a> AuraViewBuilder<'a> {
                             center_x: false, center_y: false,
                             style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
                         };
-                        View::Column { children: vec![btn, underline], spacing: 0, padding: 0, style: None }
+                        let content = View::Column {
+                            children: vec![tab_text, underline],
+                            spacing: 0, padding: 0, style: None,
+                        };
+                        View::Button {
+                            label: label.to_string(),
+                            content: Some(Box::new(content)),
+                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: "__preview_tab".to_string(),
+                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
+                            },
+                            style: Style::parse(if active { "p-0 bg-zinc-900" } else { "p-0" }).ok(),
+                            on_right_click: None,
+                        }
                     };
                     let tabs_inner = View::Row {
                         children: vec![
