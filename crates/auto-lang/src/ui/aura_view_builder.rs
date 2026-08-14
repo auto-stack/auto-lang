@@ -953,9 +953,20 @@ impl<'a> AuraViewBuilder<'a> {
             .filter(|v| !is_visually_empty(v))
             .collect();
 
-        let mut builder = View::<DynamicMessage>::col()
-            .spacing(spacing)
-            .padding(padding);
+        // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
+        // 布局语义被类覆盖(元素语义为默认,显式类优先)。
+        if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
+            return View::Grid { cols, gap, cells: child_views, style };
+        }
+        let use_row = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Row));
+
+        let mut builder = if use_row {
+            View::<DynamicMessage>::row()
+        } else {
+            View::<DynamicMessage>::col()
+        }
+        .spacing(spacing)
+        .padding(padding);
         // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
         // style_clone 传给 Scrollable,让 build_scrollable 读到 flex-1 → height(Fill)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
@@ -1048,6 +1059,34 @@ impl<'a> AuraViewBuilder<'a> {
             .unwrap_or(1);
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
+
+        // Plan 412 F1/F5: 语义 grid 元素的 class 里出现 grid-cols-N / gap-N 时
+        // 类优先(与 CSS class 覆盖 attribute 的语义一致;gap 类是 Tailwind 单位
+        // ×4 = 像素,gap prop 保持像素原值)。
+        let (cols, gap) = match style.as_ref() {
+            Some(s) => {
+                let c = s
+                    .classes
+                    .iter()
+                    .rev()
+                    .find_map(|cl| match cl {
+                        StyleClass::GridCols(n) => Some((*n as usize).max(1)),
+                        _ => None,
+                    })
+                    .unwrap_or(cols);
+                let g = s
+                    .classes
+                    .iter()
+                    .rev()
+                    .find_map(|cl| match cl {
+                        StyleClass::Gap(size) => Some(size.to_pixels()),
+                        _ => None,
+                    })
+                    .unwrap_or(gap);
+                (c, g)
+            }
+            None => (cols, gap),
+        };
 
         // Flatten `for`-loop children into individual cells, assigning each cell
         // a sequential `cell_idx` path so build-time paths match the render-time
@@ -1200,9 +1239,22 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
 
-        let mut builder = View::<DynamicMessage>::row()
-            .spacing(spacing)
-            .padding(padding);
+        // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
+        // 布局语义被类覆盖。
+        if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
+            let cells: Vec<View<DynamicMessage>> =
+                child_views.into_iter().filter(|v| !is_visually_empty(v)).collect();
+            return View::Grid { cols, gap, cells, style };
+        }
+        let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
+
+        let mut builder = if use_col {
+            View::<DynamicMessage>::col()
+        } else {
+            View::<DynamicMessage>::row()
+        }
+        .spacing(spacing)
+        .padding(padding);
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
@@ -1217,6 +1269,9 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Tracked convert_container — mirrors `convert_container`.
+    /// Plan 412 F1: style 布局类重派生 — `grid grid-cols-N` → View::Grid、
+    /// `flex-col` → View::Column、`flex` → View::Row(背景/边框/尺寸类留在
+    /// style 上,由渲染层继续消费)。无布局类走原 Container 路径。
     fn convert_container_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -1231,43 +1286,76 @@ impl<'a> AuraViewBuilder<'a> {
         let height = self.extract_u16(props, "height");
         let style = self.extract_style(props);
 
-        let child_view = if children.is_empty() {
-            View::Empty
-        } else if children.len() == 1 {
-            path.push(0);
-            let v = self.convert_node_tracked_ctx(&children[0], path, id_map, probe, bindings);
-            path.pop();
-            v
-        } else {
-            let views: Vec<View<DynamicMessage>> = children
-                .iter()
-                .enumerate()
-                .map(|(i, n)| {
-                    path.push(i);
-                    let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                    path.pop();
-                    v
-                })
-                .collect();
-            View::Column {
-                children: views,
-                spacing: 0,
-                padding: 0,
-                style: None,
-            }
-        };
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                path.push(i);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                path.pop();
+                v
+            })
+            .filter(|v| !is_visually_empty(v))
+            .collect();
 
-        let mut builder = View::container(child_view).padding(padding);
-        if let Some(w) = width {
-            builder = builder.width(w);
+        match rederive_layout(style.as_ref()) {
+            Some(RederivedLayout::Grid { cols, gap }) => {
+                let mut style = style.unwrap_or_default();
+                // Container 的 legacy prop(padding/width/height)搬进 style,
+                // Grid 渲染走 apply_column_style 只读 style。
+                if padding > 0 && !style.classes.iter().any(|c| matches!(c, StyleClass::Padding(_))) {
+                    style = style.add(StyleClass::Padding(SizeValue::Fixed(padding)));
+                }
+                if let Some(w) = width {
+                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                        style = style.add(StyleClass::Width(SizeValue::Pixels(w as f32)));
+                    }
+                }
+                if let Some(h) = height {
+                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Height(_))) {
+                        style = style.add(StyleClass::Height(SizeValue::Pixels(h as f32)));
+                    }
+                }
+                View::Grid { cols, gap, cells: child_views, style: Some(style) }
+            }
+            Some(RederivedLayout::Row) => View::Row {
+                children: child_views,
+                spacing: 0,
+                padding,
+                style,
+            },
+            Some(RederivedLayout::Column) => View::Column {
+                children: child_views,
+                spacing: 0,
+                padding,
+                style,
+            },
+            None => {
+                let child_view = if child_views.is_empty() {
+                    View::Empty
+                } else if child_views.len() == 1 {
+                    child_views.into_iter().next().unwrap()
+                } else {
+                    View::Column {
+                        children: child_views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                };
+                let mut builder = View::container(child_view).padding(padding);
+                if let Some(w) = width {
+                    builder = builder.width(w);
+                }
+                if let Some(h) = height {
+                    builder = builder.height(h);
+                }
+                if let Some(s) = style {
+                    builder = builder.with_style(s);
+                }
+                builder.build()
+            }
         }
-        if let Some(h) = height {
-            builder = builder.height(h);
-        }
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        }
-        builder.build()
     }
 
     /// Tracked convert_center — mirrors `convert_center`.
@@ -1535,6 +1623,8 @@ impl<'a> AuraViewBuilder<'a> {
                         "amber" => "bg-amber-500",
                         "purple" => "bg-purple-500",
                         "rose" => "bg-rose-500",
+                        // Plan 412 F7: Layout 分组 sky(#0ea5e9)
+                        "sky" => "bg-sky-500",
                         _ => "bg-primary",
                     };
                     let dot = View::Container {
@@ -1852,6 +1942,8 @@ let tabs_inner = View::Row {
                         "amber" => ("border-amber-500/40", "bg-amber-500/10", "text-amber-400"),
                         "purple" => ("border-purple-500/40", "bg-purple-500/10", "text-purple-400"),
                         "rose" => ("border-rose-500/40", "bg-rose-500/10", "text-rose-400"),
+                        // Plan 412 F7: Layout 分组 sky(#0ea5e9)
+                        "sky" => ("border-sky-500/40", "bg-sky-500/10", "text-sky-400"),
                         _ => ("border-border", "bg-primary/10", "text-primary"),
                     };
                     // icon box:圆角方块 + bg-{color}-500/10 + 居中的彩色图标。
@@ -2252,9 +2344,26 @@ let tabs_inner = View::Row {
             })
             .collect();
 
-        let mut builder = View::<DynamicMessage>::col()
-            .spacing(spacing)
-            .padding(padding);
+        // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
+        // 布局语义被类覆盖(元素语义为默认,显式类优先)。absolute hoist 在前,
+        // 浮层不占格。
+        let red = rederive_layout(style.as_ref());
+        if let Some(RederivedLayout::Grid { cols, gap }) = red {
+            let base = View::Grid { cols, gap, cells: child_views, style };
+            if let Some((content, position)) = floats.into_iter().next() {
+                return View::Overlay { base: Box::new(base), content: Box::new(content), position };
+            }
+            return base;
+        }
+        let use_row = matches!(red, Some(RederivedLayout::Row));
+
+        let mut builder = if use_row {
+            View::<DynamicMessage>::row()
+        } else {
+            View::<DynamicMessage>::col()
+        }
+        .spacing(spacing)
+        .padding(padding);
 
         // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
@@ -2369,9 +2478,24 @@ let tabs_inner = View::Row {
             }
         }
 
-        let mut builder = View::<DynamicMessage>::row()
-            .spacing(spacing)
-            .padding(padding);
+        // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
+        // 布局语义被类覆盖。
+        if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
+            let cells: Vec<View<DynamicMessage>> = child_views
+                .into_iter()
+                .filter(|v| !is_visually_empty(v))
+                .collect();
+            return View::Grid { cols, gap, cells, style };
+        }
+        let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
+
+        let mut builder = if use_col {
+            View::<DynamicMessage>::col()
+        } else {
+            View::<DynamicMessage>::row()
+        }
+        .spacing(spacing)
+        .padding(padding);
 
         if let Some(s) = style {
             builder = builder.with_style(s);
@@ -2477,6 +2601,32 @@ let tabs_inner = View::Row {
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
         let style = self.extract_style(props);
 
+        // Plan 412 F1/F5: class 里的 grid-cols-N / gap-N 优先于 prop(同 tracked 版)。
+        let (cols, gap) = match style.as_ref() {
+            Some(s) => {
+                let c = s
+                    .classes
+                    .iter()
+                    .rev()
+                    .find_map(|cl| match cl {
+                        StyleClass::GridCols(n) => Some((*n as usize).max(1)),
+                        _ => None,
+                    })
+                    .unwrap_or(cols);
+                let g = s
+                    .classes
+                    .iter()
+                    .rev()
+                    .find_map(|cl| match cl {
+                        StyleClass::Gap(size) => Some(size.to_pixels()),
+                        _ => None,
+                    })
+                    .unwrap_or(gap);
+                (c, g)
+            }
+            None => (cols, gap),
+        };
+
         // Flatten `for`-loop children into individual cells: a bare `for`
         // inside a grid must yield one cell per iteration, not a single
         // wrapping Column (Plan 323). Other children convert to one cell each.
@@ -2507,6 +2657,8 @@ let tabs_inner = View::Row {
 
     /// Convert a container element.
     // Tracked twin: convert_container_tracked_ctx — keep widget logic in sync.
+    /// Plan 412 F1: style 布局类重派生(grid→Grid / flex-col→Column / flex→Row),
+    /// 与 tracked 版保持一致;无布局类走原 Container 路径。
     fn convert_container(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -2518,35 +2670,68 @@ let tabs_inner = View::Row {
         let height = self.extract_u16(props, "height");
         let style = self.extract_style(props);
 
-        let child_view = if children.is_empty() {
-            View::Empty
-        } else if children.len() == 1 {
-            self.convert_node_with(&children[0], bindings)
-        } else {
-            let views: Vec<View<DynamicMessage>> = children
-                .iter()
-                .map(|n| self.convert_node_with(n, bindings))
-                .collect();
-            View::Column {
-                children: views,
-                spacing: 0,
-                padding: 0,
-                style: None,
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .map(|n| self.convert_node_with(n, bindings))
+            .filter(|v| !is_visually_empty(v))
+            .collect();
+
+        match rederive_layout(style.as_ref()) {
+            Some(RederivedLayout::Grid { cols, gap }) => {
+                let mut style = style.unwrap_or_default();
+                if padding > 0 && !style.classes.iter().any(|c| matches!(c, StyleClass::Padding(_))) {
+                    style = style.add(StyleClass::Padding(SizeValue::Fixed(padding)));
+                }
+                if let Some(w) = width {
+                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                        style = style.add(StyleClass::Width(SizeValue::Pixels(w as f32)));
+                    }
+                }
+                if let Some(h) = height {
+                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Height(_))) {
+                        style = style.add(StyleClass::Height(SizeValue::Pixels(h as f32)));
+                    }
+                }
+                View::Grid { cols, gap, cells: child_views, style: Some(style) }
             }
-        };
-
-        let mut builder = View::container(child_view).padding(padding);
-        if let Some(w) = width {
-            builder = builder.width(w);
+            Some(RederivedLayout::Row) => View::Row {
+                children: child_views,
+                spacing: 0,
+                padding,
+                style,
+            },
+            Some(RederivedLayout::Column) => View::Column {
+                children: child_views,
+                spacing: 0,
+                padding,
+                style,
+            },
+            None => {
+                let child_view = if child_views.is_empty() {
+                    View::Empty
+                } else if child_views.len() == 1 {
+                    child_views.into_iter().next().unwrap()
+                } else {
+                    View::Column {
+                        children: child_views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                };
+                let mut builder = View::container(child_view).padding(padding);
+                if let Some(w) = width {
+                    builder = builder.width(w);
+                }
+                if let Some(h) = height {
+                    builder = builder.height(h);
+                }
+                if let Some(s) = style {
+                    builder = builder.with_style(s);
+                }
+                builder.build()
+            }
         }
-        if let Some(h) = height {
-            builder = builder.height(h);
-        }
-        if let Some(s) = style {
-            builder = builder.with_style(s);
-        }
-
-        builder.build()
     }
 
     /// Convert a center element: wraps child in a centered container.
@@ -2631,6 +2816,10 @@ let tabs_inner = View::Row {
     }
 
     /// Convert a spacer element: fills remaining space in a flex layout.
+    /// Plan 412 F6: 默认 w-full h-full — 主轴吃剩余空间(Row 中宽 Fill、Column
+    /// 中高 Fill,双向 Fill 让 spacer 在任一方向的 flex 容器里都占据主轴剩余,
+    /// 对齐 vue 侧 spacer→div 补 `flex-1` 的语义),交叉轴 Fill 复现 CSS 默认
+    /// stretch。显式 style(spacer (style: "w-8"))不受影响。
     fn convert_spacer(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -2643,7 +2832,7 @@ let tabs_inner = View::Row {
             builder = builder.with_style(s);
         } else {
             builder = builder.with_style(
-                Style::parse("w-full").unwrap()
+                Style::parse("w-full h-full").unwrap()
             );
         }
         builder.build()
@@ -3927,6 +4116,64 @@ fn eval_initial_without_vm(expr: &Expr) -> Value {
     }
 }
 
+/// Plan 412 F1: 布局语义重派生结果。容器/div/col/row 元素的 style 里出现
+/// 显式 Tailwind 布局类时,布局语义由类覆盖(与 CSS 中 `.grid` 在样式表中
+/// 后于 `.flex` 声明、`display` 覆盖语义一致):`grid grid-cols-N` 优先于
+/// `flex-col`,`flex-col` 优先于 `flex`。`*-reverse` 只影响渲染方向
+/// (build_row/build_column 反序),不改变派生出的 View 类型。
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RederivedLayout {
+    /// flex / flex-row / flex-row-reverse → 横向
+    Row,
+    /// flex-col / flex-col-reverse → 纵向
+    Column,
+    /// grid + grid-cols-N → 真实网格(gap 取 gap 类像素值,无则 0)
+    Grid { cols: usize, gap: u16 },
+}
+
+/// Plan 412 F1: 从 style 类重派生布局语义。无显式布局类 → None(元素默认)。
+/// 响应式前缀(md:grid-cols-2)已在 StyleClass::parse_single 剥离,自动参与。
+fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedLayout> {
+    use crate::ui::style::StyleClass;
+    let s = style?;
+    let has = |pred: &dyn Fn(&StyleClass) -> bool| s.classes.iter().any(pred);
+    let is_col = |c: &StyleClass| {
+        matches!(c, StyleClass::FlexCol | StyleClass::FlexColReverse)
+    };
+    let is_row = |c: &StyleClass| {
+        matches!(c, StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexRowReverse)
+    };
+    let is_grid = |c: &StyleClass| matches!(c, StyleClass::Grid);
+    // 多个 grid-cols-N 并存时取最后一个:Tailwind mobile-first,后写的断点类
+    // 覆盖基础类(md:grid-cols-2 剥离前缀后排在 grid-cols-1 之后)。
+    let grid_cols = s.classes.iter().rev().find_map(|c| match c {
+        StyleClass::GridCols(n) => Some(*n as usize),
+        _ => None,
+    });
+    // 仲裁顺序与 CSS display 覆盖一致:grid > flex-col > flex。
+    if has(&is_grid) {
+        if let Some(cols) = grid_cols {
+            let gap = s
+                .classes
+                .iter()
+                .rev()
+                .find_map(|c| match c {
+                    StyleClass::Gap(size) => Some(size.to_pixels()),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            return Some(RederivedLayout::Grid { cols: cols.max(1), gap });
+        }
+    }
+    if has(&is_col) {
+        return Some(RederivedLayout::Column);
+    }
+    if has(&is_row) {
+        return Some(RederivedLayout::Row);
+    }
+    None
+}
+
 /// Plan 370 (Issue 1): returns true for views that carry no visible content
 /// and should be dropped from layouts to avoid spurious blank space. Covers
 /// `View::Empty` and `View::Text { content: "", .. }` (the latter renders as
@@ -4566,6 +4813,113 @@ mod tests {
             }
             other => panic!("Expected View::Grid with 7 cells, got {:?} (kind)",
                 std::mem::discriminant(&other)),
+        }
+    }
+
+    // ========================================================================
+    // Plan 412 F1 — style 布局类重派生(grid/flex-col/flex 覆盖元素语义)
+    // ========================================================================
+
+    fn styled_node(tag: &str, style: &str, child_count: usize) -> AuraNode {
+        let mut node = AuraNode::element(tag).with_prop("style", Expr::Str(style.to_string().into()));
+        for i in 0..child_count {
+            node = node.with_child(AuraNode::Text(AuraTextContent::Literal(format!("{}", i + 1))));
+        }
+        node
+    }
+
+    fn build_plain(node: &AuraNode) -> View<DynamicMessage> {
+        let widget = make_test_widget("T", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "T");
+        builder.build(node)
+    }
+
+    #[test]
+    fn plan412_container_grid_classes_rederive_to_real_grid() {
+        // /grid 存量不一致的根因修复:div + "grid grid-cols-3 gap-4"(CSS grid
+        // 写法)在 VM 必须获得真实网格,gap-4 = 4 units × 4px = 16px。
+        let view = build_plain(&styled_node("div", "grid grid-cols-3 gap-4", 6));
+        match view {
+            View::Grid { cols, gap, cells, style } => {
+                assert_eq!(cols, 3);
+                assert_eq!(gap, 16, "gap-4 → 16px");
+                assert_eq!(cells.len(), 6);
+                assert!(style.is_some(), "style 类保留在结果 View 上");
+            }
+            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan412_responsive_grid_cols_participate() {
+        // 响应式前缀剥离(Plan 411 P0-B)与重派生叠加:md:grid-cols-2 生效。
+        let view = build_plain(&styled_node("div", "grid grid-cols-1 md:grid-cols-2 gap-4", 4));
+        match view {
+            View::Grid { cols, .. } => assert_eq!(cols, 2, "md: 剥离后 grid-cols-2 参与派生"),
+            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan412_container_flex_classes_rederive() {
+        // flex-col → Column;flex → Row(无子节点差异,只看 View 类型)
+        match build_plain(&styled_node("div", "flex flex-col gap-2", 2)) {
+            View::Column { children, style, .. } => {
+                assert_eq!(children.len(), 2);
+                assert!(style.is_some());
+            }
+            other => panic!("flex flex-col → Column, got {:?}", std::mem::discriminant(&other)),
+        }
+        match build_plain(&styled_node("div", "flex items-center gap-2", 2)) {
+            View::Row { children, .. } => assert_eq!(children.len(), 2),
+            other => panic!("flex → Row, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan412_cross_class_arbitration_on_semantic_elements() {
+        // col + flex 类 → Row;row + flex-col → Column(显式类覆盖元素语义)
+        match build_plain(&styled_node("col", "flex w-full", 2)) {
+            View::Row { .. } => {}
+            other => panic!("col+flex → Row, got {:?}", std::mem::discriminant(&other)),
+        }
+        match build_plain(&styled_node("row", "flex-col", 2)) {
+            View::Column { .. } => {}
+            other => panic!("row+flex-col → Column, got {:?}", std::mem::discriminant(&other)),
+        }
+        // col + grid 类 → Grid(/grid 页写法)
+        match build_plain(&styled_node("col", "grid grid-cols-3 gap-4 w-full max-w-lg", 6)) {
+            View::Grid { cols, gap, .. } => {
+                assert_eq!((cols, gap), (3, 16));
+            }
+            other => panic!("col+grid → Grid, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan412_grid_element_class_cols_override_prop() {
+        // 语义 grid 元素:class 里的 grid-cols-N/gap-N 优先于 prop(同 CSS)。
+        let mut node = AuraNode::element("grid")
+            .with_prop("cols", Expr::Int(4))
+            .with_prop("gap", Expr::Int(8))
+            .with_prop("style", Expr::Str("grid-cols-2 gap-4".to_string().into()));
+        node = node.with_child(AuraNode::Text(AuraTextContent::Literal("x".to_string())));
+        match build_plain(&node) {
+            View::Grid { cols, gap, .. } => {
+                assert_eq!(cols, 2, "grid-cols-2 类覆盖 cols prop");
+                assert_eq!(gap, 16, "gap-4 类(16px)覆盖 gap prop(8px)");
+            }
+            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan412_container_without_layout_classes_stays_container() {
+        // 无布局类 → 原 Container 路径(回归保护)
+        match build_plain(&styled_node("div", "p-4 bg-card rounded-lg border", 1)) {
+            View::Container { .. } => {}
+            other => panic!("plain div → Container, got {:?}", std::mem::discriminant(&other)),
         }
     }
 

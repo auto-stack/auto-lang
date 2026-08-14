@@ -462,6 +462,85 @@ pub enum StyleClass {
 
     /// Grid row start: row-start-{1-7} - L3
     RowStart(u8),
+
+    // ========== Layout Extended (Plan 412 — Layout Gallery) ==========
+    /// Column gap: gap-x-{N} — main-axis spacing on a Row
+    GapX(SizeValue),
+
+    /// Row gap: gap-y-{N} — main-axis spacing on a Column
+    GapY(SizeValue),
+
+    /// Horizontal space between children: space-x-{N} (≈ gap-x)
+    SpaceX(SizeValue),
+
+    /// Vertical space between children: space-y-{N} (≈ gap-y)
+    SpaceY(SizeValue),
+
+    /// justify-content: space-around
+    JustifyAround,
+
+    /// justify-content: space-evenly
+    JustifyEvenly,
+
+    /// align-items: stretch (cross-axis fill)
+    ItemsStretch,
+
+    /// flex-direction: row-reverse
+    FlexRowReverse,
+
+    /// flex-direction: column-reverse
+    FlexColReverse,
+
+    /// flex: 1 1 auto (grow from content basis)
+    FlexAuto,
+
+    /// flex: 0 1 auto (CSS default)
+    FlexInitial,
+
+    /// flex: none (neither grow nor shrink)
+    FlexNone,
+
+    /// flex-grow: 1
+    Grow,
+
+    /// flex-grow: 0
+    Grow0,
+
+    /// flex-shrink: 1 (default; shrink-0 已有 Shrink0)
+    Shrink,
+
+    /// flex-wrap: wrap — VM degrades to single row (Plan 412 §5 降级矩阵)
+    FlexWrap,
+
+    /// flex-wrap: wrap-reverse — VM degrades to single row
+    FlexWrapReverse,
+
+    /// flex-wrap: nowrap
+    FlexNowrap,
+
+    /// align-self: start — VM degrades to container's items-* (Plan 412 §5)
+    SelfStart,
+
+    /// align-self: center — VM degrades to container's items-*
+    SelfCenter,
+
+    /// align-self: end — VM degrades to container's items-*
+    SelfEnd,
+
+    /// align-self: stretch — VM degrades to container's items-*
+    SelfStretch,
+
+    /// order: N — VM renders source order (Plan 412 §5)
+    Order(i16),
+
+    /// inset: N (all offsets) — VM has no absolute positioning
+    Inset(f32),
+
+    /// position: fixed — VM degrades to in-flow position
+    Fixed,
+
+    /// position: sticky — VM degrades to in-flow position
+    Sticky,
 }
 
 impl StyleClass {
@@ -588,16 +667,32 @@ impl StyleClass {
             return Ok(StyleClass::MarginRight(size));
         }
 
+        // Plan 412: gap-x-/gap-y- MUST be matched before the bare `gap-`
+        // prefix below, otherwise "gap-x-4" would strip to "x-4" and error.
+        if let Some(rest) = class.strip_prefix("gap-x-") {
+            let size = parse_gap_value(rest, arbitrary_value)?;
+            return Ok(StyleClass::GapX(size));
+        }
+        if let Some(rest) = class.strip_prefix("gap-y-") {
+            let size = parse_gap_value(rest, arbitrary_value)?;
+            return Ok(StyleClass::GapY(size));
+        }
+
         // Parse gap: gap-{0-12} or gap-[Npx] or fractional gap-{0.5/1.5/2.5...}
         if let Some(rest) = class.strip_prefix("gap-") {
-            let size = parse_size_value_arbitrary(rest, arbitrary_value).or_else(|_| {
-                // Plan 409 §10 续: SizeValue::Fixed 是 u16,不支持 fractional。
-                // Tailwind 0.5/1.5/2.5/3.5 常用(1 unit = 4px)→ 用 Pixels。
-                rest.parse::<f32>()
-                    .map(|f| SizeValue::Pixels(f * 4.0))
-                    .map_err(|e| e.to_string())
-            })?;
+            let size = parse_gap_value(rest, arbitrary_value)?;
             return Ok(StyleClass::Gap(size));
+        }
+
+        // Plan 412: space-x-N / space-y-N — Tailwind 的 per-child margin 间隔,
+        // 视觉效果等价于 gap-N,VM 按 gap 处理(vue 端是原生 CSS 类,天然精确)。
+        if let Some(rest) = class.strip_prefix("space-x-") {
+            let size = parse_gap_value(rest, arbitrary_value)?;
+            return Ok(StyleClass::SpaceX(size));
+        }
+        if let Some(rest) = class.strip_prefix("space-y-") {
+            let size = parse_gap_value(rest, arbitrary_value)?;
+            return Ok(StyleClass::SpaceY(size));
         }
 
         // ========== Colors (L1) ==========
@@ -819,6 +914,27 @@ impl StyleClass {
             return Ok(StyleClass::Flex1);
         }
 
+        // Plan 412: flex 伸缩变体。flex-auto≈flex-1(basis auto);
+        // flex-initial/flex-none 是 CSS 默认/固定(iced 默认即不伸缩,no-op)。
+        match class {
+            "flex-auto" => return Ok(StyleClass::FlexAuto),
+            "flex-initial" => return Ok(StyleClass::FlexInitial),
+            "flex-none" => return Ok(StyleClass::FlexNone),
+            "grow" => return Ok(StyleClass::Grow),
+            "grow-0" => return Ok(StyleClass::Grow0),
+            "shrink" => return Ok(StyleClass::Shrink),
+            _ => {}
+        }
+
+        // Plan 412: flex-wrap 系。iced 无 wrap widget — 解析保存,VM 渲染降级
+        // 为单行(Plan 412 §5 降级矩阵),一次性 eprintln 提示。
+        match class {
+            "flex-wrap" => return Ok(StyleClass::FlexWrap),
+            "flex-wrap-reverse" => return Ok(StyleClass::FlexWrapReverse),
+            "flex-nowrap" => return Ok(StyleClass::FlexNowrap),
+            _ => {}
+        }
+
         // Parse flex-row
         if class == "flex-row" {
             return Ok(StyleClass::FlexRow);
@@ -829,11 +945,20 @@ impl StyleClass {
             return Ok(StyleClass::FlexCol);
         }
 
+        // Plan 412: 反向布局 — children 反序(build 期,双端语义一致)。
+        match class {
+            "flex-row-reverse" => return Ok(StyleClass::FlexRowReverse),
+            "flex-col-reverse" => return Ok(StyleClass::FlexColReverse),
+            _ => {}
+        }
+
         // Parse items-*
         match class {
             "items-center" => return Ok(StyleClass::ItemsCenter),
             "items-start" => return Ok(StyleClass::ItemsStart),
             "items-end" => return Ok(StyleClass::ItemsEnd),
+            // Plan 412: align-items: stretch(交叉轴 Fill,渲染层处理)
+            "items-stretch" => return Ok(StyleClass::ItemsStretch),
             _ => {}
         }
 
@@ -843,6 +968,18 @@ impl StyleClass {
             "justify-between" => return Ok(StyleClass::JustifyBetween),
             "justify-start" => return Ok(StyleClass::JustifyStart),
             "justify-end" => return Ok(StyleClass::JustifyEnd),
+            // Plan 412: space-around / space-evenly(FillPortion spacer 精确模拟)
+            "justify-around" => return Ok(StyleClass::JustifyAround),
+            "justify-evenly" => return Ok(StyleClass::JustifyEvenly),
+            _ => {}
+        }
+
+        // Plan 412: align-self — iced 无 per-child 对齐,解析保存,渲染降级到容器 items。
+        match class {
+            "self-start" => return Ok(StyleClass::SelfStart),
+            "self-center" => return Ok(StyleClass::SelfCenter),
+            "self-end" => return Ok(StyleClass::SelfEnd),
+            "self-stretch" => return Ok(StyleClass::SelfStretch),
             _ => {}
         }
 
@@ -988,7 +1125,28 @@ impl StyleClass {
         match class {
             "relative" => return Ok(StyleClass::Relative),
             "absolute" => return Ok(StyleClass::Absolute),
+            // Plan 412: fixed/sticky — iced 无视口定位,解析保存,VM 降级为就近布局位。
+            "fixed" => return Ok(StyleClass::Fixed),
+            "sticky" => return Ok(StyleClass::Sticky),
             _ => {}
+        }
+
+        // Plan 412: order-N — iced 无 per-child 排序,解析保存,VM 按源码序渲染。
+        if let Some(rest) = class.strip_prefix("order-") {
+            if let Ok(v) = rest.parse::<i16>() {
+                return Ok(StyleClass::Order(v));
+            }
+        }
+
+        // Plan 412: inset-N(all offsets)— iced 无绝对定位,解析保存(降级)。
+        // 支持 inset-0 / inset-N(N×4px)/ inset-[Npx]。
+        if let Some(rest) = class.strip_prefix("inset-") {
+            if let Some(px) = parse_pixel_arbitrary(arbitrary_value) {
+                return Ok(StyleClass::Inset(px));
+            }
+            if let Ok(n) = rest.parse::<f32>() {
+                return Ok(StyleClass::Inset(n * 4.0));
+            }
         }
 
         // Parse position offsets: top-[Npx], -top-[Npx], bottom/right/left
@@ -1219,6 +1377,20 @@ fn parse_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Result<Si
         }
     }
     parse_size_value(input)
+}
+
+/// Parse a gap-like value (gap/gap-x/gap-y/space-x/space-y): named sizes,
+/// arbitrary [Npx], integers (Tailwind units) or fractional (0.5/1.5/2.5…).
+/// Plan 412: extracted from the gap- branch so gap-x-/gap-y-/space-* share it.
+fn parse_gap_value(input: &str, arbitrary: Option<&str>) -> Result<SizeValue, String> {
+    parse_size_value_arbitrary(input, arbitrary).or_else(|_| {
+        // Plan 409 §10 续: SizeValue::Fixed 是 u16,不支持 fractional。
+        // Tailwind 0.5/1.5/2.5/3.5 常用(1 unit = 4px)→ 用 Pixels。
+        input
+            .parse::<f32>()
+            .map(|f| SizeValue::Pixels(f * 4.0))
+            .map_err(|e| e.to_string())
+    })
 }
 
 /// Parse a float pixel value from arbitrary syntax: [Npx]
@@ -1486,6 +1658,55 @@ mod tests {
     fn test_parse_grid_position() {
         assert_eq!(StyleClass::parse_single("col-start-2"), Ok(StyleClass::ColStart(2)));
         assert_eq!(StyleClass::parse_single("row-start-1"), Ok(StyleClass::RowStart(1)));
+    }
+
+    // ========== Plan 412 Tests ==========
+
+    #[test]
+    fn test_parse_plan412_axis_gaps() {
+        // gap-x-/gap-y- 不能落进裸 gap- 前缀(会因 "x-4" 解析失败而丢类)
+        assert_eq!(StyleClass::parse_single("gap-x-4"), Ok(StyleClass::GapX(SizeValue::Fixed(4))));
+        assert_eq!(StyleClass::parse_single("gap-y-1.5"), Ok(StyleClass::GapY(SizeValue::Pixels(6.0))));
+        assert_eq!(StyleClass::parse_single("space-x-2"), Ok(StyleClass::SpaceX(SizeValue::Fixed(2))));
+        assert_eq!(StyleClass::parse_single("space-y-8"), Ok(StyleClass::SpaceY(SizeValue::Fixed(8))));
+        // 裸 gap 不回归
+        assert_eq!(StyleClass::parse_single("gap-4"), Ok(StyleClass::Gap(SizeValue::Fixed(4))));
+    }
+
+    #[test]
+    fn test_parse_plan412_justify_items() {
+        assert_eq!(StyleClass::parse_single("justify-around"), Ok(StyleClass::JustifyAround));
+        assert_eq!(StyleClass::parse_single("justify-evenly"), Ok(StyleClass::JustifyEvenly));
+        assert_eq!(StyleClass::parse_single("items-stretch"), Ok(StyleClass::ItemsStretch));
+        assert_eq!(StyleClass::parse_single("self-center"), Ok(StyleClass::SelfCenter));
+        assert_eq!(StyleClass::parse_single("self-start"), Ok(StyleClass::SelfStart));
+    }
+
+    #[test]
+    fn test_parse_plan412_flex_variants() {
+        assert_eq!(StyleClass::parse_single("flex-auto"), Ok(StyleClass::FlexAuto));
+        assert_eq!(StyleClass::parse_single("flex-initial"), Ok(StyleClass::FlexInitial));
+        assert_eq!(StyleClass::parse_single("flex-none"), Ok(StyleClass::FlexNone));
+        assert_eq!(StyleClass::parse_single("flex-row-reverse"), Ok(StyleClass::FlexRowReverse));
+        assert_eq!(StyleClass::parse_single("flex-col-reverse"), Ok(StyleClass::FlexColReverse));
+        assert_eq!(StyleClass::parse_single("flex-wrap"), Ok(StyleClass::FlexWrap));
+        assert_eq!(StyleClass::parse_single("grow"), Ok(StyleClass::Grow));
+        assert_eq!(StyleClass::parse_single("grow-0"), Ok(StyleClass::Grow0));
+        assert_eq!(StyleClass::parse_single("shrink"), Ok(StyleClass::Shrink));
+        // 既有 flex 类不回归
+        assert_eq!(StyleClass::parse_single("flex-1"), Ok(StyleClass::Flex1));
+        assert_eq!(StyleClass::parse_single("shrink-0"), Ok(StyleClass::Shrink0));
+    }
+
+    #[test]
+    fn test_parse_plan412_position_degraded() {
+        assert_eq!(StyleClass::parse_single("fixed"), Ok(StyleClass::Fixed));
+        assert_eq!(StyleClass::parse_single("sticky"), Ok(StyleClass::Sticky));
+        assert_eq!(StyleClass::parse_single("inset-0"), Ok(StyleClass::Inset(0.0)));
+        assert_eq!(StyleClass::parse_single("inset-4"), Ok(StyleClass::Inset(16.0)));
+        assert_eq!(StyleClass::parse_single("order-2"), Ok(StyleClass::Order(2)));
+        // 响应式前缀剥离对新类同样生效
+        assert_eq!(StyleClass::parse_single("md:grid-cols-2"), Ok(StyleClass::GridCols(2)));
     }
 
 }

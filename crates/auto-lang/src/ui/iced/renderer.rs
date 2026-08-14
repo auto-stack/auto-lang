@@ -119,11 +119,14 @@ pub trait IntoIcedElement<M: Clone + Debug + 'static> {
 }
 
 /// Helper to compute effective spacing: style.gap takes priority, then legacy spacing.
-fn effective_spacing(legacy: u16, style: Option<&Style>) -> f32 {
+/// Plan 412: axis-aware — Row consumes gap-x (axis-specific wins over bare gap),
+/// Column consumes gap-y. The other axis is ignored, mirroring CSS grid/flex semantics.
+fn effective_spacing(legacy: u16, style: Option<&Style>, horizontal: bool) -> f32 {
     if let Some(s) = style {
         let iced_style = IcedStyle::from_style(s);
-        if let Some(gap) = iced_style.gap {
-            return gap;
+        let axis = if horizontal { iced_style.gap_x } else { iced_style.gap_y };
+        if let Some(g) = axis.or(iced_style.gap) {
+            return g;
         }
     }
     legacy as f32
@@ -507,20 +510,28 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 }
 
 /// Emulate CSS `justify-content` on an iced Row, which has no native main-axis
-/// justification. Returns `(leading, between, trailing)` flags telling the row
-/// builder where to inject `Space`-with-Fill-width spacers. Layout is
-/// left-to-right, so Fill spacers compete for — and evenly split — the row's
-/// remaining width:
-///   start  → none
-///   end    → leading spacer pushes children to the right edge
-///   center → leading + trailing spacers flank the children
+/// justification. Returns `(leading, between, trailing)` spacer weights telling
+/// the row builder where to inject `Space`-with-FillPortion spacers. Layout is
+/// left-to-right, so Fill spacers compete for — and split — the row's
+/// remaining width by portion weight:
+///   start   → none
+///   end     → leading spacer pushes children to the right edge
+///   center  → leading + trailing spacers flank the children (equal halves)
 ///   between → a spacer between each adjacent pair spreads them out
-fn row_justify_spacers(j: Option<IcedJustify>) -> (bool, bool, bool) {
+///   around  → edges get half a gap, pairs a full gap: lead/trail=1, between=2
+///             (with n children the total weight is 2+2(n-1)=2n → each unit is
+///             W/(2n) so lead = W/(2n) = d/2 and between = W/n = d — exactly
+///             CSS space-around)
+///   evenly  → n+1 equal spacers including both edges → each = W/(n+1) = d
+///             (exactly CSS space-evenly)
+fn row_justify_spacers(j: Option<IcedJustify>) -> (Option<u16>, Option<u16>, Option<u16>) {
     match j {
-        Some(IcedJustify::Center) => (true, false, true),
-        Some(IcedJustify::End) => (true, false, false),
-        Some(IcedJustify::Between) => (false, true, false),
-        _ => (false, false, false), // Start / None
+        Some(IcedJustify::Center) => (Some(1), None, Some(1)),
+        Some(IcedJustify::End) => (Some(1), None, None),
+        Some(IcedJustify::Between) => (None, Some(1), None),
+        Some(IcedJustify::Around) => (Some(1), Some(2), Some(1)),
+        Some(IcedJustify::Evenly) => (Some(1), Some(1), Some(1)),
+        _ => (None, None, None), // Start / None
     }
 }
 
@@ -716,48 +727,107 @@ fn apply_container_style<M: Clone + Debug + 'static>(
 
 /// Build a Row from pre-built child elements, applying justify-spacers and
 /// the shared `apply_row_style` (width/height/margin/visual wrap + id).
+/// Plan 412: flex-row-reverse flips children; items-stretch wraps each child
+/// in a height-Fill container (iced has no cross-axis stretch alignment).
 fn build_row<M: Clone + Debug + 'static>(
-    children: Vec<iced::Element<'static, M>>,
+    mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
-    let eff_spacing = effective_spacing(spacing, style);
-    let justify = style
-        .map(|s| IcedStyle::from_style(s).justify_content)
-        .and_then(|j| j);
-    let (lead, between, trail) = row_justify_spacers(justify);
-    let mut row_widget = row([]).spacing(eff_spacing);
-    if lead {
-        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    let eff_spacing = effective_spacing(spacing, style, true);
+    let iced_style = style.map(|s| IcedStyle::from_style(s));
+    let justify = iced_style.as_ref().and_then(|is| is.justify_content);
+    if iced_style.as_ref().map_or(false, |is| is.row_reverse) {
+        children.reverse();
     }
+    let (lead, between, trail) = row_justify_spacers(justify);
+    let spacer = |portion: u16| {
+        iced::widget::Space::new().width(iced::Length::FillPortion(portion))
+    };
+    let mut row_widget = row([]).spacing(eff_spacing);
+    if let Some(p) = lead {
+        row_widget = row_widget.push(spacer(p));
+    }
+    let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
     let mut first = true;
     for child in children {
-        if between && !first {
-            row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+        if let Some(p) = between {
+            if !first {
+                row_widget = row_widget.push(spacer(p));
+            }
         }
         first = false;
+        let child = if stretch {
+            container(child).height(iced::Length::Fill).into()
+        } else {
+            child
+        };
         row_widget = row_widget.push(child);
     }
-    if trail {
-        row_widget = row_widget.push(iced::widget::Space::new().width(iced::Length::Fill));
+    if let Some(p) = trail {
+        row_widget = row_widget.push(spacer(p));
     }
     apply_row_style(row_widget, padding, style, widget_id)
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
+/// Plan 412: flex-col-reverse flips children; items-stretch wraps each child
+/// in a width-Fill container; justify-between/around/evenly get vertical
+/// Fill spacers (mirroring build_row's spacer emulation; Center/End keep the
+/// container-wrap path inside apply_column_style).
 fn build_column<M: Clone + Debug + 'static>(
-    children: Vec<iced::Element<'static, M>>,
+    mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
     padding: u16,
     style: Option<&Style>,
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
-    let eff_spacing = effective_spacing(spacing, style);
+    let eff_spacing = effective_spacing(spacing, style, false);
+    let iced_style = style.map(|s| IcedStyle::from_style(s));
+    if iced_style.as_ref().map_or(false, |is| is.col_reverse) {
+        children.reverse();
+    }
+    let justify = iced_style.as_ref().and_then(|is| is.justify_content);
+    let distributed = matches!(
+        justify,
+        Some(IcedJustify::Between | IcedJustify::Around | IcedJustify::Evenly)
+    );
+    let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
+    let spacer = |portion: u16| {
+        iced::widget::Space::new().height(iced::Length::FillPortion(portion))
+    };
     let mut col_widget = column([]).spacing(eff_spacing);
+    let mut first = true;
     for child in children {
+        if distributed {
+            if let Some(p) = match justify {
+                Some(IcedJustify::Between) if !first => Some(1),
+                Some(IcedJustify::Around) => Some(if first { 1 } else { 2 }),
+                Some(IcedJustify::Evenly) => Some(1),
+                _ => None,
+            } {
+                col_widget = col_widget.push(spacer(p));
+            }
+        }
+        first = false;
+        let child = if stretch {
+            container(child).width(iced::Length::Fill).into()
+        } else {
+            child
+        };
         col_widget = col_widget.push(child);
+    }
+    if distributed {
+        // Trailing spacer for around (half gap) and evenly (full gap);
+        // between has no edge spacers.
+        match justify {
+            Some(IcedJustify::Around) | Some(IcedJustify::Evenly) => {
+                col_widget = col_widget.push(spacer(1));
+            }
+            _ => {}
+        }
     }
     apply_column_style(col_widget, padding, style, widget_id)
 }
@@ -916,65 +986,160 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     col.into()
 }
 
-/// Build a CSS-Grid-like layout from pre-built cell elements: wrap `cells`
-/// into rows of `cols`, pad the final incomplete row with empty Fill cells
-/// (so every track is reserved), force each row to full width (so its
-/// Fill-width cells distribute into `cols` equal columns — without this a
-/// Shrink row full of Fill children collapses vertically, the rust-mode
-/// "tower" bug), and stack the rows in a column. The grid's `style` is
-/// applied to that outer column via the shared `apply_column_style`.
+/// Plan 412 F2: per-cell metadata the grid builder needs but can't recover
+/// from an already-built `iced::Element`. Callers extract these from the cell
+/// `View`'s style before converting it: `col-span-N` → span, any `w-*` width
+/// class → the cell opts the whole grid into compact (content-width) tracks.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GridCellSpec {
+    pub span: usize,
+    pub explicit_width: bool,
+}
+
+/// Extract `(span, explicit_width)` from a grid cell `View`'s style.
+fn grid_cell_spec<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> GridCellSpec {
+    let style = extract_view_style(view);
+    let mut spec = GridCellSpec { span: 1, explicit_width: false };
+    if let Some(s) = style {
+        for c in &s.classes {
+            match c {
+                StyleClass::ColSpan(n) => spec.span = (*n as usize).max(1),
+                StyleClass::Width(_) => spec.explicit_width = true,
+                _ => {}
+            }
+        }
+    }
+    spec
+}
+
+/// Plan 412 F2: CSS grid auto-placement(简化版)。按源码顺序填充,当前列 +
+/// span 超出 `cols` 则换行;span > cols 钳制到 cols。返回每行的
+/// `(cell_idx, start_col, span)` 列表(纯函数,便于单测分配器边界:尾行填充、
+/// span 钳制、整行 span)。row-span 不做(降级为 col-span,Plan 412 §5)。
+fn grid_row_placements(spans: &[usize], cols: usize) -> Vec<Vec<(usize, usize, usize)>> {
+    let cols = cols.max(1);
+    let mut placements: Vec<Vec<(usize, usize, usize)>> = Vec::new();
+    let mut current: Vec<(usize, usize, usize)> = Vec::new();
+    let mut cur_col = 0usize;
+    for (i, &raw_span) in spans.iter().enumerate() {
+        let span = raw_span.clamp(1, cols);
+        if cur_col + span > cols {
+            placements.push(std::mem::take(&mut current));
+            cur_col = 0;
+        }
+        current.push((i, cur_col, span));
+        cur_col += span;
+    }
+    if !current.is_empty() {
+        placements.push(current);
+    }
+    placements
+}
+
+/// Build a CSS-Grid-like layout from pre-built cell elements. Two track modes
+/// (Plan 412 F2):
 ///
-/// This is the SINGLE source of truth for grid decomposition (Plan 319),
-/// replacing the three ad-hoc col-of-rows sites that previously diverged.
+/// **equal tracks** (default — no cell carries an explicit `w-*` class):
+/// CSS `grid-cols-N` means N equal tracks filling the grid width. Emulated by
+/// giving every row `width(Fill)` + `spacing(0)` and placing each cell in a
+/// `FillPortion(span)` container whose horizontal padding is the slot's share
+/// of the gap. With all rows summing to exactly `cols` portions every slot is
+/// `W/cols` wide, and cell `i` (starting column `c`, span `s`) renders at
+/// `c·g/cols` from its slot's left edge with width `s·W/cols − (cols−s)·g/cols`
+/// — pixel-exact CSS grid geometry (`span cell = s tracks + (s−1) gaps`),
+/// including col-span via the CSS auto-placement simplification (fill
+/// sequentially, wrap when `col + span > cols`). row-span degrades to
+/// col-span (documented in Plan 412 §5).
+///
+/// **compact tracks** (any cell has `w-*`, e.g. the colour-picker's `w-8 h-8`
+/// swatches): the previous behaviour — cells pushed directly (Shrink), rows
+/// Shrink-width so the grid hugs its content; keeps the Plan 402 §13.10
+/// sizing semantics and the Plan 411 colour-picker parity.
+///
+/// This is the SINGLE source of truth for grid decomposition (Plan 319).
 fn build_grid<M: Clone + Debug + 'static>(
     cols: usize,
     gap: u16,
-    cells: Vec<iced::Element<'static, M>>,
+    cells: Vec<(iced::Element<'static, M>, GridCellSpec)>,
     style: Option<&Style>,
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let cols = cols.max(1);
-
-    // Pad the final row to `cols` with empty Fill cells (CSS-Grid
-    // "all tracks reserved" semantics).
-    let mut cells = cells;
-    if !cells.is_empty() {
-        let pad = cols - (cells.len() % cols);
-        if pad != cols {
-            for _ in 0..pad {
-                cells.push(text("").width(iced::Length::Fill).into());
-            }
-        }
+    if cells.is_empty() {
+        return apply_column_style(column([]), 0, style, widget_id);
     }
 
-    // Plan 402 §13.10: cells are used directly — the button's own width/height
-    // classes (e.g. w-8 h-8 → Fixed 32px) give each cell a fixed size. No Fill
-    // wrapper (previously each cell was wrapped in column[cell].width(Fill),
-    // which stretched every cell to an equal share of the full row width =
-    // huge whitespace between small buttons). The row itself uses Shrink width
-    // so the grid is a compact N×N block, centered by the parent col's
-    // items-center alignment.
-    let mut iter = cells.into_iter();
-    let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
-    loop {
-        let mut row_b = row([]).spacing(gap as f32);
-        let mut count = 0;
-        for _ in 0..cols {
-            match iter.next() {
-                Some(cell) => {
-                    row_b = row_b.push(cell);
-                    count += 1;
-                }
-                None => break,
+    let equal_tracks = !cells.iter().any(|(_, spec)| spec.explicit_width);
+
+    if !equal_tracks {
+        // Compact mode: legacy path — direct cells, final row padded with
+        // empty Fill cells, Shrink rows stacked in a gap-spaced column.
+        let mut els: Vec<iced::Element<'static, M>> = cells.into_iter().map(|(el, _)| el).collect();
+        let pad = cols - (els.len() % cols);
+        if pad != cols {
+            for _ in 0..pad {
+                els.push(text("").width(iced::Length::Fill).into());
             }
         }
-        if count == 0 {
-            break;
+        let mut iter = els.into_iter();
+        let mut rows: Vec<iced::Element<'static, M>> = Vec::new();
+        loop {
+            let mut row_b = row([]).spacing(gap as f32);
+            let mut count = 0;
+            for _ in 0..cols {
+                match iter.next() {
+                    Some(cell) => {
+                        row_b = row_b.push(cell);
+                        count += 1;
+                    }
+                    None => break,
+                }
+            }
+            if count == 0 {
+                break;
+            }
+            rows.push(row_b.into());
+        }
+        let col_widget = column(rows).spacing(gap as f32).align_x(iced::Alignment::Center);
+        return apply_column_style(col_widget, 0, style, widget_id);
+    }
+
+    // Equal-track mode: CSS auto-placement via the shared pure placer.
+    let spans: Vec<usize> = cells.iter().map(|(_, spec)| spec.span).collect();
+    let placements = grid_row_placements(&spans, cols);
+
+    let gap_f = gap as f32;
+    let cols_f = cols as f32;
+    // Placement order is ascending cell index, so a sequential iterator over
+    // `cells` lines up with `placements` exactly.
+    let mut iter = cells.into_iter();
+    let mut rows: Vec<iced::Element<'static, M>> = Vec::with_capacity(placements.len());
+    for row_places in placements {
+        let mut row_b = row([]).spacing(0.0).width(iced::Length::Fill);
+        let mut occupied = 0usize;
+        for (_idx, start, span) in row_places {
+            let (el, _spec) = iter.next().expect("placement count matches cells");
+            let cell = container(el)
+                .width(iced::Length::FillPortion(span as u16))
+                .padding(iced::Padding {
+                    top: 0.0,
+                    bottom: 0.0,
+                    left: start as f32 * gap_f / cols_f,
+                    right: (cols - start - span) as f32 * gap_f / cols_f,
+                });
+            row_b = row_b.push(cell);
+            occupied += span;
+        }
+        // Pad the trailing run so every row totals `cols` portions — without
+        // this the final row's cells would stretch into the empty tracks.
+        if occupied < cols {
+            row_b = row_b.push(
+                iced::widget::Space::new().width(iced::Length::FillPortion((cols - occupied) as u16)),
+            );
         }
         rows.push(row_b.into());
     }
-
-    let col_widget = column(rows).spacing(gap as f32).align_x(iced::Alignment::Center);
+    let col_widget = column(rows).spacing(gap_f).align_x(iced::Alignment::Center);
     apply_column_style(col_widget, 0, style, widget_id)
 }
 
@@ -1483,8 +1648,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Grid { cols, gap, cells, style } => {
-                let els: Vec<iced::Element<'static, M>> =
-                    cells.into_iter().map(|c| c.into_iced()).collect();
+                let els: Vec<(iced::Element<'static, M>, GridCellSpec)> = cells
+                    .into_iter()
+                    .map(|c| {
+                        let spec = grid_cell_spec(&c);
+                        (c.into_iced(), spec)
+                    })
+                    .collect();
                 build_grid(cols, gap, els, style.as_ref(), None)
             }
 
@@ -1560,7 +1730,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::List { items, spacing, style } => {
-                let eff_spacing = effective_spacing(spacing, style.as_ref());
+                let eff_spacing = effective_spacing(spacing, style.as_ref(), false);
                 let eff_padding = if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
                     iced_style.padding.unwrap_or(0.0)
@@ -2035,6 +2205,15 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "palette" => r#"<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>"#,
         "book" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>"#,
         "folder" => r#"<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
+        // Plan 412 F7: Layout 分组 nav-link/卡片图标
+        "move-horizontal" => r#"<polyline points="18 8 22 12 18 16"/><polyline points="6 8 2 12 6 16"/><line x1="2" x2="22" y1="12" y2="12"/>"#,
+        "align-center" => r#"<line x1="21" x2="3" y1="6" y2="6"/><line x1="17" x2="7" y1="12" y2="12"/><line x1="19" x2="5" y1="18" y2="18"/>"#,
+        "space" => r#"<path d="M22 14v-4"/><path d="M2 14v-4"/><path d="M8 12h8"/><path d="M4 17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1Z"/>"#,
+        "sidebar" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>"#,
+        "ruler" => r#"<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.3 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>"#,
+        "frame" => r#"<path d="M22 6H2"/><path d="M22 18H2"/><path d="M6 2v20"/><path d="M18 2v20"/>"#,
+        "chevrons-down" => r#"<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>"#,
+        "monitor" => r#"<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>"#,
         _ => return None,
     };
     // Use a small static cache to avoid re-formatting.
@@ -7586,7 +7765,7 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
         props.push(("align".into(), match a { IcedAlign::Start => "start", IcedAlign::Center => "center", IcedAlign::End => "end" }.into()));
     }
     if let Some(ref j) = is.justify_content {
-        props.push(("justify".into(), match j { IcedJustify::Start => "start", IcedJustify::Center => "center", IcedJustify::End => "end", IcedJustify::Between => "between" }.into()));
+        props.push(("justify".into(), match j { IcedJustify::Start => "start", IcedJustify::Center => "center", IcedJustify::End => "end", IcedJustify::Between => "between", IcedJustify::Around => "around", IcedJustify::Evenly => "evenly" }.into()));
     }
     props
 }
@@ -7927,10 +8106,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 dbg_props.insert(0, ("gap".into(), gap.to_string()));
             }
             dbg_props.insert(0, ("cols".into(), cols.to_string()));
-            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(cells.len());
+            let mut els: Vec<(iced::Element<'static, IcedMessage>, GridCellSpec)> =
+                Vec::with_capacity(cells.len());
             for (i, cell) in cells.into_iter().enumerate() {
                 path.push(i);
-                els.push(render_dynamic_view(cell, debug_ctx, path));
+                let spec = grid_cell_spec(&cell);
+                els.push((render_dynamic_view(cell, debug_ctx, path), spec));
                 path.pop();
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
@@ -9322,6 +9503,57 @@ mod tests {
     fn test_text_conversion() {
         let view: AbstractView<TestMessage> = AbstractView::text("Hello".to_string());
         let _element = view.into_iced();
+    }
+
+    // ========== Plan 412 F2 — grid auto-placement ==========
+
+    #[test]
+    fn test_plan412_grid_placements_plain_and_tail_row() {
+        // 5 cells, cols=3 → rows [0,1,2], [3,4](尾行不满,由 Space 槽补齐)
+        let p = grid_row_placements(&[1, 1, 1, 1, 1], 3);
+        assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 1), (2, 2, 1)], vec![(3, 0, 1), (4, 1, 1)]]);
+    }
+
+    #[test]
+    fn test_plan412_grid_placements_col_span_wraps() {
+        // cols=3, [1,1,2,1] → 第 3 个 cell span-2 放不下(2+2>3)换行占 0..2
+        let p = grid_row_placements(&[1, 1, 2, 1], 3);
+        assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)]]);
+        // span-2 恰好填满尾位(1+2=3)不换行
+        let p = grid_row_placements(&[1, 2], 3);
+        assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 2)]]);
+    }
+
+    #[test]
+    fn test_plan412_grid_placements_span_clamped_to_cols() {
+        // span > cols → 钳制为整行
+        let p = grid_row_placements(&[5, 1], 3);
+        assert_eq!(p, vec![vec![(0, 0, 3)], vec![(1, 0, 1)]]);
+    }
+
+    #[test]
+    fn test_plan412_grid_placements_full_span_sequence() {
+        // /grid-span 混排画廊:cols=3, [2,1,1,3]
+        // (0,0,2)+(1,2,1) 填满首行;1 换行;(3) span-3=整行再换行
+        let p = grid_row_placements(&[2, 1, 1, 3], 3);
+        assert_eq!(
+            p,
+            vec![
+                vec![(0, 0, 2), (1, 2, 1)],
+                vec![(2, 0, 1)],
+                vec![(3, 0, 3)],
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan412_justify_spacer_math() {
+        // around: lead/trail 权重 1、between 权重 2(总 2n → 端=半格)
+        assert_eq!(row_justify_spacers(Some(IcedJustify::Around)), (Some(1), Some(2), Some(1)));
+        // evenly: n+1 个等权(含两端)
+        assert_eq!(row_justify_spacers(Some(IcedJustify::Evenly)), (Some(1), Some(1), Some(1)));
+        assert_eq!(row_justify_spacers(Some(IcedJustify::Between)), (None, Some(1), None));
+        assert_eq!(row_justify_spacers(None), (None, None, None));
     }
 
     #[test]

@@ -41,6 +41,39 @@ pub fn window_width() -> f32 {
     WINDOW_WIDTH.with(|c| c.get())
 }
 
+// Plan 412 §1.3:降级必须"显式" — iced 物理不支持的能力(flex-wrap/self-*/order/
+// inset/fixed/sticky)在首次遇到时 eprintln 提示一次(开发期可见),之后静默降级。
+// from_style 每帧都会被调用,必须去重避免刷屏。
+fn warn_layout_degradation(class_name: &str) {
+    thread_local! {
+        static WARNED: std::cell::RefCell<std::collections::HashSet<&'static str>> =
+            std::cell::RefCell::new(std::collections::HashSet::new());
+    }
+    // 泛型 class(order-N)按桶去重:泄漏 'static 通过手工固定 key 集合实现。
+    let key: &'static str = match class_name {
+        "flex-wrap" => "flex-wrap",
+        "flex-wrap-reverse" => "flex-wrap-reverse",
+        "self-start" => "self-start",
+        "self-center" => "self-center",
+        "self-end" => "self-end",
+        "self-stretch" => "self-stretch",
+        "order-N" => "order-N",
+        "inset-N" => "inset-N",
+        "fixed" => "fixed",
+        "sticky" => "sticky",
+        _ => "other",
+    };
+    WARNED.with(|w| {
+        if w.borrow_mut().insert(key) {
+            eprintln!(
+                "[auto-lang/plan412] `{}` is not supported by the native (iced) renderer — \
+                 degrading per Plan 412 §5 (see /position page degradation matrix).",
+                class_name
+            );
+        }
+    });
+}
+
 /// HSL → RGB conversion (for accent palettes).
 fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
     let h = h as f64 / 360.0;
@@ -140,6 +173,9 @@ pub struct IcedStyle {
     pub margin_left_auto: bool,       // ml-auto: push element to right in row
     pub margin_right_auto: bool,      // mr-auto: push element to left in row
     pub gap: Option<f32>,
+    // Plan 412: axis-specific gaps — Row consumes gap_x, Column consumes gap_y.
+    pub gap_x: Option<f32>,
+    pub gap_y: Option<f32>,
 
     // Colors (L1)
     pub background_color: Option<iced::Color>,
@@ -186,6 +222,12 @@ pub struct IcedStyle {
     // Layout (L1 Core)
     pub align_items: Option<IcedAlign>,
     pub justify_content: Option<IcedJustify>,
+
+    // Plan 412 — Layout engine extras
+    pub items_stretch: bool,          // cross-axis Fill (build_row/build_column wrap children)
+    pub row_reverse: bool,           // flex-row-reverse: reverse children at build time
+    pub col_reverse: bool,           // flex-col-reverse: reverse children at build time
+    pub flex_wrap: bool,             // flex-wrap: iced 无 wrap — 降级单行标记(仅提示)
 
     // Grid (L3)
     // NOTE: Iced doesn't support grid layout - these fields are ignored
@@ -234,6 +276,10 @@ pub enum IcedJustify {
     Center,
     End,
     Between,
+    // Plan 412: 由 FillPortion spacer 精确模拟(lead/trail=1, between=2)。
+    Around,
+    // Plan 412: n+1 个等权 spacer(含两端)。
+    Evenly,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -322,6 +368,8 @@ impl IcedStyle {
             margin_left_auto: false,
             margin_right_auto: false,
             gap: None,
+            gap_x: None,
+            gap_y: None,
             background_color: None,
             text_color: None,
             gradient_dir: None,
@@ -350,6 +398,10 @@ impl IcedStyle {
             overflow_y: None,
             align_items: None,
             justify_content: None,
+            items_stretch: false,
+            row_reverse: false,
+            col_reverse: false,
+            flex_wrap: false,
             grid: false,        // Not supported by Iced
             grid_cols: None,    // Not supported by Iced
             grid_rows: None,    // Not supported by Iced
@@ -475,6 +527,19 @@ impl IcedStyle {
             }
             StyleClass::Gap(size) => {
                 self.gap = Some(size.to_pixels() as f32);
+            }
+            StyleClass::GapX(size) => {
+                self.gap_x = Some(size.to_pixels() as f32);
+            }
+            StyleClass::GapY(size) => {
+                self.gap_y = Some(size.to_pixels() as f32);
+            }
+            // Plan 412: space-x/y 视觉等价 gap-x/y(Tailwind per-child margin ≈ gap)。
+            StyleClass::SpaceX(size) => {
+                if self.gap_x.is_none() { self.gap_x = Some(size.to_pixels() as f32); }
+            }
+            StyleClass::SpaceY(size) => {
+                if self.gap_y.is_none() { self.gap_y = Some(size.to_pixels() as f32); }
             }
 
             // ========== Colors (L1) ==========
@@ -760,6 +825,12 @@ impl IcedStyle {
             StyleClass::ItemsEnd => {
                 self.align_items = Some(IcedAlign::End);
             }
+            // Plan 412: items-stretch — 交叉轴 Fill。由 build_row/build_column
+            // 把每个 child 包进交叉轴 Fill 容器实现(iced Row/Column 无 stretch 对齐)。
+            StyleClass::ItemsStretch => {
+                self.items_stretch = true;
+                self.align_items = None;
+            }
             StyleClass::JustifyCenter => {
                 self.justify_content = Some(IcedJustify::Center);
             }
@@ -771,6 +842,58 @@ impl IcedStyle {
             }
             StyleClass::JustifyEnd => {
                 self.justify_content = Some(IcedJustify::End);
+            }
+            StyleClass::JustifyAround => {
+                self.justify_content = Some(IcedJustify::Around);
+            }
+            StyleClass::JustifyEvenly => {
+                self.justify_content = Some(IcedJustify::Evenly);
+            }
+
+            // ========== Plan 412 — Flex variants ==========
+            // flex-auto/grow ≈ flex-1(主轴 Fill);flex-initial/flex-none/grow-0/
+            // shrink 为 CSS 默认或 no-op(iced 子元素默认 Shrink,天然不伸缩)。
+            StyleClass::FlexAuto | StyleClass::Grow => {
+                if self.width.is_none() {
+                    self.width = Some(IcedSize::Full);
+                }
+            }
+            StyleClass::FlexInitial | StyleClass::FlexNone | StyleClass::Grow0
+            | StyleClass::Shrink => {}
+            StyleClass::FlexRowReverse => {
+                self.row_reverse = true;
+            }
+            StyleClass::FlexColReverse => {
+                self.col_reverse = true;
+            }
+            StyleClass::FlexWrap | StyleClass::FlexWrapReverse => {
+                // iced 0.14 无 wrapped row — 降级为单行(Plan 412 §5 降级矩阵),
+                // 一次性提示,不静默歪曲。
+                self.flex_wrap = true;
+                warn_layout_degradation(match class {
+                    StyleClass::FlexWrap => "flex-wrap",
+                    _ => "flex-wrap-reverse",
+                });
+            }
+            StyleClass::FlexNowrap => {}
+            // iced 无 per-child 对齐/排序 — 解析保留(降级矩阵),渲染继承容器。
+            StyleClass::SelfStart | StyleClass::SelfCenter | StyleClass::SelfEnd
+            | StyleClass::SelfStretch | StyleClass::Order(_) => {
+                warn_layout_degradation(match class {
+                    StyleClass::SelfStart => "self-start",
+                    StyleClass::SelfCenter => "self-center",
+                    StyleClass::SelfEnd => "self-end",
+                    StyleClass::SelfStretch => "self-stretch",
+                    _ => "order-N",
+                });
+            }
+            // iced 无绝对/视口定位 — inset/fixed/sticky 降级为就近布局位。
+            StyleClass::Inset(_) | StyleClass::Fixed | StyleClass::Sticky => {
+                warn_layout_degradation(match class {
+                    StyleClass::Inset(_) => "inset-N",
+                    StyleClass::Fixed => "fixed",
+                    _ => "sticky",
+                });
             }
 
             // ========== Extended Sizing ==========
