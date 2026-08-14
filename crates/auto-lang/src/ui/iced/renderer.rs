@@ -2063,6 +2063,23 @@ fn extract_initials(src: &str) -> String {
     "?".to_string()
 }
 
+/// Plan 411: startup window size (logical px). Sources, in priority order:
+/// 1. pac.at `window: "WxH"` — injected by `auto run` as AUTO_VM_WINDOW
+/// 2. 1280x800 desktop default
+/// Invalid env values fall back to the default rather than failing the app.
+pub fn startup_window_size() -> iced::Size {
+    if let Ok(spec) = std::env::var("AUTO_VM_WINDOW") {
+        if let Some((w, h)) = spec.trim().split_once(['x', 'X']) {
+            if let (Ok(w), Ok(h)) = (w.trim().parse::<f32>(), h.trim().parse::<f32>()) {
+                if w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0 {
+                    return iced::Size::new(w, h);
+                }
+            }
+        }
+    }
+    iced::Size::new(1280.0, 800.0)
+}
+
 /// Convert IcedFontSize to f32 pixel value
 fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) -> f32 {
     use crate::ui::style::iced_adapter::IcedFontSize;
@@ -2075,6 +2092,11 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
         IcedFontSize::Xxl => 24.0,
         IcedFontSize::X3xl => 30.0,
         IcedFontSize::X4xl => 36.0,
+        IcedFontSize::X5xl => 48.0,
+        IcedFontSize::X6xl => 60.0,
+        IcedFontSize::X7xl => 72.0,
+        IcedFontSize::X8xl => 96.0,
+        IcedFontSize::X9xl => 128.0,
     }
 }
 
@@ -3804,7 +3826,7 @@ fn compare_pngs(
             needs_bounds: std::cell::RefCell::new(false),
             screenshot_request: std::cell::RefCell::new(None),
             devtools_panel_width: std::cell::RefCell::new(600.0),
-            window_size: std::cell::RefCell::new(iced::Size::new(1024.0, 768.0)),
+            window_size: std::cell::RefCell::new(startup_window_size()),
             dragging_divider: std::cell::RefCell::new(false),
             pending_window_resize: std::cell::RefCell::new(None),
             initial_resize_done: std::cell::Cell::new(false),
@@ -3928,6 +3950,18 @@ fn compare_pngs(
 
         // Handle screenshot request from MCP thread (Plan 285 / Task 20)
         if let Some(req) = state.screenshot_request.borrow_mut().take() {
+            // Plan 411: guard zero-size windows (minimized / pre-layout). iced's
+            // offscreen source_texture panics on a 0-dimension wgpu surface
+            // ("Dimension X is zero") — reply an error instead of crashing.
+            {
+                let ws = state.window_size.borrow();
+                if ws.width <= 0.0 || ws.height <= 0.0 {
+                    let _ = req.reply_tx.send(Err(
+                        "Screenshot skipped: window size is zero (minimized or not yet laid out)".to_string(),
+                    ));
+                    return iced::Task::none();
+                }
+            }
             let reply_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(req.reply_tx)));
             // Clone the optionals into the outer move closure; `name` is cloned
             // again into the inner `then` (the outer closure is FnMut).
@@ -4899,7 +4933,7 @@ fn compare_pngs(
 
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
-        .window_size(iced::Size::new(800.0, 600.0))
+        .window_size(startup_window_size())
         // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
         .theme(theme_fn)
         .subscription(|_state: &DynamicState| {
@@ -7496,6 +7530,8 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
             IcedFontSize::Xs => 12, IcedFontSize::Sm => 14, IcedFontSize::Base => 16,
             IcedFontSize::Lg => 18, IcedFontSize::Xl => 20, IcedFontSize::Xxl => 24,
             IcedFontSize::X3xl => 30, IcedFontSize::X4xl => 36,
+            IcedFontSize::X5xl => 48, IcedFontSize::X6xl => 60, IcedFontSize::X7xl => 72,
+            IcedFontSize::X8xl => 96, IcedFontSize::X9xl => 128,
         };
         props.push(("font".into(), format!("{}px", px)));
     }
@@ -7992,7 +8028,7 @@ where
                 iced::Subscription::none()
             }
         })
-        .window_size(iced::Size::new(800.0, 600.0))
+        .window_size(startup_window_size())
         .run()
         .map_err(|e| e.into())
 }
@@ -8106,7 +8142,7 @@ impl Default for DevToolsState {
             inspector_sections: std::cell::RefCell::new(InspectorSections::default()),
             live_vtree: std::cell::RefCell::new(None),
             live_cache: std::cell::RefCell::new(None),
-            window_size: std::cell::RefCell::new(iced::Size::new(800.0, 600.0)),
+            window_size: std::cell::RefCell::new(startup_window_size()),
             devtools_panel_width: std::cell::RefCell::new(420.0),
             inspector_split_ratio: std::cell::RefCell::new(0.42),
             dragging_inner_divider: std::cell::RefCell::new(false),
@@ -8741,7 +8777,7 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(iced::Size::new(800.0, 600.0))
+    .window_size(startup_window_size())
     .run()
     .map_err(|e| e.into())
 }

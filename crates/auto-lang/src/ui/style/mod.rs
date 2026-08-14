@@ -100,3 +100,49 @@ mod tests {
         assert_eq!(style.classes.len(), 2);
     }
 }
+
+#[cfg(test)]
+mod plan411_tests {
+    use super::Style;
+
+    #[test]
+    fn test_md_hidden_is_hidden() {
+        let s = Style::parse("md:hidden -ml-2").unwrap();
+        assert!(s.is_hidden(), "md:hidden should be hidden: {:?}", s.classes);
+    }
+
+    #[test]
+    fn test_hidden_sm_inline_not_hidden() {
+        let s = Style::parse("font-bold text-lg hidden sm:inline").unwrap();
+        assert!(!s.is_hidden());
+    }
+
+    #[test]
+    fn test_responsive_text_size_ladder() {
+        // Plan 411 P0-B: responsive prefixes are stripped (desktop semantics),
+        // so this ladder must parse to three size classes with the LAST one
+        // (lg:text-7xl) winning in sequential adapter application.
+        let s = Style::parse("text-4xl md:text-5xl lg:text-7xl").unwrap();
+        let has_4xl = s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Text4Xl));
+        assert!(has_4xl, "ladder parse: {:?}", s.classes);
+    }
+
+    #[test]
+    fn test_md_hidden_classes_parse() {
+        // Plan 411: prefix stripping yields exactly [Hidden]; negative margin
+        // utilities are unknown and silently skipped (as with other unknowns).
+        let s = Style::parse("md:hidden -ml-2").unwrap();
+        assert_eq!(s.classes.len(), 1);
+        assert!(matches!(s.classes[0], crate::ui::style::StyleClass::Hidden));
+    }
+
+    #[test]
+    fn test_text_5xl_9xl_parse() {
+        // Plan 411 P0-B: hero ladder needs text-5xl..text-9xl to exist so
+        // "text-4xl md:text-5xl lg:text-7xl" resolves to 72px (last wins).
+        use crate::ui::style::StyleClass;
+        assert!(matches!(StyleClass::parse_single("text-5xl"), Ok(StyleClass::Text5Xl)));
+        assert!(matches!(StyleClass::parse_single("lg:text-7xl"), Ok(StyleClass::Text7Xl)));
+        assert!(matches!(StyleClass::parse_single("text-9xl"), Ok(StyleClass::Text9Xl)));
+    }
+}

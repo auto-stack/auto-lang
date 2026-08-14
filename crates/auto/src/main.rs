@@ -847,6 +847,13 @@ fn real_main(cli: Cli) -> Result<()> {
                 let via = if front_src.is_empty() { String::new() } else { format!(" (from {})", front_src) };
                 println!("  Frontend dev server port: {}{}", p.trim(), via);
             }
+            // Plan 411: VM native window startup size from pac.at `window: "WxH"`.
+            // Injected via env so the iced renderer (same process for -r vm)
+            // picks it up at window creation; non-VM renders ignore it.
+            if let Some((w, h)) = am.pac_window_size() {
+                std::env::set_var("AUTO_VM_WINDOW", format!("{}x{}", w as u32, h as u32));
+                println!("  VM window size: {}x{} (from pac.at)", w as u32, h as u32);
+            }
             if !ai_mode {
                 info!("Running project ...");
                 println!();

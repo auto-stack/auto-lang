@@ -1993,7 +1993,21 @@ impl<'a> AuraViewBuilder<'a> {
             // link，走 AuraNode::Link，与 vue router-link 默认 text-primary 一致）；
             // themed=false → None（nav-link/component-card 普通色，§8.3 与 sidebar
             // 一致）。Button 无显式 text_color 时 renderer 用 OnBackground 默认色。
-            style: if themed { Style::parse("text-primary").ok() } else { None },
+            // Plan 411 P1-A: `to` 命中当前路由时加 active 高亮（对齐 vue
+            // router-link-active 的 bg-accent 块），header link 不参与。
+            style: if themed {
+                Style::parse("text-primary").ok()
+            } else {
+                let active = !to.is_empty() && match self.read_state("__current_route") {
+                    Ok(auto_val::Value::Str(s)) => s.as_str() == to,
+                    _ => false,
+                };
+                if active {
+                    Style::parse("bg-accent text-accent-foreground font-medium rounded-md").ok()
+                } else {
+                    None
+                }
+            },
             on_right_click: None,
         }
     }
@@ -2534,6 +2548,7 @@ impl<'a> AuraViewBuilder<'a> {
         &self,
         props: &HashMap<String, AuraPropValue>,
     ) -> View<DynamicMessage> {
+
         let style = self.extract_style(props);
         // icon: name → "lucide:{name}" synthetic src
         if let Some(name) = self.extract_string(props, "name") {

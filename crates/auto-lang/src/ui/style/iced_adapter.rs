@@ -277,6 +277,11 @@ pub enum IcedFontSize {
     Xxl,  // 24px
     X3xl, // 30px
     X4xl, // 36px
+    X5xl, // 48px (Plan 411)
+    X6xl, // 60px
+    X7xl, // 72px
+    X8xl, // 96px
+    X9xl, // 128px
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -581,6 +586,21 @@ impl IcedStyle {
             }
             StyleClass::Text4Xl => {
                 self.font_size = Some(IcedFontSize::X4xl);
+            }
+            StyleClass::Text5Xl => {
+                self.font_size = Some(IcedFontSize::X5xl);
+            }
+            StyleClass::Text6Xl => {
+                self.font_size = Some(IcedFontSize::X6xl);
+            }
+            StyleClass::Text7Xl => {
+                self.font_size = Some(IcedFontSize::X7xl);
+            }
+            StyleClass::Text8Xl => {
+                self.font_size = Some(IcedFontSize::X8xl);
+            }
+            StyleClass::Text9Xl => {
+                self.font_size = Some(IcedFontSize::X9xl);
             }
             StyleClass::FontBold => {
                 self.font_weight = Some(IcedFontWeight::Bold);

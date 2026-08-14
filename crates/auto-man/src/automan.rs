@@ -332,6 +332,11 @@ impl Automan {
         (self.pac.front_port, self.pac.back_port)
     }
 
+    /// Plan 411: VM startup window size from pac.at `window: "WxH"`.
+    pub fn pac_window_size(&self) -> Option<(f32, f32)> {
+        self.pac.window
+    }
+
     /// Set --gen-only mode: build stops after code generation, skipping
     /// npm/gradle install+build steps (used by CI to gate generation only).
     pub fn set_gen_only(&mut self, gen_only: bool) {

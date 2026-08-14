@@ -253,6 +253,21 @@ pub enum StyleClass {
     /// Font size: text-4xl (36px) - L2
     Text4Xl,
 
+    /// Font size: text-5xl (48px) - L2 (Plan 411: hero headings)
+    Text5Xl,
+
+    /// Font size: text-6xl (60px) - L2
+    Text6Xl,
+
+    /// Font size: text-7xl (72px) - L2
+    Text7Xl,
+
+    /// Font size: text-8xl (96px) - L2
+    Text8Xl,
+
+    /// Font size: text-9xl (128px) - L2
+    Text9Xl,
+
     /// Font weight: font-bold (L2)
     FontBold,
 
@@ -634,6 +649,11 @@ impl StyleClass {
             "text-2xl" => return Ok(StyleClass::Text2Xl),
             "text-3xl" => return Ok(StyleClass::Text3Xl),
             "text-4xl" => return Ok(StyleClass::Text4Xl),
+            "text-5xl" => return Ok(StyleClass::Text5Xl),
+            "text-6xl" => return Ok(StyleClass::Text6Xl),
+            "text-7xl" => return Ok(StyleClass::Text7Xl),
+            "text-8xl" => return Ok(StyleClass::Text8Xl),
+            "text-9xl" => return Ok(StyleClass::Text9Xl),
             _ => {}
         }
 

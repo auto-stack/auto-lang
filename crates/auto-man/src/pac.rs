@@ -88,6 +88,11 @@ pub struct Pac {
     pub front_port: Option<u16>,
     pub back_port: Option<u16>,
 
+    /// VM native window startup size, declared as `window: "1440x900"` in
+    /// pac.at (Plan 411). None = renderer default (1280x800). Logical px:
+    /// iced multiplies by the OS scale factor for the physical surface.
+    pub window: Option<(f32, f32)>,
+
     is_update: bool,
 }
 
@@ -167,6 +172,20 @@ impl Pac {
         let back_port = config.root.get_prop("back_port").to_astr();
         let back_port = back_port.trim().parse::<u16>().ok();
 
+        // Plan 411: VM startup window size, e.g. `window: "1440x900"`.
+        // Accepts "WxH" (or W×H); rejects non-positive/oversized values.
+        let window = config.root.get_prop("window").to_astr();
+        let window = window
+            .trim()
+            .replace(['x', 'X', '\u{d7}'], "x")
+            .split_once('x')
+            .and_then(|(w, h)| {
+                let w: f32 = w.trim().parse().ok()?;
+                let h: f32 = h.trim().parse().ok()?;
+                (w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0)
+                    .then_some((w, h))
+            });
+
         // target related properties
         let target_props = vec!["at", "lang"];
 
@@ -230,6 +249,7 @@ impl Pac {
             members,
             front_port,
             back_port,
+            window,
             is_update: false,
         }
     }
