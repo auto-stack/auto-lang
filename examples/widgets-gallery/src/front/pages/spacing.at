@@ -1,0 +1,99 @@
+// pages/spacing.at - Spacing utilities documentation (Plan 412 Layout gallery)
+
+widget SpacingPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Spacing"
+            text "Padding (p-*) presses content inward, gap-* separates flex/grid children, and space-x/space-y separate stacked siblings without a flex container. One unit = 4px."
+
+            h2 "Padding Ladder"
+            preview-card (id: "spacing-padding") {
+                col (style: "gap-2 items-start") {
+                    col (style: "p-2 border rounded-md bg-blue-500/10") {
+                        text (text: "p-2", style: "text-xs") {}
+                    }
+                    col (style: "p-4 border rounded-md bg-blue-500/10") {
+                        text (text: "p-4", style: "text-xs") {}
+                    }
+                    col (style: "p-8 border rounded-md bg-blue-500/10") {
+                        text (text: "p-8", style: "text-xs") {}
+                    }
+                }
+            }
+
+            h2 "Axis Padding (px / py)"
+            preview-card (id: "spacing-padding-axis") {
+                col (style: "gap-2 items-start") {
+                    col (style: "px-8 py-1 border rounded-md bg-emerald-500/10") {
+                        text (text: "px-8 py-1", style: "text-xs") {}
+                    }
+                    col (style: "px-2 py-4 border rounded-md bg-emerald-500/10") {
+                        text (text: "px-2 py-4", style: "text-xs") {}
+                    }
+                }
+            }
+
+            h2 "Margin (nested contrast)"
+            preview-card (id: "spacing-margin") {
+                col (style: "gap-2 border rounded-md p-2 bg-card") {
+                    col (style: "m-4 border rounded-md bg-amber-500/20 border-amber-500/60") {
+                        text (text: "m-4 inside a padded parent", style: "text-xs") {}
+                    }
+                    col (style: "border rounded-md bg-amber-500/20 border-amber-500/60") {
+                        text (text: "no margin", style: "text-xs") {}
+                    }
+                }
+            }
+
+            h2 "gap vs space-x"
+            preview-card (id: "spacing-gap-space") {
+                col (style: "gap-3") {
+                    row (style: "gap-4 border rounded-md p-2") {
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    }
+                    div (style: "flex flex-col space-y-4 border rounded-md p-2") {
+                        col (style: "h-8 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "space-y-4" {} }
+                        col (style: "h-8 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "space-y-4" {} }
+                    }
+                }
+            }
+
+            h2 "gap-x / gap-y (axis gaps)"
+            preview-card (id: "spacing-gap-axis") {
+                col (style: "gap-2") {
+                    row (style: "gap-x-8 gap-y-1 flex-wrap border rounded-md p-2") {
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    }
+                    col (style: "gap-y-8 border rounded-md p-2") {
+                        col (style: "h-6 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "gap-y-8" {} }
+                        col (style: "h-6 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "gap-y-8" {} }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "p-{N} / px-{N} / py-{N}" td "0-12, 0.5 steps" td "Padding (all / horizontal / vertical)" }
+                    tr { td "m-{N} / mx-auto" td "0-12" td "Margin (vm renders as outer spacing where supported)" }
+                    tr { td "gap-{N}" td "0-12" td "Flex/grid child spacing" }
+                    tr { td "gap-x-{N} / gap-y-{N}" td "0-12" td "Axis-specific gap (other axis ignored)" }
+                    tr { td "space-x-{N} / space-y-{N}" td "0-12" td "Sibling spacing, equivalent to gap in effect" }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+// pages/center.at - Center layout documentation (Plan 412 Layout gallery)
+
+widget CenterPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Center"
+            text "Center fills its parent and centers content on both axes. The semantic center element is the Auto-native path; the utility path is a flex container with items-center justify-center."
+
+            h2 "Basic Center"
+            preview-card (id: "center-basic") {
+                center (style: "h-32") {
+                    col (style: "h-12 w-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                }
+            }
+
+            h2 "Style Class Center (flex + items-center + justify-center)"
+            preview-card (id: "center-flex-class") {
+                div (style: "flex items-center justify-center h-32") {
+                    col (style: "h-12 w-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                }
+            }
+
+            h2 "Column + Center (two-axis composition)"
+            preview-card (id: "center-col-compose") {
+                col (style: "h-40 items-center justify-center gap-2 border rounded-md") {
+                    text (text: "Centered", style: "font-medium text-primary") {}
+                    col (style: "h-12 w-24 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "box" {} }
+                    text (text: "Both axes", style: "text-xs text-muted-foreground") {}
+                }
+            }
+
+            h2 "Center inside a constrained container"
+            preview-card (id: "center-constrained") {
+                col (style: "border rounded-md p-3") {
+                    div (style: "max-w-xs mx-auto border rounded-md") {
+                        center (style: "h-20") {
+                            text (text: "max-w + center", style: "text-xs text-muted-foreground") {}
+                        }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "items-center" td "-" td "Cross-axis centering" }
+                    tr { td "justify-center" td "-" td "Main-axis centering" }
+                    tr { td "max-w-{...}" td "xs-xl, 2xl-7xl, full, N" td "Constrain the centering container width" }
+                    tr { td "mx-auto" td "-" td "Center the container itself horizontally" }
+                }
+            }
+        }
+    }
+}

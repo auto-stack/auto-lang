@@ -1,0 +1,78 @@
+// pages/grid-span.at - Column span documentation (Plan 412 Layout gallery)
+//
+// Plan 412 F2 验收页:col-span-N 的跨列宽度 = N 轨道 + (N-1) gap(等分轨道
+// + 槽位 padding 补偿,像素级复现 CSS auto-placement)。row-span 第一版降级
+// 为 col-span(§5 降级矩阵)。
+
+widget GridSpanPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "GridSpan"
+            text "col-span-N stretches a grid cell across N tracks. Cells fill sequentially and wrap when the current column plus the span exceeds the column count — the simplified CSS auto-placement algorithm, identical in vue and the native vm."
+
+            h2 "col-span-2 (full-width feature row)"
+            preview-card (id: "gridspan-2") {
+                div (style: "grid grid-cols-3 gap-2 w-full max-w-md") {
+                    col (style: "col-span-2 h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "col-span-2" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
+                }
+            }
+
+            h2 "col-span-3 (section headers)"
+            preview-card (id: "gridspan-3") {
+                div (style: "grid grid-cols-3 gap-2 w-full max-w-md") {
+                    col (style: "col-span-3 h-10 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "col-span-3 header" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    col (style: "col-span-3 h-10 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "col-span-3 footer" {} }
+                }
+            }
+
+            h2 "Mixed Gallery (span + regular cells)"
+            preview-card (id: "gridspan-mixed") {
+                div (style: "grid grid-cols-4 gap-2 w-full") {
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "4" {} }
+                    col (style: "col-span-2 h-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "span-2" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "5" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "6" {} }
+                    col (style: "h-12 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "7" {} }
+                    col (style: "col-span-3 h-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "span-3" {} }
+                }
+            }
+
+            h2 "Semantic Element with Spans (grid + col-span cells)"
+            preview-card (id: "gridspan-semantic") {
+                grid (cols: 2, gap: 8) {
+                    col (style: "col-span-2 h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "col-span-2" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "col-span-{N}" td "1-12" td "Cell spans N equal tracks + (N-1) gaps" }
+                    tr { td "row-span-{N}" td "1-6" td "vue: spans rows; vm: degrades to col-span" }
+                    tr { td "col-start-{N} / row-start-{N}" td "1-7" td "Explicit placement (vue; vm: auto-placement)" }
+                }
+            }
+        }
+    }
+}

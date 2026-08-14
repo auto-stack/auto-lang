@@ -1,4 +1,8 @@
-// pages/grid.at - Grid layout component documentation page
+// pages/grid.at - Grid layout documentation (Plan 412 Layout gallery, rewritten)
+//
+// Plan 412 /grid 重写:迁入 Layout 分组。语义元素版 grid (cols:N) 与 style
+// 类版 div (style: "grid grid-cols-N gap-N") 双写法并存 —— 后者是 F1 容器
+// 布局重派生的验收页(修复旧版 VM 纵向堆叠的双端不一致)。
 
 widget GridPage {
     model { activeTab str = "preview" }
@@ -6,50 +10,58 @@ widget GridPage {
     view {
         col {
             h1 "Grid"
-            text "Grid arranges children into a responsive column layout, adjusting the number of columns based on screen width. Use CSS grid utilities (grid-cols-N, md:grid-cols-M, lg:grid-cols-K) for responsive breakpoints. Ideal for product grids, card layouts, dashboards, and photo galleries."
+            text "Grid arranges children into equal-width CSS grid tracks. Write it either way: the semantic grid element with cols, or any container with the grid grid-cols-N gap-N utility classes — both render identically in vue and the native vm (Plan 412 F1)."
 
-            h2 "Installation"
-            codeblock (lang: "bash", code: "# No install needed — uses Tailwind CSS grid utilities") {}
-
-            h2 "Basic Grid"
-            preview-card (id: "grid-basic") {
-                col {
-                    style: "grid grid-cols-3 gap-4 w-full max-w-lg"
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "1" {}
-                    }
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "2" {}
-                    }
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "3" {}
-                    }
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "4" {}
-                    }
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "5" {}
-                    }
-                    col {
-                        style: "rounded-lg border p-4 text-center"
-                        text "6" {}
-                    }
+            h2 "Semantic Element (grid cols: 3)"
+            preview-card (id: "grid-semantic") {
+                grid (cols: 3, gap: 16) {
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "5" {} }
+                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "6" {} }
                 }
             }
 
-            h2 "Responsive"
+            h2 "Style Classes (grid grid-cols-3 gap-4)"
+            preview-card (id: "grid-style-class") {
+                col {
+                    style: "grid grid-cols-3 gap-4 w-full max-w-lg"
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "5" {} }
+                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "6" {} }
+                }
+            }
+
+            h2 "Responsive Columns (1 / 2 / 4)"
             preview-card (id: "grid-responsive") {
                 col {
                     style: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full"
-                    col { style: "rounded-lg border bg-card p-4", text "1" {} }
-                    col { style: "rounded-lg border bg-card p-4", text "2" {} }
-                    col { style: "rounded-lg border bg-card p-4", text "3" {} }
-                    col { style: "rounded-lg border bg-card p-4", text "4" {} }
+                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
+                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
+                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "4" {} }
+                }
+            }
+
+            h2 "Equal Tracks vs Content Width"
+            preview-card (id: "grid-tracks") {
+                col (style: "gap-4 w-full") {
+                    col {
+                        style: "grid grid-cols-3 gap-2"
+                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
+                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
+                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
+                    }
+                    row (style: "gap-2") {
+                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
+                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
+                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
+                    }
                 }
             }
 
@@ -57,27 +69,17 @@ widget GridPage {
             table {
                 thead {
                     tr {
-                        th "Class"
-                        th "Effect"
+                        th "Class / prop"
+                        th "Values"
+                        th "Description"
                     }
                 }
                 tbody {
-                    tr {
-                        td "grid-cols-{1-12}"
-                        td "Fixed number of columns"
-                    }
-                    tr {
-                        td "md:grid-cols-{N}"
-                        td "Column count at medium breakpoint"
-                    }
-                    tr {
-                        td "lg:grid-cols-{N}"
-                        td "Column count at large breakpoint"
-                    }
-                    tr {
-                        td "gap-{N}"
-                        td "Spacing between grid items"
-                    }
+                    tr { td "grid (cols: N, gap: px)" td "cols 1-12, gap px" td "Semantic grid element (gap prop is raw pixels)" }
+                    tr { td "grid grid-cols-{N}" td "1-12" td "Display grid with N equal tracks" }
+                    tr { td "md:grid-cols-{N} lg:grid-cols-{N}" td "1-12" td "Responsive column count" }
+                    tr { td "gap-{N}" td "0-12" td "Track spacing (N x 4px)" }
+                    tr { td "col-span-{N}" td "1-12" td "Cell spans N tracks (see GridSpan page)" }
                 }
             }
         }

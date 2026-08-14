@@ -1,0 +1,132 @@
+// pages/row.at - Row layout documentation (Plan 412 Layout gallery)
+
+widget RowPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Row"
+            text "Row lays out children horizontally. Use the semantic row element for the Auto-native path, or the flex/flex-row utility classes on any container. Control spacing with gap-N, cross-axis alignment with items-*, and main-axis distribution with justify-*."
+
+            h2 "Basic Row"
+            preview-card (id: "row-basic") {
+                row (style: "gap-2") {
+                    col (style: "h-12 w-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-12 w-12 rounded-md bg-red-500/40 border border-red-500 text-center") { text "2" {} }
+                    col (style: "h-12 w-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                }
+            }
+
+            h2 "Style Class Row (flex)"
+            preview-card (id: "row-flex-class") {
+                div (style: "flex gap-2") {
+                    col (style: "h-12 w-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-12 w-12 rounded-md bg-red-500/40 border border-red-500 text-center") { text "2" {} }
+                    col (style: "h-12 w-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                }
+            }
+
+            h2 "Gap Ladder"
+            preview-card (id: "row-gap-ladder") {
+                col (style: "gap-3") {
+                    row (style: "items-center gap-1") {
+                        text (text: "gap-1", style: "w-12 text-xs text-muted-foreground") {}
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    }
+                    row (style: "items-center gap-2") {
+                        text (text: "gap-2", style: "w-12 text-xs text-muted-foreground") {}
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    }
+                    row (style: "items-center gap-4") {
+                        text (text: "gap-4", style: "w-12 text-xs text-muted-foreground") {}
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                    }
+                    row (style: "items-center gap-8") {
+                        text (text: "gap-8", style: "w-12 text-xs text-muted-foreground") {}
+                        col (style: "h-8 w-8 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
+                        col (style: "h-8 w-8 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
+                    }
+                }
+            }
+
+            h2 "Items Alignment (cross axis)"
+            preview-card (id: "row-items") {
+                col (style: "gap-3") {
+                    row (style: "items-start gap-2 h-16 border rounded-md p-1") {
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "s" {} }
+                        col (style: "h-12 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "s" {} }
+                    }
+                    row (style: "items-center gap-2 h-16 border rounded-md p-1") {
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "c" {} }
+                        col (style: "h-12 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "c" {} }
+                    }
+                    row (style: "items-end gap-2 h-16 border rounded-md p-1") {
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "e" {} }
+                        col (style: "h-12 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "e" {} }
+                    }
+                }
+            }
+
+            h2 "Justify Distribution (main axis)"
+            preview-card (id: "row-justify") {
+                col (style: "gap-3") {
+                    row (style: "justify-start gap-2 border rounded-md p-2") {
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                    }
+                    row (style: "justify-center gap-2 border rounded-md p-2") {
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                    }
+                    row (style: "justify-end gap-2 border rounded-md p-2") {
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
+                    }
+                    row (style: "justify-between border rounded-md p-2") {
+                        col (style: "h-8 w-8 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
+                    }
+                }
+            }
+
+            h2 "Nested Row in Column"
+            preview-card (id: "row-nested") {
+                col (style: "gap-2 border rounded-md p-3") {
+                    row (style: "gap-2") {
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-8 w-8 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                    }
+                    row (style: "gap-2") {
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                        col (style: "h-8 w-8 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "flex / flex-row" td "-" td "Horizontal flex container" }
+                    tr { td "gap-{N}" td "0.5-12" td "Spacing between children (N x 4px)" }
+                    tr { td "items-{...}" td "start | center | end | stretch" td "Cross-axis (vertical) alignment" }
+                    tr { td "justify-{...}" td "start | center | end | between | around | evenly" td "Main-axis (horizontal) distribution" }
+                    tr { td "flex-row-reverse" td "-" td "Children render right-to-left" }
+                }
+            }
+        }
+    }
+}

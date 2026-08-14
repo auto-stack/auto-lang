@@ -1,0 +1,86 @@
+// pages/scroll.at - Scrollable regions documentation (Plan 412 Layout gallery)
+
+widget ScrollPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Scroll"
+            text "Scrollable regions: the semantic scroll element wraps children in a scrollable column; the utility path is overflow-y-auto / overflow-x-auto on any container. A scroll region needs a bounded height (h-N) to actually scroll."
+
+            h2 "Vertical Scroll (semantic scroll element)"
+            preview-card (id: "scroll-vertical") {
+                scroll (style: "h-40 border rounded-md p-2") {
+                    col (style: "gap-2") {
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "5" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "6" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "7" {} }
+                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "8" {} }
+                    }
+                }
+            }
+
+            h2 "Vertical Scroll (overflow-y-auto class)"
+            preview-card (id: "scroll-overflow-class") {
+                div (style: "flex flex-col h-40 overflow-y-auto border rounded-md p-2 gap-2") {
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "5" {} }
+                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "6" {} }
+                }
+            }
+
+            h2 "Horizontal Scroll (overflow-x-auto)"
+            preview-card (id: "scroll-horizontal") {
+                div (style: "flex overflow-x-auto gap-2 h-20 border rounded-md p-2 shrink-0") {
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 1" {} }
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 2" {} }
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 3" {} }
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 4" {} }
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 5" {} }
+                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 6" {} }
+                }
+            }
+
+            h2 "Both Axes (overflow-auto)"
+            preview-card (id: "scroll-both") {
+                div (style: "overflow-auto h-32 border rounded-md p-2") {
+                    div (style: "grid grid-cols-4 gap-2 w-160") {
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "4" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "5" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "6" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "7" {} }
+                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "8" {} }
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "scroll (element)" td "-" td "Semantic scrollable column container" }
+                    tr { td "overflow-y-auto" td "-" td "Vertical scrollbar when content overflows" }
+                    tr { td "overflow-x-auto" td "-" td "Horizontal scrollbar when content overflows" }
+                    tr { td "overflow-auto" td "-" td "Both axes" }
+                    tr { td "overflow-hidden" td "-" td "Clip overflowing content" }
+                }
+            }
+        }
+    }
+}

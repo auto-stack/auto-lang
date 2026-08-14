@@ -1,0 +1,65 @@
+// pages/sizing.at - Sizing utilities documentation (Plan 412 Layout gallery)
+
+widget SizingPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Sizing"
+            text "Width and height utilities: fixed pixel sizes (w-N = N x 4px), fluid sizes (w-full, w-1/2), and min/max constraints. One unit = 4px."
+
+            h2 "Width Ladder"
+            preview-card (id: "sizing-width") {
+                col (style: "gap-2 items-start") {
+                    col (style: "w-16 h-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "w-16" {} }
+                    col (style: "w-32 h-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "w-32" {} }
+                    col (style: "w-full h-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "w-full" {} }
+                }
+            }
+
+            h2 "Height Ladder"
+            preview-card (id: "sizing-height") {
+                row (style: "gap-2 items-start") {
+                    col (style: "w-16 h-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "h-8" {} }
+                    col (style: "w-16 h-16 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "h-16" {} }
+                    col (style: "w-16 h-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "h-24" {} }
+                }
+            }
+
+            h2 "max-w (constrained long bar)"
+            preview-card (id: "sizing-max-w") {
+                col (style: "gap-2 items-start w-full") {
+                    col (style: "max-w-xs h-8 w-full rounded bg-amber-500/40 border border-amber-500 text-center") { text "max-w-xs" {} }
+                    col (style: "max-w-md h-8 w-full rounded bg-amber-500/40 border border-amber-500 text-center") { text "max-w-md" {} }
+                    col (style: "h-8 w-full rounded bg-amber-500/40 border border-amber-500 text-center") { text "w-full (no max)" {} }
+                }
+            }
+
+            h2 "min-w / min-h"
+            preview-card (id: "sizing-min") {
+                row (style: "gap-2 items-start") {
+                    col (style: "min-w-32 h-8 rounded bg-purple-500/40 border border-purple-500 text-center") { text "min-w-32" {} }
+                    col (style: "w-4 min-w-20 h-8 rounded bg-purple-500/40 border border-purple-500 text-center") { text "clamped" {} }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "w-{N} / h-{N}" td "0-96" td "Fixed size in 4px units" }
+                    tr { td "w-full / h-full" td "-" td "100% of the parent" }
+                    tr { td "w-1/2 … w-3/4" td "fractions" td "Fractional width of the parent" }
+                    tr { td "min-w-{N} / min-h-{N}" td "N, screen" td "Minimum size floor" }
+                    tr { td "max-w-{...}" td "xs-7xl, full" td "Maximum size ceiling (xs=320 … 7xl=1280)" }
+                }
+            }
+        }
+    }
+}

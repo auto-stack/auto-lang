@@ -1463,6 +1463,8 @@ impl VueGenerator {
             "amber" => ("bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800", "bg-amber-500"),
             "purple" => ("bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800", "bg-purple-500"),
             "rose" => ("bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800", "bg-rose-500"),
+            // Plan 412 F7: Layout 分组用 sky(#0ea5e9)
+            "sky" => ("bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800", "bg-sky-500"),
             _ => ("bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800", "bg-gray-500"),
         }
     }
@@ -7236,10 +7238,16 @@ impl VueGenerator {
                         classes.push(format!("grid-cols-{}", n));
                     }
                 }
-                // gap prop
+                // gap prop — Plan 412 F5: grid 的 gap prop 语义是像素(与 VM 的
+                // convert_grid 一致;row/col 的 gap prop 是 Tailwind 单位、str 传入)。
+                // px/4 整除 → gap-N 单位类,否则 gap-[Npx] arbitrary。
                 if let Some(value) = props.get("gap") {
                     if let Some(n) = self.extract_int_value(value) {
-                        classes.push(format!("gap-{}", n));
+                        if n >= 0 && n % 4 == 0 {
+                            classes.push(format!("gap-{}", n / 4));
+                        } else {
+                            classes.push(format!("gap-[{}px]", n));
+                        }
                     } else {
                         classes.push("gap-4".to_string());
                     }

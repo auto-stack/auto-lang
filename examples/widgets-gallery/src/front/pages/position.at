@@ -1,0 +1,76 @@
+// pages/position.at - Position & stacking documentation (Plan 412 Layout gallery)
+//
+// Plan 412 §5 降级矩阵在此页文档化:iced 无 absolute/fixed/sticky 定位、无
+// per-child order/self。VM 对这些类渲染为就近布局位/单行/源码序(一次性
+// eprintln 提示),不 panic、不静默大变形。z-index 通过 Stack 层序表达。
+
+widget PositionPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Position"
+            text "Stacking and layering. In vue, z-index orders overlapping siblings inside a relative container; in the native vm, the same stacking is expressed through source order (later children paint on top). Floating layers (absolute + z) hoist above the flow without displacing content."
+
+            h2 "z-index Stacking (overlapping blocks)"
+            preview-card (id: "position-zindex") {
+                col (style: "relative h-32 border rounded-md p-2") {
+                    row (style: "gap-0") {
+                        col (style: "h-20 w-20 rounded-md bg-blue-500/50 border border-blue-500 z-10 text-center") { text "z-10" {} }
+                        col (style: "h-20 w-20 rounded-md bg-emerald-500/60 border border-emerald-500 z-20 text-center -ml-8") { text "z-20" {} }
+                        col (style: "h-20 w-20 rounded-md bg-amber-500/70 border border-amber-500 z-30 text-center -ml-8") { text "z-30" {} }
+                    }
+                }
+            }
+
+            h2 "Overlay Layer (floating above content)"
+            preview-card (id: "position-overlay") {
+                col (style: "relative h-32 border rounded-md p-2 gap-1") {
+                    text (text: "base content stays in flow", style: "text-xs text-muted-foreground") {}
+                    row (style: "absolute right-2 top-2 z-50 items-center gap-1.5 rounded-lg border bg-popover p-2 shadow-lg") {
+                        col (style: "h-4 w-4 rounded-full bg-indigo-500") {}
+                        col (style: "h-4 w-4 rounded-full bg-rose-500") {}
+                        col (style: "h-4 w-4 rounded-full bg-emerald-500") {}
+                    }
+                }
+            }
+
+            h2 "Degradation Matrix (vue vs native vm)"
+            text (text: "Capabilities below parse everywhere but the native renderer (iced) has no positioning primitives — each degrades to the nearest in-flow equivalent. Use grid columns instead of wrapping, and Stack-style overlays instead of fixed/sticky chrome.", style: "text-sm text-muted-foreground mb-2") {}
+            table {
+                thead {
+                    tr {
+                        th "Tailwind class"
+                        th "vue behavior"
+                        th "native vm behavior"
+                    }
+                }
+                tbody {
+                    tr { td "flex-wrap" td "wraps to next line" td "single row (no wrap)" }
+                    tr { td "absolute + inset-N" td "positions out of flow" td "hoisted overlay (approximate) or in-flow" }
+                    tr { td "order-N" td "reorders children" td "source order" }
+                    tr { td "self-*" td "per-child alignment" td "inherits container items-*" }
+                    tr { td "row-span-N" td "spans grid rows" td "ignored (occupies one row)" }
+                    tr { td "fixed / sticky" td "viewport-fixed" td "nearest in-flow position" }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "relative" td "-" td "Establishes a positioning context" }
+                    tr { td "z-{N}" td "0-50" td "Paint order among siblings (vm: source order)" }
+                    tr { td "absolute + top/right/bottom/left-N" td "0-96" td "Out-of-flow offset placement (vm: overlay hoist)" }
+                    tr { td "inset-{N}" td "0-96" td "All four offsets at once (vm: degraded)" }
+                }
+            }
+        }
+    }
+}

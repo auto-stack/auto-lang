@@ -1,0 +1,67 @@
+// pages/responsive.at - Responsive breakpoint documentation (Plan 412 Layout gallery)
+//
+// 注:VM 桌面窗口按 md+/lg+ 宽屏语义渲染(Plan 409 §10 续 的前缀剥离),
+// resize 触发 view 重建,断点效果随窗口宽度实时变化 —— 缩放 VM 窗口即可
+// 观察 grid 列数/文本阶梯的变化。
+
+widget ResponsivePage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Responsive"
+            text "Breakpoint-prefixed utilities (md:, lg:) apply at larger viewports. The native vm window follows desktop semantics — resize the window and the grid columns and text ladder re-resolve live."
+
+            h2 "hidden md:flex (display switch)"
+            preview-card (id: "responsive-hidden") {
+                col (style: "gap-2 border rounded-md p-3") {
+                    row (style: "gap-2") {
+                        col (style: "h-10 w-16 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "always" {} }
+                        col (style: "hidden md:flex h-10 w-16 rounded-md bg-emerald-500/40 border border-emerald-500 text-center items-center justify-center") { text "md+" {} }
+                    }
+                }
+            }
+
+            h2 "Responsive Grid Columns (1 / 2 / 4)"
+            preview-card (id: "responsive-grid") {
+                div (style: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full") {
+                    col (style: "h-14 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "h-14 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                    col (style: "h-14 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                    col (style: "h-14 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
+                }
+            }
+
+            h2 "Responsive Padding (p-4 md:p-8)"
+            preview-card (id: "responsive-padding") {
+                col (style: "p-4 md:p-8 border rounded-md bg-amber-500/10") {
+                    text (text: "p-4 md:p-8", style: "text-xs") {}
+                }
+            }
+
+            h2 "Responsive Text Ladder (text-base md:text-xl lg:text-3xl)"
+            preview-card (id: "responsive-text") {
+                col (style: "border rounded-md p-4") {
+                    text (text: "Resize the window", style: "text-base md:text-xl lg:text-3xl font-semibold text-primary") {}
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Prefix"
+                        th "Min width"
+                        th "Notes"
+                    }
+                }
+                tbody {
+                    tr { td "sm:" td "640px" td "Small breakpoint" }
+                    tr { td "md:" td "768px" td "Medium breakpoint" }
+                    tr { td "lg:" td "1024px" td "Large breakpoint" }
+                    tr { td "xl: / 2xl:" td "1280px / 1536px" td "Extra large breakpoints" }
+                }
+            }
+        }
+    }
+}

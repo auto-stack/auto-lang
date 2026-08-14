@@ -12,11 +12,14 @@ widget App {
         "/accordion" -> use accordion
         "/alert" -> use alert
         "/alertdialog" -> use alertdialog
+        "/alignment" -> use alignment
         "/aspectratio" -> use aspectratio
         "/avatar" -> use avatar
         "/badge" -> use badge
         "/breadcrumb" -> use breadcrumb
+        "/center" -> use center
         "/button" -> use button
+        "/col" -> use col
         "/calendar" -> use calendar
         "/card" -> use card
         "/carousel" -> use carousel
@@ -30,8 +33,10 @@ widget App {
         "/dialog" -> use dialog
         "/drawer" -> use drawer
         "/dropdownmenu" -> use dropdownmenu
+        "/flex" -> use flex
         "/form" -> use form
         "/grid" -> use grid
+        "/grid-span" -> use grid-span
         "/hovercard" -> use hovercard
         "/input" -> use input
         "/label" -> use label
@@ -40,11 +45,17 @@ widget App {
         "/navlink" -> use navlink
         "/pagination" -> use pagination
         "/popover" -> use popover
+        "/position" -> use position
         "/progress" -> use progress
         "/radiogroup" -> use radiogroup
+        "/responsive" -> use responsive
+        "/row" -> use row
+        "/scroll" -> use scroll
         "/scrollarea" -> use scrollarea
         "/select" -> use select
         "/separator" -> use separator
+        "/sizing" -> use sizing
+        "/spacing" -> use spacing
         "/sheet" -> use sheet
         "/sidebar" -> use sidebar
         "/skeleton" -> use skeleton
@@ -141,6 +152,21 @@ widget App {
                         text (text: "Overview", style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/", icon: "home", label: "Home") {}
 
+                        // Layout group (Plan 412: 布局专区,插在 Overview 之后)
+                        text (text: "Layout", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/row", icon: "arrow-right", label: "Row") {}
+                        nav-link (to: "/col", icon: "arrow-down", label: "Column") {}
+                        nav-link (to: "/center", icon: "plus", label: "Center") {}
+                        nav-link (to: "/flex", icon: "move-horizontal", label: "Flex") {}
+                        nav-link (to: "/alignment", icon: "align-center", label: "Alignment") {}
+                        nav-link (to: "/spacing", icon: "space", label: "Spacing") {}
+                        nav-link (to: "/sizing", icon: "ruler", label: "Sizing") {}
+                        nav-link (to: "/scroll", icon: "chevrons-down", label: "Scroll") {}
+                        nav-link (to: "/position", icon: "layers", label: "Position") {}
+                        nav-link (to: "/responsive", icon: "monitor", label: "Responsive") {}
+                        nav-link (to: "/grid", icon: "layout-grid", label: "Grid") {}
+                        nav-link (to: "/grid-span", icon: "square-stack", label: "GridSpan") {}
+
                         // Form group
                         text (text: "Form", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
@@ -167,7 +193,6 @@ widget App {
                         nav-link (to: "/card", icon: "square-stack", label: "Card") {}
                         nav-link (to: "/carousel", icon: "layout-grid", label: "Carousel") {}
                         nav-link (to: "/datatable", icon: "layout-grid", label: "DataTable") {}
-                        nav-link (to: "/grid", icon: "layout-grid", label: "Grid") {}
                         nav-link (to: "/skeleton", icon: "layout-grid", label: "Skeleton") {}
                         nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
 

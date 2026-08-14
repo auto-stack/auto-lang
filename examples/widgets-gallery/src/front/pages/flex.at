@@ -1,0 +1,82 @@
+// pages/flex.at - Flex sizing documentation (Plan 412 Layout gallery)
+
+widget FlexPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 "Flex"
+            text "Flex sizing utilities control how children share space along the main axis. flex-1 grows to fill remaining space equally, flex-none keeps the natural size fixed, and grow/flex-auto are the CSS granular variants."
+
+            h2 "flex-1 Equal Split"
+            preview-card (id: "flex-equal-split") {
+                row (style: "gap-2 w-full") {
+                    col (style: "flex-1 h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    col (style: "flex-1 h-12 rounded-md bg-red-500/40 border border-red-500 text-center") { text "2" {} }
+                    col (style: "flex-1 h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                }
+            }
+
+            h2 "flex-none + flex-1 (fixed + elastic)"
+            preview-card (id: "flex-fixed-elastic") {
+                row (style: "gap-2 w-full") {
+                    col (style: "flex-none w-16 h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "fix" {} }
+                    col (style: "flex-1 h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "flex-1 fills the rest" {} }
+                }
+            }
+
+            h2 "Grow vs flex-none"
+            preview-card (id: "flex-grow-contrast") {
+                col (style: "gap-2 w-full") {
+                    row (style: "gap-2") {
+                        col (style: "grow h-10 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "grow" {} }
+                        col (style: "flex-none w-20 h-10 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "none" {} }
+                    }
+                    row (style: "gap-2") {
+                        col (style: "grow h-10 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "grow" {} }
+                        col (style: "grow h-10 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "grow" {} }
+                        col (style: "flex-none w-20 h-10 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "none" {} }
+                    }
+                }
+            }
+
+            h2 "Nested flex (two levels)"
+            preview-card (id: "flex-nested") {
+                row (style: "gap-2 w-full h-24") {
+                    col (style: "flex-1 gap-2") {
+                        col (style: "flex-1 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1a" {} }
+                        col (style: "flex-1 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1b" {} }
+                    }
+                    col (style: "flex-1 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
+                }
+            }
+
+            h2 "Spacer (fills remaining space)"
+            preview-card (id: "flex-spacer") {
+                row (style: "w-full") {
+                    col (style: "w-16 h-10 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "L" {} }
+                    spacer
+                    col (style: "w-16 h-10 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "R" {} }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Class"
+                        th "Values"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "flex-1" td "-" td "flex: 1 1 0% — equal share of remaining space" }
+                    tr { td "flex-auto / grow" td "-" td "flex-grow from content basis" }
+                    tr { td "flex-none / grow-0" td "-" td "Keep natural size, do not grow" }
+                    tr { td "shrink / shrink-0" td "-" td "Allow / forbid shrinking below natural size" }
+                    tr { td "spacer (element)" td "-" td "Invisible filler that consumes remaining space" }
+                }
+            }
+        }
+    }
+}

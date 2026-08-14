@@ -4929,6 +4929,11 @@ mod plan370_015_behavior_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan409_tests;
 
+// Plan 412: Layout Gallery + VM 布局引擎对齐 integration tests(12 页构建 +
+// grid 重派生 + col-span 元数据 + 路由登记)。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan412_tests;
+
 #[cfg(test)]
 mod plan352_tests;
 
