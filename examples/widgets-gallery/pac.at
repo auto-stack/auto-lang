@@ -7,5 +7,5 @@ version: "1.0.0"
 description: "AutoUI Widgets Gallery - Auto-implemented UI widgets gallery (vue/vm/rust)"
 
 scene: "ui"
-render: "vue"
+render: "vm"
 front_port: 3024

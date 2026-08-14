@@ -44,7 +44,16 @@ use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::debug::{BuildProbe, ForIter};
 use crate::ui::view::View;
+use crate::ui_gen::vue::VueGenerator;
 use crate::ui::style::{Style, StyleClass, SizeValue};
+
+// Plan 409 §10 续 10: 当前 category-section 的 color,供 component-card 继承。
+// VM builder 递归 convert 无父子参数传递,用 thread-local 模拟:category-section
+// 分支在 convert children 前设此值,component-card 读它决定卡片边框/icon 颜色,
+// 对齐 vue codegen(vue.rs:1459 category_color_classes)。
+thread_local! {
+    static CATEGORY_COLOR: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+}
 
 // ============================================================================
 // Tracked conversion side-channels — Plan 307 Task 9
@@ -110,6 +119,8 @@ pub struct AuraViewBuilder<'a> {
     /// 此表:命中则用 computed.expr 在当前 bindings 下求值(递归),未命中再
     /// 回退 state。None = 根 widget 在 build_with_debug_gated 时由调用方传入。
     computed: Option<&'a [crate::aura::AuraComputed]>,
+    /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab)。
+    preview_states: Option<&'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>>,
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -128,6 +139,7 @@ impl<'a> AuraViewBuilder<'a> {
             override_state_obj_id: None,
             routes: None,
             computed: None,
+            preview_states: None,
         }
     }
 
@@ -145,6 +157,7 @@ impl<'a> AuraViewBuilder<'a> {
             override_state_obj_id: None,
             routes: None,
             computed: None,
+            preview_states: None,
         }
     }
 
@@ -166,6 +179,7 @@ impl<'a> AuraViewBuilder<'a> {
             override_state_obj_id: None,
             routes: None,
             computed: None,
+            preview_states: None,
         }
     }
 
@@ -180,6 +194,13 @@ impl<'a> AuraViewBuilder<'a> {
     /// 求值 computed 引用(如 `.status_glyph`)。
     pub fn with_computed(mut self, computed: &'a [crate::aura::AuraComputed]) -> Self {
         self.computed = Some(computed);
+        self
+    }
+
+    /// Plan 409 §10 续 19: 传入 preview-card 的 UI 局部 state(show/tab),
+    /// 供 preview-card 渲染时决定是否展开代码 + 哪个 tab。
+    pub fn with_preview_states(mut self, states: &'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>) -> Self {
+        self.preview_states = Some(states);
         self
     }
 
@@ -860,6 +881,8 @@ impl<'a> AuraViewBuilder<'a> {
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
             "button" | "btn" => self.convert_button(props, events, children, bindings),
+            // Plan 409 §10 续 8: badge = shadcn Badge(水平 inline + variant 配色)。
+            "badge" => self.convert_badge(props, children, bindings),
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
             // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
@@ -945,7 +968,9 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -999,7 +1024,9 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -1172,7 +1199,9 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -1418,8 +1447,8 @@ impl<'a> AuraViewBuilder<'a> {
         // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold text-primary").ok(),
-                "h2" => Style::parse("text-3xl font-bold text-primary").ok(),
+                "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
+                "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
                 "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
                 _ => None,
             };
@@ -1486,6 +1515,8 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
             "button" | "btn" => self.convert_button(props, events, children, bindings),
+            // Plan 409 §10 续 8: badge = shadcn Badge(水平 inline + variant 配色)。
+            "badge" => self.convert_badge(props, children, bindings),
 
             // Layout wrappers
             "center" => self.convert_center(props, children, bindings),
@@ -1525,16 +1556,96 @@ impl<'a> AuraViewBuilder<'a> {
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
-                // Plan 410: category-section → column (recurse component-card
-                // children). Vue codegen builds a fancy card grid; VM renders a
-                // simple column so the home page's component list isn't blank.
+                // Plan 409 §10 续 9: category-section → 标题行 + Grid(对齐 vue
+                // index.vue:45-51 的 色点+name+count 标题 + grid-cols)。之前
+                // 直接堆 Column,component-card 单列排布,与 vue 网格不一致。
                 if tag == "category-section" || tag == "category_section" {
-                    let child_views: Vec<View<DynamicMessage>> = children
+                    let name = self.extract_string(props, "name").unwrap_or_default();
+                    let count = self.extract_string(props, "count").unwrap_or_default();
+                    let color = self.extract_string(props, "color").unwrap_or_default();
+                    let dot_bg = match color.as_str() {
+                        "blue" => "bg-blue-500",
+                        "emerald" => "bg-emerald-500",
+                        "amber" => "bg-amber-500",
+                        "purple" => "bg-purple-500",
+                        "rose" => "bg-rose-500",
+                        _ => "bg-primary",
+                    };
+                    let dot = View::Container {
+                        child: Box::new(View::Empty),
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse(&format!("h-3 w-3 rounded-full {}", dot_bg)).ok(),
+                    };
+                    let name_view = View::Text {
+                        content: name,
+                        style: Style::parse("text-base font-semibold uppercase tracking-wider text-muted-foreground").ok(),
+                    };
+                    let mut title_kids: Vec<View<DynamicMessage>> = vec![dot, name_view];
+                    if !count.is_empty() {
+                        title_kids.push(View::Text {
+                            content: format!("({})", count),
+                            style: Style::parse("text-xs text-muted-foreground").ok(),
+                        });
+                    }
+                    let title = View::Row {
+                        children: title_kids,
+                        spacing: 0,
+                        padding: 0,
+                        style: Style::parse("items-center gap-2 mb-4").ok(),
+                    };
+                    // component-cards → Grid(cols=2, gap-3)
+                    // Plan 409 §10 续 10: 设 CATEGORY_COLOR 供 component-card
+                    // 继承颜色(save/restore 支持嵌套)。
+                    let prev_color = CATEGORY_COLOR.with(|c| {
+                        let prev = c.borrow().clone();
+                        *c.borrow_mut() = color.clone();
+                        prev
+                    });
+                    let cells: Vec<View<DynamicMessage>> = children
                         .iter()
                         .map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty))
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                    CATEGORY_COLOR.with(|c| *c.borrow_mut() = prev_color);
+                    // Plan 409 §10 续 11: 响应式列数(对齐 vue sm/lg/xl 断点)。
+                    let win_w = crate::ui::style::iced_adapter::window_width();
+                    let cols = if win_w < 640.0 { 1 }
+                        else if win_w < 1024.0 { 2 }
+                        else if win_w < 1280.0 { 3 }
+                        else { 4 };
+                    // Plan 409 §10 续 14: 等宽 grid(col[rows])。每 row(w-full) 含
+                    // cols 个 cell;cell(component-card)自带 flex-1,在 row 里等分
+                    // 宽度,实现上下左右对齐(不用 View::Grid,因其 cell Shrink 不齐)。
+                    let grid = {
+                        let mut rows_views: Vec<View<DynamicMessage>> = Vec::new();
+                        let mut iter = cells.into_iter();
+                        loop {
+                            let chunk: Vec<View<DynamicMessage>> = iter.by_ref().take(cols).collect();
+                            if chunk.is_empty() { break; }
+                            rows_views.push(View::Row {
+                                children: chunk,
+                                spacing: 12,
+                                padding: 0,
+                                style: Style::parse("w-full").ok(),
+                            });
+                        }
+                        View::Column {
+                            children: rows_views,
+                            spacing: 12,
+                            padding: 0,
+                            style: Style::parse("w-full").ok(),
+                        }
+                    };
+                    return View::Column {
+                        children: vec![title, grid],
+                        spacing: 16,
+                        padding: 0,
+                        style: None,
+                    };
                 }
                 // Plan 409 §10 组 E: preview-card / codeblock VM 识别。vue codegen
                 // 对它们做特殊处理(generate_previewcard_html / generate_codeblock_html
@@ -1543,31 +1654,243 @@ impl<'a> AuraViewBuilder<'a> {
                 // codeblock → Text(代码内容;否则空 children 落到 Empty,安装命令整
                 // 段消失)。
                 if tag == "preview-card" || tag == "preview_card" || tag == "previewcard" {
+                    // Plan 409 §10 续 19: 预览卡片(对齐 vue button.vue:126-180):
+                    // 圆角 border 容器 + 居中预览区 + Code toggle(展开/收起) +
+                    // Auto/Vue tab + 代码区。show/tab 来自 preview_states(局部 UI state)。
+                    let id = self.extract_string(props, "id").unwrap_or_else(|| "preview".to_string());
+                    let ui = self.preview_states
+                        .and_then(|m| m.get(&id)).copied()
+                        .unwrap_or_default();
                     let child_views: Vec<View<DynamicMessage>> = children
                         .iter()
                         .map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty))
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                    let inner: View<DynamicMessage> = if child_views.len() == 1 {
+                        child_views.into_iter().next().unwrap()
+                    } else {
+                        View::Column { children: child_views, spacing: 8, padding: 0, style: None }
+                    };
+                    let preview_area = View::Container {
+                        child: Box::new(inner),
+                        padding: 0, width: None, height: None,
+                        center_x: true, center_y: true,
+                        style: Style::parse("min-h-[100px] w-full p-4").ok(),
+                    };
+                    // Code toggle footer(点击 __preview_toggle)。
+                    let arrow = if ui.show { "▼" } else { "▶" };
+                    let toggle = View::Button {
+                        label: format!("Code  {}", arrow),
+                        content: None,
+                        onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: "__preview_toggle".to_string(),
+                            args: vec![auto_val::Value::str(&id)],
+                        },
+                        style: Style::parse("w-full px-4 py-2 text-sm text-muted-foreground border-t").ok(),
+                        on_right_click: None,
+                    };
+                    let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toggle];
+                    // 展开时:Auto/Vue tab + 代码区。
+                    if ui.show {
+                        let mut vg = VueGenerator::new();
+                        let (auto_code, vue_code) = vg.gen_previewcard_code(props, children);
+                        let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
+                        let mk_tab = |label: &str, tab_str: &str, active: bool| View::Button {
+                            label: label.to_string(),
+                            content: None,
+                            onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: "__preview_tab".to_string(),
+                                args: vec![auto_val::Value::str(&id), auto_val::Value::str(tab_str)],
+                            },
+                            style: Style::parse(if active {
+                                "px-4 py-2 text-xs font-medium bg-zinc-900 text-zinc-100 border-b-2 border-primary"
+                            } else {
+                                "px-4 py-2 text-xs text-zinc-400 border-b-2 border-transparent"
+                            }).ok(),
+                            on_right_click: None,
+                        };
+                        let tabs = View::Row {
+                            children: vec![
+                                mk_tab("Auto", "auto", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto)),
+                                mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
+                            ],
+                            spacing: 0, padding: 0,
+                            style: Style::parse("border-t bg-zinc-800").ok(),
+                        };
+                        let code_text = View::Text {
+                            content: code,
+                            style: Style::parse("font-mono text-sm text-zinc-50").ok(),
+                        };
+                        let code_area = View::Container {
+                            child: Box::new(code_text),
+                            padding: 0, width: None, height: None, center_x: false, center_y: false,
+                            style: Style::parse("p-4 bg-zinc-950 border-t w-full").ok(),
+                        };
+                        col_kids.push(tabs);
+                        col_kids.push(code_area);
+                    }
+                    return View::Container {
+                        child: Box::new(View::Column {
+                            children: col_kids, spacing: 0, padding: 0, style: None,
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden").ok(),
+                    };
                 }
                 if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
-                    // 内容优先级对齐 vue codegen(vue.rs ~4462):code → text → children text.
+                    // Plan 409 §10 续 16/18: 代码块(对齐 vue button.vue:110-123):
+                    // 圆角 border 容器 + header(lang 标签) + 深色 monospace 代码。
                     let code = self.extract_string(props, "code")
                         .or_else(|| self.extract_string(props, "text"))
                         .or_else(|| self.extract_children_text(children, bindings))
                         .unwrap_or_default();
                     let lang = self.extract_string(props, "lang").unwrap_or_default();
-                    let content = if lang.is_empty() { code } else { format!("{}: {}", lang, code) };
-                    return View::Text { content, style: None };
+                    let lang_label = if lang.is_empty() { "code".to_string() } else { lang };
+                    let header = View::Container {
+                        child: Box::new(View::Text {
+                            content: lang_label,
+                            style: Style::parse("text-xs font-medium").ok(),
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
+                    };
+                    let code_text = View::Text {
+                        content: code,
+                        style: Style::parse("font-mono text-sm text-zinc-50").ok(),
+                    };
+                    let code_area = View::Container {
+                        child: Box::new(code_text),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("p-4").ok(),
+                    };
+                    return View::Container {
+                        child: Box::new(View::Column {
+                            children: vec![header, code_area],
+                            spacing: 0, padding: 0, style: None,
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full").ok(),
+                    };
+                }
+                // Plan 409 §10 续 16: table → 表格(Column[Row[cells]]),对齐 vue。
+                // table/thead/tbody → Column(tr 堆叠);tr → Row(th/td 横排);
+                // th/td → Container(border + padding 形成网格) > Text。
+                if tag == "table" {
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    return View::Column {
+                        children: views, spacing: 0, padding: 0,
+                        style: Style::parse("border rounded w-full text-sm").ok(),
+                    };
+                }
+                if tag == "thead" || tag == "tbody" || tag == "tfoot" {
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    return View::Column { children: views, spacing: 0, padding: 0, style: None };
+                }
+                if tag == "tr" {
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    return View::Row { children: views, spacing: 0, padding: 0, style: None };
+                }
+                if tag == "th" || tag == "td" {
+                    let text = self.extract_children_text(children, bindings)
+                        .or_else(|| self.extract_string(props, "text"))
+                        .unwrap_or_default();
+                    let (cell_style, text_style) = if tag == "th" {
+                        ("px-4 py-2 border border-input bg-muted flex-1", "font-medium text-foreground")
+                    } else {
+                        ("px-4 py-2 border border-input flex-1", "text-muted-foreground")
+                    };
+                    let text_view = View::Text {
+                        content: text,
+                        style: Style::parse(text_style).ok(),
+                    };
+                    return View::Container {
+                        child: Box::new(text_view),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse(cell_style).ok(),
+                    };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
+                // Plan 409 §10 续 15: 完整卡片样式(对齐 vue index.vue:52-60):
+                // icon box(h-10 w-10 rounded-lg border bg-{color}-500/10) + 文字列
+                // (主标题 font-medium text-sm + 副标题 text-xs muted,换行展示)。
+                // 之前 render_link_button_with_icon 把 name+desc 合并成单行 label,
+                // 没体现卡片结构。颜色继承父 category-section 的 color。
                 if tag == "component-card" || tag == "component_card" || tag == "componentcard" {
                     let to = self.extract_string(props, "to").unwrap_or_default();
                     let name = self.extract_string(props, "name").unwrap_or_default();
                     let desc = self.extract_string(props, "desc").unwrap_or_default();
-                    let label = if desc.is_empty() { name } else { format!("{} — {}", name, desc) };
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    let color = CATEGORY_COLOR.with(|c| c.borrow().clone());
+                    let (border_cls, box_bg, icon_cls) = match color.as_str() {
+                        "blue" => ("border-blue-500/40", "bg-blue-500/10", "text-blue-400"),
+                        "emerald" => ("border-emerald-500/40", "bg-emerald-500/10", "text-emerald-400"),
+                        "amber" => ("border-amber-500/40", "bg-amber-500/10", "text-amber-400"),
+                        "purple" => ("border-purple-500/40", "bg-purple-500/10", "text-purple-400"),
+                        "rose" => ("border-rose-500/40", "bg-rose-500/10", "text-rose-400"),
+                        _ => ("border-border", "bg-primary/10", "text-primary"),
+                    };
+                    // icon box:圆角方块 + bg-{color}-500/10 + 居中的彩色图标。
+                    let icon_box = View::Container {
+                        child: Box::new(View::Image {
+                            src: format!("lucide:{}", icon),
+                            style: Style::parse(&format!("h-5 w-5 {}", icon_cls)).ok(),
+                        }),
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: true,
+                        center_y: true,
+                        style: Style::parse(&format!(
+                            "h-10 w-10 shrink-0 rounded-lg border {} {}",
+                            border_cls, box_bg
+                        )).ok(),
+                    };
+                    // 文字列:主标题(font-medium text-sm) + 副标题(text-xs muted),换行。
+                    let mut text_kids: Vec<View<DynamicMessage>> = vec![View::Text {
+                        content: name.clone(),
+                        style: Style::parse("font-medium text-sm").ok(),
+                    }];
+                    if !desc.is_empty() {
+                        text_kids.push(View::Text {
+                            content: desc,
+                            style: Style::parse("text-xs text-muted-foreground").ok(),
+                        });
+                    }
+                    let text_col = View::Column {
+                        children: text_kids,
+                        spacing: 2,
+                        padding: 0,
+                        style: None,
+                    };
+                    // content: icon_box + 文字列(顶部对齐)。
+                    let content = View::Row {
+                        children: vec![icon_box, text_col],
+                        spacing: 12,
+                        padding: 0,
+                        style: Style::parse("items-start gap-3 w-full").ok(),
+                    };
+                    return View::Button {
+                        label: name,
+                        content: Some(Box::new(content)),
+                        onclick: crate::ui::interpreter::DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: "__navigate".to_string(),
+                            args: vec![auto_val::Value::str(to)],
+                        },
+                        style: Style::parse(&format!(
+                            "rounded-xl border {} bg-card p-4 text-left flex-1",
+                            border_cls
+                        )).ok(),
+                        on_right_click: None,
+                    };
                 }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
@@ -1852,6 +2175,7 @@ impl<'a> AuraViewBuilder<'a> {
             override_state_obj_id: Some(child_state_id),
             routes: None,
             computed: Some(&child_widget.computed),
+            preview_states: self.preview_states,
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -1869,7 +2193,9 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -1940,7 +2266,9 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -1979,7 +2307,9 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing").unwrap_or(0);
+        let spacing = self.extract_u16(props, "spacing")
+            .or_else(|| self.extract_u16(props, "gap"))
+            .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style(props);
 
@@ -2365,8 +2695,8 @@ impl<'a> AuraViewBuilder<'a> {
         // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold text-primary").ok(),
-                "h2" => Style::parse("text-3xl font-bold text-primary").ok(),
+                "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
+                "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
                 "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
                 _ => None,
             };
@@ -2444,21 +2774,43 @@ impl<'a> AuraViewBuilder<'a> {
         // filled button (Plan 409 §8: theme-aware instead of hardcoded blue).
         let variant = self.extract_string_with(props, "variant", bindings)
             .unwrap_or_default();
+        // Plan 409 §10 续 7:variant → shadcn-vue 对齐的 Tailwind class preset
+        // (由 renderer 的 class 驱动样式)。default/缺省 = primary(主题色填充,与
+        // shadcn-vue Button 一致);secondary/destructive = 对应填充色;outline =
+        // 边框;ghost/link = 透明。user class 追加在后,可覆盖 preset(如主题色板
+        // 的 bg-xxx-500 覆盖 bg-primary,因 IcedStyle 后解析的 BackgroundColor 覆盖前者)。
         let preset: &str = match variant.as_str() {
-            "primary" => "bg-primary text-primary-foreground font-medium rounded",
-            // "text" and any other/absent value: no preset — chromeless by default.
+            "" | "default" | "primary" => "bg-primary text-primary-foreground font-medium rounded-md",
+            "secondary" => "bg-secondary text-secondary-foreground font-medium rounded-md",
+            "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md",
+            "outline" => "border border-input bg-background text-foreground rounded-md",
+            "ghost" => "rounded-md",
+            "link" => "text-primary",
+            // "text" 及未知 variant:无 preset — chromeless(由 user class 主导)。
             _ => "",
+        };
+        // Plan 409 §10 续 17: size → shadcn 对齐的尺寸 preset(h/px)。button 默认
+        // Shrink,需显式 height 才能区分 sm/default/lg(renderer button 分支读 height)。
+        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let size_preset: &str = match size.as_str() {
+            "sm" => "h-9 px-3",
+            "lg" => "h-11 px-8",
+            "icon" => "h-10 w-10",
+            _ => "h-10 px-4",  // default
         };
         let style = {
             // Binding-aware so a class can come from the loop variable, e.g.
             // `class: cell.style` where each cell carries its own Tailwind class.
             let user = self.extract_string_with(props, "class", bindings)
                 .or_else(|| self.extract_string_with(props, "style", bindings));
-            let merged = match (preset, user.as_deref()) {
-                ("", None) => String::new(),
-                ("", Some(c)) => c.to_string(),
-                (p, None) => p.to_string(),
-                (p, Some(c)) => format!("{} {}", p, c),
+            let base = if preset.is_empty() {
+                size_preset.to_string()
+            } else {
+                format!("{} {}", preset, size_preset)
+            };
+            let merged = match user.as_deref() {
+                None => base,
+                Some(c) => format!("{} {}", base, c),
             };
             if merged.is_empty() { None } else { Style::parse(&merged).ok() }
         };
@@ -2481,6 +2833,47 @@ impl<'a> AuraViewBuilder<'a> {
             style,
             on_right_click,
             content: None,
+        }
+    }
+
+    /// Plan 409 §10 续 8: badge → shadcn Badge(inline-flex 水平 + variant 配色)。
+    /// 之前 badge 落 default fallback → Column(垂直) + style 丢失 + variant 忽略,
+    /// 导致 icon/text 两行、outline 无边框。现对齐 vue Badge:水平排列 + 圆角
+    /// 胶囊 + variant 配色(outline=边框,default/secondary/destructive=填充)。
+    fn convert_badge(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let variant = self.extract_string_with(props, "variant", bindings)
+            .unwrap_or_default();
+        let preset: &str = match variant.as_str() {
+            "outline" => "border border-input text-foreground",
+            "secondary" => "bg-secondary text-secondary-foreground",
+            "destructive" => "bg-destructive text-destructive-foreground",
+            _ => "bg-primary text-primary-foreground",  // default
+        };
+        // shadcn Badge 基础:inline-flex items-center + 圆角胶囊 + 紧凑 padding + 小字。
+        let base = "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
+        let user = self.extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings));
+        let merged = match user {
+            Some(c) => format!("{} {} {}", base, preset, c),
+            None => format!("{} {}", base, preset),
+        };
+        let style = Style::parse(&merged).ok();
+        // 子元素 → Row(水平),对齐 vue Badge 的 inline-flex(items-center 居中)。
+        let child_views: Vec<View<DynamicMessage>> = children
+            .iter()
+            .map(|n| self.convert_node_with(n, bindings))
+            .filter(|v| !matches!(v, View::Empty))
+            .collect();
+        View::Row {
+            children: child_views,
+            spacing: 0,
+            padding: 0,
+            style,
         }
     }
 

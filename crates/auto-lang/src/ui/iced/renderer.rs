@@ -223,6 +223,56 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 }
 
 /// Build an Iced button::Style from IcedStyle.
+/// Plan 409 §10 续 20: 简单代码语法高亮(auto/vue/bash 通用)→ 着色 Span 列表。
+/// tokenizer:comment / string / number / keyword / punct / ident。
+fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
+    use iced::widget::text::Span;
+    const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
+        "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
+        "textarea", "scroll", "grid", "link", "if", "else", "return", "true", "false",
+        "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
+        "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
+        "primary", "secondary", "destructive", "default"];
+    const C_KW: iced::Color = iced::Color::from_rgb8(0xc7, 0x92, 0xea);  // 紫
+    const C_STR: iced::Color = iced::Color::from_rgb8(0xc3, 0xe8, 0x8d);  // 绿
+    const C_COM: iced::Color = iced::Color::from_rgb8(0x6b, 0x72, 0x80);  // 灰
+    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf7, 0x8c, 0x6c);  // 橙
+    const C_PUN: iced::Color = iced::Color::from_rgb8(0x89, 0xdd, 0xff);  // 青
+    let push = |spans: &mut Vec<Span<'static, ()>>, text: String, color: Option<iced::Color>| {
+        if !text.is_empty() { spans.push(Span::new(text).color_maybe(color)); }
+    };
+    let bytes = code.as_bytes();
+    let n = bytes.len();
+    let mut i = 0;
+    let mut spans: Vec<Span<'static, ()>> = Vec::new();
+    while i < n {
+        let b = bytes[i];
+        if (b == b'/' && i + 1 < n && bytes[i + 1] == b'/') || b == b'#' {
+            let s = i; while i < n && bytes[i] != b'\n' { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_COM));
+        } else if b == b'"' || b == b'\'' || b == b'`' {
+            let q = b; let s = i; i += 1;
+            while i < n && bytes[i] != q { if bytes[i] == b'\\' && i + 1 < n { i += 1; } i += 1; }
+            if i < n { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_STR));
+        } else if b.is_ascii_digit() {
+            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_NUM));
+        } else if b.is_ascii_alphabetic() || b == b'_' {
+            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') { i += 1; }
+            let t = &code[s..i];
+            push(&mut spans, t.to_string(), if KW.contains(&t) { Some(C_KW) } else { None });
+        } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
+            let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
+            push(&mut spans, code[s..i].to_string(), None);
+        } else {
+            push(&mut spans, code[i..i + 1].to_string(), Some(C_PUN));
+            i += 1;
+        }
+    }
+    spans
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let radius = is.border_radius.unwrap_or(0.0);
@@ -975,6 +1025,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Text { content, style } => {
+                // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
+                let is_code = style.as_ref()
+                    .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
+                    .unwrap_or(false);
+                if is_code {
+                    let spans = highlight_code(&content);
+                    let mut rich = iced::widget::text::Rich::<(), M>::with_spans(spans)
+                        .font(iced::Font { family: iced::font::Family::Monospace, ..iced::Font::DEFAULT });
+                    if let Some(ref s) = style {
+                        if let Some(fs) = effective_font_size(&IcedStyle::from_style(s)) {
+                            rich = rich.size(fs);
+                        }
+                    }
+                    let el: iced::Element<'static, M> = rich.into();
+                    if let Some(ref s) = style {
+                        wrap_with_margin_top(el, &IcedStyle::from_style(s))
+                    } else {
+                        el
+                    }
+                } else {
                 let mut text_widget = text(content);
 
                 if let Some(ref s) = style {
@@ -1041,6 +1111,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     wrap_with_margin_top(el, &iced_style)
                 } else {
                     el
+                }
                 }
             }
 
@@ -1202,6 +1273,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         text_color: default_text,
                         ..Default::default()
                     });
+                }
+
+                // Plan 409 §10 续 14/17: button 支持 width/flex-1 + height(让
+                // component-card 等宽、button size sm/lg 区分高度)。
+                // flex-1 在 iced_adapter 里设 is.width=Fill,这里统一用 is.width/height。
+                if let Some(ref is) = iced_style {
+                    if let Some(ref w) = is.width {
+                        btn = btn.width(iced_length(w));
+                    }
+                    if let Some(ref h) = is.height {
+                        btn = btn.height(iced_length(h));
+                    }
                 }
 
                 // Plan 402: wrap button in mouse_area for right-click (contextmenu)
@@ -3751,6 +3834,34 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // Plan 409 §10 续 19: preview-card 的 toggle/tab(局部 UI state,存 DynamicComponent)。
+        if msg.event.starts_with("__preview_toggle") || msg.event.starts_with("__preview_tab") {
+            let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            match name.as_str() {
+                "__preview_toggle" => {
+                    if let Some(auto_val::Value::Str(id)) = args.get(0) {
+                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                        st.show = !st.show;
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                    return iced::Task::none();
+                }
+                "__preview_tab" => {
+                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(tab))) = (args.get(0), args.get(1)) {
+                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                        st.tab = if tab.as_str() == "vue" {
+                            crate::ui::dynamic::PreviewTab::Vue
+                        } else {
+                            crate::ui::dynamic::PreviewTab::Auto
+                        };
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                    return iced::Task::none();
+                }
+                _ => {}
+            }
+        }
+
         // Pick up pending screenshot request from MCP thread at every update (Plan 285).
         if state.screenshot_request.borrow().is_none() {
             if let Some(ref mcp_handle) = state.mcp_shared {
@@ -4080,9 +4191,9 @@ fn compare_pngs(
                         if pw > max_pw {
                             *state.devtools_panel_width.borrow_mut() = max_pw;
                         }
-                        // Only mark dirty when devtools panel is visible
-                        if state.debug_mode {
-                        }
+                        // Plan 409 §10 续 11: resize 时重建 view,让响应式布局
+                        // (如 category grid 列数)随窗口宽度更新。
+                        *state.view_dirty.borrow_mut() = true;
                     }
                 }
                 return iced::Task::none();
@@ -4905,6 +5016,8 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         };
         crate::ui::style::iced_adapter::set_accent_name(&name);
     }
+    // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
+    crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
 
     // Resolve pending hover messages: pick the smallest counter (= deepest element).
     // This handles the case where nested mouse_areas both fire on_move — child has
@@ -7453,6 +7566,36 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let dbg_props = debug_style_props(style.as_ref());
             let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, false, style.as_ref());
 
+            // Plan 409 §10 续 12: input 支持 style 驱动的 appearance。容器模拟:
+            // 外层 div 提供 input 外观(border/bg/rounded),input 自身 bg-transparent
+            // border-0 → 透明无边框,让 search icon 能"放进 input 内部"。仅当 input
+            // 显式带 border/bg class 时覆盖(只设 width 的普通 input 仍用 iced 默认)。
+            if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                if is.background_color.is_some() || is.border || is.border_width.is_some() {
+                    let bg = is.background_color;
+                    let border_color = is.border_color.unwrap_or(iced::Color::TRANSPARENT);
+                    let border_width = is.border_width.unwrap_or(0.0);
+                    let radius = is.border_radius.unwrap_or(0.0);
+                    let value_color = is.text_color.unwrap_or_else(|| {
+                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            &crate::ui::style::Color::OnBackground,
+                        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                         .unwrap_or(iced::Color::WHITE)
+                    });
+                    input_widget = input_widget.style(move |_theme, _status| {
+                        iced::widget::text_input::Style {
+                            background: iced::Background::Color(bg.unwrap_or(iced::Color::TRANSPARENT)),
+                            border: iced::Border { color: border_color, width: border_width, radius: radius.into() },
+                            icon: iced::Color::TRANSPARENT,
+                            placeholder: iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7),
+                            value: value_color,
+                            selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.4),
+                        }
+                    });
+                }
+            }
+
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is
             // non-interactive and wrap_debug's mouse_area can capture hover/click.
@@ -7587,16 +7730,47 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            // Recurse per child (each gets its own wrap_debug instrumentation)
-            // then hand the built elements to the shared builder.
-            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
+            // Plan 409 §10 续 6:relative 容器的 absolute 子元素应脱流叠层。
+            // iced 无 absolute 定位,若任其进 normal 流会占据空间 —— 例如 Home
+            // Hero 的 blur 光晕圆(h-64 w-64)会把内容面板往下挤。这里按
+            // StyleClass::Absolute 分区:normal 子元素仍走 build_column 作 base;
+            // absolute 子元素用 iced::widget::stack 叠在 base 之上(参考 Overlay
+            // 分支 renderer.rs:1384),并用 clip 复现 overflow-hidden。stack 的
+            // 尺寸由 base 决定,overlay 落在原点 (0,0) 且不挤压 base —— 接近
+            // CSS absolute "脱流不占位" 的语义(精确定位 offset 暂不支持)。
+            let mut normal: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
+            let mut absolute: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
             for (i, child) in children.into_iter().enumerate() {
+                let is_abs = extract_view_style(&child)
+                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+                    .unwrap_or(false);
+                if is_abs { absolute.push((i, child)); } else { normal.push((i, child)); }
+            }
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
+            for (i, child) in normal.into_iter() {
                 path.push(i);
                 els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = build_column(els, spacing, padding, style.as_ref(), widget_id);
+            let base = build_column(els, spacing, padding, style.as_ref(), widget_id);
+            let el = if absolute.is_empty() {
+                base
+            } else {
+                // Stack::new() 无参;首个 push 为 base 层(决定 stack 尺寸),
+                // 随后 absolute 子元素作为 overlay 叠在其上,不挤压 base。
+                let mut stk = iced::widget::Stack::new().push(base);
+                for (i, child) in absolute.into_iter() {
+                    path.push(i);
+                    let abs_el = render_dynamic_view(child, debug_ctx, path);
+                    path.pop();
+                    stk = stk.push(iced::widget::opaque(abs_el));
+                }
+                let clip = style.as_ref()
+                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                    .unwrap_or(false);
+                stk.clip(clip).into()
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
         }
 

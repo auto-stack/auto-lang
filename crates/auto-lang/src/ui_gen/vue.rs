@@ -3360,7 +3360,7 @@ impl VueGenerator {
     }
 
     /// Convert AuraNode to HTML string
-    fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
+    pub(crate) fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
 
         match node {
@@ -4305,6 +4305,40 @@ impl VueGenerator {
     }
 
     /// Generate HTML for interactive previewcard element
+    /// Plan 409 §10 续 19: 给 VM preview-card 用 —— 从 children 生成 Auto/Vue 代码文本。
+    /// 复用 generate_previewcard_html 的代码生成逻辑(本文件 4361-4395)。VM builder
+    /// 用 throwaway VueGenerator 实例调用,副作用不外泄。
+    pub(crate) fn gen_previewcard_code(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> (String, String) {
+        let auto_code = if let Some(value) = props.get("auto") {
+            self.extract_string_value(value).unwrap_or_default().to_string()
+        } else {
+            let mut parts = Vec::new();
+            for child in children {
+                parts.push(self.node_to_auto_code(child, 0));
+            }
+            let g = parts.join("\n");
+            if g.is_empty() { "// Auto code not provided".to_string() } else { g }
+        };
+        let vue_code = if let Some(value) = props.get("vue") {
+            self.extract_string_value(value).unwrap_or_default().to_string()
+        } else {
+            let mut parts = Vec::new();
+            for child in children {
+                match self.node_to_html(child, 0) {
+                    Ok(h) => parts.push(h),
+                    Err(_) => parts.push("<!-- Error generating code -->".to_string()),
+                }
+            }
+            let g = parts.join("\n");
+            if g.is_empty() { "// Vue code not provided".to_string() } else { g }
+        };
+        (auto_code, vue_code)
+    }
+
     fn generate_previewcard_html(
         &mut self,
         props: &HashMap<String, AuraPropValue>,
@@ -4578,7 +4612,7 @@ impl VueGenerator {
 
     /// Convert AuraNode back to Auto source code string
     /// This is used to generate the Auto code for previewcard components
-    fn node_to_auto_code(&self, node: &AuraNode, indent: usize) -> String {
+    pub(crate) fn node_to_auto_code(&self, node: &AuraNode, indent: usize) -> String {
         let ind = "    ".repeat(indent);
 
         match node {

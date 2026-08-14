@@ -99,7 +99,10 @@ impl Color {
             // "foreground" / "text" → text color on background
             "foreground" | "text" => Ok(Color::OnBackground),
             // "background" / "card" / "surface" / "popover" → surface colors
-            "background" | "card" | "surface" | "popover" => Ok(Color::Background),
+            "background" => Ok(Color::Background),
+            // Plan 409 §10 续 13: card/surface/popover 用稍亮的 Surface(gray-800),
+            // 与页面背景(gray-900)拉开色差(对齐 shadcn dark token)。
+            "card" | "surface" | "popover" => Ok(Color::Surface),
             // "muted" → slightly darker surface
             "muted" => Ok(Color::Surface),
             "muted-foreground" => Ok(Color::OnSurface),
