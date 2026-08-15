@@ -5637,15 +5637,21 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     if toast_expired {
         *state.toast.borrow_mut() = None;
     }
-    let rendered: iced::Element<'static, IcedMessage> = if let Some(t) = state.toast.borrow().as_ref() {
-        let layer = build_toast_layer(t);
-        let stk = iced::widget::Stack::new()
-            .push(rendered)
-            .push(iced::widget::opaque(layer));
-        stk.into()
+    // Plan 412 续(toast 修正):恒定双层 Stack 结构 —— 槽 0 = 主内容,
+    // 槽 1 = toast 层(无 toast 时为零尺寸空层)。toast 出现/消失只改槽 1
+    // 的内容,根节点结构不变:iced 内部 widget-tree 的 diff 因此得以保留
+    // scrollable 滚动位置等交互状态(之前根类型在 rendered↔Stack 间切换,
+    // 结构失配导致全树 state 重置 → 内容页滚轮回顶)。toast 层不设
+    // opaque —— 命中测试穿透,不夺焦点、不拦截主界面交互,纯悬浮展示。
+    let toast_el: iced::Element<'static, IcedMessage> = if let Some(t) = state.toast.borrow().as_ref() {
+        build_toast_layer(t)
     } else {
-        rendered
+        iced::widget::container(iced::widget::Space::new()).into()
     };
+    let rendered: iced::Element<'static, IcedMessage> = iced::widget::Stack::new()
+        .push(rendered)
+        .push(toast_el)
+        .into();
 
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
