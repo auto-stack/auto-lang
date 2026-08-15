@@ -3912,7 +3912,7 @@ struct DynamicState {
     mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     /// Plan 412 续(toast VM 化):当前显示的 toast。handler 里的 toast()/
     /// toast.success() 调用被重写为 __toast state 写入,dynamic_view 取走
-    /// 后存到这里并渲染窗口级悬浮层;__toast_tick subscription 驱动到期清除。
+    /// 后存到这里并渲染窗口级悬浮层;到期由一次性 __toast_expire Task 清除。
     toast: std::cell::RefCell<Option<ToastReq>>,
     /// 上一次已消费的 __toast payload(去重;见 dynamic_view 的消费逻辑)。
     last_toast_payload: std::cell::RefCell<String>,
@@ -4186,19 +4186,12 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
-        // Plan 412 续(toast VM 化):toast 到期检查。subscription 在 toast
-        // 显示期间每 100ms 发 __toast_tick;到期则清除并触发重建(移除层)。
-        if msg.event == "__toast_tick" {
-            let expired = state
-                .toast
-                .borrow()
-                .as_ref()
-                .map(|t| t.shown_at.elapsed().as_millis() as u64 >= t.duration_ms)
-                .unwrap_or(false);
-            if expired {
-                *state.toast.borrow_mut() = None;
-                *state.view_dirty.borrow_mut() = true;
-            }
+        // Plan 412 续(toast 修正 2):到期消息由 update 结尾发放的一次性
+        // Task(sleep duration)发出 —— 取代 100ms 轮询 subscription,toast
+        // 显示期间零消息零重建,不干扰滚动/焦点/交互。
+        if msg.event == "__toast_expire" {
+            *state.toast.borrow_mut() = None;
+            *state.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
 
@@ -5279,7 +5272,43 @@ fn compare_pngs(
             return iced::widget::operation::snap_to_end(state.blocklist_scroll_id.clone());
         }
 
-        scroll_task.unwrap_or_else(iced::Task::none)
+        // Plan 412 续(toast 修正 2):在 update(&mut)消费 handler 写入的
+        // __toast state —— 移入 DynamicState.toast 并立即清空(不再依赖
+        // view 侧 payload 去重);同时发放一次性到期 Task(sleep duration →
+        // __toast_expire)取代 100ms 轮询 subscription。toast 显示期间零
+        // 消息、零 view 重建 —— 滚动/焦点/交互完全不受干扰。
+        let mut toast_task: Option<iced::Task<IcedMessage>> = None;
+        if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
+            if !payload.is_empty() && payload != state.last_toast_payload.borrow().as_str() {
+                *state.last_toast_payload.borrow_mut() = payload.to_string();
+                let _ = state.component.write_state("__toast", auto_val::Value::str(""));
+                let parts: Vec<&str> = payload.split('\u{1f}').collect();
+                if parts.len() == 4 && !parts[1].is_empty() {
+                    let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
+                    *state.toast.borrow_mut() = Some(ToastReq {
+                        kind: parts[0].to_string(),
+                        msg: parts[1].to_string(),
+                        position: parts[2].to_string(),
+                        shown_at: std::time::Instant::now(),
+                        duration_ms: duration,
+                    });
+                    toast_task = Some(iced::Task::perform(
+                        tokio::time::sleep(std::time::Duration::from_millis(duration)),
+                        |_| IcedMessage {
+                            widget: String::new(),
+                            event: "__toast_expire".to_string(),
+                            input_value: None,
+                        },
+                    ));
+                }
+            }
+        }
+
+        let base_task = scroll_task.unwrap_or_else(iced::Task::none);
+        match toast_task {
+            Some(t) => base_task.chain(t),
+            None => base_task,
+        }
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
@@ -5303,18 +5332,6 @@ fn compare_pngs(
             }
             if let Some(interval_ms) = _state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
-            }
-            // Plan 412 续(toast VM 化):toast 显示期间每 100ms 发 __toast_tick,
-            // update 侧检查到期并触发重建移除层。subscription 在每次 update 后
-            // 重估,toast 消失后自动停止。
-            if _state.toast.borrow().is_some() {
-                subs.push(
-                    iced::time::every(std::time::Duration::from_millis(100)).map(|_| IcedMessage {
-                        widget: String::new(),
-                        event: "__toast_tick".to_string(),
-                        input_value: None,
-                    }),
-                );
             }
             // F12 DevTools + key bindings listener (Plan 275)
             subs.push(keyboard_subscription(_state.component.key_bindings()));
@@ -5607,42 +5624,12 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
 
     // Plan 412 续(toast VM 化):取走 handler 写入的 __toast state,渲染
-    // 窗口级悬浮层(Stack 叠在全部内容之上,不挤压布局)。到期清除由
-    // __toast_tick subscription 驱动(见 update 与 subscription 组装)。
-    if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
-        // dynamic_view 只有 &state,不回写清空:用 payload 去重(last_toast_payload)
-        // 判定"新 toast" —— 同一个 __toast 值只在值变化时触发一次显示。
-        if !payload.is_empty() && payload != state.last_toast_payload.borrow().as_str() {
-            *state.last_toast_payload.borrow_mut() = payload.to_string();
-            let parts: Vec<&str> = payload.split('\u{1f}').collect();
-            if parts.len() == 4 && !parts[1].is_empty() {
-                let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
-                *state.toast.borrow_mut() = Some(ToastReq {
-                    kind: parts[0].to_string(),
-                    msg: parts[1].to_string(),
-                    position: parts[2].to_string(),
-                    shown_at: std::time::Instant::now(),
-                    duration_ms: duration,
-                });
-            }
-        }
-    }
-    // 到期兜底(tick 消息丢失时,任何重建都会走到这里再检查一次)。
-    let toast_expired = state
-        .toast
-        .borrow()
-        .as_ref()
-        .map(|t| t.shown_at.elapsed().as_millis() as u64 >= t.duration_ms)
-        .unwrap_or(false);
-    if toast_expired {
-        *state.toast.borrow_mut() = None;
-    }
-    // Plan 412 续(toast 修正):恒定双层 Stack 结构 —— 槽 0 = 主内容,
-    // 槽 1 = toast 层(无 toast 时为零尺寸空层)。toast 出现/消失只改槽 1
-    // 的内容,根节点结构不变:iced 内部 widget-tree 的 diff 因此得以保留
-    // scrollable 滚动位置等交互状态(之前根类型在 rendered↔Stack 间切换,
-    // 结构失配导致全树 state 重置 → 内容页滚轮回顶)。toast 层不设
-    // opaque —— 命中测试穿透,不夺焦点、不拦截主界面交互,纯悬浮展示。
+    // Plan 412 续(toast 修正 2):toast 的消费与到期 Task 都在 update(&mut)
+    // 完成(见 update 结尾);dynamic_view 只负责按 DynamicState.toast 渲染
+    // 恒定双层 Stack —— 槽 0 = 主内容,槽 1 = toast 层(无 toast 时为零尺寸
+    // 空层)。根节点结构恒定,iced 内部 widget-tree 的 diff 得以保留
+    // scrollable 滚动位置等交互状态;toast 层不设 opaque —— 命中测试穿透,
+    // 不夺焦点、不拦截主界面交互,纯悬浮展示。
     let toast_el: iced::Element<'static, IcedMessage> = if let Some(t) = state.toast.borrow().as_ref() {
         build_toast_layer(t)
     } else {
