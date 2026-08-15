@@ -4625,9 +4625,32 @@ impl VueGenerator {
             AuraNode::Element { tag, props, events, children, .. } => {
                 let mut result = String::new();
 
+                // Plan 412 续: primary-prop 位置参数展示 —— text "X" (style: …) {}
+                // 与源码简化写法 / parser 的 get_primary_prop 语法一致,让
+                // preview-card 的 Auto tab 与页面源码风格统一。仅对字符串
+                // 字面量且不含引号/换行的 text prop 生效,其余回退 prop 形式。
+                const PRIMARY_TEXT_TAGS: &[&str] =
+                    &["text", "h1", "h2", "h3", "p", "span", "label"];
+                let primary_literal: Option<String> = if PRIMARY_TEXT_TAGS.contains(&tag.as_str()) {
+                    match props.get("text") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s)))
+                            if !s.contains('"') && !s.contains('\n') =>
+                        {
+                            Some(format!(" \"{}\"", s))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let has_primary = primary_literal.is_some();
+
                 // Build props string
                 let mut props_parts = Vec::new();
                 for (key, value) in props {
+                    if has_primary && key == "text" {
+                        continue; // hoisted as the positional primary prop above
+                    }
                     let value_str = match value {
                         AuraPropValue::Expr(expr) => self.expr_to_auto_string(expr),
                         AuraPropValue::StyleBinding(bindings) => {
@@ -4658,9 +4681,21 @@ impl VueGenerator {
 
                 // Handle self-closing vs with children
                 if children.is_empty() {
-                    result.push_str(&format!("{}{}{} {{}}\n", ind, tag, props_str));
+                    result.push_str(&format!(
+                        "{}{}{}{} {{}}\n",
+                        ind,
+                        tag,
+                        primary_literal.unwrap_or_default(),
+                        props_str
+                    ));
                 } else {
-                    result.push_str(&format!("{}{}{} {{\n", ind, tag, props_str));
+                    result.push_str(&format!(
+                        "{}{}{}{} {{\n",
+                        ind,
+                        tag,
+                        primary_literal.unwrap_or_default(),
+                        props_str
+                    ));
                     for child in children {
                         result.push_str(&self.node_to_auto_code(child, indent + 1));
                     }

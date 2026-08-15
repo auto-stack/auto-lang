@@ -25,9 +25,9 @@ widget CenterPage {
             h2 "Column + Center (two-axis composition)"
             preview-card (id: "center-col-compose") {
                 col (style: "h-40 items-center justify-center gap-2 border rounded-md") {
-                    text (text: "Centered", style: "font-medium text-primary") {}
+                    text "Centered" (style: "font-medium text-primary") {}
                     square (color: "amber", h: 12, w: 24, text: "box") {}
-                    text (text: "Both axes", style: "text-xs text-muted-foreground") {}
+                    text "Both axes" (style: "text-xs text-muted-foreground") {}
                 }
             }
 
@@ -36,7 +36,7 @@ widget CenterPage {
                 col (style: "border rounded-md p-3") {
                     div (style: "max-w-xs mx-auto border rounded-md") {
                         center (style: "h-20") {
-                            text (text: "max-w + center", style: "text-xs text-muted-foreground") {}
+                            text "max-w + center" (style: "text-xs text-muted-foreground") {}
                         }
                     }
                 }

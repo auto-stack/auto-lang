@@ -30,25 +30,25 @@ widget RowPage {
             preview-card (id: "row-gap-ladder") {
                 col (style: "gap-3") {
                     row (style: "items-center gap-1") {
-                        text (text: "gap-1", style: "w-12 text-xs text-muted-foreground") {}
+                        text "gap-1" (style: "w-12 text-xs text-muted-foreground") {}
                         square (color: "blue", size: 8, text: "1") {}
                         square (color: "blue", size: 8, text: "2") {}
                         square (color: "blue", size: 8, text: "3") {}
                     }
                     row (style: "items-center gap-2") {
-                        text (text: "gap-2", style: "w-12 text-xs text-muted-foreground") {}
+                        text "gap-2" (style: "w-12 text-xs text-muted-foreground") {}
                         square (color: "emerald", size: 8, text: "1") {}
                         square (color: "emerald", size: 8, text: "2") {}
                         square (color: "emerald", size: 8, text: "3") {}
                     }
                     row (style: "items-center gap-4") {
-                        text (text: "gap-4", style: "w-12 text-xs text-muted-foreground") {}
+                        text "gap-4" (style: "w-12 text-xs text-muted-foreground") {}
                         square (color: "amber", size: 8, text: "1") {}
                         square (color: "amber", size: 8, text: "2") {}
                         square (color: "amber", size: 8, text: "3") {}
                     }
                     row (style: "items-center gap-8") {
-                        text (text: "gap-8", style: "w-12 text-xs text-muted-foreground") {}
+                        text "gap-8" (style: "w-12 text-xs text-muted-foreground") {}
                         square (color: "purple", size: 8, text: "1") {}
                         square (color: "purple", size: 8, text: "2") {}
                         square (color: "purple", size: 8, text: "3") {}

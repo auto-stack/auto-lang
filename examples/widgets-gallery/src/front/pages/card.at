@@ -112,8 +112,8 @@ widget CardPage {
                         col (style: "gap-4") {
                             row (style: "flex items-center justify-between") {
                                 col (style: "gap-1") {
-                                    text (text: "Push Notifications", style: "text-sm font-medium") {}
-                                    text (text: "Send notifications to device.", style: "text-sm text-muted-foreground") {}
+                                    text "Push Notifications" (style: "text-sm font-medium") {}
+                                    text "Send notifications to device." (style: "text-sm text-muted-foreground") {}
                                 }
                                 switch {}
                             }
@@ -125,8 +125,8 @@ widget CardPage {
                                         avatar-fallback "OM"
                                     }
                                     col (style: "grid gap-1") {
-                                        text (text: "Your call has been confirmed.", style: "text-sm") {}
-                                        text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
+                                        text "Your call has been confirmed." (style: "text-sm") {}
+                                        text "1 hour ago" (style: "text-sm text-muted-foreground") {}
                                     }
                                 }
                                 row (style: "flex items-start gap-4") {
@@ -135,8 +135,8 @@ widget CardPage {
                                         avatar-fallback "JD"
                                     }
                                     col (style: "grid gap-1") {
-                                        text (text: "You have a new message!", style: "text-sm") {}
-                                        text (text: "1 hour ago", style: "text-sm text-muted-foreground") {}
+                                        text "You have a new message!" (style: "text-sm") {}
+                                        text "1 hour ago" (style: "text-sm text-muted-foreground") {}
                                     }
                                 }
                                 row (style: "flex items-start gap-4") {
@@ -145,8 +145,8 @@ widget CardPage {
                                         avatar-fallback "WW"
                                     }
                                     col (style: "grid gap-1") {
-                                        text (text: "Your subscription is expiring soon!", style: "text-sm") {}
-                                        text (text: "2 hours ago", style: "text-sm text-muted-foreground") {}
+                                        text "Your subscription is expiring soon!" (style: "text-sm") {}
+                                        text "2 hours ago" (style: "text-sm text-muted-foreground") {}
                                     }
                                 }
                             }

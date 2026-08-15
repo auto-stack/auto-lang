@@ -45,7 +45,7 @@ widget CarouselPage {
 
             // Sizes Example
             h2 "Sizes"
-            text (text: "Use the basis utility class on CarouselItem to set the size.", style: "text-muted-foreground") {}
+            text "Use the basis utility class on CarouselItem to set the size." (style: "text-muted-foreground") {}
             preview-card (id: "carousel-sizes") {
                 carousel (style: "w-full max-w-sm") {
                     carousel-content {
@@ -99,7 +99,7 @@ widget CarouselPage {
 
             // Spacing Example
             h2 "Spacing"
-            text (text: "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing.", style: "text-muted-foreground") {}
+            text "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing." (style: "text-muted-foreground") {}
             preview-card (id: "carousel-spacing") {
                 carousel (style: "w-full max-w-sm") {
                     carousel-content (style: "-ml-4") {
@@ -139,7 +139,7 @@ widget CarouselPage {
 
             // Orientation Example
             h2 "Orientation"
-            text (text: "Use the orientation prop to set vertical or horizontal direction.", style: "text-muted-foreground") {}
+            text "Use the orientation prop to set vertical or horizontal direction." (style: "text-muted-foreground") {}
             preview-card (id: "carousel-orientation") {
                 div (style: "py-12 flex justify-center") {
                     carousel (orientation: "vertical", style: "w-full max-w-xs h-[200px]") {
@@ -181,7 +181,7 @@ widget CarouselPage {
 
             // Options Example
             h2 "Options"
-            text (text: "Pass Embla options using the opts prop.", style: "text-muted-foreground") {}
+            text "Pass Embla options using the opts prop." (style: "text-muted-foreground") {}
             preview-card (id: "carousel-options") {
                 carousel (align: "start", loop: "true", style: "w-full max-w-sm") {
                     carousel-content {

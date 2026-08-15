@@ -26,7 +26,7 @@ widget PositionPage {
             h2 "Overlay Layer (floating above content)"
             preview-card (id: "position-overlay") {
                 col (style: "relative h-32 border rounded-md p-2 gap-1") {
-                    text (text: "base content stays in flow", style: "text-xs text-muted-foreground") {}
+                    text "base content stays in flow" (style: "text-xs text-muted-foreground") {}
                     row (style: "absolute right-2 top-2 z-50 items-center gap-1.5 rounded-lg border bg-popover p-2 shadow-lg") {
                         col (style: "h-4 w-4 rounded-full bg-indigo-500") {}
                         col (style: "h-4 w-4 rounded-full bg-rose-500") {}
@@ -36,7 +36,7 @@ widget PositionPage {
             }
 
             h2 "Degradation Matrix (vue vs native vm)"
-            text (text: "Capabilities below parse everywhere but the native renderer (iced) has no positioning primitives — each degrades to the nearest in-flow equivalent. Use grid columns instead of wrapping, and Stack-style overlays instead of fixed/sticky chrome.", style: "text-sm text-muted-foreground mb-2") {}
+            text "Capabilities below parse everywhere but the native renderer (iced) has no positioning primitives — each degrades to the nearest in-flow equivalent. Use grid columns instead of wrapping, and Stack-style overlays instead of fixed/sticky chrome." (style: "text-sm text-muted-foreground mb-2") {}
             table {
                 thead {
                     tr {

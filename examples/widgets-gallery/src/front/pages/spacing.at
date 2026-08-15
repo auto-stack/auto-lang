@@ -12,13 +12,13 @@ widget SpacingPage {
             preview-card (id: "spacing-padding") {
                 col (style: "gap-2 items-start") {
                     col (style: "p-2 border rounded-md bg-blue-500/10") {
-                        text (text: "p-2", style: "text-xs") {}
+                        text "p-2" (style: "text-xs") {}
                     }
                     col (style: "p-4 border rounded-md bg-blue-500/10") {
-                        text (text: "p-4", style: "text-xs") {}
+                        text "p-4" (style: "text-xs") {}
                     }
                     col (style: "p-8 border rounded-md bg-blue-500/10") {
-                        text (text: "p-8", style: "text-xs") {}
+                        text "p-8" (style: "text-xs") {}
                     }
                 }
             }
@@ -27,10 +27,10 @@ widget SpacingPage {
             preview-card (id: "spacing-padding-axis") {
                 col (style: "gap-2 items-start") {
                     col (style: "px-8 py-1 border rounded-md bg-emerald-500/10") {
-                        text (text: "px-8 py-1", style: "text-xs") {}
+                        text "px-8 py-1" (style: "text-xs") {}
                     }
                     col (style: "px-2 py-4 border rounded-md bg-emerald-500/10") {
-                        text (text: "px-2 py-4", style: "text-xs") {}
+                        text "px-2 py-4" (style: "text-xs") {}
                     }
                 }
             }
@@ -39,10 +39,10 @@ widget SpacingPage {
             preview-card (id: "spacing-margin") {
                 col (style: "gap-2 border rounded-md p-2 bg-card") {
                     col (style: "m-4 border rounded-md bg-amber-500/20 border-amber-500/60") {
-                        text (text: "m-4 inside a padded parent", style: "text-xs") {}
+                        text "m-4 inside a padded parent" (style: "text-xs") {}
                     }
                     col (style: "border rounded-md bg-amber-500/20 border-amber-500/60") {
-                        text (text: "no margin", style: "text-xs") {}
+                        text "no margin" (style: "text-xs") {}
                     }
                 }
             }

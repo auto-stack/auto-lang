@@ -103,16 +103,16 @@ widget App {
                     // Logo
                     row (style: "items-center gap-2 mr-4 shrink-0") {
                         icon (name: "layers", style: "h-5 w-5 text-primary") {}
-                        text (text: "Auto UI", style: "font-bold text-lg hidden sm:inline") {}
+                        text "Auto UI" (style: "font-bold text-lg hidden sm:inline") {}
                     }
 
                     // Desktop nav
                     row (style: "hidden md:flex items-center gap-1 text-sm") {
                         link (to: "/") {
-                            text (text: "Docs", style: "px-3 py-1.5 rounded-md transition-colors") {}
+                            text "Docs" (style: "px-3 py-1.5 rounded-md transition-colors") {}
                         }
                         link (to: "/button") {
-                            text (text: "Widgets", style: "px-3 py-1.5 rounded-md transition-colors") {}
+                            text "Widgets" (style: "px-3 py-1.5 rounded-md transition-colors") {}
                         }
                     }
 
@@ -149,11 +149,11 @@ widget App {
                 aside (style: "hidden md:flex w-64 lg:w-72 border-r bg-background flex-col shrink-0") {
                     scroll (style: "flex-1 px-3 py-4") {
                         // Overview group
-                        text (text: "Overview", style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Overview" (style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/", icon: "home", label: "Home") {}
 
                         // Layout group (Plan 412: 布局专区,插在 Overview 之后)
-                        text (text: "Layout", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Layout" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/row", icon: "arrow-right", label: "Row") {}
                         nav-link (to: "/col", icon: "arrow-down", label: "Column") {}
                         nav-link (to: "/center", icon: "plus", label: "Center") {}
@@ -168,7 +168,7 @@ widget App {
                         nav-link (to: "/grid-span", icon: "square-stack", label: "GridSpan") {}
 
                         // Form group
-                        text (text: "Form", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Form" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
                         nav-link (to: "/calendar", icon: "layout-grid", label: "Calendar") {}
                         nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
@@ -186,7 +186,7 @@ widget App {
                         nav-link (to: "/togglegroup", icon: "layout-grid", label: "ToggleGroup") {}
 
                         // Display group
-                        text (text: "Display", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Display" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/aspectratio", icon: "image", label: "AspectRatio") {}
                         nav-link (to: "/avatar", icon: "image", label: "Avatar") {}
                         nav-link (to: "/badge", icon: "bell", label: "Badge") {}
@@ -197,7 +197,7 @@ widget App {
                         nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
 
                         // Feedback group
-                        text (text: "Feedback", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Feedback" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/alert", icon: "bell", label: "Alert") {}
                         nav-link (to: "/progress", icon: "layout-grid", label: "Progress") {}
                         nav-link (to: "/sonner", icon: "bell", label: "Sonner") {}
@@ -205,7 +205,7 @@ widget App {
                         nav-link (to: "/tooltip", icon: "bell", label: "Tooltip") {}
 
                         // Navigation group
-                        text (text: "Navigation", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Navigation" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb") {}
                         nav-link (to: "/command", icon: "command", label: "Command") {}
                         nav-link (to: "/menubar", icon: "layout-grid", label: "Menubar") {}
@@ -218,7 +218,7 @@ widget App {
                         nav-link (to: "/tabs", icon: "layout-grid", label: "Tabs") {}
 
                         // Overlay group
-                        text (text: "Overlay", style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        text "Overlay" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
                         nav-link (to: "/accordion", icon: "layout-grid", label: "Accordion") {}
                         nav-link (to: "/alertdialog", icon: "bell", label: "AlertDialog") {}
                         nav-link (to: "/collapsible", icon: "layout-grid", label: "Collapsible") {}
@@ -252,19 +252,19 @@ widget App {
                 link (to: "/") {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "home", style: "h-5 w-5") {}
-                        text (text: "Home", style: "text-[10px]") {}
+                        text "Home" (style: "text-[10px]") {}
                     }
                 }
                 button (variant: "ghost", onClick: .openSidebar) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "layout-grid", style: "h-5 w-5") {}
-                        text (text: "Widgets", style: "text-[10px]") {}
+                        text "Widgets" (style: "text-[10px]") {}
                     }
                 }
                 button (variant: "ghost", onClick: .openSearch) {
                     col (style: "items-center gap-0.5 py-2 px-3") {
                         icon (name: "search", style: "h-5 w-5") {}
-                        text (text: "Search", style: "text-[10px]") {}
+                        text "Search" (style: "text-[10px]") {}
                     }
                 }
             }

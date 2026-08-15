@@ -31,7 +31,7 @@ widget AspectratioPage {
                                 }
                             }
                         }
-                        text (text: "Square (1:1)", style: "text-sm text-muted-foreground") {}
+                        text "Square (1:1)" (style: "text-sm text-muted-foreground") {}
                     }
                     col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
@@ -41,7 +41,7 @@ widget AspectratioPage {
                                 }
                             }
                         }
-                        text (text: "Widescreen (16:9)", style: "text-sm text-muted-foreground") {}
+                        text "Widescreen (16:9)" (style: "text-sm text-muted-foreground") {}
                     }
                     col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
@@ -51,7 +51,7 @@ widget AspectratioPage {
                                 }
                             }
                         }
-                        text (text: "Portrait (9:16)", style: "text-sm text-muted-foreground") {}
+                        text "Portrait (9:16)" (style: "text-sm text-muted-foreground") {}
                     }
                     col (style: "gap-2 w-[150px]") {
                         div (style: "bg-muted rounded-md overflow-hidden") {
@@ -61,7 +61,7 @@ widget AspectratioPage {
                                 }
                             }
                         }
-                        text (text: "Standard (4:3)", style: "text-sm text-muted-foreground") {}
+                        text "Standard (4:3)" (style: "text-sm text-muted-foreground") {}
                     }
                 }
             }

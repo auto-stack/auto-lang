@@ -30,19 +30,19 @@ widget ColumnPage {
             preview-card (id: "col-gap-ladder") {
                 row (style: "gap-6 items-start") {
                     col (style: "gap-1") {
-                        text (text: "gap-1", style: "text-xs text-muted-foreground") {}
+                        text "gap-1" (style: "text-xs text-muted-foreground") {}
                         square (color: "blue", h: 6, w: 16) {}
                         square (color: "blue", h: 6, w: 16) {}
                         square (color: "blue", h: 6, w: 16) {}
                     }
                     col (style: "gap-2") {
-                        text (text: "gap-2", style: "text-xs text-muted-foreground") {}
+                        text "gap-2" (style: "text-xs text-muted-foreground") {}
                         square (color: "emerald", h: 6, w: 16) {}
                         square (color: "emerald", h: 6, w: 16) {}
                         square (color: "emerald", h: 6, w: 16) {}
                     }
                     col (style: "gap-4") {
-                        text (text: "gap-4", style: "text-xs text-muted-foreground") {}
+                        text "gap-4" (style: "text-xs text-muted-foreground") {}
                         square (color: "amber", h: 6, w: 16) {}
                         square (color: "amber", h: 6, w: 16) {}
                         square (color: "amber", h: 6, w: 16) {}

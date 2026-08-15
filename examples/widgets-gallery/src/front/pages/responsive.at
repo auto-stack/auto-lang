@@ -35,14 +35,14 @@ widget ResponsivePage {
             h2 "Responsive Padding (p-4 md:p-8)"
             preview-card (id: "responsive-padding") {
                 col (style: "p-4 md:p-8 border rounded-md bg-amber-500/10") {
-                    text (text: "p-4 md:p-8", style: "text-xs") {}
+                    text "p-4 md:p-8" (style: "text-xs") {}
                 }
             }
 
             h2 "Responsive Text Ladder (text-base md:text-xl lg:text-3xl)"
             preview-card (id: "responsive-text") {
                 col (style: "border rounded-md p-4") {
-                    text (text: "Resize the window", style: "text-base md:text-xl lg:text-3xl font-semibold text-primary") {}
+                    text "Resize the window" (style: "text-base md:text-xl lg:text-3xl font-semibold text-primary") {}
                 }
             }
 

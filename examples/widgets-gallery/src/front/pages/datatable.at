@@ -26,17 +26,17 @@ widget DatatablePage {
             text "DataTable is a feature-rich table with built-in sorting, filtering, row selection, pagination, and column visibility toggling. Built on TanStack Table for robust state management. Ideal for admin dashboards, data exploration, and CRUD interfaces where users need to find and act on records efficiently."
 
             h2 "Introduction"
-            text (text: "The Data Table is not a single widget but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table widget. This allows for maximum flexibility with sorting, filtering, pagination, and more.", style: "text-muted-foreground") {}
+            text "The Data Table is not a single widget but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table widget. This allows for maximum flexibility with sorting, filtering, pagination, and more." (style: "text-muted-foreground") {}
 
             h2 "Installation"
-            text (text: "1. Add the Table widget:", style: "font-medium") {}
+            text "1. Add the Table widget:" (style: "font-medium") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
-            text (text: "2. Add TanStack Table dependency:", style: "font-medium") {}
+            text "2. Add TanStack Table dependency:" (style: "font-medium") {}
             codeblock (lang: "bash", code: "npm install @tanstack/vue-table") {}
 
             // Basic Table
             h2 "Basic Table"
-            text (text: "Start with a basic table to display your data.", style: "text-muted-foreground") {}
+            text "Start with a basic table to display your data." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-basic") {
                 table {
                     table-header {
@@ -68,7 +68,7 @@ widget DatatablePage {
 
             // Sorting - Interactive!
             h2 "Sorting"
-            text (text: "Click column headers to sort ascending or descending. Try clicking on each column!", style: "text-muted-foreground") {}
+            text "Click column headers to sort ascending or descending. Try clicking on each column!" (style: "text-muted-foreground") {}
             preview-card (id: "datatable-sorting") {
                 table {
                     table-header {
@@ -286,11 +286,11 @@ widget DatatablePage {
 
             // Filtering
             h2 "Filtering"
-            text (text: "Search and filter data across columns.", style: "text-muted-foreground") {}
+            text "Search and filter data across columns." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-filtering") {
                 col (style: "gap-4") {
                     row (style: "flex items-center gap-2") {
-                        text (text: "Filter:", style: "text-sm font-medium") {}
+                        text "Filter:" (style: "text-sm font-medium") {}
                         input (placeholder: "Search by email...", style: "w-[250px]") {}
                     }
                     table {
@@ -319,7 +319,7 @@ widget DatatablePage {
 
             // Pagination
             h2 "Pagination"
-            text (text: "Navigate through large datasets with page controls.", style: "text-muted-foreground") {}
+            text "Navigate through large datasets with page controls." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-pagination") {
                 col (style: "gap-4") {
                     table {
@@ -345,7 +345,7 @@ widget DatatablePage {
                     }
                     row (style: "flex items-center justify-between") {
                         row (style: "flex items-center gap-2") {
-                            text (text: "Rows per page", style: "text-sm text-muted-foreground") {}
+                            text "Rows per page" (style: "text-sm text-muted-foreground") {}
                             select (style: "w-[70px]") {
                                 select-trigger { select-value "10" }
                                 select-content {
@@ -354,7 +354,7 @@ widget DatatablePage {
                                 }
                             }
                         }
-                        text (text: "Page 1 of 10", style: "text-sm text-muted-foreground") {}
+                        text "Page 1 of 10" (style: "text-sm text-muted-foreground") {}
                         row (style: "gap-2") {
                             button (variant: "outline", size: "icon", disabled: true) {
                                 icon (name: "chevron-left", style: "h-4 w-4") {}
@@ -369,7 +369,7 @@ widget DatatablePage {
 
             // Row Selection
             h2 "Row Selection"
-            text (text: "Select rows with checkboxes for bulk operations.", style: "text-muted-foreground") {}
+            text "Select rows with checkboxes for bulk operations." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-selection") {
                 col (style: "gap-4") {
                     table {
@@ -403,7 +403,7 @@ widget DatatablePage {
                         }
                     }
                     row (style: "flex items-center justify-between") {
-                        text (text: "1 of 3 row(s) selected.", style: "text-sm text-muted-foreground") {}
+                        text "1 of 3 row(s) selected." (style: "text-sm text-muted-foreground") {}
                         row (style: "gap-2") {
                             button (text: "Previous", variant: "outline", size: "sm") {}
                             button (text: "Next", variant: "outline", size: "sm") {}
@@ -414,7 +414,7 @@ widget DatatablePage {
 
             // Row Actions
             h2 "Row Actions"
-            text (text: "Add action menus to each row.", style: "text-muted-foreground") {}
+            text "Add action menus to each row." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-actions") {
                 table {
                     table-header {
@@ -470,7 +470,7 @@ widget DatatablePage {
 
             // Column Visibility
             h2 "Column Visibility"
-            text (text: "Toggle column visibility with a dropdown menu.", style: "text-muted-foreground") {}
+            text "Toggle column visibility with a dropdown menu." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-visibility") {
                 col (style: "gap-4") {
                     row (style: "flex items-center justify-between") {
@@ -510,7 +510,7 @@ widget DatatablePage {
 
             // Complete Example
             h2 "Complete Example"
-            text (text: "A full-featured data table with all features combined.", style: "text-muted-foreground") {}
+            text "A full-featured data table with all features combined." (style: "text-muted-foreground") {}
             preview-card (id: "datatable-complete") {
                 col (style: "gap-4") {
                     row (style: "flex items-center justify-between") {
@@ -587,10 +587,10 @@ widget DatatablePage {
                         }
                     }
                     row (style: "flex items-center justify-between") {
-                        text (text: "1 of 4 row(s) selected.", style: "text-sm text-muted-foreground") {}
+                        text "1 of 4 row(s) selected." (style: "text-sm text-muted-foreground") {}
                         row (style: "flex items-center gap-6") {
                             row (style: "flex items-center gap-2") {
-                                text (text: "Rows per page", style: "text-sm text-muted-foreground") {}
+                                text "Rows per page" (style: "text-sm text-muted-foreground") {}
                                 select (style: "w-[70px]") {
                                     select-trigger { select-value {} }
                                     select-content {
@@ -599,7 +599,7 @@ widget DatatablePage {
                                     }
                                 }
                             }
-                            text (text: "Page 1 of 1", style: "text-sm text-muted-foreground") {}
+                            text "Page 1 of 1" (style: "text-sm text-muted-foreground") {}
                             row (style: "gap-2") {
                                 button (variant: "outline", size: "icon", disabled: true) {
                                     icon (name: "chevron-left", style: "h-4 w-4") {}
@@ -615,7 +615,7 @@ widget DatatablePage {
 
             // Features Overview
             h2 "Features"
-            text (text: "The Data Table guide covers:", style: "text-muted-foreground") {}
+            text "The Data Table guide covers:" (style: "text-muted-foreground") {}
             col (style: "gap-2 py-2") {
                 row (style: "gap-2") {
                     badge (text: "Sorting", variant: "secondary") {}
@@ -668,7 +668,7 @@ widget DatatablePage {
 
             // TanStack Table API
             h2 "TanStack Table API"
-            text (text: "Key API methods from @tanstack/vue-table:", style: "text-muted-foreground") {}
+            text "Key API methods from @tanstack/vue-table:" (style: "text-muted-foreground") {}
             table {
                 table-header {
                     table-row {
@@ -701,7 +701,7 @@ widget DatatablePage {
             }
 
             h2 "Documentation"
-            text (text: "For the complete guide with code examples, see the shadcn-vue Data Table documentation.", style: "text-muted-foreground") {}
+            text "For the complete guide with code examples, see the shadcn-vue Data Table documentation." (style: "text-muted-foreground") {}
         }
     }
 }
