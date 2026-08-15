@@ -2767,6 +2767,95 @@ static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, S
 static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
     std::sync::OnceLock::new();
 
+/// Plan 412 续(toast VM 化):toast 悬浮层 — 窗口级 Stack 上叠,按 position
+/// 九宫格定位(top-/bottom-/center × left/center/right,加正中 "center"),
+/// 边距 16px。卡片配色对齐 toast.at 的静态 demo(success 绿 / error 红 /
+/// warning 琥珀 / info 蓝 / default 主题边框),深色主题。
+fn build_toast_layer(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
+    let (border_rgb, bg_rgb, title): ((u8, u8, u8), (u8, u8, u8), &str) = match t.kind.as_str() {
+        "success" => ((34, 197, 94), (34, 197, 94), "Success"),     // green-500
+        "error" => ((239, 68, 68), (239, 68, 68), "Error"),           // red-500
+        "warning" => ((245, 158, 11), (245, 158, 11), "Warning"),     // amber-500
+        "info" => ((59, 130, 246), (59, 130, 246), "Info"),           // blue-500
+        _ => ((63, 63, 70), (24, 24, 27), "Notification"),            // zinc-700 / zinc-900
+    };
+    let title_color = if t.kind == "default" {
+        iced::Color::WHITE
+    } else {
+        iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2)
+    };
+    let msg_color = iced::Color::from_rgb8(161, 161, 170); // zinc-400
+
+    let card_body = iced::widget::column![
+        iced::widget::text(title.to_string()).size(14).style(move |_| {
+            iced::widget::text::Style { color: Some(title_color) }
+        }),
+        iced::widget::text(t.msg.clone()).size(14).style(move |_| {
+            iced::widget::text::Style { color: Some(msg_color) }
+        }),
+    ]
+    .spacing(4);
+
+    let (br, bgc, bg_a, bd_a) = (
+        iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2),
+        iced::Color::from_rgb8(bg_rgb.0, bg_rgb.1, bg_rgb.2),
+        if t.kind == "default" { 1.0 } else { 0.10 },
+        if t.kind == "default" { 1.0 } else { 0.50 },
+    );
+    let card = iced::widget::container(card_body)
+        .padding(16)
+        .max_width(360)
+        .style(move |_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color {
+                a: bg_a,
+                ..bgc
+            })),
+            border: iced::Border {
+                color: iced::Color { a: bd_a, ..br },
+                width: 1.0,
+                radius: iced::border::Radius::new(8.0),
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.35),
+                offset: iced::Vector::new(0.0, 8.0),
+                blur_radius: 24.0,
+            },
+            ..Default::default()
+        });
+
+    // 九宫格:竖轴(top: card 底部补空 / center: 两端补空 / bottom: 顶部补空)
+    // + 横轴同理。Space(Fill) 把卡片推到目标角落/边缘中点。
+    let pos = t.position.as_str();
+    let v = if pos.starts_with("top") { 0 } else if pos.starts_with("bottom") { 2 } else { 1 };
+    let h = if pos.ends_with("left") { 0 } else if pos.ends_with("right") { 2 } else { 1 };
+    let fill_h = || iced::widget::Space::new().height(iced::Length::Fill);
+    let fill_w = || iced::widget::Space::new().width(iced::Length::Fill);
+
+    let mut col = iced::widget::column![];
+    if v == 2 || (v == 1 && h == 1) {
+        col = col.push(fill_h());
+    }
+    col = col.push(card);
+    if v == 0 || (v == 1 && h == 1) {
+        col = col.push(fill_h());
+    }
+
+    let mut r = iced::widget::row![];
+    if h == 2 || (h == 1 && v != 1) || pos == "center" {
+        r = r.push(fill_w());
+    }
+    r = r.push(col);
+    if h == 0 || (h == 1 && v != 1) || pos == "center" {
+        r = r.push(fill_w());
+    }
+
+    iced::widget::container(r)
+        .padding(16)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .into()
+}
+
 /// Subscription that polls the MCP action channel and injects IcedMessages
 /// into the event loop. This allows MCP actions to truly simulate user operations
 /// (with animations, state updates, and full UI refresh).
@@ -3821,6 +3910,24 @@ struct DynamicState {
     aura_to_id_cache: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
     /// MCP shared state handle — updated after each render for AI agent inspection (Plan 278).
     mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
+    /// Plan 412 续(toast VM 化):当前显示的 toast。handler 里的 toast()/
+    /// toast.success() 调用被重写为 __toast state 写入,dynamic_view 取走
+    /// 后存到这里并渲染窗口级悬浮层;__toast_tick subscription 驱动到期清除。
+    toast: std::cell::RefCell<Option<ToastReq>>,
+    /// 上一次已消费的 __toast payload(去重;见 dynamic_view 的消费逻辑)。
+    last_toast_payload: std::cell::RefCell<String>,
+}
+
+/// Plan 412 续(toast VM 化):一条悬浮通知。kind(default/success/error/
+/// warning/info)决定配色,position 支持 top-/bottom-/center × -left/-center/
+/// -right(加正中 "center"),duration_ms 到期自动消失(默认 4000ms,
+/// 与 vue-sonner 对齐)。
+struct ToastReq {
+    kind: String,
+    msg: String,
+    position: String,
+    shown_at: std::time::Instant,
+    duration_ms: u64,
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -4043,6 +4150,8 @@ fn compare_pngs(
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             mcp_shared: Some(mcp_shared.clone()),
+            toast: std::cell::RefCell::new(None),
+            last_toast_payload: std::cell::RefCell::new(String::new()),
         }
     };
 
@@ -4074,6 +4183,22 @@ fn compare_pngs(
                 .to_string();
             state.component.set_route(&path);
             *state.view_dirty.borrow_mut() = true;
+            return iced::Task::none();
+        }
+
+        // Plan 412 续(toast VM 化):toast 到期检查。subscription 在 toast
+        // 显示期间每 100ms 发 __toast_tick;到期则清除并触发重建(移除层)。
+        if msg.event == "__toast_tick" {
+            let expired = state
+                .toast
+                .borrow()
+                .as_ref()
+                .map(|t| t.shown_at.elapsed().as_millis() as u64 >= t.duration_ms)
+                .unwrap_or(false);
+            if expired {
+                *state.toast.borrow_mut() = None;
+                *state.view_dirty.borrow_mut() = true;
+            }
             return iced::Task::none();
         }
 
@@ -5179,6 +5304,18 @@ fn compare_pngs(
             if let Some(interval_ms) = _state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
             }
+            // Plan 412 续(toast VM 化):toast 显示期间每 100ms 发 __toast_tick,
+            // update 侧检查到期并触发重建移除层。subscription 在每次 update 后
+            // 重估,toast 消失后自动停止。
+            if _state.toast.borrow().is_some() {
+                subs.push(
+                    iced::time::every(std::time::Duration::from_millis(100)).map(|_| IcedMessage {
+                        widget: String::new(),
+                        event: "__toast_tick".to_string(),
+                        input_value: None,
+                    }),
+                );
+            }
             // F12 DevTools + key bindings listener (Plan 275)
             subs.push(keyboard_subscription(_state.component.key_bindings()));
             // MCP action channel — polls for injected actions from AI agent (Plan 278)
@@ -5468,6 +5605,47 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 
     let mut path = Vec::new();
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
+
+    // Plan 412 续(toast VM 化):取走 handler 写入的 __toast state,渲染
+    // 窗口级悬浮层(Stack 叠在全部内容之上,不挤压布局)。到期清除由
+    // __toast_tick subscription 驱动(见 update 与 subscription 组装)。
+    if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
+        // dynamic_view 只有 &state,不回写清空:用 payload 去重(last_toast_payload)
+        // 判定"新 toast" —— 同一个 __toast 值只在值变化时触发一次显示。
+        if !payload.is_empty() && payload != state.last_toast_payload.borrow().as_str() {
+            *state.last_toast_payload.borrow_mut() = payload.to_string();
+            let parts: Vec<&str> = payload.split('\u{1f}').collect();
+            if parts.len() == 4 && !parts[1].is_empty() {
+                let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
+                *state.toast.borrow_mut() = Some(ToastReq {
+                    kind: parts[0].to_string(),
+                    msg: parts[1].to_string(),
+                    position: parts[2].to_string(),
+                    shown_at: std::time::Instant::now(),
+                    duration_ms: duration,
+                });
+            }
+        }
+    }
+    // 到期兜底(tick 消息丢失时,任何重建都会走到这里再检查一次)。
+    let toast_expired = state
+        .toast
+        .borrow()
+        .as_ref()
+        .map(|t| t.shown_at.elapsed().as_millis() as u64 >= t.duration_ms)
+        .unwrap_or(false);
+    if toast_expired {
+        *state.toast.borrow_mut() = None;
+    }
+    let rendered: iced::Element<'static, IcedMessage> = if let Some(t) = state.toast.borrow().as_ref() {
+        let layer = build_toast_layer(t);
+        let stk = iced::widget::Stack::new()
+            .push(rendered)
+            .push(iced::widget::opaque(layer));
+        stk.into()
+    } else {
+        rendered
+    };
 
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {

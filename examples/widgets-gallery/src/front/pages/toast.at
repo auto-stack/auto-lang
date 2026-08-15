@@ -1,7 +1,7 @@
-// pages/toast.at - Toast component documentation page (vm-compatible version)
-// Note: vue-sonner escape hatch is vue-only. This version uses static
-// cards for vm/rust compatibility. In vue mode, the Toaster component
-// is mounted separately in App for programmatic toast() calls.
+// pages/toast.at - Toast component documentation page
+// Plan 412 续(toast VM 化):toast()/toast.success() 在 VM 端渲染为窗口级
+// 悬浮层(Stack 叠加,默认右下角,延时自动消失);vue 端仍走 vue-sonner。
+// position / duration 参数双端一致(vue: options 对象;vm: __toast 编码)。
 
 widget ToastPage {
     model { activeTab str = "preview" }
@@ -10,12 +10,22 @@ widget ToastPage {
         .showSuccessToast -> { toast.success("Action completed successfully!") }
         .showErrorToast -> { toast.error("Something went wrong.") }
         .showInfoToast -> { toast.info("Here is a quick update.") }
+        .showTopLeft -> { toast.info("Toast at top-left", position: "top-left") }
+        .showTopCenter -> { toast.info("Toast at top-center", position: "top-center") }
+        .showTopRight -> { toast.info("Toast at top-right", position: "top-right") }
+        .showBottomLeft -> { toast.info("Toast at bottom-left", position: "bottom-left") }
+        .showBottomCenter -> { toast.info("Toast at bottom-center", position: "bottom-center") }
+        .showBottomRight -> { toast.info("Toast at bottom-right (default)", position: "bottom-right") }
+        .showCenter -> { toast.warning("Toast at window center", position: "center") }
+        .show2s -> { toast("This toast dismisses in 2 seconds", duration: 2000) }
+        .show5s -> { toast("This toast dismisses in 5 seconds", duration: 5000) }
+        .show8s -> { toast("This toast dismisses in 8 seconds", duration: 8000) }
     }
 
     view {
         col {
             h1 "Toast"
-            text "Toast displays a brief, auto-dismissing notification that appears temporarily without blocking the user's workflow. Powered by vue-sonner for stacking, animations, and rich color variants. Trigger toasts programmatically via toast(), toast.success(), toast.error(), toast.warning(), and toast.info()."
+            text "Toast displays a brief, auto-dismissing notification that floats above the window without blocking the user's workflow. Trigger toasts programmatically via toast(), toast.success(), toast.error(), toast.warning(), and toast.info(). Configure the anchor corner with position and the lifetime with duration (milliseconds) — identical in vue (vue-sonner) and the native vm."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
@@ -58,8 +68,40 @@ widget ToastPage {
                         button (text: "Error", variant: "outline", onClick: .showErrorToast) {}
                         button (text: "Info", variant: "outline", onClick: .showInfoToast) {}
                     }
-                    text "Click a button to fire a live toast. Toasts stack and auto-dismiss." { style: "text-sm text-muted-foreground" }
+                    text "Click a button to fire a live toast. In the native vm the toast floats above the window's bottom-right corner and auto-dismisses after 4 seconds (vue stacks via vue-sonner)." { style: "text-sm text-muted-foreground" }
                     toast-provider {}
+                }
+            }
+
+            h2 "Position"
+            preview-card (id: "toast-position") {
+                col (style: "gap-3") {
+                    row (style: "gap-2") {
+                        button (text: "Top Left", variant: "outline", onClick: .showTopLeft) {}
+                        button (text: "Top Center", variant: "outline", onClick: .showTopCenter) {}
+                        button (text: "Top Right", variant: "outline", onClick: .showTopRight) {}
+                    }
+                    row (style: "gap-2") {
+                        button (text: "Bottom Left", variant: "outline", onClick: .showBottomLeft) {}
+                        button (text: "Bottom Center", variant: "outline", onClick: .showBottomCenter) {}
+                        button (text: "Bottom Right", variant: "outline", onClick: .showBottomRight) {}
+                    }
+                    row (style: "gap-2") {
+                        button (text: "Center", variant: "outline", onClick: .showCenter) {}
+                    }
+                    text "The position option anchors the toast to a window corner/edge midpoint (default bottom-right)." { style: "text-sm text-muted-foreground" }
+                }
+            }
+
+            h2 "Duration"
+            preview-card (id: "toast-duration") {
+                col (style: "gap-3") {
+                    row (style: "gap-2") {
+                        button (text: "2s", variant: "outline", onClick: .show2s) {}
+                        button (text: "5s", variant: "outline", onClick: .show5s) {}
+                        button (text: "8s", variant: "outline", onClick: .show8s) {}
+                    }
+                    text "The duration option sets the auto-dismiss delay in milliseconds (default 4000)." { style: "text-sm text-muted-foreground" }
                 }
             }
 
@@ -75,18 +117,23 @@ widget ToastPage {
                 tbody {
                     tr {
                         td "toast()"
-                        td (text: "message, options") {}
+                        td "message, options"
                         td "Show a default toast"
                     }
                     tr {
-                        td "toast.success()"
-                        td (text: "message, options") {}
-                        td "Show a success toast"
+                        td "toast.success() / .error() / .warning() / .info()"
+                        td "message, options"
+                        td "Show a themed toast"
                     }
                     tr {
-                        td "toast.error()"
-                        td (text: "message, options") {}
-                        td "Show an error toast"
+                        td "options.position"
+                        td "top-left | top-center | top-right | bottom-left | bottom-center | bottom-right | center"
+                        td "Window anchor (default bottom-right)"
+                    }
+                    tr {
+                        td "options.duration"
+                        td "milliseconds (default 4000)"
+                        td "Auto-dismiss delay"
                     }
                 }
             }

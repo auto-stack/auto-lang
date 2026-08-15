@@ -340,6 +340,15 @@ impl VmBridge {
             }
         }
 
+        // Plan 412 续(toast VM 化):注入 __toast 挂载字段。handler 里的
+        // toast()/toast.success() 调用被 handler_codegen 重写为对它的赋值
+        // (编码 "kindmsgpositionduration_ms"),dynamic_view
+        // 取走后渲染窗口级悬浮层并清空。
+        if !field_names.iter().any(|n| n == "__toast") {
+            field_names.push("__toast".to_string());
+            field_values.push(auto_val::Value::str(""));
+        }
+
         let mono_name = format!("{}_State", widget_name);
         let instance = GenericInstanceData::new_with_names(
             mono_name,

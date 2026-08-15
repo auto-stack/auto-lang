@@ -5904,6 +5904,36 @@ impl VueGenerator {
                 }
             }
             Expr::Call(call) => {
+                // Plan 412 续(toast 参数化):toast()/toast.success() 等调用的
+                // named 参数转 vue-sonner options 对象 ——
+                // toast('msg', position: 'top-left', duration: 2000) →
+                // toast('msg', { position: 'top-left', duration: 2000 })。
+                // 通用 Call 路径会丢掉 Pair 的 key,故在进入前特判。
+                let is_toast_call = match call.name.as_ref() {
+                    Expr::Ident(n) => n.as_str() == "toast",
+                    Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                    _ => false,
+                };
+                if is_toast_call {
+                    let name_js = self.expr_to_js(&call.name)?;
+                    let mut call_args: Vec<String> = Vec::new();
+                    let mut obj_fields: Vec<String> = Vec::new();
+                    for a in &call.args.args {
+                        match a {
+                            crate::ast::Arg::Pos(e) => {
+                                call_args.push(self.expr_to_js(e)?);
+                            }
+                            crate::ast::Arg::Pair(k, v) => {
+                                obj_fields.push(format!("{}: {}", k, self.expr_to_js(v)?));
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !obj_fields.is_empty() {
+                        call_args.push(format!("{{ {} }}", obj_fields.join(", ")));
+                    }
+                    return Ok(format!("{}({})", name_js, call_args.join(", ")));
+                }
                 // The call's name may be a Dot(object, method) — a method call.
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     let method = method.clone();

@@ -342,6 +342,78 @@ widget Sq {
 
 #[cfg(feature = "ui-iced")]
 #[test]
+fn plan412_toast_call_rewrites_to_state_assign() {
+    // Plan 412 续(toast VM 化):handler 里的 toast 调用重写为 __toast state
+    // 赋值,编码 kind\u{1f}msg\u{1f}position\u{1f}duration(VM 悬浮层渲染协议)。
+    use crate::ast::{Arg, Args, Call, Expr, Name, Stmt};
+    use std::collections::HashSet;
+
+    let mk = |method: Option<&str>| -> Expr {
+        let name = match method {
+            Some(m) => Expr::Dot(
+                Box::new(Expr::Ident(Name::from("toast"))),
+                Name::from(m),
+            ),
+            None => Expr::Ident(Name::from("toast")),
+        };
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Str("msg".to_string().into())));
+        args.args.push(Arg::Pair(
+            Name::from("position"),
+            Expr::Str("top-left".to_string().into()),
+        ));
+        args.args.push(Arg::Pair(Name::from("duration"), Expr::Int(2000)));
+        Expr::Call(Call {
+            name: Box::new(name),
+            args,
+            ret: crate::ast::Type::Bool,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        })
+    };
+
+    for (method, kind) in [(Some("success"), "success"), (None, "default")] {
+        let mut stmts = [Stmt::Expr(mk(method))];
+        crate::ui::handler_codegen::rewrite_state_refs_stmts(&mut stmts, &HashSet::new());
+        match &stmts[0] {
+            Stmt::Expr(Expr::Bina(lhs, op, rhs)) => {
+                // lhs = Dot(Ident("__state"), "__toast")
+                let ok_lhs = matches!(
+                    lhs.as_ref(),
+                    Expr::Dot(obj, f)
+                        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str().ends_with("state"))
+                            && f.as_str() == "__toast"
+                );
+                assert!(ok_lhs, "lhs must be __state.__toast, got {:?}", lhs);
+                assert!(matches!(op, auto_val::Op::Asn));
+                match rhs.as_ref() {
+                    Expr::Str(s) => assert_eq!(
+                        s.to_string(),
+                        format!("{}\u{1f}msg\u{1f}top-left\u{1f}2000", kind)
+                    ),
+                    other => panic!("rhs must be Str payload, got {:?}", other),
+                }
+            }
+            other => panic!("rewrite must yield an assignment, got {:?}", other),
+        }
+    }
+}
+
+#[cfg(feature = "ui-iced")]
+#[test]
+fn plan412_toast_page_builds_with_provider() {
+    // toast-provider 在 VM 渲染为空挂载点(悬浮层由 renderer 顶层注入),
+    // 页面(含 13 个 toast handler)构建不 panic。
+    let Some(view) = build_gallery_page("toast.at", "ToastPage") else {
+        eprintln!("plan412: SKIPPED — toast.at not found");
+        return;
+    };
+    assert!(matches!(view, View::Column { .. }), "ToastPage root must be Column");
+}
+
+#[cfg(feature = "ui-iced")]
+#[test]
 fn plan412_routes_registered() {
     // app.at 的 routes 块含全部 12 条 Layout 路由(结构断言)。直接解析
     // app.at(DynamicComponent::routes 为私有字段,不宜为测试开洞)。

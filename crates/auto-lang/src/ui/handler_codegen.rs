@@ -163,10 +163,12 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
-    // Plan 410: vue-only escape hatch — toast()/toast.success()/etc. is
-    // vue-sonner, unavailable in VM. Drop the call (no-op) so VM handlers
-    // don't fail to link with "Undefined symbol: toast". Vue codegen still
-    // emits the real toast() call (its own stmts_call_toast detection path).
+    // Plan 412 续(toast VM 化):toast()/toast.success()/… 不再是 vue-only
+    // escape hatch。重写为 `__state.__toast = "kind\x1Fmsg\x1Fposition\x1Fduration"`
+    // (单表达式赋值,VM handler 可执行);renderer 的 dynamic_view 取走该
+    // state 渲染窗口级悬浮层(位置/时长支持 position + duration 参数,默认
+    // bottom-right / 4000ms,与 vue-sonner 对齐)。Vue codegen 不走此重写,
+    // 仍生成真实 toast() 调用。
     if let Expr::Call(call) = e {
         let is_toast = match call.name.as_ref() {
             Expr::Ident(n) => n.as_str() == "toast",
@@ -174,7 +176,33 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
             _ => false,
         };
         if is_toast {
-            *e = Expr::Bool(false);
+            let kind = match call.name.as_ref() {
+                Expr::Dot(_, method) => method.to_string(),
+                _ => "default".to_string(),
+            };
+            let mut msg = String::new();
+            let mut position = "bottom-right".to_string();
+            let mut duration: i64 = 4000;
+            for arg in &call.args.args {
+                match arg {
+                    crate::ast::Arg::Pos(Expr::Str(s)) => msg = s.to_string(),
+                    crate::ast::Arg::Pair(k, v) => match (k.as_str(), v) {
+                        ("position", Expr::Str(s)) => position = s.to_string(),
+                        ("duration", Expr::Int(n)) => duration = *n as i64,
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            let payload = format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", kind, msg, position, duration);
+            *e = Expr::Bina(
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    Name::from("__toast"),
+                )),
+                auto_val::Op::Asn,
+                Box::new(Expr::Str(auto_val::AutoStr::from(payload))),
+            );
             return;
         }
     }

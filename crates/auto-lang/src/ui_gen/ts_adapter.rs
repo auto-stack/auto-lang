@@ -682,6 +682,51 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Function call — API detection, print, builtins, method calls
         Expr::Call(call) => {
+            // Plan 412 续(toast 参数化):toast()/toast.success() 的 named 参数
+            // 转 vue-sonner options 对象 —— toast('msg', position: 'top-left',
+            // duration: 2000) → toast('msg', { position: 'top-left',
+            // duration: 2000 })。通用路径用 get_expr() 展平参数会丢 Pair 的
+            // key,故在方法调用分发前特判(与 vue.rs expr_to_js 的特判一致)。
+            let is_toast_call = match call.name.as_ref() {
+                Expr::Ident(n) => n.as_str() == "toast",
+                Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                _ => false,
+            };
+            if is_toast_call {
+                transpile_expr(&call.name, ctx, out);
+                write!(out, "(").ok();
+                let mut wrote_pos = false;
+                let mut fields: Vec<u8> = Vec::new();
+                for arg in &call.args.args {
+                    match arg {
+                        crate::ast::Arg::Pos(e) => {
+                            if wrote_pos {
+                                write!(out, ", ").ok();
+                            }
+                            transpile_expr(e, ctx, out);
+                            wrote_pos = true;
+                        }
+                        crate::ast::Arg::Pair(k, v) => {
+                            if !fields.is_empty() {
+                                write!(&mut fields, ", ").ok();
+                            }
+                            write!(&mut fields, "{}: ", k.as_str()).ok();
+                            transpile_expr(v, ctx, &mut fields);
+                        }
+                        _ => {}
+                    }
+                }
+                if !fields.is_empty() {
+                    if wrote_pos {
+                        write!(out, ", ").ok();
+                    }
+                    write!(out, "{{ ").ok();
+                    out.extend_from_slice(&fields);
+                    write!(out, " }}").ok();
+                }
+                write!(out, ")").ok();
+                return;
+            }
             match call.name.as_ref() {
                 // Method call: object.method(args)
                 Expr::Dot(object, method) => {

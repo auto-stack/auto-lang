@@ -911,6 +911,13 @@ impl<'a> AuraViewBuilder<'a> {
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
+                // Plan 412 续(toast VM 化):toast-provider 是 vue 端 <Toaster/>
+                // 挂载点;VM 端的悬浮层由 renderer 在 dynamic_view 顶层注入
+                // (handler 的 toast() 调用 → __toast state),这里渲染为空,
+                // 避免落 fallback 产生占位噪音。
+                if tag == "toast-provider" || tag == "toast_provider" || tag == "toaster" {
+                    return View::Empty;
+                }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
                         return self.render_child_widget(child_widget, props, events, bindings);
@@ -1613,6 +1620,13 @@ impl<'a> AuraViewBuilder<'a> {
                         .unwrap_or_default();
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                }
+                // Plan 412 续(toast VM 化):toast-provider 是 vue 端 <Toaster/>
+                // 挂载点;VM 端的悬浮层由 renderer 在 dynamic_view 顶层注入
+                // (handler 的 toast() 调用 → __toast state),这里渲染为空,
+                // 避免落 fallback 产生占位噪音。
+                if tag == "toast-provider" || tag == "toast_provider" || tag == "toaster" {
+                    return View::Empty;
                 }
                 // Plan 409 §10 续 9: category-section → 标题行 + Grid(对齐 vue
                 // index.vue:45-51 的 色点+name+count 标题 + grid-cols)。之前
