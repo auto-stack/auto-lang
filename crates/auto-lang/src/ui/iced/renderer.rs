@@ -1004,7 +1004,14 @@ fn grid_cell_spec<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> GridCel
         for c in &s.classes {
             match c {
                 StyleClass::ColSpan(n) => spec.span = (*n as usize).max(1),
-                StyleClass::Width(_) => spec.explicit_width = true,
+                // Only a *fixed* width (w-8/w-[30px]) opts the grid into compact
+                // content-width tracks. w-full is the CSS grid default (item
+                // stretches to its track) and stays in equal-track mode.
+                StyleClass::Width(
+                    crate::ui::style::SizeValue::Fixed(_) | crate::ui::style::SizeValue::Pixels(_),
+                ) => {
+                    spec.explicit_width = true;
+                }
                 _ => {}
             }
         }
@@ -1119,7 +1126,11 @@ fn build_grid<M: Clone + Debug + 'static>(
         let mut occupied = 0usize;
         for (_idx, start, span) in row_places {
             let (el, _spec) = iter.next().expect("placement count matches cells");
-            let cell = container(el)
+            // Inner Fill wrapper stretches the cell to its track (CSS grid
+            // default: items fill the track), so cell backgrounds/borders and
+            // centered content line up with the vue rendering.
+            let stretched = container(el).width(iced::Length::Fill);
+            let cell = container(stretched)
                 .width(iced::Length::FillPortion(span as u16))
                 .padding(iced::Padding {
                     top: 0.0,

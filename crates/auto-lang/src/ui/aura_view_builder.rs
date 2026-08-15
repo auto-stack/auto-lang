@@ -893,6 +893,8 @@ impl<'a> AuraViewBuilder<'a> {
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
             "progress" => self.convert_progress(props),
             "spacer" => self.convert_spacer(props),
+            // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
+            "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "avatar" => self.convert_avatar(props),
 
@@ -1591,6 +1593,8 @@ impl<'a> AuraViewBuilder<'a> {
             // Utility widgets
             "progress" => self.convert_progress(props),
             "spacer" => self.convert_spacer(props),
+            // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
+            "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "avatar" => self.convert_avatar(props),
 
@@ -2836,6 +2840,59 @@ let tabs_inner = View::Row {
             );
         }
         builder.build()
+    }
+
+    /// Plan 412 §4.3: demo 占位块 `square` — 色块 + 双轴居中数字。
+    /// props:color(Tailwind 色名,默认 blue)/ size(方形边长单位,默认 12)/
+    /// h/w(单位数或 "full",覆盖 size)/ class(附加类如 col-span-2)/
+    /// text(内容;children 存在时优先 children)。
+    /// VM 用 Container center_x/center_y 居中(vue 端用 flex items/justify)。
+    fn convert_square(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let color = self.extract_string(props, "color").unwrap_or_else(|| "blue".to_string());
+        let extra = self.extract_string(props, "class").unwrap_or_default();
+        let size = self.extract_u16(props, "size").unwrap_or(12);
+        // 维度:数字(Tailwind 单位)或 "full";缺省回退 size。
+        let dim = |name: &str| -> Option<String> {
+            if let Some(s) = self.extract_string(props, name) {
+                if s == "full" {
+                    return Some("full".to_string());
+                }
+            }
+            self.extract_u16(props, name).map(|n| n.to_string())
+        };
+        let h = dim("h").unwrap_or_else(|| size.to_string());
+        let w = dim("w").unwrap_or_else(|| size.to_string());
+        let mut cls = format!(
+            "h-{h} w-{w} rounded-md border bg-{c}-500/40 border-{c}-500 text-{c}-600 font-medium text-sm",
+            c = color
+        );
+        if !extra.is_empty() {
+            cls.push(' ');
+            cls.push_str(&extra);
+        }
+        let style = Style::parse(&cls).unwrap_or_default();
+
+        let child = if children.is_empty() {
+            match self.extract_string(props, "text") {
+                Some(t) if !t.is_empty() => View::Text { content: t, style: None },
+                _ => View::Empty,
+            }
+        } else if children.len() == 1 {
+            self.convert_node_with(&children[0], bindings)
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .collect();
+            View::Column { children: views, spacing: 0, padding: 0, style: None }
+        };
+
+        View::container(child).center_x().center_y().with_style(style).build()
     }
 
     /// Convert a divider element: renders a horizontal line separator.

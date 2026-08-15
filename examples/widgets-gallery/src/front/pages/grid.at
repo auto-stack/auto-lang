@@ -15,12 +15,12 @@ widget GridPage {
             h2 "Semantic Element (grid cols: 3)"
             preview-card (id: "grid-semantic") {
                 grid (cols: 3, gap: 16) {
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "5" {} }
-                    col (style: "h-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "6" {} }
+                    square (color: "blue", h: 12, w: "full", text: "1") {}
+                    square (color: "blue", h: 12, w: "full", text: "2") {}
+                    square (color: "blue", h: 12, w: "full", text: "3") {}
+                    square (color: "blue", h: 12, w: "full", text: "4") {}
+                    square (color: "blue", h: 12, w: "full", text: "5") {}
+                    square (color: "blue", h: 12, w: "full", text: "6") {}
                 }
             }
 
@@ -28,12 +28,12 @@ widget GridPage {
             preview-card (id: "grid-style-class") {
                 col {
                     style: "grid grid-cols-3 gap-4 w-full max-w-lg"
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "5" {} }
-                    col (style: "h-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "6" {} }
+                    square (color: "emerald", h: 12, w: "full", text: "1") {}
+                    square (color: "emerald", h: 12, w: "full", text: "2") {}
+                    square (color: "emerald", h: 12, w: "full", text: "3") {}
+                    square (color: "emerald", h: 12, w: "full", text: "4") {}
+                    square (color: "emerald", h: 12, w: "full", text: "5") {}
+                    square (color: "emerald", h: 12, w: "full", text: "6") {}
                 }
             }
 
@@ -41,10 +41,10 @@ widget GridPage {
             preview-card (id: "grid-responsive") {
                 col {
                     style: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full"
-                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
-                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
-                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
-                    col (style: "h-14 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "4" {} }
+                    square (color: "amber", h: 14, w: "full", text: "1") {}
+                    square (color: "amber", h: 14, w: "full", text: "2") {}
+                    square (color: "amber", h: 14, w: "full", text: "3") {}
+                    square (color: "amber", h: 14, w: "full", text: "4") {}
                 }
             }
 
@@ -53,14 +53,14 @@ widget GridPage {
                 col (style: "gap-4 w-full") {
                     col {
                         style: "grid grid-cols-3 gap-2"
-                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
-                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
-                        col (style: "h-10 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "equal" {} }
+                        square (color: "purple", h: 10, w: "full", text: "equal") {}
+                        square (color: "purple", h: 10, w: "full", text: "equal") {}
+                        square (color: "purple", h: 10, w: "full", text: "equal") {}
                     }
                     row (style: "gap-2") {
-                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
-                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
-                        col (style: "h-10 w-12 rounded-md bg-purple-500/40 border border-purple-500 text-center") { text "w-12" {} }
+                        square (color: "purple", h: 10, w: 12, text: "w-12") {}
+                        square (color: "purple", h: 10, w: 12, text: "w-12") {}
+                        square (color: "purple", h: 10, w: 12, text: "w-12") {}
                     }
                 }
             }

@@ -11,18 +11,18 @@ widget ColumnPage {
             h2 "Basic Column"
             preview-card (id: "col-basic") {
                 col (style: "gap-2") {
-                    col (style: "h-10 w-24 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                    col (style: "h-10 w-24 rounded-md bg-red-500/40 border border-red-500 text-center") { text "2" {} }
-                    col (style: "h-10 w-24 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    square (color: "blue", h: 10, w: 24, text: "1") {}
+                    square (color: "red", h: 10, w: 24, text: "2") {}
+                    square (color: "emerald", h: 10, w: 24, text: "3") {}
                 }
             }
 
             h2 "Style Class Column (flex-col)"
             preview-card (id: "col-flex-class") {
                 div (style: "flex flex-col gap-2") {
-                    col (style: "h-10 w-24 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                    col (style: "h-10 w-24 rounded-md bg-red-500/40 border border-red-500 text-center") { text "2" {} }
-                    col (style: "h-10 w-24 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                    square (color: "blue", h: 10, w: 24, text: "1") {}
+                    square (color: "red", h: 10, w: 24, text: "2") {}
+                    square (color: "emerald", h: 10, w: 24, text: "3") {}
                 }
             }
 
@@ -31,21 +31,21 @@ widget ColumnPage {
                 row (style: "gap-6 items-start") {
                     col (style: "gap-1") {
                         text (text: "gap-1", style: "text-xs text-muted-foreground") {}
-                        col (style: "h-6 w-16 rounded-md bg-blue-500/40 border border-blue-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-blue-500/40 border border-blue-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-blue-500/40 border border-blue-500") {}
+                        square (color: "blue", h: 6, w: 16) {}
+                        square (color: "blue", h: 6, w: 16) {}
+                        square (color: "blue", h: 6, w: 16) {}
                     }
                     col (style: "gap-2") {
                         text (text: "gap-2", style: "text-xs text-muted-foreground") {}
-                        col (style: "h-6 w-16 rounded-md bg-emerald-500/40 border border-emerald-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-emerald-500/40 border border-emerald-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-emerald-500/40 border border-emerald-500") {}
+                        square (color: "emerald", h: 6, w: 16) {}
+                        square (color: "emerald", h: 6, w: 16) {}
+                        square (color: "emerald", h: 6, w: 16) {}
                     }
                     col (style: "gap-4") {
                         text (text: "gap-4", style: "text-xs text-muted-foreground") {}
-                        col (style: "h-6 w-16 rounded-md bg-amber-500/40 border border-amber-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-amber-500/40 border border-amber-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-amber-500/40 border border-amber-500") {}
+                        square (color: "amber", h: 6, w: 16) {}
+                        square (color: "amber", h: 6, w: 16) {}
+                        square (color: "amber", h: 6, w: 16) {}
                     }
                 }
             }
@@ -54,13 +54,13 @@ widget ColumnPage {
             preview-card (id: "col-items") {
                 col (style: "gap-3") {
                     col (style: "items-start gap-2 border rounded-md p-2") {
-                        col (style: "h-8 w-20 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "start" {} }
+                        square (color: "blue", h: 8, w: 20, text: "start") {}
                     }
                     col (style: "items-center gap-2 border rounded-md p-2") {
-                        col (style: "h-8 w-20 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "center" {} }
+                        square (color: "emerald", h: 8, w: 20, text: "center") {}
                     }
                     col (style: "items-end gap-2 border rounded-md p-2") {
-                        col (style: "h-8 w-20 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "end" {} }
+                        square (color: "amber", h: 8, w: 20, text: "end") {}
                     }
                 }
             }
@@ -69,20 +69,20 @@ widget ColumnPage {
             preview-card (id: "col-justify") {
                 row (style: "gap-3 items-stretch h-40") {
                     col (style: "justify-start gap-1 border rounded-md p-2 flex-1") {
-                        col (style: "h-6 w-16 rounded-md bg-blue-500/40 border border-blue-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-blue-500/40 border border-blue-500") {}
+                        square (color: "blue", h: 6, w: 16) {}
+                        square (color: "blue", h: 6, w: 16) {}
                     }
                     col (style: "justify-center gap-1 border rounded-md p-2 flex-1") {
-                        col (style: "h-6 w-16 rounded-md bg-emerald-500/40 border border-emerald-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-emerald-500/40 border border-emerald-500") {}
+                        square (color: "emerald", h: 6, w: 16) {}
+                        square (color: "emerald", h: 6, w: 16) {}
                     }
                     col (style: "justify-end gap-1 border rounded-md p-2 flex-1") {
-                        col (style: "h-6 w-16 rounded-md bg-amber-500/40 border border-amber-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-amber-500/40 border border-amber-500") {}
+                        square (color: "amber", h: 6, w: 16) {}
+                        square (color: "amber", h: 6, w: 16) {}
                     }
                     col (style: "justify-between border rounded-md p-2 flex-1") {
-                        col (style: "h-6 w-16 rounded-md bg-purple-500/40 border border-purple-500") {}
-                        col (style: "h-6 w-16 rounded-md bg-purple-500/40 border border-purple-500") {}
+                        square (color: "purple", h: 6, w: 16) {}
+                        square (color: "purple", h: 6, w: 16) {}
                     }
                 }
             }
@@ -91,12 +91,12 @@ widget ColumnPage {
             preview-card (id: "col-nested") {
                 row (style: "gap-2 border rounded-md p-3") {
                     col (style: "gap-2") {
-                        col (style: "h-8 w-16 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                        col (style: "h-8 w-16 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
+                        square (color: "blue", h: 8, w: 16, text: "1") {}
+                        square (color: "blue", h: 8, w: 16, text: "2") {}
                     }
                     col (style: "gap-2") {
-                        col (style: "h-8 w-16 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
-                        col (style: "h-8 w-16 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
+                        square (color: "emerald", h: 8, w: 16, text: "3") {}
+                        square (color: "emerald", h: 8, w: 16, text: "4") {}
                     }
                 }
             }

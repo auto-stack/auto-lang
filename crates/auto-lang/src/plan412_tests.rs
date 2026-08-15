@@ -237,6 +237,109 @@ fn plan412_layout_pages_generate_vue_sfc() {
     }
 }
 
+/// Build the VM view tree from a widget source string (real parse pipeline).
+#[cfg(feature = "ui-iced")]
+fn build_view_from_src(src: &str) -> View<DynamicMessage> {
+    use crate::ui::aura_view_builder::AuraViewBuilder;
+    use crate::ui::vm_bridge::VmBridge;
+    use crate::ui::widget_registry::WidgetRegistry;
+
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("widget source must parse");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+    let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+    let bridge = VmBridge::new(&widget).expect("bridge");
+    let registry = WidgetRegistry::new();
+    let builder = AuraViewBuilder::with_registry(&bridge, &widget.name, &registry);
+    builder.build(&widget.view_tree)
+}
+
+#[cfg(feature = "ui-iced")]
+#[test]
+fn plan412_square_builds_centered_container() {
+    // §4.3 占位块:VM 端 = Container center_x/center_y + 色块类;
+    // w: "full" 进等宽 grid 轨道,class prop 附加(col-span-2)。
+    let src = r#"
+widget Sq {
+    view {
+        row (style: "gap-2") {
+            square (color: "purple", h: 10, w: "full", class: "col-span-2", text: "span-2") {}
+        }
+    }
+}
+"#;
+    let view = build_view_from_src(src);
+    let View::Row { children, .. } = view else {
+        panic!("root must be Row");
+    };
+    let square = children.first().expect("square child");
+    match square {
+        View::Container { center_x, center_y, style, child, .. } => {
+            assert!(*center_x, "square 双轴居中(center_x)");
+            assert!(*center_y, "square 双轴居中(center_y)");
+            let s = style.as_ref().expect("square carries style");
+            let has = |pred: &dyn Fn(&StyleClass) -> bool| s.classes.iter().any(pred);
+            assert!(has(&|c| matches!(c, StyleClass::BackgroundColor(_))), "bg color class present");
+            assert!(has(&|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Full))), "w-full");
+            assert!(has(&|c| matches!(c, StyleClass::Height(crate::ui::style::SizeValue::Fixed(10)))), "h-10");
+            assert!(has(&|c| matches!(c, StyleClass::ColSpan(2))), "class prop 附加 col-span-2");
+            match &**child {
+                View::Text { content, .. } => assert_eq!(content, "span-2"),
+                other => panic!("square text prop → Text child, got {:?}", std::mem::discriminant(other)),
+            }
+        }
+        other => panic!("square → Container, got {:?}", std::mem::discriminant(other)),
+    }
+}
+
+#[cfg(feature = "ui-iced")]
+#[test]
+fn plan412_square_generates_vue_div() {
+    // vue 端:square → div + flex 居中类 + text prop 内容(继承 text-{c}-600)。
+    use crate::ui_gen::{BackendGenerator, VueGenerator};
+    let src = r#"
+widget Sq {
+    view {
+        row (style: "gap-2") {
+            square (color: "blue", size: 8, text: "1") {}
+            square (color: "emerald", w: "full", h: 12, class: "col-span-2", text: "wide") {}
+        }
+    }
+}
+"#;
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("parse");
+    let decl = ast.stmts.iter().find_map(|s| match s {
+        crate::ast::Stmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }).expect("decl");
+    let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
+    let sfc = VueGenerator::new().generate(&widget).expect("generate");
+    for needle in [
+        "h-8", "w-8", "bg-blue-500/40", "border-blue-500", "text-blue-600",
+        "flex", "items-center", "justify-center", ">1</div>",
+        "h-12", "w-full", "col-span-2", ">wide</div>",
+    ] {
+        if !sfc.contains(needle) {
+            panic!("square SFC must contain `{}`. SFC:
+{}", needle, sfc);
+        }
+    }
+    // 尺寸/颜色 props 已转为类,不再透传为无效绑定属性。
+    for banned in [":size", ":h=", ":w=", ":color"] {
+        assert!(!sfc.contains(banned), "square SFC must not pass through `{}`", banned);
+    }
+}
+
 #[cfg(feature = "ui-iced")]
 #[test]
 fn plan412_routes_registered() {

@@ -12,14 +12,14 @@ widget ScrollPage {
             preview-card (id: "scroll-vertical") {
                 scroll (style: "h-40 border rounded-md p-2") {
                     col (style: "gap-2") {
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "4" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "5" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "6" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "7" {} }
-                        col (style: "h-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "8" {} }
+                        square (color: "blue", h: 10, w: "full", text: "1") {}
+                        square (color: "blue", h: 10, w: "full", text: "2") {}
+                        square (color: "blue", h: 10, w: "full", text: "3") {}
+                        square (color: "blue", h: 10, w: "full", text: "4") {}
+                        square (color: "blue", h: 10, w: "full", text: "5") {}
+                        square (color: "blue", h: 10, w: "full", text: "6") {}
+                        square (color: "blue", h: 10, w: "full", text: "7") {}
+                        square (color: "blue", h: 10, w: "full", text: "8") {}
                     }
                 }
             }
@@ -27,24 +27,24 @@ widget ScrollPage {
             h2 "Vertical Scroll (overflow-y-auto class)"
             preview-card (id: "scroll-overflow-class") {
                 div (style: "flex flex-col h-40 overflow-y-auto border rounded-md p-2 gap-2") {
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "4" {} }
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "5" {} }
-                    col (style: "h-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "6" {} }
+                    square (color: "emerald", h: 10, w: "full", text: "1") {}
+                    square (color: "emerald", h: 10, w: "full", text: "2") {}
+                    square (color: "emerald", h: 10, w: "full", text: "3") {}
+                    square (color: "emerald", h: 10, w: "full", text: "4") {}
+                    square (color: "emerald", h: 10, w: "full", text: "5") {}
+                    square (color: "emerald", h: 10, w: "full", text: "6") {}
                 }
             }
 
             h2 "Horizontal Scroll (overflow-x-auto)"
             preview-card (id: "scroll-horizontal") {
                 div (style: "flex overflow-x-auto gap-2 h-20 border rounded-md p-2 shrink-0") {
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 1" {} }
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 2" {} }
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 3" {} }
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 4" {} }
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 5" {} }
-                    col (style: "w-32 h-full shrink-0 rounded bg-amber-500/40 border border-amber-500 text-center") { text "card 6" {} }
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 1") {}
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 2") {}
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 3") {}
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 4") {}
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 5") {}
+                    square (color: "amber", h: "full", w: 32, class: "shrink-0", text: "card 6") {}
                 }
             }
 
@@ -52,14 +52,14 @@ widget ScrollPage {
             preview-card (id: "scroll-both") {
                 div (style: "overflow-auto h-32 border rounded-md p-2") {
                     div (style: "grid grid-cols-4 gap-2 w-160") {
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "4" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "5" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "6" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "7" {} }
-                        col (style: "h-12 rounded bg-purple-500/40 border border-purple-500 text-center") { text "8" {} }
+                        square (color: "purple", h: 12, w: "full", text: "1") {}
+                        square (color: "purple", h: 12, w: "full", text: "2") {}
+                        square (color: "purple", h: 12, w: "full", text: "3") {}
+                        square (color: "purple", h: 12, w: "full", text: "4") {}
+                        square (color: "purple", h: 12, w: "full", text: "5") {}
+                        square (color: "purple", h: 12, w: "full", text: "6") {}
+                        square (color: "purple", h: 12, w: "full", text: "7") {}
+                        square (color: "purple", h: 12, w: "full", text: "8") {}
                     }
                 }
             }

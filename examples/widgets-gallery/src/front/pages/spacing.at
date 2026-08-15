@@ -51,13 +51,13 @@ widget SpacingPage {
             preview-card (id: "spacing-gap-space") {
                 col (style: "gap-3") {
                     row (style: "gap-4 border rounded-md p-2") {
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                        square (color: "blue", h: 8, w: 10, text: "1") {}
+                        square (color: "blue", h: 8, w: 10, text: "2") {}
+                        square (color: "blue", h: 8, w: 10, text: "3") {}
                     }
                     div (style: "flex flex-col space-y-4 border rounded-md p-2") {
-                        col (style: "h-8 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "space-y-4" {} }
-                        col (style: "h-8 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "space-y-4" {} }
+                        square (color: "emerald", h: 8, w: 24, text: "space-y-4") {}
+                        square (color: "emerald", h: 8, w: 24, text: "space-y-4") {}
                     }
                 }
             }
@@ -66,13 +66,13 @@ widget SpacingPage {
             preview-card (id: "spacing-gap-axis") {
                 col (style: "gap-2") {
                     row (style: "gap-x-8 gap-y-1 flex-wrap border rounded-md p-2") {
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                        col (style: "h-8 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                        square (color: "blue", h: 8, w: 10, text: "1") {}
+                        square (color: "blue", h: 8, w: 10, text: "2") {}
+                        square (color: "blue", h: 8, w: 10, text: "3") {}
                     }
                     col (style: "gap-y-8 border rounded-md p-2") {
-                        col (style: "h-6 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "gap-y-8" {} }
-                        col (style: "h-6 w-24 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "gap-y-8" {} }
+                        square (color: "emerald", h: 6, w: 24, text: "gap-y-8") {}
+                        square (color: "emerald", h: 6, w: 24, text: "gap-y-8") {}
                     }
                 }
             }

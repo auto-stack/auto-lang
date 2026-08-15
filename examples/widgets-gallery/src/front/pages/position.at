@@ -16,9 +16,9 @@ widget PositionPage {
             preview-card (id: "position-zindex") {
                 col (style: "relative h-32 border rounded-md p-2") {
                     row (style: "gap-0") {
-                        col (style: "h-20 w-20 rounded-md bg-blue-500/50 border border-blue-500 z-10 text-center") { text "z-10" {} }
-                        col (style: "h-20 w-20 rounded-md bg-emerald-500/60 border border-emerald-500 z-20 text-center -ml-8") { text "z-20" {} }
-                        col (style: "h-20 w-20 rounded-md bg-amber-500/70 border border-amber-500 z-30 text-center -ml-8") { text "z-30" {} }
+                        square (color: "blue", size: 20, class: "z-10", text: "z-10") {}
+                        square (color: "emerald", size: 20, class: "z-20 -ml-8", text: "z-20") {}
+                        square (color: "amber", size: 20, class: "z-30 -ml-8", text: "z-30") {}
                     }
                 }
             }

@@ -14,97 +14,97 @@ widget AlignmentPage {
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "start / start", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-start justify-start gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                            square (color: "blue", size: 8, text: "1") {}
+                            square (color: "blue", h: 12, w: 6, text: "2") {}
+                            square (color: "blue", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "start / center", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-start justify-center gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                            square (color: "emerald", size: 8, text: "1") {}
+                            square (color: "emerald", h: 12, w: 6, text: "2") {}
+                            square (color: "emerald", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "start / end", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-start justify-end gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                            square (color: "amber", size: 8, text: "1") {}
+                            square (color: "amber", h: 12, w: 6, text: "2") {}
+                            square (color: "amber", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "start / between", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-start justify-between h-16") {
-                            col (style: "h-8 w-8 rounded bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
+                            square (color: "purple", size: 8, text: "1") {}
+                            square (color: "purple", h: 12, w: 6, text: "2") {}
+                            square (color: "purple", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "center / start", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-center justify-start gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                            square (color: "blue", size: 8, text: "1") {}
+                            square (color: "blue", h: 12, w: 6, text: "2") {}
+                            square (color: "blue", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "center / center", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-center justify-center gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                            square (color: "emerald", size: 8, text: "1") {}
+                            square (color: "emerald", h: 12, w: 6, text: "2") {}
+                            square (color: "emerald", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "center / end", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-center justify-end gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                            square (color: "amber", size: 8, text: "1") {}
+                            square (color: "amber", h: 12, w: 6, text: "2") {}
+                            square (color: "amber", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "center / between", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-center justify-between h-16") {
-                            col (style: "h-8 w-8 rounded bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
+                            square (color: "purple", size: 8, text: "1") {}
+                            square (color: "purple", h: 12, w: 6, text: "2") {}
+                            square (color: "purple", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "end / start", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-end justify-start gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                            square (color: "blue", size: 8, text: "1") {}
+                            square (color: "blue", h: 12, w: 6, text: "2") {}
+                            square (color: "blue", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "end / center", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-end justify-center gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                            square (color: "emerald", size: 8, text: "1") {}
+                            square (color: "emerald", h: 12, w: 6, text: "2") {}
+                            square (color: "emerald", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "end / end", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-end justify-end gap-1 h-16") {
-                            col (style: "h-8 w-8 rounded bg-amber-500/40 border border-amber-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-amber-500/40 border border-amber-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-amber-500/40 border border-amber-500 text-center") { text "3" {} }
+                            square (color: "amber", size: 8, text: "1") {}
+                            square (color: "amber", h: 12, w: 6, text: "2") {}
+                            square (color: "amber", h: 6, w: 10, text: "3") {}
                         }
                     }
                     col (style: "rounded-md border bg-card p-1") {
                         text (text: "end / between", style: "text-[10px] text-muted-foreground text-center mb-1") {}
                         row (style: "items-end justify-between h-16") {
-                            col (style: "h-8 w-8 rounded bg-purple-500/40 border border-purple-500 text-center") { text "1" {} }
-                            col (style: "h-12 w-6 rounded bg-purple-500/40 border border-purple-500 text-center") { text "2" {} }
-                            col (style: "h-6 w-10 rounded bg-purple-500/40 border border-purple-500 text-center") { text "3" {} }
+                            square (color: "purple", size: 8, text: "1") {}
+                            square (color: "purple", h: 12, w: 6, text: "2") {}
+                            square (color: "purple", h: 6, w: 10, text: "3") {}
                         }
                     }
                 }
@@ -114,14 +114,14 @@ widget AlignmentPage {
             preview-card (id: "alignment-around-evenly") {
                 col (style: "gap-3 w-full") {
                     row (style: "justify-around border rounded-md p-2") {
-                        col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
-                        col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "2" {} }
-                        col (style: "h-8 w-8 rounded bg-blue-500/40 border border-blue-500 text-center") { text "3" {} }
+                        square (color: "blue", size: 8, text: "1") {}
+                        square (color: "blue", size: 8, text: "2") {}
+                        square (color: "blue", size: 8, text: "3") {}
                     }
                     row (style: "justify-evenly border rounded-md p-2") {
-                        col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
-                        col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "2" {} }
-                        col (style: "h-8 w-8 rounded bg-emerald-500/40 border border-emerald-500 text-center") { text "3" {} }
+                        square (color: "emerald", size: 8, text: "1") {}
+                        square (color: "emerald", size: 8, text: "2") {}
+                        square (color: "emerald", size: 8, text: "3") {}
                     }
                 }
             }

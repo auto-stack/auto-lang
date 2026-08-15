@@ -3803,6 +3803,11 @@ impl VueGenerator {
                         if key == "gap" {
                             continue; // Handled in extract_classes for layout elements
                         }
+                        // Plan 412 §4.3: square 的自有 props 已由 extract_classes
+                        // 转成 h-/w-/bg-… 类 —— 不透传为无效绑定属性。
+                        if tag == "square" && matches!(key.as_str(), "color" | "size" | "h" | "w") {
+                            continue;
+                        }
                         if key == "text" {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
@@ -5038,6 +5043,8 @@ impl VueGenerator {
             "col" | "column" | "Col" | "Column" => "div".to_string(),
             "row" | "Row" => "div".to_string(),
             "grid" | "Grid" => "div".to_string(),
+            // Plan 412 §4.3: demo 占位块(色块 + flex 居中数字)
+            "square" | "Square" => "div".to_string(),
             "scroll" | "Scroll" => "div".to_string(),
             "container" | "Container" => "div".to_string(),
             "center" | "Center" => "div".to_string(),
@@ -5252,7 +5259,7 @@ impl VueGenerator {
         // (shadcn components have their own styling).
         // However, layout primitives (row, col, etc.) always need their flex classes
         // regardless of mode — they map to <div> and have no shadcn styling of their own.
-        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container"];
+        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square"];
         let is_layout_primitive = layout_primitives.contains(&normalized_tag);
         let skip_defaults = !is_layout_primitive && self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
@@ -5291,6 +5298,34 @@ impl VueGenerator {
                 "col" | "column" => classes.push(format!("flex flex-col {}", gap_class)),
                 "row" => classes.push(format!("flex flex-row {}", gap_class)),
                 "grid" => classes.push("grid".to_string()),
+                // Plan 412 §4.3: square 占位块 —— 色块 + flex 双轴居中。
+                // 与 VM convert_square 的类串对应(VM 用 Container center_x/y)。
+                "square" => {
+                    let color = props
+                        .get("color")
+                        .and_then(|v| self.extract_string_value(v))
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("blue");
+                    let size = props
+                        .get("size")
+                        .and_then(|v| self.extract_int_value(v))
+                        .unwrap_or(12) as i64;
+                    let dim = |v: Option<&AuraPropValue>| -> Option<String> {
+                        match v.and_then(|pv| self.extract_string_value(pv)) {
+                            Some(s) if s == "full" => Some("full".to_string()),
+                            Some(s) if !s.is_empty() => Some(s.to_string()),
+                            _ => v
+                                .and_then(|pv| self.extract_int_value(pv))
+                                .map(|n| n.to_string()),
+                        }
+                    };
+                    let h = dim(props.get("h")).unwrap_or_else(|| size.to_string());
+                    let w = dim(props.get("w")).unwrap_or_else(|| size.to_string());
+                    classes.push(format!(
+                        "h-{h} w-{w} rounded-md border bg-{c}-500/40 border-{c}-500 text-{c}-600 font-medium text-sm flex items-center justify-center",
+                        c = color
+                    ));
+                }
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
                 "center" => classes.push("flex flex-col items-center justify-center h-full".to_string()),
@@ -6935,7 +6970,10 @@ impl VueGenerator {
         props: &HashMap<String, AuraPropValue>,
     ) {
         for (key, value) in props {
-            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html") {
+            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html"
+                // Plan 412 §4.3: square 的尺寸 props 已转成 h-/w- 类,且 h/w/size
+                // 不是有效 HTML 属性 —— 不透传。
+                | "h" | "w" | "size") {
                 continue;
             }
             match value {
@@ -7261,6 +7299,63 @@ impl VueGenerator {
                     }
                 }
                 attrs.push(format!("class=\"{}\"", classes.join(" ")));
+            }
+
+            // === Plan 412 §4.3: square 占位块 ===
+            // 色块 + 双轴居中内容。color/size/h/w/class props → Tailwind 类;
+            // text prop → 纯文本内容(继承 div 的 text-{c}-600);children 优先。
+            // 类串与 VM convert_square 对应(VM 用 Container center_x/y 居中,
+            // 此处用 flex items-center justify-center)。
+            "square" => {
+                let color = props
+                    .get("color")
+                    .and_then(|v| self.extract_string_value(v))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("blue");
+                let size = props
+                    .get("size")
+                    .and_then(|v| self.extract_int_value(v))
+                    .unwrap_or(12) as i64;
+                // 维度:"full" 或数字(Tailwind 单位),缺省回退 size。
+                let dim = |v: Option<&AuraPropValue>| -> Option<String> {
+                    match v.and_then(|pv| self.extract_string_value(pv)) {
+                        Some(s) if s == "full" => Some("full".to_string()),
+                        Some(s) if !s.is_empty() => Some(s.to_string()),
+                        _ => v
+                            .and_then(|pv| self.extract_int_value(pv))
+                            .map(|n| n.to_string()),
+                    }
+                };
+                let h = dim(props.get("h")).unwrap_or_else(|| size.to_string());
+                let w = dim(props.get("w")).unwrap_or_else(|| size.to_string());
+                let mut classes = vec![
+                    format!("h-{}", h),
+                    format!("w-{}", w),
+                    "rounded-md".to_string(),
+                    "border".to_string(),
+                    format!("bg-{}-500/40", color),
+                    format!("border-{}-500", color),
+                    format!("text-{}-600", color),
+                    "font-medium".to_string(),
+                    "text-sm".to_string(),
+                    "flex".to_string(),
+                    "items-center".to_string(),
+                    "justify-center".to_string(),
+                ];
+                if let Some(value) = props.get("class") {
+                    let user_class = self.extract_string_value(value).unwrap_or("");
+                    for c in user_class.split_whitespace() {
+                        if !classes.iter().any(|d| d == c) {
+                            classes.push(c.to_string());
+                        }
+                    }
+                }
+                attrs.push(format!("class=\"{}\"", classes.join(" ")));
+                if let Some(value) = props.get("text") {
+                    if let Ok(text) = self.prop_to_text_content(value) {
+                        slot_children = Some(text);
+                    }
+                }
             }
 
             "grid-item" | "grid_item" => {

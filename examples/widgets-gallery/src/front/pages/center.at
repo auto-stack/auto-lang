@@ -11,14 +11,14 @@ widget CenterPage {
             h2 "Basic Center"
             preview-card (id: "center-basic") {
                 center (style: "h-32") {
-                    col (style: "h-12 w-12 rounded-md bg-blue-500/40 border border-blue-500 text-center") { text "1" {} }
+                    square (color: "blue", size: 12, text: "1") {}
                 }
             }
 
             h2 "Style Class Center (flex + items-center + justify-center)"
             preview-card (id: "center-flex-class") {
                 div (style: "flex items-center justify-center h-32") {
-                    col (style: "h-12 w-12 rounded-md bg-emerald-500/40 border border-emerald-500 text-center") { text "1" {} }
+                    square (color: "emerald", size: 12, text: "1") {}
                 }
             }
 
@@ -26,7 +26,7 @@ widget CenterPage {
             preview-card (id: "center-col-compose") {
                 col (style: "h-40 items-center justify-center gap-2 border rounded-md") {
                     text (text: "Centered", style: "font-medium text-primary") {}
-                    col (style: "h-12 w-24 rounded-md bg-amber-500/40 border border-amber-500 text-center") { text "box" {} }
+                    square (color: "amber", h: 12, w: 24, text: "box") {}
                     text (text: "Both axes", style: "text-xs text-muted-foreground") {}
                 }
             }
