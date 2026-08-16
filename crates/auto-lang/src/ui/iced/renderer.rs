@@ -2831,14 +2831,22 @@ static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mps
     std::sync::OnceLock::new();
 
 /// Plan 412 续(toast 堆叠视觉):kind → (边框色, 背景色, 标题)。success 绿 /
-/// error 红 / warning 琥珀 / info 蓝 / default 主题边框。
+/// error 红 / warning 琥珀 / default zinc 边框;info 用主题 accent(与页面
+/// text-primary 一致,蓝色只是解析失败的退回值)。default 边框用 zinc-500:
+/// zinc-700 在暗色主题下几乎与背景融为一体。
 fn toast_palette(kind: &str) -> ((u8, u8, u8), (u8, u8, u8), &'static str) {
     match kind {
         "success" => ((34, 197, 94), (34, 197, 94), "Success"),     // green-500
         "error" => ((239, 68, 68), (239, 68, 68), "Error"),           // red-500
         "warning" => ((245, 158, 11), (245, 158, 11), "Warning"),     // amber-500
-        "info" => ((59, 130, 246), (59, 130, 246), "Info"),           // blue-500
-        _ => ((63, 63, 70), (24, 24, 27), "Notification"),            // zinc-700 / zinc-900
+        "info" => {
+            let accent = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                &crate::ui::style::Color::Primary,
+            )
+            .unwrap_or((59, 130, 246)); // blue-500(仅解析失败时退回)
+            (accent, accent, "Info")
+        }
+        _ => ((113, 113, 122), (24, 24, 27), "Notification"),        // zinc-500 / zinc-900
     }
 }
 

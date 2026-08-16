@@ -34,7 +34,7 @@ widget ToastPage {
             preview-card (id: "toast-basic") {
                 col (style: "gap-3") {
                     col {
-                        style: "rounded-lg border p-4 bg-background shadow-lg max-w-sm"
+                        style: "rounded-lg border border-zinc-500/60 p-4 bg-background shadow-lg max-w-sm"
                         col {
                             style: "gap-1"
                             text "Event Created" { style: "text-sm font-semibold" }
@@ -55,6 +55,14 @@ widget ToastPage {
                             style: "gap-1"
                             text "Error" { style: "text-sm font-semibold text-destructive" }
                             text "Failed to save changes." { style: "text-sm text-muted-foreground" }
+                        }
+                    }
+                    col {
+                        style: "rounded-lg border border-primary/50 p-4 bg-primary/10 shadow-lg max-w-sm"
+                        col {
+                            style: "gap-1"
+                            text "Update Available" { style: "text-sm font-semibold text-primary" }
+                            text "A new version is ready to install." { style: "text-sm text-muted-foreground" }
                         }
                     }
                 }
