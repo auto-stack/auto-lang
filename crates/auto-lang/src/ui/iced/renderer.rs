@@ -2767,17 +2767,24 @@ static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, S
 static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
     std::sync::OnceLock::new();
 
-/// Plan 412 续(toast VM 化):toast 卡片 — kind 决定配色(对齐 toast.at 的
-/// 静态 demo:success 绿 / error 红 / warning 琥珀 / info 蓝 / default 主题
-/// 边框),深色主题,max-width 360。
-fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
-    let (border_rgb, bg_rgb, title): ((u8, u8, u8), (u8, u8, u8), &str) = match t.kind.as_str() {
+/// Plan 412 续(toast 堆叠视觉):kind → (边框色, 背景色, 标题)。success 绿 /
+/// error 红 / warning 琥珀 / info 蓝 / default 主题边框。
+fn toast_palette(kind: &str) -> ((u8, u8, u8), (u8, u8, u8), &'static str) {
+    match kind {
         "success" => ((34, 197, 94), (34, 197, 94), "Success"),     // green-500
         "error" => ((239, 68, 68), (239, 68, 68), "Error"),           // red-500
         "warning" => ((245, 158, 11), (245, 158, 11), "Warning"),     // amber-500
         "info" => ((59, 130, 246), (59, 130, 246), "Info"),           // blue-500
         _ => ((63, 63, 70), (24, 24, 27), "Notification"),            // zinc-700 / zinc-900
-    };
+    }
+}
+
+/// Plan 412 续(toast VM 化):toast 卡片 — kind 决定配色(对齐 toast.at 的
+/// 静态 demo:success 绿 / error 红 / warning 琥珀 / info 蓝 / default 主题
+/// 边框),深色主题,max-width 360。宽度 Fill(封顶 360)—— 与探出条构成
+/// 等宽牌堆,不随文字长度伸缩(vue-sonner 同为定宽卡)。
+fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
+    let (border_rgb, bg_rgb, title) = toast_palette(&t.kind);
     let title_color = if t.kind == "default" {
         iced::Color::WHITE
     } else {
@@ -2803,6 +2810,7 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
     );
     iced::widget::container(card_body)
         .padding(16)
+        .width(iced::Length::Fill)
         .max_width(360)
         .style(move |_: &iced::Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(iced::Color {
@@ -2818,6 +2826,35 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
                 color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.35),
                 offset: iced::Vector::new(0.0, 8.0),
                 blur_radius: 24.0,
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Plan 412 续(toast 堆叠视觉):被压在后面的 toast 的"探出条"—— 只露出
+/// 卡片顶缘 14px 的一条,宽度随深度收窄(360→342→324)、边框/背景透明度
+/// 递减,叠在前卡后方,复刻 vue-sonner 折叠堆叠的观感。iced widget 不支持
+/// 旋转,以宽度收窄 + 透明度阶梯近似 sonner 的缩放/旋转纵深。纯装饰 ——
+/// 完整内容只有最前(最新)一张;某条到期出队后,下一张自然顶上成为前卡。
+fn build_toast_peek(t: &ToastReq, depth: usize) -> iced::Element<'static, IcedMessage> {
+    let (border_rgb, bg_rgb, _) = toast_palette(&t.kind);
+    let border_a = [0.0f32, 0.50, 0.30][depth.min(2)];
+    let bg_a = [0.0f32, 0.85, 0.60][depth.min(2)];
+    let (br, bgc) = (
+        iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2),
+        iced::Color::from_rgb8(bg_rgb.0, bg_rgb.1, bg_rgb.2),
+    );
+    iced::widget::container(iced::widget::Space::new())
+        .height(iced::Length::Fixed(14.0))
+        .width(iced::Length::Fill)
+        .max_width(360.0 - depth as f32 * 18.0)
+        .style(move |_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color { a: bg_a, ..bgc })),
+            border: iced::Border {
+                color: iced::Color { a: border_a, ..br },
+                width: 1.0,
+                radius: iced::border::Radius::new(8.0),
             },
             ..Default::default()
         })
@@ -2842,8 +2879,11 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
         slots[v * 3 + h].push(i);
     }
 
-    // 单个槽:该锚点的卡片列(空槽 = Fill 宽占位,保持三列等宽)。
-    // 槽内列按 h 对齐(Start/Center/End)让卡片贴住锚点边。
+    // 单个槽:该锚点的折叠牌堆(deck,对齐 vue-sonner)—— 只有最前(最新)
+    // 一张渲染完整内容卡,后面至多 2 张以"探出条"露出顶缘(宽随深度收窄、
+    // 透明度递减),更旧的完全被盖住。空槽 = Fill 宽占位,保持三列等宽。
+    // 前卡贴锚点边:bottom/center 锚前卡在堆底(探出条在上方),top 锚前卡
+    // 在堆顶(探出条在下方,旧的被新的向下挤)。
     let slot = |idxs: &[usize]| -> iced::Element<'static, IcedMessage> {
         if idxs.is_empty() {
             return iced::widget::container(iced::widget::Space::new())
@@ -2855,12 +2895,27 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
             1 => iced::Alignment::Center,
             _ => iced::Alignment::End,
         };
+        let top_anchor = parse_pos(&toasts[idxs[0]].position).0 == 0;
+        let n = idxs.len();
         let mut c = iced::widget::column![]
-            .spacing(8)
             .width(iced::Length::Fill)
             .align_x(h_align);
-        for &i in idxs {
-            c = c.push(build_toast_card(&toasts[i]));
+        // depth = 距前卡的层数(0 = 前卡);探出条只画 depth 1..=2,更旧的
+        // 完全被盖住不渲染。
+        let ranks: Box<dyn Iterator<Item = usize>> = if top_anchor {
+            // 前卡(rank = n-1)贴顶:列自上而下 = 最新 → 最旧。
+            Box::new((0..n).rev())
+        } else {
+            // 前卡贴堆底:列自上而下 = 最旧 → 最新,探出条压在前卡上方。
+            Box::new(0..n)
+        };
+        for rank in ranks {
+            let depth = n - 1 - rank;
+            if depth == 0 {
+                c = c.push(build_toast_card(&toasts[idxs[rank]]));
+            } else if depth <= 2 {
+                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth));
+            }
         }
         c.into()
     };

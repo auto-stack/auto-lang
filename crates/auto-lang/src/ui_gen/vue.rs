@@ -1994,8 +1994,12 @@ impl VueGenerator {
         }
 
         // Plan 410: import toast() from vue-sonner when a handler calls it.
+        // Plan 412 续:vue-sonner v2 不再运行时注入样式,必须显式导入
+        // style.css —— 缺它 [data-sonner-toaster] 是 static 定位,toast 会
+        // 内联参与布局挤压页面而不是 fixed 悬浮在视口角落。
         if self.needs_toast_import {
             script.push_str("import { toast } from 'vue-sonner'\n");
+            script.push_str("import 'vue-sonner/style.css'\n");
         }
 
         // Plan 132: Add API imports if needed
@@ -11200,6 +11204,12 @@ impl VueGenerator {
             names.sort();
             names.dedup();
             imports.push(format!("import {{ {} }} from '{}'\n", names.join(", "), path));
+            // Plan 412 续:用到 <Toaster/>(toast-provider)的页面同样需要
+            // vue-sonner v2 的样式表,否则 toaster 容器 static 定位会挤压
+            // 页面(与 needs_toast_import 路径双保险)。
+            if path == "@/components/ui/sonner" {
+                imports.push("import 'vue-sonner/style.css'\n".to_string());
+            }
         }
 
         imports.sort();
