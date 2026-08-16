@@ -2903,8 +2903,8 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
 ///
 /// 配色与 build_toast_card 完全同源(default 不透明 zinc 深底 / 彩色 kind
 /// 为 zinc 底 + 10% 主色、边框 50% 主色),仅按深度轻微衰减 —— 视觉上是
-/// "真卡片露出的顶缘",而不是色条。被前卡盖住的一侧直角、露出侧圆角 8,
-/// 连续感像卡片延伸到后面。
+/// "真卡片露出的顶缘",而不是色条。贴住前卡的那条边不画边线(避免两条
+/// kind 色线贴在一起混色),其余三边保留。
 fn build_toast_peek(
     t: &ToastReq,
     depth: usize,
@@ -2927,23 +2927,6 @@ fn build_toast_peek(
         iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2),
         iced::Color::from_rgb8(bg_rgb.0, bg_rgb.1, bg_rgb.2),
     );
-    let radius = if top_anchor {
-        // top 锚:前卡在上方,条带被盖住的一侧是顶边 → 顶直角、底圆角。
-        iced::border::Radius {
-            top_left: 0.0,
-            top_right: 0.0,
-            bottom_right: 8.0,
-            bottom_left: 8.0,
-        }
-    } else {
-        // bottom/center 锚:条带压在前卡上方 → 底直角(延伸进前卡)、顶圆角。
-        iced::border::Radius {
-            top_left: 8.0,
-            top_right: 8.0,
-            bottom_right: 0.0,
-            bottom_left: 0.0,
-        }
-    };
     // 双侧缩进(sonner 的后卡是整体 scale,左右同时收):锚侧每层 +8px,
     // 对侧由 max_width 收 18px/层;center 锚两侧各 4px。外层 wrapper 用
     // padding + align_x 把条带从槽边缘推离,右缘不再与前卡贴齐。
@@ -2953,24 +2936,48 @@ fn build_toast_peek(
     } else {
         (pad_off, pad_anchor)
     };
-    let styled = iced::widget::container(iced::widget::Space::new())
-        .height(iced::Length::Fixed(14.0))
+    // 三边边框:贴住前卡的那条边不画线 —— 否则本条的底线与下一层的
+    // 顶线(两条不同 kind 色)贴在一起出现混色接缝。iced Border 只支持
+    // 四边等宽,用「横线 + 左右竖线 + 底色主体」拼装;top 锚自动翻转
+    // (省顶线,露出的底边保留线条)。
+    let line_c = iced::Color { a: bd_a, ..br };
+    let body_c = iced::Color { a: bg_a, ..bgc };
+    let bar = || {
+        iced::widget::container(iced::widget::Space::new())
+            .width(iced::Length::Fixed(1.0))
+            .style(move |_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(line_c)),
+                ..Default::default()
+            })
+    };
+    let edge_line = iced::widget::container(iced::widget::Space::new())
+        .height(iced::Length::Fixed(1.0))
         .width(iced::Length::Fill)
-        .max_width(360.0 - depth as f32 * 18.0)
         .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color { a: bg_a, ..bgc })),
-            border: iced::Border {
-                color: iced::Color { a: bd_a, ..br },
-                width: 1.0,
-                radius,
-            },
-            shadow: iced::Shadow {
-                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.22),
-                offset: iced::Vector::new(0.0, 4.0),
-                blur_radius: 10.0,
-            },
+            background: Some(iced::Background::Color(line_c)),
             ..Default::default()
         });
+    let body = iced::widget::row![
+        bar(),
+        iced::widget::container(iced::widget::Space::new())
+            .width(iced::Length::Fill)
+            .style(move |_: &iced::Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(body_c)),
+                ..Default::default()
+            }),
+        bar(),
+    ]
+    .height(iced::Length::Fixed(13.0));
+    let mut deck = iced::widget::column![];
+    if top_anchor {
+        deck = deck.push(body).push(edge_line);
+    } else {
+        deck = deck.push(edge_line).push(body);
+    }
+    let styled = iced::widget::container(deck)
+        .height(iced::Length::Fixed(14.0))
+        .width(iced::Length::Fill)
+        .max_width(360.0 - depth as f32 * 18.0);
     iced::widget::container(styled)
         .width(iced::Length::Fill)
         .align_x(match h_anchor {
