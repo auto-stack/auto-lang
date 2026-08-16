@@ -8546,7 +8546,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style: _ } => {
+        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style } => {
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
                 .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
@@ -8564,6 +8564,30 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
                 None => iced::Length::Fixed(30.0),
             });
+
+            // Plan 057 (2.1): apply class-driven text styling — port from the
+            // Rust-mode into_iced arm (见 :1612 注释)。此前整个 style prop 被
+            // 忽略(`style: _`),Vue 的透明 textarea + 彩色 overlay 技术在 VM 下
+            // 渲染双份文字;text-transparent 使 editor 副本不可见(caret 同色),
+            // 只留 overlay;placeholder 保持可见的弱化灰。
+            if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                if let Some(fs) = effective_font_size(&is) {
+                    editor = editor.size(fs);
+                }
+                if is.text_color.is_some() {
+                    let value_color = is.text_color.unwrap();
+                    editor = editor.style(move |_theme, _status| {
+                        iced::widget::text_editor::Style {
+                            background: iced::Background::Color(iced::Color::TRANSPARENT),
+                            border: iced::Border::default(),
+                            placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
+                            value: value_color,
+                            selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                        }
+                    });
+                }
+            }
 
             let el: iced::Element<'static, IcedMessage> = {
                 // In inspect-capture mode, render read-only (no on_action) so
@@ -8704,16 +8728,43 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            // Recurse per child (each gets its own wrap_debug instrumentation).
-            // Justify-spacers are interleaved inside the shared build_row.
-            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
+            // Plan 057 (2.2): absolute 子元素脱流叠层 —— 镜像 Column 分支(见
+            // 上方 Plan 409 §10 续 6 注释)。ash-gui 的 ghost/高亮 overlay 是
+            // `row{relative} > row{absolute inset-0}` 结构,此前 Row 分支无此
+            // 处理,overlay 进 normal 流会把 textarea 挤开(ghost 断点)。
+            // normal 子元素走 build_row 作 base;absolute 子元素叠在 base 之上
+            // (stack 尺寸由 base 决定,overlay 落原点,接近 CSS absolute 语义)。
+            let mut normal: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
+            let mut absolute: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
             for (i, child) in children.into_iter().enumerate() {
+                let is_abs = extract_view_style(&child)
+                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+                    .unwrap_or(false);
+                if is_abs { absolute.push((i, child)); } else { normal.push((i, child)); }
+            }
+            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
+            for (i, child) in normal.into_iter() {
                 path.push(i);
                 els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
-            let el = build_row(els, spacing, padding, style.as_ref(), widget_id);
+            let base = build_row(els, spacing, padding, style.as_ref(), widget_id);
+            let el = if absolute.is_empty() {
+                base
+            } else {
+                let mut stk = iced::widget::Stack::new().push(base);
+                for (i, child) in absolute.into_iter() {
+                    path.push(i);
+                    let abs_el = render_dynamic_view(child, debug_ctx, path);
+                    path.pop();
+                    stk = stk.push(iced::widget::opaque(abs_el));
+                }
+                let clip = style.as_ref()
+                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                    .unwrap_or(false);
+                stk.clip(clip).into()
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
         }
 
