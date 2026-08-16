@@ -1503,7 +1503,16 @@ impl<'a> AuraViewBuilder<'a> {
                     .join("")
             });
 
-        let mut style = self.extract_style(props);
+        // Plan 053 后续(ash-gui VM):绑定感知的样式求值。原 extract_style 只读
+        // 静态字符串(class/style 的字面量),style: If 三元引用循环变量
+        // (如 `cell.Tagged.kind == "Dir"`)时条件求值必然失败 → 永远落 else
+        // 分支,表格按 kind 着色失效。条件只含 state 字段时(如 .in_continuation)
+        // 无 bindings 也能求值,所以此前 prompt_symbol 的三元侥幸生效。
+        let mut style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .and_then(|s| Style::parse(&s).ok())
+            .or_else(|| self.extract_style(props));
 
         // Apply default heading styles, merging with user-provided styles.
         // Plan 409 §8: headings carry the theme color (text-primary) so page
@@ -2544,9 +2553,19 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
     ) -> Vec<View<DynamicMessage>> {
         let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
-        // Plan 046:裸标识符 iterable 可能是外层循环变量(嵌套 for),
-        // 先查 bindings。未命中再 fallback 到 read_state。
-        let array = if let Some(val) = bindings.get(state_name).cloned() {
+        // Plan 053 后续(ash-gui VM 表头丢失根因):带点路径的 iterable(如
+        // view-fn 参数替换后的 "output.columns")必须走 resolve_iterable 的
+        // 逐字段解引用 —— 此前只查 bindings/read_state(按整名查字段必然失败)
+        // 静默返回空,row 内嵌的 for-loop(表头列名)整体消失。col 路径一直走
+        // resolve_iterable,所以数据行(for 在 col 直接子级)不受影响。
+        let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        let array = if has_inner_dot {
+            match self.resolve_iterable(iterable, bindings) {
+                Some(elems) => auto_val::Array::from(elems),
+                None => return Vec::new(),
+            }
+        } else if let Some(val) = bindings.get(state_name).cloned() {
             match val {
                 Value::Array(arr) => arr,
                 Value::Int(id) if id >= 4_000_000 => {
@@ -2980,7 +2999,16 @@ let tabs_inner = View::Row {
                     .join("")
             });
 
-        let mut style = self.extract_style(props);
+        // Plan 053 后续(ash-gui VM):绑定感知的样式求值。原 extract_style 只读
+        // 静态字符串(class/style 的字面量),style: If 三元引用循环变量
+        // (如 `cell.Tagged.kind == "Dir"`)时条件求值必然失败 → 永远落 else
+        // 分支,表格按 kind 着色失效。条件只含 state 字段时(如 .in_continuation)
+        // 无 bindings 也能求值,所以此前 prompt_symbol 的三元侥幸生效。
+        let mut style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .and_then(|s| Style::parse(&s).ok())
+            .or_else(|| self.extract_style(props));
 
         // Apply default heading styles, merging with user-provided styles.
         // Plan 409 §8: headings carry the theme color (text-primary) so page
@@ -3431,10 +3459,11 @@ let tabs_inner = View::Row {
                     _ => String::new(),
                 }
             }
-            // Plan 339: if-expression for conditional string values (e.g. style)
+            // Plan 339: if-expression for conditional string values (e.g. style).
+            // Plan 053 后续:遍历全部分支(else-if 链修复,同 resolve_expr_to_value)。
             Expr::If(if_expr) => {
-                if let Some(cond) = if_expr.branches.first() {
-                    let cond_val = self.resolve_expr_to_value(&cond.cond, bindings);
+                for branch in &if_expr.branches {
+                    let cond_val = self.resolve_expr_to_value(&branch.cond, bindings);
                     let is_true = match cond_val {
                         Some(Value::Bool(false)) | Some(Value::Nil) | None => false,
                         Some(Value::Int(i)) if i == 0 => false,
@@ -3442,25 +3471,22 @@ let tabs_inner = View::Row {
                     };
                     if is_true {
                         // then body must be a single expression (Plan 339 contract)
-                        if cond.body.stmts.len() == 1 {
-                            if let crate::ast::Stmt::Expr(e) = &cond.body.stmts[0] {
+                        if branch.body.stmts.len() == 1 {
+                            if let crate::ast::Stmt::Expr(e) = &branch.body.stmts[0] {
                                 return self.resolve_expr_to_string_with(e, bindings);
                             }
                         }
-                        String::new()
-                    } else if let Some(else_body) = &if_expr.else_ {
-                        if else_body.stmts.len() == 1 {
-                            if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
-                                return self.resolve_expr_to_string_with(e, bindings);
-                            }
-                        }
-                        String::new()
-                    } else {
-                        String::new()
+                        return String::new();
                     }
-                } else {
-                    String::new()
                 }
+                if let Some(else_body) = &if_expr.else_ {
+                    if else_body.stmts.len() == 1 {
+                        if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
+                            return self.resolve_expr_to_string_with(e, bindings);
+                        }
+                    }
+                }
+                String::new()
             }
             _ => String::new(),
         }
@@ -3597,9 +3623,117 @@ let tabs_inner = View::Row {
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(l != r))
             }
-            // Plan 339: conditional if-expression for style/attribute values
+            // Plan 053 后续(ash-gui VM): && / || for computed conditions (e.g.
+            // cwd_display's `.store.home != "" && .store.cwd.starts_with(...)`).
+            // Without these the whole condition resolves to None and the computed
+            // falls back to the literal "${name}" placeholder.
+            Expr::Bina(left, Op::And, right) => {
+                let l = self.resolve_expr_to_value(left, bindings)?;
+                if matches!(&l, Value::Bool(false) | Value::Nil) { return Some(Value::Bool(false)); }
+                let r = self.resolve_expr_to_value(right, bindings)?;
+                Some(Value::Bool(!matches!(&r, Value::Bool(false) | Value::Nil)))
+            }
+            Expr::Bina(left, Op::Or, right) => {
+                let l = self.resolve_expr_to_value(left, bindings)?;
+                if !matches!(&l, Value::Bool(false) | Value::Nil) { return Some(Value::Bool(true)); }
+                let r = self.resolve_expr_to_value(right, bindings)?;
+                Some(Value::Bool(!matches!(&r, Value::Bool(false) | Value::Nil)))
+            }
+            // Plan 053 后续(ash-gui VM): string concat via `+` (e.g. `"~" + .store.cwd...`
+            // in cwd_display, `"⚙ " + .store.job_list.len()` in jobs_label). When either
+            // operand resolves to a string, concatenate display forms.
+            Expr::Bina(left, Op::Add, right) => {
+                let l = self.resolve_expr_to_value(left, bindings)?;
+                let r = self.resolve_expr_to_value(right, bindings)?;
+                let is_str = |v: &Value| matches!(v, Value::Str(_) | Value::String(_));
+                if is_str(&l) || is_str(&r) {
+                    let mut s = value_to_display_string(&l);
+                    s.push_str(&value_to_display_string(&r));
+                    return Some(Value::Str(s.into()));
+                }
+                match (l, r) {
+                    (Value::Int(a), Value::Int(b)) => Some(Value::Int(a + b)),
+                    (Value::Double(a), Value::Double(b)) => Some(Value::Double(a + b)),
+                    (Value::Float(a), Value::Float(b)) => Some(Value::Float(a + b)),
+                    _ => None,
+                }
+            }
+            // Plan 053 后续(ash-gui VM): a small set of string/list method calls on
+            // state-backed receivers — starts_with / substr / len / trim — enough for
+            // the cwd abbreviation computed and siblings. Generic dispatch stays in
+            // the VM; this is the view-build fast path only.
+            Expr::Call(call) => {
+                if let Expr::Dot(recv_expr, method) = call.name.as_ref() {
+                    let recv = self.resolve_expr_to_value(recv_expr, bindings)?;
+                    let arg = |i: usize| -> Option<i32> {
+                        call.args.args.get(i).and_then(|a| match a {
+                            crate::ast::Arg::Pos(e) => {
+                                self.resolve_expr_to_value(e, bindings).and_then(|v| match v {
+                                    Value::Int(n) => Some(n),
+                                    Value::Float(f) => Some(f as i32),
+                                    Value::Double(f) => Some(f as i32),
+                                    _ => None,
+                                })
+                            }
+                            _ => None,
+                        })
+                    };
+                    let arg_str = |i: usize| -> Option<String> {
+                        call.args.args.get(i).and_then(|a| match a {
+                            crate::ast::Arg::Pos(e) => {
+                                self.resolve_expr_to_value(e, bindings).map(|v| value_to_display_string(&v))
+                            }
+                            _ => None,
+                        })
+                    };
+                    fn as_str(v: &Value) -> std::borrow::Cow<'_, str> {
+                        match v {
+                            Value::Str(s) => std::borrow::Cow::Borrowed(s.as_str()),
+                            Value::String(s) => std::borrow::Cow::Owned(s.to_string()),
+                            other => std::borrow::Cow::Owned(value_to_display_string(other)),
+                        }
+                    };
+                    match method.as_str() {
+                        "len" => match &recv {
+                            Value::Str(v) => Some(Value::Int(v.as_str().len() as i32)),
+                            Value::String(v) => Some(Value::Int(v.len() as i32)),
+                            Value::Array(arr) => Some(Value::Int(arr.len() as i32)),
+                            _ => None,
+                        },
+                        "starts_with" => {
+                            let pre = arg_str(0)?;
+                            Some(Value::Bool(as_str(&recv).starts_with(&pre)))
+                        }
+                        "substr" => {
+                            let s = as_str(&recv).into_owned();
+                            let start = arg(0)? as usize;
+                            let end = arg(1).map(|e| e as usize).unwrap_or(s.len());
+                            let start = start.min(s.len());
+                            let end = end.max(start).min(s.len());
+                            Some(Value::Str(s[start..end].to_string().into()))
+                        }
+                        "trim" => {
+                            let s = as_str(&recv).trim().to_string();
+                            Some(Value::Str(s.into()))
+                        }
+                        // Plan 053 后续:`.str()` / `.to_string()` — exit_label 等
+                        // computed 用 `":" + .block.exit_code.str()` 拼串。
+                        "str" | "to_string" => {
+                            let s = value_to_display_string(&recv);
+                            Some(Value::Str(s.into()))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            // Plan 339: conditional if-expression for style/attribute values.
+            // Plan 053 后续:遍历全部分支 —— else-if 链在 AST 里是 branches 数组的
+            // 多个条目,只看 branches.first() 会跳过中间分支(如 kind==Dir 命中而
+            // kind==CodeAtRs 永远落 else)。
             Expr::If(if_expr) => {
-                if let Some(branch) = if_expr.branches.first() {
+                for branch in &if_expr.branches {
                     let cond_val = self.resolve_expr_to_value(&branch.cond, bindings)?;
                     let is_true = match &cond_val {
                         Value::Bool(false) | Value::Nil => false,
@@ -3613,20 +3747,17 @@ let tabs_inner = View::Row {
                                 return self.resolve_expr_to_value(e, bindings);
                             }
                         }
-                        None
-                    } else if let Some(else_body) = &if_expr.else_ {
-                        if else_body.stmts.len() == 1 {
-                            if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
-                                return self.resolve_expr_to_value(e, bindings);
-                            }
-                        }
-                        None
-                    } else {
-                        None
+                        return None;
                     }
-                } else {
-                    None
                 }
+                if let Some(else_body) = &if_expr.else_ {
+                    if else_body.stmts.len() == 1 {
+                        if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
+                            return self.resolve_expr_to_value(e, bindings);
+                        }
+                    }
+                }
+                None
             }
             _ => None,
         }

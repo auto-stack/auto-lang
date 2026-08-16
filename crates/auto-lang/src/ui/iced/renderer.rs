@@ -72,11 +72,21 @@ fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content
             Box::leak(Box::new(text_editor::Content::with_text(value)))
         });
     }
-    // Phase 2: update content in-place (under lock)
+    // Phase 2: update content in-place (under lock) — ONLY when the text
+    // actually changed. Unconditionally replacing on every render reset the
+    // cursor to offset 0 each frame, so every freshly typed character was
+    // inserted at the START of the line (typing "ls" showed "sl").
+    // When the value did change (e.g. handler wrote state), rebuild and park
+    // the caret at the document end — the sane default for programmatic sets.
     {
         let mut map = TEXTAREA_CONTENTS.lock().unwrap();
         if let Some(content) = map.get_mut(key) {
-            **content = text_editor::Content::with_text(value);
+            if content.text() != value {
+                **content = text_editor::Content::with_text(value);
+                content.perform(text_editor::Action::Move(
+                    text_editor::Motion::DocumentEnd,
+                ));
+            }
         }
     }
     // Phase 3: get a raw pointer under lock, return as &'static outside lock.
@@ -829,7 +839,23 @@ fn build_column<M: Clone + Debug + 'static>(
             _ => {}
         }
     }
-    apply_column_style(col_widget, padding, style, widget_id)
+    let el = apply_column_style(col_widget, padding, style, widget_id);
+    // Plan 053 后续(ash-gui VM):`max-h-[Npx] overflow-y-auto` 的 col(CSS 语义:
+    // 超出 N 内部滚动)→ iced 包一层限高 Scrollable(Fixed N)。iced 无 max-height,
+    // 短内容也占 N 高是可接受代价;Vue 端不受影响(col 走 CSS max-height)。
+    if let Some(ref st) = style {
+        let is = IcedStyle::from_style(st);
+        if let Some(max_h) = is.max_height {
+            if max_h > 0.0 {
+                return scrollable(el)
+                    .height(iced::Length::Fixed(max_h))
+                    .width(iced::Length::Fill)
+                    .style(|_t: &iced::Theme, _s: scrollable::Status| scrollbar_style())
+                    .into();
+            }
+        }
+    }
+    el
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -874,7 +900,17 @@ fn build_scrollable<M: Clone + Debug + 'static>(
             Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
             Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
             Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
-            None => { if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } } }
+            None => {
+                // Plan 053 后续(ash-gui VM):`max-h-[Npx] overflow-y-auto` 的 col 被
+                // view builder 转成 Scrollable,但 iced 无 max-height —— 不限高时
+                // 长输出(show 大文件)把整个 block 撑开。用 Fixed(N) 兜底:短内容
+                // 也占 N 高是可接受代价(CSS 端 vue 仍走 max-height 无影响)。
+                if let Some(max_h) = is.max_height {
+                    if max_h > 0.0 { s = s.height(iced::Length::Fixed(max_h)); }
+                } else if let Some(h) = height {
+                    if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); }
+                }
+            }
         }
     } else {
         if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
@@ -1554,7 +1590,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 input_widget.into()
             }
 
-            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style: _ } => {
+            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style } => {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
@@ -1562,8 +1598,35 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let mut editor = text_editor(content).placeholder(ph);
                 editor = editor.height(match height {
                     Some(h) => iced::Length::Fixed(h as f32),
-                    None => iced::Length::Fixed(100.0),
+                    // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
+                    None => iced::Length::Fixed(30.0),
                 });
+
+                // Plan 053 后续(ash-gui VM): apply class-driven text styling.
+                // Previously the whole style prop was ignored (`style: _`), so the
+                // Vue transparent-textarea + colored-overlay technique rendered the
+                // typed text TWICE — once in the editor's default color, once in
+                // the overlay spans. Applying text_color makes `text-transparent`
+                // hide the editor copy (caret rides the same color), leaving only
+                // the overlay; the placeholder stays a visible muted gray.
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    if let Some(fs) = effective_font_size(&is) {
+                        editor = editor.size(fs);
+                    }
+                    if is.text_color.is_some() {
+                        let value_color = is.text_color.unwrap();
+                        editor = editor.style(move |_theme, _status| {
+                            iced::widget::text_editor::Style {
+                                background: iced::Background::Color(iced::Color::TRANSPARENT),
+                                border: iced::Border::default(),
+                                placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
+                                value: value_color,
+                                selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                            }
+                        });
+                    }
+                }
 
                 // Plan 053 M4: Enter fires on_submit (onenter) — the newline is
                 // already inserted by content.perform; input_value carries the
@@ -2837,14 +2900,48 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
 /// 递减,叠在前卡后方,复刻 vue-sonner 折叠堆叠的观感。iced widget 不支持
 /// 旋转,以宽度收窄 + 透明度阶梯近似 sonner 的缩放/旋转纵深。纯装饰 ——
 /// 完整内容只有最前(最新)一张;某条到期出队后,下一张自然顶上成为前卡。
-fn build_toast_peek(t: &ToastReq, depth: usize) -> iced::Element<'static, IcedMessage> {
+///
+/// 配色与 build_toast_card 完全同源(default 不透明 zinc 深底 / 彩色 kind
+/// 为 zinc 底 + 10% 主色、边框 50% 主色),仅按深度轻微衰减 —— 视觉上是
+/// "真卡片露出的顶缘",而不是色条。被前卡盖住的一侧直角、露出侧圆角 8,
+/// 连续感像卡片延伸到后面。
+fn build_toast_peek(
+    t: &ToastReq,
+    depth: usize,
+    top_anchor: bool,
+) -> iced::Element<'static, IcedMessage> {
     let (border_rgb, bg_rgb, _) = toast_palette(&t.kind);
-    let border_a = [0.0f32, 0.50, 0.30][depth.min(2)];
-    let bg_a = [0.0f32, 0.85, 0.60][depth.min(2)];
+    // 透明度与 build_toast_card 完全一致(内部颜色 = 真卡顶缘,不是色条):
+    // default 不透明 zinc 深底;彩色 kind 为 10% 主色底 + 50% 主色边框。
+    // 深度差异只靠宽度收窄体现,最深层边框再轻微衰减;背景不额外衰减
+    // —— 否则 10% 底再打折会融进页面背景变成幽灵条。
+    let is_default = t.kind == "default";
+    let (bg_a, bd_a) = if is_default {
+        (1.0f32, if depth <= 1 { 1.0 } else { 0.8 })
+    } else {
+        (0.10f32, [0.0, 0.50, 0.35][depth.min(2)])
+    };
     let (br, bgc) = (
         iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2),
         iced::Color::from_rgb8(bg_rgb.0, bg_rgb.1, bg_rgb.2),
     );
+    let radius = if top_anchor {
+        // top 锚:前卡在上方,条带被盖住的一侧是顶边 → 顶直角、底圆角。
+        iced::border::Radius {
+            top_left: 0.0,
+            top_right: 0.0,
+            bottom_right: 8.0,
+            bottom_left: 8.0,
+        }
+    } else {
+        // bottom/center 锚:条带压在前卡上方 → 底直角(延伸进前卡)、顶圆角。
+        iced::border::Radius {
+            top_left: 8.0,
+            top_right: 8.0,
+            bottom_right: 0.0,
+            bottom_left: 0.0,
+        }
+    };
     iced::widget::container(iced::widget::Space::new())
         .height(iced::Length::Fixed(14.0))
         .width(iced::Length::Fill)
@@ -2852,9 +2949,14 @@ fn build_toast_peek(t: &ToastReq, depth: usize) -> iced::Element<'static, IcedMe
         .style(move |_: &iced::Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(iced::Color { a: bg_a, ..bgc })),
             border: iced::Border {
-                color: iced::Color { a: border_a, ..br },
+                color: iced::Color { a: bd_a, ..br },
                 width: 1.0,
-                radius: iced::border::Radius::new(8.0),
+                radius,
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.22),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 10.0,
             },
             ..Default::default()
         })
@@ -2914,7 +3016,7 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
             if depth == 0 {
                 c = c.push(build_toast_card(&toasts[idxs[rank]]));
             } else if depth <= 2 {
-                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth));
+                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth, top_anchor));
             }
         }
         c.into()
@@ -3186,6 +3288,24 @@ fn handle_show_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::
 ///
 /// 支持参数:ls / ls <path> / ls -a(显示隐藏) / ls -l(忽略,短模式)。
 /// 排序:目录优先 + 字母序(对齐 ash-core fs.rs:274-300)。
+/// Plan 053 后续:文件名语义 kind —— 对齐 ash-core renderer.rs 的 file_name_kind
+/// (目录→Dir;.at/.rs→CodeAtRs;.exe/.dll→Executable;.toml/.json/.yaml→Config;
+/// 其余→Plain)。VM 执行器是 ash-core ls 的独立重实现(避免循环依赖),此前只产
+/// 纯 Text 单元格,BlockBody 的按 kind 着色(.at 侧已就绪)拿不到数据 → 高亮丢失。
+fn ls_file_kind(name: &str, is_dir: bool) -> &'static str {
+    if is_dir {
+        return "Dir";
+    }
+    let lower = name.to_lowercase();
+    let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    match ext {
+        "at" | "rs" => "CodeAtRs",
+        "exe" | "dll" | "bat" | "cmd" | "ps1" => "Executable",
+        "toml" | "json" | "yaml" | "yml" | "ini" | "conf" | "cfg" => "Config",
+        _ => "Plain",
+    }
+}
+
 fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
     let args: Vec<&str> = cmd.split_whitespace().collect();
     // 解析 flags 和路径(args[0] = "ls"/"dir")
@@ -3248,9 +3368,9 @@ fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Va
                     // Plan 046 已修 VM 二维数组 for 循环 bug(aura_view_builder
                     // ForLoop 现在先查 bindings),for cell in row 正常迭代。
                     serde_json::json!([
-                        { "Text": name },
-                        { "Text": file_type },
-                        { "Text": size_str },
+                        { "Tagged": { "text": name, "tag": { "FileName": ls_file_kind(name, *is_dir) }, "kind": ls_file_kind(name, *is_dir) } },
+                        { "Tagged": { "text": file_type, "tag": if *is_dir { "Dir" } else { "Plain" }, "kind": if *is_dir { "Dir" } else { "Plain" } } },
+                        { "Tagged": { "text": size_str, "tag": "Plain", "kind": "Plain" } },
                     ])
                 })
                 .collect();
@@ -3632,6 +3752,9 @@ fn update_block_in_state(
                 obj.set("output", output_obj);
                 obj.set("streamed_text", auto_val::Value::str(""));
                 obj.set("duration_ms", auto_val::Value::Int(dur));
+                // Plan 053 后续:补 exit_code(执行器 payload 不带,按 status 推导),
+                // 否则 exit_label computed 读不到字段 → "${exit_label}" 字面量。
+                obj.set("exit_code", auto_val::Value::Int(if kind == "Success" { 0 } else { 1 }));
             }
             break;
         }
@@ -4995,6 +5118,38 @@ fn compare_pngs(
 
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
+        // Plan 055 D5(补实现,此前缺失):BlockItem.ToggleCollapse(id) 的 .at handler
+        // 是空体,设计上由 renderer emit 给父级翻转 blocks[id].collapsed —— 该桥
+        // 一直没实现,VM 端点击折叠无效果。这里解码 payload 里的 id 直接翻转。
+        if widget_name == "BlockItem" && event_name.starts_with("ToggleCollapse") {
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let id = args.first().map(|v| v.as_int() as i64).unwrap_or(-1);
+            if id >= 0 {
+                if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                    let mut flipped = false;
+                    for b in blocks.iter_mut() {
+                        if let auto_val::Value::Obj(obj) = b {
+                            let matches = obj.get("id")
+                                .map(|v| v.as_int() as i64 == id)
+                                .unwrap_or(false);
+                            if matches {
+                                let cur = obj.get("collapsed")
+                                    .map(|v| matches!(v, auto_val::Value::Bool(true)))
+                                    .unwrap_or(false);
+                                obj.set("collapsed", auto_val::Value::Bool(!cur));
+                                flipped = true;
+                                break;
+                            }
+                        }
+                    }
+                    if flipped {
+                        let _ = state.component.write_state_vec("blocks", blocks);
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+
         // Plan 402: if difficulty changed (SetDifficulty/Init), resize window
         // to fit the board snugly.
         let diff_after = state.component.read_state("difficulty")
@@ -5049,15 +5204,21 @@ fn compare_pngs(
                 let cmd = cmd.trim();
                 if !cmd.is_empty() {
                     // 触发 store 级 RunCommand(cmd)。on_with_input_for 把 input_value
-                    // 作为字符串参数传给 handler(cmd 参数)。store 只记 pending
-                    // {block_id, cmd}(VM 嵌套 struct 赋值会崩),block 在下方构造。
+                    // 作为字符串参数传给 handler(cmd 参数)。
+                    // store 调用前记录块数:store 的 RunCommand 会自己 push 一个
+                    // Running 块(元素是 VM 堆引用,update_block_in_state 按
+                    // Value::Obj 匹配会失败)。下方 Rust 用完整块**替换**这个刚推入
+                    // 的尾块 —— 既消灭双块,又保证结果回写能匹配。
+                    let blocks_before = state.component
+                        .read_state_as_vec("blocks")
+                        .map(|v| v.len())
+                        .unwrap_or(0);
                     state.component.on_with_input_for(
                         "ShellStore",
                         "RunCommand",
                         Some(cmd.to_string()),
                     );
-                    // store.RunCommand 已写 __pending_command_{id,str}。在此(Rust 侧)
-                    // 构造完整 Running block push 进 store.blocks,并提交执行器。
+                    // store.RunCommand 已写 __pending_command_{id,str}。
                     let bid = state.component.read_state("__pending_command_id")
                         .map(|v| v.as_int() as i64).unwrap_or(0);
                     let cwd = state.component.read_state("cwd")
@@ -5073,11 +5234,26 @@ fn compare_pngs(
                         block.set("status", auto_val::Value::Obj(status));
                         block.set("streamed_text", auto_val::Value::str(""));
                         block.set("duration_ms", auto_val::Value::Int(0));
-                        // blocks 字段可能初始为 nil(vm List 初始化问题)。先尝试
-                        // read_state_as_vec(对已初始化 List);失败则直接 write_state
-                        // 一个含新 block 的 Value::Array(覆盖 nil)。
+                        // Plan 053 后续:补齐 Block 其余字段 —— 缺 output 时
+                        // BlockBody 渲染空;缺 exit_code/collapsed 时
+                        // collapse_glyph/exit_label computed 读取失败,块头回退成
+                        // "${collapse_glyph}" 字面量。
+                        block.set("output", auto_val::Value::Nil);
+                        block.set("exit_code", auto_val::Value::Int(0));
+                        block.set("collapsed", auto_val::Value::Bool(false));
+                        // store 的 RunCommand 已 push 同 id 的块,但 VM List 里的
+                        // 元素是堆引用(非 Value::Obj),update_block_in_state 按
+                        // Obj 匹配会失败 → 块永远停在 Running。这里用完整 Rust 块
+                        // **替换**同 id 尾块(幂等,无双块),仅当无同 id 块时追加。
                         if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
-                            blocks.push(auto_val::Value::Obj(block));
+                            // store 刚为本次命令 push 了一个块(计数 +1)→ 原位替换;
+                            // 否则(历史路径/store 未推)追加。
+                            let store_pushed_this = blocks.len() > blocks_before;
+                            if store_pushed_this {
+                                *blocks.last_mut().unwrap() = auto_val::Value::Obj(block);
+                            } else {
+                                blocks.push(auto_val::Value::Obj(block));
+                            }
                             let _ = state.component.write_state_vec("blocks", blocks);
                         } else {
                             let _ = state.component.write_state(
@@ -5087,6 +5263,7 @@ fn compare_pngs(
                                 }),
                             );
                         }
+                        // 执行器提交:无论块由谁推入,命令都必须进队列。
                         if let Some(handle) = SHELL_EXEC_HANDLE.get() {
                             if let Ok(mut h) = handle.lock() {
                                 h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
@@ -8238,7 +8415,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let mut editor = text_editor(content).placeholder(ph);
             editor = editor.height(match height {
                 Some(h) => iced::Length::Fixed(h as f32),
-                None => iced::Length::Fixed(100.0),
+                // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
+                // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
+                None => iced::Length::Fixed(30.0),
             });
 
             let el: iced::Element<'static, IcedMessage> = {

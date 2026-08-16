@@ -6144,12 +6144,17 @@ impl AutoVM {
 
                     let new_sp = task.bp - n_args;
 
-                    // Safety check for underflow
-                    if task.bp < n_args {
-                        // In valid stack frame logic, bp should be >= args_count if args were pushed before call.
-                        // But actually logic depends on calling convention.
-                        // Assuming simple verification for now.
+                    // Plan 053 后续(ash-gui VM 稳定性):bp - n_args 可能为 0
+                    // (帧不匹配 / 主任务边界 RET),原代码 new_sp - 1 直接 usize
+                    // 下溢 panic(exit 101 整窗崩溃)。夹到最小槽位 1 保命,丢一个
+                    // 返回值槽位远好于崩溃;warn 便于追踪帧不匹配的真因。
+                    if task.bp < n_args || new_sp == 0 {
+                        eprintln!(
+                            "[VM-RET] underflow guard: bp={}, n_args={} (frame mismatch?)",
+                            task.bp, n_args
+                        );
                     }
+                    let new_sp = new_sp.max(1);
 
                     {
                         task.ram.write_nv(new_sp - 1, result_nv);
