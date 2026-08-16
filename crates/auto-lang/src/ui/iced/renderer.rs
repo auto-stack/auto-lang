@@ -2909,18 +2909,20 @@ fn build_toast_peek(
     t: &ToastReq,
     depth: usize,
     top_anchor: bool,
+    h_anchor: usize,
 ) -> iced::Element<'static, IcedMessage> {
     let (border_rgb, bg_rgb, _) = toast_palette(&t.kind);
     // 透明度与 build_toast_card 完全一致(内部颜色 = 真卡顶缘,不是色条):
     // default 不透明 zinc 深底;彩色 kind 为 10% 主色底 + 50% 主色边框。
-    // 深度差异只靠宽度收窄体现,最深层边框再轻微衰减;背景不额外衰减
-    // —— 否则 10% 底再打折会融进页面背景变成幽灵条。
+    // 背景不随深度衰减(10% 底再打折会融进页面背景变幽灵条);深度感靠
+    // 双侧缩进 + 边框阶梯。
     let is_default = t.kind == "default";
-    let (bg_a, bd_a) = if is_default {
-        (1.0f32, if depth <= 1 { 1.0 } else { 0.8 })
+    let bd_a = if is_default {
+        [0.0f32, 1.0, 0.85, 0.75, 0.65][depth.min(4)]
     } else {
-        (0.10f32, [0.0, 0.50, 0.35][depth.min(2)])
+        [0.0f32, 0.50, 0.38, 0.30, 0.25][depth.min(4)]
     };
+    let bg_a = if is_default { 1.0f32 } else { 0.10 };
     let (br, bgc) = (
         iced::Color::from_rgb8(border_rgb.0, border_rgb.1, border_rgb.2),
         iced::Color::from_rgb8(bg_rgb.0, bg_rgb.1, bg_rgb.2),
@@ -2942,7 +2944,16 @@ fn build_toast_peek(
             bottom_left: 0.0,
         }
     };
-    iced::widget::container(iced::widget::Space::new())
+    // 双侧缩进(sonner 的后卡是整体 scale,左右同时收):锚侧每层 +8px,
+    // 对侧由 max_width 收 18px/层;center 锚两侧各 4px。外层 wrapper 用
+    // padding + align_x 把条带从槽边缘推离,右缘不再与前卡贴齐。
+    let (pad_anchor, pad_off) = if h_anchor == 1 { (4.0f32, 4.0) } else { (8.0f32, 0.0) };
+    let (pad_left, pad_right) = if h_anchor == 0 {
+        (pad_anchor, pad_off)
+    } else {
+        (pad_off, pad_anchor)
+    };
+    let styled = iced::widget::container(iced::widget::Space::new())
         .height(iced::Length::Fixed(14.0))
         .width(iced::Length::Fill)
         .max_width(360.0 - depth as f32 * 18.0)
@@ -2959,6 +2970,19 @@ fn build_toast_peek(
                 blur_radius: 10.0,
             },
             ..Default::default()
+        });
+    iced::widget::container(styled)
+        .width(iced::Length::Fill)
+        .align_x(match h_anchor {
+            0 => iced::Alignment::Start,
+            1 => iced::Alignment::Center,
+            _ => iced::Alignment::End,
+        })
+        .padding(iced::Padding {
+            top: 0.0,
+            right: pad_right * depth as f32,
+            bottom: 0.0,
+            left: pad_left * depth as f32,
         })
         .into()
 }
@@ -2982,8 +3006,8 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
     }
 
     // 单个槽:该锚点的折叠牌堆(deck,对齐 vue-sonner)—— 只有最前(最新)
-    // 一张渲染完整内容卡,后面至多 2 张以"探出条"露出顶缘(宽随深度收窄、
-    // 透明度递减),更旧的完全被盖住。空槽 = Fill 宽占位,保持三列等宽。
+    // 一张渲染完整内容卡,后面至多 4 张以"探出条"露出顶缘(双侧缩进、
+    // 边框透明度阶梯),更旧的完全被盖住。空槽 = Fill 宽占位,保持三列等宽。
     // 前卡贴锚点边:bottom/center 锚前卡在堆底(探出条在上方),top 锚前卡
     // 在堆顶(探出条在下方,旧的被新的向下挤)。
     let slot = |idxs: &[usize]| -> iced::Element<'static, IcedMessage> {
@@ -2992,7 +3016,8 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
                 .width(iced::Length::Fill)
                 .into();
         }
-        let h_align = match parse_pos(&toasts[idxs[0]].position).1 {
+        let h_anchor = parse_pos(&toasts[idxs[0]].position).1;
+        let h_align = match h_anchor {
             0 => iced::Alignment::Start,
             1 => iced::Alignment::Center,
             _ => iced::Alignment::End,
@@ -3002,8 +3027,8 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
         let mut c = iced::widget::column![]
             .width(iced::Length::Fill)
             .align_x(h_align);
-        // depth = 距前卡的层数(0 = 前卡);探出条只画 depth 1..=2,更旧的
-        // 完全被盖住不渲染。
+        // depth = 距前卡的层数(0 = 前卡);探出条画 depth 1..=4(前卡 +
+        // 4 层 = 最多 5 张可见),更旧的完全被盖住不渲染。
         let ranks: Box<dyn Iterator<Item = usize>> = if top_anchor {
             // 前卡(rank = n-1)贴顶:列自上而下 = 最新 → 最旧。
             Box::new((0..n).rev())
@@ -3015,8 +3040,8 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
             let depth = n - 1 - rank;
             if depth == 0 {
                 c = c.push(build_toast_card(&toasts[idxs[rank]]));
-            } else if depth <= 2 {
-                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth, top_anchor));
+            } else if depth <= 4 {
+                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth, top_anchor, h_anchor));
             }
         }
         c.into()
