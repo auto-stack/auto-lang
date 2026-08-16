@@ -1024,6 +1024,15 @@ struct PreviewCardData {
     vue_code: String,
 }
 
+/// 转义嵌入 SFC <script> 反引号模板字面量的代码串:字面反引号 / `${` 会
+/// 提前终止 JS 字面量;字面 `</script` 会被 SFC 解析器当作脚本块结尾,
+/// 截断整个组件(toast 页 Usage 示例含 </script> 曾整页编译失败)。
+fn sanitize_embedded_code(code: &str) -> String {
+    code.replace('`', "\\`")
+        .replace("${", "\\${")
+        .replace("</script", "<\\/script")
+}
+
 /// Data for generating code blocks with copy button
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -2734,8 +2743,8 @@ impl VueGenerator {
                     .collect();
                 let auto_var = format!("{}AutoCode", id_camel);
                 let vue_var = format!("{}VueCode", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", auto_var, pc.auto_code));
-                script.push_str(&format!("const {} = `{}`\n", vue_var, pc.vue_code));
+                script.push_str(&format!("const {} = `{}`\n", auto_var, sanitize_embedded_code(&pc.auto_code)));
+                script.push_str(&format!("const {} = `{}`\n", vue_var, sanitize_embedded_code(&pc.vue_code)));
             }
 
             // Add code constants for each codeblock
@@ -2758,7 +2767,7 @@ impl VueGenerator {
                     })
                     .collect();
                 let code_var = format!("{}Code", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", code_var, cb.code));
+                script.push_str(&format!("const {} = `{}`\n", code_var, sanitize_embedded_code(&cb.code)));
             }
 
             // Plan 106: Add watchers for syntax highlighting when tabs change
@@ -2817,7 +2826,7 @@ impl VueGenerator {
                     })
                     .collect();
                 let code_var = format!("{}Code", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", code_var, cb.code));
+                script.push_str(&format!("const {} = `{}`\n", code_var, sanitize_embedded_code(&cb.code)));
             }
             script.push('\n');
         }

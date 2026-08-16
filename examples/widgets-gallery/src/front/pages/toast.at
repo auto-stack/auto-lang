@@ -105,6 +105,11 @@ widget ToastPage {
                 }
             }
 
+            h2 "Usage"
+            text "Toast calls live in event handlers (.save -> { toast.success(...) }). Mount toast-provider once per page for the vue renderer — the native vm draws the floating layer window-wide automatically." { style: "text-sm text-muted-foreground" }
+            codeblock (lang: "auto", code: "widget Demo {\n    on {\n        .save -> { toast.success(\"Action completed successfully!\") }\n        .fail -> { toast.error(\"Something went wrong.\") }\n        .tip -> { toast.info(\"Toast at top-right\", position: \"top-right\") }\n        .slow -> { toast(\"Dismisses in 8 seconds\", duration: 8000) }\n    }\n    view {\n        row (style: \"gap-2\") {\n            button (text: \"Save\", onClick: .save) {}\n            button (text: \"Break\", onClick: .fail) {}\n            button (text: \"Tip\", onClick: .tip) {}\n        }\n        toast-provider {}\n    }\n}") {}
+            codeblock (lang: "vue", code: "<script setup lang=\"ts\">\nimport { toast } from 'vue-sonner'\nimport { Toaster } from '@/components/ui/sonner'\n\nconst save = () => toast.success('Action completed successfully!')\nconst fail = () => toast.error('Something went wrong.')\nconst tip = () => toast.info('Toast at top-right', { position: 'top-right' })\nconst slow = () => toast('Dismisses in 8 seconds', { duration: 8000 })\n</script>\n\n<template>\n  <button variant=\"outline\" @click=\"save\">Save</button>\n  <button variant=\"outline\" @click=\"fail\">Break</button>\n  <button variant=\"outline\" @click=\"tip\">Tip</button>\n  <Toaster />\n</template>") {}
+
             h2 "Properties"
             table {
                 thead {
