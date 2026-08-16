@@ -3,10 +3,15 @@
 widget SonnerPage {
     model { activeTab str = "preview" }
 
+    on {
+        .showToast -> { toast("Event has been created") }
+        .showSuccess -> { toast.success("Event created successfully") }
+    }
+
     view {
         col {
             h1 "Sonner"
-            text "Sonner is an opinionated toast notification system built on vue-sonner. Toasts stack, auto-dismiss after a configurable duration, and support success, error, warning, and info variants with rich colors. Position the viewport anywhere on screen and trigger toasts programmatically via toast.success(), toast.error(), etc."
+            text "Sonner is the underlying toast component library (vue-sonner) that renders toasts on the vue side; the native vm draws the same floating layer itself. For the Auto DSL toast API — toast(), toast.success(), position / duration options and live demos — see the Toast page. This page documents the library wrapper: installation, Toaster placement and library-level options."
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
@@ -15,8 +20,8 @@ widget SonnerPage {
             preview-card (id: "sonner-basic") {
                 col (style: "gap-4") {
                     row (style: "gap-2") {
-                        button (text: "Show Toast", variant: "outline") {}
-                        button (text: "Show Success", variant: "outline") {}
+                        button (text: "Show Toast", variant: "outline", onClick: .showToast) {}
+                        button (text: "Show Success", variant: "outline", onClick: .showSuccess) {}
                     }
                     // Plan 408 fix #5: toast-provider maps to the shadcn-vue
                     // <Toaster/> (ui/sonner), which triggers the sonner
