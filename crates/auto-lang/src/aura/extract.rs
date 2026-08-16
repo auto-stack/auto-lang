@@ -268,11 +268,22 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                 }
                 // Other dot expressions: object.field → try to extract as child element
                 _ => {
-                    // Fall through to error for now
-                    Err(ExtractError::UnsupportedExpr(format!(
-                        "Cannot extract view tree from dot expression: {:?}",
-                        expr
-                    )))
+                    // Plan 057 (ash-gui 表格/块头): 深层点链(.output.Table.atom_type、
+                    // .block.command、裸基 output.columns)此前直接 UnsupportedExpr
+                    // → 文本节点被静默丢弃(表格数据因此整块不显示)。压平成
+                    // 点分路径绑定(self/. 根带前导点;裸 Ident 根不带)。
+                    if let Some(path) = flatten_dot_path(expr) {
+                        Ok(AuraNode::Text(AuraTextContent::Interpolated {
+                            template: format!("${{{}}}", path),
+                            bindings: vec![path],
+                        }))
+                    } else {
+                        // Fall through to error for now
+                        Err(ExtractError::UnsupportedExpr(format!(
+                            "Cannot extract view tree from dot expression: {:?}",
+                            expr
+                        )))
+                    }
                 }
             }
         }
@@ -284,9 +295,38 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
     }
 }
 
-/// Extract event handler pattern from expression
-fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {
+/// Plan 057 (ash-gui): 压平任意深度的 Dot 链为点分路径。
+/// - `.a.b.c`(根为 self/.)→ Some(".a.b.c")(保留前导点)
+/// - `var.a.b`(根为裸 Ident,如循环变量/view-fn 参数)→ Some("var.a.b")
+/// - 含非 Ident/Dot 环节(方法调用等)→ None(维持原 Unsupported 行为)。
+/// 解析侧(resolve_interpolation_with)按前导点区分根形式构造嵌套 Dot。
+fn flatten_dot_path(expr: &Expr) -> Option<String> {
     match expr {
+        Expr::Ident(name) => {
+            let n = name.as_str();
+            if n == "." || n == "self" {
+                Some(".".to_string())
+            } else if !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                Some(n.to_string())
+            } else {
+                None
+            }
+        }
+        Expr::Dot(obj, field) => {
+            let base = flatten_dot_path(obj)?;
+            let f = field.as_str();
+            if !f.is_empty() && f.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                Some(format!("{}.{}", base, f))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract event handler pattern from expression
+fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {    match expr {
         // Identifier: could be ".Inc" or "Msg.Inc"
         Expr::Ident(name) => {
             let name_str = name.as_str();

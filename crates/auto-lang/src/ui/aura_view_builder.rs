@@ -3366,9 +3366,38 @@ let tabs_inner = View::Row {
         let mut result = template.to_string();
 
         for field_name in tpl_bindings {
-            let pattern = format!("${{{}}}", format!(".{}", field_name));
-            let value_str = self.read_state_as_string_with(field_name, loop_bindings);
-            result = result.replace(&pattern, &value_str);
+            // Plan 057 (2.4, ash-gui 表格): 深层点路径绑定(如 .output.Table.atom_type
+            // 或 view-fn 参数/循环变量的 output.columns)此前按整段名查 state →
+            // Err → 输出 "${...}" 字面量。构造嵌套 Dot 表达式走
+            // resolve_expr_to_value(bindings/computed/state + Obj 遍历),失败再回退。
+            // 前导点区分根:带点 = self 根;不带 = 裸 Ident 根(首段查 bindings)。
+            let pattern_dot = format!("${{{}}}", format!(".{}", field_name.trim_start_matches('.')));
+            let pattern_bare = format!("${{{}}}", field_name);
+            let value_str = if field_name.contains('.') {
+                let trimmed = field_name.trim_start_matches('.');
+                let mut parts = trimmed.split('.');
+                let root_name = parts.next().unwrap_or("");
+                let mut expr = Expr::Ident(
+                    if field_name.starts_with('.') { ".".to_string() } else { root_name.to_string() }.into(),
+                );
+                if !field_name.starts_with('.') {
+                    for part in parts {
+                        expr = Expr::Dot(Box::new(expr), part.into());
+                    }
+                } else {
+                    for part in parts {
+                        expr = Expr::Dot(Box::new(expr), part.into());
+                    }
+                }
+                match self.resolve_expr_to_value(&expr, loop_bindings) {
+                    Some(v) => value_to_display_string(&v),
+                    None => self.read_state_as_string_with(trimmed, loop_bindings),
+                }
+            } else {
+                self.read_state_as_string_with(field_name, loop_bindings)
+            };
+            result = result.replace(&pattern_dot, &value_str);
+            result = result.replace(&pattern_bare, &value_str);
         }
 
         result
