@@ -3212,6 +3212,18 @@ static SHELL_EXEC_HANDLE: std::sync::OnceLock<
     std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
 > = std::sync::OnceLock::new();
 
+/// Plan 057 (ash-gui): shell 桥是否运行在 HTTP 模式(AUTO_BACKEND 非空)。
+/// HTTP 模式下 store 的 `run_command()`/`cancel()` 经 api_over_http 改写直连
+/// 后端,本进程执行器只做纯 SSE 泵 —— update 闭包不应再向队列提交命令 /
+/// 置本地取消标志(否则双提交)。
+fn shell_bridge_is_http() -> bool {
+    SHELL_EXEC_HANDLE
+        .get()
+        .and_then(|h| h.lock().ok())
+        .map(|h| h.http_backend.is_some())
+        .unwrap_or(false)
+}
+
 /// 启动 shell 执行器线程(merged + HTTP 双模式)。在 `run_dynamic_iced` 里调用一次。
 /// 返回事件 receiver,由调用方塞进 `SHELL_EVENT_RX` 全局量供 subscription poll。
 fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
@@ -3647,36 +3659,12 @@ async fn http_sse_loop(
     };
     let client = reqwest::Client::new();
     let stream_url = format!("{}/api/stream", base.trim_end_matches('/'));
-    let post_url = format!("{}/api/run_command", base.trim_end_matches('/'));
-    let cancel_url = format!("{}/api/cancel", base.trim_end_matches('/'));
 
-    // 后台:轮询本地命令队列 → POST 到后端(后端执行后经 SSE 回流)。
-    let h2 = handle.clone();
-    let post_url_c = post_url.clone();
-    let client_c = client.clone();
-    let _poster = tokio::spawn(async move {
-        loop {
-            let pending = { h2.lock().unwrap().queue.pop_front() };
-            if let Some(p) = pending {
-                let _ = client_c
-                    .post(&post_url_c)
-                    .json(&serde_json::json!({"block_id": p.block_id, "cmd": p.cmd}))
-                    .send()
-                    .await;
-            } else {
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-            // 取消标志 → POST /api/cancel。
-            let cancels: Vec<i64> = {
-                let mut h = h2.lock().unwrap();
-                let keys: Vec<i64> = h.cancel_flags.drain().filter(|(_, v)| *v).map(|(k, _)| k).collect();
-                keys
-            };
-            if !cancels.is_empty() {
-                let _ = client_c.post(&cancel_url).send().await;
-            }
-        }
-    });
+    // Plan 057 (ash-gui): pure SSE pump — no poster task. When AUTO_BACKEND is
+    // set, api_over_http rewrites the store's `run_command()`/`cancel()` calls
+    // into direct HTTP POSTs to the backend, so forwarding the local queue
+    // here would submit every command twice. The queue/cancel_flags stay
+    // unused in HTTP mode.
 
     // 主:循环连 SSE(断线重连)。
     loop {
@@ -3709,7 +3697,14 @@ async fn http_sse_loop(
                                         .and_then(|e| e.as_str())
                                         .unwrap_or("")
                                         .to_string();
-                                    if event == "command_output" || event == "command_result" {
+                                    // Plan 057: forward job events too (Plan 055
+                                    // Phase A previously dropped them in HTTP mode).
+                                    if event == "command_output"
+                                        || event == "command_result"
+                                        || event == "job_started"
+                                        || event == "job_done"
+                                        || event == "job_list"
+                                    {
                                         let _ = tx.send(ShellStreamEvent {
                                             event,
                                             payload_json: v.to_string(),
@@ -3810,9 +3805,16 @@ fn update_block_in_state(
                 obj.set("output", output_obj);
                 obj.set("streamed_text", auto_val::Value::str(""));
                 obj.set("duration_ms", auto_val::Value::Int(dur));
-                // Plan 053 后续:补 exit_code(执行器 payload 不带,按 status 推导),
-                // 否则 exit_label computed 读不到字段 → "${exit_label}" 字面量。
-                obj.set("exit_code", auto_val::Value::Int(if kind == "Success" { 0 } else { 1 }));
+                // Plan 053 后续:补 exit_code,否则 exit_label computed 读不到字段
+                // → "${exit_label}" 字面量。Plan 057:优先用后端透传的真实退出码
+                // (ash-server CommandResult.exit_code,Plan 054 M2);merged 执行器
+                // payload 不带,按 status 推导兜底。
+                let exit_code = payload
+                    .get("exit_code")
+                    .and_then(|x| x.as_i64())
+                    .map(|n| n as i32)
+                    .unwrap_or(if kind == "Success" { 0 } else { 1 });
+                obj.set("exit_code", auto_val::Value::Int(exit_code));
             }
             break;
         }
@@ -5121,17 +5123,82 @@ fn compare_pngs(
         // (push_value 对 Obj 推占位 0),故此处先 write_state 预置字段,
         // 再以**无参**触发 ShellStore 的 RunOutput/RunResult handler —— handler
         // body 读预置字段(shell_store.at 的 `__sse_*`)。
-        if msg.event == "command_output" || msg.event == "command_result" {
+        // Plan 057:job_started/job_done 也走此通道(预置 __sse_job_* 后触发
+        // 无参 JobStarted/JobDone handler,对齐 vue codegen 的 SSE dispatch)。
+        if msg.event == "command_output"
+            || msg.event == "command_result"
+            || msg.event == "job_started"
+            || msg.event == "job_done"
+            || msg.event == "job_list"
+        {
             if let Some(json) = &msg.input_value {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                    // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms}
-                    // M1:VM 的 RunOutput/RunResult handler 读 .blocks 读不到 renderer 写的
-                    // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
-                    // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
-                    let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
-                    let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
-                    if updated {
-                        *state.view_dirty.borrow_mut() = true;
+                    match msg.event.as_str() {
+                        "job_started" | "job_done" => {
+                            // Plan 057:job_list 由 renderer 直接用 Rust 维护
+                            // (镜像 blocks 的 update_block_in_state 模式)—— VM 的
+                            // JobStarted/JobDone handler 需迭代读 .job_list 字段,
+                            // 受 handler 内字段读(GET_FIELD 编码)问题影响不可靠。
+                            // vue 端仍走 .at handler(增量 push/remove)。
+                            let job_id = v.get("job_id").and_then(|x| x.as_i64()).unwrap_or(0);
+                            let job_cmd = v.get("cmd").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            let raw = state.component.read_state("job_list").ok();
+                            let mut jobs_vec: Vec<auto_val::Value> = match &raw {
+                                Some(auto_val::Value::Array(arr)) => arr.values.clone(),
+                                Some(auto_val::Value::Nil) | None => Vec::new(),
+                                _ => state.component.read_state_as_vec("job_list").unwrap_or_default(),
+                            };
+                            if msg.event == "job_started" {
+                                let mut ji = auto_val::Obj::new();
+                                ji.set("id", auto_val::Value::Int(job_id as i32));
+                                ji.set("command", auto_val::Value::str(&job_cmd));
+                                ji.set("state", auto_val::Value::str("Running"));
+                                ji.set("exit_code", auto_val::Value::Int(0));
+                                jobs_vec.push(auto_val::Value::Obj(ji));
+                            } else {
+                                // job_done:按 id 移除(对齐 .at JobDone handler 语义)。
+                                jobs_vec.retain(|j| {
+                                    if let auto_val::Value::Obj(obj) = j {
+                                        obj.get("id").map(|x| x.as_int() as i64 != job_id).unwrap_or(true)
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                            let _ = match &raw {
+                                Some(auto_val::Value::Array(_)) | None
+                                | Some(auto_val::Value::Nil) => state.component.write_state(
+                                    "job_list",
+                                    auto_val::Value::Array(auto_val::Array { values: jobs_vec }),
+                                ),
+                                _ => state.component.write_state_vec("job_list", jobs_vec),
+                            };
+                            *state.view_dirty.borrow_mut() = true;
+                        }
+                        _ => {
+                            // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms,exit_code}
+                            // M1:VM 的 RunOutput/RunResult handler 读 .blocks 读不到 renderer 写的
+                            // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
+                            // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
+                            let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
+                            let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
+                            if msg.event == "command_result" {
+                                // Plan 057:cwd 回写(cd 后标题栏/新块 cwd 立即反映)
+                                // + 触发 RefreshContext 刷 git 标签(HTTP 模式下
+                                // prompt_context() 走真后端;merged 模式为 mock,无害)。
+                                // Windows 扩展路径前缀(\\?\D:\...)对展示无意义,剥掉。
+                                if let Some(cwd) = v.get("cwd").and_then(|x| x.as_str()) {
+                                    let cwd = cwd.trim_start_matches(r"\\?\");
+                                    if !cwd.is_empty() {
+                                        let _ = state.component.write_state("cwd", auto_val::Value::str(cwd));
+                                    }
+                                }
+                                state.component.on_with_input_for("ShellStore", "RefreshContext", None);
+                            }
+                            if updated {
+                                *state.view_dirty.borrow_mut() = true;
+                            }
+                        }
                     }
                 }
             }
@@ -5322,13 +5389,18 @@ fn compare_pngs(
                             );
                         }
                         // 执行器提交:无论块由谁推入,命令都必须进队列。
-                        if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                            if let Ok(mut h) = handle.lock() {
-                                h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
-                                    block_id: bid,
-                                    cmd: cmd.to_string(),
-                                    cwd,
-                                });
+                        // Plan 057:HTTP 模式跳过 —— store 的 run_command() 已被
+                        // api_over_http 改写为直连后端的 POST(在上方
+                        // on_with_input_for 内同步完成),再进队列会双提交。
+                        if !shell_bridge_is_http() {
+                            if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                                if let Ok(mut h) = handle.lock() {
+                                    h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                                        block_id: bid,
+                                        cmd: cmd.to_string(),
+                                        cwd,
+                                    });
+                                }
                             }
                         }
                         *state.view_dirty.borrow_mut() = true;
@@ -5395,13 +5467,16 @@ fn compare_pngs(
                     blocks.push(auto_val::Value::Obj(block));
                     let _ = state.component.write_state_vec("blocks", blocks);
                 }
-                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                    if let Ok(mut h) = handle.lock() {
-                        h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
-                            block_id: bid,
-                            cmd,
-                            cwd,
-                        });
+                // Plan 057:HTTP 模式跳过队列提交(同 emit 模拟路径,防双提交)。
+                if !shell_bridge_is_http() {
+                    if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                        if let Ok(mut h) = handle.lock() {
+                            h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
+                                block_id: bid,
+                                cmd,
+                                cwd,
+                            });
+                        }
                     }
                 }
                 *state.view_dirty.borrow_mut() = true;
@@ -5434,9 +5509,13 @@ fn compare_pngs(
             }
             if let Some(bid) = first_running_id {
                 // 通知执行器 kill 进程。
-                if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                    if let Ok(mut h) = handle.lock() {
-                        h.cancel_flags.insert(bid, true);
+                // Plan 057:HTTP 模式跳过 —— store 的 cancel() 已被 api_over_http
+                // 改写为 POST /api/cancel(后端 kill 子进程,结果经 SSE 回流)。
+                if !shell_bridge_is_http() {
+                    if let Some(handle) = SHELL_EXEC_HANDLE.get() {
+                        if let Ok(mut h) = handle.lock() {
+                            h.cancel_flags.insert(bid, true);
+                        }
                     }
                 }
                 // 更新该 block status → Cancelled(CMD-06 只首个)。

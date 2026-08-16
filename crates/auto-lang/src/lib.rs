@@ -2852,7 +2852,14 @@ fn run_file_dynamic_ui_inner(
     // cross-module `#[api]` calls are rewritten at codegen time into HTTP
     // requests instead of in-process direct calls. Default (merge) keeps the
     // existing in-process behavior.
-    let api_over_http = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0");
+    // Plan 057 (ash-gui): AUTO_BACKEND (e.g. http://127.0.0.1:3000) also
+    // enables the rewrite — the VM app then talks to a real backend over HTTP
+    // (run/complete/history/prompt_context/jobs), not the in-process mock.
+    // emit_api_http_call prefers AUTO_BACKEND as the base URL.
+    let api_over_http = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
+        || std::env::var("AUTO_BACKEND")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
     let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &all_child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 

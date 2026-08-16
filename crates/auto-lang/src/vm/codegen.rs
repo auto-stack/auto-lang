@@ -4211,8 +4211,17 @@ impl Codegen {
         //    The arg consumed by a path param is NOT included in the body.
         //    Plan 340 fix: prepend the backend base URL (host:port from
         //    AUTO_HTTP_PORT, default 8080) — api.path is just "/api/notes".
-        let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
-        let base_url = format!("http://127.0.0.1:{}", port);
+        // Plan 057 (ash-gui): AUTO_BACKEND (e.g. http://127.0.0.1:3000) takes
+        // precedence as the base URL — the VM app talks to a real backend
+        // (ash-server) rather than the split-mode scaffold server.
+        let base_url = std::env::var("AUTO_BACKEND")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
+                format!("http://127.0.0.1:{}", port)
+            });
         let mut path = format!("{}{}", base_url, api.path);
         let mut body_arg_indices: Vec<usize> = Vec::new();
         for (ai, expr) in arg_exprs.iter().enumerate() {
