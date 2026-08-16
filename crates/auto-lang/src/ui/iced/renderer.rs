@@ -5333,6 +5333,7 @@ fn compare_pngs(
         let mut toast_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
         if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
             if !payload.is_empty() {
+                eprintln!("[plan412-toast] update consumed payload={:?}", payload);
                 let _ = state.component.write_state("__toast", auto_val::Value::str(""));
                 let parts: Vec<&str> = payload.split('\u{1f}').collect();
                 if parts.len() == 4 && !parts[1].is_empty() {
