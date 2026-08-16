@@ -1238,6 +1238,9 @@ impl StyleClass {
 
         // Parse grid-cols-{1-12}
         if let Some(rest) = class.strip_prefix("grid-cols-") {
+            // Plan 057 (ash-gui 表格列对齐): grid-cols-[N] 任意值形式(纯数字,
+            // 如动态拼接 "grid grid-cols-" + n 产出)—— 剥 [] 后按普通值解析。
+            let rest = rest.trim_start_matches('[').trim_end_matches(']');
             let value: u8 = rest.parse()
                 .map_err(|_| format!("Invalid grid-cols value: {}", rest))?;
             if value < 1 || value > 12 {

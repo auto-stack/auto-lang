@@ -947,7 +947,7 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -1014,7 +1014,7 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -1067,7 +1067,7 @@ impl<'a> AuraViewBuilder<'a> {
             .map(|c| (c as usize).max(1))
             .unwrap_or(1);
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         // Plan 412 F1/F5: 语义 grid 元素的 class 里出现 grid-cols-N / gap-N 时
         // 类优先(与 CSS class 覆盖 attribute 的语义一致;gap 类是 Tailwind 单位
@@ -1217,7 +1217,7 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
         for (i, n) in children.iter().enumerate() {
@@ -1293,7 +1293,7 @@ impl<'a> AuraViewBuilder<'a> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
         let height = self.extract_u16(props, "height");
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -2347,7 +2347,7 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -2437,7 +2437,7 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -2478,7 +2478,7 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         // Flatten Conditional children: in a row, multiple condition children
         // should be spread horizontally, not wrapped in a Column.
@@ -2636,7 +2636,7 @@ let tabs_inner = View::Row {
             .map(|c| (c as usize).max(1))
             .unwrap_or(1);
         let gap = self.extract_u16(props, "gap").unwrap_or(0);
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         // Plan 412 F1/F5: class 里的 grid-cols-N / gap-N 优先于 prop(同 tracked 版)。
         let (cols, gap) = match style.as_ref() {
@@ -2705,7 +2705,7 @@ let tabs_inner = View::Row {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
         let height = self.extract_u16(props, "height");
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
         let child_views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -3211,7 +3211,7 @@ let tabs_inner = View::Row {
         // Resolve value from state if it's a StateRef
         let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
 
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
         let width = self.extract_u16(props, "width");
         let password = self.extract_bool(props, "password").unwrap_or(false);
 
@@ -3261,7 +3261,7 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_string_with(props, "content", bindings))
             .unwrap_or_default();
 
-        let style = self.extract_style(props);
+        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
         let height = self.extract_u16(props, "height");
 
         let on_change = aura_events_get_base(events, "onchange")
@@ -3487,6 +3487,16 @@ let tabs_inner = View::Row {
                     }
                 }
                 String::new()
+            }
+            // Plan 057 (2.4, ash-gui 表格列对齐): style 里的字符串拼接
+            // (如 "grid grid-cols-" + n)此前无 Bina 臂 → 求值为空串,动态
+            // 拼的 Tailwind 类整体丢失。委托 resolve_expr_to_value 的
+            // Bina(Add)(display-form 拼接,958819ab2 已实现)。
+            Expr::Bina(_, Op::Add, _) => {
+                match self.resolve_expr_to_value(expr, bindings) {
+                    Some(v) => value_to_display_string(&v),
+                    None => String::new(),
+                }
             }
             _ => String::new(),
         }
@@ -4260,6 +4270,23 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_string(props, "style"))?;
 
         Style::parse(&style_str).ok()
+    }
+
+    /// Plan 057 (2.5): binding-aware style extraction for container converts
+    /// (row/col/scroll/container/input/textarea). Mirrors the text-element
+    /// pattern (:1511): dynamic exprs (ternaries, string concat like
+    /// "grid grid-cols-" + n) resolve against loop bindings/state first;
+    /// falls back to the static extract_style. Without this, dynamic styles
+    /// on containers silently resolve to empty (iced 只读静态串的根因).
+    fn extract_style_with(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<Style> {
+        self.extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .and_then(|s| Style::parse(&s).ok())
+            .or_else(|| self.extract_style(props))
     }
 }
 
