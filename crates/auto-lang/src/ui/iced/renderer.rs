@@ -2801,7 +2801,7 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
         if t.kind == "default" { 1.0 } else { 0.10 },
         if t.kind == "default" { 1.0 } else { 0.50 },
     );
-    let card = iced::widget::container(card_body)
+    iced::widget::container(card_body)
         .padding(16)
         .max_width(360)
         .style(move |_: &iced::Theme| iced::widget::container::Style {
@@ -3965,6 +3965,7 @@ struct DynamicState {
 /// -right(加正中 "center"),duration_ms 到期自动消失(默认 4000ms,
 /// 与 vue-sonner 对齐)。
 struct ToastReq {
+    id: u64,
     kind: String,
     msg: String,
     position: String,
@@ -4198,6 +4199,54 @@ fn compare_pngs(
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
+        // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
+        // 触发,每次都是新 toast)。必须在所有事件分支**之前**:按钮点击等
+        // 用户事件路径在中途 return,放 update 尾部时这些路径写入的 payload
+        // 永远等不到消费。到期由 __toast_tick 订阅按 shown_at + duration_ms
+        // 驱动(见下方分支),不再从 update 返回 Task —— 本应用 update 返回
+        // 的 Task::perform 从未被执行。handler_codegen 侧是追加式赋值
+        // (__toast += "\x1E" + 记录),同一 handler 连发多条不覆盖 —— 这里按
+        // \x1E 拆记录逐条入队(空记录跳过)。堆叠上限 8,超出丢弃最旧。
+        if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
+            if !payload.is_empty() {
+                let _ = state.component.write_state("__toast", auto_val::Value::str(""));
+                let mut pushed_any = false;
+                for rec in payload.split('\u{1e}') {
+                    if rec.is_empty() {
+                        continue;
+                    }
+                    let parts: Vec<&str> = rec.split('\u{1f}').collect();
+                    if parts.len() == 4 && !parts[1].is_empty() {
+                        let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
+                        let id = state.toast_next_id.get();
+                        state.toast_next_id.set(id + 1);
+                        {
+                            let mut toasts = state.toasts.borrow_mut();
+                            if toasts.len() >= 8 {
+                                toasts.remove(0);
+                            }
+                            toasts.push(ToastReq {
+                                id,
+                                kind: parts[0].to_string(),
+                                msg: parts[1].to_string(),
+                                position: parts[2].to_string(),
+                                shown_at: std::time::Instant::now(),
+                                duration_ms: duration,
+                            });
+                        }
+                        pushed_any = true;
+                    }
+                }
+                // toast 层是 dynamic_view 结尾 Stack 包装的一部分,而 view() 对
+                // 非 dirty 帧直接返回 cached_rendered(跳过包装)—— 入队后必须
+                // 置 view_dirty,否则 toast 永远不显示;到期路径在 __toast_tick
+                // 里置。
+                if pushed_any {
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
         // Plan 402: on first update, resize window to model's window_width/window_height
         // if declared (lets each example specify its own initial window size via Auto).
         if !state.initial_resize_done.get() {
@@ -4231,15 +4280,19 @@ fn compare_pngs(
         // Plan 412 续(toast 修正 3):到期消息由 update 结尾发放的一次性
         // Task(sleep duration)发出 —— toast 显示期间零消息零重建,不干扰
         // 滚动/焦点/交互。按 id 移除,其余 toast 上移补位。
-        if msg.event == "__toast_expire" {
-            let id: u64 = msg
-                .input_value
-                .as_deref()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
+        if msg.event == "__toast_tick" {
+            // Plan 412 续(toast 修正 5):到期改由 subscription tick 驱动 ——
+            // 本应用从 update 返回的 Task::perform(含 tokio sleep)从未被
+            // 执行(消息零到达),而 iced::time::every 订阅可靠(hot_reload/
+            // heartbeat 均在跳)。250ms tick 仅在有 toast 时订阅;每次 tick
+            // 只有真的过期了才置 view_dirty,配合 dynamic_view 的 Element
+            // 缓存,稳态零重建、不扰动滚动/焦点。
+            let now = std::time::Instant::now();
             let mut toasts = state.toasts.borrow_mut();
             let before = toasts.len();
-            toasts.retain(|t| t.id != id);
+            toasts.retain(|t| {
+                now.duration_since(t.shown_at).as_millis() < t.duration_ms as u128
+            });
             let removed = toasts.len() != before;
             drop(toasts);
             if removed {
@@ -5325,52 +5378,7 @@ fn compare_pngs(
             return iced::widget::operation::snap_to_end(state.blocklist_scroll_id.clone());
         }
 
-        // Plan 412 续(toast 修正 3):在 update(&mut)消费 handler 写入的
-        // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
-        // 触发,每次都是新 toast);每条 toast 各发放一个一次性到期 Task
-        // (sleep duration → __toast_expire + id),显示期间零消息零重建。
-        // 堆叠上限 8,超出丢弃最旧(防疯点填满窗口)。
-        let mut toast_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
-        if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
-            if !payload.is_empty() {
-                eprintln!("[plan412-toast] update consumed payload={:?}", payload);
-                let _ = state.component.write_state("__toast", auto_val::Value::str(""));
-                let parts: Vec<&str> = payload.split('\u{1f}').collect();
-                if parts.len() == 4 && !parts[1].is_empty() {
-                    let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
-                    let id = state.toast_next_id.get();
-                    state.toast_next_id.set(id + 1);
-                    {
-                        let mut toasts = state.toasts.borrow_mut();
-                        if toasts.len() >= 8 {
-                            toasts.remove(0);
-                        }
-                        toasts.push(ToastReq {
-                            id,
-                            kind: parts[0].to_string(),
-                            msg: parts[1].to_string(),
-                            position: parts[2].to_string(),
-                            shown_at: std::time::Instant::now(),
-                            duration_ms: duration,
-                        });
-                    }
-                    toast_tasks.push(iced::Task::perform(
-                        tokio::time::sleep(std::time::Duration::from_millis(duration)),
-                        move |_| IcedMessage {
-                            widget: String::new(),
-                            event: "__toast_expire".to_string(),
-                            input_value: Some(id.to_string()),
-                        },
-                    ));
-                }
-            }
-        }
-
-        let mut base_task = scroll_task.unwrap_or_else(iced::Task::none);
-        for t in toast_tasks {
-            base_task = base_task.chain(t);
-        }
-        base_task
+        scroll_task.unwrap_or_else(iced::Task::none)
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
@@ -5394,6 +5402,19 @@ fn compare_pngs(
             }
             if let Some(interval_ms) = _state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
+            }
+            // Plan 412 续(toast 修正 5):toast 到期 tick —— 仅在堆叠非空时
+            // 订阅;到期的移除逻辑在 update 的 __toast_tick 分支。
+            if !_state.toasts.borrow().is_empty() {
+                subs.push(
+                    iced::time::every(std::time::Duration::from_millis(250)).map(|_| {
+                        IcedMessage {
+                            widget: String::new(),
+                            event: "__toast_tick".to_string(),
+                            input_value: None,
+                        }
+                    }),
+                );
             }
             // F12 DevTools + key bindings listener (Plan 275)
             subs.push(keyboard_subscription(_state.component.key_bindings()));
@@ -5697,9 +5718,16 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     } else {
         build_toast_layer(&toasts)
     };
+    // Plan 412 续(toast 修正 4):Stack 默认 Shrink×Shrink —— 布局时 base 层
+    // (主内容)按收缩限制排版,整窗随内容收缩、悬浮层 Fill 落在收缩盒里,
+    // toast 卡片全部挤出可视区(iced 文档:子节点用 Fill 策略时必须显式给
+    // Stack 设宽高)。显式 Fill×Fill:主内容恢复整窗排版,toast 层九宫格
+    // 锚点以整窗为参照。
     let rendered: iced::Element<'static, IcedMessage> = iced::widget::Stack::new()
         .push(rendered)
         .push(toast_el)
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
         .into();
 
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState

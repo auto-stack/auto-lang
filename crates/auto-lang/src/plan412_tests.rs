@@ -343,8 +343,9 @@ widget Sq {
 #[cfg(feature = "ui-iced")]
 #[test]
 fn plan412_toast_call_rewrites_to_state_assign() {
-    // Plan 412 续(toast VM 化):handler 里的 toast 调用重写为 __toast state
-    // 赋值,编码 kind\u{1f}msg\u{1f}position\u{1f}duration(VM 悬浮层渲染协议)。
+    // Plan 412 续(toast VM 化):handler 里的 toast 调用重写为 __toast
+    // 追加式赋值(__toast += "\x1e" + "kind\u{1f}msg\u{1f}position\u{1f}duration"),
+    // 同一 handler 连发多条不互相覆盖(VM 悬浮层渲染协议)。
     use crate::ast::{Arg, Args, Call, Expr, Name, Stmt};
     use std::collections::HashSet;
 
@@ -373,10 +374,8 @@ fn plan412_toast_call_rewrites_to_state_assign() {
         })
     };
 
-    for (method, kind) in [(Some("success"), "success"), (None, "default")] {
-        let mut stmts = [Stmt::Expr(mk(method))];
-        crate::ui::handler_codegen::rewrite_state_refs_stmts(&mut stmts, &HashSet::new());
-        match &stmts[0] {
+    let assert_append_form = |stmt: &Stmt, kind: &str| {
+        match stmt {
             Stmt::Expr(Expr::Bina(lhs, op, rhs)) => {
                 // lhs = Dot(Ident("__state"), "__toast")
                 let ok_lhs = matches!(
@@ -387,17 +386,49 @@ fn plan412_toast_call_rewrites_to_state_assign() {
                 );
                 assert!(ok_lhs, "lhs must be __state.__toast, got {:?}", lhs);
                 assert!(matches!(op, auto_val::Op::Asn));
+                // rhs = (__state.__toast + "\x1e") + payload
                 match rhs.as_ref() {
-                    Expr::Str(s) => assert_eq!(
-                        s.to_string(),
-                        format!("{}\u{1f}msg\u{1f}top-left\u{1f}2000", kind)
-                    ),
-                    other => panic!("rhs must be Str payload, got {:?}", other),
+                    Expr::Bina(l2, op2, r2) if matches!(op2, auto_val::Op::Add) => {
+                        let ok_inner = matches!(
+                            l2.as_ref(),
+                            Expr::Bina(l1, op1, r1)
+                                if matches!(op1, auto_val::Op::Add)
+                                    && matches!(r1.as_ref(), Expr::Str(s) if s.to_string() == "\u{1e}")
+                                    && matches!(
+                                        l1.as_ref(),
+                                        Expr::Dot(obj, f)
+                                            if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str().ends_with("state"))
+                                                && f.as_str() == "__toast"
+                                    )
+                        );
+                        assert!(ok_inner, "inner must be __toast + \"\\x1e\", got {:?}", l2);
+                        match r2.as_ref() {
+                            Expr::Str(s) => assert_eq!(
+                                s.to_string(),
+                                format!("{}\u{1f}msg\u{1f}top-left\u{1f}2000", kind)
+                            ),
+                            other => panic!("rhs payload must be Str, got {:?}", other),
+                        }
+                    }
+                    other => panic!("rhs must be append-expr, got {:?}", other),
                 }
             }
             other => panic!("rewrite must yield an assignment, got {:?}", other),
         }
+    };
+
+    for (method, kind) in [(Some("success"), "success"), (None, "default")] {
+        let mut stmts = [Stmt::Expr(mk(method))];
+        crate::ui::handler_codegen::rewrite_state_refs_stmts(&mut stmts, &HashSet::new());
+        assert_append_form(&stmts[0], kind);
     }
+
+    // 同一 handler 连发两条:两条都重写为追加式(运行时逐条累积,
+    // update 按 \x1e 拆记录逐条入队)。
+    let mut stmts = [Stmt::Expr(mk(Some("success"))), Stmt::Expr(mk(None))];
+    crate::ui::handler_codegen::rewrite_state_refs_stmts(&mut stmts, &HashSet::new());
+    assert_append_form(&stmts[0], "success");
+    assert_append_form(&stmts[1], "default");
 }
 
 #[cfg(feature = "ui-iced")]

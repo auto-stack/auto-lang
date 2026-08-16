@@ -164,8 +164,10 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
     // Plan 412 续(toast VM 化):toast()/toast.success()/… 不再是 vue-only
-    // escape hatch。重写为 `__state.__toast = "kind\x1Fmsg\x1Fposition\x1Fduration"`
-    // (单表达式赋值,VM handler 可执行);renderer 的 dynamic_view 取走该
+    // escape hatch。重写为 `__state.__toast += "\x1E" + "kind\x1Fmsg\x1Fposition\x1Fduration"`
+    // (追加式赋值,VM handler 可执行):同一 handler 连发多条 toast 时逐条
+    // 追加、互不覆盖,update 侧按 \x1E 分隔逐条消费入队;单条场景首字符是
+    // 分隔符产生一个空记录,消费时跳过。renderer 的 dynamic_view 取走该
     // state 渲染窗口级悬浮层(位置/时长支持 position + duration 参数,默认
     // bottom-right / 4000ms,与 vue-sonner 对齐)。Vue codegen 不走此重写,
     // 仍生成真实 toast() 调用。
@@ -195,13 +197,22 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                 }
             }
             let payload = format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", kind, msg, position, duration);
+            let toast_field = || Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__toast"),
+            ));
             *e = Expr::Bina(
-                Box::new(Expr::Dot(
-                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
-                    Name::from("__toast"),
-                )),
+                toast_field(),
                 auto_val::Op::Asn,
-                Box::new(Expr::Str(auto_val::AutoStr::from(payload))),
+                Box::new(Expr::Bina(
+                    Box::new(Expr::Bina(
+                        toast_field(),
+                        auto_val::Op::Add,
+                        Box::new(Expr::Str(auto_val::AutoStr::from("\u{1e}"))),
+                    )),
+                    auto_val::Op::Add,
+                    Box::new(Expr::Str(auto_val::AutoStr::from(payload))),
+                )),
             );
             return;
         }
