@@ -2945,6 +2945,7 @@ fn build_toast_peek(
     let bar = || {
         iced::widget::container(iced::widget::Space::new())
             .width(iced::Length::Fixed(1.0))
+            .height(iced::Length::Fill)
             .style(move |_: &iced::Theme| iced::widget::container::Style {
                 background: Some(iced::Background::Color(line_c)),
                 ..Default::default()
@@ -2957,18 +2958,22 @@ fn build_toast_peek(
             background: Some(iced::Background::Color(line_c)),
             ..Default::default()
         });
+    // row/column 默认 Shrink:不显式 Fill 的话,行内 Fill 底色与两侧
+    // Fixed(1) 竖线都会在收缩限制下塌为 0 宽(只显示顶线的 bug)。
     let body = iced::widget::row![
         bar(),
         iced::widget::container(iced::widget::Space::new())
             .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
             .style(move |_: &iced::Theme| iced::widget::container::Style {
                 background: Some(iced::Background::Color(body_c)),
                 ..Default::default()
             }),
         bar(),
     ]
+    .width(iced::Length::Fill)
     .height(iced::Length::Fixed(13.0));
-    let mut deck = iced::widget::column![];
+    let mut deck = iced::widget::column![].width(iced::Length::Fill);
     if top_anchor {
         deck = deck.push(body).push(edge_line);
     } else {
