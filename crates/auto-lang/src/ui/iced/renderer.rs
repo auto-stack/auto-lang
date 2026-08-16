@@ -2767,11 +2767,10 @@ static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, S
 static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
     std::sync::OnceLock::new();
 
-/// Plan 412 续(toast VM 化):toast 悬浮层 — 窗口级 Stack 上叠,按 position
-/// 九宫格定位(top-/bottom-/center × left/center/right,加正中 "center"),
-/// 边距 16px。卡片配色对齐 toast.at 的静态 demo(success 绿 / error 红 /
-/// warning 琥珀 / info 蓝 / default 主题边框),深色主题。
-fn build_toast_layer(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
+/// Plan 412 续(toast VM 化):toast 卡片 — kind 决定配色(对齐 toast.at 的
+/// 静态 demo:success 绿 / error 红 / warning 琥珀 / info 蓝 / default 主题
+/// 边框),深色主题,max-width 360。
+fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
     let (border_rgb, bg_rgb, title): ((u8, u8, u8), (u8, u8, u8), &str) = match t.kind.as_str() {
         "success" => ((34, 197, 94), (34, 197, 94), "Success"),     // green-500
         "error" => ((239, 68, 68), (239, 68, 68), "Error"),           // red-500
@@ -2821,35 +2820,70 @@ fn build_toast_layer(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
                 blur_radius: 24.0,
             },
             ..Default::default()
-        });
+        })
+        .into()
+}
 
-    // 九宫格:竖轴(top: card 底部补空 / center: 两端补空 / bottom: 顶部补空)
-    // + 横轴同理。Space(Fill) 把卡片推到目标角落/边缘中点。
-    let pos = t.position.as_str();
-    let v = if pos.starts_with("top") { 0 } else if pos.starts_with("bottom") { 2 } else { 1 };
-    let h = if pos.ends_with("left") { 0 } else if pos.ends_with("right") { 2 } else { 1 };
+/// Plan 412 续(toast 修正 3):toast 悬浮层 — 多卡片堆叠。按 position 分组到
+/// 九宫格槽位(top-/bottom-/center × left/center/right,加正中 "center"),
+/// 同锚点纵向堆叠:**从上到下 = 最旧到最新**(新 toast 总在最下方 —— top 锚
+/// 从窗口顶向下生长,bottom 锚贴窗口底、旧的被新来的挤到上方),某条到期
+/// 移除后其余上移补位(标准 toast 库行为)。边距 16px、卡片间距 8px。
+fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage> {
+    let parse_pos = |pos: &str| -> (usize, usize) {
+        let v = if pos.starts_with("top") { 0 } else if pos.starts_with("bottom") { 2 } else { 1 };
+        let h = if pos.ends_with("left") { 0 } else if pos.ends_with("right") { 2 } else { 1 };
+        (v, h)
+    };
+    // 3×3 槽位分组(保序:同槽按加入顺序 = 最旧到最新)。
+    let mut slots: [Vec<usize>; 9] = Default::default();
+    for (i, t) in toasts.iter().enumerate() {
+        let (v, h) = parse_pos(t.position.as_str());
+        slots[v * 3 + h].push(i);
+    }
+
+    // 单个槽:该锚点的卡片列(空槽 = Fill 宽占位,保持三列等宽)。
+    // 槽内列按 h 对齐(Start/Center/End)让卡片贴住锚点边。
+    let slot = |idxs: &[usize]| -> iced::Element<'static, IcedMessage> {
+        if idxs.is_empty() {
+            return iced::widget::container(iced::widget::Space::new())
+                .width(iced::Length::Fill)
+                .into();
+        }
+        let h_align = match parse_pos(&toasts[idxs[0]].position).1 {
+            0 => iced::Alignment::Start,
+            1 => iced::Alignment::Center,
+            _ => iced::Alignment::End,
+        };
+        let mut c = iced::widget::column![]
+            .spacing(8)
+            .width(iced::Length::Fill)
+            .align_x(h_align);
+        for &i in idxs {
+            c = c.push(build_toast_card(&toasts[i]));
+        }
+        c.into()
+    };
+
+    let row_for = |v: usize| -> iced::Element<'static, IcedMessage> {
+        let mut r = iced::widget::row![];
+        for h in 0..3 {
+            r = r.push(slot(&slots[v * 3 + h]));
+        }
+        r.width(iced::Length::Fill)
+            .height(iced::Length::Shrink)
+            .into()
+    };
+
     let fill_h = || iced::widget::Space::new().height(iced::Length::Fill);
-    let fill_w = || iced::widget::Space::new().width(iced::Length::Fill);
-
     let mut col = iced::widget::column![];
-    if v == 2 || (v == 1 && h == 1) {
-        col = col.push(fill_h());
-    }
-    col = col.push(card);
-    if v == 0 || (v == 1 && h == 1) {
-        col = col.push(fill_h());
-    }
+    col = col.push(row_for(0));
+    col = col.push(fill_h());
+    col = col.push(row_for(1));
+    col = col.push(fill_h());
+    col = col.push(row_for(2));
 
-    let mut r = iced::widget::row![];
-    if h == 2 || (h == 1 && v != 1) || pos == "center" {
-        r = r.push(fill_w());
-    }
-    r = r.push(col);
-    if h == 0 || (h == 1 && v != 1) || pos == "center" {
-        r = r.push(fill_w());
-    }
-
-    iced::widget::container(r)
+    iced::widget::container(col)
         .padding(16)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
@@ -3910,12 +3944,15 @@ struct DynamicState {
     aura_to_id_cache: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
     /// MCP shared state handle — updated after each render for AI agent inspection (Plan 278).
     mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
-    /// Plan 412 续(toast VM 化):当前显示的 toast。handler 里的 toast()/
-    /// toast.success() 调用被重写为 __toast state 写入,dynamic_view 取走
-    /// 后存到这里并渲染窗口级悬浮层;到期由一次性 __toast_expire Task 清除。
-    toast: std::cell::RefCell<Option<ToastReq>>,
-    /// 上一次已消费的 __toast payload(去重;见 dynamic_view 的消费逻辑)。
-    last_toast_payload: std::cell::RefCell<String>,
+    /// Plan 412 续(toast VM 化):当前显示中的 toast 堆叠。handler 里的
+    /// toast()/toast.success() 调用被重写为 __toast state 写入,update 消费
+    /// 后 push 到这里并渲染窗口级悬浮层;每条 toast 各有一个一次性到期
+    /// Task(__toast_expire 携带 id),到期移除后其余上移补位(标准 toast
+    /// 库堆叠行为:新 toast 总在最下方,同锚点侧纵向生长)。上限 8 条,
+    /// 超出时丢弃最旧。
+    toasts: std::cell::RefCell<Vec<ToastReq>>,
+    /// 下一条 toast 的自增 id(expire Task 按 id 寻址)。
+    toast_next_id: std::cell::Cell<u64>,
 }
 
 /// Plan 412 续(toast VM 化):一条悬浮通知。kind(default/success/error/
@@ -4150,8 +4187,8 @@ fn compare_pngs(
             line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
             aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             mcp_shared: Some(mcp_shared.clone()),
-            toast: std::cell::RefCell::new(None),
-            last_toast_payload: std::cell::RefCell::new(String::new()),
+            toasts: std::cell::RefCell::new(Vec::new()),
+            toast_next_id: std::cell::Cell::new(1),
         }
     };
 
@@ -4186,12 +4223,23 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
-        // Plan 412 续(toast 修正 2):到期消息由 update 结尾发放的一次性
-        // Task(sleep duration)发出 —— 取代 100ms 轮询 subscription,toast
-        // 显示期间零消息零重建,不干扰滚动/焦点/交互。
+        // Plan 412 续(toast 修正 3):到期消息由 update 结尾发放的一次性
+        // Task(sleep duration)发出 —— toast 显示期间零消息零重建,不干扰
+        // 滚动/焦点/交互。按 id 移除,其余 toast 上移补位。
         if msg.event == "__toast_expire" {
-            *state.toast.borrow_mut() = None;
-            *state.view_dirty.borrow_mut() = true;
+            let id: u64 = msg
+                .input_value
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut toasts = state.toasts.borrow_mut();
+            let before = toasts.len();
+            toasts.retain(|t| t.id != id);
+            let removed = toasts.len() != before;
+            drop(toasts);
+            if removed {
+                *state.view_dirty.borrow_mut() = true;
+            }
             return iced::Task::none();
         }
 
@@ -5272,43 +5320,51 @@ fn compare_pngs(
             return iced::widget::operation::snap_to_end(state.blocklist_scroll_id.clone());
         }
 
-        // Plan 412 续(toast 修正 2):在 update(&mut)消费 handler 写入的
-        // __toast state —— 移入 DynamicState.toast 并立即清空(不再依赖
-        // view 侧 payload 去重);同时发放一次性到期 Task(sleep duration →
-        // __toast_expire)取代 100ms 轮询 subscription。toast 显示期间零
-        // 消息、零 view 重建 —— 滚动/焦点/交互完全不受干扰。
-        let mut toast_task: Option<iced::Task<IcedMessage>> = None;
+        // Plan 412 续(toast 修正 3):在 update(&mut)消费 handler 写入的
+        // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
+        // 触发,每次都是新 toast);每条 toast 各发放一个一次性到期 Task
+        // (sleep duration → __toast_expire + id),显示期间零消息零重建。
+        // 堆叠上限 8,超出丢弃最旧(防疯点填满窗口)。
+        let mut toast_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
         if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
-            if !payload.is_empty() && payload != state.last_toast_payload.borrow().as_str() {
-                *state.last_toast_payload.borrow_mut() = payload.to_string();
+            if !payload.is_empty() {
                 let _ = state.component.write_state("__toast", auto_val::Value::str(""));
                 let parts: Vec<&str> = payload.split('\u{1f}').collect();
                 if parts.len() == 4 && !parts[1].is_empty() {
                     let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
-                    *state.toast.borrow_mut() = Some(ToastReq {
-                        kind: parts[0].to_string(),
-                        msg: parts[1].to_string(),
-                        position: parts[2].to_string(),
-                        shown_at: std::time::Instant::now(),
-                        duration_ms: duration,
-                    });
-                    toast_task = Some(iced::Task::perform(
+                    let id = state.toast_next_id.get();
+                    state.toast_next_id.set(id + 1);
+                    {
+                        let mut toasts = state.toasts.borrow_mut();
+                        if toasts.len() >= 8 {
+                            toasts.remove(0);
+                        }
+                        toasts.push(ToastReq {
+                            id,
+                            kind: parts[0].to_string(),
+                            msg: parts[1].to_string(),
+                            position: parts[2].to_string(),
+                            shown_at: std::time::Instant::now(),
+                            duration_ms: duration,
+                        });
+                    }
+                    toast_tasks.push(iced::Task::perform(
                         tokio::time::sleep(std::time::Duration::from_millis(duration)),
-                        |_| IcedMessage {
+                        move |_| IcedMessage {
                             widget: String::new(),
                             event: "__toast_expire".to_string(),
-                            input_value: None,
+                            input_value: Some(id.to_string()),
                         },
                     ));
                 }
             }
         }
 
-        let base_task = scroll_task.unwrap_or_else(iced::Task::none);
-        match toast_task {
-            Some(t) => base_task.chain(t),
-            None => base_task,
+        let mut base_task = scroll_task.unwrap_or_else(iced::Task::none);
+        for t in toast_tasks {
+            base_task = base_task.chain(t);
         }
+        base_task
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
@@ -5623,17 +5679,17 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     let mut path = Vec::new();
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
 
-    // Plan 412 续(toast VM 化):取走 handler 写入的 __toast state,渲染
-    // Plan 412 续(toast 修正 2):toast 的消费与到期 Task 都在 update(&mut)
-    // 完成(见 update 结尾);dynamic_view 只负责按 DynamicState.toast 渲染
-    // 恒定双层 Stack —— 槽 0 = 主内容,槽 1 = toast 层(无 toast 时为零尺寸
-    // 空层)。根节点结构恒定,iced 内部 widget-tree 的 diff 得以保留
-    // scrollable 滚动位置等交互状态;toast 层不设 opaque —— 命中测试穿透,
-    // 不夺焦点、不拦截主界面交互,纯悬浮展示。
-    let toast_el: iced::Element<'static, IcedMessage> = if let Some(t) = state.toast.borrow().as_ref() {
-        build_toast_layer(t)
-    } else {
+    // Plan 412 续(toast 修正 3):toast 的消费/入队/到期 Task 都在 update
+    // (&mut)完成;dynamic_view 只按 DynamicState.toasts 渲染恒定双层
+    // Stack —— 槽 0 = 主内容,槽 1 = toast 层(无 toast 时为零尺寸空层)。
+    // 根节点结构恒定,iced 内部 widget-tree 的 diff 得以保留 scrollable
+    // 滚动位置等交互状态;toast 层不设 opaque —— 命中测试穿透,不夺焦点、
+    // 不拦截主界面交互,纯悬浮展示。
+    let toasts = state.toasts.borrow();
+    let toast_el: iced::Element<'static, IcedMessage> = if toasts.is_empty() {
         iced::widget::container(iced::widget::Space::new()).into()
+    } else {
+        build_toast_layer(&toasts)
     };
     let rendered: iced::Element<'static, IcedMessage> = iced::widget::Stack::new()
         .push(rendered)
