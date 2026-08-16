@@ -2895,6 +2895,57 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
         .into()
 }
 
+/// Plan 412 续(toast 堆叠视觉):探出条的自绘 painter —— 三边描边 + 露出侧
+/// 圆角 + 半透明填充,贴卡侧直角无边线(canvas 实现,iced Border 无法表达
+/// 单边无边框,clip 也只是矩形裁剪)。
+#[derive(Clone)]
+struct ToastPeekPainter {
+    line: iced::Color,
+    body: iced::Color,
+    /// 露出侧(圆角所在)在顶部?
+    round_top: bool,
+}
+
+impl iced::widget::canvas::Program<IcedMessage> for ToastPeekPainter {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        use iced::widget::canvas::{Fill, Frame, Path, Stroke};
+        let w = bounds.width;
+        let h = bounds.height;
+        let r = (h / 2.0).min(7.0);
+        let path = Path::new(|b| {
+            if self.round_top {
+                b.move_to(iced::Point::new(0.0, h));
+                b.line_to(iced::Point::new(0.0, r));
+                b.quadratic_curve_to(iced::Point::new(0.0, 0.0), iced::Point::new(r, 0.0));
+                b.line_to(iced::Point::new(w - r, 0.0));
+                b.quadratic_curve_to(iced::Point::new(w, 0.0), iced::Point::new(w, r));
+                b.line_to(iced::Point::new(w, h));
+            } else {
+                b.move_to(iced::Point::new(0.0, 0.0));
+                b.line_to(iced::Point::new(0.0, h - r));
+                b.quadratic_curve_to(iced::Point::new(0.0, h), iced::Point::new(r, h));
+                b.line_to(iced::Point::new(w - r, h));
+                b.quadratic_curve_to(iced::Point::new(w, h), iced::Point::new(w, h - r));
+                b.line_to(iced::Point::new(w, 0.0));
+            }
+        });
+        let mut frame = Frame::new(renderer, bounds.size());
+        // 开放路径的 fill 隐式闭合(贴卡侧直线),描边只画三边。
+        frame.fill(&path, self.body);
+        frame.stroke(&path, Stroke::default().with_color(self.line).with_width(1.0));
+        vec![frame.into_geometry()]
+    }
+}
+
 /// Plan 412 续(toast 堆叠视觉):被压在后面的 toast 的"探出条"—— 只露出
 /// 卡片顶缘 14px 的一条,宽度随深度收窄(360→342→324)、边框/背景透明度
 /// 递减,叠在前卡后方,复刻 vue-sonner 折叠堆叠的观感。iced widget 不支持
@@ -2936,50 +2987,20 @@ fn build_toast_peek(
     } else {
         (pad_off, pad_anchor)
     };
-    // 三边边框:贴住前卡的那条边不画线 —— 否则本条的底线与下一层的
-    // 顶线(两条不同 kind 色)贴在一起出现混色接缝。iced Border 只支持
-    // 四边等宽,用「横线 + 左右竖线 + 底色主体」拼装;top 锚自动翻转
-    // (省顶线,露出的底边保留线条)。
-    let line_c = iced::Color { a: bd_a, ..br };
-    let body_c = iced::Color { a: bg_a, ..bgc };
-    let bar = || {
-        iced::widget::container(iced::widget::Space::new())
-            .width(iced::Length::Fixed(1.0))
-            .height(iced::Length::Fill)
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(line_c)),
-                ..Default::default()
-            })
+    // 三边框 + 圆角用 canvas 自绘(iced Border 只支持四边等宽、clip 只是
+    // 矩形裁剪):路径 = 左边线 + 露出侧圆角 + 顶线 + 右圆角 + 右边线,
+    // 贴住前卡的那条边不画线(避免本条底线与下一层顶线两条 kind 色线贴
+    // 在一起混色);填充即半透明主体。top 锚自动翻转(圆角与露出的底线
+    // 在下侧)。
+    let painter = ToastPeekPainter {
+        line: iced::Color { a: bd_a, ..br },
+        body: iced::Color { a: bg_a, ..bgc },
+        round_top: !top_anchor,
     };
-    let edge_line = iced::widget::container(iced::widget::Space::new())
-        .height(iced::Length::Fixed(1.0))
+    let canvas_el = iced::widget::canvas(painter)
         .width(iced::Length::Fill)
-        .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(line_c)),
-            ..Default::default()
-        });
-    // row/column 默认 Shrink:不显式 Fill 的话,行内 Fill 底色与两侧
-    // Fixed(1) 竖线都会在收缩限制下塌为 0 宽(只显示顶线的 bug)。
-    let body = iced::widget::row![
-        bar(),
-        iced::widget::container(iced::widget::Space::new())
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(body_c)),
-                ..Default::default()
-            }),
-        bar(),
-    ]
-    .width(iced::Length::Fill)
-    .height(iced::Length::Fixed(13.0));
-    let mut deck = iced::widget::column![].width(iced::Length::Fill);
-    if top_anchor {
-        deck = deck.push(body).push(edge_line);
-    } else {
-        deck = deck.push(edge_line).push(body);
-    }
-    let styled = iced::widget::container(deck)
+        .height(iced::Length::Fixed(14.0));
+    let styled = iced::widget::container(canvas_el)
         .height(iced::Length::Fixed(14.0))
         .width(iced::Length::Fill)
         .max_width(360.0 - depth as f32 * 18.0);
