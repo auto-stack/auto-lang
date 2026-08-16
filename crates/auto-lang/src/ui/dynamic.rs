@@ -917,10 +917,20 @@ impl DynamicComponent {
                 }
             }
             Err(_e) => {
+                // Plan 057 (Bug 2 调试): handler 错误此前被完全吞掉(静默中止,
+                // 后续语句全部不执行且无任何日志)。ASH_DEBUG_VM_LOG=1 时打出
+                // 错误,便于定位 abort 点。
+                if std::env::var("ASH_DEBUG_VM_LOG").is_ok() {
+                    eprintln!("[VM-HANDLER] {} failed: {}", clean_name, _e);
+                }
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 match self.bridge.call_handler(&clean_name, &args) {
                     Ok(()) => { self.dirty = true; }
-                    Err(_e2) => {}
+                    Err(_e2) => {
+                        if std::env::var("ASH_DEBUG_VM_LOG").is_ok() {
+                            eprintln!("[VM-HANDLER] {} legacy also failed: {}", clean_name, _e2);
+                        }
+                    }
                 }
             }
         }

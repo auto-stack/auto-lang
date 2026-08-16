@@ -1492,12 +1492,37 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 }
 
 /// Get substring (byte indices)
+///
+/// Plan 057: VM callers (tokenize/ghost scans) walk strings byte-by-byte with
+/// `substr(i, i+1)`, which lands mid-char for multi-byte UTF-8 input and used
+/// to panic the whole app. Clamp indices to the nearest char boundaries and
+/// return the (possibly empty) slice instead — ASCII behavior is unchanged.
 #[auto_macros::rust_fn("Str.substr")]
 pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
     if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
         return String::new();
     }
-    s[start as usize..end as usize].to_string()
+    let mut lo = start as usize;
+    let mut hi = end as usize;
+    while lo < hi && !s.is_char_boundary(lo) {
+        if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
+            eprintln!(
+                "[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}",
+                lo, &s[..s.len().min(48)]
+            );
+        }
+        lo += 1;
+    }
+    while hi > lo && !s.is_char_boundary(hi) {
+        if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
+            eprintln!(
+                "[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}",
+                hi, &s[..s.len().min(48)]
+            );
+        }
+        hi -= 1;
+    }
+    s[lo..hi].to_string()
 }
 
 /// Check if string contains substring
@@ -7097,6 +7122,36 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
         }
         ("List", "count") | ("List", "len") => {
+            // Plan 057 (Bug 2): accept plain heap ids (raw i32 / TAG_OBJECT)
+            // pointing at ListData — bridge-stored array props (ensure_child_state)
+            // use this form. Previously only RustStdlibObject handles worked, so
+            // `.history.len()` on a prop array errored at pop_rust_obj and
+            // silently aborted the enclosing handler.
+            let nv = task.ram.pop_nv();
+            if auto_val::is_i32(nv) || auto_val::is_object(nv) {
+                let id = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as u64
+                } else {
+                    auto_val::decode_i32(nv) as u64
+                };
+                if let Some(obj) = vm.get_heap_object(id) {
+                    let guard = obj.read().unwrap();
+                    let len = if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                        list.len() as i32
+                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                        list.elems.len() as i32
+                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<String>>() {
+                        list.elems.len() as i32
+                    } else {
+                        0
+                    };
+                    task.ram.push_nv(auto_val::encode_i32(len));
+                    return Ok(());
+                }
+            }
+            // Fall back to the original RustStdlibObject-handle path (re-push
+            // the popped value for pop_rust_obj).
+            task.ram.push_nv(nv);
             let handle = pop_rust_obj(task, vm, "List.count")?;
             let Some(obj) = vm.get_heap_object(handle) else {
                 return Err(VMError::RuntimeError("List.count: invalid handle".into()));
@@ -7104,6 +7159,9 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let guard = obj.read().unwrap();
             if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                 let len = list.len() as i32;
+                task.ram.push_nv(auto_val::encode_i32(len));
+            } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                let len = list.elems.len() as i32;
                 task.ram.push_nv(auto_val::encode_i32(len));
             } else {
                 task.ram.push_i32(0);

@@ -3553,6 +3553,18 @@ let tabs_inner = View::Row {
             // or a plain identifier (loop var / state).
             Expr::Ident(name) => {
                 let field_name = name.as_str().trim_start_matches('.');
+                // Plan 057 (Bug 3): bare `self` / `.` — the ROOT of deep dot
+                // chains (parser dot_item builds .a.b.c as
+                // Dot(Dot(Ident("self"), a), b)...). Previously treated as a
+                // field NAMED "self" → None → the whole chain resolved empty →
+                // text nodes filtered as visually-empty (表格块的动态文本
+                // 因此整体不显示;单层 .field 因 Dot 臂特判侥幸存活)。
+                // Resolve to the state OBJECT itself so chained .field reads
+                // walk it naturally.
+                if field_name == "self" || field_name.is_empty() {
+                    let id = self.bridge.state_obj_id();
+                    return Some(self.bridge.materialize_obj_ref(&Value::Int(id as i32)));
+                }
                 bindings.get(field_name).cloned()
                     .or_else(|| self.eval_computed(field_name, bindings))
                     .or_else(|| self.read_state(field_name).ok())

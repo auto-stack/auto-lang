@@ -794,12 +794,31 @@ impl VmBridge {
             let mut guard = obj.write().unwrap();
             if let Some(inst) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
                 for (name, val) in props {
+                    // Plan 057 (Bug 2): VM bytecode (GET_FIELD / index) expects
+                    // array-typed state slots to hold a heap id (Int ≥4M →
+                    // ListData), NOT a raw Value::Array — Value::Array can't
+                    // nanobox, so bytecode reads popped double garbage
+                    // ([GET_FIELD] non-i32 obj_id) and silently aborted the
+                    // whole handler (ghost text 的 .history 读取即此)。
+                    // Convert Array props to heap-stored ListData here.
+                    let storable = match val {
+                        auto_val::Value::Array(arr) => {
+                            let id = self.vm.insert_heap_object(
+                                crate::vm::types::ListData {
+                                    elems: arr.values.clone(),
+                                    storage: None,
+                                },
+                            );
+                            auto_val::Value::Int(id as i32)
+                        }
+                        other => other.clone(),
+                    };
                     if let Some(idx) = inst.field_names.iter().position(|n| n == name) {
-                        let _ = inst.set_field(idx, val.clone());
+                        let _ = inst.set_field(idx, storable);
                     } else {
                         // Add new field (prop not yet in root state).
                         inst.field_names.push(name.clone());
-                        inst.fields.push(val.clone());
+                        inst.fields.push(storable);
                     }
                 }
             }
