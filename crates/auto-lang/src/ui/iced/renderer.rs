@@ -2876,7 +2876,12 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
     };
 
     let fill_h = || iced::widget::Space::new().height(iced::Length::Fill);
-    let mut col = iced::widget::column![];
+    // 3×3 行列骨架。列必须显式 Fill 尺寸:column/row 默认 Shrink,若列收缩,
+    // 内部所有 Fill 宽的槽列与 fill_h 都会因无可用空间而塌为 0(堆叠版首个
+    // 实现的"完全不显示"bug 就是这条 Shrink 链)。
+    let mut col = iced::widget::column![]
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill);
     col = col.push(row_for(0));
     col = col.push(fill_h());
     col = col.push(row_for(1));
