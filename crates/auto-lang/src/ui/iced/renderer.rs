@@ -9070,6 +9070,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // 路径 —— 文字可见(逐段颜色/字重),ghost 嵌入内容并染灰;
             // 无新 props 时保持存量行为(含 text-transparent 叠加层兼容)。
             let rich = !highlight.is_empty() || !ghost.is_empty();
+            // Plan 057 续(右箭头逐字接受 ghost):.at 里 onkeydown.right 只在
+            // ghost 非空时生效 —— ghost 为空时移除拦截,保留 iced 默认光标右移
+            // (行中编辑仍可用)。keydown 表随每次 view 转换重建,与 ghost
+            // 状态同步增删。
+            let mut keydown = keydown;
+            if ghost.is_empty() {
+                keydown.remove("right");
+            }
             let content = if rich {
                 get_textarea_content_rich(&key, &value, &ghost)
             } else {
