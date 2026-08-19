@@ -10,7 +10,6 @@ use auto_val::shared;
 use auto_val::{AutoPath, AutoStr, Obj, Value};
 use colored::Colorize;
 use log::*;
-use reqwest::blocking::get;
 use std::collections::HashMap;
 use std::env;
 use std::fmt::Display;
@@ -115,10 +114,7 @@ impl Automan {
         let home = dirs::home_dir().ok_or("Can't open home dir")?;
         let auto_dir = home.join(".auto").join("auto-man");
         let am_at_file = auto_dir.join("am.at");
-        let am_url =
-            "https://gitee.com/auto-stack/auto-man/raw/master/crates/auto-man/assets/am.at";
-        let page = get(am_url)?.text()?;
-        std::fs::write(&am_at_file, page)?;
+        std::fs::write(&am_at_file, expand_default_am_at())?;
         info!("updated {}", am_at_file.display());
         // remove index dirs
         let index_dir = auto_dir.join("index");
@@ -399,6 +395,13 @@ impl Automan {
     pub fn open_ide(&mut self) -> AutoResult<()> {
         println!("build dir: {}", self.pac.build_location);
         println!("port: {}", self.pac.port.name);
+
+        // Native (C/embedded) project: open the IDE for the selected port's
+        // builder (e.g. the IAR workspace) instead of the AutoUI backend
+        // selection.
+        if self.is_native_project() {
+            return self.open_ide_for_port_builder();
+        }
 
         let backend = self.resolve_backend()?;
         self.open_ide_for_backend(&backend)
@@ -865,9 +868,90 @@ impl Automan {
             return self.build_workspace();
         }
 
+        // Native (C/embedded) project: an explicit `scene: "c"` in pac.at
+        // decides; legacy files without `scene` fall back to inference
+        // (ports declared and no render → native). Builds via the selected
+        // port's builder instead of the AutoUI backend selection. An
+        // explicit `--render` still forces a UI backend.
+        if self.render_override.is_none() && self.is_native_project() {
+            let why = match self.pac.scene {
+                crate::pac::Scene::C => "scene: \"c\"".to_string(),
+                _ => "inferred: ports declared, no render — consider adding `scene: \"c\"` to pac.at"
+                    .to_string(),
+            };
+            if self.pac.default_frontend().is_some() {
+                warn!("scene \"c\" overrides the render config in pac.at for `auto b`");
+            }
+            println!(
+                "Native project detected ({}): port '{}', builder '{}' — building C target",
+                why, self.pac.port.name, self.pac.port.builder
+            );
+            self.build_native()?;
+            self.run_cache_gc()?;
+            return Ok(());
+        }
+
         // Use resolve_backend for unified backend selection
         let backend = self.resolve_backend()?;
         self.build_backend(&backend)
+    }
+
+    /// Whether `auto b` drives the native C pipeline or the AutoUI pipeline.
+    /// An explicit `scene` in pac.at decides (`"c"` → native, `"ui"` → UI);
+    /// legacy files without `scene` fall back to inference: ports declared
+    /// and no render configured → native.
+    fn is_native_project(&self) -> bool {
+        match self.pac.scene {
+            crate::pac::Scene::C => true,
+            crate::pac::Scene::Ui => false,
+            // workspaces are routed earlier by build(); unreachable here
+            crate::pac::Scene::Workspace => false,
+            crate::pac::Scene::Default => {
+                !self.pac.list_port_names().is_empty() && self.pac.default_frontend().is_none()
+            }
+        }
+    }
+
+    /// Run AutoCache garbage collection if the cache says it's due.
+    fn run_cache_gc(&mut self) -> AutoResult<()> {
+        if let Some(ref cache) = self.cache {
+            if cache.should_gc() {
+                println!("Running cache garbage collection...");
+                let freed_mb = cache.run_gc()? / (1024 * 1024);
+                println!("Cache GC: freed {} MB", freed_mb);
+            }
+        }
+        Ok(())
+    }
+
+    /// Native C build: transpile Auto → C, then generate the selected port's
+    /// build project (IAR/GHS/CMake project files via the exporter, ninja
+    /// etc. via the builder pipeline).
+    fn build_native(&mut self) -> AutoResult<()> {
+        // Default C backend
+        println!("Transpiling auto code to c code");
+        self.transpile_auto()?;
+
+        // Plan 364 Step 4: Route IDE/export-based builders through the
+        // exporter instead of the (incomplete) builder pipeline. Old
+        // auto-man 0.1.3 generated IAR/GHS/CMake project files via the
+        // exporter; `make_builder` here only knows ninja/cargo/vue, so
+        // `iar`/`ghs`/`cmake` would otherwise silently no-op.
+        let builder = self.pac.port.builder.as_str().to_string();
+        if matches!(builder.as_str(), "iar" | "ghs" | "cmake") {
+            println!("Building via {} exporter (project file generation)", builder);
+            self.pac.resolve()?;
+            let build_path = AutoPath::new(self.pac.build_location.clone());
+            if let Some(mut exporter) = crate::exporter::make_exporter(&builder, build_path) {
+                exporter.export(&mut self.pac)?;
+                println!("Export completed successfully at {}", self.pac.build_location);
+            } else {
+                return Err(format!("Unknown export format: {}", builder).into());
+            }
+        } else {
+            self.pac.build()?;
+        }
+        Ok(())
     }
 
     /// Build Vue project using npm (full workflow: generate, install, build)
@@ -939,41 +1023,12 @@ impl Automan {
             }
             _ => {
                 // Default C backend
-                println!("Transpiling auto code to c code");
-                self.transpile_auto()?;
-
-                // Plan 364 Step 4: Route IDE/export-based builders through the
-                // exporter instead of the (incomplete) builder pipeline. Old
-                // auto-man 0.1.3 generated IAR/GHS/CMake project files via the
-                // exporter; `make_builder` here only knows ninja/cargo/vue, so
-                // `iar`/`ghs`/`cmake` would otherwise silently no-op.
-                let builder = self.pac.port.builder.as_str().to_string();
-                if matches!(builder.as_str(), "iar" | "ghs" | "cmake") {
-                    println!("Building via {} exporter (project file generation)", builder);
-                    self.pac.resolve()?;
-                    let build_path = AutoPath::new(self.pac.build_location.clone());
-                    if let Some(mut exporter) =
-                        crate::exporter::make_exporter(&builder, build_path)
-                    {
-                        exporter.export(&mut self.pac)?;
-                        println!("Export completed successfully at {}", self.pac.build_location);
-                    } else {
-                        return Err(format!("Unknown export format: {}", builder).into());
-                    }
-                } else {
-                    self.pac.build()?;
-                }
+                self.build_native()?
             }
         }
 
         // Run garbage collection if needed
-        if let Some(ref cache) = self.cache {
-            if cache.should_gc() {
-                println!("Running cache garbage collection...");
-                let freed_mb = cache.run_gc()? / (1024 * 1024);
-                println!("Cache GC: freed {} MB", freed_mb);
-            }
-        }
+        self.run_cache_gc()?;
 
         Ok(())
     }
@@ -2013,6 +2068,14 @@ impl Automan {
     pub fn index_store(config: &AmConfig, indexs: Vec<AutoStr>) -> AutoResult<IndexStore> {
         // try to get index location from amconfig
         let am_path = home_path().join(".auto/auto-man");
+        Self::index_store_at(config, indexs, &am_path)
+    }
+
+    fn index_store_at(
+        config: &AmConfig,
+        indexs: Vec<AutoStr>,
+        am_path: &AutoPath,
+    ) -> AutoResult<IndexStore> {
         if !am_path.is_dir() {
             info!("creating am dir: {}", am_path.to_astr());
             std::fs::create_dir_all(am_path.path())?;
@@ -2034,14 +2097,35 @@ impl Automan {
         for index in used_indexs {
             let index_path = am_path.join("index").join(index.clone());
             used_index_path = index_path.clone();
-            let repo = all_index.get(&index);
-            let Some(repo) = repo else {
-                error!(
-                    "index base not found! {}, please check ~/.auto/auto-man/am.at",
-                    index
-                );
-                continue;
+            let Some(repo) = all_index.get(&index) else {
+                let known: Vec<_> = all_index.keys().collect();
+                return Err(format!(
+                    "index '{}' is used by the project but not defined in am.at \
+                     (defined indexes: {:?}); add it to the `index` map in \
+                     ~/.auto/auto-man/am.at or run `auto reset-index`",
+                    index, known
+                )
+                .into());
             };
+            // A usable index must be a complete git clone: a `.git` dir plus
+            // the `index.at` file the store loads. Anything else (empty dir,
+            // loose files, interrupted clone) is discarded and cloned fresh.
+            let is_complete_repo = index_path.path().join(".git").is_dir()
+                && index_path.path().join("index.at").is_file();
+            if index_path.is_dir() && !is_complete_repo {
+                info!(
+                    "index dir {} is not a complete git repository, re-cloning from {}",
+                    index_path.to_astr(),
+                    repo
+                );
+                remove_dir_all_force(index_path.path()).map_err(|e| {
+                    format!(
+                        "failed to remove broken index dir {}: {}",
+                        index_path.to_astr(),
+                        e
+                    )
+                })?;
+            }
             if !index_path.is_dir() {
                 // try to clone
                 info!("cloning index dir: {}", index_path.to_astr());
@@ -2052,12 +2136,29 @@ impl Automan {
                     .arg(repo.as_str())
                     .arg(index_path.path())
                     .output();
+                // remove the dir we just created on failure, so the next run
+                // retries the clone instead of proceeding with an empty index
                 match result {
                     Err(e) => {
-                        error!(
-                            "Failed to clone repository {} to {} with error {}",
-                            repo, index_path, e
-                        );
+                        let _ = remove_dir_all_force(index_path.path());
+                        return Err(format!(
+                            "failed to clone index repository {} to {}: {}",
+                            repo,
+                            index_path.to_astr(),
+                            e
+                        )
+                        .into());
+                    }
+                    Ok(output) if !output.status.success() => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let _ = remove_dir_all_force(index_path.path());
+                        return Err(format!(
+                            "failed to clone index repository {} to {}: {}",
+                            repo,
+                            index_path.to_astr(),
+                            stderr.trim()
+                        )
+                        .into());
                     }
                     Ok(_) => {}
                 }
@@ -2107,6 +2208,26 @@ fn home_path() -> AutoPath {
     dirs::home_dir().unwrap().to_str().unwrap().into()
 }
 
+/// Like `std::fs::remove_dir_all`, but clears read-only attributes first:
+/// git object/pack files are read-only on Windows and would fail removal.
+fn remove_dir_all_force(path: &Path) -> std::io::Result<()> {
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            remove_dir_all_force(&entry.path())?;
+        }
+        std::fs::remove_dir(path)
+    } else {
+        if meta.permissions().readonly() {
+            let mut perms = meta.permissions();
+            perms.set_readonly(false);
+            std::fs::set_permissions(path, perms)?;
+        }
+        std::fs::remove_file(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2128,10 +2249,164 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod index_store_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    fn am_config_with(indexes: &[(&str, &str)]) -> AmConfig {
+        let mut index = HashMap::new();
+        for (k, v) in indexes {
+            index.insert((*k).into(), (*v).into());
+        }
+        AmConfig {
+            name: "test".into(),
+            index,
+            is_default: false,
+        }
+    }
+
+    fn tmp_am_path(tmp: &TempDir) -> AutoPath {
+        tmp.path().to_str().unwrap().into()
+    }
+
+    #[test]
+    fn errors_on_undefined_index() {
+        let tmp = TempDir::new().unwrap();
+        let config = am_config_with(&[("default", "git@gitee.com:auto-stack/auto-index.git")]);
+        let err = match Automan::index_store_at(&config, vec!["soutek".into()], &tmp_am_path(&tmp))
+        {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("undefined index must be a hard error"),
+        };
+        assert!(err.contains("soutek"), "unexpected error: {}", err);
+        assert!(err.contains("am.at"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn uses_existing_index_dir_without_cloning() {
+        let tmp = TempDir::new().unwrap();
+        // a complete index dir: `.git` + `index.at` — must be used as-is
+        let index_dir = tmp.path().join("index").join("default");
+        std::fs::create_dir_all(index_dir.join(".git")).unwrap();
+        std::fs::write(index_dir.join("index.at"), "index {}\n").unwrap();
+        let config = am_config_with(&[("default", "git@gitee.com:auto-stack/auto-index.git")]);
+        assert!(
+            Automan::index_store_at(&config, vec!["default".into()], &tmp_am_path(&tmp)).is_ok()
+        );
+    }
+
+    /// Create a real local git repo containing an index.at, usable as a
+    /// clone source without network access.
+    fn make_local_origin(tmp: &TempDir) -> std::path::PathBuf {
+        let origin = tmp.path().join("origin");
+        std::fs::create_dir_all(&origin).unwrap();
+        std::fs::write(origin.join("index.at"), "index {}\n").unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&origin)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        };
+        assert!(git(&["init", "--quiet"]), "git init");
+        assert!(
+            git(&["-c", "user.email=t@t.invalid", "-c", "user.name=t", "add", "."]),
+            "git add"
+        );
+        assert!(git(&[
+            "-c", "user.email=t@t.invalid", "-c", "user.name=t",
+            "commit", "--quiet", "-m", "init"
+        ]));
+        origin
+    }
+
+    #[test]
+    fn re_clones_incomplete_index_dir() {
+        let tmp = TempDir::new().unwrap();
+        let origin = make_local_origin(&tmp);
+        // dir exists but is NOT a git repo (e.g. stray files / empty dir)
+        let broken = tmp.path().join("index").join("myidx");
+        std::fs::create_dir_all(&broken).unwrap();
+        std::fs::write(broken.join("stray.txt"), "not a git repo").unwrap();
+        let config = am_config_with(&[("myidx", origin.to_str().unwrap())]);
+        assert!(
+            Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok()
+        );
+        assert!(broken.join(".git").is_dir(), "must be re-cloned as git repo");
+        assert!(broken.join("index.at").is_file(), "index.at from the clone");
+        assert!(!broken.join("stray.txt").exists(), "broken content discarded");
+    }
+
+    #[test]
+    fn re_clones_interrupted_clone_missing_index_at() {
+        let tmp = TempDir::new().unwrap();
+        let origin = make_local_origin(&tmp);
+        // has `.git` but no index.at — e.g. an interrupted clone
+        let broken = tmp.path().join("index").join("myidx");
+        std::fs::create_dir_all(broken.join(".git")).unwrap();
+        let config = am_config_with(&[("myidx", origin.to_str().unwrap())]);
+        assert!(
+            Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok()
+        );
+        assert!(broken.join("index.at").is_file(), "index.at from the clone");
+    }
+
+    #[test]
+    fn errors_and_cleans_up_when_clone_fails() {
+        // file:// URL to a nonexistent repo fails fast, no network needed
+        let tmp = TempDir::new().unwrap();
+        let missing = tmp.path().join("no-such-repo");
+        let url = format!(
+            "file:///{}",
+            missing.to_str().unwrap().replace('\\', "/")
+        );
+        let config = am_config_with(&[("broken", url.as_str())]);
+        let err = match Automan::index_store_at(&config, vec!["broken".into()], &tmp_am_path(&tmp))
+        {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("failed clone must be a hard error"),
+        };
+        assert!(err.contains("failed to clone"), "unexpected error: {}", err);
+        // the half-created index dir must be removed so a retry clones again
+        assert!(!tmp.path().join("index").join("broken").exists());
+    }
+
+    #[test]
+    fn default_am_at_template_defines_all_indexes() {
+        let config = AutoConfig::new(expand_default_am_at()).expect("template must parse");
+        assert!(config.root.has_prop("index"));
+        let Value::Obj(obj) = config.root.get_prop("index") else {
+            panic!("template `index` must be an object");
+        };
+        let map = obj.to_hashmap();
+        for key in ["default", "soutek", "boe"] {
+            assert!(map.contains_key(key), "template missing index '{}'", key);
+        }
+    }
+}
+
 pub struct AmConfig {
     pub name: AutoStr,
     pub index: HashMap<AutoStr, AutoStr>,
     pub is_default: bool,
+}
+
+/// Canonical am.at template, embedded at compile time so a fresh install or
+/// `reset_index` never depends on the network (the old remote URL 404s and
+/// used to write the error page into am.at). Mirrors
+/// https://gitee.com/auto-stack/auto-man/raw/master/config/am.at
+const DEFAULT_AM_AT: &str = include_str!("../assets/am.at");
+
+/// Template content with `${HOME}` expanded to the real home dir.
+fn expand_default_am_at() -> String {
+    match dirs::home_dir().and_then(|h| h.to_str().map(str::to_string)) {
+        Some(home) => DEFAULT_AM_AT.replace("${HOME}", &home),
+        None => DEFAULT_AM_AT.to_string(),
+    }
 }
 
 impl Default for AmConfig {
@@ -2188,10 +2463,16 @@ pub fn load_am_config() -> Option<AmConfig> {
             am_path = Some(user_home_config_path);
         } else {
             info!("Automan Config file am.at not found in current or home directory, using the default one");
-            // write default config to am.at file
-            let default_config = AmConfig::default();
-            let default_config_str = default_config.to_string();
-            std::fs::write(user_home_config_path.clone(), default_config_str).unwrap();
+            // write the canonical template (all known index bases) so the file
+            // is discoverable and complete; the old behavior wrote a lossy
+            // default with only the `default` index, which broke projects
+            // using e.g. `index: ["soutek"]`
+            if let Err(e) = std::fs::write(
+                user_home_config_path.clone(),
+                expand_default_am_at(),
+            ) {
+                error!("Failed to write default am.at file: {}", e);
+            }
             am_path = Some(user_home_config_path);
         }
     }

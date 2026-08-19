@@ -30,7 +30,9 @@ pub enum Scene {
     Workspace,
     /// UI 工程 - AURA 语法
     Ui,
-    /// 普通工程 - 标准 Auto 语法
+    /// C 工程 - 原生 Auto/C 构建管线（pac.at `scene: "c"`）
+    C,
+    /// 未声明 scene 的旧工程 - 由工具推断（声明了 port 且无 render 视同 C）
     #[default]
     Default,
 }
@@ -40,6 +42,7 @@ impl Scene {
         match s.to_lowercase().as_str() {
             "workspace" => Self::Workspace,
             "ui" => Self::Ui,
+            "c" | "core" => Self::C,
             _ => Self::Default,
         }
     }
@@ -1530,6 +1533,20 @@ impl fmt::Display for Pac {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_scene_parsing() {
+        // explicit kinds
+        assert!(matches!(Scene::from_str("c"), Scene::C));
+        assert!(matches!(Scene::from_str("C"), Scene::C));
+        assert!(matches!(Scene::from_str("core"), Scene::C));
+        assert!(matches!(Scene::from_str("ui"), Scene::Ui));
+        assert!(matches!(Scene::from_str("workspace"), Scene::Workspace));
+        // absent / unrecognized → Default (legacy, inference applies)
+        assert!(matches!(Scene::from_str(""), Scene::Default));
+        assert!(matches!(Scene::from_str("typo"), Scene::Default));
+    }
+
     #[test]
     fn test_pac() {
         let code = r#"

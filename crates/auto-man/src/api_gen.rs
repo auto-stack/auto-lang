@@ -2422,9 +2422,19 @@ pub fn listusers() []User {
         assert_eq!(module.endpoints[1].attrs.path, Some("/api/users".to_string()));
     }
 
+    /// AUTO_A2R_BODY is process-global and read inside `generate_api_rs`;
+    /// tests that generate api.rs must not run in parallel with
+    /// `test_a2r_body_disabled_falls_back`, which temporarily sets it.
+    static A2R_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn a2r_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        A2R_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Plan musk-022: SSE endpoint → Sse handler + events bus + cargo deps.
     #[test]
     fn test_sse_handler_generation() {
+        let _a2r_env = a2r_env_lock();
         let content = r#"
 pub type Message = { id: int, text: str }
 
@@ -2457,6 +2467,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
     /// POST still broadcasts the SSE NewMessage event.
     #[test]
     fn test_handler_calls_db_for_chat() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Message = { id: int, sender: str, text: str, time: str, mine: bool }
 
@@ -2502,6 +2513,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
     /// update_tags→update_tags, search_notes→search_notes).
     #[test]
     fn test_handler_calls_db_for_notes_regression() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Note = { id: int, title: str, body: str, time: str, pinned: bool, tags: []str, folder: str }
 
@@ -2563,6 +2575,7 @@ pub fn search_notes(query str) []Note { return db.search_notes(query) }
     /// State<Db> (no `with_state`, no `use api::Db`). Seed lives in db.rs globals.
     #[test]
     fn test_main_rs_no_state_when_db_full_cover() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Note = { id: int, title: str }
 
@@ -2589,6 +2602,7 @@ pub fn list_notes() []Note { return db.all_notes() }
     /// all_messages + create_message so handlers can delegate to them.
     #[test]
     fn test_017_chat_db_rs_has_real_logic_and_fn_names() {
+        let _a2r_env = a2r_env_lock();
         let db_at = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..").join("..").join("examples")
             .join("ui").join("017-chat").join("src").join("back").join("db.at");
@@ -2636,6 +2650,7 @@ pub fn list_notes() []Note { return db.all_notes() }
     /// PATCH WITHOUT body (toggle_pin) must still get no Json extractor.
     #[test]
     fn test_patch_with_body_gets_json_extractor() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Task = { id: int, title: str, done: bool }
 
@@ -2675,6 +2690,7 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
     /// broadcasts "Typing" with the input payload.
     #[test]
     fn test_sse_broadcast_event_name_not_hardcoded() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Message = { id: int, text: str }
 
@@ -2818,6 +2834,7 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
     /// injected into the handler — NOT fall through to the CRUD template.
     #[test]
     fn test_a2r_body_non_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
         let api = r#"
 pub type Item = { id: int, name: str }
 
@@ -2856,6 +2873,7 @@ pub fn get_item(id int) Item {
     /// back to CRUD template even for non-thin bodies.
     #[test]
     fn test_a2r_body_disabled_falls_back() {
+        let _a2r_env = a2r_env_lock();
         std::env::set_var("AUTO_A2R_BODY", "0");
         let api = r#"
 pub type Item = { id: int, name: str }

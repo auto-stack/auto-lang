@@ -1,0 +1,9 @@
+// index bases
+index: {
+    default: "git@gitee.com:auto-stack/auto-index.git"
+    soutek: "git@codeup.aliyun.com:soutek/auto-stack/auto-index.git"
+    boe: "ssh://git@gitlab.boevxa.lan:2424/ds/platform/boevxabafdemo/gitlabindex.git"
+}
+
+// location to store automan related configurations
+am: "${HOME}/.auto/auto-man"
