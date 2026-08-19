@@ -2055,10 +2055,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style: _ } => {
+            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style: _ } => {
                 build_code_editor_generic(
                     &key, &value, &lang, line_numbers, wrap, vi,
-                    highlight_current_line, tab_width, font_size,
+                    highlight_current_line, tab_width, font_size, &search,
                     on_change, on_cursor, on_context_menu,
                 )
             }
@@ -3118,6 +3118,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_change,
             on_cursor,
             on_context_menu,
+            search,
             style,
         } => AbstractView::CodeEditor {
             key,
@@ -3132,6 +3133,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
             on_cursor: on_cursor.map(|m| IcedMessage::from_dynamic(&m)),
             on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
+            search,
             style,
         },
 
@@ -8973,6 +8975,20 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
 }
 
 
+/// Plan 413 follow-up: diff the search pattern into the editor core.
+/// Search-as-you-type: a changed non-empty pattern also jumps to the first
+/// match (cosmic-edit behavior), uniformly for the VM and rust paths.
+fn apply_search(storage_key: &str, search: &str) {
+    use crate::ui::code_editor as ce;
+    let changed = ce::code_editor_with(storage_key, |core| core.set_search(search))
+        .unwrap_or(false);
+    if changed && !search.is_empty() {
+        ce::with_font_system(|fs| {
+            ce::code_editor_with(storage_key, |core| core.find_next(fs));
+        });
+    }
+}
+
 /// Plan 413: build the code editor for the generic `IntoIcedElement` path
 /// (messages pass through verbatim; the VM path uses
 /// `build_code_editor_dynamic` which also fills `INPUT_TEXT`).
@@ -8987,6 +9003,7 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     highlight_current_line: bool,
     tab_width: usize,
     font_size: f32,
+    search: &str,
     on_change: Option<M>,
     on_cursor: Option<M>,
     on_context_menu: Option<M>,
@@ -9005,6 +9022,7 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     let storage_key = ce::storage_key(key);
     // Single-direction data flow: only rewrite on an external diff.
     ce::code_editor_set_text(&storage_key, value);
+    apply_search(&storage_key, search);
 
     let mut widget = ce::iced::CodeEditor::<M>::new(&storage_key, &config);
     if let Some(msg) = on_change {
@@ -9420,7 +9438,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 413: code editor (VM path) — INPUT_TEXT carries the editor
         // text so oninput handlers bind values exactly like input/textarea.
-        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style } => {
+        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
             let dbg_props = debug_style_props(style.as_ref());
             use crate::ui::code_editor as ce;
 
@@ -9442,6 +9460,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             };
             let storage_key = ce::storage_key(&key);
             ce::code_editor_set_text(&storage_key, &value);
+            apply_search(&storage_key, &search);
 
             let mut widget = ce::iced::CodeEditor::<IcedMessage>::new(&storage_key, &config);
             if let Some(msg) = on_change.clone() {

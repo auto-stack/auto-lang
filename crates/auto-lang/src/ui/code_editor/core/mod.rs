@@ -274,9 +274,13 @@ pub struct CodeEditorCore {
     /// Name of the currently applied syntect theme (tracks the semantic
     /// theme source; update_theme is only called on change).
     applied_theme: Mutex<Option<String>>,
+    /// Regex search state: (pattern source, compiled). Empty pattern = off.
+    search: Mutex<SearchState>,
     /// Monotonic revision — bumped on every text change; adapters key
     /// raster caches on it.
     revision: AtomicU64,
+    /// LRU stamp for registry sweeping (§5.4 auto-dispose).
+    last_used: AtomicU64,
     /// Cached gutter width for `digits` columns.
     gutter_width_cache: Mutex<(usize, f32)>,
 }
@@ -323,6 +327,31 @@ impl std::ops::DerefMut for EditorGuard<'_> {
 pub type FontSystemCall = fn(with: &mut dyn FnMut(&mut FontSystem));
 
 static FONT_SYSTEM_CALL: OnceLock<FontSystemCall> = OnceLock::new();
+
+/// Compiled regex search state (case-insensitive).
+#[derive(Default)]
+pub(crate) struct SearchState {
+    pub(crate) pattern: String,
+    pub(crate) regex: Option<regex::Regex>,
+}
+
+impl SearchState {
+    fn set(&mut self, pattern: &str) -> bool {
+        if self.pattern == pattern {
+            return false;
+        }
+        self.pattern = pattern.to_owned();
+        self.regex = if pattern.is_empty() {
+            None
+        } else {
+            regex::RegexBuilder::new(pattern)
+                .case_insensitive(true)
+                .build()
+                .ok()
+        };
+        true
+    }
+}
 
 /// Install the font system access callback (backend init, once).
 pub fn set_font_system_call(call: FontSystemCall) {
@@ -374,6 +403,10 @@ impl CodeEditorCore {
         vi.set_auto_indent(true);
         vi.set_tab_width(font_system, config.tab_width.max(1));
 
+        // Background warm-up for this language's highlighter (F: cold-start
+        // regex compilation, seconds with onig in debug builds).
+        highlight::warm_language(&config.lang);
+
         let this = Self {
             key,
             config: Mutex::new(config.clone()),
@@ -388,7 +421,9 @@ impl CodeEditorCore {
             scale: Mutex::new(1.0),
             layout_info: Mutex::new(LayoutInfo::default()),
             applied_theme: Mutex::new(None),
+            search: Mutex::new(SearchState::default()),
             revision: AtomicU64::new(0),
+            last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
         };
         this.apply_config_locked(&config, font_system);
@@ -574,6 +609,71 @@ impl CodeEditorCore {
         *self.scale.lock().unwrap()
     }
 
+    /// Set the regex search pattern ("" clears). Returns true when the
+    /// pattern changed (the adapter should request a repaint). Invalid
+    /// regexes clear highlighting and keep the pattern for the next edit.
+    pub fn set_search(&self, pattern: &str) -> bool {
+        self.search.lock().unwrap().set(pattern)
+    }
+
+    /// Current search pattern.
+    pub fn search_pattern(&self) -> String {
+        self.search.lock().unwrap().pattern.clone()
+    }
+
+    /// Jump to the next regex match after the caret, selecting it and
+    /// scrolling it into view (wraps around). Returns false when there is
+    /// no active search or no match.
+    pub fn find_next(&self, font_system: &mut FontSystem) -> bool {
+        let regex = match self.search.lock().unwrap().regex.clone() {
+            Some(r) => r,
+            None => return false,
+        };
+        let mut editor = self.editor_lock();
+        let start = editor.cursor();
+        let line_count = editor.with_buffer(|b| b.lines.len());
+
+        // (line, byte start, byte end) of the next match at-or-after the
+        // caret, wrapping around the document.
+        let mut found: Option<(usize, usize, usize)> = None;
+        for offset in 0..=line_count {
+            let line_i = (start.line + offset) % line_count.max(1);
+            let text = editor
+                .with_buffer(|b| b.lines.get(line_i).map(|l| l.text().to_owned()))
+                .unwrap_or_default();
+            let from = if offset == 0 { start.index } else { 0 };
+            let hit = regex.find_iter(&text[from.min(text.len())..]).next().map(|m| {
+                let s = from + m.start();
+                let e = from + m.end();
+                (line_i, s, e)
+            });
+            if let Some(hit) = hit {
+                // On the wrap-around pass, stop before reaching the start
+                // position again.
+                found = Some(hit);
+                break;
+            }
+        }
+        let Some((line, s, e)) = found else {
+            return false;
+        };
+
+        editor.set_cursor(Cursor::new(line, e));
+        editor.set_selection(Selection::Normal(Cursor::new(line, s)));
+        editor.with_buffer_mut(|b| {
+            // Bring the matched line a few lines below the viewport top.
+            let mut scroll = b.scroll();
+            let target = line.saturating_sub(2);
+            if target < scroll.line || line >= scroll.line + 20 {
+                scroll.line = target;
+                b.set_scroll(scroll);
+            }
+            b.set_redraw(true);
+        });
+        let _ = font_system;
+        true
+    }
+
     pub(crate) fn buffer_weak(&self) -> Weak<Buffer> {
         self.buffer.clone()
     }
@@ -591,6 +691,10 @@ impl CodeEditorCore {
 
     pub(crate) fn set_gutter_width_cache(&self, digits: usize, width: f32) {
         *self.gutter_width_cache.lock().unwrap() = (digits, width);
+    }
+
+    pub(crate) fn search_regex(&self) -> Option<regex::Regex> {
+        self.search.lock().unwrap().regex.clone()
     }
 
     // ── input handling ───────────────────────────────────────────────────
@@ -1114,16 +1218,42 @@ pub fn storage_key(widget: &str) -> String {
 /// Get or create the core for `key`, applying `config` (diffed). The core
 /// is leaked once and lives for the process (explicit disposal via
 /// [`code_editor_dispose`], §5.4).
+/// Registry capacity: editors beyond this are auto-disposed LRU (the
+/// leaked cores themselves persist, but their registry slots — and thus
+/// their identity/state — recycle, bounding growth for long-running apps
+/// that route across many pages; §5.4).
+const CODE_EDITOR_LRU_CAP: usize = 32;
+
+fn lru_tick() -> u64 {
+    use std::sync::atomic::AtomicU64 as A64;
+    static TICK: A64 = A64::new(0);
+    TICK.fetch_add(1, Ordering::Relaxed)
+}
+
 pub fn code_editor(key: &str, config: &CodeEditorConfig) -> &'static CodeEditorCore {
     let mut map = CODE_EDITORS.lock().unwrap();
     if let Some(core) = map.get(key) {
         let core: &'static CodeEditorCore = core;
+        core.last_used.store(lru_tick(), Ordering::Relaxed);
         with_font_system(|fs| core.apply_config(config, fs));
         return core;
+    }
+    // LRU sweep: drop the stalest entries beyond the capacity.
+    if map.len() >= CODE_EDITOR_LRU_CAP {
+        let mut stamped: Vec<(u64, String)> = map
+            .iter()
+            .map(|(k, core)| (core.last_used.load(Ordering::Relaxed), k.clone()))
+            .collect();
+        stamped.sort_unstable();
+        let excess = map.len() + 1 - CODE_EDITOR_LRU_CAP;
+        for (_, k) in stamped.into_iter().take(excess) {
+            map.remove(&k);
+        }
     }
     let core: &'static CodeEditorCore = with_font_system(|fs| {
         Box::leak(Box::new(CodeEditorCore::new(key, config.clone(), fs)))
     });
+    core.last_used.store(lru_tick(), Ordering::Relaxed);
     map.insert(key.to_owned(), core);
     core
 }
@@ -1160,6 +1290,23 @@ pub fn code_editor_set_text(key: &str, text: &str) -> bool {
         }
         with_font_system(|fs| core.set_text(text, fs));
         true
+    } else {
+        false
+    }
+}
+
+/// Run a closure with the core registered under `key` (if any).
+pub fn code_editor_with<R>(key: &str, f: impl FnOnce(&CodeEditorCore) -> R) -> Option<R> {
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(key).map(|core| f(core))
+}
+
+/// Jump to the next search match of the editor under `key` (wraps).
+/// Returns false when the editor, pattern or match is missing.
+pub fn code_editor_find(key: &str) -> bool {
+    let map = CODE_EDITORS.lock().unwrap();
+    if let Some(core) = map.get(key) {
+        with_font_system(|fs| core.find_next(fs))
     } else {
         false
     }
@@ -1283,7 +1430,67 @@ mod tests {
         assert_eq!(line, 0);
     }
 
+    #[test]
+    fn core_search_highlights_and_finds() {
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new(
+            "test-core-search",
+            CodeEditorConfig::default(),
+            &mut fs,
+        );
+        core.set_text("let alpha = 1;
+let beta = alpha + 2;
+", &mut fs);
+
+        // No pattern → no matches.
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        assert!(list.search_matches.is_empty());
+
+        // Highlight matches on visible lines.
+        assert!(core.set_search("alpha"));
+        assert!(!core.set_search("alpha")); // diffed no-op
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        assert_eq!(list.search_matches.len(), 2, "alpha appears twice");
+
+        // Invalid regex clears highlighting without panicking.
+        assert!(core.set_search("(unclosed"));
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        assert!(list.search_matches.is_empty());
+
+        // find_next jumps + selects (case-insensitive).
+        assert!(core.set_search("BETA"));
+        assert!(core.find_next(&mut fs));
+        let (line, _col, sel) = core.cursor_info();
+        assert_eq!(line, 1);
+        assert_eq!(sel, 4); // "beta" is 4 bytes
+        let no_more = core.set_search("zzz-not-there");
+        assert!(no_more);
+        assert!(!core.find_next(&mut fs));
+    }
+
+    #[test]
+    fn registry_lru_caps_growth() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let config = CodeEditorConfig::default();
+        // Fill beyond the cap with distinct keys.
+        for i in 0..40 {
+            let _ = code_editor(&storage_key(&format!("lru-{i}")), &config);
+        }
+        assert!(
+            code_editor_count() <= 32,
+            "registry must stay within the LRU cap, got {}",
+            code_editor_count()
+        );
+        // Recently used keys survive.
+        assert!(code_editor_text(&storage_key("lru-39")).is_some());
+        assert!(code_editor_text(&storage_key("lru-0")).is_none(), "oldest swept");
+    }
+
     // ── global registry keying (Plan 413 §5.4) ──────────────────────────
+
+    /// Registry tests share global state — serialize them.
+    static REGISTRY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Test font-system callback: one process-wide FontSystem behind a
     /// RwLock, mirroring the iced adapter's install.
@@ -1296,6 +1503,7 @@ mod tests {
 
     #[test]
     fn registry_keys_dispose_and_recreates() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
         set_font_system_call(test_font_system);
         let key = storage_key("test-registry-key");
         code_editor_dispose(&key);
@@ -1341,6 +1549,11 @@ mod tests {
         let t0 = std::time::Instant::now();
         code_editor_set_text(&storage_key("test-large"), &big);
         let set = t0.elapsed();
+        // Optional: give the background syntax warm-up time to finish, to
+        // measure the warmed cold-render (AUTO_CE_WARMUP_WAIT=1).
+        if std::env::var("AUTO_CE_WARMUP_WAIT").is_ok() {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
         let t1 = std::time::Instant::now();
         let list = with_font_system(|fs| render::render(core, fs, 800.0, 600.0, None));
         let rendered = t1.elapsed();

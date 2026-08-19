@@ -794,6 +794,7 @@ mod tests {
             }),
             width: None,
             height: None,
+            auto_scroll: false,
             style: None,
         };
 

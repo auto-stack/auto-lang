@@ -2036,6 +2036,11 @@ fn extract_action_from_view(
         {
             on_change.as_ref().and_then(|m| extract_dyn_msg(m))
         }
+        // Plan 413 follow-up: code editor accepts type_text/clear — the
+        // typed value flows back into the editor through the value diff.
+        View::CodeEditor { on_change, .. } if action_name == "type" => {
+            on_change.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
         // submit → on_submit(Enter 键)。ash-gui M1:命令输入栏回车执行。
         // Plan 053 M4: textarea 也有 on_submit(onenter → OnEnter)。
         View::Input { on_submit, .. } | View::Textarea { on_submit, .. }
@@ -2056,6 +2061,9 @@ fn view_kind_str(view: &View<DynamicMessage>) -> &'static str {
         View::Button { .. } => "Button",
         View::Input { .. } => "Input",
         View::Textarea { .. } => "Textarea",
+        // Plan 413 follow-up: the code editor degrades to a Textarea vnode;
+        // type_text validation accepts it.
+        View::CodeEditor { .. } => "Textarea",
         View::Checkbox { .. } => "Checkbox",
         View::Slider { .. } => "Slider",
         _ => "Other",

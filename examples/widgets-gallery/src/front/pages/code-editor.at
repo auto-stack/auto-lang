@@ -4,6 +4,7 @@
 widget CodeEditorPage {
     model {
         activeTab str = "preview"
+        query str = ""
         source str = "// 在这里编辑 Rust 代码 — 支持语法高亮、行号、IME。\nfn fibonacci(n: u32) -> u32 {\n    match n {\n        0 => 0,\n        1 => 1,\n        _ => fibonacci(n - 1) + fibonacci(n - 2),\n    }\n}\n\nfn main() {\n    let greeting = \"你好,世界\";\n    for i in 0..10 {\n        println!(\"{i}: {greeting}\");\n    }\n}\n"
         wrap bool = false
         vi bool = false
@@ -19,12 +20,15 @@ widget CodeEditorPage {
             preview-card (id: "code-editor-basic") {
                 col (style: "gap-2 w-full") {
                     row (style: "gap-2 items-center") {
+                        input (value: .query, placeholder: "Regex search...", style: "w-48") {
+                            oninput: .QueryChanged
+                        }
                         button (text: "Toggle Wrap") { onclick: .ToggleWrap }
                         button (text: "Toggle Vi Mode") { onclick: .ToggleVi }
                         text "edits: {edits}"
                         style: "gap-2"
                     }
-                    code_editor (key: "gallery-editor", lang: "rust", wrap: .wrap, vi: .vi, style: "h-72 w-full rounded border font-mono") {
+                    code_editor (key: "gallery-editor", lang: "rust", wrap: .wrap, vi: .vi, search: .query, style: "h-72 w-full rounded border font-mono") {
                         content: .source
                         oninput: .SourceChanged
                         oncursor: .CursorMoved
@@ -96,6 +100,13 @@ widget CodeEditorPage {
                         td "Vi mode (ViEditor passthrough off)"
                     }
                     tr {
+                        td "search"
+                        td "string"
+                        td ""
+                        td "regex"
+                        td "Live regex highlight + jump (search-as-you-type)"
+                    }
+                    tr {
                         td "tab_width"
                         td "int"
                         td "4"
@@ -110,6 +121,7 @@ widget CodeEditorPage {
     }
 
     on {
+        .QueryChanged -> { }
         .SourceChanged -> {
             .edits = .edits + 1
         }

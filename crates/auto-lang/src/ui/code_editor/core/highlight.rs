@@ -78,10 +78,43 @@ struct SyntaxRegistry {
 fn registry() -> &'static Mutex<SyntaxRegistry> {
     static REGISTRY: OnceLock<Mutex<SyntaxRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
-        Mutex::new(SyntaxRegistry {
-            system: Box::leak(Box::new(build_syntax_system())),
-        })
+        let system: &'static SyntaxSystem = Box::leak(Box::new(build_syntax_system()));
+        Mutex::new(SyntaxRegistry { system })
     })
+}
+
+/// Fire-and-forget background warm-up: run one highlight pass per common
+/// language so the first real use doesn't pay the regex compilation cost
+/// (seconds with the onig backend in debug builds). `SyntaxSet` is
+/// `Sync`; compiled-regex caches are shared, so work done here carries
+/// over to the UI thread. Best effort — the thread races the first frames
+/// and loses nothing if it loses the race.
+fn spawn_syntax_warm_up(extensions: Vec<&'static str>) {
+    std::thread::spawn(move || {
+        let system = syntax_system();
+        let Some(theme) = system.theme_set.themes.get("base16-eighties.dark") else {
+            return;
+        };
+        for ext in extensions {
+            let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
+                continue;
+            };
+            let mut hl = syntect::easy::HighlightLines::new(syntax, theme);
+            let _ = hl.highlight_line(
+                "fn warm(x: int) { let s = \"txt\"; } // comment
+",
+                &system.syntax_set,
+            );
+        }
+    });
+}
+
+/// Warm the highlighter for one language in the background (called from
+/// editor creation with the configured language).
+pub fn warm_language(lang: &str) {
+    let ext = lang_to_extension(lang).unwrap_or("txt");
+    let ext: &'static str = Box::leak(ext.to_owned().into_boxed_str());
+    spawn_syntax_warm_up(vec![ext]);
 }
 
 /// Known accent names (mirrors the AutoUI accent palettes). The theme set

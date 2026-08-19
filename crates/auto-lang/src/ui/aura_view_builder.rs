@@ -3482,6 +3482,12 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "contextmenu"))
             .map(|event| self.event_to_message(&event.handler));
 
+        // Plan 413 follow-up: regex search pattern (live highlight).
+        let search = self
+            .extract_string_with(props, "search", bindings)
+            .or_else(|| self.extract_string_with(props, "query", bindings))
+            .unwrap_or_default();
+
         let style = self.extract_style_with(props, bindings);
 
         let mut builder = View::<DynamicMessage>::code_editor(key)
@@ -3502,6 +3508,7 @@ let tabs_inner = View::Row {
         if let Some(msg) = on_context_menu {
             builder = builder.on_context_menu(msg);
         }
+        builder = builder.search(search);
         if let Some(s) = style {
             builder = builder.with_style(s);
         }

@@ -312,6 +312,8 @@ pub enum View<M: Clone + Debug> {
         on_change: Option<M>,
         on_cursor: Option<M>,
         on_context_menu: Option<M>,
+        /// Regex search pattern ("" = off). Matches highlight live.
+        search: String,
         style: Option<Style>,
     },
 
@@ -977,6 +979,7 @@ impl<M: Clone + Debug> View<M> {
             on_change: None,
             on_cursor: None,
             on_context_menu: None,
+            search: String::new(),
             style: None,
         }
     }
@@ -1332,7 +1335,7 @@ impl<M: Clone + Debug> View<M> {
                 ghost,
                 keydown: keydown.into_iter().map(|(k, m)| (k, f(m))).collect(),
             },
-            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style } => View::CodeEditor {
+            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => View::CodeEditor {
                 key,
                 value,
                 lang,
@@ -1345,6 +1348,7 @@ impl<M: Clone + Debug> View<M> {
                 on_change: on_change.map(|m| f(m)),
                 on_cursor: on_cursor.map(|m| f(m)),
                 on_context_menu: on_context_menu.map(|m| f(m)),
+                search,
                 style,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
@@ -1808,6 +1812,7 @@ pub struct ViewCodeEditorBuilder<M: Clone + Debug> {
     on_change: Option<M>,
     on_cursor: Option<M>,
     on_context_menu: Option<M>,
+    search: String,
     style: Option<Style>,
 }
 
@@ -1867,6 +1872,13 @@ impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
         self
     }
 
+    /// Regex search pattern ("" = off). Matches highlight live; jump with
+    /// `code_editor_find(key)`.
+    pub fn search(mut self, pattern: impl Into<String>) -> Self {
+        self.search = pattern.into();
+        self
+    }
+
     pub fn with_style(mut self, style: Style) -> Self {
         self.style = Some(style);
         self
@@ -1896,6 +1908,7 @@ impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
             on_change: self.on_change,
             on_cursor: self.on_cursor,
             on_context_menu: self.on_context_menu,
+            search: self.search,
             style: self.style,
         }
     }

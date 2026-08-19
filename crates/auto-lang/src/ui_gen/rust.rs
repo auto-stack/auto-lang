@@ -2273,6 +2273,14 @@ impl RustGenerator {
                         builder = format!("{}.font_size({})", builder, f);
                     }
 
+                    // Plan 413 follow-up: regex search (live highlight).
+                    let search_prop = props.get("search");
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(pattern))) = search_prop {
+                        builder = format!("{}.search(\"{}\")", builder, pattern);
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = search_prop {
+                        builder = format!("{}.search(self.{}.clone())", builder, name);
+                    }
+
                     // Events: oninput/onchange -> on_change, oncursor -> on_cursor,
                     // oncontextmenu -> on_context_menu.
                     for (event, handler) in events {
@@ -4570,6 +4578,33 @@ impl RustGenerator {
                             .collect();
                         format!("println!({})", print_args.join(", "))
                     }
+                    // Plan 413 follow-up: code editor payload accessors (§3.2) —
+                    // the generated handlers read live editor state by key.
+                    "code_editor_text" => format!(
+                        "auto_lang::ui::code_editor::code_editor_text({}).unwrap_or_default()",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                    ),
+                    "code_editor_cursor_line" => format!(
+                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.0 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                    ),
+                    "code_editor_cursor_col" => format!(
+                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.1 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                    ),
+                    "code_editor_selection_len" => format!(
+                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.2 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                    ),
+                    "code_editor_find" => format!(
+                        "auto_lang::ui::code_editor::code_editor_find({})",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                    ),
+                    "code_editor_set_text" => format!(
+                        "auto_lang::ui::code_editor::code_editor_set_text({}, {})",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned()),
+                        args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
+                    ),
                     _ => {
                         // Plan 374: Callback prop calls (on_delete, on_toggle_pin, etc.)
                         // are no-ops in Rust — child-to-parent communication uses enum wrapping.
@@ -5310,6 +5345,7 @@ mod tests {
                 props.insert("lang".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())));
                 props.insert("content".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())));
                 props.insert("wrap".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Bool(false)));
+                props.insert("search".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())));
                 events.insert(
                     "oninput".to_owned(),
                     AuraEvent { handler: ".SourceChanged".into(), params: vec![] },
@@ -5319,12 +5355,20 @@ mod tests {
 
         let widget = AuraWidget {
             name: "Playground".to_string(),
-            state_vars: vec![AuraStateDef {
-                name: "source".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: crate::ast::Expr::Str("fn main() {}".into()),
-                decorators: vec![],
-            }],
+            state_vars: vec![
+                AuraStateDef {
+                    name: "source".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("fn main() {}".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "query".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("".into()),
+                    decorators: vec![],
+                },
+            ],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant {
@@ -5337,7 +5381,29 @@ mod tests {
                 let mut h = HashMap::new();
                 h.insert(
                     "SourceChanged".to_owned(),
-                    LogicPayload::AstStmts(vec![]),
+                    LogicPayload::AstStmts(vec![crate::ast::Stmt::Expr(
+                        crate::ast::Expr::Bina(
+                            Box::new(crate::ast::Expr::Dot(
+                                Box::new(crate::ast::Expr::Ident("self".into())),
+                                "source".into(),
+                            )),
+                            auto_val::Op::Asn,
+                            Box::new(crate::ast::Expr::Call(crate::ast::Call {
+                                name: Box::new(crate::ast::Expr::Ident("code_editor_text".into())),
+                                args: {
+                                    let mut a = crate::ast::Args::new();
+                                    a.args.push(crate::ast::Arg::Pos(
+                                        crate::ast::Expr::Str("src".into()),
+                                    ));
+                                    a
+                                },
+                                ret: crate::ast::Type::StrOwned,
+                                type_args: vec![],
+                                generic_args: vec![],
+                                pos: None,
+                            })),
+                        ),
+                    )]),
                 );
                 h
             },
@@ -5383,6 +5449,123 @@ mod tests {
             code.contains("auto_lang::ui::code_editor::code_editor_text(\"src\")"),
             "handler reads text via code_editor_text:\n{}",
             code
+        );
+        assert!(
+            code.contains(".search(self.query.clone())"),
+            "search binding from state:\n{}",
+            code
+        );
+    }
+
+    /// Plan 413 follow-up: end-to-end compile of the generated code_editor
+    /// widget code — the generator output is wrapped with the same preamble
+    /// auto-man emits and compiled against auto-lang (ui-iced) in a
+    /// throwaway crate. Ignored by default (compiles the dependency tree).
+    #[test]
+    #[ignore = "e2e compile: minutes on a cold target dir"]
+    fn test_code_editor_codegen_compiles() {
+        // Reuse the codegen test's widget construction.
+        let mut element = AuraNode::element("code_editor");
+        {
+            if let AuraNode::Element { props, events, .. } = &mut element {
+                props.insert("key".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("src".into())));
+                props.insert("lang".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())));
+                props.insert("content".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())));
+                props.insert("search".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())));
+                events.insert(
+                    "oninput".to_owned(),
+                    AuraEvent { handler: ".SourceChanged".into(), params: vec![] },
+                );
+                events.insert(
+                    "oncursor".to_owned(),
+                    AuraEvent { handler: ".CursorMoved".into(), params: vec![] },
+                );
+            }
+        }
+
+        let widget = AuraWidget {
+            name: "Playground".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "source".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("fn main() {}".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "query".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: crate::ast::Expr::Str("".into()),
+                    decorators: vec![],
+                },
+            ],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![
+                    AuraMsgVariant { name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)] },
+                    AuraMsgVariant { name: "CursorMoved".to_string(), payload: vec![] },
+                ],
+            }],
+            view_tree: element,
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        let main_rs = format!(
+            "#![allow(dead_code, unused)]
+{}
+fn main() {{}}
+",
+            code
+        );
+
+        // Throwaway crate under the workspace target dir (path deps resolve,
+        // cargo cache reused).
+        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let root = std::path::Path::new(&root)
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .to_path_buf();
+        let tmp = root.join("target").join("code-editor-e2e").join("playground");
+        let src_dir = tmp.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("main.rs"), &main_rs).unwrap();
+        let auto_lang_path = root.join("crates").join("auto-lang");
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"code_editor_e2e_playground\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-lang = {{ path = {:?}, features = [\"ui-iced\"] }}\n\n[workspace]\n",
+                auto_lang_path.to_string_lossy().replace("\\\\", "/")
+            ),
+        )
+        .unwrap();
+
+        let output = std::process::Command::new("cargo")
+            .arg("build")
+            .current_dir(&tmp)
+            .output()
+            .unwrap_or_else(|e| panic!("cargo build in {}: {}", tmp.display(), e));
+        assert!(
+            output.status.success(),
+            "generated code_editor code failed to compile.\n--- main.rs ---\n{}\n--- stderr ---\n{}",
+            main_rs,
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

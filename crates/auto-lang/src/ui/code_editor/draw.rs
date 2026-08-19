@@ -123,6 +123,8 @@ pub struct EditorDrawList {
     pub current_line: Option<(Rect, Rgba)>,
     /// Selection rectangles (one per affected layout run).
     pub selection: Vec<(Rect, Rgba)>,
+    /// Regex search match rectangles (one per match per affected run).
+    pub search_matches: Vec<(Rect, Rgba)>,
     pub text: Option<TextSection>,
     pub caret: Option<CaretDraw>,
     pub preedit: Option<PreeditDraw>,

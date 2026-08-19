@@ -181,6 +181,43 @@ pub fn render(
         });
     }
 
+    // ── regex search highlights ───────────────────────────────────────────
+    if let Some(regex) = core.search_regex() {
+        editor.with_buffer(|b| {
+            for run in b.layout_runs() {
+                let Some(text) = b.lines.get(run.line_i).map(|l| l.text()) else {
+                    continue;
+                };
+                for m in regex.find_iter(text) {
+                    let (lo, hi) = (m.start(), m.end());
+                    if hi <= lo {
+                        continue;
+                    }
+                    // Soft-wrapped lines repeat the line text per run;
+                    // clamp the match to this run's glyph span.
+                    let run_start = run.glyphs.first().map(|g| g.start).unwrap_or(lo);
+                    let run_end = run.glyphs.last().map(|g| g.end).unwrap_or(hi);
+                    let lo_c = lo.clamp(run_start, run_end);
+                    let hi_c = hi.clamp(run_start, run_end);
+                    if hi_c <= lo_c {
+                        continue;
+                    }
+                    if let (Some(x0), Some(x1)) = (index_x(&run, lo_c), index_x(&run, hi_c)) {
+                        list.search_matches.push((
+                            Rect::new(
+                                text_rect.x + x0.min(x1),
+                                run.line_top,
+                                (x1 - x0).abs().max(2.0),
+                                run.line_height,
+                            ),
+                            theme.search_match,
+                        ));
+                    }
+                }
+            }
+        });
+    }
+
     // ── body text ─────────────────────────────────────────────────────────
     list.text = Some(TextSection {
         buffer: core.buffer_weak(),
