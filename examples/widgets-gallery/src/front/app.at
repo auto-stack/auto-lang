@@ -23,6 +23,7 @@ widget App {
         "/calendar" -> use calendar
         "/card" -> use card
         "/carousel" -> use carousel
+        "/code-editor" -> use code-editor
         "/checkbox" -> use checkbox
         "/collapsible" -> use collapsible
         "/combobox" -> use combobox
@@ -172,6 +173,7 @@ widget App {
                         nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
                         nav-link (to: "/calendar", icon: "layout-grid", label: "Calendar") {}
                         nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
+                        nav-link (to: "/code-editor", icon: "type", label: "CodeEditor") {}
                         nav-link (to: "/combobox", icon: "command", label: "Combobox") {}
                         nav-link (to: "/datepicker", icon: "layout-grid", label: "DatePicker") {}
                         nav-link (to: "/form", icon: "layout-grid", label: "Form") {}

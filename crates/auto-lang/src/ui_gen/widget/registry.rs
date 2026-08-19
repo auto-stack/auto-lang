@@ -832,6 +832,39 @@ impl WidgetRegistry {
         });
         self.register(textarea);
 
+        // Plan 413: CodeEditor — vue target is CodeMirror 6 (spec-level only;
+        // the component shell ships with the front template, deep vue support
+        // is a separate plan). ark/jet degrade to plain text fields.
+        let mut code_editor = WidgetSpec::new("CodeEditor", WidgetCategory::Form)
+            .with_alias("code_editor");
+        code_editor.primary_prop = Some("content".to_string());
+        code_editor.backends.insert("ark".to_string(), BackendMapping {
+            component: "TextArea".to_string(),
+            import: None,
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: None,
+        });
+        code_editor.backends.insert("jet".to_string(), BackendMapping {
+            component: "OutlinedTextField".to_string(),
+            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: None,
+        });
+        code_editor.backends.insert("vue".to_string(), BackendMapping {
+            component: "CodeMirror".to_string(),
+            // vue-codemirror wrapper (Phase 4: spec + shell only).
+            import: Some("vue-codemirror".to_string()),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            extra_components: Vec::new(),
+            npm_package: Some(("vue-codemirror".to_string(), "^6".to_string())),
+        });
+        self.register(code_editor);
+
         // Form
         let mut form = WidgetSpec::new("Form", WidgetCategory::Form)
             .with_alias("form");

@@ -135,6 +135,10 @@ impl ShadcnRegistry {
             ("@/components/ui/input", vec!["Input"]));
         components.insert("textarea",
             ("@/components/ui/textarea", vec!["Textarea"]));
+        // Plan 413: code_editor degrades to Textarea on vue (CodeMirror 6
+        // target documented in the widget registry).
+        components.insert("code_editor",
+            ("@/components/ui/textarea", vec!["Textarea"]));
         components.insert("checkbox",
             ("@/components/ui/checkbox", vec!["Checkbox"]));
         components.insert("toggle",
@@ -3511,7 +3515,7 @@ impl VueGenerator {
                 // overlaid) so it keeps the primary theme color. Only form
                 // elements that need native HTML for their behavior (type attr,
                 // TodoMVC `class="toggle"` on a checkbox) stay here.
-                let force_native_elements = ["checkbox", "input", "textarea"];
+                let force_native_elements = ["checkbox", "input", "textarea", "code_editor"];
                 let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
                 // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
@@ -5136,6 +5140,13 @@ impl VueGenerator {
                 self.component_refs.push("ThemeToggle".to_string());
                 self.use_theme_toggle = true;
                 return "ThemeToggle".to_string();
+            }
+            // Plan 413: code_editor degrades to the shadcn Textarea on vue
+            // until the CodeMirror 6 shell lands (registry spec documents the
+            // target component; deep vue support is a separate plan).
+            if tag == "code_editor" || tag == "codeEditor" {
+                self.shadcn_components_used.insert("Textarea".to_string());
+                return "Textarea".to_string();
             }
             // tooltip-provider → TooltipProvider. reka-ui <Tooltip> requires a
             // <TooltipProvider> ancestor (inject context); without it the page
@@ -7927,7 +7938,7 @@ impl VueGenerator {
             }
 
             // === Textarea ===
-            "textarea" => {
+            "textarea" | "code_editor" => {
                 // Plan 057 续:highlight/ghost 由叠加层包裹消费,不透传。
                 if props.contains_key("highlight") || props.contains_key("ghost") {
                     // handled by textarea_rich_overlay at the emission site

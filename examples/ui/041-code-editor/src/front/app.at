@@ -1,0 +1,15 @@
+widget App {
+    model {
+        var source str = "fn add(a int, b int) int"
+        var wrap bool = false
+    }
+
+    view {
+        col {
+            code_editor (key: "playground", lang: "auto", wrap: .wrap, style: "flex-1 w-full") {
+                content: .source
+            }
+            style: "p-3 gap-2 h-full"
+        }
+    }
+}
