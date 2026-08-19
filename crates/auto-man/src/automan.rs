@@ -1013,9 +1013,19 @@ impl Automan {
                 self.build_ark()?;
             }
             auto_lang::config::BackendType::Rust => {
-                println!("Transpiling Auto code to Rust (backend: rust)");
-                self.transpile_auto()?;
-                self.pac.build()?;
+                // UI projects (src/front/) use the rust_ui generator into the
+                // shared workspace — the pac transpile+builder path requires a
+                // declared rust target which UI projects don't have (it used to
+                // spawn cargo in a never-created ./rust dir, os error 267).
+                let root_dir = std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+                if root_dir.join("src").join("front").exists() {
+                    crate::rust_ui::build_rust_ui(&root_dir)?;
+                } else {
+                    println!("Transpiling Auto code to Rust (backend: rust)");
+                    self.transpile_auto()?;
+                    self.pac.build()?;
+                }
             }
             auto_lang::config::BackendType::Vscode => {
                 println!("Building VSCode extension project (backend: vscode)");

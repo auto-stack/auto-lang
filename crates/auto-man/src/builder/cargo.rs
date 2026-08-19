@@ -131,8 +131,10 @@ impl Builder for CargoBuilder {
         });
 
         let Some(target) = target else {
-            log::warn!("No rust target found, skipping Cargo setup");
-            return Ok(());
+            return Err(
+                "Cargo builder: no rust target found in pac (nothing was                  transpiled into the build directory)"
+                    .into(),
+            );
         };
 
         // Use "0.1.0" as fallback version (cargo doesn't accept "latest")
