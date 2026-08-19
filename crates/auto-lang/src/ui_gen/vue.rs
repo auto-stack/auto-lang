@@ -13355,6 +13355,59 @@ fn fetch_things() []Value {
         assert!(!code.contains("fetch_things(): "), "async fn drops ret anno:\n{}", code);
     }
 
+    /// Plan 029 T17: dom 内建模块转译（主题/快捷键/剪贴板/外链最小 DOM 面）。
+    #[test]
+    fn test_fn_module_dom_builtins() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+fn apply_theme(dark bool) {
+    dom.set_dark(dark)
+}
+
+fn system_dark() bool {
+    return dom.prefers_dark()
+}
+
+fn brand(name str, val str) {
+    dom.set_css_var(name, val)
+}
+
+fn focus_search() {
+    dom.focus_first(".chats-search")
+}
+
+fn open_link(url str) {
+    dom.open_url(url)
+}
+
+fn copy_id(id str) {
+    dom.copy_text(id)
+}
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("dom fn module must parse");
+        let fns: Vec<crate::aura::AuraModuleFn> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Fn(f) => crate::aura::extract_module_fn(f),
+                _ => None,
+            })
+            .collect();
+        let code = VueGenerator::generate_fn_module(&fns);
+        assert!(
+            code.contains("classList)['add' : 'remove'])('dark')") || code.contains("'add' : 'remove'"),
+            "set_dark:
+{}",
+            code
+        );
+        assert!(code.contains("matchMedia('(prefers-color-scheme: dark)').matches"), "{}", code);
+        assert!(code.contains("document.documentElement.style.setProperty(name, val)"), "{}", code);
+        assert!(code.contains("document.querySelector('.chats-search')?.focus()"), "{}", code);
+        assert!(code.contains("window.open(url, '_blank')"), "{}", code);
+        assert!(code.contains("navigator.clipboard.writeText(id)"), "{}", code);
+    }
+
     /// Template ref escape hatch: a `ref` prop on a view element emits a
     /// static `ref="menuEl"` template attribute plus a
     /// `const menuEl = ref<HTMLElement | null>(null)` script declaration,

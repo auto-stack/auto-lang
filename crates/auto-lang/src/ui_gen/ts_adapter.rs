@@ -1550,6 +1550,61 @@ fn try_transpile_builtin_call(
             write!(out, ")").ok();
             true
         }
+        // Plan 029 T17：dom 内建模块 —— 主题/快捷键/剪贴板/外链的最小 DOM 面。
+        //   dom.set_dark(on)      → html.classList add/remove("dark")
+        //   dom.prefers_dark()    → matchMedia('(prefers-color-scheme: dark)').matches
+        //   dom.set_css_var(n, v) → documentElement.style.setProperty(n, v)
+        //   dom.focus_first(sel)  → document.querySelector(sel)?.focus()
+        //   dom.open_url(url)     → window.open(url, '_blank')
+        //   dom.copy_text(text)   → navigator.clipboard.writeText(text)
+        "dom" => {
+            match method {
+                "set_dark" => {
+                    write!(out, "((document.documentElement.classList)[(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ") ? 'add' : 'remove'])('dark')").ok();
+                    true
+                }
+                "prefers_dark" => {
+                    write!(
+                        out,
+                        "window.matchMedia('(prefers-color-scheme: dark)').matches"
+                    )
+                    .ok();
+                    true
+                }
+                "set_css_var" => {
+                    write!(out, "document.documentElement.style.setProperty(").ok();
+                    for (i, arg) in args.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(out, ", ").ok();
+                        }
+                        transpile_expr(&arg.get_expr(), ctx, out);
+                    }
+                    write!(out, ")").ok();
+                    true
+                }
+                "focus_first" => {
+                    write!(out, "document.querySelector(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ")?.focus()").ok();
+                    true
+                }
+                "open_url" => {
+                    write!(out, "window.open(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ", '_blank')").ok();
+                    true
+                }
+                "copy_text" => {
+                    write!(out, "navigator.clipboard.writeText(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ")").ok();
+                    true
+                }
+                _ => false,
+            }
+        }
         // event.dispatch(name) → window.dispatchEvent(new CustomEvent(name))
         // event.dispatch(name, detail) → window.dispatchEvent(new CustomEvent(name, detail))
         "event" => {
