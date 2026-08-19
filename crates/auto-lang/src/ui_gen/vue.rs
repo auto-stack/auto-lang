@@ -16273,7 +16273,9 @@ widget App {
 }
 "#, &["EditorTab"]);
         assert!(
-            sfc.contains(r#":key="'EditorTab-1-' + (tab?.id ?? tab)""#),
+            // Plan 028: 键表达式演进为 `(tab as any)?.id ?? tab` —— 对未声明
+            // .id 的具类型循环变量加 as-any 断言，避免 vue-tsc 报错。
+            sfc.contains(r#":key="'EditorTab-1-' + (((tab as any)?.id ?? tab))""#),
             "auto-key heuristic unchanged:\n{}",
             sfc
         );

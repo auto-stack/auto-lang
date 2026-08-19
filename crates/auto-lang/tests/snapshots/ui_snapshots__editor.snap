@@ -29,4 +29,4 @@ API imports: ["update_note", "delete_note", "toggle_pin", "update_tags"]
 Store deps: ["NotesStore"]
 Store composables: 0
 Validation warnings: 3
-SFC 'EditorPanel': 6636 bytes, has template: true, has script: true, has style: true
+SFC 'EditorPanel': 6647 bytes, has template: true, has script: true, has style: true
