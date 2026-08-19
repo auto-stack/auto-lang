@@ -22,6 +22,13 @@ macro_rules! for_each_native {
             // codegen 的 print() 路由到此，取代按 ObjectType 分发到 I32/F32/F64/U64。
             (10, NATIVE_PRINT_UNIFIED, shim_print_unified, "auto.print_unified"),
             (2900, NATIVE_WRITE_STR, shim_write_str, "auto.write_str"),
+            // === Plan 413: code editor payload accessors (UI bridge) ===
+            (2910, NATIVE_CODE_EDITOR_TEXT, shim_code_editor_text, "auto.code_editor.text"),
+            (2911, NATIVE_CODE_EDITOR_CURSOR_LINE, shim_code_editor_cursor_line, "auto.code_editor.cursor_line"),
+            (2912, NATIVE_CODE_EDITOR_CURSOR_COL, shim_code_editor_cursor_col, "auto.code_editor.cursor_col"),
+            (2913, NATIVE_CODE_EDITOR_SELECTION_LEN, shim_code_editor_selection_len, "auto.code_editor.selection_len"),
+            (2914, NATIVE_CODE_EDITOR_FIND, shim_code_editor_find, "auto.code_editor.find"),
+            (2915, NATIVE_CODE_EDITOR_SET_TEXT, shim_code_editor_set_text, "auto.code_editor.set_text"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),
             (6, NATIVE_ASSERT_NE, shim_assert_ne, "auto.assert_ne"),
@@ -592,6 +599,14 @@ macro_rules! for_each_bigvm_native {
     ($mac:ident) => {
         $mac! {
             // === List (100-110, 118, 205) ===
+            // === Plan 413: code editor payload accessors (UI bridge) ===
+            ("auto.code_editor.text", 2910, String),
+            ("auto.code_editor.cursor_line", 2911, Int),
+            ("auto.code_editor.cursor_col", 2912, Int),
+            ("auto.code_editor.selection_len", 2913, Int),
+            ("auto.code_editor.find", 2914, Bool),
+            ("auto.code_editor.set_text", 2915, Void),
+
             ("auto.list.new", 100, Void),
             ("auto.list.push", 101, Void),
             ("auto.list.pop", 102, Void),

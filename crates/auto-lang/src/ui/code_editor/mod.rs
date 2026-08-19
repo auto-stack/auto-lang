@@ -18,7 +18,8 @@ pub mod iced;
 
 pub use core::{
     code_editor, code_editor_count, code_editor_cursor, code_editor_dispose, code_editor_find,
-    code_editor_set_text, code_editor_text, code_editor_with, storage_key, with_font_system,
+    code_editor_set_text, code_editor_text, code_editor_with, set_font_system_call, storage_key,
+    with_font_system,
     CodeEditorConfig,
     CodeEditorCore, CoreOutput, EditorButton, EditorClipboard, EditorInput, EditorKey,
     EditorModifiers, NullClipboard,
