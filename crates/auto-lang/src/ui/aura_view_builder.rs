@@ -994,6 +994,7 @@ impl<'a> AuraViewBuilder<'a> {
             return View::Scrollable {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
+                auto_scroll: false,
             };
         }
         col_view
@@ -1039,11 +1040,15 @@ impl<'a> AuraViewBuilder<'a> {
             builder = builder.child(child);
         }
         let col_view = builder.build();
+        // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
+        // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
+        let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
             height: None,
             style: scroll_style,
+            auto_scroll,
         }
     }
 
@@ -2412,6 +2417,7 @@ let tabs_inner = View::Row {
             View::Scrollable {
                 child: Box::new(col_view),
                 width: None, height: None, style: scroll_style,
+                auto_scroll: false,
             }
         } else {
             col_view
@@ -2458,11 +2464,15 @@ let tabs_inner = View::Row {
             builder = builder.child(child);
         }
         let col_view = builder.build();
+        // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
+        // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
+        let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
             height: None,
             style: scroll_style,
+            auto_scroll,
         }
     }
 
@@ -3374,6 +3384,24 @@ let tabs_inner = View::Row {
         builder = builder.ghost(
             self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
         );
+
+        // Plan 057 续(Tab 补全):收集 onkeydown.* 绑定 — 规范化键名(剥
+        // onkeydown. 前缀与 .prevent/.stop 修饰)→ handler。VM 端经 iced
+        // key_binding 以 Binding::Custom 拦截(iced 默认静默丢弃 Tab);
+        // Vue 端由 codegen 的 @keydown.* 原生处理(不经此字段)。
+        let mut keydown = std::collections::HashMap::new();
+        for (ev_key, ev) in events.iter() {
+            if let Some(rest) = ev_key.strip_prefix("onkeydown.") {
+                let norm = rest
+                    .trim_end_matches(".prevent")
+                    .trim_end_matches(".stop")
+                    .to_lowercase();
+                if !norm.is_empty() {
+                    keydown.insert(norm, self.event_to_message(&ev.handler));
+                }
+            }
+        }
+        builder = builder.keydown(keydown);
 
         builder.build()
     }

@@ -286,6 +286,10 @@ pub enum View<M: Clone + Debug> {
         /// Plan 057 续(富文本输入):灰色 ghost 建议后缀。VM 端嵌入编辑器
         /// 内容并在派发编辑事件前剥离;Vue 端并入叠加层。
         ghost: String,
+        /// Plan 057 续(Tab 补全):onkeydown.* 绑定 — 规范化键名("tab"/"up"/
+        /// "ctrl.r"…)→ handler。VM 端经 iced key_binding 以 Binding::Custom
+        /// 拦截派发(iced 默认静默丢弃 Tab);空 = 无绑定走默认。
+        keydown: std::collections::HashMap<String, M>,
     },
 
     /// Checkbox with optional styling
@@ -313,6 +317,10 @@ pub enum View<M: Clone + Debug> {
         width: Option<u16>,
         height: Option<u16>,
         style: Option<Style>,  // ✅ NEW: Unified styling support
+        /// Plan 057 续(滚动 id 冲突修复):.at 的 `auto_scroll: "…"` 标记 —
+        /// 主列表滚动区。VM 端据此(且仅据此)挂 blocklist_scroll id;块内
+        /// max-h 滚动区不再共享同 id(snap_to_end 曾误命中块内滚动区)。
+        auto_scroll: bool,
     },
 
     /// Radio button with optional styling
@@ -942,6 +950,7 @@ impl<M: Clone + Debug> View<M> {
             style: None,
             highlight: Vec::new(),
             ghost: String::new(),
+            keydown: std::collections::HashMap::new(),
         }
     }
 
@@ -1096,6 +1105,7 @@ impl<M: Clone + Debug> View<M> {
             width: None,
             height: None,
             style: None,  // ✅ NEW: style field
+            auto_scroll: false,
         }
     }
 
@@ -1269,7 +1279,7 @@ impl<M: Clone + Debug> View<M> {
                 password,
                 style,
             },
-            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost } => View::Textarea {
+            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown } => View::Textarea {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
@@ -1278,6 +1288,7 @@ impl<M: Clone + Debug> View<M> {
                 style,
                 highlight,
                 ghost,
+                keydown: keydown.into_iter().map(|(k, m)| (k, f(m))).collect(),
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
                 is_checked,
@@ -1294,11 +1305,12 @@ impl<M: Clone + Debug> View<M> {
                 center_y,
                 style,
             },
-            View::Scrollable { child, width, height, style } => View::Scrollable {
+            View::Scrollable { child, width, height, style, auto_scroll } => View::Scrollable {
                 child: Box::new(child.map_msg_with_arc(f)),
                 width,
                 height,
                 style,
+                auto_scroll,
             },
             View::Radio { label, is_selected, on_select, style } => View::Radio {
                 label,
@@ -1398,6 +1410,7 @@ pub struct ViewScrollableBuilder<M: Clone + Debug> {
     width: Option<u16>,
     height: Option<u16>,
     style: Option<Style>,  // ✅ NEW: Unified styling support
+    auto_scroll: bool,
 }
 
 impl<M: Clone + Debug> ViewScrollableBuilder<M> {
@@ -1425,6 +1438,12 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
         self
     }
 
+    /// Plan 057 续:标记为主列表滚动区(VM 端据此挂 blocklist_scroll id)。
+    pub fn auto_scroll(mut self) -> Self {
+        self.auto_scroll = true;
+        self
+    }
+
     /// Build the scrollable view
     pub fn build(self) -> View<M> {
         View::Scrollable {
@@ -1432,6 +1451,7 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
             width: self.width,
             height: self.height,
             style: self.style,
+            auto_scroll: self.auto_scroll,
         }
     }
 }
@@ -1597,6 +1617,8 @@ pub struct ViewTextareaBuilder<M: Clone + Debug> {
     highlight: Vec<(String, String)>,
     /// Plan 057 续(富文本输入):ghost 建议后缀。
     ghost: String,
+    /// Plan 057 续(Tab 补全):onkeydown 绑定。
+    keydown: std::collections::HashMap<String, M>,
 }
 
 impl<M: Clone + Debug> ViewTextareaBuilder<M> {
@@ -1630,6 +1652,12 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
     /// Plan 057 续(富文本输入):设置 ghost 建议后缀(灰色,Tab 可接受)。
     pub fn ghost(mut self, ghost: impl Into<String>) -> Self {
         self.ghost = ghost.into();
+        self
+    }
+
+    /// Plan 057 续(Tab 补全):设置 onkeydown 绑定(规范化键名 → handler)。
+    pub fn keydown(mut self, bindings: std::collections::HashMap<String, M>) -> Self {
+        self.keydown = bindings;
         self
     }
 
@@ -1703,6 +1731,7 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
             style: self.style,
             highlight: self.highlight,
             ghost: self.ghost,
+            keydown: self.keydown,
         }
     }
 }

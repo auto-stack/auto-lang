@@ -75,6 +75,65 @@ fn text_editor_text_transparent(
     }
 }
 
+/// Plan 057 续(Tab 补全):把 iced KeyPress 规范化为 .at onkeydown 的键名
+/// ("tab"/"up"/"down"/"ctrl.r"/"ctrl.right"…)。修饰键前缀 ctrl./alt./shift.。
+fn key_press_to_binding_name(kp: &text_editor::KeyPress) -> String {
+    use iced::keyboard::{Key, key};
+    let base = match &kp.key {
+        Key::Named(n) => match n {
+            key::Named::Tab => "tab".to_string(),
+            key::Named::ArrowUp => "up".to_string(),
+            key::Named::ArrowDown => "down".to_string(),
+            key::Named::ArrowLeft => "left".to_string(),
+            key::Named::ArrowRight => "right".to_string(),
+            key::Named::Enter => "enter".to_string(),
+            key::Named::Escape => "escape".to_string(),
+            key::Named::Home => "home".to_string(),
+            key::Named::End => "end".to_string(),
+            key::Named::Delete => "delete".to_string(),
+            key::Named::Backspace => "backspace".to_string(),
+            key::Named::PageUp => "pageup".to_string(),
+            key::Named::PageDown => "pagedown".to_string(),
+            key::Named::Space => " ".to_string(),
+            _ => String::new(),
+        },
+        Key::Character(c) => c.to_string(),
+        _ => String::new(),
+    };
+    if base.is_empty() {
+        return String::new();
+    }
+    let mut name = String::new();
+    if kp.modifiers.control() { name.push_str("ctrl."); }
+    if kp.modifiers.alt() { name.push_str("alt."); }
+    if kp.modifiers.shift() && matches!(kp.key, Key::Named(_)) { name.push_str("shift."); }
+    name + &base
+}
+
+/// Plan 057 续(Tab 补全):给编辑器挂 key_binding — 声明过的 onkeydown 键
+/// 以 Binding::Custom 派发 handler(不落入编辑器默认行为,Tab 不再被静默
+/// 丢弃、up/down 走历史导航);未声明的键回落 iced 默认(输入/Enter/退格…)。
+fn with_textarea_keydown<H>(
+    editor: iced::widget::TextEditor<'static, H, IcedMessage>,
+    keydown: std::collections::HashMap<String, IcedMessage>,
+) -> iced::widget::TextEditor<'static, H, IcedMessage>
+where
+    H: iced_widget::core::text::Highlighter,
+{
+    if keydown.is_empty() {
+        return editor;
+    }
+    editor.key_binding(move |kp| {
+        let name = key_press_to_binding_name(&kp);
+        if !name.is_empty() {
+            if let Some(msg) = keydown.get(&name) {
+                return Some(text_editor::Binding::Custom(msg.clone()));
+            }
+        }
+        text_editor::Binding::from_key_press(kp)
+    })
+}
+
 /// Plan 057 续(富文本输入):textarea 的 on_action 事件接线 — Enter 走
 /// on_submit(onenter),其余走 on_change(oninput);input_value 经 ghost 剥离。
 /// 泛型于 Highlighter,使 PlainText(存量)与 SpanHighlighter(富文本)共用。
@@ -1179,23 +1238,14 @@ fn build_column<M: Clone + Debug + 'static>(
             _ => {}
         }
     }
-    let el = apply_column_style(col_widget, padding, style, widget_id);
-    // Plan 053 后续(ash-gui VM):`max-h-[Npx] overflow-y-auto` 的 col(CSS 语义:
-    // 超出 N 内部滚动)→ iced 包一层限高 Scrollable(Fixed N)。iced 无 max-height,
-    // 短内容也占 N 高是可接受代价;Vue 端不受影响(col 走 CSS max-height)。
-    if let Some(ref st) = style {
-        let is = IcedStyle::from_style(st);
-        if let Some(max_h) = is.max_height {
-            if max_h > 0.0 {
-                return scrollable(el)
-                    .height(iced::Length::Fixed(max_h))
-                    .width(iced::Length::Fill)
-                    .style(|_t: &iced::Theme, _s: scrollable::Status| scrollbar_style())
-                    .into();
-            }
-        }
-    }
-    el
+    // Plan 057 续(块高度修复):删除 build_column 尾部的 max-h → Fixed(N) 限高
+    // Scrollable 包裹。它曾让短内容也占满 N 高(用户反馈的"空 block 半页空白"),
+    // 且与 view builder 的 needs_scroll(overflow-y-auto → View::Scrollable →
+    // build_scrollable 的 Shrink + Container::max_height 封顶)形成双重包裹:
+    // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
+    // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
+    // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
+    apply_column_style(col_widget, padding, style, widget_id)
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -1224,6 +1274,7 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     style: Option<&Style>,
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
+    let mut cap: Option<f32> = None;
     let mut s = scrollable(child);
     if let Some(ref st) = style {
         let is = IcedStyle::from_style(st);
@@ -1242,11 +1293,14 @@ fn build_scrollable<M: Clone + Debug + 'static>(
             Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
             None => {
                 // Plan 053 后续(ash-gui VM):`max-h-[Npx] overflow-y-auto` 的 col 被
-                // view builder 转成 Scrollable,但 iced 无 max-height —— 不限高时
-                // 长输出(show 大文件)把整个 block 撑开。用 Fixed(N) 兜底:短内容
-                // 也占 N 高是可接受代价(CSS 端 vue 仍走 max-height 无影响)。
+                // view builder 转成 Scrollable,但 iced 无 max-height。
+                // Plan 057 续(块高度修复):旧兜底 Fixed(N) 让短内容也占满 N
+                // (空 block 半页空白)。改为记录封顶值,末尾以 Shrink 滚动区 +
+                // Container::max_height 封顶 —— Shrink 在被 max 封顶的 limits 内
+                // 解析为 min(内容高, N),短内容收缩、长内容滚动(CSS max-height
+                // 语义;vue 端不受影响)。
                 if let Some(max_h) = is.max_height {
-                    if max_h > 0.0 { s = s.height(iced::Length::Fixed(max_h)); }
+                    if max_h > 0.0 { cap = Some(max_h); }
                 } else if let Some(h) = height {
                     if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); }
                 }
@@ -1260,6 +1314,13 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     s = s.style(|_theme: &iced::Theme, _status: scrollable::Status| scrollbar_style());
     if let Some(id) = widget_id {
         s = s.id(id);
+    }
+    if let Some(max_h) = cap {
+        let shrink = s.height(iced::Length::Shrink);
+        return iced::widget::container(shrink)
+            .max_height(max_h)
+            .width(iced::Length::Fill)
+            .into();
     }
     s.into()
 }
@@ -2055,10 +2116,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::Scrollable { child, width, height, style } => {
-                // Plan 049:给所有 auto-generated Scrollable 固定 Id(用于 snap_to_end)。
-                build_scrollable(child.into_iced(), width, height, style.as_ref(),
-                    Some("blocklist_scroll".to_string()))
+            AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
+                // Plan 049 → 057 续:仅 `auto_scroll` 标记的主列表挂固定 Id
+                // (snap_to_end 目标)。此前所有 Scrollable 共享该 Id,块内 max-h
+                // 滚动区会抢先命中 snap/scroll 操作 → 自动滚动失灵。
+                let scroll_id = if auto_scroll {
+                    Some("blocklist_scroll".to_string())
+                } else {
+                    None
+                };
+                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id)
             }
 
             AbstractView::Grid { cols, gap, cells, style } => {
@@ -3017,6 +3084,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             highlight,
             ghost,
+            keydown,
         } => AbstractView::Textarea {
             placeholder,
             value,
@@ -3026,6 +3094,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             highlight,
             ghost,
+            keydown: keydown.into_iter().map(|(k, m)| (k, IcedMessage::from_dynamic(&m))).collect(),
         },
 
         AbstractView::Checkbox {
@@ -3063,11 +3132,13 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             width,
             height,
             style,
+            auto_scroll,
         } => AbstractView::Scrollable {
             child: Box::new(convert_view_messages(*child)),
             width,
             height,
             style,
+            auto_scroll,
         },
 
         AbstractView::Radio {
@@ -6120,16 +6191,18 @@ fn compare_pngs(
             )
         });
 
-        // Plan 047:PromptBar.Run 后恢复 input 焦点(view 重建会丢焦点)。
-        // Plan 057 (ash-gui 输入焦点):优先聚焦最后被编辑的 textarea(按其
-        // 稳定 Id);无记录时回退旧的 prompt_input_id(单行 input 路径)。
-        // ⚠️ 必须排在 needs_bounds 检查之前 —— MCP 常开时 capture_debug 恒真,
-        // 每次视图重建都置 needs_bounds,bounds 收集链自馈(每次收集 → 心跳 →
-        // 又置位),放在其后 refocus 会被无限饿死(输入丢焦点的真凶)。
-        // bounds 收集推迟一帧无害(心跳 200ms 会再触发)。
+        // ── Plan 057 续(尾部任务批处理)────────────────────────────────
+        // 原实现是一串互斥的提前 return(refocus/初始聚焦/resize/bounds/滚底),
+        // 同一 update 里多个任务并存时后者被前者吞掉 —— 典型回归:Enter 执行
+        // 的那帧同时置 refocus 与 scroll_to_bottom,refocus 先返回,自动滚底
+        // 永不执行(输入多条命令后列表不再钉在最新块)。改为收集后 batch。
+        // 原「refocus 必须先于 needs_bounds(否则被 bounds 收集链饿死)」的
+        // 约束在 batch 模式下天然满足(两者同帧都执行)。
+        let mut tail_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
+
+        // Plan 047/057: 恢复输入焦点(最后被编辑的 textarea,按稳定 Id)。
         if state.needs_prompt_refocus.get() {
             state.needs_prompt_refocus.set(false);
-            // iced 0.14: widget::operation::focus(id) 直接返回 Task<T>。
             let id = state
                 .last_textarea_key
                 .borrow()
@@ -6139,14 +6212,10 @@ fn compare_pngs(
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] tail refocus, id={:?}", id);
             }
-            return iced::widget::operation::focus(id);
+            tail_tasks.push(iced::widget::operation::focus(id));
         }
 
-        // Plan 057 (ash-gui 默认聚焦):窗口打开后首个 update(启动必然伴随
-        // Window::Resized 等事件)聚焦命令输入框,光标立即可见。textarea 的
-        // key 在首次 view() 渲染时注册进 TEXTAREA_CONTENTS,启动事件在首次
-        // view 之后到达,故此时必有(单行 input 应用则回退 prompt_input)。
-        // 同样必须排在 needs_bounds 之前(见上)。
+        // Plan 057: 启动默认聚焦(首个 update,textarea 已注册时)。
         if !state.initial_focus_done.get() && !TEXTAREA_CONTENTS.lock().unwrap().is_empty() {
             state.initial_focus_done.set(true);
             let id = TEXTAREA_CONTENTS
@@ -6159,50 +6228,47 @@ fn compare_pngs(
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] initial focus, id={:?}", id);
             }
-            return iced::widget::operation::focus(id);
+            tail_tasks.push(iced::widget::operation::focus(id));
         }
 
-        // Plan 402: emit window resize Task if pending (difficulty change).
-        // MUST be before needs_bounds check — needs_bounds returns early on
-        // every MCP-connected frame, so placing resize after it means resize
-        // never fires.
+        // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {
             *state.window_size.borrow_mut() = size;
-            return iced::window::oldest()
-                .then(move |maybe_id| {
-                    if let Some(id) = maybe_id {
-                        iced::window::resize::<IcedMessage>(id, size)
-                    } else {
-                        iced::Task::none()
-                    }
-                });
+            tail_tasks.push(iced::window::oldest().then(move |maybe_id| {
+                if let Some(id) = maybe_id {
+                    iced::window::resize::<IcedMessage>(id, size)
+                } else {
+                    iced::Task::none()
+                }
+            }));
         }
 
-        // Layout bounds collection: deferred to end of update so user events
-        // (button clicks, input changes) are processed first (Plan 282).
-        // Previously this ran at the top of update(), which caused every user
-        // event to be dropped because needs_bounds was true after every view().
+        // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
         if *state.needs_bounds.borrow() && state.screenshot_request.borrow().is_none() {
             *state.needs_bounds.borrow_mut() = false;
             use crate::ui::iced::LayoutCollector;
-            return iced::advanced::widget::operate(LayoutCollector::new())
-                .map(|bounds_map| IcedMessage {
-                    widget: String::new(),
-                    event: "__bounds_collected".to_string(),
-                    input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
-                });
+            tail_tasks.push(
+                iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
+                    IcedMessage {
+                        widget: String::new(),
+                        event: "__bounds_collected".to_string(),
+                        input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                    }
+                }),
+            );
         }
 
-        // (Plan 047/057 refocus 已上移到 needs_bounds 之前,见该处注释。)
-        // (Plan 057 默认聚焦同样在 needs_bounds 之前,见该处。)
-
-        // Plan 049:blocks 增加后自动滚到底部(最新 block 可见)。
+        // Plan 049: blocks 增加后自动滚到底部(最新 block 可见)。
         if state.needs_scroll_to_bottom.get() {
             state.needs_scroll_to_bottom.set(false);
-            // iced 0.14: snap_to_end 在 widget::operation(同 focus)。
-            return iced::widget::operation::snap_to_end(state.blocklist_scroll_id.clone());
+            tail_tasks.push(iced::widget::operation::snap_to_end(
+                state.blocklist_scroll_id.clone(),
+            ));
         }
 
+        if !tail_tasks.is_empty() {
+            return iced::Task::batch(tail_tasks);
+        }
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
@@ -8994,7 +9060,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost } => {
+        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown } => {
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
                 .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
@@ -9036,6 +9102,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
                 let settings = build_span_lines(&highlight, &value, &ghost);
                 let rich_editor = rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
+                let rich_editor = with_textarea_keydown(rich_editor, keydown);
                 wire_textarea_actions(rich_editor, on_change, on_submit)
             } else {
                 let mut editor = text_editor(content).placeholder(ph);
@@ -9093,6 +9160,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
 
+                let editor = with_textarea_keydown(editor, keydown);
                 wire_textarea_actions(editor, on_change, on_submit)
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
@@ -9217,7 +9285,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Scrollable { child, width, height, style } => {
+        AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
@@ -9226,6 +9294,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.pop();
             // iced widget ID for layout bounds collection (Plan 282)
             let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            // Plan 057 续(自动滚动):auto_scroll 标记的主列表必须用固定 Id
+            // (snap_to_end 目标)。debug 路径原本只挂 aura_N,导致
+            // snap_to_end("blocklist_scroll") 找不到 widget 静默失效。
+            // 代价:该 scroll 节点不再带 aura id(bounds 收集少一个节点)。
+            let widget_id = if auto_scroll {
+                Some("blocklist_scroll".to_string())
+            } else {
+                widget_id
+            };
             let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
