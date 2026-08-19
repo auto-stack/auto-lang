@@ -61,6 +61,12 @@ use std::sync::Mutex;
 lazy_static::lazy_static! {
     static ref TEXTAREA_CONTENTS: Mutex<std::collections::HashMap<String, &'static mut text_editor::Content>> =
         Mutex::new(std::collections::HashMap::new());
+    /// Plan 057 续(keydown 失焦修复):onkeydown.* 派发的 handler 消息键
+    /// ("{widget}_{event}",如 PromptBar_AcceptGhost)→ 所属编辑器的 action key
+    /// (如 PromptBar_OnInputComplete)。这些 handler 会改 input/ghost/suggestions,
+    /// 重建时候选行显隐造成树位移丢焦点 —— update 据此映射触发重聚焦。
+    static ref TEXTAREA_KEYDOWN_TO_EDITOR: Mutex<std::collections::HashMap<String, String>> =
+        Mutex::new(std::collections::HashMap::new());
 }
 
 /// Plan 057 (ash-gui 光标可见): PlainText highlighter 的 to_format —— 把编辑器
@@ -116,12 +122,21 @@ fn key_press_to_binding_name(kp: &text_editor::KeyPress) -> String {
 fn with_textarea_keydown<H>(
     editor: iced::widget::TextEditor<'static, H, IcedMessage>,
     keydown: std::collections::HashMap<String, IcedMessage>,
+    ta_key: &str,
 ) -> iced::widget::TextEditor<'static, H, IcedMessage>
 where
     H: iced_widget::core::text::Highlighter,
 {
     if keydown.is_empty() {
         return editor;
+    }
+    // Plan 057 续(keydown 失焦修复):登记 事件键 → 编辑器 action key,
+    // update 里据此为 keydown 派发的 handler 触发重聚焦。
+    {
+        let mut reg = TEXTAREA_KEYDOWN_TO_EDITOR.lock().unwrap();
+        for msg in keydown.values() {
+            reg.insert(format!("{}_{}", msg.widget, msg.event), ta_key.to_string());
+        }
     }
     editor.key_binding(move |kp| {
         let name = key_press_to_binding_name(&kp);
@@ -459,6 +474,12 @@ fn textarea_perform_action(key: &str, action: text_editor::Action) -> String {
 lazy_static::lazy_static! {
     static ref TEXTAREA_GHOSTS: Mutex<std::collections::HashMap<String, String>> =
         Mutex::new(std::collections::HashMap::new());
+    /// Plan 057 续(Ctrl+F 光标修复):每个 key 上次渲染的 (value, ghost)。
+    /// 拼接文本相同但 (value,ghost) 边界移动时(如 Ctrl+F 接受全部 ghost:
+    /// "ec"+"ho…" → "echo…"+""),content 文本不变但光标必须重定位到新
+    /// input 末尾 —— 树位移重置的编辑器状态也会被全量重建纠正。
+    static ref TEXTAREA_LAST_INPUT: Mutex<std::collections::HashMap<String, (String, String)>> =
+        Mutex::new(std::collections::HashMap::new());
 }
 
 /// 富文本版内容缓存:content = value + ghost(ghost 经 Highlighter 染灰)。
@@ -477,8 +498,18 @@ fn get_textarea_content_rich(key: &str, value: &str, ghost: &str) -> &'static te
     {
         let mut map = TEXTAREA_CONTENTS.lock().unwrap();
         let want = format!("{}{}", value, ghost);
+        // Plan 057 续(Ctrl+F 光标修复):重建条件从「拼接文本变化」放宽为
+        // 「(value, ghost) 变化」。Ctrl+F 接受全部 ghost 后拼接文本不变,
+        // 但 input/ghost 边界移动了 —— 不重建的话光标停在旧 input 末尾
+        // (或树位移重置后的行首),而期望在完整 input 末尾。
+        let boundary_moved = {
+            let mut last = TEXTAREA_LAST_INPUT.lock().unwrap();
+            let moved = last.get(key).map(|(v, g)| v != value || g != ghost).unwrap_or(true);
+            last.insert(key.to_string(), (value.to_string(), ghost.to_string()));
+            moved
+        };
         if let Some(content) = map.get_mut(key) {
-            if content.text() != want {
+            if content.text() != want || boundary_moved {
                 **content = text_editor::Content::with_text(&want);
                 content.perform(text_editor::Action::Move(
                     text_editor::Motion::DocumentEnd,
@@ -5707,6 +5738,19 @@ fn compare_pngs(
                 state.needs_prompt_refocus.set(true);
                 *state.last_textarea_key.borrow_mut() = Some(ta_key);
             }
+        } else {
+            // Plan 057 续(keydown 失焦修复):onkeydown 派发的 handler(AcceptGhost/
+            // OnRight/OnTab/历史导航…)同样会改 input/ghost/suggestions,候选行
+            // 显隐造成树位移丢焦点。这些消息无 input_value,按登记映射找到所属
+            // 编辑器,同样触发重建后重聚焦(光标停在 input 末尾,由内容重建负责)。
+            let ta_key = format!("{}_{}", msg.widget, msg.event);
+            if let Some(editor_key) = TEXTAREA_KEYDOWN_TO_EDITOR.lock().unwrap().get(&ta_key).cloned() {
+                if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
+                    eprintln!("[FOCUS-DBG] keydown handler {}, refocus editor {}", ta_key, editor_key);
+                }
+                state.needs_prompt_refocus.set(true);
+                *state.last_textarea_key.borrow_mut() = Some(editor_key);
+            }
         }
 
         // Plan 320: route event to the correct widget's handler (single VM).
@@ -9110,7 +9154,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
                 let settings = build_span_lines(&highlight, &value, &ghost);
                 let rich_editor = rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
-                let rich_editor = with_textarea_keydown(rich_editor, keydown);
+                let rich_editor = with_textarea_keydown(rich_editor, keydown, &key);
                 wire_textarea_actions(rich_editor, on_change, on_submit)
             } else {
                 let mut editor = text_editor(content).placeholder(ph);
@@ -9168,7 +9212,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
 
-                let editor = with_textarea_keydown(editor, keydown);
+                let editor = with_textarea_keydown(editor, keydown, &key);
                 wire_textarea_actions(editor, on_change, on_submit)
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
