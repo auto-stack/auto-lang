@@ -1497,6 +1497,13 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 /// `substr(i, i+1)`, which lands mid-char for multi-byte UTF-8 input and used
 /// to panic the whole app. Clamp indices to the nearest char boundaries and
 /// return the (possibly empty) slice instead — ASCII behavior is unchanged.
+///
+/// The clamp must be unconditional: stopping as soon as `lo == hi` still
+/// panics, because Rust checks char boundaries even for empty slices —
+/// `substr(1, 2)` on "送…" clamps lo 1→2 and exits with lo==hi==2 mid-char.
+/// So: push lo forward to the next boundary (up to len), pull hi back to the
+/// previous one (down to 0); if they cross, the range sits inside one
+/// multi-byte char and the slice is empty.
 #[auto_macros::rust_fn("Str.substr")]
 pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
     if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
@@ -1504,23 +1511,23 @@ pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
     }
     let mut lo = start as usize;
     let mut hi = end as usize;
-    while lo < hi && !s.is_char_boundary(lo) {
+    // Debug preview must itself be boundary-safe: truncating at a raw byte
+    // count would panic the same way the slice below used to.
+    let preview: String = s.chars().take(16).collect();
+    while lo < s.len() && !s.is_char_boundary(lo) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
-            eprintln!(
-                "[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}",
-                lo, &s[..s.len().min(48)]
-            );
+            eprintln!("[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}", lo, preview);
         }
         lo += 1;
     }
-    while hi > lo && !s.is_char_boundary(hi) {
+    while hi > 0 && !s.is_char_boundary(hi) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
-            eprintln!(
-                "[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}",
-                hi, &s[..s.len().min(48)]
-            );
+            eprintln!("[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}", hi, preview);
         }
         hi -= 1;
+    }
+    if hi < lo {
+        return String::new();
     }
     s[lo..hi].to_string()
 }
@@ -7972,6 +7979,29 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_substr_clamps_to_char_boundaries() {
+        // ASCII behavior is unchanged.
+        assert_eq!(shim_str_substr("hello".to_string(), 1, 3), "el");
+        assert_eq!(shim_str_substr("hello".to_string(), 2, 2), "");
+        // Byte-walk inside a multi-byte char clamps instead of panicking.
+        // "送" occupies bytes 0..3; substr(1, 2) used to panic because the
+        // lo-clamp stopped at lo==hi==2, still mid-char (empty slices also
+        // require a boundary). The whole range sits inside one char → empty.
+        assert_eq!(shim_str_substr("送你".to_string(), 1, 2), "");
+        assert_eq!(shim_str_substr("送你".to_string(), 2, 2), "");
+        // Range spanning a char boundary clamps inward: lo→3, hi→3 → empty.
+        assert_eq!(shim_str_substr("送你".to_string(), 1, 4), "");
+        assert_eq!(shim_str_substr("a送b".to_string(), 1, 2), "");
+        // A range that fully contains a char keeps it.
+        assert_eq!(shim_str_substr("送你".to_string(), 0, 6), "送你");
+        assert_eq!(shim_str_substr("送你".to_string(), 3, 6), "你");
+        // Out-of-range / inverted indices stay empty.
+        assert_eq!(shim_str_substr("送".to_string(), 3, 3), "");
+        assert_eq!(shim_str_substr("送".to_string(), 0, 9), "");
+        assert_eq!(shim_str_substr("送".to_string(), 2, 1), "");
+    }
 
     #[test]
     fn test_native_ids_are_in_range() {

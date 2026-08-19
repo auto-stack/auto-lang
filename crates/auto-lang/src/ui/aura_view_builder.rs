@@ -3147,12 +3147,41 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "contextmenu"))
             .map(|event| self.event_to_message_with(event, bindings));
 
+        // Plan 057 (ash-gui): buttons with STRUCTURAL children (conditional
+        // text, nested elements — e.g. ToolSidebar's `button .c.name { if …
+        // { text .c.description … } }`) used to lose every child except the
+        // label: extract_children_text skips Conditional nodes and View::Button
+        // carried no subtree, so vue-style two-line buttons rendered name-only.
+        // When any child is more than a plain text node, convert the children
+        // into the Plan 409 §6 `content` subtree instead — the renderer draws
+        // it as the button body (inheriting the button's text color); the
+        // label stays for snapshot/inspect tooling.
+        let content = if children.iter().any(|c| !matches!(c, AuraNode::Text(_))) {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|c| self.convert_node_with(c, bindings))
+                .filter(|v| !is_visually_empty(v))
+                .collect();
+            match views.len() {
+                0 => None,
+                1 => Some(Box::new(views.into_iter().next().unwrap())),
+                _ => Some(Box::new(View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                })),
+            }
+        } else {
+            None
+        };
+
         View::Button {
             label,
             onclick,
             style,
             on_right_click,
-            content: None,
+            content,
         }
     }
 
