@@ -1186,6 +1186,13 @@ impl<'a> Parser<'a> {
 
         // Plan 012 P2: optional `finally { cleanup }`. `finally` is not a
         // lexer keyword — it lexes as Ident, matched by text (contextual).
+        // Plan 029 T15: newline 前瞻必须可回退——原实现无条件吞掉换行/分号，
+        // 调用方 expect_eos 随之看不到分隔符，try/catch 之后的任何语句都会
+        // 报 "Expected end of statement"（fn 体/on 体皆然）。lexer 是流式
+        // 的，回退用 Plan 395 的 save_state/restore_state + cur/prev。
+        let saved_lexer = self.lexer.save_state();
+        let saved_cur = self.cur.clone();
+        let saved_prev = self.prev.clone();
         while self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
             self.next();
         }
@@ -1196,6 +1203,10 @@ impl<'a> Parser<'a> {
             let fb = self.body()?;
             finally_new_line = fb.has_new_line;
             finally_body = Some(fb);
+        } else {
+            self.lexer.restore_state(saved_lexer);
+            self.cur = saved_cur;
+            self.prev = saved_prev;
         }
 
         Ok(Stmt::Try(crate::ast::Try {
@@ -14504,6 +14515,55 @@ mod tests {
         }
         assert!(props.iter().any(|p| p.name == "size"));
         assert!(props.iter().any(|p| p.name == "class"));
+    }
+
+    #[test]
+    fn test_stmt_after_try_catch_parses() {
+        // Plan 029 T15 回归锁:try/catch 的 finally 前瞻曾无条件吞掉换行,
+        // 导致其后任何语句(expect_eos 看不到分隔符)报
+        // "Expected end of statement"。fn 体与 on 体都要能继续解析。
+        let code = concat!(
+            "fn c() str {\n",
+            "    let mode = \"g\"\n",
+            "    try {\n",
+            "        let r = 1\n",
+            "        mode = \"x\"\n",
+            "    } catch {\n",
+            "        let _i = 0\n",
+            "    }\n",
+            "    return mode\n",
+            "}\n"
+        );
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().expect("stmt after try/catch must parse");
+        match &ast.stmts[0] {
+            Stmt::Fn(f) => assert_eq!(f.body.stmts.len(), 3, "let+try+return"),
+            other => panic!("expected fn decl, got {:?}", other),
+        }
+
+        let code2 = concat!(
+            "widget W {\n",
+            "  msg Msg { S }\n",
+            "  model { var e str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .S -> {\n",
+            "      try { .e = \"\" } catch { .e = \"f\" }\n",
+            "      .e = \"after\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut p2 =
+            Parser::from(code2).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2.parse().expect("stmt after try/catch in on-body must parse");
+        let w = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+        let on = w.on.as_ref().expect("on block");
+        assert_eq!(on.handlers[0].body.stmts.len(), 2, "try + assignment after");
     }
 
     #[test]
