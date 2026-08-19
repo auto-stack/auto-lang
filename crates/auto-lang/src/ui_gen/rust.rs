@@ -107,6 +107,7 @@ pub struct RustGenerator {
     /// Maps input event variant name to field names for input text parsing
     /// Multiple inputs can share the same event (e.g., main input + edit input both fire EditInputChanged)
     input_fields: std::collections::HashMap<String, Vec<String>>,
+    code_editor_sources: std::collections::HashMap<String, Vec<String>>,
 
     /// State var types for lookup during handler generation
     state_types: std::collections::HashMap<String, String>,
@@ -177,6 +178,7 @@ impl RustGenerator {
             component_semantics: std::collections::HashMap::new(),
             loop_vars: Vec::new(),
             input_fields: std::collections::HashMap::new(),
+            code_editor_sources: std::collections::HashMap::new(),
             state_types: std::collections::HashMap::new(),
             prop_names: std::collections::HashSet::new(),
             prop_types: std::collections::HashMap::new(),
@@ -223,6 +225,7 @@ impl RustGenerator {
     fn reset(&mut self) {
         self.message_variants.clear();
         self.input_fields.clear();
+        self.code_editor_sources.clear();
         self.state_types.clear();
         self.prop_names.clear();
         self.prop_types.clear();
@@ -1163,8 +1166,20 @@ impl RustGenerator {
 
                 // If this event is from an input, prepend input text parsing
                 if let Some(field_names) = self.input_fields.get(&variant_name) {
+                    // Plan 413: code_editor events read the text via the keyed
+                    // accessor instead of the single-slot thread-local.
+                    let text_source = if let Some(keys) = self.code_editor_sources.get(&variant_name) {
+                        format!(
+                            "auto_lang::ui::code_editor::code_editor_text(\"{}\").unwrap_or_default()",
+                            keys.first().map(|s| s.as_str()).unwrap_or("editor")
+                        )
+                    } else {
+                        "auto_lang::ui::iced::last_input_text()".to_string()
+                    };
                     code.push_str(&format!(
-                        "                let _text = auto_lang::ui::iced::last_input_text();\n"
+                        "                let _text = {};
+",
+                        text_source
                     ));
                     // Set ALL bound fields to the input text (multiple inputs may share one event)
                     let last_idx = field_names.len() - 1;
@@ -1714,6 +1729,33 @@ impl RustGenerator {
     fn scan_input_fields(&mut self, node: &AuraNode) {
         match node {
             AuraNode::Element { tag, props, events, children, .. } => {
+                // Plan 413: code_editor registers field + storage key.
+                if tag == "code_editor" {
+                    let key = props.get("key")
+                        .or_else(|| props.get("id"))
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .unwrap_or_else(|| "editor".to_string());
+                    let value_field: Option<String> = match props.get("content").or_else(|| props.get("value")) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
+                            let is_direct_self = match obj.as_ref() {
+                                crate::ast::Expr::Ident(name) => name.as_str() == "self" || name.as_str() == ".",
+                                _ => false,
+                            };
+                            if is_direct_self { Some(field.to_string()) } else { None }
+                        }
+                        _ => None,
+                    };
+                    if let Some(name) = value_field {
+                        for (event, handler) in events {
+                            if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                self.input_fields.entry(variant.clone()).or_default().push(name.to_string());
+                                self.code_editor_sources.entry(variant).or_default().push(key.clone());
+                            }
+                        }
+                    }
+                }
                 if tag == "input" || tag == "textarea" {
                     // Resolve the `value` binding to a field name. Source uses
                     // `.field` which parses to Expr::Dot(self, "field"); older
@@ -2185,6 +2227,90 @@ impl RustGenerator {
                     return format!("{}.build()", builder);
                 }
 
+                // Special handling for code_editor elements (Plan 413) -
+                // View::code_editor(key).value(...).lang(...).on_change(...)
+                if tag == "code_editor" {
+                    let key = props.get("key")
+                        .or_else(|| props.get("id"))
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .unwrap_or_else(|| "editor".to_string());
+                    let mut builder = format!("View::code_editor(\"{}\")", key);
+
+                    // Value binding: content: .field | value: .field (or literal).
+                    let value_prop = props.get("content").or_else(|| props.get("value"));
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = value_prop {
+                        builder = format!("{}.value(self.{}.clone())", builder, name);
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = value_prop {
+                        builder = format!("{}.value(\"{}\".to_string())", builder, s);
+                    }
+
+                    // Config props.
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(lang))) = props.get("lang") {
+                        builder = format!("{}.lang(\"{}\")", builder, lang);
+                    }
+                    let bool_prop = |props: &std::collections::HashMap<String, AuraPropValue>, name: &str| -> Option<bool> {
+                        match props.get(name) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => Some(*b),
+                            _ => None,
+                        }
+                    };
+                    if let Some(b) = bool_prop(props, "line_numbers") {
+                        builder = format!("{}.line_numbers({})", builder, b);
+                    }
+                    if let Some(b) = bool_prop(props, "wrap") {
+                        builder = format!("{}.wrap({})", builder, b);
+                    }
+                    if let Some(b) = bool_prop(props, "vi") {
+                        builder = format!("{}.vi({})", builder, b);
+                    }
+                    if let Some(b) = bool_prop(props, "highlight_current_line") {
+                        builder = format!("{}.highlight_current_line({})", builder, b);
+                    }
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) = props.get("tab_width") {
+                        builder = format!("{}.tab_width({})", builder, n);
+                    }
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) = props.get("font_size") {
+                        builder = format!("{}.font_size({})", builder, f);
+                    }
+
+                    // Events: oninput/onchange -> on_change, oncursor -> on_cursor,
+                    // oncontextmenu -> on_context_menu.
+                    for (event, handler) in events {
+                        match event.as_str() {
+                            "oninput" | "onInput" | "onchange" | "onChange" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                let msg_name = self.current_msg_name();
+                                let has_string_payload = self.message_variants.iter()
+                                    .find(|v| v.name == variant)
+                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
+                                    .unwrap_or(false);
+                                if has_string_payload {
+                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
+                                } else {
+                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                }
+                                // Handler reads the text via code_editor_text(key).
+                                self.code_editor_sources.entry(variant.clone()).or_default().push(key.clone());
+                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = value_prop {
+                                    self.input_fields.entry(variant).or_default().push(name.to_string());
+                                }
+                            }
+                            "oncursor" | "onCursor" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                let msg_name = self.current_msg_name();
+                                builder = format!("{}.on_cursor({}::{})", builder, msg_name, variant);
+                            }
+                            "oncontextmenu" | "onContextMenu" => {
+                                let variant = self.extract_variant_name(&handler.handler);
+                                let msg_name = self.current_msg_name();
+                                builder = format!("{}.on_context_menu({}::{})", builder, msg_name, variant);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    return format!("{}.build()", builder);
+                }
                 // For leaf tags (text, button) with a "text" prop, use it as the initial value.
                 // For buttons: View::button("-") instead of View::button(())
                 // For text with state ref: View::text(format!("{}", self.name))
@@ -3245,7 +3371,7 @@ impl RustGenerator {
         // Known tags that should not be treated as custom widgets
         const KNOWN_TAGS: &[&str] = &[
             "col", "column", "row", "grid", "scroll", "container", "center",
-            "button", "input", "textarea", "checkbox", "toggle", "select", "option", "link",
+            "button", "input", "textarea", "code_editor", "checkbox", "toggle", "select", "option", "link",
             "text", "label", "span", "h1", "h2", "h3", "h4", "h5", "h6", "p",
             "table", "thead", "tbody", "tr", "th", "td", "tree", "tree_item",
             "tabs", "tab",
@@ -3305,6 +3431,7 @@ impl RustGenerator {
             "button" => "button",
             "input" => "input",
             "textarea" => "textarea",
+            "code_editor" | "codeEditor" | "codeeditor" => "code_editor",
             "checkbox" => "checkbox",
             "toggle" => "toggle",
             "select" => "select",
@@ -5169,6 +5296,94 @@ mod tests {
         assert!(code.contains("pub struct Counter"), "got:\n{}", code);
         assert!(code.contains("pub count: i32"), "got:\n{}", code);
         assert!(code.contains("impl Component for Counter"), "got:\n{}", code);
+    }
+
+    /// Plan 413 Phase 3: code_editor codegen — builder chain shape, payload
+    /// default for String variants, input_fields + code_editor_sources
+    /// registration (handler must read code_editor_text("key")).
+    #[test]
+    fn test_code_editor_codegen() {
+        let mut element = AuraNode::element("code_editor");
+        {
+            if let AuraNode::Element { props, events, .. } = &mut element {
+                props.insert("key".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("src".into())));
+                props.insert("lang".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())));
+                props.insert("content".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())));
+                props.insert("wrap".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Bool(false)));
+                events.insert(
+                    "oninput".to_owned(),
+                    AuraEvent { handler: ".SourceChanged".into(), params: vec![] },
+                );
+            }
+        }
+
+        let widget = AuraWidget {
+            name: "Playground".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "source".to_string(),
+                type_info: Type::StrFixed(0),
+                initial: crate::ast::Expr::Str("fn main() {}".into()),
+                decorators: vec![],
+            }],
+            messages: vec![AuraMessage {
+                name: "Msg".to_string(),
+                variants: vec![AuraMsgVariant {
+                    name: "SourceChanged".to_string(),
+                    payload: vec![Type::StrFixed(0)],
+                }],
+            }],
+            view_tree: element,
+            handlers: {
+                let mut h = HashMap::new();
+                h.insert(
+                    "SourceChanged".to_owned(),
+                    LogicPayload::AstStmts(vec![]),
+                );
+                h
+            },
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+        };
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("View::code_editor(\"src\")"),
+            "builder must key on the storage key:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".value(self.source.clone())"),
+            "value binding:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".lang(\"rust\")"),
+            "lang prop:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".on_change(PlaygroundMsg::SourceChanged(\"\".to_string()))"),
+            "String-payload variant gets a default arg:\n{}",
+            code
+        );
+        assert!(
+            code.contains("auto_lang::ui::code_editor::code_editor_text(\"src\")"),
+            "handler reads text via code_editor_text:\n{}",
+            code
+        );
     }
 
     #[test]

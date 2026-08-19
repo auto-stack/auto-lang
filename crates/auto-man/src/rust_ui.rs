@@ -1926,7 +1926,8 @@ resolver = "2"
 auto-lang = {{ path = "{auto_lang_rel}" }}
 serde_json = "1"
 tokio = {{ version = "1", features = ["rt"] }}
-iced = {{ version = "0.14.0", features = ["tokio", "advanced"] }}
+# Plan 413 §5.2:放宽到 "0.14" 让未来补丁版自动流入
+iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
 axum = "0.7"
 serde = {{ version = "1", features = ["derive"] }}
 tower-http = {{ version = "0.5", features = ["cors"] }}
