@@ -775,6 +775,174 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
                         return;
                     }
+                    // Plan 028 F4: Regex 子集 —— 与 vue.rs expr_to_js 同规则
+                    // （命名组 (?P<n>)→(?<n>)，flags 走参数；match 补 || []）。
+                    if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Regex") {
+                        let pat = call.args.args.get(1).and_then(|a| match a.get_expr() {
+                            Expr::Str(s) => Some(s.as_str().to_string()),
+                            _ => None,
+                        });
+                        if let Some(pat) = pat {
+                            // flags 位置：test/match/split 第 3 参；replace 第 4 参
+                            let flag_idx = if method.as_str() == "replace" { 3 } else { 2 };
+                            let flags = call.args.args.get(flag_idx).and_then(|a| match a.get_expr() {
+                                Expr::Str(s) => Some(s.as_str().to_string()),
+                                _ => None,
+                            });
+                            // Plan 028 T11 对拍缺陷修复：模式嵌入 TS 字符串前必须
+                            // 转义反斜杠（`\s` 直插 `'\s'` 会被 JS 求值成 `s`）。
+                            let js_pat = pat
+                                .replace("(?P<", "(?<")
+                                .replace('\\', "\\\\")
+                                .replace('\'', "\\'");
+                            let re = match flags {
+                                Some(f) => format!("new RegExp('{}', '{}')", js_pat, f),
+                                None => format!("new RegExp('{}')", js_pat),
+                            };
+                            let subject: Option<Expr> = call.args.args.first().map(|a| a.get_expr());
+                            let emit_subject = |out: &mut Vec<u8>| {
+                                if let Some(sub) = subject.as_ref() {
+                                    transpile_expr(sub, ctx, out);
+                                } else {
+                                    write!(out, "''").ok();
+                                }
+                            };
+                            match method.as_str() {
+                                "split" => {
+                                    write!(out, "(").ok();
+                                    emit_subject(out);
+                                    write!(out, ").split({})", re).ok();
+                                    return;
+                                }
+                                "match" => {
+                                    write!(out, "((").ok();
+                                    emit_subject(out);
+                                    write!(out, ").match({}) || [])", re).ok();
+                                    return;
+                                }
+                                "test" => {
+                                    write!(out, "{}.test(", re).ok();
+                                    emit_subject(out);
+                                    write!(out, ")").ok();
+                                    return;
+                                }
+                                "replace" => {
+                                    write!(out, "(").ok();
+                                    emit_subject(out);
+                                    write!(out, ").replace({}, ", re).ok();
+                                    if let Some(to) = call.args.args.get(2) {
+                                        transpile_expr(&to.get_expr().clone(), ctx, out);
+                                    } else {
+                                        write!(out, "''").ok();
+                                    }
+                                    write!(out, ")").ok();
+                                    return;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    // Plan 028 T14（F8 动态流生命周期）：`Sse.open(url, .Handler)`
+                    // → 建 EventSource 并把每条（预解析）事件分发到同名 store
+                    // action —— .at 侧零回调（已决③：平台层解析 JSON）。
+                    // `Sse.close(.handle)` → 幂等关闭 + 置 None。
+                    if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Sse") {
+                        if method.as_str() == "open" {
+                            let url_arg = call.args.args.first().map(|a| a.get_expr());
+                            // 第二参数形态：.Handler（Dot(Ident("."), name)）
+                            let handler_name = call.args.args.get(1).and_then(|a| match a.get_expr() {
+                                Expr::Dot(obj, field) => match obj.as_ref() {
+                                    Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self" => {
+                                        Some(field.as_str().to_string())
+                                    }
+                                    _ => None,
+                                },
+                                Expr::Ident(n) if n.as_str().starts_with('.') => {
+                                    Some(n.as_str().trim_start_matches('.').to_string())
+                                }
+                                _ => None,
+                            });
+                            if let (Some(url_arg), Some(handler)) = (url_arg, handler_name) {
+                                write!(out, "(() => {{ const __es = new EventSource(").ok();
+                                transpile_expr(&url_arg, ctx, out);
+                                write!(out, "); __es.onmessage = (__ev) => {{ try {{ {}(JSON.parse(__ev.data)); }} catch {{ }} }}; return __es; }})()", handler).ok();
+                                return;
+                            }
+                        }
+                        if method.as_str() == "close" {
+                            let handle_arg = call.args.args.first().map(|a| a.get_expr());
+                            if let Some(handle_arg) = handle_arg {
+                                write!(out, "(() => {{ ").ok();
+                                transpile_expr(&handle_arg, ctx, out);
+                                write!(out, "?.close(); return null; }})()").ok();
+                                return;
+                            }
+                        }
+                    }
+                    // Plan 028 F3: Date.format(ts, "HH:mm") → toLocaleTimeString
+                    // （窄面日期 API，与 vue.rs expr_to_js 同规则）。
+                    if method.as_str() == "format"
+                        && matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Date")
+                    {
+                        write!(out, "(new Date(").ok();
+                        if let Some(first) = call.args.args.first() {
+                            transpile_expr(&first.get_expr().clone(), ctx, out);
+                        } else {
+                            write!(out, "0").ok();
+                        }
+                        let pattern = call.args.args.get(1).and_then(|a| match a.get_expr() {
+                            Expr::Str(s) => Some(s.as_str().to_string()),
+                            _ => None,
+                        }).unwrap_or_else(|| "HH:mm".to_string());
+                        let mut opts = vec!["hour: '2-digit'", "minute: '2-digit'"];
+                        if pattern.contains("ss") {
+                            opts.push("second: '2-digit'");
+                        }
+                        write!(out, ").toLocaleTimeString([], {{ {} }}))", opts.join(", ")).ok();
+                        return;
+                    }
+                    // Plan 028 F8: platform HTTP protocol — `Http.get(url)` /
+                    // `Http.post(url, body)` map to awaited fetch + .json().
+                    // The emitted `await` makes the enclosing action fn async
+                    // (store codegen detects it in the transpiled body).
+                    if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Http") {
+                        let pos_args: Vec<crate::ast::Expr> = call.args.args.iter()
+                            .map(|a| a.get_expr().clone())
+                            .collect();
+                        match method.as_str() {
+                            "get" if pos_args.len() == 1 => {
+                                write!(out, "(await fetch(").ok();
+                                transpile_expr(&pos_args[0], ctx, out);
+                                write!(out, ")).json()").ok();
+                                return;
+                            }
+                            "post" if pos_args.len() == 2 => {
+                                write!(out, "(await fetch(").ok();
+                                transpile_expr(&pos_args[0], ctx, out);
+                                write!(out, ", {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(").ok();
+                                transpile_expr(&pos_args[1], ctx, out);
+                                write!(out, ") }})).json()").ok();
+                                return;
+                            }
+                            // Plan 028 T16: 无体动词（delete）与带体动词（patch/put）
+                            "delete" if pos_args.len() == 1 => {
+                                write!(out, "(await fetch(").ok();
+                                transpile_expr(&pos_args[0], ctx, out);
+                                write!(out, ", {{ method: 'DELETE' }})).json()").ok();
+                                return;
+                            }
+                            "patch" | "put" if pos_args.len() == 2 => {
+                                let verb = method.as_str().to_ascii_uppercase();
+                                write!(out, "(await fetch(").ok();
+                                transpile_expr(&pos_args[0], ctx, out);
+                                write!(out, ", {{ method: '{}', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(", verb).ok();
+                                transpile_expr(&pos_args[1], ctx, out);
+                                write!(out, ") }})).json()").ok();
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
                     // Plan 012 Batch A (gap 19): the `.remove → .splice` /
                     // `.contains → .includes` mappings apply ONLY to receivers
                     // proven to be arrays (strings too, for `.contains`).
@@ -873,14 +1041,19 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             return;
                         }
                         // 有参 — 前后缀 / 字符 / 查找 / 子串 / 替换 / 重复：
-                        "starts_with" | "ends_with" | "char_at" | "find"
-                        | "substr" | "sub" | "slice" | "replace" | "repeat" => {
+                        // Plan 028 M1: 带闭包参数时不走字符串映射表 ——
+                        // `.find(e => …)` 是 Array.find，不是 indexOf。
+                        "starts_with" | "ends_with" | "char_at" | "char_code_at" | "find"
+                        | "substr" | "sub" | "slice" | "replace" | "repeat"
+                            if !call.args.args.iter().any(|a| matches!(a.get_expr(), Expr::Closure(_))) => {
                             let js_method = match method.as_str() {
                                 "starts_with" => "startsWith",
                                 "ends_with" => "endsWith",
-                                // char_at 返回 1 字符 string（.at 按 Unicode
-                                // char 索引；JS charAt 按 UTF-16 code unit）
+                                // char_at 返回 1 字符 string（.at 按 Unicode char
+                                // 索引；JS charAt 按 UTF-16 code unit）
                                 "char_at" => "charAt",
+                                // Plan 028 F3: char_code_at → charCodeAt
+                                "char_code_at" => "charCodeAt",
                                 // find 返回 index 或 -1
                                 "find" => "indexOf",
                                 // substr/sub/slice 同一 native，start..end 子串
@@ -1093,9 +1266,13 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 
         // Null-coalescing operator ??
         Expr::NullCoalesce(lhs, rhs) => {
+            // Plan 028 T9：外层括号必需 —— JS 里 `+` 优先级高于 `??`，
+            // `'x' + a ?? b` 会先算加法（语义错误 + TS2869）。
+            write!(out, "(").ok();
             transpile_expr(lhs, ctx, out);
             write!(out, " ?? ").ok();
             transpile_expr(rhs, ctx, out);
+            write!(out, ")").ok();
         }
 
         // Error propagation .?
@@ -1276,8 +1453,14 @@ fn builtin_type_annotation(ty: &Type) -> Option<String> {
         Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => Some("string".into()),
         Type::Array(arr) => builtin_type_annotation(&arr.elem).map(|e| format!("{}[]", e)),
         Type::RuntimeArray(rta) => builtin_type_annotation(&rta.elem).map(|e| format!("{}[]", e)),
-        Type::List(elem) => builtin_type_annotation(elem).map(|e| format!("{}[]", e)),
+        Type::List(elem) => builtin_type_annotation(elem)
+            .or_else(|| matches!(elem.as_ref(), Type::Unknown).then(|| "any".to_string()))
+            .map(|e| format!("{}[]", e)),
         Type::Slice(slice) => builtin_type_annotation(&slice.elem).map(|e| format!("{}[]", e)),
+        // Plan 028 M1: bare `map`/`obj`/`list` locals → any（索引与 any[]
+        // 标注满足 noImplicitAny，fn 模块局部变量不再报 TS7053/7034）。
+        Type::User(u) if matches!(u.name.as_str(), "map" | "obj") => Some("any".into()),
+        Type::User(u) if u.name.as_str() == "list" => Some("any[]".into()),
         // Everything else (User, Enum, Spec, Unknown, Map of custom, …) → None
         _ => None,
     }

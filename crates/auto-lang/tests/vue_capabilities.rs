@@ -39,6 +39,23 @@ fn gen_sfc(src: &str) -> String {
     VueGenerator::new().generate(&widget).expect("generate SFC")
 }
 
+/// Plan 028: parse a store source and generate its composable (real pipeline).
+fn gen_store(src: &str) -> String {
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("store source must parse");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            Stmt::StoreDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("store decl");
+    let store = auto_lang::aura::extract_store_from_decl(decl).expect("extract store");
+    VueGenerator::generate_store_composable(&store)
+}
+
 /// jade 5.3a (FileTreeNode): a widget may render ITSELF in its own view —
 /// codegen emits a self import from `@/components/<Name>.vue`, and an
 /// explicit `key:` prop overrides the automatic constant key.
@@ -597,3 +614,451 @@ widget W {
     assert!(sfc.contains("router-link"), "router-link still emitted:\n{sfc}");
     assert!(sfc.contains(r#"to="/home""#), "router-link target:\n{sfc}");
 }
+
+// ============================================================================
+// Plan 028 — a2ts capability gaps for the Block migration (F1–F9).
+// ============================================================================
+
+/// F1 (plan 028 T1): dictionary literals with QUOTED string keys in
+/// expression position (computed/fn bodies) + index reads by variable key.
+/// `taskPlanStatusLabel`-style color/label tables are the first consumers.
+#[test]
+fn dict_literal() {
+    let sfc = gen_sfc(
+        r##"
+widget W {
+    model { var status str = "running" }
+    computed {
+        colors => { "running": "#f59e0b", "completed": "#10b981" }
+        color => .colors[.status] ?? "#999999"
+        fallback => .colors["failed"] ?? "#666666"
+    }
+    view { col { text .color } }
+}
+"##,
+    );
+    assert!(
+        sfc.contains("'running': '#f59e0b'") && sfc.contains("'completed': '#10b981'"),
+        "quoted-key dict literal survives to JS:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("computed<Record<string, string>>"),
+        "uniform str→str dict infers Record type:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("colors[status]") || sfc.contains("colors.value[status.value]"),
+        "index read by variable key:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("?? '#999999'"),
+        "missing-key null-coalesce default:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("['failed']"),
+        "string-literal key index read:\n{sfc}"
+    );
+    assert!(sfc.contains("{{ color }}"), "computed color in template:\n{sfc}");
+}
+
+/// F2 (plan 028 T2): view `if` conditions allow MULTI-ARG fn calls in
+/// comparison/logic combinations — `if isLastMessage(.msgs, .m.id) { }`
+/// previously forced a pre-computed bypass (chats_view gap G2).
+#[test]
+fn if_multiarg_call() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var msgs list = [] }
+    view {
+        col {
+            for m in .msgs {
+                if isLastMessage(.msgs, m.id) { text "last" }
+                if isLastMessage(.msgs, m.id) && m.role == "assistant" { text "last-assistant" }
+                if msgTimeLabel(m.ts) != "" { text "timed" }
+            }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("v-if=\"isLastMessage(msgs, m.id)\""),
+        "bare multi-arg fn condition:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("v-if=\"isLastMessage(msgs, m.id) && m.role == 'assistant'\""),
+        "multi-arg fn in logic combination:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("v-if=\"msgTimeLabel(m.ts) != ''\""),
+        "multi-arg fn in comparison:\n{sfc}"
+    );
+}
+
+// ============================================================================
+// Plan 028 F3 — host API bridge: JSON / Date.format / Math / str methods.
+// The Auto side names an API; the Vue backend maps it to native JS.
+// ============================================================================
+
+/// F3 (plan 028 T3): `JSON.parse` / `JSON.stringify` in expressions.
+#[test]
+fn host_api_json() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model {
+        var raw str = "{\"q\": 1}"
+        var v list = []
+    }
+    computed {
+        parsed => JSON.parse(.raw)
+        out => JSON.stringify(.v)
+    }
+    view { col { text .out } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("JSON.parse(") && sfc.contains("raw.value"),
+        "JSON.parse maps to native:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("JSON.stringify("),
+        "JSON.stringify maps to native:\n{sfc}"
+    );
+}
+
+/// F3 (plan 028 T3): `Date.format(ts, "HH:mm")` — a narrow date API instead
+/// of exposing the whole Date surface. Maps to toLocaleTimeString.
+#[test]
+fn host_api_date() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var ts int = 1720000000 }
+    computed { time => Date.format(.ts, "HH:mm") }
+    view { col { text .time } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("toLocaleTimeString"),
+        "Date.format wraps toLocaleTimeString:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("hour: '2-digit'") && sfc.contains("minute: '2-digit'"),
+        "HH:mm pattern maps to 2-digit hour/minute options:\n{sfc}"
+    );
+}
+
+/// F3 (plan 028 T3): `Math.max` / `Math.min` pass through to native JS.
+#[test]
+fn host_api_math() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var a int = 1 }
+    computed {
+        span => Math.max(.a, 3)
+        lo => Math.min(.a, 0)
+    }
+    view { col { text .span } }
+}
+"#,
+    );
+    assert!(sfc.contains("Math.max("), "Math.max native:\n{sfc}");
+    assert!(sfc.contains("Math.min("), "Math.min native:\n{sfc}");
+}
+
+/// F3 (plan 028 T3): `str.char_code_at(i)` → `charCodeAt` (token estimate,
+/// avatar hash). `char_at`/`slice` were already mapped — lock them together.
+#[test]
+fn host_api_str_char_code() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model {
+        var text str = "hi"
+        var i int = 0
+    }
+    computed {
+        code => .text.char_code_at(.i)
+        first => .text.char_at(0)
+        rest => .text.slice(1, 2)
+    }
+    view { col { text .first } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains(".charCodeAt("),
+        "char_code_at maps to charCodeAt:\n{sfc}"
+    );
+    assert!(sfc.contains(".charAt(0)"), "char_at stays mapped:\n{sfc}");
+    assert!(
+        sfc.contains(".substring(1, 2)"),
+        "slice maps to substring:\n{sfc}"
+    );
+}
+
+/// F3 (plan 028 T3): `str.split(sep)` → native split (CSV / mention parsing).
+#[test]
+fn host_api_str_split() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var csv str = "a,b" }
+    computed { parts => .csv.split(",") }
+    view { col { text .csv } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains(".split(',')"),
+        "split maps to native split:\n{sfc}"
+    );
+}
+
+// ============================================================================
+// Plan 028 F4 — Regex subset (Rust syntax canonical, mechanical a2ts
+// conversion): test/match/replace + named-group pattern rewrite.
+// ============================================================================
+
+#[test]
+fn regex_subset() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var s str = "a1b2" }
+    computed {
+        hasDigit => Regex.test(.s, "[0-9]")
+        digits => Regex.match(.s, "[0-9]+", "g")
+        cleaned => Regex.replace(.s, "[0-9]", "", "g")
+        sub1 => Regex.replace(.s, "a([0-9])", "$1", "")
+        named => Regex.match(.s, "(?P<d>[0-9])")
+    }
+    view { col { text .s } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("new RegExp('[0-9]').test("),
+        "Regex.test maps to RegExp.test:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(".match(new RegExp('[0-9]+', 'g'))"),
+        "Regex.match maps to String.match:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(".replace(new RegExp('[0-9]', 'g'), '')"),
+        "Regex.replace maps to String.replace:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("'$1'"),
+        "$1 backreference passes through:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("(?<d>[0-9])") && !sfc.contains("(?P<d>"),
+        "Rust named group (?P<n>) rewritten to JS (?<n>):\n{sfc}"
+    );
+}
+
+// ============================================================================
+// Plan 028 F5/F6 — Index-position v-model + default-value props.
+// ============================================================================
+
+/// F5 (plan 028 T5): `value: .answers[q.id]` + `oninput:` folds to
+/// `v-model="answers[q.id]"` — the questionnaire dynamic-key case, which
+/// previously forced a controlled value+oninput pair (gap G8).
+#[test]
+fn index_vmodel() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    msg Msg { Changed }
+    model { var answers map = {} }
+    view {
+        col {
+            for q in .questions {
+                input { value: .answers[q.id], oninput: .Changed(q.id, $event) }
+            }
+        }
+    }
+    on {
+        .Changed(qid, e) -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("v-model=\"answers[q.id]\""),
+        "Index-position value folds to dynamic-key v-model:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains(":value=\"answers"),
+        "redundant :value binding must be replaced by the fold:\n{sfc}"
+    );
+}
+
+/// F6 (plan 028 T5): default-value props emit `withDefaults(defineProps, …)`
+/// with real default values (not just `?:` optionality).
+#[test]
+fn default_props() {
+    let sfc = gen_sfc(
+        r#"
+widget W(label: str = "hi", count: int = 3, loading: bool = false) {
+    view { col { text .label } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("withDefaults(defineProps<{"),
+        "defaults wrap defineProps:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("label?: string") && sfc.contains("count?: number") && sfc.contains("loading?: boolean"),
+        "defaulted props stay optional:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("label: 'hi'") && sfc.contains("count: 3") && sfc.contains("loading: false"),
+        "default values carried into withDefaults object:\n{sfc}"
+    );
+}
+
+// ============================================================================
+// Plan 028 F7 — restricted v-html bridge (trusted HTML from an .at fn, e.g.
+// renderMentions). Declared as the `html:` widget prop; a2ts → v-html,
+// a2r degrades to a text node.
+// ============================================================================
+
+#[test]
+fn html_binding() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    model { var mentionHtml str = "<b>@dev</b>" }
+    view {
+        col {
+            span { html: .mentionHtml }
+            span { html: renderMentions(.mentionHtml) }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("v-html=\"mentionHtml\""),
+        "state-bound html prop emits v-html:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("v-html=\"renderMentions(mentionHtml)\""),
+        "fn-call html prop emits v-html:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains(" html=\"") && !sfc.contains("<span html="),
+        "no plain html= attribute may leak:\n{sfc}"
+    );
+}
+
+// ============================================================================
+// Plan 028 F8/F9 — platform stream protocol: `on stream sse(url[, "event"])`
+// store subscriptions. The platform layer pre-parses SSE data (已决③); the
+// handler body branches on `.ev.type` directly.
+// ============================================================================
+
+/// F9 (plan 028 T7): default-message SSE subscription — EventSource +
+/// onmessage dispatching the pre-parsed event into the handler.
+#[test]
+fn store_on_stream() {
+    let code = gen_store(
+        r#"
+store ChatStore {
+    model { var draft str = "" }
+    on {
+        stream sse("/api/chats/session/s1/stream") -> {
+            if ev.type == "delta" { .draft = .draft + ev.text }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        code.contains("new EventSource('/api/chats/session/s1/stream')"),
+        "EventSource at the declared url:\n{code}"
+    );
+    assert!(
+        code.contains("es.onmessage") && code.contains("JSON.parse(ev.data)"),
+        "default events dispatch pre-parsed payload:\n{code}"
+    );
+    assert!(
+        code.contains("(ev: any)"),
+        "handler fn receives the parsed event as `ev`:\n{code}"
+    );
+    assert!(
+        code.contains("ev.type == 'delta'"),
+        "body branches on .ev.type:\n{code}"
+    );
+    assert!(
+        code.contains("let __streamConnected_api_chats_session_s1_stream = false;"),
+        "per-url connection guard:\n{code}"
+    );
+}
+
+/// F8 (plan 028 T7): named-event filter — relay streams listen on a named SSE
+/// event (`run_event`) via addEventListener instead of onmessage.
+#[test]
+fn platform_sse() {
+    let code = gen_store(
+        r#"
+store RelayStore {
+    model { var status str = "" }
+    on {
+        stream sse("/api/relay/runs/r1/events", "run_event") -> {
+            if ev.type == "status" { .status = ev.status }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        code.contains("addEventListener('run_event'"),
+        "named-event subscription uses addEventListener:\n{code}"
+    );
+    assert!(
+        !code.contains("es.onmessage"),
+        "no default onmessage when an event filter is declared:\n{code}"
+    );
+    assert!(
+        code.contains("JSON.parse((ev as MessageEvent).data)"),
+        "named events parse MessageEvent data:\n{code}"
+    );
+}
+
+/// F8 (plan 028 T7): platform HTTP protocol — `Http.get` / `Http.post` map to
+/// awaited fetch + .json() in store handler bodies (relay loadRun etc.).
+#[test]
+fn platform_http() {
+    let code = gen_store(
+        r#"
+store RelayStore {
+    model { var run obj = {} }
+    msg Msg { Load }
+    on {
+        .Load -> {
+            let r = Http.get("/api/relay/runs/r1");
+            .run = r
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        code.contains("(await fetch('/api/relay/runs/r1')).json()"),
+        "Http.get maps to awaited fetch:\n{code}"
+    );
+    assert!(
+        code.contains("const Load = async"),
+        "await in body makes the action async:\n{code}"
+    );
+}
+

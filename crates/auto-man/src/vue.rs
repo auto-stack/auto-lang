@@ -1137,6 +1137,9 @@ fn is_local_ext_path(path: &str) -> bool {
         || path.ends_with(".tsx")
         || path.ends_with(".js")
         || path.ends_with(".mjs")
+        // Plan 028 M1: `.at` fn modules — transpiled to TS at the same ext
+        // path (extension stripped) instead of copied verbatim.
+        || path.ends_with(".at")
 }
 
 /// Collect project-local file paths declared in widget `use { ... }`
@@ -1759,6 +1762,33 @@ export default router
     /// into `src/ext/`, preserving their root-relative layout (so sibling
     /// relative imports between copied files keep resolving). Generated
     /// SFCs import them as `@/ext/<root-relative-path>`.
+    ///
+    /// Plan 028 M1: `.at` ext imports are fn modules — transpiled to a TS
+    /// module at the same ext path instead of copied verbatim.
+    fn transpile_at_fn_module(src: &Path) -> AutoResult<String> {
+        let source = fs::read_to_string(src)
+            .map_err(|e| format!("Failed to read use-block fn module {}: {}", src.display(), e))?;
+        let session = auto_lang::session::CompilerSession::ui();
+        let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
+        let ast = parser
+            .parse()
+            .map_err(|e| format!("Failed to parse fn module {}: {}", src.display(), e))?;
+        let fns: Vec<auto_lang::aura::AuraModuleFn> = ast.stmts.iter()
+            .filter_map(|s| match s {
+                auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+                _ => None,
+            })
+            .collect();
+        if fns.is_empty() {
+            return Err(format!(
+                "use-block fn module {} declares no top-level fns",
+                src.display()
+            )
+            .into());
+        }
+        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module(&fns))
+    }
+
     fn copy_ext_files(&self) -> AutoResult<Vec<String>> {
         let mut copied = Vec::new();
         if self.ext_files.is_empty() {
@@ -1786,6 +1816,27 @@ export default router
             }
             let src = self.root_dir.join(&normalized);
             let dst = ext_dir.join(&normalized);
+            // Plan 028 M1: a `.at` ext import is a fn module — transpile its
+            // top-level `fn` declarations to a TS module (same path, .at →
+            // .ts) instead of copying the Auto source verbatim.
+            if normalized.extension().and_then(|e| e.to_str()) == Some("at") {
+                let ts_code = Self::transpile_at_fn_module(&src)?;
+                let dst_ts = dst.with_extension("ts");
+                if let Some(parent) = dst_ts.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+                }
+                fs::write(&dst_ts, ts_code).map_err(|e| {
+                    format!(
+                        "Failed to write use-block fn module {} → {}: {}",
+                        src.display(),
+                        dst_ts.display(),
+                        e
+                    )
+                })?;
+                copied.push(rel.clone());
+                continue;
+            }
             if let Some(parent) = dst.parent() {
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;

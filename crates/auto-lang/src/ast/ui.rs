@@ -590,6 +590,24 @@ pub struct OnHandler {
 
     /// Handler body
     pub body: Body,
+
+    /// Plan 028 F9: `on stream sse(url[, "event"]) -> { … }` — when set, this
+    /// handler is a platform stream subscription, not a msg pattern. The
+    /// backend opens the stream and dispatches each (pre-parsed) event into
+    /// the handler body; `params` carries the event binding (["ev"]).
+    pub stream: Option<StreamSubscription>,
+}
+
+/// Plan 028 F8/F9: platform stream subscription declaration.
+#[derive(Debug, Clone)]
+pub struct StreamSubscription {
+    /// Protocol kind — "sse" for now (http polling etc. later).
+    pub kind: String,
+    /// Endpoint URL.
+    pub url: String,
+    /// Named-event filter (None → default message events). Relay streams use
+    /// named events ("run_event"); EventSource needs addEventListener for them.
+    pub event: Option<String>,
 }
 
 /// Key binding block (Plan 275)

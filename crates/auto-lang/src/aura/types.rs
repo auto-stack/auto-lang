@@ -378,6 +378,12 @@ pub struct AuraStore {
     /// Populated from the project's `back/api.at` via `ComponentGenOptions`.
     pub stream_endpoints: Vec<StreamEndpoint>,
 
+    /// Plan 028 F9: `on stream sse(url[, "event"]) -> { … }` subscriptions.
+    /// Each entry wires an EventSource whose (pre-parsed) events dispatch the
+    /// on-handler stored under `handler_key` (已决③: the platform layer parses
+    /// the SSE data JSON; the handler body branches on `.ev.type` directly).
+    pub stream_handlers: Vec<AuraStreamHandler>,
+
     /// Computed properties (Plan 367 P2-2: → getters in store composable)
     pub computed: Vec<AuraComputed>,
 
@@ -409,6 +415,22 @@ pub struct AuraModuleFn {
     pub ret_ts: String,
     /// Raw AST body statements (transpiled via the ts_adapter).
     pub body: Vec<crate::ast::Stmt>,
+}
+
+/// Plan 028 F9: an `on stream sse(url[, "event"])` subscription in a store's
+/// on-block. The handler body (keyed by `handler_key` in `AuraStore::handlers`)
+/// receives the pre-parsed event object.
+#[derive(Debug, Clone)]
+pub struct AuraStreamHandler {
+    /// Key into `handlers` / `handler_params` (pattern with embedded params).
+    pub handler_key: String,
+    /// Protocol kind — "sse" for now.
+    pub kind: String,
+    /// Endpoint URL.
+    pub url: String,
+    /// Named-event filter (None → default message events; EventSource uses
+    /// addEventListener for named events like relay's "run_event").
+    pub event: Option<String>,
 }
 
 /// A streaming API endpoint: an `#[api]` function returning `~Stream<T>`.

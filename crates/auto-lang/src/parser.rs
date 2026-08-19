@@ -188,7 +188,8 @@ pub struct Parser<'a> {
     /// Plan 351: true when parsing inside an on-block handler body.
     /// Prevents `store` (contextual keyword) from being misinterpreted as a
     /// store declaration when it's actually a variable reference (store.action()).
-    in_on_body: bool,
+    pub(crate) in_on_body: bool,
+    pub(crate) in_fn_body: bool,
     /// Plan 043 M5: true while parsing the RHS of a Dot expression
     /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
     /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
@@ -285,6 +286,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_fn_body: false,
             in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
@@ -353,6 +355,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_fn_body: false,
             in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
@@ -404,6 +407,7 @@ impl<'a> Parser<'a> {
                 text: "".into(),
             }, // Initialize with EOF token
             in_on_body: false,
+            in_fn_body: false,
             in_dot_rhs: false,
             compile_dest: CompileDest::Interp,
             dialects: Vec::new(),
@@ -2971,6 +2975,13 @@ impl<'a> Parser<'a> {
             }
             // type关键字用作key，应该不冲突
             TokenKind::Type => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
+            // Plan 028 T14：`task` 是 Plan 121 关键字 token，但合法的对象键
+            // （errand 状态 { task: ... }）。与 Type 同样的上下文化处理。
+            TokenKind::Task => {
                 let value = self.cur.text.clone();
                 self.next();
                 Ok(Key::NamedKey(value))
@@ -8100,7 +8111,13 @@ impl<'a> Parser<'a> {
                 self.next(); // skip semicolon
                 Body::new()
             } else {
-                self.body()?
+                // Plan 028 T14：fn 体内的语句同样不能被方言声明关键字拦截
+                //（`msg.blocks = ...` 是局部赋值，非 msg 声明）。
+                let prev_fn_body = self.in_fn_body;
+                self.in_fn_body = true;
+                let b = self.body()?;
+                self.in_fn_body = prev_fn_body;
+                b
             }
         } else {
             // For VM and C functions, check if there's a semicolon or function body
@@ -10859,7 +10876,13 @@ impl<'a> Parser<'a> {
         let expr = self.node_or_call_expr()?;
         match expr {
             Expr::Node(node) => Ok(Stmt::Node(node)),
-            _ => Ok(Stmt::Expr(expr)),
+            other => {
+                // Plan 028 T14: `local.field = rhs`（及任何以 Ident 起头的二元/
+                // 赋值语句）路由到此，但 node_or_call_expr 在 Dot 链后即返回，
+                // `= rhs` 无人消费 → 续接 Pratt 解析补齐操作符右侧。
+                let full = self.expr_pratt_with_left(other, 0)?;
+                Ok(Stmt::Expr(full))
+            }
         }
     }
 
@@ -12470,10 +12493,31 @@ impl<'a> Parser<'a> {
             // Without this, bare identifiers (and call args like `btoa(lang)`)
             // fail with "undefined variable" which surfaces as a confusing
             // "Expected term, got RBrace".
+            //
+            // Plan 028 F1: `x => { "k": v }` (dict/object literal) must not
+            // fall into the block path — every pair is `key: value`, which no
+            // statement sequence can start with. Try self.object()
+            // speculatively first and roll back fully on failure so
+            // multi-statement bodies keep the Plan 043 behavior.
             let old_skip_check = self.skip_check;
             self.skip_check = true;
             let expr = if self.is_kind(TokenKind::LBrace) {
-                Expr::Block(self.body()?)
+                let lex_state = self.lexer.save_state();
+                let saved_cur = self.cur.clone();
+                let saved_prev = self.prev.clone();
+                let saved_errors_len = self.errors.len();
+                let saved_warnings_len = self.warnings.len();
+                match self.object() {
+                    Ok(pairs) => Expr::Object(pairs),
+                    Err(_) => {
+                        self.lexer.restore_state(lex_state);
+                        self.cur = saved_cur.clone();
+                        self.prev = saved_prev.clone();
+                        self.errors.truncate(saved_errors_len);
+                        self.warnings.truncate(saved_warnings_len);
+                        Expr::Block(self.body()?)
+                    }
+                }
             } else {
                 self.parse_expr()?
             };
@@ -13425,6 +13469,13 @@ impl<'a> Parser<'a> {
                 self.next();
                 // Build chained access: ident.field.method(args).another()
                 let mut chain = text;
+                // Plan 028 F2: direct fn call in condition position —
+                // `if isLastMessage(.msgs, m.id) { }`. Previously the bare
+                // name was pushed and the `(`-group fell apart at the first
+                // comma, so multi-arg calls forced pre-computed bypasses.
+                if self.is_kind(TokenKind::LParen) {
+                    self.capture_condition_call_args(&mut chain);
+                }
                 while self.is_kind(TokenKind::Dot) {
                     self.next();
                     let member = self.cur.text.to_string();
@@ -13499,6 +13550,40 @@ impl<'a> Parser<'a> {
         }
 
         Ok(parts.join(" "))
+    }
+
+    /// Plan 028 F2: capture a balanced `(...)` argument group after a fn name
+    /// in a view condition, verbatim — nested calls, commas, and string
+    /// literals included (`isLastMessage(.msgs, m.id)`, `f(g(.x), 2)`).
+    /// `self.cur` must be the opening LParen; on return the closing RParen is
+    /// consumed. Unbalanced input stops at EOF without consuming a body brace.
+    fn capture_condition_call_args(&mut self, chain: &mut String) {
+        chain.push('(');
+        self.next();
+        let mut depth = 1usize;
+        while !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LParen) {
+                depth += 1;
+                chain.push('(');
+                self.next();
+            } else if self.is_kind(TokenKind::RParen) {
+                depth -= 1;
+                chain.push(')');
+                self.next();
+                if depth == 0 {
+                    break;
+                }
+            } else if self.is_kind(TokenKind::Str) {
+                chain.push_str(&format!("\"{}\"", self.cur.text));
+                self.next();
+            } else if self.is_kind(TokenKind::Comma) {
+                chain.push_str(", ");
+                self.next();
+            } else {
+                chain.push_str(&self.cur.text.to_string());
+                self.next();
+            }
+        }
     }
 
     /// Parse event handler with optional parameters: .Inc or .Delete(todo.id) or nav("route", data)
@@ -13801,7 +13886,57 @@ impl<'a> Parser<'a> {
             // Parse pattern (e.g., .Inc or Msg::Inc)
             // Plan 130: Support dot-prefixed patterns like .Inc
             // Plan 188 B4: Support parameterized patterns like .AddItem(text)
-            let (pattern, params) = if self.is_kind(TokenKind::Dot) {
+            //
+            // Plan 028 F9: `stream sse(url[, "event"]) -> { … }` — a platform
+            // stream subscription. The handler body receives the PRE-PARSED
+            // event object as `ev` (platform layer parses JSON, 已决③).
+            // One-token lookahead: bare `stream -> …` stays a msg pattern.
+            let mut stream_sub: Option<crate::ast::ui::StreamSubscription> = None;
+            let is_stream_sub = if self.cur.kind == TokenKind::Ident
+                && self.cur.text.as_str() == "stream"
+            {
+                let saved_cur = self.cur.clone();
+                self.next();
+                let next_is_kind_ident = self.cur.kind == TokenKind::Ident;
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+                next_is_kind_ident
+            } else {
+                false
+            };
+            let (pattern, params) = if is_stream_sub {
+                self.next(); // consume 'stream'
+                let kind = self.cur.text.to_string();
+                self.next();
+                if kind != "sse" {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Unsupported stream kind '{}' in on block (expected 'sse')",
+                            kind
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                self.expect(TokenKind::LParen)?;
+                let url = self.cur.text.to_string();
+                self.expect(TokenKind::Str)?;
+                let mut event: Option<String> = None;
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    event = Some(self.cur.text.to_string());
+                    self.expect(TokenKind::Str)?;
+                }
+                self.expect(TokenKind::RParen)?;
+                // Synthetic pattern — unique per url/event, never collides
+                // with a msg variant (starts with "__").
+                let pattern = format!(
+                    "__stream_sse_{}",
+                    url.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                );
+                stream_sub = Some(crate::ast::ui::StreamSubscription { kind, url, event });
+                (pattern, vec!["ev".to_string()])
+            } else if self.is_kind(TokenKind::Dot) {
                 self.next(); // consume the dot
                 let name = self.cur.text.to_string();
                 self.next();
@@ -13873,7 +14008,7 @@ impl<'a> Parser<'a> {
             self.in_on_body = false;
             self.exit_scope();
 
-            handlers.push(OnHandler { pattern, params, body });
+            handlers.push(OnHandler { pattern, params, body, stream: stream_sub });
             self.skip_empty_lines();
         }
 

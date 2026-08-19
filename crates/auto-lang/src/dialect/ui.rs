@@ -30,6 +30,11 @@ impl Dialect for UiDialect {
     }
 
     fn try_parse_stmt(&self, p: &mut Parser, kw: &str) -> AutoResult<Option<Stmt>> {
+        // Plan 028 T14：on 体里的语句不应被方言声明关键字拦截——
+        // `msg.content = "x"` 是局部对象字段赋值，不是 msg 声明。
+        if p.in_on_body || p.in_fn_body {
+            return Ok(None);
+        }
         let stmt = match kw {
             "widget" => p.parse_widget_decl()?,
             "msg" => p.parse_msg_decl()?,

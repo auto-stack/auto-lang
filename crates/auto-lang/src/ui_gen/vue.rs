@@ -1340,6 +1340,9 @@ impl VueGenerator {
             || path.ends_with(".tsx")
             || path.ends_with(".js")
             || path.ends_with(".mjs")
+            // Plan 028 M1: `.at` fn modules — auto-man transpiles them to a
+            // TS module at the same ext path (extension stripped).
+            || path.ends_with(".at")
     }
 
     /// Map a declared import path to the specifier used in the generated
@@ -1358,6 +1361,7 @@ impl VueGenerator {
             .or_else(|| rel.strip_suffix(".ts"))
             .or_else(|| rel.strip_suffix(".mjs"))
             .or_else(|| rel.strip_suffix(".js"))
+            .or_else(|| rel.strip_suffix(".at"))
             .unwrap_or(rel);
         format!("@/ext/{}", stem)
     }
@@ -2110,8 +2114,17 @@ impl VueGenerator {
         let mut custom_types: Vec<String> = Vec::new();
 
         // Generate defineProps if widget has props (sub-widget component)
+        // Plan 028 F6: props with declared defaults wrap in
+        // `withDefaults(defineProps, {...})` so the default VALUES apply at
+        // runtime, not just `?:` optionality.
         if !widget.props.is_empty() {
-            script.push_str("const props = defineProps<{\n");
+            let has_defaults = widget.props.iter()
+                .any(|p| p.default.is_some() && !Self::prop_is_emitted_callback(p, widget));
+            script.push_str(if has_defaults {
+                "const props = withDefaults(defineProps<{\n"
+            } else {
+                "const props = defineProps<{\n"
+            });
             for prop in &widget.props {
                 // Plan 367 P1-1: map Auto types to TS types instead of using 'any'.
                 // Plan 043 M5 B-1: `on_*: msg` callback props are typed from the
@@ -2136,7 +2149,21 @@ impl VueGenerator {
                     script.push_str(&format!("  {}: {}\n", prop.name, ts_type));
                 }
             }
-            script.push_str("}>()\n\n");
+            if has_defaults {
+                script.push_str("}>, {\n");
+                for prop in &widget.props {
+                    if Self::prop_is_emitted_callback(prop, widget) {
+                        continue;
+                    }
+                    if let Some(default_expr) = &prop.default {
+                        let default_js = self.expr_to_js(default_expr)?;
+                        script.push_str(&format!("  {}: {},\n", prop.name, default_js));
+                    }
+                }
+                script.push_str("})\n\n");
+            } else {
+                script.push_str("}>()\n\n");
+            }
         }
 
         // Widget-level `expose { ... }`: exposed `on` handlers must be
@@ -3597,7 +3624,7 @@ impl VueGenerator {
                             // use the index itself as the per-item key.
                             attrs.push(format!(":key=\"'{}-{}-' + {}\"", html_tag, self.widget_key_counter, loop_var));
                         } else {
-                            attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? {})\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                            attrs.push(format!(":key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"", html_tag, self.widget_key_counter, loop_var, loop_var));
                         }
                     } else if let Some(ref expr) = first_prop_expr {
                         // Non-loop component: if the first prop looks like an object
@@ -3882,6 +3909,16 @@ impl VueGenerator {
                                             }
                                         }
                                     }
+                                    // Plan 028 F5: dynamic-key v-model —
+                                    // `value: .answers[q.id]` folds to
+                                    // `v-model="answers[q.id]"` (gap G8).
+                                    crate::ast::Expr::Index(target, index) => {
+                                        if let Some(t) = Self::index_target_name(target) {
+                                            if let Ok(idx_js) = self.expr_to_vue_bound_value(index) {
+                                                value_state_ref = Some(format!("{}[{}]", t, idx_js));
+                                            }
+                                        }
+                                    }
                                     _ => {}
                                 }
                             }
@@ -4014,7 +4051,7 @@ impl VueGenerator {
                             // use the index itself as the per-item key.
                             format!("{} :key=\"'{}-{}-' + {}\"", attr_str, html_tag, self.widget_key_counter, loop_var)
                         } else {
-                            format!("{} :key=\"'{}-{}-' + ({}?.id ?? {})\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
+                            format!("{} :key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
                         }
                     } else {
                         format!("{} :key=\"'{}-{}'\"", attr_str, html_tag, self.widget_key_counter)
@@ -4913,8 +4950,13 @@ impl VueGenerator {
         let mut result = condition.trim().to_string();
 
         // Replace .len() with .length (JavaScript property, not method)
-        result = result.replace(".len()", ".length");
-        result = result.replace(".len", ".length");
+        // Plan 028 T9 fix: placeholder .length first so the bare `.len`
+        // substring replace cannot re-hit an existing `.length`
+        // (`.length` became `.lengthgth`, WorkspaceSelector pre-existing bug).
+        result = result.replace(".length", "\u{0}");
+        result = result.replace(".len()", "\u{0}");
+        result = result.replace(".len", "\u{0}");
+        result = result.replace("\u{0}", ".length");
         // Handle spaced-out .len ( ) from parse_condition_expr
         result = result.replace(" .len ( )", ".length");
         result = result.replace(" len ( )", ".length");
@@ -5649,6 +5691,21 @@ impl VueGenerator {
                 }
             }
             Expr::Array(_) => "any[]".to_string(),
+            // Plan 028 F1: uniform dict literals infer `Record<K, V>` —
+            // mixed-value dicts stay `any` (no union inference yet).
+            Expr::Object(pairs) => {
+                let all_str_keys = pairs.iter().all(|p| matches!(p.key, crate::ast::Key::StrKey(_)));
+                if all_str_keys && !pairs.is_empty() {
+                    let value_types: Vec<String> = pairs.iter()
+                        .map(|p| self.expr_to_ts_type(&p.value))
+                        .collect();
+                    let first = &value_types[0];
+                    if value_types.iter().all(|t| t == first) && first != "any" {
+                        return format!("Record<string, {}>", first);
+                    }
+                }
+                "any".to_string()
+            }
             _ => "any".to_string(),  // Default fallback
         }
     }
@@ -5728,6 +5785,11 @@ impl VueGenerator {
     /// `.to_float()`).
     fn map_method_to_js(&self, method: &str, object_js: &str, args_js: &[String]) -> Option<String> {
         let a = args_js.join(", ");
+        // Plan 028 M1: a CLOSURE argument means receiver semantics the string
+        // table can't know — `.find(e => …)` is Array.find, never indexOf.
+        if args_js.iter().any(|x| x.contains("=>")) && matches!(method, "find" | "replace" | "contains" | "remove" | "slice" | "substr" | "sub") {
+            return None;
+        }
         Some(match method {
             "len" => format!("{}.length", object_js),
             // Plan 345 (gap N1): Auto `.contains` maps to JS `.includes`
@@ -5752,6 +5814,8 @@ impl VueGenerator {
             // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
             // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
             "char_at" => format!("{}.charAt({})", object_js, a),
+            // Plan 028 F3: char_code_at → charCodeAt（token 估算/avatar hash）。
+            "char_code_at" => format!("{}.charCodeAt({})", object_js, a),
             // find 返回 index 或 -1：
             "find" => format!("{}.indexOf({})", object_js, a),
             // substr/sub/slice 同一 native，均为 start..end 子串：
@@ -6011,10 +6075,80 @@ impl VueGenerator {
                             }
                         }
                     }
+                    // Plan 028 F4: Regex 子集（Rust 语法为规范 + a2ts 机械转换，
+                    // 已决②）。test/match/replace 三形态；命名组 `(?P<n>` →
+                    // `(?<n>`；flags 不进模式、走 API 参数。`$1` 反向引用两端
+                    // 一致，直通。match 补 `|| []` 对齐 Rust 侧 Vec 返回语义。
+                    // 注意必须先于 map_method_to_js：后者会把裸 `replace` 重写
+                    // 成 `replaceAll`，吞掉 `Regex.replace`。
+                    if object_js == "Regex" {
+                        let str_arg = |i: usize| -> Option<String> {
+                            args.get(i).and_then(|a| match a {
+                                crate::ast::Expr::Str(s) => Some(s.as_str().to_string()),
+                                _ => None,
+                            })
+                        };
+                        let re_for = |pat_idx: usize, flag_idx: usize| -> Option<String> {
+                            let pat = str_arg(pat_idx)?;
+                            // Plan 028 T11 对拍缺陷修复：模式嵌入 TS 字符串前必须
+                            // 转义反斜杠（`\\s` 直插 `'\\s'` 会被 JS 求值成 `s`）。
+                            let js_pat = pat
+                                .replace("(?P<", "(?<")
+                                .replace('\\', "\\\\")
+                                .replace('\'', "\\'");
+                            match str_arg(flag_idx) {
+                                Some(f) => Some(format!("new RegExp('{}', '{}')", js_pat, f)),
+                                None => Some(format!("new RegExp('{}')", js_pat)),
+                            }
+                        };
+                        let subject = args_js.first().cloned().unwrap_or_else(|| "''".to_string());
+                        match method.as_str() {
+                            "test" => {
+                                if let Some(re) = re_for(1, 2) {
+                                    return Ok(format!("{}.test({})", re, subject));
+                                }
+                            }
+                            "match" => {
+                                if let Some(re) = re_for(1, 2) {
+                                    return Ok(format!("({}.match({}) || [])", subject, re));
+                                }
+                            }
+                            "split" => {
+                                if let Some(re) = re_for(1, 2) {
+                                    return Ok(format!("{}.split({})", subject, re));
+                                }
+                            }
+                            "replace" => {
+                                if let Some(re) = re_for(1, 3) {
+                                    let to = args_js.get(2).cloned().unwrap_or_else(|| "''".to_string());
+                                    return Ok(format!("{}.replace({}, {})", subject, re, to));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     // Plan 053 M1/P5-3: 方法映射表收敛到 map_method_to_js 单源，
                     // 与 view 表达式路径共享同一张表。
                     if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
                         return Ok(mapped);
+                    }
+                    // Plan 028 F3: `Date.format(ts, "HH:mm")` — 平台日期 API 的
+                    // 窄面（避免暴露整个 Date），映射到 toLocaleTimeString 的
+                    // 2-digit 选项。模式支持 HH:mm / HH:mm:ss。
+                    if method.as_str() == "format" && object_js == "Date" {
+                        let ts_arg = args_js.first().cloned().unwrap_or_else(|| "0".to_string());
+                        let pattern = args_js.get(1)
+                            .map(|p| p.trim_matches('\'').trim_matches('"'))
+                            .unwrap_or("HH:mm");
+                        let mut opts = vec!["hour: '2-digit'", "minute: '2-digit'"];
+                        if pattern.contains("ss") {
+                            opts.push("second: '2-digit'");
+                        }
+                        return Ok(format!(
+                            "new Date({}).toLocaleTimeString([], {{ {} }})",
+                            ts_arg,
+                            opts.join(", ")
+                        ));
                     }
                     Ok(format!("{}.{}({})", object_js, method, args_js.join(", ")))
                 } else {
@@ -6037,10 +6171,18 @@ impl VueGenerator {
                 Ok(format!("[{}]", elems_js.join(", ")))
             }
             Expr::Object(pairs) => {
+                // Plan 028 F1: StrKey needs quoting in JS — bare output broke
+                // non-identifier keys ("task-plan"). Mirrors ts_adapter's arm.
                 let pairs_js: Vec<String> = pairs.iter()
                     .map(|p| {
                         let v_js = self.expr_to_js(&p.value)?;
-                        Ok(format!("{}: {}", p.key.to_astr(), v_js))
+                        let key = match &p.key {
+                            crate::ast::Key::StrKey(s) => {
+                                format!("'{}'", s.as_str().replace('\'', "\\'"))
+                            }
+                            other => other.to_astr().to_string(),
+                        };
+                        Ok(format!("{}: {}", key, v_js))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("{{{}}}", pairs_js.join(", ")))
@@ -6056,6 +6198,14 @@ impl VueGenerator {
                 let target_js = self.expr_to_js(target)?;
                 let index_js = self.expr_to_js(index)?;
                 Ok(format!("{}[{}]", target_js, index_js))
+            }
+            // Plan 028 F1: missing-key/default chains (`colors[k] ?? "#999"`)
+            // used to hit the catch-all `undefined`. Parens keep the `??`
+            // safe inside concatenation and ternaries.
+            Expr::NullCoalesce(l, r) => {
+                let l_js = self.expr_to_js(l)?;
+                let r_js = self.expr_to_js(r)?;
+                Ok(format!("({} ?? {})", l_js, r_js))
             }
             Expr::NavCall { path, params } => {
                 let path_js = self.expr_to_js(path)?;
@@ -7596,7 +7746,11 @@ impl VueGenerator {
             "input" => {
                 // v-model for value
                 if let Some(value) = props.get("value") {
-                    if let Some(model) = self.extract_state_ref(value) {
+                    // Plan 028 F5: also fold Index-position values (dynamic
+                    // keys, `.answers[q.id]`).
+                    if let Some(model) = self.extract_state_ref(value)
+                        .or_else(|| self.extract_state_index_ref(value))
+                    {
                         // Prop-backed value (v-model contract child widget):
                         // props are read-only, so emit one-way :modelValue and
                         // let the event handler emit update:modelValue upward.
@@ -7670,7 +7824,11 @@ impl VueGenerator {
             "textarea" => {
                 // v-model for value
                 if let Some(value) = props.get("value") {
-                    if let Some(model) = self.extract_state_ref(value) {
+                    // Plan 028 F5: also fold Index-position values (dynamic
+                    // keys, `.answers[q.id]`).
+                    if let Some(model) = self.extract_state_ref(value)
+                        .or_else(|| self.extract_state_index_ref(value))
+                    {
                         // Prop-backed value (v-model contract child widget):
                         // one-way :modelValue, update goes out via the handler.
                         if self.prop_names.iter().any(|p| p == &model) {
@@ -10370,6 +10528,38 @@ impl VueGenerator {
         }
     }
 
+    /// Plan 028 F5: normalize an Index target to its bare state name —
+    /// `.answers[k]` parses with the target as either Ident(".answers") or
+    /// Dot(Ident("."), "answers"); both yield "answers".
+    fn index_target_name(target: &crate::ast::Expr) -> Option<String> {
+        match target {
+            crate::ast::Expr::Ident(name) => {
+                let stripped = name.as_str().strip_prefix('.').unwrap_or(name.as_str());
+                if stripped.is_empty() { None } else { Some(stripped.to_string()) }
+            }
+            crate::ast::Expr::Dot(obj, field) => match obj.as_ref() {
+                crate::ast::Expr::Ident(obj_name)
+                    if obj_name.as_str() == "self" || obj_name.as_str() == "." =>
+                {
+                    Some(field.to_string())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Plan 028 F5: `value: .answers[q.id]` — Index-position state ref for a
+    /// dynamic-key v-model. Returns `answers[q.id]` or None.
+    fn extract_state_index_ref(&self, value: &AuraPropValue) -> Option<String> {
+        if let AuraPropValue::Expr(crate::ast::Expr::Index(target, index)) = value {
+            let t = Self::index_target_name(target)?;
+            let idx = self.expr_to_vue_bound_value(index).ok()?;
+            return Some(format!("{}[{}]", t, idx));
+        }
+        None
+    }
+
     /// Get style or class prop value (style takes priority over class)
     /// This supports the transition from 'class' to 'style' prop naming
     fn get_style_class<'a>(&self, props: &'a HashMap<String, AuraPropValue>) -> Option<&'a AuraPropValue> {
@@ -11510,6 +11700,36 @@ export function cn(...inputs: ClassValue[]) {
         Self::generate_store_composable_full(store).0
     }
 
+    /// Plan 028 M1: generate a standalone fn-module `.ts` file from an .at
+    /// file's top-level `fn` declarations (e.g. forge_helpers.at). Each fn
+    /// becomes an exported TS function — the single source for pure helpers
+    /// shared by widgets (`use { fn: … from "src/front/x.at" }`).
+    pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+        let mut code = String::new();
+        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).\n");
+        let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
+        for mfn in fns {
+            let param_list = mfn.params.iter()
+                .map(|p| format!("{}: any", p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret_anno = if mfn.ret_ts.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", mfn.ret_ts)
+            };
+            code.push_str(&format!("\nexport function {}({}){} {{\n", mfn.name, param_list, ret_anno));
+            let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+            for line in body.lines() {
+                code.push_str("    ");
+                code.push_str(line);
+                code.push('\n');
+            }
+            code.push_str("}\n");
+        }
+        code
+    }
+
     /// Plan 012 Batch A: `generate_store_composable` + the codegen warnings
     /// raised along the way (R010 method-mapping passthrough notes), so the
     /// unified entry point can surface them through the validation channel.
@@ -11662,6 +11882,16 @@ export function cn(...inputs: ClassValue[]) {
             }
             code.push('\n');
         }
+        // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions get the
+        // same per-URL module-level guard.
+        if !store.stream_handlers.is_empty() {
+            code.push_str("// Plan 028 F9: on stream sse(...) subscriptions.\n");
+            for sh in &store.stream_handlers {
+                let guard = stream_guard_var(&sh.url);
+                code.push_str(&format!("let {} = false;\n", guard));
+            }
+            code.push('\n');
+        }
         code.push_str(&format!("export function {}(): any {{\n", fn_name));
 
         // Plan 043 cat-3: declare actions as const arrow functions BEFORE the
@@ -11781,6 +12011,47 @@ export function cn(...inputs: ClassValue[]) {
                 code.push_str("        };\n");
                 code.push_str("    }\n");
             }
+        }
+
+        // Plan 028 F9: `on stream sse(url[, "event"]) -> { … }` — open one
+        // EventSource per subscription (guarded, auto-reconnecting, same shape
+        // as the type-driven wiring above). 已决③: the platform layer parses
+        // the SSE data JSON and dispatches the handler with the parsed object,
+        // so the .at body branches on `.ev.type` with zero parsing boilerplate.
+        // Default (no event filter) → onmessage; named events → addEventListener.
+        for sh in &store.stream_handlers {
+            let guard = stream_guard_var(&sh.url);
+            let handler_key = &sh.handler_key;
+            // Action fn name: pattern "__stream_sse_x(ev)" → "__stream_sse_x".
+            let after_dot = handler_key.trim_start_matches('.');
+            let action_name = match after_dot.find('(') {
+                Some(paren) => after_dot[..paren].to_string(),
+                None => after_dot.to_string(),
+            };
+            code.push_str(&format!("    if (!{}) {{\n", guard));
+            code.push_str(&format!("        {} = true;\n", guard));
+            code.push_str(&format!("        const es = new EventSource('{}');\n", sh.url));
+            match &sh.event {
+                None => {
+                    code.push_str(&format!(
+                        "        es.onmessage = (ev) => {{\n            try {{\n                {}(JSON.parse(ev.data));\n            }} catch {{ }}\n        }};\n",
+                        action_name
+                    ));
+                }
+                Some(event_name) => {
+                    code.push_str(&format!(
+                        "        es.addEventListener('{}', (ev) => {{\n            try {{\n                {}(JSON.parse((ev as MessageEvent).data));\n            }} catch {{ }}\n        }});\n",
+                        event_name, action_name
+                    ));
+                }
+            }
+            code.push_str("        es.onerror = () => {\n");
+            code.push_str(&format!(
+                "            if (es.readyState === EventSource.CLOSED) {{ {} = false; setTimeout({}, 2000); }}\n",
+                guard, fn_name
+            ));
+            code.push_str("        };\n");
+            code.push_str("    }\n");
         }
 
         code.push_str("    return {\n");
@@ -16980,6 +17251,7 @@ store Files {
                 discriminator: "event".to_string(),
                 variants: vec![],
             }],
+            stream_handlers: vec![],
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
@@ -17051,6 +17323,7 @@ store Files {
                     ("done".to_string(), "Done".to_string()),
                 ],
             }],
+            stream_handlers: vec![],
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
@@ -17124,6 +17397,7 @@ store Files {
                     variants: vec![],
                 },
             ],
+            stream_handlers: vec![],
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
@@ -17196,6 +17470,7 @@ store PlainStore {
                 discriminator: "event".to_string(),
                 variants: vec![],
             }],
+            stream_handlers: vec![],
             computed: vec![],
             watchers: vec![],
             module_fns: vec![],
