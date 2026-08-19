@@ -82,6 +82,19 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
   resilience requirements（host 代计数器、Full-frame 重发、watchdog 重启、
   RenderCommand 边界检查、可选按关键性分片）。
 - **终极回退**：永久的 in-process 路径让 app 在无 host 可达时降级为自渲染。
+- **code_editor（Plan 413）约束与反馈**：编辑器 core 产出按行稳定 id 键控的
+  `EditorDrawList`（文本 run + quad + 行号文本 run），shaping 留 app 侧（光标/
+  命中/换行需同步布局，不做 IPC shaping 服务）。启动 Stage 1 时：验收应纳入
+  `examples/ui/041-code-editor` 作为 golden 样例（最严苛的文本消费者）；协议需
+  补三点——事件下行通道的 IME（preedit/commit/cursor rect，分离模式下 winit
+  在 host 侧）、字体注册命令（app 自带字体的上传）、按行 CacheControl/
+  DirtyRect。详见 Plan 413 §7。
+- **可选加速（与 Plan 413 并行，不改变本计划启动条件）**：先做 editor-only 的
+  `EditorDrawList` → RenderCommand golden lowering **薄切片**（纯函数、无
+  transport、无 host、无 IPC，数天级工作量）——在 transport 开工前用最严苛的
+  文本消费者（千级 glyph、按行高亮、IME）自下而上硬化文本协议。时序结论：
+  不采用"RenderQueue 先行、auto-edit 后行"——分离架构是纯内存优化而非功能
+  前置，editor 先行零丢弃（core 事件类型与 draw 契约已隔离，见 413 §3.1/§7）。
 
 ## 不在本计划范围
 
