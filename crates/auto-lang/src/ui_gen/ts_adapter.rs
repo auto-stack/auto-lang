@@ -872,6 +872,13 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ".{}()", js_method).ok();
                             return;
                         }
+                        // 数组 find(lambda) 守卫：第一个实参是闭包/lambda 时
+                        // 说明 receiver 是数组（Array.find 谓词语义，JS 同名），
+                        // 不映射成字符串 str::find 的 indexOf —— 空 arm 落到
+                        // match 之后的 pass-through，原样输出 `.find(λ)`。
+                        "find" if call.args.args.first().map_or(false, |a| {
+                            matches!(a.get_expr(), Expr::Closure(_) | Expr::Lambda(_))
+                        }) => {}
                         // 有参 — 前后缀 / 字符 / 查找 / 子串 / 替换 / 重复：
                         "starts_with" | "ends_with" | "char_at" | "find"
                         | "substr" | "sub" | "slice" | "replace" | "repeat" => {
