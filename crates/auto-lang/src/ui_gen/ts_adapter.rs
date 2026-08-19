@@ -1586,15 +1586,15 @@ fn try_transpile_builtin_call(
                     true
                 }
                 "focus_first" => {
-                    write!(out, "document.querySelector(").ok();
+                    write!(out, "(document.querySelector(").ok();
                     transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ")?.focus()").ok();
+                    write!(out, ") as HTMLElement | null)?.focus()").ok();
                     true
                 }
                 "click_first" => {
-                    write!(out, "document.querySelector(").ok();
+                    write!(out, "(document.querySelector(").ok();
                     transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ")?.click()").ok();
+                    write!(out, ") as HTMLElement | null)?.click()").ok();
                     true
                 }
                 "open_url" => {

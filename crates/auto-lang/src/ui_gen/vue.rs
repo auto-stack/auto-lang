@@ -13407,10 +13407,10 @@ fn new_session() {
         );
         assert!(code.contains("matchMedia('(prefers-color-scheme: dark)').matches"), "{}", code);
         assert!(code.contains("document.documentElement.style.setProperty(name, val)"), "{}", code);
-        assert!(code.contains("document.querySelector('.chats-search')?.focus()"), "{}", code);
+        assert!(code.contains("(document.querySelector('.chats-search') as HTMLElement | null)?.focus()"), "{}", code);
         assert!(code.contains("window.open(url, '_blank')"), "{}", code);
         assert!(code.contains("navigator.clipboard.writeText(id)"), "{}", code);
-        assert!(code.contains("document.querySelector('.sidebar-new-btn')?.click()"), "{}", code);
+        assert!(code.contains("(document.querySelector('.sidebar-new-btn') as HTMLElement | null)?.click()"), "{}", code);
     }
 
     /// Template ref escape hatch: a `ref` prop on a view element emits a
