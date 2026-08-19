@@ -308,6 +308,16 @@ pub struct ComponentGenOptions {
     /// = Plain mode: widgets render as native HTML elements (`button` stays
     /// `<button>`) and no `@/components/ui/*` imports are emitted.
     pub shadcn: Option<bool>,
+    /// Default Tailwind class injection toggle (pac.at `default_classes:`
+    /// field). `None` / `Some(true)` = on (current default, unchanged):
+    /// `extract_classes` injects the doc-theme defaults (`text` →
+    /// `text-muted-foreground leading-7`, `h1` → `text-3xl ...`, `button` →
+    /// `px-4 py-2 rounded`, ...). `Some(false)` = off: skip every default
+    /// class EXCEPT the structural layout primitives (`row`/`col`/`column`/
+    /// `grid`/`scroll`/`center`/`container`/`square`) — those stay so the
+    /// layout doesn't collapse. For pixel-exact replica projects that bring
+    /// their own styling.
+    pub default_classes: Option<bool>,
 }
 
 /// Result of generating a component from an .at file.
@@ -466,10 +476,14 @@ pub fn generate_component_from_file(
     } else {
         VueMode::Plain
     };
+    // pac.at `default_classes: off` (Plan 014): skip the doc-theme default
+    // Tailwind classes for non-layout-primitive tags; default stays on.
+    let default_classes = opts.default_classes.unwrap_or(true);
 
     for widget in &widgets {
         let mut gen = VueGenerator::new()
             .with_mode(vue_mode)
+            .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
             .with_sub_widgets(all_sub_widgets.clone());
         if !api_imports.is_empty() {

@@ -839,6 +839,13 @@ pub struct VueGenerator {
     /// Generation mode (Plain or Shadcn)
     mode: VueMode,
 
+    /// pac.at `default_classes:` toggle (Plan 014). Default true = inject the
+    /// doc-theme default Tailwind classes in `extract_classes`. false = skip
+    /// them for everything except the structural layout primitives
+    /// (row/col/column/grid/scroll/center/container/square), so pixel-exact
+    /// replica projects can bring their own styling without losing layout.
+    default_classes: bool,
+
     /// Unified widget registry (replaces ShadcnRegistry)
     #[allow(dead_code)]
     widget_registry: WidgetRegistry,
@@ -1077,6 +1084,7 @@ impl VueGenerator {
             lucide_icons: HashSet::new(),
             wrapper_classes: String::new(),
             mode: VueMode::Plain,
+            default_classes: true,
             widget_registry: WidgetRegistry::with_defaults(),
             shadcn_components_used: HashSet::new(),
             use_typescript: true,  // Plan 100: TypeScript by default
@@ -1188,6 +1196,14 @@ impl VueGenerator {
     /// Set the generation mode
     pub fn with_mode(mut self, mode: VueMode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    /// Set the `default_classes` toggle (pac.at `default_classes: off`).
+    /// When false, `extract_classes` skips the doc-theme default Tailwind
+    /// classes for everything except layout primitives (row/col/grid/...).
+    pub fn with_default_classes(mut self, default_classes: bool) -> Self {
+        self.default_classes = default_classes;
         self
     }
 
@@ -5416,6 +5432,12 @@ impl VueGenerator {
         let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square"];
         let is_layout_primitive = layout_primitives.contains(&normalized_tag);
         let skip_defaults = !is_layout_primitive && self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
+
+        // pac.at `default_classes: off` (Plan 014): skip the doc-theme default
+        // classes below for every non-layout-primitive tag. Stacks with the
+        // shadcn/user-class skips above; layout primitives keep their classes
+        // (they're structural — without them the layout collapses).
+        let skip_defaults = skip_defaults || (!is_layout_primitive && !self.default_classes);
 
         // Check if user has provided a class or style attribute
         let has_user_class = props.contains_key("class") || props.contains_key("style");

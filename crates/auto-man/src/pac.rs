@@ -102,6 +102,13 @@ pub struct Pac {
     /// HTML element generation for non-shadcn projects.
     pub shadcn: bool,
 
+    /// Default Tailwind class injection toggle (Plan 014), declared as
+    /// `default_classes: off` in pac.at. Default true = current behavior
+    /// (doc-theme defaults like `text` → `text-muted-foreground leading-7`).
+    /// false = skip them except structural layout primitives (row/col/...),
+    /// for pixel-exact replica projects.
+    pub default_classes: bool,
+
     is_update: bool,
 }
 
@@ -211,6 +218,22 @@ impl Pac {
             }
         };
 
+        // Plan 014: default Tailwind class injection toggle,
+        // `default_classes: off` in pac.at. Same accepted forms as shadcn;
+        // absent or unrecognized → true (current default).
+        let default_classes = if !config.root.has_prop("default_classes") {
+            true
+        } else {
+            match config.root.get_prop("default_classes") {
+                Value::Bool(b) => b,
+                v => {
+                    let s = v.to_astr();
+                    let s = s.trim().to_lowercase();
+                    !matches!(s.as_str(), "off" | "false" | "no" | "0")
+                }
+            }
+        };
+
         // target related properties
         let target_props = vec!["at", "lang"];
 
@@ -276,6 +299,7 @@ impl Pac {
             back_port,
             window,
             shadcn,
+            default_classes,
             is_update: false,
         }
     }
@@ -1575,6 +1599,26 @@ mod tests {
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
         assert!(pac.shadcn, "absent shadcn field defaults to true");
+    }
+
+    /// Plan 014: pac.at `default_classes: off` toggle parsing (same accepted
+    /// forms as shadcn; default stays on).
+    #[test]
+    fn test_default_classes_parsing() {
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: off\n").unwrap());
+        assert!(!pac.default_classes, "default_classes: off must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: on\n").unwrap());
+        assert!(pac.default_classes, "default_classes: on must parse to true");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: false\n").unwrap());
+        assert!(!pac.default_classes, "default_classes: false must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: \"off\"\n").unwrap());
+        assert!(!pac.default_classes, "default_classes: \"off\" must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
+        assert!(pac.default_classes, "absent default_classes field defaults to true");
     }
 
     #[test]

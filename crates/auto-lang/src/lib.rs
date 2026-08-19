@@ -4548,7 +4548,7 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None, None)?;
+    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None, None, None)?;
     Ok((vue_code, widgets))
 }
 
@@ -4563,11 +4563,16 @@ pub fn ui_build_shadcn_with_widgets(
 ///
 /// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
 /// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
+///
+/// `default_classes` (Plan 014): `None`/`Some(true)` = inject doc-theme
+/// default Tailwind classes (default); `Some(false)` = skip them except for
+/// structural layout primitives (row/col/grid/...).
 pub fn ui_build_shadcn_with_widgets_and_stores(
     path: &str,
     output: Option<&str>,
     root_dir: Option<&str>,
     shadcn: Option<bool>,
+    default_classes: Option<bool>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
@@ -4577,6 +4582,7 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
     let opts = ComponentGenOptions {
         stream_endpoints,
         shadcn,
+        default_classes,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -4618,6 +4624,7 @@ pub fn ui_build_shadcn_all_widget_codes(
     path: &str,
     root_dir: Option<&str>,
     shadcn: Option<bool>,
+    default_classes: Option<bool>,
 ) -> AutoResult<crate::ui_gen::GeneratedComponent> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
     let at_path = std::path::Path::new(path);
@@ -4626,6 +4633,7 @@ pub fn ui_build_shadcn_all_widget_codes(
     let opts = ComponentGenOptions {
         stream_endpoints,
         shadcn,
+        default_classes,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -4643,7 +4651,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
     let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
-        path, output, sub_widget_names, None, None,
+        path, output, sub_widget_names, None, None, None,
     )?;
     Ok((vue_code, widgets))
 }
@@ -4660,12 +4668,17 @@ pub fn ui_build_shadcn_with_sub_widgets(
 ///
 /// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
 /// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
+///
+/// `default_classes` (Plan 014): `None`/`Some(true)` = inject doc-theme
+/// default Tailwind classes (default); `Some(false)` = skip them except for
+/// structural layout primitives (row/col/grid/...).
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     path: &str,
     output: Option<&str>,
     sub_widget_names: Vec<String>,
     root_dir: Option<&str>,
     shadcn: Option<bool>,
+    default_classes: Option<bool>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
@@ -4676,6 +4689,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
         sub_widgets: Some(sub_widget_names),
         stream_endpoints,
         shadcn,
+        default_classes,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
