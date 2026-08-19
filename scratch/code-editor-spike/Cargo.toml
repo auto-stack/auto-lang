@@ -1,0 +1,30 @@
+[package]
+name = "code-editor-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Plan 413 §8.1: 独立 cargo 项目,不进 auto-lang workspace。
+[workspace]
+
+[features]
+default = ["wgpu"]
+# Default mirrors the iced facade defaults (wgpu + tiny-skia fallback renderer).
+wgpu = ["iced/wgpu", "iced/tiny-skia"]
+# Software-only backend (tiny-skia) — Phase 0 verification item 1, second lane.
+software = ["iced/tiny-skia"]
+
+[dependencies]
+iced = { version = "0.14.0", default-features = false, features = ["advanced", "image", "canvas", "tiny-skia", "tokio"] }
+# 必须与 iced 0.14.0 锁定的 cosmic-text 同一 minor(0.15),否则 Raw{Weak<Buffer>} 类型冲突。
+cosmic-text = { version = "0.15", features = ["vi", "syntect"] }
+two-face = "0.4"
+
+# 验证项 6:two-face 与 cosmic-text 0.15 的 syntect 5.x 版本统一 —— `cargo tree -i syntect`
+# 必须只有一个实例。构建后检查 Cargo.lock。
+
+[profile.dev]
+opt-level = 1
+
+[dev-dependencies]
+iced_test = "0.14"

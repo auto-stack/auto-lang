@@ -1,6 +1,6 @@
 # Plan 413: 跨平台代码编辑器 widget(模拟 cosmic-edit,iced 后端)
 
-> **状态**: 📋 调研完成,方案已定,待实施
+> **状态**: 🚧 实施中 —— **Phase 0 ✅ 已通过闸门**(2026-08-19,Windows 11 双后端验证,见 `scratch/code-editor-spike/README.md` 验证矩阵:fill_raw wgpu+tiny-skia 双通、syntect 单实例 5.3.0、fork API 差异表产出、iced_test 无头管线 5/5)。当前推进:Phase 1 widget 本体。
 > **仓库**: auto-lang(`crates/auto-lang/src/ui/iced/`、`src/ui/view.rs`、`src/ui/aura_view_builder.rs`、`src/ui_gen/rust.rs` 等,详见 §4 触点清单)
 > **背景**: cosmic-edit(System76 COSMIC 桌面的文本编辑器)有一个成熟的自研编辑器 widget(`text_box.rs`,cosmic-text `ViEditor` 引擎),但整个 cosmic 应用栈不落地 Windows。AutoUI 需要一个同能力(语法高亮、行号、软换行、搜索、vi/undo、IME)的**跨平台(Windows/Linux)代码编辑器组件**,以 `code_editor` 内建 widget 的形式接入 AURA DSL → `View` → iced 渲染器 → a2r 代码生成全链路。
 > **结论先行**: 上游 iced 0.14(auto-lang 当前锁定版)**已具备** cosmic-edit TextBox 依赖的全部底层原语(`fill_raw`/`Raw`、全局 `font_system()`、`Event::InputMethod` IME、highlighter),cosmic-text 0.15(iced 0.14 的配套版)同时提供 `ViEditor` + `SyntaxEditor`。**方案 = 按 cosmic-edit 架构在 auto-lang 内 MIT 重新实现一个 `code_editor` 自定义 iced Widget,接入 AutoUI 全链路**。注意许可证约束(§5.1):cosmic-edit 是 GPL-3.0,不能直接复制代码。
@@ -86,6 +86,19 @@
 | 风险 | 能力天花板低,后续返工 | cosmic-text 0.15 vs 0.19 API 漂移(spike 消除) | 第三方维护节奏、canvas 路线与本项目文本管线(font_system)分离、demo 化 API |
 
 **决策:B1**。理由:与用户诉求"模拟 cosmic-edit"一致;能力完整;所有底层依赖(iced 0.14 + cosmic-text 0.15 + syntect + two-face)都是 MIT/MPL,自研层可保持 MIT;`fill_raw` 路线与 iced 文本管线共享 FontSystem(字体一致、省一份文本栈)。B2 作为 Phase 0 的**对照组参考**(其 MIT 源码可合法借阅 undo/搜索/IME 的 iced 0.14 写法),不作依赖。A 路线保留为**降级方案**:若 Phase 0 发现 0.15 的 `ViEditor` 缺关键 API 且不可短平快补,则退回 A(vue 模式本就用 CodeMirror,见 §4 Phase 4)。
+
+### 2.1 否决项:Windows 版 libcosmic(决策记录,2026-08)
+
+cosmic-edit 不支持 Windows 的病灶在 **libcosmic 应用壳**,而非编辑器 widget(§1.1)。本计划不移植 libcosmic,只取其编辑器 widget 层的设计,应用壳由 AutoUI 自任:
+
+| libcosmic 职责 | 本计划替代 |
+|---|---|
+| 应用框架(Application/Core/多窗口/subscription) | AutoUI 现有 iced 0.14 应用壳(renderer.rs `run_app`) |
+| 主题(cosmic-theme/palette/spacing) | `CodeEditorTheme`(AutoUI 语义色合成,§3.1) |
+| 右键菜单(surface popup) | `on_context_menu` 回调消息 + 现有 overlay 组合 |
+| 菜单栏/文件对话框/配置持久化 | 不在组件范围(app 层用现有 widget 组合,对话框后续可评估 rfd) |
+
+否决理由:① 移植 libcosmic 需替换 cosmic-files(freedesktop/gvfs)、cosmic-config D-Bus 后端、ashpd 门户、surface 菜单弹窗等,等于重写其半条命;② libcosmic 绑死 pop-os iced fork,与 auto-lang 锁定的上游 iced 0.14 在同一进程互斥(两套 iced 无法共存);③ 若动机是原样运行 cosmic-edit 应用,则触发 GPL-3.0 传染(§5.1);④ 与 AutoUI 的价值(自有 DSL→View→iced 链路)相反。若未来确需运行 cosmic-edit 整应用或批量复用 cosmic 部件库,应立项独立项目、独立依赖链,不与本计划混合。
 
 ---
 
@@ -292,9 +305,19 @@ View::code_editor("editor1")
 | 7.4 | 协议缺口(design 20 需补充的三点):① 事件下行通道缺 **IME**(preedit/commit/cursor rect)—— 分离模式下 winit 窗口在宿主侧,TSF 输入法状态必须转发给 app,否则编辑器中文输入失效(参照 wayland zwp_text_input);② 缺**字体注册**命令(app 自带等宽字体的上传通道,现有 `UpdateTexture` 不覆盖);③ 增量帧缓存需**按行**生效:编辑器滚动 = offset + 少量新暴露行,`CacheControl`/DirtyRect 应能挂在 draw list 的行稳定 id 上 | 记入 Plan 386 设计输入;本计划的行键控 EditorDrawList 设计使宿主端按行缓存自然成立 |
 | 7.5 | 排期关系:Plan 386 处于暂缓(启动条件未满足),本计划**不等待、不阻塞** | 现在按 in-process iced 0.14 实施 —— in-process 本就是 Windows dev host(Plan 365 Host ①)的长期运行方式,Phase 0-5 无一次性代码;将来接入 Stage 1 仅新增 ~300–500 行 lowering 适配层 |
 | 7.6 | 反向收益:编辑器是 RenderCommand 原语集(quad/text/image/clip/layer)最严苛的消费者(千级 glyph、按行高亮、高频局部重绘),toy widget 验证不了协议完备性 | 建议把 `examples/ui/041-code-editor`(或未来的 auto-edit 应用)纳入 Plan 386 Stage 1 的 golden 对照样例 |
-| 7.7 | **时序结论(2026-08 复审)**:不采用"RenderQueue 先行、auto-edit 后行"。分离架构是纯内存优化而非功能前置(Plan 386 启动条件即此意);editor 先行零丢弃(core 事件类型与 draw 契约已隔离);且 auto-edit 是最佳**协议压力测试**但非最佳**内存受益者**(地板 = 文档 + undo + shaping,轻量 app 才是分离架构的内存主受益方) | 采纳的折中:与 Plan 413 并行做 editor-only 的 draw list → RenderCommand golden lowering **薄切片**(纯函数、无 transport/host,数天级),见 Plan 386 设计输入;全量 Stage 1 仍按其启动条件推进 |
+| 7.7 | **时序结论(2026-08 复审,用户已采纳)**:不采用"RenderQueue 先行、auto-edit 后行"。分离架构是纯内存优化而非功能前置(Plan 386 启动条件即此意);editor 先行零丢弃(core 事件类型与 draw 契约已隔离);且 auto-edit 是最佳**协议压力测试**但非最佳**内存受益者**(地板 = 文档 + undo + shaping,轻量 app 才是分离架构的内存主受益方)。量化对比:RenderQueue 全程约 2.5–5 人月/1.5–2.5 万行 vs auto-edit 约 2–3 人周/2–2.5 千行(约 5:1);颠倒顺序最多省 iced 适配层 ~500 行 | 采纳的折中:与 Plan 413 并行做 editor-only 的 draw list → RenderCommand golden lowering **薄切片**(纯函数、无 transport/host,数天级),见 Plan 386 设计输入;全量 Stage 1 仍按其启动条件推进 |
 
 (auto-edit 应用层 —— 文件树/多 tab/搜索栏/状态栏 —— 由现有 AutoUI widget 组合,同样位于 `View` 之上,不受分离架构影响。)
+
+---
+
+## 8. 实施启动指引(给实施 agent)
+
+1. **入口与顺序**:Phase 0(spike)→ 1 → 2 → 3 → 4 → 5,严格按序。Phase 0 是闸门:独立 cargo 项目(建议 `scratch/code-editor-spike/`,**不进** auto-lang workspace),达成退出标准后才进入 Phase 1;若 cosmic-text 0.15 关键 API 缺失且 widget 层无法绕过,停下按 §2 方案 A 重新评估,勿硬闯。
+2. **参考代码挂载**(在 cosmic-edit 仓库执行):`git worktree add ../cosmic-edit-1.0.2 epoch-1.0.2`。行为规格 = epoch-1.0.2(cosmic-text 0.15 纪元);改进 changelog = 1.0.2→HEAD 的 diff(重绘优化值得吸收)。**GPL 红线(§5.1):cosmic-edit 仅供阅读理解,禁止复制/机械改写其任何源码进 auto-lang**;可直接借阅的 MIT 参考上游 iced 0.14.0 tag(`D:\github\iced`)与 `D:\github\iced-code-editor`。
+3. **硬约束**:§3.1 三层分层(core 与 draw.rs 禁止 import iced;`EditorInput`/`EditorDrawList` 契约);cosmic-text 锁 **0.15**(与 iced 0.14.0 统一,禁止引入第二个 minor —— 会产生双拷贝类型冲突);two-face 选与 cosmic-text 0.15 的 syntect 兼容版本;新 cargo feature `code-editor` 挂在 `ui-iced` 下;不做 iced 版本升级(§5.2 升级策略)。
+4. **工程惯例**:每次编辑会话后 `cargo build -p auto`、改动后 `cargo test -p auto-lang`(仓库 CLAUDE.md 约定);Phase 4 生成 `.at` 示例前先调用 `/auto-lang-creator` skill;每阶段完成后更新本计划状态标记,全部完成后走 finish-plan 流程。
+5. **验收**:以 §6 为最终验收 + cosmic-edit `TESTING.md` 行为清单(Phase 5);Windows 优先,Linux 复验。
 
 ---
 
