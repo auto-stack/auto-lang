@@ -1555,6 +1555,7 @@ fn try_transpile_builtin_call(
         //   dom.prefers_dark()    → matchMedia('(prefers-color-scheme: dark)').matches
         //   dom.set_css_var(n, v) → documentElement.style.setProperty(n, v)
         //   dom.focus_first(sel)  → document.querySelector(sel)?.focus()
+//   dom.click_first(sel)  → document.querySelector(sel)?.click()
         //   dom.open_url(url)     → window.open(url, '_blank')
         //   dom.copy_text(text)   → navigator.clipboard.writeText(text)
         "dom" => {
@@ -1588,6 +1589,12 @@ fn try_transpile_builtin_call(
                     write!(out, "document.querySelector(").ok();
                     transpile_expr(&args.args[0].get_expr(), ctx, out);
                     write!(out, ")?.focus()").ok();
+                    true
+                }
+                "click_first" => {
+                    write!(out, "document.querySelector(").ok();
+                    transpile_expr(&args.args[0].get_expr(), ctx, out);
+                    write!(out, ")?.click()").ok();
                     true
                 }
                 "open_url" => {

@@ -13383,6 +13383,10 @@ fn open_link(url str) {
 fn copy_id(id str) {
     dom.copy_text(id)
 }
+
+fn new_session() {
+    dom.click_first(".sidebar-new-btn")
+}
 "#;
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("dom fn module must parse");
@@ -13406,6 +13410,7 @@ fn copy_id(id str) {
         assert!(code.contains("document.querySelector('.chats-search')?.focus()"), "{}", code);
         assert!(code.contains("window.open(url, '_blank')"), "{}", code);
         assert!(code.contains("navigator.clipboard.writeText(id)"), "{}", code);
+        assert!(code.contains("document.querySelector('.sidebar-new-btn')?.click()"), "{}", code);
     }
 
     /// Template ref escape hatch: a `ref` prop on a view element emits a
