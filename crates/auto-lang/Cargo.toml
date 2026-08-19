@@ -42,7 +42,7 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "ui-interpreter", "dep:image", "dep:arboard"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -114,6 +114,9 @@ gpui-lib = { version = "0.2.2", package = "gpui", optional = true }
 gpui-component = { version = "0.5.0", optional = true }
 anyhow = { version = "1.0", optional = true }
 iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas"], optional = true }
+# Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
+# 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
+iced_widget = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 image = { version = "0.25", optional = true }

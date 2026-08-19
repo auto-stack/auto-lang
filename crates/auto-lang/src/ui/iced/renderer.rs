@@ -63,6 +63,287 @@ lazy_static::lazy_static! {
         Mutex::new(std::collections::HashMap::new());
 }
 
+/// Plan 057 (ash-gui 光标可见): PlainText highlighter 的 to_format —— 把编辑器
+/// 文字整体染透明(overlay 高亮层负责显示彩色文字),让 style.value 专职 caret 颜色。
+fn text_editor_text_transparent(
+    _highlight: &(),
+    _theme: &iced::Theme,
+) -> iced_widget::core::text::highlighter::Format<iced::Font> {
+    iced_widget::core::text::highlighter::Format {
+        color: Some(iced::Color::TRANSPARENT),
+        font: None,
+    }
+}
+
+/// Plan 057 续(富文本输入):textarea 的 on_action 事件接线 — Enter 走
+/// on_submit(onenter),其余走 on_change(oninput);input_value 经 ghost 剥离。
+/// 泛型于 Highlighter,使 PlainText(存量)与 SpanHighlighter(富文本)共用。
+fn wire_textarea_actions<H>(
+    editor: iced::widget::TextEditor<'static, H, IcedMessage>,
+    on_change: Option<IcedMessage>,
+    on_submit: Option<IcedMessage>,
+) -> iced::Element<'static, IcedMessage>
+where
+    H: iced_widget::core::text::Highlighter,
+{
+    // In inspect-capture mode, render read-only (no on_action) so
+    // wrap_debug's mouse_area can capture hover/click.
+    let on_change = if inspect_capture_active() { None } else { on_change };
+    let on_submit = if inspect_capture_active() { None } else { on_submit };
+    // Plan 053 M4: Enter fires the on_submit (onenter) handler instead of
+    // on_change. Plan 057 续:ghost 嵌入内容,派发前剥离已知后缀。
+    let is_enter = |action: &text_editor::Action| {
+        matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
+    };
+    if let Some(msg) = on_change {
+        let msg_clone = msg.clone();
+        let submit_clone = on_submit.clone();
+        editor
+            .on_action(move |action| {
+                let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
+                if is_enter(&action) {
+                    if let Some(sm) = submit_clone.clone() {
+                        let text = strip_ghost_suffix(
+                            &action_key,
+                            &textarea_perform_action(&action_key, action),
+                        );
+                        IcedMessage {
+                            widget: sm.widget.clone(),
+                            event: sm.event.clone(),
+                            input_value: Some(text),
+                        }
+                    } else {
+                        let text = strip_ghost_suffix(
+                            &action_key,
+                            &textarea_perform_action(&action_key, action),
+                        );
+                        IcedMessage {
+                            widget: msg_clone.widget.clone(),
+                            event: msg_clone.event.clone(),
+                            input_value: Some(text),
+                        }
+                    }
+                } else {
+                    let text = strip_ghost_suffix(
+                        &action_key,
+                        &textarea_perform_action(&action_key, action),
+                    );
+                    IcedMessage {
+                        widget: msg_clone.widget.clone(),
+                        event: msg_clone.event.clone(),
+                        input_value: Some(text),
+                    }
+                }
+            })
+            .into()
+    } else if let Some(sm) = on_submit {
+        let sm_clone = sm.clone();
+        let action_key = format!("{}_{}", sm.widget, sm.event);
+        editor
+            .on_action(move |action| {
+                let enter = is_enter(&action);
+                let text = strip_ghost_suffix(
+                    &action_key,
+                    &textarea_perform_action(&action_key, action),
+                );
+                if enter {
+                    IcedMessage {
+                        widget: sm_clone.widget.clone(),
+                        event: sm_clone.event.clone(),
+                        input_value: Some(text),
+                    }
+                } else {
+                    IcedMessage {
+                        widget: sm_clone.widget.clone(),
+                        event: sm_clone.event.clone(),
+                        input_value: Some(text),
+                    }
+                }
+            })
+            .into()
+    } else {
+        editor.into()
+    }
+}
+
+// ── Plan 057 续(富文本输入):原生着色 textarea ────────────────────────
+// 语法着色不再走「透明文字 + 叠加层」,而是 text_editor 原生 Highlighter:
+// (text, kind) 连续段 + ghost 建议后缀 → 逐段颜色/字重直接落进编辑器文字。
+
+/// 语义着色段类型 — 对齐 .at DoTokenize 的 kind,外加 Ghost(灰色建议)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpanKind {
+    Command,
+    ExternalCmd,
+    String,
+    Variable,
+    Operator,
+    Redirect,
+    Comment,
+    Flag,
+    Whitespace,
+    Arg,
+    Ghost,
+    Plain,
+}
+
+fn parse_span_kind(kind: &str) -> SpanKind {
+    match kind {
+        "Command" => SpanKind::Command,
+        "ExternalCmd" => SpanKind::ExternalCmd,
+        "String" => SpanKind::String,
+        "Variable" => SpanKind::Variable,
+        "Operator" => SpanKind::Operator,
+        "Redirect" => SpanKind::Redirect,
+        "Comment" => SpanKind::Comment,
+        "Flag" => SpanKind::Flag,
+        "Whitespace" => SpanKind::Whitespace,
+        "Arg" => SpanKind::Arg,
+        "Ghost" => SpanKind::Ghost,
+        _ => SpanKind::Plain,
+    }
+}
+
+/// 按行预切的着色段(字节范围已重定位到行内)。Highlighter 的 Settings。
+pub type SpanLines = Vec<Vec<(std::ops::Range<usize>, SpanKind)>>;
+
+/// 预计算着色的 Highlighter:lines 全量替换(update 时重置行游标,从行 0
+/// 重着色 —— iced_highlighter 的 update 同款约定),highlight_line 顺序消费。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpanHighlighter {
+    lines: SpanLines,
+    line_idx: usize,
+}
+
+impl iced_widget::core::text::Highlighter for SpanHighlighter {
+    type Settings = SpanLines;
+    type Highlight = SpanKind;
+    type Iterator<'a> = std::vec::IntoIter<(std::ops::Range<usize>, SpanKind)>;
+
+    fn new(settings: &Self::Settings) -> Self {
+        Self { lines: settings.clone(), line_idx: 0 }
+    }
+
+    fn update(&mut self, settings: &Self::Settings) {
+        // 整体替换 → 重置游标,让 draw 的 highlight 从行 0 重喂。
+        self.lines = settings.clone();
+        self.line_idx = 0;
+    }
+
+    fn change_line(&mut self, line: usize) {
+        self.line_idx = line;
+    }
+
+    fn highlight_line(&mut self, _line: &str) -> Self::Iterator<'_> {
+        let idx = self.line_idx;
+        self.line_idx += 1;
+        self.lines.get(idx).cloned().unwrap_or_default().into_iter()
+    }
+
+    fn current_line(&self) -> usize {
+        self.line_idx
+    }
+}
+
+/// kind → Format(颜色/字重)。调色板对齐 .at 视图层原有的 Tailwind 语义
+/// (emerald-400/sky-300/amber-300/red-400/pink-400/gray-400/purple-300)。
+fn span_kind_to_format(
+    highlight: &SpanKind,
+    _theme: &iced::Theme,
+) -> iced_widget::core::text::highlighter::Format<iced::Font> {
+    let c = |r: u8, g: u8, b: u8| iced::Color::from_rgb8(r, g, b);
+    let bold = iced::Font {
+        weight: iced::font::Weight::Bold,
+        ..iced::Font::DEFAULT
+    };
+    match highlight {
+        SpanKind::Command => iced_widget::core::text::highlighter::Format {
+            color: Some(c(52, 211, 153)),   // emerald-400
+            font: Some(bold),
+        },
+        SpanKind::ExternalCmd => iced_widget::core::text::highlighter::Format {
+            color: Some(c(125, 211, 252)),  // sky-300
+            font: None,
+        },
+        SpanKind::String => iced_widget::core::text::highlighter::Format {
+            color: Some(c(252, 211, 77)),   // amber-300
+            font: None,
+        },
+        SpanKind::Variable => iced_widget::core::text::highlighter::Format {
+            color: Some(c(248, 113, 113)),  // red-400
+            font: None,
+        },
+        SpanKind::Operator => iced_widget::core::text::highlighter::Format {
+            color: Some(c(244, 114, 182)),  // pink-400
+            font: Some(bold),
+        },
+        SpanKind::Redirect | SpanKind::Comment => iced_widget::core::text::highlighter::Format {
+            color: Some(c(156, 163, 175)),  // gray-400
+            font: None,
+        },
+        SpanKind::Flag => iced_widget::core::text::highlighter::Format {
+            color: Some(c(216, 180, 254)),  // purple-300
+            font: None,
+        },
+        SpanKind::Ghost => iced_widget::core::text::highlighter::Format {
+            // 低饱和半透明灰 — 对齐 vue 的 text-muted-foreground/35。
+            color: Some(iced::Color::from_rgba(0.45, 0.48, 0.54, 0.45)),
+            font: None,
+        },
+        SpanKind::Whitespace | SpanKind::Arg | SpanKind::Plain => {
+            iced_widget::core::text::highlighter::Format::default()
+        }
+    }
+}
+
+/// (text, kind) 连续段 + ghost → 按行预切的字节范围段。spans 必须无缝覆盖
+/// value(DoTokenize 语义);不满足时返回空(不着色,防错位)。
+fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) -> SpanLines {
+    let mut full: Vec<(std::ops::Range<usize>, SpanKind)> = Vec::new();
+    let mut concat = String::new();
+    let mut off = 0usize;
+    for (text, kind) in highlight {
+        concat.push_str(text);
+        let end = off + text.len();
+        if end > off {
+            full.push((off..end, parse_span_kind(kind)));
+        }
+        off = end;
+    }
+    // 防线:段文本拼接必须恰为 value —— CJK 字节钳制等来源可能造成缺口/重叠。
+    if concat != value {
+        return Vec::new();
+    }
+    if !ghost.is_empty() {
+        full.push((value.len()..value.len() + ghost.len(), SpanKind::Ghost));
+    }
+    let content = format!("{}{}", value, ghost);
+    // 切行:段跨 \n 时拆成行内片段(Whitespace 段可含续行换行)。
+    let mut lines: SpanLines = vec![Vec::new()];
+    let mut line_start = 0usize;
+    for (r, kind) in full {
+        let mut s = r.start;
+        while s < r.end {
+            match content[s..r.end].find('\n') {
+                Some(rel) => {
+                    let nl = s + rel;
+                    if nl > s {
+                        lines.last_mut().unwrap().push((s - line_start..nl - line_start, kind));
+                    }
+                    lines.push(Vec::new());
+                    line_start = nl + 1;
+                    s = nl + 1;
+                }
+                None => {
+                    lines.last_mut().unwrap().push((s - line_start..r.end - line_start, kind));
+                    s = r.end;
+                }
+            }
+        }
+    }
+    lines
+}
+
 /// Get or create a `&'static text_editor::Content` for the given key, synced to `value`.
 fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content {
     // Phase 1: ensure the entry exists (under lock)
@@ -111,6 +392,65 @@ fn textarea_perform_action(key: &str, action: text_editor::Action) -> String {
     } else {
         String::new()
     }
+}
+
+// ── Plan 057 续(富文本输入):ghost 嵌入内容 + 编辑事件剥离 ────────────
+
+/// 每个 textarea key 当前嵌入的 ghost 后缀(渲染时写入,编辑派发时读)。
+lazy_static::lazy_static! {
+    static ref TEXTAREA_GHOSTS: Mutex<std::collections::HashMap<String, String>> =
+        Mutex::new(std::collections::HashMap::new());
+}
+
+/// 富文本版内容缓存:content = value + ghost(ghost 经 Highlighter 染灰)。
+/// value 或 ghost 变化才重建;重建后光标置于 **value 末尾**(DocumentEnd 再
+/// 回退 ghost 字符数),避免后续键入落到 ghost 之后。
+fn get_textarea_content_rich(key: &str, value: &str, ghost: &str) -> &'static text_editor::Content {
+    {
+        let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+        map.entry(key.to_string())
+            .or_insert_with(|| Box::leak(Box::new(text_editor::Content::with_text(value))));
+    }
+    {
+        let mut ghosts = TEXTAREA_GHOSTS.lock().unwrap();
+        ghosts.insert(key.to_string(), ghost.to_string());
+    }
+    {
+        let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+        let want = format!("{}{}", value, ghost);
+        if let Some(content) = map.get_mut(key) {
+            if content.text() != want {
+                **content = text_editor::Content::with_text(&want);
+                content.perform(text_editor::Action::Move(
+                    text_editor::Motion::DocumentEnd,
+                ));
+                for _ in 0..ghost.chars().count() {
+                    content.perform(text_editor::Action::Move(
+                        text_editor::Motion::Left,
+                    ));
+                }
+            }
+        }
+    }
+    let ptr: *const text_editor::Content;
+    {
+        let map = TEXTAREA_CONTENTS.lock().unwrap();
+        ptr = map.get(key).map(|c| &**c as *const _).unwrap();
+    }
+    // SAFETY: 同 get_textarea_content —— Box::leak 的 'static 分配,仅锁内变更。
+    unsafe { &*ptr }
+}
+
+/// 编辑事件剥离:新内容若以本编辑器已知 ghost 后缀结尾 → 剥掉;否则(用户
+/// 改写/选中覆盖了 ghost)整段视为真实输入,ghost 由状态重算自愈。
+fn strip_ghost_suffix(key: &str, text: &str) -> String {
+    let ghosts = TEXTAREA_GHOSTS.lock().unwrap();
+    if let Some(g) = ghosts.get(key) {
+        if !g.is_empty() && text.len() >= g.len() && text.ends_with(g.as_str()) {
+            return text[..text.len() - g.len()].to_string();
+        }
+    }
+    text.to_string()
 }
 
 /// Retrieve the last input text value captured by an Input's on_input callback.
@@ -1590,7 +1930,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 input_widget.into()
             }
 
-            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style } => {
+            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, .. } => {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
@@ -2675,6 +3015,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_submit,
             height,
             style,
+            highlight,
+            ghost,
         } => AbstractView::Textarea {
             placeholder,
             value,
@@ -2682,6 +3024,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_submit: on_submit.map(|m| IcedMessage::from_dynamic(&m)),
             height,
             style,
+            highlight,
+            ghost,
         },
 
         AbstractView::Checkbox {
@@ -3966,6 +4310,18 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                         event: event_name.to_string(),
                         input_value: None,
                     })
+                } else if key_str == "Tab" {
+                    // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
+                    // reaching here were NOT captured by a focused widget —
+                    // when the prompt editor holds focus, its Tab (tab-completion
+                    // via onkeydown.tab) is Captured and never gets here. So an
+                    // un-captured Tab means nothing is focused (or a non-input
+                    // has focus): focus the prompt editor so the caret shows.
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: FOCUS_PROMPT_EVENT.to_string(),
+                        input_value: None,
+                    })
                 } else {
                     None
                 }
@@ -3976,6 +4332,8 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
 }
 
 const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
+/// Plan 057 (ash-gui): global Tab (uncaptured) → focus the prompt editor.
+const FOCUS_PROMPT_EVENT: &str = "__focus_prompt";
 const DEBUG_HOVER_MOVE: &str = "__hover_";
 const DEBUG_HOVER_EXIT: &str = "__hover_exit_";
 const DEBUG_SELECT_PREFIX: &str = "__select_";
@@ -4157,6 +4515,13 @@ struct DynamicState {
     prompt_input_id: iced::widget::Id,
     /// Plan 047:Set by PromptBar.Run handler; update 结尾据此返回 focus Task。
     needs_prompt_refocus: std::cell::Cell<bool>,
+    /// Plan 057 (ash-gui 输入焦点):最后被编辑的 textarea 的 action key
+    /// ("{widget}_{event}")。needs_prompt_refocus 置位时,update 结尾聚焦
+    /// Id::new("textarea_{key}") —— 比旧 prompt_input_id 更准(textarea 分支
+    /// 从未挂过该 Id,Plan 047 的恢复只对单行 input 生效)。
+    last_textarea_key: std::cell::RefCell<Option<String>>,
+    /// Plan 057 (ash-gui 默认聚焦):启动后首个 update 聚焦命令输入框(一次)。
+    initial_focus_done: std::cell::Cell<bool>,
     /// Plan 049:BlockList scrollable 的固定 Id,用于 snap_to_end 自动滚到底部。
     blocklist_scroll_id: iced::widget::Id,
     /// Plan 049:Set when blocks 数量增加;update 结尾返回 snap_to_end Task。
@@ -4421,6 +4786,8 @@ fn compare_pngs(
             inspector_scroll_id: iced::widget::Id::unique(),
             elements_scroll_id: iced::widget::Id::unique(),
             prompt_input_id: iced::widget::Id::new("prompt_input"),
+            last_textarea_key: std::cell::RefCell::new(None),
+            initial_focus_done: std::cell::Cell::new(false),
             needs_prompt_refocus: std::cell::Cell::new(false),
             blocklist_scroll_id: iced::widget::Id::new("blocklist_scroll"),
             needs_scroll_to_bottom: std::cell::Cell::new(false),
@@ -4728,6 +5095,31 @@ fn compare_pngs(
             // Plan 371: force view rebuild so the DevTools panel appears/disappears.
             *state.view_dirty.borrow_mut() = true;
             return iced::Task::none();
+        }
+
+        // Plan 057 (ash-gui): global uncaptured Tab → focus the prompt editor
+        // (terminal-style). Resolve the focus Id the same way the update-tail
+        // refocus does (last-edited textarea's stable Id, falling back to
+        // prompt_input_id) — must return the Task directly; an early
+        // Task::none() would skip the tail and never focus.
+        if msg.event == FOCUS_PROMPT_EVENT {
+            // Last-edited textarea → any rendered textarea (first launch,
+            // before any edit) → single-line input fallback.
+            let id = state
+                .last_textarea_key
+                .borrow()
+                .as_ref()
+                .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
+                .or_else(|| {
+                    TEXTAREA_CONTENTS
+                        .lock()
+                        .unwrap()
+                        .keys()
+                        .next()
+                        .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
+                })
+                .unwrap_or_else(|| state.prompt_input_id.clone());
+            return iced::widget::operation::focus(id);
         }
         // Handle click-to-select: set selected element and open DevTools panel
         if let Some(id) = msg.event.strip_prefix(DEBUG_SELECT_PREFIX) {
@@ -5228,6 +5620,24 @@ fn compare_pngs(
             state.input_values.insert(event_name.clone(), text.clone());
         }
 
+        // Plan 057 (ash-gui 输入焦点): an edit message that originates from a
+        // text_editor's on_action (identified by the TEXTAREA_CONTENTS action
+        // key). The handler it dispatches updates state (suggestions/highlight
+        // spans), and the resulting view rebuild can shift the editor's tree
+        // position — iced's positional state diff then drops editor focus.
+        // Remember the source editor; the tail of update() re-focuses it by
+        // its stable Id after the rebuild.
+        if msg.input_value.is_some() {
+            let ta_key = format!("{}_{}", msg.widget, msg.event);
+            if TEXTAREA_CONTENTS.lock().unwrap().contains_key(&ta_key) {
+                if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
+                    eprintln!("[FOCUS-DBG] edit detected, key={}", ta_key);
+                }
+                state.needs_prompt_refocus.set(true);
+                *state.last_textarea_key.borrow_mut() = Some(ta_key);
+            }
+        }
+
         // Plan 320: route event to the correct widget's handler (single VM).
         let widget_name = &msg.widget;
         // Save input_value before it's moved into on_with_input_for (ash-gui M1
@@ -5710,6 +6120,48 @@ fn compare_pngs(
             )
         });
 
+        // Plan 047:PromptBar.Run 后恢复 input 焦点(view 重建会丢焦点)。
+        // Plan 057 (ash-gui 输入焦点):优先聚焦最后被编辑的 textarea(按其
+        // 稳定 Id);无记录时回退旧的 prompt_input_id(单行 input 路径)。
+        // ⚠️ 必须排在 needs_bounds 检查之前 —— MCP 常开时 capture_debug 恒真,
+        // 每次视图重建都置 needs_bounds,bounds 收集链自馈(每次收集 → 心跳 →
+        // 又置位),放在其后 refocus 会被无限饿死(输入丢焦点的真凶)。
+        // bounds 收集推迟一帧无害(心跳 200ms 会再触发)。
+        if state.needs_prompt_refocus.get() {
+            state.needs_prompt_refocus.set(false);
+            // iced 0.14: widget::operation::focus(id) 直接返回 Task<T>。
+            let id = state
+                .last_textarea_key
+                .borrow()
+                .as_ref()
+                .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
+                .unwrap_or_else(|| state.prompt_input_id.clone());
+            if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
+                eprintln!("[FOCUS-DBG] tail refocus, id={:?}", id);
+            }
+            return iced::widget::operation::focus(id);
+        }
+
+        // Plan 057 (ash-gui 默认聚焦):窗口打开后首个 update(启动必然伴随
+        // Window::Resized 等事件)聚焦命令输入框,光标立即可见。textarea 的
+        // key 在首次 view() 渲染时注册进 TEXTAREA_CONTENTS,启动事件在首次
+        // view 之后到达,故此时必有(单行 input 应用则回退 prompt_input)。
+        // 同样必须排在 needs_bounds 之前(见上)。
+        if !state.initial_focus_done.get() && !TEXTAREA_CONTENTS.lock().unwrap().is_empty() {
+            state.initial_focus_done.set(true);
+            let id = TEXTAREA_CONTENTS
+                .lock()
+                .unwrap()
+                .keys()
+                .next()
+                .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
+                .unwrap_or_else(|| state.prompt_input_id.clone());
+            if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
+                eprintln!("[FOCUS-DBG] initial focus, id={:?}", id);
+            }
+            return iced::widget::operation::focus(id);
+        }
+
         // Plan 402: emit window resize Task if pending (difficulty change).
         // MUST be before needs_bounds check — needs_bounds returns early on
         // every MCP-connected frame, so placing resize after it means resize
@@ -5741,12 +6193,8 @@ fn compare_pngs(
                 });
         }
 
-        // Plan 047:PromptBar.Run 后恢复 input 焦点(view 重建会丢焦点)。
-        if state.needs_prompt_refocus.get() {
-            state.needs_prompt_refocus.set(false);
-            // iced 0.14: widget::operation::focus(id) 直接返回 Task<T>。
-            return iced::widget::operation::focus(state.prompt_input_id.clone());
-        }
+        // (Plan 047/057 refocus 已上移到 needs_bounds 之前,见该处注释。)
+        // (Plan 057 默认聚焦同样在 needs_bounds 之前,见该处。)
 
         // Plan 049:blocks 增加后自动滚到底部(最新 block 可见)。
         if state.needs_scroll_to_bottom.get() {
@@ -8546,122 +8994,106 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style } => {
+        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost } => {
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
                 .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
                 .unwrap_or_else(|| format!("__textarea_{}", placeholder.len()));
 
-            let content = get_textarea_content(&key, &value);
+            // Plan 057 续(富文本输入):带 highlight/ghost props 时走原生着色
+            // 路径 —— 文字可见(逐段颜色/字重),ghost 嵌入内容并染灰;
+            // 无新 props 时保持存量行为(含 text-transparent 叠加层兼容)。
+            let rich = !highlight.is_empty() || !ghost.is_empty();
+            let content = if rich {
+                get_textarea_content_rich(&key, &value, &ghost)
+            } else {
+                get_textarea_content(&key, &value)
+            };
 
             // text_editor::placeholder borrows with the element's lifetime;
             // since content is &'static, we need a &'static str for placeholder too.
             let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-            let mut editor = text_editor(content).placeholder(ph);
-            editor = editor.height(match height {
+            // 富文本路径的 editor 泛型参数是 SpanHighlighter,与存量 PlainText
+            // 不同 —— 不能在同一个变量上条件赋值,双分支各自建链后汇成 Element。
+            let editor_height = match height {
                 Some(h) => iced::Length::Fixed(h as f32),
                 // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
                 // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
                 None => iced::Length::Fixed(30.0),
-            });
+            };
+            let el: iced::Element<'static, IcedMessage> = if rich {
+                let mut rich_editor = text_editor(content).placeholder(ph);
+                // Plan 057 (ash-gui 输入焦点):稳定 Id(同存量路径)。
+                rich_editor = rich_editor
+                    .id(iced::widget::Id::from(format!("textarea_{}", key)))
+                    .height(editor_height);
+                // 文字可见:style 只取字号;着色全权交给 SpanHighlighter。
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    if let Some(fs) = effective_font_size(&is) {
+                        rich_editor = rich_editor.size(fs);
+                    }
+                }
+                let settings = build_span_lines(&highlight, &value, &ghost);
+                let rich_editor = rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
+                wire_textarea_actions(rich_editor, on_change, on_submit)
+            } else {
+                let mut editor = text_editor(content).placeholder(ph);
+                // Plan 057 (ash-gui 输入焦点): stable per-editor Id (derived from the
+                // action key) so focus() can re-target this editor after view
+                // rebuilds. The completion-suggestions row above the input row
+                // toggling in/out (empty ⇄ non-empty) shifts the editor's position
+                // in the widget tree, and iced's positional state diff drops focus
+                // with it — the update loop refocuses via this Id (see update()).
+                editor = editor
+                    .id(iced::widget::Id::from(format!("textarea_{}", key)))
+                    .height(editor_height);
 
-            // Plan 057 (2.1): apply class-driven text styling — port from the
-            // Rust-mode into_iced arm (见 :1612 注释)。此前整个 style prop 被
-            // 忽略(`style: _`),Vue 的透明 textarea + 彩色 overlay 技术在 VM 下
-            // 渲染双份文字;text-transparent 使 editor 副本不可见(caret 同色),
-            // 只留 overlay;placeholder 保持可见的弱化灰。
-            if let Some(ref s) = style {
-                let is = IcedStyle::from_style(s);
-                if let Some(fs) = effective_font_size(&is) {
-                    editor = editor.size(fs);
-                }
-                if is.text_color.is_some() {
-                    let value_color = is.text_color.unwrap();
-                    editor = editor.style(move |_theme, _status| {
-                        iced::widget::text_editor::Style {
-                            background: iced::Background::Color(iced::Color::TRANSPARENT),
-                            border: iced::Border::default(),
-                            placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
-                            value: value_color,
-                            selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                // Plan 057 (2.1): apply class-driven text styling.
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    if let Some(fs) = effective_font_size(&is) {
+                        editor = editor.size(fs);
+                    }
+                    if is.text_color.is_some() {
+                        let value_color = is.text_color.unwrap();
+                        // Plan 057 (ash-gui 光标可见): text-transparent 路径 ——
+                        // 文字经 PlainText highlighter 染透明,style.value 让给
+                        // 可见光标色(theme foreground)。
+                        if value_color.a <= 0.001 {
+                            editor = editor.highlight_with(
+                                (),
+                                text_editor_text_transparent,
+                            );
+                            let caret_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            .unwrap_or(iced::Color::WHITE);
+                            editor = editor.style(move |_theme, _status| {
+                                iced::widget::text_editor::Style {
+                                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                                    border: iced::Border::default(),
+                                    placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
+                                    value: caret_color,
+                                    selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                                }
+                            });
+                        } else {
+                            editor = editor.style(move |_theme, _status| {
+                                iced::widget::text_editor::Style {
+                                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                                    border: iced::Border::default(),
+                                    placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
+                                    value: value_color,
+                                    selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                                }
+                            });
                         }
-                    });
+                    }
                 }
-            }
 
-            let el: iced::Element<'static, IcedMessage> = {
-                // In inspect-capture mode, render read-only (no on_action) so
-                // wrap_debug's mouse_area can capture hover/click.
-                let on_change = if inspect_capture_active() { None } else { on_change };
-                let on_submit = if inspect_capture_active() { None } else { on_submit };
-                // Plan 053 M4: Enter fires the on_submit (onenter) handler
-                // instead of on_change — the textarea already inserted the
-                // newline (content.perform), and the handler (PromptBar.OnEnter)
-                // decides to run or continue. input_value carries the post-Enter
-                // content so .input picks up the newline via input_state_map.
-                let is_enter = |action: &text_editor::Action| {
-                    matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
-                };
-                if let Some(msg) = on_change {
-                    let msg_clone = msg.clone();
-                    let submit_clone = on_submit.clone();
-                    editor.on_action(move |action| {
-                        let action_key = format!("{}_{}", msg_clone.widget, msg_clone.event);
-                        if is_enter(&action) {
-                            if let Some(sm) = submit_clone.clone() {
-                                let text = textarea_perform_action(&action_key, action);
-                                IcedMessage {
-                                    widget: sm.widget.clone(),
-                                    event: sm.event.clone(),
-                                    input_value: Some(text),
-                                }
-                            } else {
-                                // No submit handler — fall through to change.
-                                let text = textarea_perform_action(&action_key, action);
-                                IcedMessage {
-                                    widget: msg_clone.widget.clone(),
-                                    event: msg_clone.event.clone(),
-                                    input_value: Some(text),
-                                }
-                            }
-                        } else {
-                            let text = textarea_perform_action(&action_key, action);
-                            IcedMessage {
-                                widget: msg_clone.widget.clone(),
-                                event: msg_clone.event.clone(),
-                                input_value: Some(text),
-                            }
-                        }
-                    }).into()
-                } else if let Some(sm) = on_submit {
-                    // No on_change — wire submit only (Enter fires it; other
-                    // actions still apply to content but emit nothing).
-                    let sm_clone = sm.clone();
-                    let action_key = format!("{}_{}", sm.widget, sm.event);
-                    editor.on_action(move |action| {
-                        let enter = is_enter(&action);
-                        let text = textarea_perform_action(&action_key, action);
-                        if enter {
-                            IcedMessage {
-                                widget: sm_clone.widget.clone(),
-                                event: sm_clone.event.clone(),
-                                input_value: Some(text),
-                            }
-                        } else {
-                            // Non-Enter edits without a change handler: keep the
-                            // typed text flowing as change anyway (no-op if the
-                            // widget has no on_change binding — the content sync
-                            // happens via get_textarea_content on rebuild).
-                            IcedMessage {
-                                widget: sm_clone.widget.clone(),
-                                event: sm_clone.event.clone(),
-                                input_value: Some(text),
-                            }
-                        }
-                    }).into()
-                } else {
-                    editor.into()
-                }
+                wire_textarea_actions(editor, on_change, on_submit)
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
         }

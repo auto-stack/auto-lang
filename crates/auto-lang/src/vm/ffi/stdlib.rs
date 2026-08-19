@@ -5318,7 +5318,16 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
             // Non-2xx → wrap as error object so it isn't mistaken for data.
             let text = r.text().unwrap_or_default();
             if (200..300).contains(&status) {
-                text
+                // Plan 057 (ash-gui 双执行修复): void 端点(如 /api/run_command)
+                // 返回空 body —— 直接把空串喂给 json.to_value 会 parse error,
+                // 让 handler 在副作用(POST)之后失败,再触发 on_with_input_for 的
+                // legacy 回退误执行根 widget 的同名 handler(App.RunCommand →
+                // store.RunCommand 二次执行)。空 body 规范化为 "null"。
+                if text.trim().is_empty() {
+                    "null".to_string()
+                } else {
+                    text
+                }
             } else {
                 format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status)
             }

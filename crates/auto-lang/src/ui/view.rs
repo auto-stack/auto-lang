@@ -279,6 +279,13 @@ pub enum View<M: Clone + Debug> {
         on_submit: Option<M>,  // Fires on Enter key press (Plan 053 M4)
         height: Option<u16>,
         style: Option<Style>,
+        /// Plan 057 续(富文本输入):语法着色段 — (text, kind) 连续覆盖 value。
+        /// VM 端经原生 Highlighter 落为逐段颜色/字重;Vue 端生成叠加层。
+        /// 空向量 = 无着色(存量行为)。
+        highlight: Vec<(String, String)>,
+        /// Plan 057 续(富文本输入):灰色 ghost 建议后缀。VM 端嵌入编辑器
+        /// 内容并在派发编辑事件前剥离;Vue 端并入叠加层。
+        ghost: String,
     },
 
     /// Checkbox with optional styling
@@ -933,6 +940,8 @@ impl<M: Clone + Debug> View<M> {
             on_submit: None,
             height: None,
             style: None,
+            highlight: Vec::new(),
+            ghost: String::new(),
         }
     }
 
@@ -1260,13 +1269,15 @@ impl<M: Clone + Debug> View<M> {
                 password,
                 style,
             },
-            View::Textarea { placeholder, value, on_change, on_submit, height, style } => View::Textarea {
+            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost } => View::Textarea {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
                 on_submit: on_submit.map(|m| f(m)),
                 height,
                 style,
+                highlight,
+                ghost,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
                 is_checked,
@@ -1582,6 +1593,10 @@ pub struct ViewTextareaBuilder<M: Clone + Debug> {
     on_submit: Option<M>,
     height: Option<u16>,
     style: Option<Style>,
+    /// Plan 057 续(富文本输入):语法着色段 (text, kind)。
+    highlight: Vec<(String, String)>,
+    /// Plan 057 续(富文本输入):ghost 建议后缀。
+    ghost: String,
 }
 
 impl<M: Clone + Debug> ViewTextareaBuilder<M> {
@@ -1603,6 +1618,18 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
 
     pub fn height(mut self, height: u16) -> Self {
         self.height = Some(height);
+        self
+    }
+
+    /// Plan 057 续(富文本输入):设置语法着色段 (text, kind) — 连续覆盖 value。
+    pub fn highlight(mut self, spans: Vec<(String, String)>) -> Self {
+        self.highlight = spans;
+        self
+    }
+
+    /// Plan 057 续(富文本输入):设置 ghost 建议后缀(灰色,Tab 可接受)。
+    pub fn ghost(mut self, ghost: impl Into<String>) -> Self {
+        self.ghost = ghost.into();
         self
     }
 
@@ -1674,6 +1701,8 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
             on_submit: self.on_submit,
             height: self.height,
             style: self.style,
+            highlight: self.highlight,
+            ghost: self.ghost,
         }
     }
 }
