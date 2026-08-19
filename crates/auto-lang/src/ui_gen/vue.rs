@@ -4907,6 +4907,37 @@ impl VueGenerator {
         }
     }
 
+    /// convert_condition 的 find 守卫：逐处扫描 `.find (` / `.find(`，
+    /// 参数段（到下一个 `)` 为止）含 `=>` 时是数组 find 谓词语义，
+    /// 保持原样；否则映射为字符串语义的 `.indexOf(`。
+    fn map_find_in_condition(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut rest = s;
+        loop {
+            let spaced = rest.find(".find (");
+            let tight = rest.find(".find(");
+            // `(` 的字节位置：".find (" 形态在 pos+6，".find(" 形态在 pos+5。
+            let (pos, open) = match (spaced, tight) {
+                (Some(a), Some(b)) if b < a => (b, b + 5),
+                (Some(a), _) => (a, a + 6),
+                (None, Some(b)) => (b, b + 5),
+                (None, None) => break,
+            };
+            let args_end = rest[open..].find(')').map(|i| open + i);
+            let is_lambda = args_end.map_or(false, |e| rest[open..e].contains("=>"));
+            out.push_str(&rest[..pos]);
+            if is_lambda {
+                // 数组 find 语义：保持原样（含原空格形态）
+                out.push_str(&rest[pos..=open]);
+            } else {
+                out.push_str(".indexOf(");
+            }
+            rest = &rest[open + 1..];
+        }
+        out.push_str(rest);
+        out
+    }
+
     /// Convert AURA condition to Vue expression
     fn convert_condition(&mut self, condition: &str) -> String {
         // Convert .var to var, .len to .length, etc.
@@ -4928,7 +4959,6 @@ impl VueGenerator {
             ("starts_with", "startsWith"),
             ("ends_with", "endsWith"),
             ("char_at", "charAt"),
-            ("find", "indexOf"),
             ("substr", "substring"),
             ("sub", "substring"),
             ("slice", "substring"),
@@ -4938,6 +4968,10 @@ impl VueGenerator {
             result = result.replace(&format!(".{auto_name} ("), &format!(".{js_name}("));
             result = result.replace(&format!(".{auto_name}("), &format!(".{js_name}("));
         }
+        // find 双语义守卫：`.find(λ)` / `.find ( λ )`（参数段含 `=>`）是
+        // 数组 find 谓词语义（JS 同名），保持原样；仅字符串语义才映射
+        // str::find → indexOf。逐处判断，不能一把 str::replace。
+        result = Self::map_find_in_condition(&result);
         for (auto_name, js_expr) in [
             ("to_lower", "toLowerCase"),
             ("to_upper", "toUpperCase"),
@@ -5752,7 +5786,12 @@ impl VueGenerator {
             // char_at 返回 1 字符 string（.at 按 Unicode char 索引；
             // JS charAt 按 UTF-16 code unit，BMP 字符一致）：
             "char_at" => format!("{}.charAt({})", object_js, a),
-            // find 返回 index 或 -1：
+            // find 双语义守卫：实参为 lambda（transpile 后含 `=>`）时是
+            // 数组 find 谓词语义（JS 同名），保持原样输出；否则是字符串
+            // str::find 语义，返回 index 或 -1 → indexOf：
+            "find" if args_js.first().map_or(false, |a| a.contains("=>")) => {
+                format!("{}.find({})", object_js, a)
+            }
             "find" => format!("{}.indexOf({})", object_js, a),
             // substr/sub/slice 同一 native，均为 start..end 子串：
             "substr" | "sub" | "slice" => format!("{}.substring({})", object_js, a),
@@ -18285,6 +18324,164 @@ widget Plan053ViewMap {
         // view if 条件（同样走 bound 位置）：starts_with → startsWith
         assert!(sfc.contains(".startsWith("), "bound starts_with → startsWith:\n{sfc}");
         assert!(!sfc.contains(".starts_with("), "bound starts_with must map:\n{sfc}");
+    }
+
+    // --- find 双语义守卫：数组 find(λ) 不得映射 indexOf ------------------
+    // `find → indexOf` 是字符串方法映射（Rust str::find 返回 index）。
+    // 当第一个实参是 lambda/闭包时，receiver 必为数组（Array.find 谓词
+    // 语义，JS 同名），映射成 indexOf 会让函数对象去比较引用、永远返回
+    // -1。实测症状：jade-garden tabs_store.at 的
+    // `.tabs.find(t => t.path == path)` 被编成
+    // `tabs.value.indexOf((t) => t.path == path)`。
+
+    #[test]
+    fn test_find_lambda_handler_body_keeps_find() {
+        // handler body → ts_adapter::transpile_expr 路径
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget FindLambdaHandler {
+    model {
+        var tabs Array<str> = []
+        var found str = ""
+    }
+    on {
+        .Go -> {
+            .found = .tabs.find(t => t.path == "x")
+        }
+    }
+    view { col { button "go" { onclick: .Go } text .found } }
+}
+"#);
+        assert!(
+            sfc.contains(".find("),
+            "array find(λ) in handler body must keep .find():\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".indexOf("),
+            "array find(λ) must NOT map to .indexOf():\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_find_lambda_computed_keeps_find() {
+        // computed 单表达式 → vue.rs expr_to_js / map_method_to_js 路径
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget FindLambdaComputed {
+    model { var tabs Array<str> = [] }
+    computed {
+        hit => .tabs.find(t => t.path == "x")
+    }
+    view { col { text .hit } }
+}
+"#);
+        assert!(
+            sfc.contains(".find(("),
+            "array find(λ) in computed must keep .find():\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".indexOf("),
+            "array find(λ) must NOT map to .indexOf():\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_find_lambda_store_composable_keeps_find() {
+        // store codegen 复现 jade-garden tabs_store.at 的实际形态：
+        // computed 与 action 体里都是 `.tabs.find(t => t.path == ...)`。
+        let code = VueGenerator::generate_store_composable(&store_from_src(
+            r#"
+store FindTabs {
+    model {
+        var tabs Array<str> = []
+        var active_path ?str = None
+    }
+    msg Msg { Open(map) }
+    computed {
+        active_tab => .tabs.find(t => t.path == .active_path)
+    }
+    on {
+        .Open(args) -> {
+            var path = args.path
+            var existing = .tabs.find(t => t.path == path)
+            if existing != null {
+                .active_path = path
+            }
+        }
+    }
+}
+"#,
+        ));
+        assert!(
+            code.contains(".find("),
+            "store array find(λ) must keep .find():\n{code}"
+        );
+        assert!(
+            !code.contains(".indexOf("),
+            "store array find(λ) must NOT map to .indexOf():\n{code}"
+        );
+    }
+
+    #[test]
+    fn test_find_string_arg_still_maps_to_index_of() {
+        // 回归保护：字符串 str::find 语义（非 lambda 实参）仍映射 indexOf。
+        // handler body 与 view 条件两条路径都查。
+        let (sfc, _) = gen_sfc_and_warnings(r#"
+widget FindStrRegress {
+    model {
+        var s str = "Hello"
+        var sink str = ""
+    }
+    on {
+        .Go -> {
+            .sink = .s.find("ll")
+        }
+    }
+    view {
+        col {
+            button "go" { onclick: .Go }
+            if .s.find("H") {
+                text "has H"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(".indexOf("),
+            "string find must still map to .indexOf():\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".find("),
+            "string find must not pass through as .find():\n{sfc}"
+        );
+    }
+
+    #[test]
+    fn test_find_guard_in_condition_string() {
+        // view 条件的 convert_condition 是字符串替换路径。DSL 的 view if
+        // 条件不支持 lambda（parser 直接拒绝 `=>`），所以该守卫无法走
+        // parse 路径端到端复现，这里直接单测映射函数：lambda 实参保留
+        // .find（含原空格形态），字符串实参仍映射 indexOf，混合场景逐处判断。
+        assert_eq!(
+            VueGenerator::map_find_in_condition("tabs.find ( t => t.path == 'x' )"),
+            "tabs.find ( t => t.path == 'x' )"
+        );
+        assert_eq!(
+            VueGenerator::map_find_in_condition("tabs.find(t => t.path == 'x')"),
+            "tabs.find(t => t.path == 'x')"
+        );
+        assert_eq!(
+            VueGenerator::map_find_in_condition("s.find ( 'H' )"),
+            "s.indexOf( 'H' )"
+        );
+        assert_eq!(
+            VueGenerator::map_find_in_condition("s.find('H')"),
+            "s.indexOf('H')"
+        );
+        // 混合：lambda 的保留，字符串的映射
+        assert_eq!(
+            VueGenerator::map_find_in_condition("tabs.find(t => t.x) && s.find('y')"),
+            "tabs.find(t => t.x) && s.indexOf('y')"
+        );
     }
 
     // --- Plan 053 M3 / P5-7: handler 间自调用识别 ------------------------
