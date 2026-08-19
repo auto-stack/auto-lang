@@ -386,4 +386,18 @@ dep("log") {
         let cfg = AutoConfig::from_code("shadcn: false\n", &Obj::new()).unwrap();
         assert_eq!(cfg.root.get_prop("shadcn"), Value::Bool(false));
     }
+
+    // Plan 014: pac.at `default_classes: off` evaluates through the same
+    // built-in on/off globals as `shadcn` (Bool(false) / Str("off")).
+    #[test]
+    fn test_default_classes_config_toggle() {
+        let cfg = AutoConfig::from_code("default_classes: off\n", &Obj::new()).unwrap();
+        assert_eq!(cfg.root.get_prop("default_classes"), Value::Bool(false));
+
+        let cfg = AutoConfig::from_code("default_classes: \"off\"\n", &Obj::new()).unwrap();
+        assert_eq!(cfg.root.get_prop("default_classes").to_astr().as_str(), "off");
+
+        let cfg = AutoConfig::from_code("name: \"x\"\n", &Obj::new()).unwrap();
+        assert!(!cfg.root.has_prop("default_classes"));
+    }
 }

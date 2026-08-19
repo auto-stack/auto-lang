@@ -923,12 +923,39 @@ widget W(label: str = "hi", count: int = 3, loading: bool = false) {
         "defaults wrap defineProps:\n{sfc}"
     );
     assert!(
+        sfc.contains("}>(), {"),
+        "defineProps<> must be CALLED (with parens after the type args); \
+         the bare instantiation-expression form is not recognized as a \
+         macro by vue-tsc and collapses props to unknown:\n{sfc}"
+    );
+    assert!(
         sfc.contains("label?: string") && sfc.contains("count?: number") && sfc.contains("loading?: boolean"),
         "defaulted props stay optional:\n{sfc}"
     );
     assert!(
         sfc.contains("label: 'hi'") && sfc.contains("count: 3") && sfc.contains("loading: false"),
         "default values carried into withDefaults object:\n{sfc}"
+    );
+}
+
+/// Null defaults on non-nullable prop types (e.g. `[]str = null` → `any[]`)
+/// are cast — withDefaults' InferDefault<T> rejects a bare `null` there.
+#[test]
+fn default_props_null_default_cast() {
+    let sfc = gen_sfc(
+        r#"
+widget W(items: []str = null, cb: any = null) {
+    view { col { text "x" } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("items: (null as any),"),
+        "null default on any[] prop is cast:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("cb: null,"),
+        "null default on any-typed prop stays bare:\n{sfc}"
     );
 }
 
@@ -1069,3 +1096,81 @@ store RelayStore {
     );
 }
 
+/// Plan 014: pac.at `default_classes: off` — VueGenerator skips the doc-theme
+/// default Tailwind classes for every non-layout-primitive tag, while layout
+/// primitives (row/col/...) keep their structural classes. Default stays on.
+///
+/// The authoritative pac.at plumbing lives in ComponentGenOptions.default_classes
+/// (auto-man threads it from pac.at); this locks the generator-level gate.
+fn gen_sfc_with_default_classes(src: &str, default_classes: bool) -> String {
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("widget source must parse");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+    let widget = extract_widget_from_decl(decl).expect("extract widget");
+    VueGenerator::new()
+        .with_default_classes(default_classes)
+        .generate(&widget)
+        .expect("generate SFC")
+}
+
+const DEFAULT_CLASSES_SRC: &str = r#"
+widget App {
+    view {
+        col {
+            h1 "Title"
+            text "body copy"
+            button "save"
+        }
+    }
+}
+"#;
+
+#[test]
+fn cap_default_classes_on_keeps_doc_theme_defaults() {
+    let sfc = gen_sfc_with_default_classes(DEFAULT_CLASSES_SRC, true);
+    assert!(
+        sfc.contains("flex flex-col"),
+        "default on: col keeps layout classes:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("text-3xl font-bold"),
+        "default on: h1 keeps doc-theme defaults:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("text-muted-foreground leading-7"),
+        "default on: text keeps doc-theme defaults:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("px-4 py-2 rounded"),
+        "default on: button keeps doc-theme defaults:\n{sfc}"
+    );
+}
+
+#[test]
+fn cap_default_classes_off_skips_defaults_but_keeps_layout() {
+    let sfc = gen_sfc_with_default_classes(DEFAULT_CLASSES_SRC, false);
+    assert!(
+        sfc.contains("flex flex-col"),
+        "default_classes off: col (layout primitive) must keep flex classes:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("text-3xl"),
+        "default_classes off: h1 must not get doc-theme defaults:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("leading-7"),
+        "default_classes off: text must not get doc-theme defaults:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("px-4 py-2 rounded"),
+        "default_classes off: button must not get doc-theme defaults:\n{sfc}"
+    );
+}
