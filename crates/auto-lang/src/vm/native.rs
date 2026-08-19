@@ -7337,6 +7337,11 @@ mod tests {
             use crate::ui::code_editor as ce;
             use std::sync::{OnceLock, RwLock};
 
+            // Serialize against the registry-touching tests (LRU sweep).
+            let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+                .lock()
+                .unwrap();
+
             fn install_fs(with: &mut dyn FnMut(&mut cosmic_text::FontSystem)) {
                 static FS: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
                 let fs = FS.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));

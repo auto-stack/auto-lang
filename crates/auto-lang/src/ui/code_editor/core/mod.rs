@@ -1312,6 +1312,11 @@ pub fn code_editor_find(key: &str) -> bool {
     }
 }
 
+/// Shared lock for tests that touch the global editor registry (the LRU
+/// sweep in `code_editor()` can evict editors other tests are using).
+#[cfg(test)]
+pub(crate) static REGISTRY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Number of live editors (diagnostics/tests).
 pub fn code_editor_count() -> usize {
     CODE_EDITORS.lock().unwrap().len()
@@ -1489,8 +1494,8 @@ let beta = alpha + 2;
 
     // ── global registry keying (Plan 413 §5.4) ──────────────────────────
 
-    /// Registry tests share global state — serialize them.
-    static REGISTRY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Uses the crate-shared registry test lock (see REGISTRY_TEST_LOCK
+    // at the core module level).
 
     /// Test font-system callback: one process-wide FontSystem behind a
     /// RwLock, mirroring the iced adapter's install.

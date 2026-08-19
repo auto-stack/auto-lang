@@ -135,10 +135,9 @@ impl ShadcnRegistry {
             ("@/components/ui/input", vec!["Input"]));
         components.insert("textarea",
             ("@/components/ui/textarea", vec!["Textarea"]));
-        // Plan 413: code_editor degrades to Textarea on vue (CodeMirror 6
-        // target documented in the widget registry).
+        // Plan 413: code_editor → scaffolded CodeMirror shell component.
         components.insert("code_editor",
-            ("@/components/ui/textarea", vec!["Textarea"]));
+            ("@/components/CodeEditor", vec!["CodeEditor"]));
         components.insert("checkbox",
             ("@/components/ui/checkbox", vec!["Checkbox"]));
         components.insert("toggle",
@@ -3560,7 +3559,7 @@ impl VueGenerator {
                 // overlaid) so it keeps the primary theme color. Only form
                 // elements that need native HTML for their behavior (type attr,
                 // TodoMVC `class="toggle"` on a checkbox) stay here.
-                let force_native_elements = ["checkbox", "input", "textarea", "code_editor"];
+                let force_native_elements = ["checkbox", "input", "textarea"];
                 let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
                 // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
@@ -5186,12 +5185,14 @@ impl VueGenerator {
                 self.use_theme_toggle = true;
                 return "ThemeToggle".to_string();
             }
-            // Plan 413: code_editor degrades to the shadcn Textarea on vue
-            // until the CodeMirror 6 shell lands (registry spec documents the
-            // target component; deep vue support is a separate plan).
+            // Plan 413: code_editor renders the scaffolded CodeMirror shell
+            // (src/components/CodeEditor.vue, written by auto-man). Imported
+            // via the component_refs default-style path; degrades to a plain
+            // textarea inside the shell when deps are missing is NOT needed —
+            // the scaffold ships them.
             if tag == "code_editor" || tag == "codeEditor" {
-                self.shadcn_components_used.insert("Textarea".to_string());
-                return "Textarea".to_string();
+                self.component_refs.push("CodeEditor".to_string());
+                return "CodeEditor".to_string();
             }
             // tooltip-provider → TooltipProvider. reka-ui <Tooltip> requires a
             // <TooltipProvider> ancestor (inject context); without it the page
@@ -7988,8 +7989,65 @@ impl VueGenerator {
                 }
             }
 
+            // === CodeEditor (Plan 413) ===
+            "code_editor" => {
+                // v-model for value (content: preferred, mirrors textarea).
+                if let Some(value) = props.get("content").or_else(|| props.get("value")) {
+                    if let Some(model) = self.extract_state_ref(value)
+                        .or_else(|| self.extract_state_index_ref(value))
+                    {
+                        if self.prop_names.iter().any(|p| p == &model) {
+                            attrs.push(format!(":modelValue=\"{}\"", model));
+                        } else {
+                            attrs.push(format!("v-model=\"{}\"", model));
+                        }
+                    }
+                }
+                // Static config props.
+                if let Some(value) = props.get("lang") {
+                    if let Some(lang) = self.extract_string_value(value) {
+                        attrs.push(format!("lang=\"{}\"", lang));
+                    }
+                }
+                let bool_attr = |attrs: &mut Vec<String>, key: &str, prop: &str, default: bool, props: &HashMap<String, AuraPropValue>| {
+                    let on = match props.get(key) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => *b,
+                        _ => default,
+                    };
+                    attrs.push(format!(":{}=\"{}\"", prop, on));
+                };
+                bool_attr(&mut attrs, "line_numbers", "line-numbers", true, props);
+                bool_attr(&mut attrs, "wrap", "wrap", false, props);
+                bool_attr(&mut attrs, "vi", "vi", false, props);
+                bool_attr(&mut attrs, "highlight_current_line", "highlight-current-line", true, props);
+                if let Some(value) = props.get("tab_width") {
+                    if let Some(n) = self.extract_int_value(value) {
+                        attrs.push(format!(":tab-width=\"{}\"", n));
+                    }
+                }
+                if let Some(value) = props.get("font_size") {
+                    if let Some(n) = self.extract_int_value(value) {
+                        attrs.push(format!(":font-size=\"{}\"", n));
+                    }
+                }
+                // Regex search binding (state ref or literal).
+                if let Some(value) = props.get("search").or_else(|| props.get("query")) {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!(":search=\"{}\"", model));
+                    } else if let Some(lit) = self.extract_string_value(value) {
+                        attrs.push(format!("search=\"{}\"", lit));
+                    }
+                }
+                // key → element id (state identity for the shell).
+                if let Some(value) = props.get("key").or_else(|| props.get("id")) {
+                    if let Some(k) = self.extract_string_value(value) {
+                        attrs.push(format!("data-editor-key=\"{}\"", k));
+                    }
+                }
+            }
+
             // === Textarea ===
-            "textarea" | "code_editor" => {
+            "textarea" => {
                 // Plan 057 续:highlight/ghost 由叠加层包裹消费,不透传。
                 if props.contains_key("highlight") || props.contains_key("ghost") {
                     // handled by textarea_rich_overlay at the emission site
@@ -13290,6 +13348,61 @@ widget Plain {
     /// camelCase prop bindings, @autodown/editor named import, and events
     /// mapped to @update / @save / @cancel.
     #[test]
+    /// Plan 413: code_editor renders the scaffolded CodeMirror shell with
+    /// the full prop contract (model value, lang, wrap, search) and the
+    /// default-style component import.
+    #[test]
+    fn test_code_editor_rendering() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget EditorDemo {
+    msg Msg { SourceChanged }
+    model {
+        var source str = "fn main() {}"
+        var query str = ""
+    }
+    view {
+        col {
+            code_editor (lang: "rust", wrap: true) {
+                content: .source
+                oninput: .SourceChanged
+            }
+            code_editor (key: "searchable", lang: "auto") {
+                content: .source
+                search: .query
+            }
+        }
+    }
+}
+"##);
+
+        assert!(sfc.contains("<CodeEditor"), "component tag:
+{}", sfc);
+        assert!(
+            sfc.contains("import CodeEditor from '@/components/CodeEditor.vue'"),
+            "default-style import:
+{}",
+            sfc
+        );
+        assert!(sfc.contains("lang=\"rust\""), "static lang:
+{}", sfc);
+        assert!(sfc.contains(":wrap=\"true\""), "wrap prop:
+{}", sfc);
+        assert!(
+            sfc.contains("v-model=\"source\"") || sfc.contains(":modelValue=\"source\""),
+            "value binding:
+{}",
+            sfc
+        );
+        assert!(sfc.contains(":search=\"query\""), "search binding:
+{}", sfc);
+        assert!(
+            sfc.contains("@update:modelValue"),
+            "oninput event mapping:
+{}",
+            sfc
+        );
+    }
+
     fn test_autodown_editor_rendering() {
         // Real parse path (plan 012 batch C): the previous version hand-built
         // `Expr::Ident(".body")` — a shape the real parser never produces
