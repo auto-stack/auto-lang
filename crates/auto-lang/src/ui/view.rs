@@ -3021,6 +3021,66 @@ mod tests {
     // Plan 319: map_msg must recurse into Grid cells — the rust-mode DevTools
     // hot path walks the remapped tree every frame.
     #[test]
+    /// Plan 413: map_msg must remap all three CodeEditor callbacks and keep
+    /// config fields untouched.
+    #[test]
+    fn test_code_editor_map_msg_remaps_callbacks() {
+        let editor: View<TestMsg> = View::code_editor("e1")
+            .value("fn main() {}".to_owned())
+            .lang("rust")
+            .line_numbers(true)
+            .wrap(false)
+            .vi(true)
+            .tab_width(8)
+            .on_change(TestMsg::Click)
+            .on_cursor(TestMsg::Change)
+            .on_context_menu(TestMsg::Click)
+            .build();
+
+        let editor = match editor {
+            View::CodeEditor { .. } => editor,
+            other => panic!("builder produced {other:?}"),
+        };
+
+        #[derive(Clone, Debug)]
+        enum Out {
+            Did(&'static str),
+        }
+
+        let mapped = editor.map_msg(|m| match m {
+            TestMsg::Click => Out::Did("click"),
+            TestMsg::Change => Out::Did("change"),
+        });
+
+        match mapped {
+            View::CodeEditor {
+                key,
+                value,
+                lang,
+                line_numbers,
+                wrap,
+                vi,
+                tab_width,
+                on_change,
+                on_cursor,
+                on_context_menu,
+                ..
+            } => {
+                assert_eq!(key, "e1");
+                assert_eq!(value, "fn main() {}");
+                assert_eq!(lang, "rust");
+                assert!(line_numbers);
+                assert!(!wrap);
+                assert!(vi);
+                assert_eq!(tab_width, 8);
+                assert!(matches!(on_change, Some(Out::Did("click"))));
+                assert!(matches!(on_cursor, Some(Out::Did("change"))));
+                assert!(matches!(on_context_menu, Some(Out::Did("click"))));
+            }
+            other => panic!("mapped to {other:?}"),
+        }
+    }
+
     fn test_grid_map_msg_remaps_cells() {
         let grid: View<TestMsg> = View::Grid {
             cols: 2,

@@ -474,8 +474,21 @@ impl CodeEditorCore {
             return;
         }
         let attrs = Attrs::new().family(Family::Monospace);
+        // Give the buffer a viewport before rewriting: with no size set,
+        // Buffer::set_text's internal shape_until_scroll treats the scroll
+        // window as infinite and shapes/highlights the WHOLE document (26s
+        // on a 1MB file). Any finite size keeps it lazy; render() applies
+        // the real viewport each frame.
+        let info = *self.layout_info.lock().unwrap();
+        let (w, h) = (
+            if info.viewport_w > 1.0 { info.viewport_w } else { 800.0 },
+            if info.viewport_h > 1.0 { info.viewport_h } else { 1.0 },
+        );
         let mut editor = self.editor_lock();
-        editor.with_buffer_mut(|b| b.set_text(font_system, text, &attrs, Shaping::Advanced, None));
+        editor.with_buffer_mut(|b| {
+            b.set_size(font_system, Some(w), Some(h));
+            b.set_text(font_system, text, &attrs, Shaping::Advanced, None)
+        });
         // Clamp the cursor to the new text and drop any selection — a
         // stale selection past the end would panic the engine later.
         editor.set_selection(Selection::None);
@@ -1172,6 +1185,7 @@ pub fn registered_theme_name(theme: &CodeEditorTheme, dark: bool, accent: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::RwLock;
 
     fn none_mods() -> EditorModifiers {
         EditorModifiers::none()
@@ -1267,6 +1281,79 @@ mod tests {
         core.apply_config(&vi, &mut fs);
         let (line, _col, _sel) = core.cursor_info();
         assert_eq!(line, 0);
+    }
+
+    // ── global registry keying (Plan 413 §5.4) ──────────────────────────
+
+    /// Test font-system callback: one process-wide FontSystem behind a
+    /// RwLock, mirroring the iced adapter's install.
+    fn test_font_system(with: &mut dyn FnMut(&mut FontSystem)) {
+        static FS: OnceLock<RwLock<FontSystem>> = OnceLock::new();
+        let fs = FS.get_or_init(|| RwLock::new(FontSystem::new()));
+        let mut guard = fs.write().unwrap();
+        with(&mut guard);
+    }
+
+    #[test]
+    fn registry_keys_dispose_and_recreates() {
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-registry-key");
+        code_editor_dispose(&key);
+
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
+        let core = code_editor(&key, &config);
+        with_font_system(|fs| core.set_text("one", fs));
+        assert_eq!(code_editor_text(&key).as_deref(), Some("one"));
+        assert_eq!(code_editor_cursor(&key).map(|(l, _, _)| l), Some(0));
+
+        // Same key returns the same instance (config diffed, text kept).
+        let again = code_editor(&key, &config);
+        assert_eq!(again.text(), "one");
+        assert_eq!(code_editor_count() >= 1, true);
+
+        // Dispose drops the registration; a new core starts fresh.
+        code_editor_dispose(&key);
+        assert_eq!(code_editor_text(&key), None);
+        let fresh = code_editor(&key, &config);
+        assert_eq!(fresh.text(), "");
+
+        // Programmatic set-text by key (MCP automation path).
+        assert!(code_editor_set_text(&key, "changed"));
+        assert!(!code_editor_set_text(&key, "changed")); // no-op on equal
+        assert_eq!(code_editor_text(&key).as_deref(), Some("changed"));
+    }
+
+    /// Plan 413 §6.4 performance criterion: a ~1MB source shapes and renders
+    /// without pathological stalls. Ignored by default (slow init); run with
+    /// `cargo test --lib code_editor -- --ignored`.
+    #[test]
+    #[ignore = "perf smoke: ~1MB shaping"]
+    fn large_file_renders() {
+        set_font_system_call(test_font_system);
+        let line = "    let value = compute_something(x_i + y_i * 3) / total; // keep going\n";
+        let n_lines = 1_000_000 / line.len();
+        let big: String = line.repeat(n_lines);
+        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let core = code_editor(&storage_key("test-large"), &config);
+        let t0 = std::time::Instant::now();
+        code_editor_set_text(&storage_key("test-large"), &big);
+        let set = t0.elapsed();
+        let t1 = std::time::Instant::now();
+        let list = with_font_system(|fs| render::render(core, fs, 800.0, 600.0, None));
+        let rendered = t1.elapsed();
+        let t2 = std::time::Instant::now();
+        with_font_system(|fs| render::render(core, fs, 800.0, 600.0, None));
+        let rendered2 = t2.elapsed();
+        assert!(list.text.is_some());
+        assert!(list.gutter.is_some());
+        // shape_as_needed only shapes the visible window; both phases stay
+        // well under a frame budget on a dev machine (generous CI margin).
+        assert!(set.as_secs() < 10, "set_text took {set:?}");
+        assert!(rendered.as_secs() < 10, "render took {rendered:?}");
+        eprintln!("large file: set={set:?} render1={rendered:?} render2={rendered2:?}");
     }
 
     #[test]
