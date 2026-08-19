@@ -1754,7 +1754,38 @@ fn find_workspace_target_path(cargo_dir: &Path) -> String {
 /// projects become members of this single workspace, enabling cross-project
 /// compilation artifact reuse.
 pub fn get_rust_workspace_dir() -> PathBuf {
+    // Walk up from the CWD to find the auto-lang repo root (has
+    // crates/auto-lang), also checking siblings (autostack/ layout). This
+    // keeps the shared workspace at the repo root even when `auto` runs
+    // inside a nested example dir; the legacy relative path remains the
+    // fallback for standalone layouts.
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if let Some(root) = find_lang_repo_root(&cwd) {
+        return root.join("examples").join("rust-workspace");
+    }
     PathBuf::from("examples/rust-workspace")
+}
+
+/// Walk up from `start` looking for the auto-lang repo root: a directory
+/// containing `crates/auto-lang`, either directly or as a sibling
+/// (`../auto-lang/crates/auto-lang`).
+fn find_lang_repo_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    for _ in 0..10 {
+        if dir.join("crates").join("auto-lang").exists() {
+            return Some(dir);
+        }
+        if let Some(parent) = dir.parent() {
+            let sibling = parent.join("auto-lang");
+            if sibling.join("crates").join("auto-lang").exists() {
+                return Some(sibling);
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
 }
 
 /// Compute the relative path from the shared workspace dir to auto-lang crate.
@@ -1832,6 +1863,28 @@ fn compute_target_rel_path(project_dir: &Path) -> String {
         }
     }
     "../../autostack/auto-lang/target".to_string()
+}
+
+/// Absolute path of the repo-wide shared cargo target for a UI project:
+/// walk up from the project dir to the auto-lang repo root (has
+/// crates/auto-lang), also checking siblings (autostack/ layout).
+fn shared_cargo_target_dir(project_dir: &Path) -> PathBuf {
+    let mut dir = project_dir.to_path_buf();
+    for _ in 0..10 {
+        if dir.join("crates").join("auto-lang").exists() {
+            return dir.join("target");
+        }
+        if let Some(parent) = dir.parent() {
+            let sibling = parent.join("auto-lang");
+            if sibling.join("crates").join("auto-lang").exists() {
+                return sibling.join("target");
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    get_rust_workspace_dir().join("target")
 }
 
 /// Check whether a directory is a *complete* Cargo crate — i.e. it declares at
@@ -1925,6 +1978,7 @@ resolver = "2"
 [workspace.dependencies]
 auto-lang = {{ path = "{auto_lang_rel}" }}
 serde_json = "1"
+ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}
 # Plan 413 §5.2:放宽到 "0.14" 让未来补丁版自动流入
 iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
@@ -2148,6 +2202,43 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
     false
 }
 
+/// `auto build` for rust-mode UI projects: regenerate as needed, then
+/// `cargo build` the shared-workspace member. Mirrors `run_rust_ui`'s
+/// regeneration logic without running the app.
+pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
+    let ws_dir = get_rust_workspace_dir();
+    let member_name = front_member_name(project_dir);
+    let rust_dir = ws_dir.join(&member_name);
+    let (full, code) = needs_regeneration(project_dir, &rust_dir);
+
+    if full {
+        println!("{}", "Generating Rust UI project...".bright_cyan());
+        generate_rust_ui(project_dir, None, false)?;
+    } else if code {
+        println!("{}", "Regenerating Rust UI code (source changed)...".bright_cyan());
+        regenerate_code_only(project_dir, &rust_dir)?;
+    }
+
+    // Resolve to an ABSOLUTE manifest path (ws_dir may be CWD-relative) and
+    // pin CARGO_TARGET_DIR to the repo-wide shared target: cargo discovers
+    // .cargo/config.toml from the CWD (NOT the manifest dir), so without the
+    // env a build launched from the project dir would fall back to a cold
+    // workspace-local target and recompile the whole tree (onig_sys included).
+    let cargo_toml = std::fs::canonicalize(rust_dir.join("Cargo.toml"))
+        .map_err(|e| format!("generated Cargo.toml missing under {}: {}", rust_dir.display(), e))?;
+
+    println!("{}", "Building Rust UI project (backend: rust-ui)".bright_cyan());
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
+        .env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir))
+        .status()?;
+
+    if !status.success() {
+        return Err(format!("Cargo build failed with status: {}", status).into());
+    }
+    Ok(())
+}
+
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Rust project now lives in the shared workspace at examples/rust-workspace/{name}/
     let ws_dir = get_rust_workspace_dir();
@@ -2215,6 +2306,14 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     for arg in &args {
         cmd.arg(arg);
     }
+    // Pin the shared repo target (see build_rust_ui): CWD is src/front for
+    // runtime asset resolution, so the workspace's .cargo/config.toml is
+    // NOT discovered from here and a cold local target would recompile the
+    // whole tree (onig_sys included).
+    cmd.env(
+        "CARGO_TARGET_DIR",
+        shared_cargo_target_dir(project_dir),
+    );
 
     let status = cmd.status()?;
 

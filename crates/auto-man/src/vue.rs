@@ -205,7 +205,16 @@ fn generate_package_json(
     "vue-sonner": "^2.0.9",
     "vee-validate": "^4.15.1",
     "@vee-validate/zod": "^4.15.1",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "vue-codemirror": "^6.1.1",
+    "codemirror": "^6.0.1",
+    "@codemirror/view": "^6.26.3",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/lang-rust": "^6.0.1",
+    "@codemirror/lang-python": "^6.1.6",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-markdown": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.1"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
@@ -220,6 +229,76 @@ fn generate_package_json(
   }}
 }}
 "#, name, router_dep, i18n_dep, extra_lines)
+}
+
+/// Plan 413: the CodeEditor CodeMirror shell component. Wraps vue-codemirror
+/// with the code_editor widget's prop contract (modelValue / lang /
+/// line-numbers / wrap). Unknown languages degrade to plain text. Default
+/// export — the generator imports it as `import CodeEditor from
+/// '@/components/CodeEditor.vue'`.
+fn generate_code_editor_component() -> String {
+    r#"<script setup lang="ts">
+import { computed } from 'vue'
+import { Codemirror } from 'vue-codemirror'
+import { EditorView } from '@codemirror/view'
+import type { Extension } from '@codemirror/state'
+import { rust } from '@codemirror/lang-rust'
+import { python } from '@codemirror/lang-python'
+import { javascript } from '@codemirror/lang-javascript'
+import { markdown } from '@codemirror/lang-markdown'
+import { json } from '@codemirror/lang-json'
+
+const props = defineProps({
+  modelValue: { type: String, default: '' },
+  lang: { type: String, default: 'none' },
+  lineNumbers: { type: Boolean, default: true },
+  wrap: { type: Boolean, default: false },
+})
+
+const emit = defineEmits(['update:modelValue'])
+
+const extensions = computed(() => {
+  const langs: Record<string, () => Extension> = {
+    rust: rust,
+    rs: rust,
+    python: python,
+    py: python,
+    javascript: javascript,
+    js: javascript,
+    typescript: javascript,
+    ts: javascript,
+    markdown: markdown,
+    md: markdown,
+    json: json,
+  }
+  const ext: Extension[] = []
+  const langFn = langs[props.lang.toLowerCase()]
+  if (langFn) {
+    ext.push(langFn())
+  }
+  if (props.wrap) {
+    ext.push(EditorView.lineWrapping)
+  }
+  return ext
+})
+
+const on_change = (value: string) => {
+  emit('update:modelValue', value)
+}
+</script>
+
+<template>
+  <div class="code-editor-shell w-full h-full min-h-16 rounded-md border overflow-hidden">
+    <Codemirror
+      :model-value="modelValue"
+      :extensions="extensions"
+      :style="{ height: '100%' }"
+      @update:model-value="on_change"
+    />
+  </div>
+</template>
+"#
+    .to_string()
 }
 
 fn generate_vite_config() -> String {
@@ -782,6 +861,15 @@ fn write_project_files(
     let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();
     fs::write(output_path.join("components.json"), components_json)
         .map_err(|e| format!("Failed to write components.json: {}", e))?;
+
+    // Plan 413: CodeEditor CodeMirror shell (write-if-missing).
+    let code_editor_vue = output_path.join("src").join("components").join("CodeEditor.vue");
+    if !code_editor_vue.exists() {
+        std::fs::create_dir_all(code_editor_vue.parent().unwrap())
+            .map_err(|e| format!("Failed to create components dir: {}", e))?;
+        fs::write(&code_editor_vue, generate_code_editor_component())
+            .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
+    }
 
     // vite.config.ts
     let vite_config = generate_vite_config();
@@ -2112,6 +2200,21 @@ export default router
     /// imports './router' for routed projects, so every scaffold/run path
     /// must leave this file in place — the incremental scaffolding path
     /// historically skipped it, breaking vite import resolution.
+    /// Plan 413: ensure the CodeEditor CodeMirror shell exists (scaffolded
+    /// built-in; write-if-missing so incremental regen never clobbers user
+    /// edits to it).
+    pub fn ensure_code_editor_component(&self) -> AutoResult<()> {
+        let path = self.output_dir.join("src").join("components").join("CodeEditor.vue");
+        if path.exists() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(path.parent().unwrap())
+            .map_err(|e| format!("Failed to create components dir: {}", e))?;
+        std::fs::write(&path, generate_code_editor_component())
+            .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
+        Ok(())
+    }
+
     pub fn ensure_router_file(&self) -> AutoResult<()> {
         if !self.has_routes {
             return Ok(());
@@ -2565,6 +2668,9 @@ export default router
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
     let project = prepare_vue_sources(root_dir)?;
+
+    // Plan 413: ensure the CodeEditor CodeMirror shell exists (write-if-missing).
+    project.ensure_code_editor_component()?;
 
     // Step 3: npm install
     println!();
@@ -3129,6 +3235,8 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         // Self-heal router/index.ts — older scaffolding-only runs left it
         // missing, which breaks `import router from './router'` in main.ts.
         project.ensure_router_file()?;
+        // Plan 413: self-heal the CodeEditor shell the same way.
+        project.ensure_code_editor_component()?;
     }
 
     // Copy handmade theme assets if available
@@ -3356,6 +3464,23 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Plan 413: the scaffold ships the CodeMirror deps (tree-shaken when
+    /// unused) and the CodeEditor shell component template.
+    #[test]
+    fn package_json_includes_codemirror_deps() {
+        let pkg = generate_package_json("demo", false, false, &[]);
+        assert!(pkg.contains("\"vue-codemirror\""), "{pkg}");
+        assert!(pkg.contains("\"@codemirror/lang-rust\""), "{pkg}");
+        // The shell component renders vue-codemirror with the prop contract.
+        let component = generate_code_editor_component();
+        assert!(component.contains("vue-codemirror"), "{component}");
+        assert!(component.contains("defineProps"), "{component}");
+        assert!(component.contains("lineNumbers"), "{component}");
+        assert!(component.contains("EditorView.lineWrapping"), "{component}");
+    }
+
     use super::*;
 
     #[test]

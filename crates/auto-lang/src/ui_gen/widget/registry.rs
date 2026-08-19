@@ -855,13 +855,14 @@ impl WidgetRegistry {
             npm_package: None,
         });
         code_editor.backends.insert("vue".to_string(), BackendMapping {
-            component: "CodeMirror".to_string(),
-            // vue-codemirror wrapper (Phase 4: spec + shell only).
-            import: Some("vue-codemirror".to_string()),
+            // Scaffolded CodeMirror shell (auto-man writes
+            // src/components/CodeEditor.vue + the codemirror deps).
+            component: "CodeEditor".to_string(),
+            import: Some("@/components/CodeEditor".to_string()),
             props: HashMap::new(),
             events: HashMap::new(),
             extra_components: Vec::new(),
-            npm_package: Some(("vue-codemirror".to_string(), "^6".to_string())),
+            npm_package: None,
         });
         self.register(code_editor);
 

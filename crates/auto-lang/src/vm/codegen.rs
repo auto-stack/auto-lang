@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -436,6 +436,13 @@ impl Codegen {
         intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
         intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
         intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
+        // Plan 413: code editor payload accessors (UI bridge).
+        intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
+        intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
+        intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
+        intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
+        intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
+        intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
 
         // Register return types for native functions (used for type inference in let bindings)
         // Plan 378: actually use the built map (previously discarded as `_fn_return_types`,
@@ -743,6 +750,13 @@ impl Codegen {
         intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
         intrinsics.insert("export".to_string(), NATIVE_SHELL_EXPORT);
         intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
+        // Plan 413: code editor payload accessors (UI bridge).
+        intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
+        intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
+        intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
+        intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
+        intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
+        intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
 
         // Register return types for native functions (used for type inference in let bindings)
         let mut fn_return_types = Self::build_fn_return_types();
@@ -7756,6 +7770,18 @@ impl Codegen {
                         } else if name == "system" {
                             // Plan 011: system(cmd) -> String
                             self.last_expr_type = ObjectType::String;
+                        } else if name == "code_editor_text" {
+                            // Plan 413: code_editor_text(key) -> String
+                            self.last_expr_type = ObjectType::String;
+                        } else if name == "code_editor_cursor_line"
+                            || name == "code_editor_cursor_col"
+                            || name == "code_editor_selection_len"
+                        {
+                            // Plan 413: cursor/selection accessors -> Int
+                            self.last_expr_type = ObjectType::Int;
+                        } else if name == "code_editor_find" {
+                            // Plan 413: find(key) -> Bool
+                            self.last_expr_type = ObjectType::Bool;
                         } else if name == "system_status" {
                             // Plan 011: system_status() -> Int
                             self.last_expr_type = ObjectType::Int;

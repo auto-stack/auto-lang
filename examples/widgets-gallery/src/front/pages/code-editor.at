@@ -5,6 +5,8 @@ widget CodeEditorPage {
     model {
         activeTab str = "preview"
         query str = ""
+        line int = 1
+        col int = 1
         source str = "// 在这里编辑 Rust 代码 — 支持语法高亮、行号、IME。\nfn fibonacci(n: u32) -> u32 {\n    match n {\n        0 => 0,\n        1 => 1,\n        _ => fibonacci(n - 1) + fibonacci(n - 2),\n    }\n}\n\nfn main() {\n    let greeting = \"你好,世界\";\n    for i in 0..10 {\n        println!(\"{i}: {greeting}\");\n    }\n}\n"
         wrap bool = false
         vi bool = false
@@ -25,6 +27,7 @@ widget CodeEditorPage {
                         }
                         button (text: "Toggle Wrap") { onclick: .ToggleWrap }
                         button (text: "Toggle Vi Mode") { onclick: .ToggleVi }
+                        text "Ln {line}, Col {col}"
                         text "edits: {edits}"
                         style: "gap-2"
                     }
@@ -122,6 +125,10 @@ widget CodeEditorPage {
 
     on {
         .QueryChanged -> { }
+        .CursorMoved -> {
+            .line = code_editor_cursor_line("gallery-editor") + 1
+            .col = code_editor_cursor_col("gallery-editor")
+        }
         .SourceChanged -> {
             .edits = .edits + 1
         }

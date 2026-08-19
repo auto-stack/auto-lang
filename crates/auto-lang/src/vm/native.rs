@@ -588,6 +588,123 @@ pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     Ok(())
 }
 
+// ── Plan 413: code editor payload accessors (UI bridge) ─────────────────
+// Read / jump live code_editor state by storage key from handler
+// expressions. Text auto-binding (INPUT_TEXT) covers most oninput flows;
+// these natives add cursor/selection/find access and explicit writes for
+// both VM and script use. Behind the `code-editor` feature; without it the
+// shims raise a clear runtime error instead of failing to compile the VM.
+
+/// `code_editor_text(key) -> String`
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    match crate::ui::code_editor::code_editor_text(&key) {
+        Some(text) => {
+            let idx = vm.add_string(text.into_bytes());
+            crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(format!(
+            "code_editor_text: no editor registered for key {key:?}"
+        ))),
+    }
+}
+
+/// `code_editor_cursor_line(key) -> Int` (0-based line)
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_cursor_line(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let line = crate::ui::code_editor::code_editor_cursor(&key)
+        .map(|(l, _, _)| l)
+        .unwrap_or(0);
+    task.ram.push_i32(line as i32);
+    Ok(())
+}
+
+/// `code_editor_cursor_col(key) -> Int` (char column)
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let col = crate::ui::code_editor::code_editor_cursor(&key)
+        .map(|(_, c, _)| c)
+        .unwrap_or(0);
+    task.ram.push_i32(col as i32);
+    Ok(())
+}
+
+/// `code_editor_selection_len(key) -> Int` (bytes)
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_selection_len(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let sel = crate::ui::code_editor::code_editor_cursor(&key)
+        .map(|(_, _, s)| s)
+        .unwrap_or(0);
+    task.ram.push_i32(sel as i32);
+    Ok(())
+}
+
+/// `code_editor_find(key) -> Bool` — jump to the next regex match (wraps).
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_find(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let found = crate::ui::code_editor::code_editor_find(&key);
+    task.ram.push_nv(auto_val::encode_bool(found));
+    Ok(())
+}
+
+/// `code_editor_set_text(key, text)` — programmatic write (diff-guarded).
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (text) first, then the key.
+    let text = pop_string_arg(task, _vm);
+    let key = pop_string_arg(task, _vm);
+    if !crate::ui::code_editor::code_editor_set_text(&key, &text) {
+        return Err(VMError::RuntimeError(format!(
+            "code_editor_set_text: no editor registered for key {key:?}"
+        )));
+    }
+    Ok(())
+}
+
+// Feature-off stubs: same signatures, clear runtime error.
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_text: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_cursor_line(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_cursor_col(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_selection_len(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_selection_len: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_find(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_find: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_set_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_set_text: the `code-editor` feature is disabled".into(),
+    ))
+}
+
 /// `system_status() -> Int` — exit code of the last `system()` call.
 pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let code = if let Some(host) = &vm.host {
@@ -7208,6 +7325,62 @@ mod tests {
 
         assert_eq!(ni.resolve("auto.list.push"), Some(101));
         assert_eq!(ni.resolve("rust.something"), None);
+    }
+
+    // ── Plan 413: code editor payload natives (UI bridge) ──────────────
+    #[cfg(all(test, feature = "code-editor"))]
+    mod code_editor_natives {
+        use super::*;
+
+        #[test]
+        fn vm_code_editor_natives_end_to_end() {
+            use crate::ui::code_editor as ce;
+            use std::sync::{OnceLock, RwLock};
+
+            // Serialize against the registry-touching tests (LRU sweep).
+            let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+                .lock()
+                .unwrap();
+
+            fn install_fs(with: &mut dyn FnMut(&mut cosmic_text::FontSystem)) {
+                static FS: OnceLock<RwLock<cosmic_text::FontSystem>> = OnceLock::new();
+                let fs = FS.get_or_init(|| RwLock::new(cosmic_text::FontSystem::new()));
+                let mut guard = fs.write().unwrap();
+                with(&mut guard);
+            }
+            ce::set_font_system_call(install_fs);
+
+            let key = ce::storage_key("vm-native-test");
+            ce::code_editor_dispose(&key);
+            let config = ce::CodeEditorConfig::default();
+            ce::code_editor(&key, &config);
+            assert!(ce::code_editor_set_text(&key, "line one\nline two"));
+
+            // Script-level native calls through the full Codegen → VM → shim
+            // pipeline.
+            let (_result, out) = crate::run_with_capture(
+                r#"
+let t = code_editor_text("__code_editor_vm-native-test")
+print(t)
+let l = code_editor_cursor_line("__code_editor_vm-native-test")
+print(l)
+let c = code_editor_cursor_col("__code_editor_vm-native-test")
+print(c)
+let ok = code_editor_set_text("__code_editor_vm-native-test", "rewritten")
+print(ok)
+let t2 = code_editor_text("__code_editor_vm-native-test")
+print(t2)
+"#,
+            )
+            .unwrap();
+            assert!(out.contains("line one"), "text read: {out}");
+            assert!(out.contains("0"), "cursor line: {out}");
+            assert!(out.contains("rewritten"), "set+read roundtrip: {out}");
+
+            // Missing editor key raises a runtime error (not a panic).
+            let err = crate::run(r#"let x = code_editor_text("__code_editor_no-such")"#);
+            assert!(err.is_err());
+        }
     }
 
     #[test]
