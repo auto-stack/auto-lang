@@ -2150,13 +2150,31 @@ impl VueGenerator {
                 }
             }
             if has_defaults {
-                script.push_str("}>, {\n");
+                // The macro form is `withDefaults(defineProps<{...}>(), {...})`
+                // — the `()` after the type argument is required: without it
+                // `defineProps<{...}>` parses as an instantiation expression
+                // and vue-tsc no longer recognizes the macro (props collapse
+                // to `unknown`, TS2344/TS2339 all over the SFC).
+                script.push_str("}>(), {\n");
                 for prop in &widget.props {
                     if Self::prop_is_emitted_callback(prop, widget) {
                         continue;
                     }
                     if let Some(default_expr) = &prop.default {
                         let default_js = self.expr_to_js(default_expr)?;
+                        // withDefaults' InferDefault rejects a `null` default
+                        // for non-nullable prop types (e.g. `any[]`). The DSL
+                        // uses `= null` as "optional, unset" for callback/array
+                        // props; cast so the declared prop type stays intact.
+                        let ts_type = Self::prop_to_ts_type(prop, widget);
+                        let default_js = if default_js.trim() == "null"
+                            && ts_type != "any"
+                            && !ts_type.contains("null")
+                        {
+                            format!("({default_js} as any)")
+                        } else {
+                            default_js
+                        };
                         script.push_str(&format!("  {}: {},\n", prop.name, default_js));
                     }
                 }

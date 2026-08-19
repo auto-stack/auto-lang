@@ -923,12 +923,39 @@ widget W(label: str = "hi", count: int = 3, loading: bool = false) {
         "defaults wrap defineProps:\n{sfc}"
     );
     assert!(
+        sfc.contains("}>(), {"),
+        "defineProps<> must be CALLED (with parens after the type args); \
+         the bare instantiation-expression form is not recognized as a \
+         macro by vue-tsc and collapses props to unknown:\n{sfc}"
+    );
+    assert!(
         sfc.contains("label?: string") && sfc.contains("count?: number") && sfc.contains("loading?: boolean"),
         "defaulted props stay optional:\n{sfc}"
     );
     assert!(
         sfc.contains("label: 'hi'") && sfc.contains("count: 3") && sfc.contains("loading: false"),
         "default values carried into withDefaults object:\n{sfc}"
+    );
+}
+
+/// Null defaults on non-nullable prop types (e.g. `[]str = null` → `any[]`)
+/// are cast — withDefaults' InferDefault<T> rejects a bare `null` there.
+#[test]
+fn default_props_null_default_cast() {
+    let sfc = gen_sfc(
+        r#"
+widget W(items: []str = null, cb: any = null) {
+    view { col { text "x" } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("items: (null as any),"),
+        "null default on any[] prop is cast:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("cb: null,"),
+        "null default on any-typed prop stays bare:\n{sfc}"
     );
 }
 
