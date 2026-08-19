@@ -1502,6 +1502,14 @@ impl Codegen {
                     }
                     self.global_vars.insert(name_str.clone());
                 }
+                // Plan 080/118/087: record the initializer's type into var_types
+                // BEFORE any storage-path branching. The global fast path below
+                // early-returns, and skipping the tracking there (Plan 338
+                // regression, dstr suite) made `var s = String.new(); s.push()`
+                // lose compile-time String.push → auto.str.push resolution and
+                // degrade to runtime CALL_SPEC, where only the heap tag
+                // ("StringBuilder") is known and dispatch fails.
+                self.track_store_var_type(store);
                 // Plan 317: module-level global variable (top-level `var`).
                 // Compile the init expr and STORE_GLOBAL; skip local slot
                 // registration so the value lives in vm.globals (cross-fn).
@@ -1946,171 +1954,13 @@ impl Codegen {
                     }
                 }
 
-                // Plan 080: Track variable type for instance method support
-                // Plan 198 Phase 4: Replaced 120-line hardcoded if-chain with resolve_constructor_type()
-                if let Expr::Call(call) = &store.expr {
-                    if let Expr::Dot(obj, method) = call.name.as_ref() {
-                        if let Expr::Ident(type_name) = obj.as_ref() {
-                            if method == "new" || (type_name == "String" && method == "from") {
-                                if let Some(resolved) = self.resolve_constructor_type(type_name) {
-                                    self.var_types.insert(store.name.to_string(), resolved);
-                                }
-                            }
-                        }
-                    }
-                                        // Plan 118 Phase 4: Track type instances from type constructor calls
-                    // Example: var duck = Duck(), var wing = Wing()
-                    else if let Expr::Ident(type_name) = call.name.as_ref() {
-                        if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) && !self.py_native_map.contains_key(type_name.as_str()) {
-                            // Create a TypeDecl with proper members from generic_registry
-                            let type_decl = if self.generic_registry.has_template(type_name) {
-                                // Create a TypeDecl from the template
-                                let template = self.generic_registry.get_template(type_name).unwrap();
-                                crate::ast::TypeDecl {
-                                    consts: Vec::new(),
-                                    name: crate::ast::Name::from(type_name),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: template.fields.iter().map(|f| crate::ast::Member {
-                                        name: crate::ast::Name::from(f.name.as_str()),
-                                        ty: f.field_type.clone(),
-                                        value: None,
-                                        attrs: Vec::new(),
-                                    }).collect(),
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    impl_attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                }
-                            } else if let Some(type_info) = self.get_type(type_name) {
-                                // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
-                                crate::ast::TypeDecl {
-                                    consts: Vec::new(),
-                                    name: crate::ast::Name::from(type_name),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: type_info.member_names.iter().map(|name| crate::ast::Member {
-                                        name: crate::ast::Name::from(name.as_str()),
-                                        ty: Type::Unknown,
-                                        value: None,
-                                        attrs: Vec::new(),
-                                    }).collect(),
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    impl_attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                }
-                            } else {
-                                // Fallback: create minimal type decl
-                                crate::ast::TypeDecl {
-                                    consts: Vec::new(),
-                                    name: crate::ast::Name::from(type_name),
-                                    kind: crate::ast::TypeDeclKind::UserType,
-                                    parent: None,
-                                    has: vec![],
-                                    specs: vec![],
-                                    spec_impls: vec![],
-                                    generic_params: vec![],
-                                    members: vec![],
-                                    delegations: vec![],
-                                    methods: vec![],
-                                    attrs: vec![],
-                                    impl_attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                                }
-                            };
-                            self.var_types
-                                .insert(store.name.to_string(), Type::User(type_decl));
-                            vm_debug!("DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
-                                store.name, type_name
-                            );
-                        }
-                    }
-                }
-                // Plan 087 Phase 3: Track type instances from Node literals
-                // Example: let c = Counter{count: 0}
-                else if let Expr::Node(node) = &store.expr {
-                    let type_name = node.name.to_string();
-
-                    // Check if this is a user-defined generic type in GenericRegistry
-                    if self.generic_registry.has_template(&type_name) {
-                        // Get or create ClassType for this generic type
-                        let type_args = Vec::new(); // No explicit type args provided
-                        if let Ok(_class_type) = self
-                            .generic_registry
-                            .get_or_create_type(&type_name, type_args)
-                        {
-                            // Create GenericInstance type to store in var_types
-                            use crate::ast::GenericInstance;
-                            let generic_inst = GenericInstance {
-                                base_name: crate::ast::Name::from(type_name),
-                                args: vec![],
-                                source: None,
-                            };
-                            self.var_types.insert(
-                                store.name.to_string(),
-                                Type::GenericInstance(generic_inst),
-                            );
-                            vm_debug!("DEBUG: Stored generic type for '{}' in var_types",
-                                store.name
-                            );
-                        }
-                    } else if self.is_type(&type_name) {
-                        // Built-in type (List, HashMap, etc.)
-                        if let Some(_type_info) = self.get_type(&type_name) {
-                            // Create a synthetic TypeDecl for type tracking
-                            let type_decl = crate::ast::TypeDecl {
-                                consts: Vec::new(),
-                                name: crate::ast::Name::from(type_name),
-                                kind: crate::ast::TypeDeclKind::UserType,
-                                parent: None,
-                                has: vec![],
-                                specs: vec![],
-                                spec_impls: vec![],
-                                generic_params: vec![],
-                                members: vec![],
-                                delegations: vec![],
-                                methods: vec![],
-                                attrs: vec![],
-                                impl_attrs: vec![],
-                                    doc: None,
-                                    is_pub: false,
-                            };
-                            self.var_types
-                                .insert(store.name.to_string(), Type::User(type_decl));
-                        }
-                    }
-                }
-
-                // Plan 087 Phase 3: Infer type from literal expressions for .type property support
-                // If variable type not yet tracked (e.g., let x = 42), infer from expression
-                if !self.var_types.contains_key(&name_str) {
-                    let ty = self.infer_expr_type(&store.expr);
-                    // Only store if we could infer a non-Unknown type
-                    if !matches!(ty, crate::ast::Type::Unknown) {
-                        vm_debug!("DEBUG: Inferred type for '{}' from expression: {:?}",
-                            name_str, ty
-                        );
-                        self.var_types.insert(name_str.clone(), ty.clone());
-                        // Sync with infer_ctx
-                        self.infer_ctx
-                            .type_env
-                            .insert(crate::ast::Name::from(&name_str), ty);
-                    }
-                }
+                // Re-run the initializer-type tracking AFTER the annotation/
+                // inference chain above, so a constructor-derived type (e.g.
+                // `let s = String.from(..)` -> User("String")) wins over the
+                // native return type the chain may have recorded (StrFixed).
+                // This preserves the pre-refactor ordering for the local path;
+                // the top-of-handler call covers the global early-return path.
+                self.track_store_var_type(store);
 
                 // Add variable to symbol table and get its index.
                 //
@@ -11916,6 +11766,188 @@ impl Codegen {
         self.type_store.read().unwrap().is_type(name)
     }
 
+    /// Plan 080/118/087: record a `let/var` binding's initializer type into
+    /// `var_types` so later instance-method calls on the variable can resolve
+    /// the receiver's source-level type at compile time.
+    ///
+    /// Called ONCE at the top of the `Stmt::Store` handler, before the
+    /// storage-path split. The module-level global fast path (Plan 322/327/
+    /// 338) early-returns before the local-slot logic; when this tracking
+    /// lived only below that return, top-level `var s = String.new()` never
+    /// recorded its type, `s.push()` lost the compile-time
+    /// `String.push -> auto.str.push` resolution, and the call degraded to
+    /// runtime CALL_SPEC — which only knows the heap tag ("StringBuilder")
+    /// and failed with `no function 'StringBuilder.push'` (dstr suite
+    /// regression since Plan 338).
+    fn track_store_var_type(&mut self, store: &crate::ast::Store) {
+        let name_str = store.name.to_string();
+        // Plan 080: Track variable type for instance method support
+        // Plan 198 Phase 4: Replaced 120-line hardcoded if-chain with resolve_constructor_type()
+        if let Expr::Call(call) = &store.expr {
+            if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if let Expr::Ident(type_name) = obj.as_ref() {
+                    if method == "new" || (type_name == "String" && method == "from") {
+                        if let Some(resolved) = self.resolve_constructor_type(type_name) {
+                            self.var_types.insert(name_str.clone(), resolved);
+                        }
+                    }
+                }
+            }
+            // Plan 118 Phase 4: Track type instances from type constructor calls
+            // Example: var duck = Duck(), var wing = Wing()
+            else if let Expr::Ident(type_name) = call.name.as_ref() {
+                if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) && !self.py_native_map.contains_key(type_name.as_str()) {
+                    // Create a TypeDecl with proper members from generic_registry
+                    let type_decl = if self.generic_registry.has_template(type_name) {
+                        // Create a TypeDecl from the template
+                        let template = self.generic_registry.get_template(type_name).unwrap();
+                        crate::ast::TypeDecl {
+                            consts: Vec::new(),
+                            name: crate::ast::Name::from(type_name),
+                            kind: crate::ast::TypeDeclKind::UserType,
+                            parent: None,
+                            has: vec![],
+                            specs: vec![],
+                            spec_impls: vec![],
+                            generic_params: vec![],
+                            members: template.fields.iter().map(|f| crate::ast::Member {
+                                name: crate::ast::Name::from(f.name.as_str()),
+                                ty: f.field_type.clone(),
+                                value: None,
+                                attrs: Vec::new(),
+                            }).collect(),
+                            delegations: vec![],
+                            methods: vec![],
+                            attrs: vec![],
+                            impl_attrs: vec![],
+                            doc: None,
+                            is_pub: false,
+                        }
+                    } else if let Some(type_info) = self.get_type(type_name) {
+                        // Create TypeDecl from TypeInfo (only has member names, use Unknown type)
+                        crate::ast::TypeDecl {
+                            consts: Vec::new(),
+                            name: crate::ast::Name::from(type_name),
+                            kind: crate::ast::TypeDeclKind::UserType,
+                            parent: None,
+                            has: vec![],
+                            specs: vec![],
+                            spec_impls: vec![],
+                            generic_params: vec![],
+                            members: type_info.member_names.iter().map(|name| crate::ast::Member {
+                                name: crate::ast::Name::from(name),
+                                ty: Type::Unknown,
+                                value: None,
+                                attrs: Vec::new(),
+                            }).collect(),
+                            delegations: vec![],
+                            methods: vec![],
+                            attrs: vec![],
+                            impl_attrs: vec![],
+                            doc: None,
+                            is_pub: false,
+                        }
+                    } else {
+                        // Fallback: create minimal type decl
+                        crate::ast::TypeDecl {
+                            consts: Vec::new(),
+                            name: crate::ast::Name::from(type_name),
+                            kind: crate::ast::TypeDeclKind::UserType,
+                            parent: None,
+                            has: vec![],
+                            specs: vec![],
+                            spec_impls: vec![],
+                            impl_attrs: vec![],
+                            generic_params: vec![],
+                            members: vec![],
+                            delegations: vec![],
+                            methods: vec![],
+                            attrs: vec![],
+                            doc: None,
+                            is_pub: false,
+                        }
+                    };
+                    self.var_types
+                        .insert(name_str.clone(), Type::User(type_decl));
+                    vm_debug!("DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
+                        store.name, type_name
+                    );
+                }
+            }
+        }
+        // Plan 087 Phase 3: Track type instances from Node literals
+        // Example: let c = Counter{count: 0}
+        else if let Expr::Node(node) = &store.expr {
+            let type_name = node.name.to_string();
+
+            // Check if this is a user-defined generic type in GenericRegistry
+            if self.generic_registry.has_template(&type_name) {
+                // Get or create ClassType for this generic type
+                let type_args = Vec::new(); // No explicit type args provided
+                if let Ok(_class_type) = self
+                    .generic_registry
+                    .get_or_create_type(&type_name, type_args)
+                {
+                    // Create GenericInstance type to store in var_types
+                    use crate::ast::GenericInstance;
+                    let generic_inst = GenericInstance {
+                        base_name: crate::ast::Name::from(type_name),
+                        args: vec![],
+                        source: None,
+                    };
+                    self.var_types.insert(
+                        name_str.clone(),
+                        Type::GenericInstance(generic_inst),
+                    );
+                    vm_debug!("DEBUG: Stored generic type for '{}' in var_types",
+                        store.name
+                    );
+                }
+            } else if self.is_type(&type_name) {
+                // Built-in type (List, HashMap, etc.)
+                if let Some(_type_info) = self.get_type(&type_name) {
+                    // Create a synthetic TypeDecl for type tracking
+                    let type_decl = crate::ast::TypeDecl {
+                        consts: Vec::new(),
+                        name: crate::ast::Name::from(type_name),
+                        kind: crate::ast::TypeDeclKind::UserType,
+                        parent: None,
+                        has: vec![],
+                        specs: vec![],
+                        spec_impls: vec![],
+                        impl_attrs: vec![],
+                        generic_params: vec![],
+                        members: vec![],
+                        delegations: vec![],
+                        methods: vec![],
+                        attrs: vec![],
+                        doc: None,
+                        is_pub: false,
+                    };
+                    self.var_types
+                        .insert(name_str.clone(), Type::User(type_decl));
+                }
+            }
+        }
+
+        // Plan 087 Phase 3: Infer type from literal expressions for .type property support
+        // If variable type not yet tracked (e.g., let x = 42), infer from expression
+        if !self.var_types.contains_key(&name_str) {
+            let ty = self.infer_expr_type(&store.expr);
+            // Only store if we could infer a non-Unknown type
+            if !matches!(ty, crate::ast::Type::Unknown) {
+                vm_debug!("DEBUG: Inferred type for '{}' from expression: {:?}",
+                    name_str, ty
+                );
+                self.var_types.insert(name_str.clone(), ty.clone());
+                // Sync with infer_ctx
+                self.infer_ctx
+                    .type_env
+                    .insert(crate::ast::Name::from(&name_str), ty);
+            }
+        }
+    }
+
     /// Plan 198 Phase 4: Resolve the Type for a constructor call like `List.new()`.
     ///
     /// Replaces the previous 120-line hardcoded if-chain. Uses a compact table
@@ -12077,17 +12109,20 @@ mod tests {
         codegen.compile_stmt(&stmt).unwrap();
 
         let code = &codegen.code;
-        // JMP_IF_Z at 5 should jump to 16. Offset 8.
-        assert_eq!(code[5], OpCode::JMP_IF_Z as u8);
-        let else_offset = i16::from_le_bytes(code[6..8].try_into().unwrap());
+        // Layout since Plan 318 (PUSH_BOOL): Expr::Bool(true) compiles to
+        // PUSH_BOOL + 1 operand byte (offsets 0-1), so JMP_IF_Z sits at 2
+        // (operands 3-4), then-branch CONST_I32+4 at 5-9, JMP at 10
+        // (operands 11-12), else-branch CONST_I32+4 at 13-17, end at 18.
+        // JMP_IF_Z at 2 jumps to else start 13: 13 - (2+1+2) = 8.
+        assert_eq!(code[0], OpCode::PUSH_BOOL as u8);
+        assert_eq!(code[1], 1); // true
+        assert_eq!(code[2], OpCode::JMP_IF_Z as u8);
+        let else_offset = i16::from_le_bytes(code[3..5].try_into().unwrap());
         assert_eq!(else_offset, 8);
 
-        // JMP at 13 should jump to 21. Offset 5.
-        // Wait, why 5?
-        // 13 (JMP) + 1 + 2 = 16.
-        // End is at 21. 21 - 16 = 5. Correct.
-        assert_eq!(code[13], OpCode::JMP as u8);
-        let end_offset = i16::from_le_bytes(code[14..16].try_into().unwrap());
+        // JMP at 10 jumps to end 18: 18 - (10+1+2) = 5.
+        assert_eq!(code[10], OpCode::JMP as u8);
+        let end_offset = i16::from_le_bytes(code[11..13].try_into().unwrap());
         assert_eq!(end_offset, 5);
     }
 

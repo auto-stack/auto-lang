@@ -23,4 +23,4 @@ API imports: ["delete_note", "list_notes"]
 Store deps: ["NotesStore"]
 Store composables: 0
 Validation warnings: 0
-SFC 'App': 2796 bytes, has template: true, has script: true, has style: true
+SFC 'App': 2876 bytes, has template: true, has script: true, has style: true

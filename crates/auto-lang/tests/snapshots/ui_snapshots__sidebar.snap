@@ -21,5 +21,5 @@ Widget: NavTree | props: 4 | state: 0 | handlers: 9 | messages: 1
 API imports: []
 Store deps: ["NotesStore"]
 Store composables: 0
-Validation warnings: 2
-SFC 'NavTree': 14918 bytes, has template: true, has script: true, has style: true
+Validation warnings: 1
+SFC 'NavTree': 15516 bytes, has template: true, has script: true, has style: true

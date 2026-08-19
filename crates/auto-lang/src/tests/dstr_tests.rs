@@ -197,7 +197,7 @@ fn test_string_clear() {
             s.is_empty()
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "1");
+    assert_eq!(result, "true"); // bool 打印已为 "true"（同 test_string_is_empty，PUSH_BOOL）
 }
 
 #[test]

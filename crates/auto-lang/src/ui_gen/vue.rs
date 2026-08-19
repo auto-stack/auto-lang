@@ -13178,7 +13178,9 @@ widget W {
 "#,
         );
         assert!(
-            sfc.contains(":class=\"kind == 'Dir' ? 'text-sky-400' : (kind == 'CodeAtRs' ? 'text-emerald-400' : (kind == 'Config' ? 'text-amber-300' : 'text-foreground'))\""),
+            // Plan 054 M6: the whole ternary is parenthesized so it stays safe
+            // inside string concatenation (JS `+` binds tighter than `?:`).
+            sfc.contains(":class=\"(kind == 'Dir' ? 'text-sky-400' : (kind == 'CodeAtRs' ? 'text-emerald-400' : (kind == 'Config' ? 'text-amber-300' : 'text-foreground')))\""),
             "else-if chain → nested ternary:\n{}",
             sfc
         );
@@ -13205,10 +13207,11 @@ widget W {
 "#,
         );
         // The then-branch is a nested if → must become a parenthesized
-        // ternary, NOT an empty string.
+        // ternary, NOT an empty string. (Plan 054 M6: whole-ternary outer
+        // parens + the nested-branch's own parens → double layer.)
         assert!(
             sfc.contains(
-                ":class=\"sid != '' ? (sid == 'a' ? 'item active' : 'item') : 'item'\""
+                ":class=\"(sid != '' ? ((sid == 'a' ? 'item active' : 'item')) : 'item')\""
             ),
             "nested if in then-branch → nested ternary:\n{}",
             sfc
@@ -13233,7 +13236,9 @@ widget W {
 "#,
         );
         assert!(
-            sfc.contains(":class=\"a == 'x' ? 'foo' : (a == 'y' ? 'bar' : 'baz')\""),
+            // Plan 054 M6: outer parens around the whole ternary; the nested
+            // else-branch ternary keeps its own layer (double-parenthesized).
+            sfc.contains(":class=\"(a == 'x' ? 'foo' : ((a == 'y' ? 'bar' : 'baz')))\""),
             "nested if in else-branch → nested ternary:\n{}",
             sfc
         );
@@ -14248,7 +14253,8 @@ widget StatusIcon(status: Any) {
         // preserved (no silent `undefined`) — carries over: the ternary yields
         // the matched branch's expression.
         assert!(
-            sfc.contains("const glyph = computed<any>(() => props.status.kind === 'Success' ? '✓' : (props.status.kind === 'Failed' ? '✗' : ('…')))"),
+            // Plan 054 M6: whole-ternary outer parens (safe in concat contexts).
+            sfc.contains("const glyph = computed<any>(() => (props.status.kind === 'Success' ? '✓' : (props.status.kind === 'Failed' ? '✗' : '…')))"),
             "computed if chain must transpile to a nested ternary preserving each branch value:\n{}",
             sfc
         );
@@ -16748,9 +16754,10 @@ store Graph {
             "populated map init must render its pairs, got:\n{}",
             code
         );
-        // Existing literal kinds keep working unchanged.
+        // Existing literal kinds keep working unchanged. (Plan 055 E(a): a
+        // str-typed state ref is now typed `ref<string>`, not `ref<any>`.)
         assert!(code.contains("const blocks = ref<any>([])"), "array init:\n{}", code);
-        assert!(code.contains("const cwd = ref<any>('')"), "str init:\n{}", code);
+        assert!(code.contains("const cwd = ref<string>('')"), "str init:\n{}", code);
         // No state var may degrade to null anymore.
         assert!(
             !code.contains("ref<any>(null)"),
@@ -16906,10 +16913,11 @@ store Files {
             .expect("Open handler params");
         assert_eq!(params, &vec!["a".to_string(), "b".to_string()]);
 
-        // Codegen: the action takes both parameters.
+        // Codegen: the action takes both parameters. (Plan 055 E(b): scalar
+        // payload slots are typed — (str, str) → (a: string, b: string).)
         let code = VueGenerator::generate_store_composable(&store);
         assert!(
-            code.contains("const Open = (a: any, b: any) =>"),
+            code.contains("const Open = (a: string, b: string) =>"),
             "two-arg action signature, got:\n{}",
             code
         );
