@@ -297,7 +297,14 @@ widget App {
 /// editor README note 3 / jade batch 2 (CodeBlockMenu, jade first use):
 /// v-model FOLD — `value: .query` + `oninput: .QueryInput($event)` on a
 /// state field collapses to `v-model="query"`; the handler function is
-/// still emitted but NOT wired to @input.
+/// still emitted AND still wired via `@input`.
+///
+/// Plan 399 Phase 12 (9e9faaf2) pinned this contract: v-model only owns the
+/// two-way value binding; arbitrary handler side effects (e.g. typing-signal
+/// InputChanged) still need the explicit `@input` listener. Vue 3 merges
+/// `v-model` + `@input` into one onInput handler array, so both run — no
+/// double value binding. (The pre-Phase-12 behavior silently dropped @input
+/// and side-effect handlers never fired.)
 #[test]
 fn cap_vmodel_fold() {
     let sfc = gen_sfc(
@@ -322,8 +329,8 @@ widget W {
         "handler still emitted:\n{sfc}"
     );
     assert!(
-        !sfc.contains("@input=\"QueryInput"),
-        "handler must NOT also wire @input after the fold:\n{sfc}"
+        sfc.contains("@input=\"QueryInput($event)\""),
+        "handler side effects still wired via @input alongside v-model:\n{sfc}"
     );
 }
 
