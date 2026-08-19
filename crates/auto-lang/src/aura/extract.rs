@@ -514,6 +514,25 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     } else {
         (HashMap::new(), HashMap::new())
     };
+    // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions — keep the
+    // (url, event) wiring info alongside the handler keyed by its pattern.
+    let stream_handlers: Vec<crate::aura::types::AuraStreamHandler> = decl.on.iter()
+        .flat_map(|on| on.handlers.iter().filter(|h| h.stream.is_some()))
+        .map(|h| {
+            let sub = h.stream.as_ref().expect("filtered");
+            let handler_key = if h.params.is_empty() {
+                h.pattern.clone()
+            } else {
+                format!("{}({})", h.pattern, h.params.join(", "))
+            };
+            crate::aura::types::AuraStreamHandler {
+                handler_key,
+                kind: sub.kind.clone(),
+                url: sub.url.clone(),
+                event: sub.event.clone(),
+            }
+        })
+        .collect();
     // Plan 367 P2-2: extract computed properties (same pattern as widget)
     let computed: Vec<AuraComputed> = if let Some(ref computed_block) = decl.computed {
         computed_block.properties.iter()
@@ -535,6 +554,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         handler_params,
         api_imports: Vec::new(),
         stream_endpoints: Vec::new(),
+        stream_handlers,
         computed,
         // Plan 012 Batch G (gap 12): store-level watch block, same mapping
         // as the widget-level one.
