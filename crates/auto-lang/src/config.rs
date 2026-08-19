@@ -366,4 +366,24 @@ dep("log") {
         }
         assert_eq!(got, Value::Bool(true), "injected bool must propagate");
     }
+
+    // Plan 013: `on`/`off` are built-in config globals (true/false) so manifest
+    // toggles like pac.at `shadcn: off` evaluate instead of aborting the whole
+    // config with "Undefined variable".
+    #[test]
+    fn test_on_off_builtin_config_globals() {
+        let cfg = AutoConfig::from_code("shadcn: off\nfeature_x: on\n", &Obj::new()).unwrap();
+        assert_eq!(cfg.root.get_prop("shadcn"), Value::Bool(false));
+        assert_eq!(cfg.root.get_prop("feature_x"), Value::Bool(true));
+
+        // Absent toggle → no prop (caller applies its own default).
+        let cfg = AutoConfig::from_code("name: \"x\"\n", &Obj::new()).unwrap();
+        assert!(!cfg.root.has_prop("shadcn"));
+
+        // Quoted strings and real booleans still work as before.
+        let cfg = AutoConfig::from_code("shadcn: \"off\"\n", &Obj::new()).unwrap();
+        assert_eq!(cfg.root.get_prop("shadcn").to_astr().as_str(), "off");
+        let cfg = AutoConfig::from_code("shadcn: false\n", &Obj::new()).unwrap();
+        assert_eq!(cfg.root.get_prop("shadcn"), Value::Bool(false));
+    }
 }

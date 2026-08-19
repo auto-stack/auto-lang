@@ -41,6 +41,7 @@ mod plan408_tests {
             at_path.to_str().unwrap(),
             Some(tmp.to_str().unwrap()),
             None,
+            None,
         ).expect("legacy entry must compile component fn source");
 
         // The component fn is synthesized to its own SFC on disk.
@@ -916,7 +917,7 @@ mod plan408_tests {
 
         // shadcn mode (real build path).
         let (vue_code, _widgets, _stores) = crate::ui_build_shadcn_with_widgets_and_stores(
-            at_path.to_str().unwrap(), None, None,
+            at_path.to_str().unwrap(), None, None, None,
         ).expect("native table case must compile");
 
         // Native `<table>`, not shadcn <Table>.

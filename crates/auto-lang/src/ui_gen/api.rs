@@ -303,6 +303,11 @@ pub struct ComponentGenOptions {
     /// onto each store so its composable can wire type-driven SSE. (Plan 043
     /// stream phase.) When `None`, no SSE wiring is generated.
     pub stream_endpoints: Option<Vec<crate::aura::StreamEndpoint>>,
+    /// shadcn-vue widget mapping toggle (pac.at `shadcn:` field). `None` /
+    /// `Some(true)` = Shadcn mode (current default, unchanged); `Some(false)`
+    /// = Plain mode: widgets render as native HTML elements (`button` stays
+    /// `<button>`) and no `@/components/ui/*` imports are emitted.
+    pub shadcn: Option<bool>,
 }
 
 /// Result of generating a component from an .at file.
@@ -454,9 +459,17 @@ pub fn generate_component_from_file(
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
 
+    // pac.at `shadcn: off` (Plan 013): Plain mode keeps native HTML elements
+    // and emits no `@/components/ui/*` imports; default stays Shadcn.
+    let vue_mode = if opts.shadcn.unwrap_or(true) {
+        VueMode::Shadcn
+    } else {
+        VueMode::Plain
+    };
+
     for widget in &widgets {
         let mut gen = VueGenerator::new()
-            .with_mode(VueMode::Shadcn)
+            .with_mode(vue_mode)
             .with_store_deps(store_deps.clone())
             .with_sub_widgets(all_sub_widgets.clone());
         if !api_imports.is_empty() {
@@ -1210,5 +1223,78 @@ pub tag SseEventDto {
         assert_eq!(to_snake_case("ToolResult"), "tool_result");
         assert_eq!(to_snake_case("HTTPError"), "http_error");
         assert_eq!(to_snake_case("Done"), "done");
+    }
+
+    // ====================================================================
+    // Plan 013: pac.at `shadcn: off` — ComponentGenOptions.shadcn switch
+    // ====================================================================
+
+    /// Write `src` to a temp .at file and run `generate_component_from_file`.
+    fn gen_with_shadcn(src: &str, shadcn: Option<bool>) -> super::GeneratedComponent {
+        let tmp = std::env::temp_dir().join(format!(
+            "plan013_shadcn_{:?}",
+            shadcn
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, src).unwrap();
+        let opts = super::ComponentGenOptions {
+            shadcn,
+            ..Default::default()
+        };
+        super::generate_component_from_file(&at_path, opts).expect("generate must succeed")
+    }
+
+    const SHADCN_SWITCH_SRC: &str = r#"
+widget App {
+    view {
+        col {
+            button "save" {
+                class: "primary"
+            }
+        }
+    }
+}
+"#;
+
+    /// Default (None) keeps the current shadcn behavior: `button` maps to the
+    /// shadcn-vue `<Button>` component with a `@/components/ui/button` import.
+    #[test]
+    fn test_shadcn_default_on_maps_button_component() {
+        let result = gen_with_shadcn(SHADCN_SWITCH_SRC, None);
+        assert!(
+            result.vue_code.contains("@/components/ui/button"),
+            "default must emit shadcn import:\n{}",
+            result.vue_code
+        );
+        assert!(
+            result.vue_code.contains("<Button"),
+            "default must map button → <Button>:\n{}",
+            result.vue_code
+        );
+    }
+
+    /// `shadcn: Some(false)` (pac.at `shadcn: off`): `button` stays a native
+    /// `<button>` element and no `@/components/ui/*` import is emitted.
+    #[test]
+    fn test_shadcn_off_keeps_native_button() {
+        let result = gen_with_shadcn(SHADCN_SWITCH_SRC, Some(false));
+        assert!(
+            result.vue_code.contains("<button"),
+            "shadcn off must keep native <button>:\n{}",
+            result.vue_code
+        );
+        assert!(
+            !result.vue_code.contains("@/components/ui"),
+            "shadcn off must not emit shadcn imports:\n{}",
+            result.vue_code
+        );
+        // The widget's own class still lands on the element.
+        assert!(
+            result.vue_code.contains("primary"),
+            "shadcn off must preserve classes:\n{}",
+            result.vue_code
+        );
     }
 }

@@ -899,6 +899,35 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
+/// Parse the `shadcn:` toggle from pac.at content (Plan 013).
+///
+/// Default is `true` (shadcn-vue mapping, current behavior). Accepts
+/// `shadcn: off` / `shadcn: false` / `shadcn: "off"` (and `no`/`0`) to switch
+/// widget generation to native HTML elements with no `@/components/ui/*`
+/// imports. Bareword `off`/`on` are built-in config globals (auto-lang
+/// `eval_config_with_vm`), so the real AutoConfig parse of pac.at agrees with
+/// this line-level scan.
+fn parse_shadcn(content: &str) -> bool {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("shadcn:") || line.starts_with("shadcn =") || line.starts_with("shadcn=") {
+            let value = line["shadcn".len()..].trim_start().trim_start_matches([':', '=']).trim();
+            let value = value.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+            let value = value.to_lowercase();
+            return !matches!(value.as_str(), "off" | "false" | "no" | "0");
+        }
+    }
+    true
+}
+
+/// Read the effective `shadcn` toggle for a workspace (pac.at at `root_dir`).
+/// Absent file or unreadable → default `true`.
+fn project_shadcn(root_dir: &Path) -> bool {
+    fs::read_to_string(root_dir.join("pac.at"))
+        .map(|c| parse_shadcn(&c))
+        .unwrap_or(true)
+}
+
 /// Parse npm_deps from pac.at content.
 ///
 /// Returns a list of (package_name, version_spec) pairs where version_spec
@@ -1368,6 +1397,12 @@ export default router
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
 
+        // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
+        let shadcn = parse_shadcn(&pac_content);
+        if !shadcn {
+            println!("{} shadcn: off — native HTML element generation", "Mode:".bright_cyan());
+        }
+
         // Output directory (Plan 129: vue/ instead of dist/)
         let output_dir = root_dir.join("gen").join("front").join("vue");
         let public_dir = front_dir.join("public");
@@ -1416,7 +1451,7 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(root_dir.to_str().unwrap())) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(root_dir.to_str().unwrap()), Some(shadcn)) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -1442,7 +1477,12 @@ export default router
                             let app_store_deps = auto_lang::extract_store_deps_from_file(
                                 app_at.to_str().unwrap()
                             );
-                            let mut gen = VueGenerator::new_shadcn()
+                            let gen = if shadcn {
+                                VueGenerator::new_shadcn()
+                            } else {
+                                VueGenerator::new()
+                            };
+                            let mut gen = gen
                                 .with_sub_widgets(sub_widget_names.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
@@ -1485,6 +1525,7 @@ export default router
             dir: &Path,
             front_dir: &Path,
             root_dir: &Path,
+            shadcn: bool,
             all_components: &mut Vec<(String, String, String, String)>,
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
@@ -1498,7 +1539,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, root_dir, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
+                    scan_pages_dir(&path, front_dir, root_dir, shadcn, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -1508,7 +1549,7 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_all_widget_codes(path.to_str().unwrap(), Some(root_dir.to_str().unwrap())) {
+                    match auto_lang::ui_build_shadcn_all_widget_codes(path.to_str().unwrap(), Some(root_dir.to_str().unwrap()), Some(shadcn)) {
                         Ok(result) => {
                             let vue_code = result.vue_code.clone();
                             let widgets = result.widgets.clone();
@@ -1551,7 +1592,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, root_dir, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
+            scan_pages_dir(&pages_dir, &front_dir, root_dir, shadcn, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -1570,7 +1611,7 @@ export default router
                     continue;
                 }
 
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap())) {
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn)) {
                     Ok((vue_code, widgets, stores)) => {
                         collect_ext_import_files(&widgets, &mut ext_file_set);
                         let components = detect_shadcn_components(&vue_code);
@@ -1588,7 +1629,12 @@ export default router
                                 all_routes.extend(routes.routes.clone());
                             }
                             // Generate each widget as an independent Vue component
-                            let mut gen = VueGenerator::new_shadcn()
+                            let gen = if shadcn {
+                                VueGenerator::new_shadcn()
+                            } else {
+                                VueGenerator::new()
+                            };
+                            let mut gen = gen
                                 .with_sub_widgets(sub_widget_names.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
@@ -2610,6 +2656,9 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     let front_dir = resolve_front_dir(root_dir);
     let output_dir = root_dir.join("gen").join("front").join("vue");
 
+    // Plan 013: shadcn-vue mapping toggle from pac.at (`shadcn: off`).
+    let shadcn = project_shadcn(root_dir);
+
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
 
@@ -2649,7 +2698,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 
                     if source_changed || output_missing {
                         println!("  {} (changed)", file_name.bright_yellow());
-                        match compile_at_to_vue(&path, &content, root_dir) {
+                        match compile_at_to_vue(&path, &content, root_dir, shadcn) {
                             Ok((vue_code, widgets, stores)) => {
                                 store_files.extend(stores);
                                 for widget_name in &widgets {
@@ -2674,7 +2723,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                         }
                     } else {
                         // Cached: still need sub-widget names for app.at compilation
-                        match compile_at_to_vue(&path, &content, root_dir) {
+                        match compile_at_to_vue(&path, &content, root_dir, shadcn) {
                             Ok((_vue_code, widgets, _stores)) => {
                                 for widget_name in &widgets {
                                     sub_widget_names.push(widget_name.clone());
@@ -2704,7 +2753,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                 } else {
                     println!("  {} (output missing)", "app.at".bright_yellow());
                 }
-                match compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir) {
+                match compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir, shadcn) {
                     Ok((vue_code, widgets, stores)) => {
                         store_files.extend(stores);
                         let content_hash = hash_string(&vue_code);
@@ -2747,7 +2796,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 
                         if source_changed {
                             println!("  widgets/{} (changed)", file_name.bright_yellow());
-                            match compile_at_to_vue(&path, &content, root_dir) {
+                            match compile_at_to_vue(&path, &content, root_dir, shadcn) {
                                 Ok((vue_code, widgets, stores)) => {
                                     store_files.extend(stores);
                                     if let Some(widget_name) = widgets.first() {
@@ -2804,7 +2853,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                             } else {
                                 println!("  pages/{} (output missing)", file_name.bright_yellow());
                             }
-                            match compile_at_to_vue(&path, &content, root_dir) {
+                            match compile_at_to_vue(&path, &content, root_dir, shadcn) {
                                 Ok((vue_code, widgets, stores)) => {
                                     store_files.extend(stores);
                                     // Use file_stem for output path (matching VueProject::generate behavior)
@@ -3085,12 +3134,13 @@ fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
 /// the start of every generate_component_from_file call, so draining it after
 /// compiling several files only ever yields the LAST file's stores
 /// (Plan 012 Batch B, gap 9a).
-fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
+fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path, shadcn: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         root_dir_for_validation: Some(root_dir.to_path_buf()),
         stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
+        shadcn: Some(shadcn),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -3113,13 +3163,14 @@ fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path) -> Result<
 
 /// Compile an .at file to Vue SFC with known sub-widget names (Plan 361 §3: uses generate_component_from_file).
 /// See `compile_at_to_vue` for the return contract.
-fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
+fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path, shadcn: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         root_dir_for_validation: Some(root_dir.to_path_buf()),
         stream_endpoints: Some(resolve_stream_endpoints(root_dir)),
+        shadcn: Some(shadcn),
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -3169,6 +3220,30 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     fn test_parse_style_files_absent() {
         let content = "name: \"demo\"\nrender: \"vue\"\n";
         assert!(parse_style_files(content).is_empty());
+    }
+
+    // ====================================================================
+    // Plan 013: pac.at `shadcn:` toggle (line-level scan; the authoritative
+    // eval is AutoConfig, where bareword off/on are built-in globals)
+    // ====================================================================
+
+    #[test]
+    fn test_parse_shadcn() {
+        // Default: absent → on
+        assert!(parse_shadcn("name: \"demo\"\nrender: \"vue\"\n"));
+        // Bareword off/on (built-in config globals)
+        assert!(!parse_shadcn("name: \"demo\"\nshadcn: off\n"));
+        assert!(parse_shadcn("name: \"demo\"\nshadcn: on\n"));
+        // Boolean literals
+        assert!(!parse_shadcn("shadcn: false\n"));
+        assert!(parse_shadcn("shadcn: true\n"));
+        // Quoted strings
+        assert!(!parse_shadcn("shadcn: \"off\"\n"));
+        assert!(parse_shadcn("shadcn: \"on\"\n"));
+        // `=` form and trailing comma tolerated
+        assert!(!parse_shadcn("shadcn = off,\n"));
+        // Other keys containing "shadcn" must not match (prefix check is exact)
+        assert!(parse_shadcn("shadcn_extra: off\n"));
     }
 
     #[test]

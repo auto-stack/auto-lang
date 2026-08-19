@@ -3491,8 +3491,20 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     // runtime-evaluating VM Config mode (accumulation opcodes + Script control
     // flow), so f-string templates, object field access, and for-over-array
     // work at runtime.
+    //
+    // Plan 013: inject `on`/`off` as built-in config globals (true/false) so
+    // manifest toggles can read naturally, e.g. pac.at `shadcn: off`. Without
+    // these, a bareword `off`/`on` value aborts the whole config eval with
+    // "Undefined variable". Caller-supplied args win (only set when absent).
+    let mut args_with_builtins = args.clone();
+    if !args_with_builtins.has("on") {
+        args_with_builtins.set("on", Value::Bool(true));
+    }
+    if !args_with_builtins.has("off") {
+        args_with_builtins.set("off", Value::Bool(false));
+    }
     let mut codegen = Codegen::new_for_config();
-    codegen.compile_config_program(&ast, args)?;
+    codegen.compile_config_program(&ast, &args_with_builtins)?;
 
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
@@ -4536,7 +4548,7 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None)?;
+    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None, None)?;
     Ok((vue_code, widgets))
 }
 
@@ -4548,10 +4560,14 @@ pub fn ui_build_shadcn_with_widgets(
 /// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
 /// (`~Stream<T>`) are resolved from `back/api.at` so the store composable can
 /// wire type-driven SSE. Pass the project root (where `src/back/api.at` lives).
+///
+/// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
+/// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
 pub fn ui_build_shadcn_with_widgets_and_stores(
     path: &str,
     output: Option<&str>,
     root_dir: Option<&str>,
+    shadcn: Option<bool>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
@@ -4560,6 +4576,7 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
         .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         stream_endpoints,
+        shadcn,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -4600,6 +4617,7 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
 pub fn ui_build_shadcn_all_widget_codes(
     path: &str,
     root_dir: Option<&str>,
+    shadcn: Option<bool>,
 ) -> AutoResult<crate::ui_gen::GeneratedComponent> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
     let at_path = std::path::Path::new(path);
@@ -4607,6 +4625,7 @@ pub fn ui_build_shadcn_all_widget_codes(
         .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         stream_endpoints,
+        shadcn,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -4624,7 +4643,7 @@ pub fn ui_build_shadcn_with_sub_widgets(
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
     let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
-        path, output, sub_widget_names, None,
+        path, output, sub_widget_names, None, None,
     )?;
     Ok((vue_code, widgets))
 }
@@ -4638,11 +4657,15 @@ pub fn ui_build_shadcn_with_sub_widgets(
 ///
 /// `root_dir` (Plan 043 stream phase): when provided, streaming endpoints
 /// (`~Stream<T>`) are resolved from `back/api.at` for type-driven SSE wiring.
+///
+/// `shadcn` (Plan 013): `None`/`Some(true)` = shadcn-vue mapping (default);
+/// `Some(false)` = native HTML elements, no `@/components/ui/*` imports.
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     path: &str,
     output: Option<&str>,
     sub_widget_names: Vec<String>,
     root_dir: Option<&str>,
+    shadcn: Option<bool>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
@@ -4652,6 +4675,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         stream_endpoints,
+        shadcn,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)

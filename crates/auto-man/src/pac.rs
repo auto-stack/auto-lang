@@ -96,6 +96,12 @@ pub struct Pac {
     /// iced multiplies by the OS scale factor for the physical surface.
     pub window: Option<(f32, f32)>,
 
+    /// shadcn-vue widget mapping toggle (Plan 013), declared as
+    /// `shadcn: off` in pac.at. Default true = current behavior (widgets map
+    /// to shadcn-vue components, `@/components/ui/*` imports). false = native
+    /// HTML element generation for non-shadcn projects.
+    pub shadcn: bool,
+
     is_update: bool,
 }
 
@@ -189,6 +195,22 @@ impl Pac {
                     .then_some((w, h))
             });
 
+        // Plan 013: shadcn-vue mapping toggle, `shadcn: off` in pac.at.
+        // Accepts Bool (off/on/false/true), quoted "off"/"false"/"no"/"0".
+        // Absent or unrecognized → true (current shadcn default).
+        let shadcn = if !config.root.has_prop("shadcn") {
+            true
+        } else {
+            match config.root.get_prop("shadcn") {
+                Value::Bool(b) => b,
+                v => {
+                    let s = v.to_astr();
+                    let s = s.trim().to_lowercase();
+                    !matches!(s.as_str(), "off" | "false" | "no" | "0")
+                }
+            }
+        };
+
         // target related properties
         let target_props = vec!["at", "lang"];
 
@@ -253,6 +275,7 @@ impl Pac {
             front_port,
             back_port,
             window,
+            shadcn,
             is_update: false,
         }
     }
@@ -1534,9 +1557,28 @@ impl fmt::Display for Pac {
 mod tests {
     use super::*;
 
+    /// Plan 013: pac.at `shadcn: off` toggle parsing (bareword off/on are
+    /// built-in config globals; default stays on).
     #[test]
-    fn test_scene_parsing() {
-        // explicit kinds
+    fn test_shadcn_parsing() {
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nshadcn: off\n").unwrap());
+        assert!(!pac.shadcn, "shadcn: off must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nshadcn: on\n").unwrap());
+        assert!(pac.shadcn, "shadcn: on must parse to true");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nshadcn: false\n").unwrap());
+        assert!(!pac.shadcn, "shadcn: false must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nshadcn: \"off\"\n").unwrap());
+        assert!(!pac.shadcn, "shadcn: \"off\" must parse to false");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
+        assert!(pac.shadcn, "absent shadcn field defaults to true");
+    }
+
+    #[test]
+    fn test_scene_parsing() {        // explicit kinds
         assert!(matches!(Scene::from_str("c"), Scene::C));
         assert!(matches!(Scene::from_str("C"), Scene::C));
         assert!(matches!(Scene::from_str("core"), Scene::C));
