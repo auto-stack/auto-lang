@@ -126,6 +126,27 @@ impl SnapshotBuilder {
                     .unwrap_or_default();
                 UiNode { id, kind: "Textarea".to_string(), props, actions, children: vec![] }
             },
+            // Plan 413: code editor snapshot — lang metadata + value.
+            View::CodeEditor { key, value, lang, on_change, on_cursor, .. } => {
+                let mut props = vec![
+                    ("key".to_string(), key.clone()),
+                    ("value".to_string(), value.clone()),
+                    ("lang".to_string(), lang.clone()),
+                ];
+                #[cfg(feature = "code-editor")]
+                if let Some(text) = crate::ui::code_editor::code_editor_text(
+                    &crate::ui::code_editor::storage_key(key),
+                ) {
+                    props.push(("internal_text".to_string(), text));
+                }
+                let mut actions = on_change.as_ref()
+                    .map(|msg| vec![Self::extract_action("type", msg)])
+                    .unwrap_or_default();
+                actions.extend(on_cursor.as_ref()
+                    .map(|msg| vec![Self::extract_action("cursor", msg)])
+                    .unwrap_or_default());
+                UiNode { id, kind: "CodeEditor".to_string(), props, actions, children: vec![] }
+            },
 
             View::Checkbox { is_checked, label, on_toggle, .. } => {
                 let props = vec![

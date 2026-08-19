@@ -18,8 +18,8 @@ pub mod iced;
 
 pub use core::{
     code_editor, code_editor_count, code_editor_cursor, code_editor_dispose, code_editor_set_text,
-    code_editor_text, CodeEditorConfig, CodeEditorCore, CoreOutput, EditorButton, EditorClipboard,
-    EditorInput, EditorKey, EditorModifiers, NullClipboard,
+    code_editor_text, storage_key, CodeEditorConfig, CodeEditorCore, CoreOutput, EditorButton,
+    EditorClipboard, EditorInput, EditorKey, EditorModifiers, NullClipboard,
 };
 pub use draw::EditorDrawList;
 pub use theme::{current_theme, set_theme_source, CodeEditorTheme, Rgba};

@@ -1740,7 +1740,7 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
 fn find_first_input(node: &crate::aura::AuraNode) -> Option<AuraNodeId> {
     match node {
         crate::aura::AuraNode::Element { tag, debug_id, children, .. } => {
-            if tag == "input" || tag == "textarea" {
+            if tag == "input" || tag == "textarea" || tag == "code_editor" {
                 return *debug_id;
             }
             for child in children {

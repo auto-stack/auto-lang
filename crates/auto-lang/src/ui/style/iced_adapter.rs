@@ -21,6 +21,16 @@ pub fn set_dark_mode(dark: bool) {
     DARK_MODE.with(|d| d.set(dark));
 }
 
+/// Read the global dark mode flag (Plan 413: code editor theme bridge).
+pub fn dark_mode() -> bool {
+    DARK_MODE.with(|d| d.get())
+}
+
+/// Read the current accent name (Plan 413: code editor theme bridge).
+pub fn accent_name() -> String {
+    ACCENT_NAME.with(|n| n.borrow().clone())
+}
+
 /// Set the global accent color name (called by renderer before rendering).
 pub fn set_accent_name(name: &str) {
     ACCENT_NAME.with(|n| *n.borrow_mut() = name.to_string());

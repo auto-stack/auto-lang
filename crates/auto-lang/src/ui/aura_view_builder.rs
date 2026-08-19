@@ -885,6 +885,11 @@ impl<'a> AuraViewBuilder<'a> {
             "badge" => self.convert_badge(props, children, bindings),
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // Plan 413: code editor widget (syntax highlighting, line
+            // numbers, wrap, vi/undo, IME).
+            "code_editor" | "codeEditor" | "codeeditor" => {
+                self.convert_code_editor(props, events, bindings)
+            }
             // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
             "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
                 self.convert_textarea(props, events, bindings)
@@ -1596,6 +1601,11 @@ impl<'a> AuraViewBuilder<'a> {
             // Input widgets
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // Plan 413: code editor widget (syntax highlighting, line
+            // numbers, wrap, vi/undo, IME).
+            "code_editor" | "codeEditor" | "codeeditor" => {
+                self.convert_code_editor(props, events, bindings)
+            }
             // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
             "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
                 self.convert_textarea(props, events, bindings)
@@ -3375,6 +3385,98 @@ let tabs_inner = View::Row {
             self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
         );
 
+        builder.build()
+    }
+
+    /// Plan 413: convert a `code_editor` element. Sub-element properties:
+    /// `content:`/`value:` (external value), `oninput:`/`onchange:` (text
+    /// changed), `oncursor:` (caret moved), `oncontextmenu:` (right click).
+    /// Config props: `lang`, `line_numbers`, `wrap`, `vi`,
+    /// `highlight_current_line`, `tab_width`, `font_size`, `key`.
+    fn convert_code_editor(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .or_else(|| self.extract_string_with(props, "id", bindings))
+            .unwrap_or_else(|| "editor".to_owned());
+
+        // External value; content: mirrors textarea/autodown conventions.
+        let value = self
+            .extract_string_with(props, "value", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .unwrap_or_default();
+
+        let lang = self
+            .extract_string_with(props, "lang", bindings)
+            .or_else(|| self.extract_string_with(props, "language", bindings))
+            .unwrap_or_else(|| "none".to_owned());
+
+        let bool_prop = |name: &str, default: bool| -> bool {
+            props
+                .get(name)
+                .and_then(|v| match v {
+                    AuraPropValue::Expr(expr) => self
+                        .resolve_expr_to_value(expr, bindings)
+                        .map(|val| val.as_bool()),
+                    _ => None,
+                })
+                .unwrap_or(default)
+        };
+
+        let line_numbers = bool_prop("line_numbers", true);
+        let wrap = bool_prop("wrap", false);
+        let vi = bool_prop("vi", false);
+        let highlight_current_line = bool_prop("highlight_current_line", true);
+
+        let tab_width = self.extract_u16(props, "tab_width").unwrap_or(4) as usize;
+        let font_size = self
+            .extract_string_with(props, "font_size", bindings)
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(15.0);
+
+        let on_change = aura_events_get_base(events, "oninput")
+            .or_else(|| aura_events_get_base(events, "input"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
+            .or_else(|| aura_events_get_base(events, "change"))
+            .or_else(|| aura_events_get_base(events, "onupdate"))
+            .or_else(|| aura_events_get_base(events, "update"))
+            .map(|event| self.event_to_message(&event.handler));
+
+        let on_cursor = aura_events_get_base(events, "oncursor")
+            .or_else(|| aura_events_get_base(events, "cursor"))
+            .map(|event| self.event_to_message(&event.handler));
+
+        let on_context_menu = aura_events_get_base(events, "oncontextmenu")
+            .or_else(|| aura_events_get_base(events, "contextmenu"))
+            .map(|event| self.event_to_message(&event.handler));
+
+        let style = self.extract_style_with(props, bindings);
+
+        let mut builder = View::<DynamicMessage>::code_editor(key)
+            .value(value)
+            .lang(lang)
+            .line_numbers(line_numbers)
+            .wrap(wrap)
+            .vi(vi)
+            .highlight_current_line(highlight_current_line)
+            .tab_width(tab_width)
+            .font_size(font_size);
+        if let Some(msg) = on_change {
+            builder = builder.on_change(msg);
+        }
+        if let Some(msg) = on_cursor {
+            builder = builder.on_cursor(msg);
+        }
+        if let Some(msg) = on_context_menu {
+            builder = builder.on_context_menu(msg);
+        }
+        if let Some(s) = style {
+            builder = builder.with_style(s);
+        }
         builder.build()
     }
 

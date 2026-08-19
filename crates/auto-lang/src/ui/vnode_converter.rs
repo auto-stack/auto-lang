@@ -252,6 +252,15 @@ where
             },
         ),
 
+        // Plan 413: code editor degrades to a textarea vnode (value carried).
+        View::CodeEditor { value, .. } => (
+            VNodeKind::Textarea,
+            VNodeProps::Textarea {
+                placeholder: String::new(),
+                value: value.clone(),
+            },
+        ),
+
         View::Textarea {
             placeholder,
             value,

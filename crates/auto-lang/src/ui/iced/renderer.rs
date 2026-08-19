@@ -582,7 +582,7 @@ fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
     use iced::widget::text::Span;
     const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
         "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
-        "textarea", "scroll", "grid", "link", "if", "else", "return", "true", "false",
+        "textarea", "code_editor", "scroll", "grid", "link", "if", "else", "return", "true", "false",
         "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
         "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
         "primary", "secondary", "destructive", "default"];
@@ -1994,6 +1994,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
+            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style: _ } => {
+                build_code_editor_generic(
+                    &key, &value, &lang, line_numbers, wrap, vi,
+                    highlight_current_line, tab_width, font_size,
+                    on_change, on_cursor, on_context_menu,
+                )
+            }
+
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
                 let checkbox_widget = checkbox(is_checked);
 
@@ -3026,6 +3034,36 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             highlight,
             ghost,
+        },
+
+        AbstractView::CodeEditor {
+            key,
+            value,
+            lang,
+            line_numbers,
+            wrap,
+            vi,
+            highlight_current_line,
+            tab_width,
+            font_size,
+            on_change,
+            on_cursor,
+            on_context_menu,
+            style,
+        } => AbstractView::CodeEditor {
+            key,
+            value,
+            lang,
+            line_numbers,
+            wrap,
+            vi,
+            highlight_current_line,
+            tab_width,
+            font_size,
+            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            on_cursor: on_cursor.map(|m| IcedMessage::from_dynamic(&m)),
+            on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
+            style,
         },
 
         AbstractView::Checkbox {
@@ -6994,6 +7032,7 @@ const AUTO_KEYWORDS: &[&str] = &[
     "col", "row", "text", "button", "input", "container", "scroll",
     "checkbox", "radio", "select", "slider", "image", "link", "list",
     "tab", "tabs", "sidebar", "accordion", "nav", "textarea", "progress",
+    "code_editor",
 ];
 
 /// Pure tokenization: returns (text, color) pairs for one source line.
@@ -8867,6 +8906,53 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     props
 }
 
+
+/// Plan 413: build the code editor for the generic `IntoIcedElement` path
+/// (messages pass through verbatim; the VM path uses
+/// `build_code_editor_dynamic` which also fills `INPUT_TEXT`).
+#[allow(clippy::too_many_arguments)]
+fn build_code_editor_generic<M: Clone + Debug + 'static>(
+    key: &str,
+    value: &str,
+    lang: &str,
+    line_numbers: bool,
+    wrap: bool,
+    vi: bool,
+    highlight_current_line: bool,
+    tab_width: usize,
+    font_size: f32,
+    on_change: Option<M>,
+    on_cursor: Option<M>,
+    on_context_menu: Option<M>,
+) -> iced::Element<'static, M> {
+    use crate::ui::code_editor as ce;
+
+    let config = ce::CodeEditorConfig {
+        lang: lang.to_owned(),
+        line_numbers,
+        wrap,
+        vi,
+        highlight_current_line,
+        tab_width: tab_width as u16,
+        font_size,
+    };
+    let storage_key = ce::storage_key(key);
+    // Single-direction data flow: only rewrite on an external diff.
+    ce::code_editor_set_text(&storage_key, value);
+
+    let mut widget = ce::iced::CodeEditor::<M>::new(&storage_key, &config);
+    if let Some(msg) = on_change {
+        widget = widget.on_change(move || msg.clone());
+    }
+    if let Some(msg) = on_cursor {
+        widget = widget.on_cursor(move || msg.clone());
+    }
+    if let Some(msg) = on_context_menu {
+        widget = widget.on_context_menu(move |_| msg.clone());
+    }
+    widget.into()
+}
+
 /// Extract style reference from any AbstractView variant.
 fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
     match view {
@@ -8894,6 +8980,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Scrollable { style, .. } => style.as_ref(),
         AbstractView::Input { style, .. } => style.as_ref(),
         AbstractView::Textarea { style, .. } => style.as_ref(),
+        AbstractView::CodeEditor { style, .. } => style.as_ref(),
         AbstractView::Grid { style, .. } => style.as_ref(),
     }
 }
@@ -8915,6 +9002,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::List { .. } => "list",
         AbstractView::Table { .. } => "table",
         AbstractView::Textarea { .. } => "textarea",
+        AbstractView::CodeEditor { .. } => "code_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
         AbstractView::Sidebar { .. } => "sidebar",
@@ -9253,6 +9341,51 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
         }
 
+        // Plan 413: code editor (VM path) — INPUT_TEXT carries the editor
+        // text so oninput handlers bind values exactly like input/textarea.
+        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style } => {
+            let dbg_props = debug_style_props(style.as_ref());
+            use crate::ui::code_editor as ce;
+
+            // Bridge the renderer's semantic theme into the editor theme
+            // source (dark mode + accent), then build the widget.
+            ce::set_theme_source(
+                crate::ui::style::iced_adapter::dark_mode(),
+                &crate::ui::style::iced_adapter::accent_name(),
+            );
+
+            let config = ce::CodeEditorConfig {
+                lang,
+                line_numbers,
+                wrap,
+                vi,
+                highlight_current_line,
+                tab_width: tab_width as u16,
+                font_size,
+            };
+            let storage_key = ce::storage_key(&key);
+            ce::code_editor_set_text(&storage_key, &value);
+
+            let mut widget = ce::iced::CodeEditor::<IcedMessage>::new(&storage_key, &config);
+            if let Some(msg) = on_change.clone() {
+                let sk = storage_key.clone();
+                widget = widget.on_change(move || {
+                    let text = ce::code_editor_text(&sk).unwrap_or_default();
+                    INPUT_TEXT.with(|t| *t.borrow_mut() = text);
+                    msg.clone()
+                });
+            }
+            if let Some(msg) = on_cursor.clone() {
+                widget = widget.on_cursor(move || msg.clone());
+            }
+            if let Some(msg) = on_context_menu.clone() {
+                widget = widget.on_context_menu(move |_| msg.clone());
+            }
+
+            let el: iced::Element<'static, IcedMessage> = widget.into();
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+        }
+
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
@@ -9269,7 +9402,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 /// Recursively patch input View values with tracked user-typed text.
 fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
     match view {
-        AbstractView::Input { value, on_change, .. } | AbstractView::Textarea { value, on_change, .. } => {
+        AbstractView::Input { value, on_change, .. }
+        | AbstractView::Textarea { value, on_change, .. }
+        | AbstractView::CodeEditor { value, on_change, .. } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),
@@ -10020,6 +10155,11 @@ fn extract_handler_from_view<M: Clone + Debug>(
             on_submit.clone()
         }
         (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
+        (AbstractView::CodeEditor { on_change, .. }, "type_text" | "clear") => on_change.clone(),
+        (AbstractView::CodeEditor { on_cursor, .. }, "cursor") => on_cursor.clone(),
+        (AbstractView::CodeEditor { on_context_menu, .. }, "context_menu") => {
+            on_context_menu.clone()
+        }
         (AbstractView::Checkbox { on_toggle, .. }, "toggle") => on_toggle.clone(),
         (AbstractView::Radio { on_select, .. }, "press" | "select") => on_select.clone(),
         _ => None,

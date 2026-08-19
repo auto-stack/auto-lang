@@ -24,7 +24,7 @@ file_extensions: [at]
 scope: source.auto
 contexts:
   main:
-    - match: \b(fn|let|var|const|if|else|for|loop|in|break|return|type|enum|use|pub|mut|static|true|false|is|Some|None|Ok|Err|match|where|col|row|text|button|input|container|scroll|checkbox|radio|select|slider|image|link|list|tab|tabs|sidebar|accordion|nav|textarea|progress)\b
+    - match: \b(fn|let|var|const|if|else|for|loop|in|break|return|type|enum|use|pub|mut|static|true|false|is|Some|None|Ok|Err|match|where|col|row|text|button|input|container|scroll|checkbox|radio|select|slider|image|link|list|tab|tabs|sidebar|accordion|nav|textarea|progress|code_editor)\b
       scope: keyword.control.auto
     - match: \b[A-Z][A-Za-z0-9_]*\b
       scope: support.class.auto

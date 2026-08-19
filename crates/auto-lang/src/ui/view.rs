@@ -288,6 +288,29 @@ pub enum View<M: Clone + Debug> {
         ghost: String,
     },
 
+    /// Plan 413: 代码编辑器(语法高亮/行号/软换行/搜索/vi/undo/IME)。
+    /// 状态存于全局 CODE_EDITORS(keyed by `key`);value 仅在外部值与
+    /// 内部文本不同时回写(单向数据流,§5.4)。payload 读取走
+    /// `code_editor_text(key)` / `code_editor_cursor(key)`。
+    CodeEditor {
+        /// 稳定身份,状态存储键。
+        key: String,
+        /// 外部值;仅当与内部文本不同才回写。
+        value: String,
+        /// "rust" | "python" | "auto"(AutoLang 语法)| "none"。
+        lang: String,
+        line_numbers: bool,
+        wrap: bool,
+        vi: bool,
+        highlight_current_line: bool,
+        tab_width: usize,
+        font_size: f32,
+        on_change: Option<M>,
+        on_cursor: Option<M>,
+        on_context_menu: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Checkbox with optional styling
     Checkbox {
         is_checked: bool,
@@ -931,6 +954,25 @@ impl<M: Clone + Debug> View<M> {
         }
     }
 
+    /// Create a code editor (Plan 413) with a stable state key.
+    pub fn code_editor(key: impl Into<String>) -> ViewCodeEditorBuilder<M> {
+        ViewCodeEditorBuilder {
+            key: key.into(),
+            value: String::new(),
+            lang: "none".to_owned(),
+            line_numbers: true,
+            wrap: false,
+            vi: false,
+            highlight_current_line: true,
+            tab_width: 4,
+            font_size: 15.0,
+            on_change: None,
+            on_cursor: None,
+            on_context_menu: None,
+            style: None,
+        }
+    }
+
     /// Create textarea (multi-line text input) with placeholder
     pub fn textarea(placeholder: impl Into<String>) -> ViewTextareaBuilder<M> {
         ViewTextareaBuilder {
@@ -1278,6 +1320,21 @@ impl<M: Clone + Debug> View<M> {
                 style,
                 highlight,
                 ghost,
+            },
+            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, style } => View::CodeEditor {
+                key,
+                value,
+                lang,
+                line_numbers,
+                wrap,
+                vi,
+                highlight_current_line,
+                tab_width,
+                font_size,
+                on_change: on_change.map(|m| f(m)),
+                on_cursor: on_cursor.map(|m| f(m)),
+                on_context_menu: on_context_menu.map(|m| f(m)),
+                style,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
                 is_checked,
@@ -1703,6 +1760,114 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
             style: self.style,
             highlight: self.highlight,
             ghost: self.ghost,
+        }
+    }
+}
+
+
+/// Builder for CodeEditor with fluent API (Plan 413).
+pub struct ViewCodeEditorBuilder<M: Clone + Debug> {
+    key: String,
+    value: String,
+    lang: String,
+    line_numbers: bool,
+    wrap: bool,
+    vi: bool,
+    highlight_current_line: bool,
+    tab_width: usize,
+    font_size: f32,
+    on_change: Option<M>,
+    on_cursor: Option<M>,
+    on_context_menu: Option<M>,
+    style: Option<Style>,
+}
+
+impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
+    pub fn value(mut self, val: impl Into<String>) -> Self {
+        self.value = val.into();
+        self
+    }
+
+    pub fn lang(mut self, lang: impl Into<String>) -> Self {
+        self.lang = lang.into();
+        self
+    }
+
+    pub fn line_numbers(mut self, show: bool) -> Self {
+        self.line_numbers = show;
+        self
+    }
+
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.wrap = wrap;
+        self
+    }
+
+    pub fn vi(mut self, vi: bool) -> Self {
+        self.vi = vi;
+        self
+    }
+
+    pub fn highlight_current_line(mut self, on: bool) -> Self {
+        self.highlight_current_line = on;
+        self
+    }
+
+    pub fn tab_width(mut self, width: usize) -> Self {
+        self.tab_width = width;
+        self
+    }
+
+    pub fn font_size(mut self, size: f32) -> Self {
+        self.font_size = size;
+        self
+    }
+
+    pub fn on_change(mut self, msg: M) -> Self {
+        self.on_change = Some(msg);
+        self
+    }
+
+    pub fn on_cursor(mut self, msg: M) -> Self {
+        self.on_cursor = Some(msg);
+        self
+    }
+
+    pub fn on_context_menu(mut self, msg: M) -> Self {
+        self.on_context_menu = Some(msg);
+        self
+    }
+
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Set style using Tailwind CSS class string
+    pub fn style(mut self, style_str: &str) -> Self {
+        let existing = self.style.take().unwrap_or_default();
+        let parsed = Style::parse(style_str).expect("Invalid style string");
+        let mut merged = existing;
+        for c in parsed.classes { merged = merged.add(c); }
+        self.style = Some(merged);
+        self
+    }
+
+    pub fn build(self) -> View<M> {
+        View::CodeEditor {
+            key: self.key,
+            value: self.value,
+            lang: self.lang,
+            line_numbers: self.line_numbers,
+            wrap: self.wrap,
+            vi: self.vi,
+            highlight_current_line: self.highlight_current_line,
+            tab_width: self.tab_width,
+            font_size: self.font_size,
+            on_change: self.on_change,
+            on_cursor: self.on_cursor,
+            on_context_menu: self.on_context_menu,
+            style: self.style,
         }
     }
 }

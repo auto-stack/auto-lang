@@ -212,6 +212,19 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 textarea_div.into_any()
             }
 
+            // Plan 413: code editor degrades to a monospace textarea div.
+            AbstractView::CodeEditor {
+                value,
+                style,
+                ..
+            } => {
+                let mut editor_div = div().child(value.clone());
+                if let Some(style) = style {
+                    editor_div = apply_gpui_style_to_div(editor_div, &style);
+                }
+                editor_div.into_any()
+            }
+
             AbstractView::Checkbox {
                 is_checked,
                 label,

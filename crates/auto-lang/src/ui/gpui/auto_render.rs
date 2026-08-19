@@ -378,6 +378,15 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 input_div.into_any()
             }
 
+            // Plan 413: code editor degrades to a plain text div (gpui).
+            View::CodeEditor { value, style, .. } => {
+                let mut editor_div = div().child(value.clone());
+                if let Some(style) = style {
+                    editor_div = apply_style_to_div(editor_div, &style);
+                }
+                editor_div.into_any()
+            }
+
             View::Textarea { placeholder, value, style, .. } => {
                 let mut div_el = div().child(if value.is_empty() { placeholder.clone() } else { value.clone() });
                 if let Some(style) = style {
@@ -890,6 +899,15 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                     input_div = apply_style_to_div(input_div, &style);
                 }
                 input_div.into_any()
+            }
+
+            // Plan 413: code editor degrades to a plain text div (gpui).
+            View::CodeEditor { value, style, .. } => {
+                let mut editor_div = div().child(value.clone());
+                if let Some(style) = style {
+                    editor_div = apply_style_to_div(editor_div, &style);
+                }
+                editor_div.into_any()
             }
 
             View::Textarea { placeholder, value, style, .. } => {
