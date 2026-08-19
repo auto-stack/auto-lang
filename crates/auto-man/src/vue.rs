@@ -1130,6 +1130,10 @@ fn parse_i18n(content: &str) -> I18nConfig {
 /// Mirrors `VueGenerator::ext_is_local_path` in auto-lang — the two must
 /// agree so the emitted `@/ext/...` specifier matches the copied location.
 fn is_local_ext_path(path: &str) -> bool {
+    // Plan 028 T18：platform: 声明由 copy_platform_impls 挂载，不走 ext 复制
+    if path.starts_with("platform:") {
+        return false;
+    }
     path.starts_with('.')
         || path.starts_with('/')
         || path.ends_with(".vue")
@@ -1709,6 +1713,61 @@ export default router
         self.output_dir.exists() && self.output_dir.join("package.json").exists()
     }
 
+    /// Plan 028 T18（P1/P2）：平台能力实现挂载注册表。
+    /// `use { component: X from "platform:<name>" }` 声明协议；实现文件从
+    /// src/front 升格复制到 gen src/platform/（实现存在才挂载）。rip = 文本改写
+    /// （平台目录内相对导入改 @/ext 别名）。
+    fn mount_platform_impls(&self) -> AutoResult<Vec<String>> {
+        const REGISTRY: &[(&str, &[(&str, &str, &[(&str, &str)])])] = &[
+            // P1 markdown 渲染器 + P2 高亮器（markstream-vue + prismjs 后端实现）
+            (
+                "markdown",
+                &[
+                    (
+                        "src/front/components/StreamingRenderer.vue",
+                        "src/platform/markdown.vue",
+                        &[("../composables/useStreamingDocument", "@/ext/src/front/composables/useStreamingDocument")],
+                    ),
+                    ("src/front/components/PrismCodeBlock.vue", "src/platform/PrismCodeBlock.vue", &[]),
+                    // 平台实现的 ext 依赖（增量文档解析 composable）
+                    ("src/front/composables/useStreamingDocument.ts", "src/ext/src/front/composables/useStreamingDocument.ts", &[]),
+                ],
+            ),
+        ];
+        let mut mounted = Vec::new();
+        for (name, entries) in REGISTRY {
+            let primary = self.root_dir.join(entries[0].0);
+            if !primary.exists() {
+                continue;
+            }
+            for (src_rel, dst_rel, rewrites) in *entries {
+                let src = self.root_dir.join(src_rel);
+                if !src.exists() {
+                    return Err(format!(
+                        "platform `{}` impl file missing: {}",
+                        name, src_rel
+                    )
+                    .into());
+                }
+                let dst = self.output_dir.join(dst_rel);
+                if let Some(parent) = dst.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+                }
+                let mut body = fs::read_to_string(&src)
+                    .map_err(|e| format!("Failed to read platform impl {}: {}", src.display(), e))?;
+                for (from, to) in *rewrites {
+                    body = body.replace(from, to);
+                }
+                fs::write(&dst, body).map_err(|e| {
+                    format!("Failed to write platform impl {} → {}: {}", src.display(), dst.display(), e)
+                })?;
+            }
+            mounted.push(format!("{} → src/platform/", name));
+        }
+        Ok(mounted)
+    }
+
     /// Copy pac.at `styles:` CSS files into `src/styles/` (byte-for-byte)
     /// and return the copied file names for `main.ts` imports.
     ///
@@ -1905,6 +1964,13 @@ export default router
             println!("{} {}", "Ext imports:".bright_cyan(), ext_copies.join(", "));
         }
 
+        // Plan 028 T18（P1/P2）：`use { component: X from "platform:<name>" }` 声明的
+        // 平台能力——按注册表把实现挂载到 src/platform/（从「逃生舱」升格为「平台实现」）。
+        let platform_copies = self.mount_platform_impls()?;
+        if !platform_copies.is_empty() {
+            println!("{} {}", "Platform:".bright_cyan(), platform_copies.join(", "));
+        }
+
         // Plan musk-022 Phase 2: copy pac.at `i18n:` locale files into src/locales/.
         let locale_copies = self.copy_locale_files()?;
         if self.i18n.enabled {
@@ -2044,6 +2110,7 @@ export default router
 
         // Copy widget `use { ... }` local import files into src/ext/.
         self.copy_ext_files()?;
+        self.mount_platform_impls()?;
 
         // Plan musk-022 Phase 2: copy i18n locale files.
         let locale_copies = self.copy_locale_files()?;
@@ -2111,6 +2178,7 @@ export default router
         let style_copies = self.copy_style_files()?;
         // Re-copy widget `use { ... }` local import files into src/ext/.
         self.copy_ext_files()?;
+        self.mount_platform_impls()?;
         // Plan musk-022 Phase 2: re-copy i18n locale files.
         let locale_copies = self.copy_locale_files()?;
         let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");

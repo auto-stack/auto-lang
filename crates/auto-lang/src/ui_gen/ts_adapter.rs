@@ -863,9 +863,21 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 _ => None,
                             });
                             if let (Some(url_arg), Some(handler)) = (url_arg, handler_name) {
+                                // Plan 028 T16：可选第三参 ctx —— 注入为分发事件的
+                                // `__ctx` 字段（订阅方据此定位 per-run 状态键）。
+                                // onerror 分发合成 {type:'error', __ctx} 事件，让
+                                // .at 侧自行决定重连/收尾（close 句柄可及）。
+                                let ctx_arg = call.args.args.get(2).map(|a| a.get_expr());
                                 write!(out, "(() => {{ const __es = new EventSource(").ok();
                                 transpile_expr(&url_arg, ctx, out);
-                                write!(out, "); __es.onmessage = (__ev) => {{ try {{ {}(JSON.parse(__ev.data)); }} catch {{ }} }}; return __es; }})()", handler).ok();
+                                let ctx_lit = if let Some(c) = &ctx_arg {
+                                    let mut buf = Vec::new();
+                                    transpile_expr(c, ctx, &mut buf);
+                                    String::from_utf8_lossy(&buf).to_string()
+                                } else {
+                                    "undefined".to_string()
+                                };
+                                write!(out, "); __es.onmessage = (__ev) => {{ try {{ {}(Object.assign({{ __ctx: {} }}, JSON.parse(__ev.data))); }} catch {{ }} }}; __es.onerror = () => {{ try {{ {}({{ type: 'error', __ctx: {} }}); }} catch {{ }} }}; return __es; }})()", handler, ctx_lit, handler, ctx_lit).ok();
                                 return;
                             }
                         }
@@ -911,33 +923,33 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             .collect();
                         match method.as_str() {
                             "get" if pos_args.len() == 1 => {
-                                write!(out, "(await fetch(").ok();
+                                write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);
-                                write!(out, ")).json()").ok();
+                                write!(out, ")).json())").ok();
                                 return;
                             }
                             "post" if pos_args.len() == 2 => {
-                                write!(out, "(await fetch(").ok();
+                                write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);
                                 write!(out, ", {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(").ok();
                                 transpile_expr(&pos_args[1], ctx, out);
-                                write!(out, ") }})).json()").ok();
+                                write!(out, ") }})).json())").ok();
                                 return;
                             }
                             // Plan 028 T16: 无体动词（delete）与带体动词（patch/put）
                             "delete" if pos_args.len() == 1 => {
-                                write!(out, "(await fetch(").ok();
+                                write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);
-                                write!(out, ", {{ method: 'DELETE' }})).json()").ok();
+                                write!(out, ", {{ method: 'DELETE' }})).json())").ok();
                                 return;
                             }
                             "patch" | "put" if pos_args.len() == 2 => {
                                 let verb = method.as_str().to_ascii_uppercase();
-                                write!(out, "(await fetch(").ok();
+                                write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);
                                 write!(out, ", {{ method: '{}', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(", verb).ok();
                                 transpile_expr(&pos_args[1], ctx, out);
-                                write!(out, ") }})).json()").ok();
+                                write!(out, ") }})).json())").ok();
                                 return;
                             }
                             _ => {}

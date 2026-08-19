@@ -1337,7 +1337,10 @@ impl VueGenerator {
     /// project-local file (copied into the generated project under
     /// `src/ext/` by auto-man) rather than an npm package specifier.
     fn ext_is_local_path(path: &str) -> bool {
-        path.starts_with('.')
+        // Plan 028 P1（T18）：平台能力协议声明（"platform:markdown" 等）——
+        // 由 auto-man 挂载实现到 gen src/platform/，导入 @/platform/<name>。
+        path.starts_with("platform:")
+            || path.starts_with('.')
             || path.starts_with('/')
             || path.ends_with(".vue")
             || path.ends_with(".ts")
@@ -1356,6 +1359,10 @@ impl VueGenerator {
     /// working) and imported through the `@` alias. TypeScript/JavaScript
     /// extensions are dropped (bundler resolution); `.vue` is kept.
     fn ext_import_specifier(path: &str) -> String {
+        if let Some(name) = path.strip_prefix("platform:") {
+            // 实现 .vue 需显式扩展名（vue-tsc 的模块解析）
+            return format!("@/platform/{}.vue", name);
+        }
         if !Self::ext_is_local_path(path) {
             return path.to_string();
         }
@@ -1454,6 +1461,10 @@ impl VueGenerator {
                         // convention as sub-widget imports in vue.rs:1860).
                         let line = if imp.path.is_empty() {
                             format!("import {} from '@/components/{}.vue'\n", sym, sym)
+                        } else if imp.path.starts_with("platform:") {
+                            // Plan 028 T18：平台实现（platform:markdown 等）是
+                            // .vue default export，auto-man 挂载到 src/platform/。
+                            format!("import {} from '{}'\n", sym, specifier)
                         } else if imp.path.ends_with(".vue") {
                             // Local `.vue` files are default-exported; everything
                             // else (npm packages, .ts modules) uses named exports.
