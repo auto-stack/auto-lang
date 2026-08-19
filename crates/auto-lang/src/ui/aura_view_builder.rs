@@ -3156,12 +3156,61 @@ let tabs_inner = View::Row {
         // into the Plan 409 §6 `content` subtree instead — the renderer draws
         // it as the button body (inheriting the button's text color); the
         // label stays for snapshot/inspect tooling.
+        //
+        // The inline primary prop (`button .c.name` parses as a text PROP,
+        // not a child node — see parser's primary-prop shorthand) is not part
+        // of `children`, so a prop-sourced label must be prepended as the
+        // leading Text view or the name vanishes once the renderer switches
+        // to the content subtree. Its style keeps only the button's
+        // typography classes (size/weight/family/text color) so the name
+        // renders like the old label without picking up bg/padding classes.
         let content = if children.iter().any(|c| !matches!(c, AuraNode::Text(_))) {
-            let views: Vec<View<DynamicMessage>> = children
-                .iter()
-                .map(|c| self.convert_node_with(c, bindings))
-                .filter(|v| !is_visually_empty(v))
-                .collect();
+            let mut views: Vec<View<DynamicMessage>> = Vec::new();
+            let label_from_prop = self.extract_children_text(children, bindings).is_none();
+            if label_from_prop && !label.is_empty() {
+                let text_style = style.as_ref().map(|s| Style {
+                    classes: s
+                        .classes
+                        .iter()
+                        .filter(|c| {
+                            matches!(
+                                c,
+                                StyleClass::TextXs
+                                    | StyleClass::TextSm
+                                    | StyleClass::TextBase
+                                    | StyleClass::TextLg
+                                    | StyleClass::TextXl
+                                    | StyleClass::Text2Xl
+                                    | StyleClass::Text3Xl
+                                    | StyleClass::Text4Xl
+                                    | StyleClass::Text5Xl
+                                    | StyleClass::Text6Xl
+                                    | StyleClass::Text7Xl
+                                    | StyleClass::Text8Xl
+                                    | StyleClass::Text9Xl
+                                    | StyleClass::FontBold
+                                    | StyleClass::FontMedium
+                                    | StyleClass::FontNormal
+                                    | StyleClass::FontSerif
+                                    | StyleClass::FontSans
+                                    | StyleClass::FontMono
+                                    | StyleClass::TextColor(_)
+                            )
+                        })
+                        .cloned()
+                        .collect(),
+                });
+                views.push(View::Text {
+                    content: label.clone(),
+                    style: text_style,
+                });
+            }
+            views.extend(
+                children
+                    .iter()
+                    .map(|c| self.convert_node_with(c, bindings))
+                    .filter(|v| !is_visually_empty(v)),
+            );
             match views.len() {
                 0 => None,
                 1 => Some(Box::new(views.into_iter().next().unwrap())),
@@ -3319,8 +3368,59 @@ let tabs_inner = View::Row {
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
+        // Plan 057 续(富文本输入):highlight/ghost props — 语法着色段与灰色
+        // 建议后缀(VM 原生 Highlighter / Vue 叠加层)。缺省为空 = 存量行为。
+        builder = builder.highlight(self.resolve_highlight_spans(props, bindings));
+        builder = builder.ghost(
+            self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
+        );
 
         builder.build()
+    }
+
+    /// Plan 057 续(富文本输入):解析 `highlight: <list of {text, kind}>` prop
+    /// 为连续 (text, kind) 段。支持根状态字段、循环变量/深层路径(经
+    /// resolve_expr_to_value),列表元素经 materialize_obj_ref 取字段。
+    fn resolve_highlight_spans(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Vec<(String, String)> {
+        let expr = match props.get("highlight") {
+            Some(AuraPropValue::Expr(e)) => e,
+            _ => return Vec::new(),
+        };
+        let items: Vec<auto_val::Value> = match self.resolve_expr_to_value(expr, bindings) {
+            Some(auto_val::Value::Array(arr)) => arr.values,
+            Some(auto_val::Value::VmRef(r)) => match self.bridge.vmref_to_vec(r.id) {
+                Ok(v) => v,
+                Err(_) => return Vec::new(),
+            },
+            Some(auto_val::Value::Int(id)) if id >= 4_000_000 => {
+                match self.bridge.index_list_all(id as usize) {
+                    v if !v.is_empty() => v,
+                    _ => return Vec::new(),
+                }
+            }
+            _ => return Vec::new(),
+        };
+        items
+            .iter()
+            .filter_map(|item| {
+                let obj = self.bridge.materialize_obj_ref(item);
+                if let auto_val::Value::Obj(map) = obj {
+                    let text = map.get("text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                    let kind = map.get("kind").map(|v| v.as_str().to_string()).unwrap_or_default();
+                    if text.is_empty() && kind.is_empty() {
+                        None
+                    } else {
+                        Some((text, kind))
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Convert a checkbox element.

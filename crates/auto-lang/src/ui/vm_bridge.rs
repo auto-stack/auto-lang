@@ -528,7 +528,7 @@ impl VmBridge {
         self.vmref_to_vec(id).unwrap_or_default()
     }
 
-    fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
+    pub fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
         // Path 1: heap_objects — ListData<Value> (array literals / struct lists,
         // Plan 390 §15 H3b) or ListData<i32>.
         if let Some(obj) = self.vm.get_heap_object(id as u64) {

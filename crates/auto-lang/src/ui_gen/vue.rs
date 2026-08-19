@@ -3831,6 +3831,12 @@ impl VueGenerator {
                             continue;
                         }
 
+                        // Plan 057 续(富文本输入): textarea 的 highlight/ghost 由
+                        // 叠加层包裹消费(见 textarea_rich_overlay),不透传为无效属性。
+                        if tag == "textarea" && (key == "highlight" || key == "ghost") {
+                            continue;
+                        }
+
                         // Checkbox: native <input type="checkbox"> uses :checked, not :model-value
                         if tag == "checkbox" && key == "checked" {
                             if let Some(model) = self.extract_state_ref(value) {
@@ -4022,6 +4028,12 @@ impl VueGenerator {
                 } else {
                     attr_str
                 };
+
+                // Plan 057 续(富文本输入): textarea 带 highlight/ghost props 时,
+                // 整体替换为叠加层包裹(overlay 手法下沉为 codegen 职责)。
+                if let Some(overlay) = self.textarea_rich_overlay(tag, props, &attr_str, indent)? {
+                    return Ok(overlay);
+                }
 
                 // Plan 053 后续: capture the scroll auto_scroll sentinel (set in
                 // the scroll arm of generate_shadcn_attrs above) before any child
@@ -7072,6 +7084,60 @@ impl VueGenerator {
         }
     }
 
+    /// Plan 057 续(富文本输入):textarea 带 highlight/ghost props 时生成叠加层
+    /// 包裹 —— 原 prompt_bar.at 手写的 overlay 结构(相对定位容器 + 绝对定位
+    /// spans 层 + text-transparent textarea)下沉为 codegen 职责。无新 props
+    /// 或引用解析失败时返回 None(走通用发射路径)。
+    fn textarea_rich_overlay(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        attr_str: &str,
+        indent: usize,
+    ) -> GenResult<Option<String>> {
+        if tag != "textarea" {
+            return Ok(None);
+        }
+        let hl_ref = props.get("highlight")
+            .and_then(|v| self.extract_state_ref(v));
+        let ghost_ref = props.get("ghost")
+            .and_then(|v| self.extract_state_ref(v));
+        if hl_ref.is_none() && ghost_ref.is_none() {
+            return Ok(None);
+        }
+        let ind = "  ".repeat(indent);
+        let ind1 = "  ".repeat(indent + 1);
+        let ind2 = "  ".repeat(indent + 2);
+        // textarea 文字透明 + 光标可见(叠加层负责显示彩色文字)。
+        let ta_attrs = if attr_str.contains("class=\"") {
+            attr_str.replacen("class=\"", "class=\"text-transparent caret-foreground ", 1)
+        } else {
+            format!("{} class=\"text-transparent caret-foreground\"", attr_str)
+        };
+        // kind → Tailwind class 链 — 与旧 .at 手写 overlay 完全一致(Pixel 等价)。
+        let span_class = "span.kind == 'Command' ? 'text-emerald-400 font-bold' : span.kind == 'ExternalCmd' ? 'text-sky-300' : span.kind == 'String' ? 'text-amber-300' : span.kind == 'Variable' ? 'text-red-400' : span.kind == 'Operator' ? 'text-pink-400 font-bold' : span.kind == 'Redirect' ? 'text-gray-400' : span.kind == 'Comment' ? 'text-gray-400 italic' : span.kind == 'Flag' ? 'text-purple-300' : 'text-gray-200'";
+        let mut html = format!(
+            "{ind}<div class=\"flex flex-row relative flex-1 items-center\">\n"
+        );
+        html.push_str(&format!(
+            "{ind1}<div class=\"flex flex-row pointer-events-none absolute inset-0 items-center text-sm font-mono-ash whitespace-pre overflow-hidden\">\n"
+        ));
+        if let Some(hl) = &hl_ref {
+            html.push_str(&format!(
+                "{ind2}<span v-for=\"(span, i) in {hl}\" :key=\"i\" :class=\"{span_class}\">{{{{ span.text }}}}</span>\n"
+            ));
+        }
+        if let Some(ghost) = &ghost_ref {
+            html.push_str(&format!(
+                "{ind2}<span class=\"text-muted-foreground/35\">{{{{ {ghost} }}}}</span>\n"
+            ));
+        }
+        html.push_str(&format!("{ind1}</div>\n"));
+        html.push_str(&format!("{ind1}<textarea{ta_attrs}></textarea>\n"));
+        html.push_str(&format!("{ind}</div>\n"));
+        Ok(Some(html))
+    }
+
     fn generate_shadcn_attrs(
         &mut self,
         tag: &str,
@@ -7668,6 +7734,10 @@ impl VueGenerator {
 
             // === Textarea ===
             "textarea" => {
+                // Plan 057 续:highlight/ghost 由叠加层包裹消费,不透传。
+                if props.contains_key("highlight") || props.contains_key("ghost") {
+                    // handled by textarea_rich_overlay at the emission site
+                }
                 // v-model for value
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
