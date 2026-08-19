@@ -1045,6 +1045,7 @@ fn convert_scrollable_dynamic(
         width,
         height,
         style,
+        auto_scroll: false,
     })
 }
 
@@ -1100,7 +1101,7 @@ fn convert_textarea_dynamic(
     let on_submit = extract_event_handler(node, "onenter", metadata.map(|(name, _)|name))
         .or_else(|_| extract_event_handler(node, "enter", metadata.map(|(name, _)|name)))
         .ok();
-    Ok(View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight: Vec::new(), ghost: String::new() })
+    Ok(View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight: Vec::new(), ghost: String::new(), keydown: std::collections::HashMap::new() })
 }
 
 #[cfg(feature = "interpreter")]
