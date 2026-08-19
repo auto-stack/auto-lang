@@ -42,7 +42,11 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard", "code-editor"]
+# Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
+# syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
+# backend brings the editor along.
+code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -120,6 +124,12 @@ iced_widget = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 image = { version = "0.25", optional = true }
+# Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
+# iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
+# handoff into fill_raw. syntect/two-face unify to a single 5.x instance.
+cosmic-text = { version = "0.15", optional = true, features = ["vi", "syntect"] }
+syntect = { version = "5", optional = true }
+two-face = { version = "0.4", optional = true }
 notify = { workspace = true }
 ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server

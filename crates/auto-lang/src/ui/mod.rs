@@ -11,6 +11,11 @@
 pub use auto_val;
 
 pub mod component;
+
+// Plan 413: cross-platform code editor widget (feature `code-editor`,
+// enabled by default under `ui-iced`).
+#[cfg(feature = "code-editor")]
+pub mod code_editor;
 pub mod view;
 pub mod vnode;
 pub mod vnode_converter;
