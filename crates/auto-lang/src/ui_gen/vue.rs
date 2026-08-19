@@ -11885,13 +11885,21 @@ export function cn(...inputs: ClassValue[]) {
                 .map(|p| format!("{}: any", p))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let ret_anno = if mfn.ret_ts.is_empty() {
+            let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+            // Plan 029 T13: fn 模块体内含 await（Http./Sse./back.api 的双
+            // await 展开）时必须标 async——与 store action 的 is_async 同
+            // 启发式（body.contains("await")）。返回注解相应省略，否则
+            // `async fn(): any[]` 与实际 Promise<any[]> 类型冲突。
+            let is_async = body.contains("await");
+            let ret_anno = if is_async {
+                String::new()
+            } else if mfn.ret_ts.is_empty() {
                 String::new()
             } else {
                 format!(": {}", mfn.ret_ts)
             };
-            code.push_str(&format!("\nexport function {}({}){} {{\n", mfn.name, param_list, ret_anno));
-            let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+            let async_kw = if is_async { "async " } else { "" };
+            code.push_str(&format!("\nexport {}function {}({}){} {{\n", async_kw, mfn.name, param_list, ret_anno));
             for line in body.lines() {
                 code.push_str("    ");
                 code.push_str(line);
@@ -13246,6 +13254,47 @@ widget Counter {
         assert!(sfc.contains("@media (max-width: 768px) {"));
         // The plain generated <style> block is still present.
         assert!(sfc.contains("<style>"));
+    }
+
+    /// Plan 029 T13: fn 模块体内含 await（Http.get 双 await 展开）时，
+    /// 生成的 fn 必须标 async 且省略返回注解；纯同步 fn 保持原样。
+    #[test]
+    fn test_fn_module_async_when_await() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+fn sync_fn(x int) int { return x + 1 }
+
+fn fetch_things() []Value {
+    try {
+        let data = Http.get("/api/things")
+        return data.things ?? []
+    } catch {
+        return []
+    }
+}
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("fn module must parse");
+        let fns: Vec<crate::aura::AuraModuleFn> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Fn(f) => crate::aura::extract_module_fn(f),
+                _ => None,
+            })
+            .collect();
+        let code = VueGenerator::generate_fn_module(&fns);
+        assert!(
+            code.contains("export function sync_fn(x: any)"),
+            "sync fn unchanged:\n{}",
+            code
+        );
+        assert!(
+            code.contains("export async function fetch_things()"),
+            "awaiting fn must be async:\n{}",
+            code
+        );
+        assert!(!code.contains("fetch_things(): "), "async fn drops ret anno:\n{}", code);
     }
 
     /// Template ref escape hatch: a `ref` prop on a view element emits a
