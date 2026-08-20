@@ -9119,8 +9119,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // (行中编辑仍可用)。keydown 表随每次 view 转换重建,与 ghost
             // 状态同步增删。
             let mut keydown = keydown;
+            // ghost 为空时移除「行内移动语义」键,回落 iced 默认光标行为。
+            // right=forward-char;ctrl.f 同义;ctrl.e=end-of-line(ghost 显示时
+            // 才拦截为接受全部)。完整 Emacs/Vim keymap 见后续架构改造。
             if ghost.is_empty() {
-                keydown.remove("right");
+                for k in ["right", "ctrl.f", "ctrl.e"] {
+                    keydown.remove(k);
+                }
             }
             let content = if rich {
                 get_textarea_content_rich(&key, &value, &ghost)
