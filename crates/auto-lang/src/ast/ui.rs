@@ -284,6 +284,13 @@ pub struct MsgVariant {
     /// Variant name (e.g., "Inc")
     pub name: Name,
 
+    /// True when the variant name was written quoted in source
+    /// (`msg Msg { "update"(str) }`): a CONTRACTUAL emit name (lowercase /
+    /// hyphenated / coloned) that must always be declared in defineEmits
+    /// and always get its trailing emit() — even when no template binding
+    /// references the handler (bridge-originated emits, self-call relay).
+    pub quoted: bool,
+
     /// Payload types (empty = no payload). Plan 043 M5 #1: was
     /// `Option<Type>` (single param only); now a `Vec<Type>` so variants like
     /// `Complete(str, int)` / `RunSmart(int, str, []str)` parse. An empty vec
@@ -894,10 +901,12 @@ mod tests {
             variants: vec![
                 MsgVariant {
                     name: AutoStr::from("Inc"),
+                    quoted: false,
                     payload: vec![],
                 },
                 MsgVariant {
                     name: AutoStr::from("Set"),
+                    quoted: false,
                     payload: vec![Type::Int],
                 },
             ],

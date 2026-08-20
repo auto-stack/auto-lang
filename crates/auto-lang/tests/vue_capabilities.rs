@@ -311,6 +311,71 @@ widget App {
     );
 }
 
+/// plan 013 Phase 2 (shell elimination): quoted msg variants are
+/// CONTRACTUAL emit names — they must be declared in defineEmits even when
+/// no template binding references a handler (bridge/extension code emits
+/// them via getCurrentInstance().emit; undeclared listeners would fall
+/// through as native DOM listeners on the root element).
+#[test]
+fn cap_quoted_emit_declared_without_view_reference() {
+    let sfc = gen_sfc(
+        r#"
+widget Shell {
+    msg Msg { "update"(str), "blur", Internal }
+    view {
+        col {
+            button "x" { onclick: .Internal }
+        }
+    }
+    on {
+        .Internal -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("update: [string]"),
+        "handler-less quoted emit declared:\n{sfc}"
+    );
+    assert!(sfc.contains("blur: []"), "unit quoted emit declared:\n{sfc}");
+}
+
+/// plan 013 Phase 2: the computed-payload relay — a view-bound (or
+/// exposed) handler computes the payload, then self-calls the quoted
+/// handler which trailing-emits it (`emit('save', md)`), even though the
+/// quoted handler itself is never template-bound.
+#[test]
+fn cap_quoted_emit_self_called_relay() {
+    let sfc = gen_sfc(
+        r#"
+widget Shell {
+    msg Msg { "save"(str) }
+    view {
+        col {
+            button "save" { onclick: .HandleSave }
+        }
+    }
+    on {
+        .HandleSave -> { ."save"("md") }
+        ."save"(md) -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("save: [string]"),
+        "self-called quoted emit declared:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("emit('save', md)"),
+        "self-called quoted handler trailing-emits the payload:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("save('md')"),
+        "the relay call passes the computed payload:\n{sfc}"
+    );
+}
+
 /// editor README note 3 / jade batch 2 (CodeBlockMenu, jade first use):
 /// v-model FOLD — `value: .query` + `oninput: .QueryInput($event)` on a
 /// state field collapses to `v-model="query"`; the handler function is

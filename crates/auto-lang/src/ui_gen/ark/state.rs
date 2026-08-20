@@ -594,8 +594,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Inc".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant { name: "Dec".to_string(), quoted: false, payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::Element {

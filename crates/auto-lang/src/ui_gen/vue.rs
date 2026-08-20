@@ -824,6 +824,12 @@ pub struct VueGenerator {
     /// Event names for emit
     emit_events: Vec<String>,
 
+    /// Subset of emit_events that came from QUOTED msg variants
+    /// (contractual emit names like "update"/"link-click"): always
+    /// declared in defineEmits and always trailing-emitted, even when no
+    /// template binding references the handler.
+    quoted_events: std::collections::HashSet<String>,
+
     /// Whether emit is needed
     has_emit: bool,
 
@@ -1079,6 +1085,7 @@ impl VueGenerator {
             handlers: Vec::new(),
             debounced_handlers: HashSet::new(),
             emit_events: Vec::new(),
+            quoted_events: std::collections::HashSet::new(),
             has_emit: false,
             component_refs: Vec::new(),
             lucide_icons: HashSet::new(),
@@ -1291,6 +1298,7 @@ impl VueGenerator {
         self.state_types.clear();
         self.handlers.clear();
         self.emit_events.clear();
+        self.quoted_events.clear();
         self.has_emit = false;
         self.component_refs.clear();
         self.lucide_icons.clear();
@@ -1646,6 +1654,9 @@ impl VueGenerator {
             for msg in &widget.messages {
                 for variant in &msg.variants {
                     self.emit_events.push(variant.name.clone());
+                    if variant.quoted {
+                        self.quoted_events.insert(variant.name.clone());
+                    }
                 }
             }
         }
@@ -2242,9 +2253,15 @@ impl VueGenerator {
                     if let Some(ty) = variant.payload.first() {
                         // Only carry payload type if the handler actually has
                         // matching params (otherwise the emit() call won't pass
-                        // args, causing a TS mismatch).
+                        // args, causing a TS mismatch). QUOTED variants are
+                        // exempt (plan 013 Phase 2): they are contractual emit
+                        // names — a handler-less one is emitted from extension
+                        // code via getCurrentInstance().emit (untyped), so the
+                        // declared payload type is the faithful contract.
                         let pattern_key = format!(".{}", variant.name);
-                        if Self::get_handler_params(&widget.handler_params, &pattern_key).is_some() {
+                        if variant.quoted
+                            || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
+                        {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
                             // Plan 043 M5 B-2: a custom payload type (e.g.
                             // PickCompletion(CompletionItem)) must be imported
@@ -2278,7 +2295,13 @@ impl VueGenerator {
                 // function definitions, so declaring their emit types is noise.
                 // used_handlers holds sanitized fn names (emit names like
                 // "update:modelValue" sanitize to update_modelValue).
-                if !self.used_handlers.contains(event)
+                // QUOTED variants are contractual emit names (plan 013 Phase
+                // 2): they must ALWAYS be declared — bridge/extension code
+                // emits them via getCurrentInstance().emit with no handler,
+                // and undeclared listeners would fall through as native DOM
+                // listeners on the root element.
+                if !self.quoted_events.contains(event)
+                    && !self.used_handlers.contains(event)
                     && !self.used_handlers.contains(&Self::sanitize_ident(event))
                 {
                     continue;
@@ -2430,7 +2453,16 @@ impl VueGenerator {
                 // mark_self_called_handlers runs), so emitting would be a
                 // TS2769 "not assignable to parameter" (observed for DoTokenize).
                 // Template-bound handlers are already in used_handlers here.
-                if !already_notifies_parent && self.used_handlers.contains(&handler_name) {
+                // QUOTED variants (contractual emit names, plan 013 Phase 2)
+                // are always declared in defineEmits, so they always get the
+                // trailing emit — even when the handler is only self-called
+                // (the computed-payload relay pattern: an exposed/view-bound
+                // handler computes the payload, then self-calls the quoted
+                // handler to emit it).
+                if !already_notifies_parent
+                    && (self.used_handlers.contains(&handler_name)
+                        || self.quoted_events.contains(&emit_name))
+                {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
                     // Plan 043 M5 B-3: when the handler is a loop-param handler
