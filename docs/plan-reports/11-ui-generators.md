@@ -43,10 +43,14 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 363 | AutoUI Generation Skill | Planned | Pre-generation knowledge encoding (contracts+patterns), wizard CLI tool, test skeleton auto-generation |
 | 365 | AutoUI Pluggable Host Architecture | Complete | `HostBackend` unified interface (headless/iced/gpui); `auto-cosmic` crate family; cfg-gated cross-platform; de-iced Component trait; gpui backend fixed; RenderQueue → Plan 386 |
 | 337 | vue-gallery ↔ @auto-ui/widgets 薄同步层 | Complete | LIBRARY_WIDGETS self-consistency, AURA drift guard, `auto ui backlog`, widgets.ts split, gallery-stubs scaffolding, InstallHint |
+| 399 | AutoUI 示例 SSE/CRUD 扩展 | Complete | 017-chat 首个 SSE 实时聊天 App（playwright 9/9）+ Phase 11-13 a2r 根治/typing/混合状态硬检查；路线A 移交 Plan 400 |
+| 404 | 022-kanban 示例升级 | Complete | CRUD + 列移动 + HTML5 拖拽完整 App，playwright 6/6；修 row/col 属性穿透 bug |
+| 407 | a2vue icon/text 表达式 | Complete | lucide 图标子节点 + text 节点 t() 函数调用表达式（golden 005/006 + auto-musk 回流完成） |
+| 409 | Widgets Gallery 三模式一致性 | Complete | §1-§10：link 子组件 VM 渲染/主题色/六残留差距全修复；CodeBlock 纯 Auto 化暂缓（登记债务簿） |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365 (18 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 404, 407, 409 (22 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -155,3 +159,7 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [363-autoui-generation-skill.md](../plans/363-autoui-generation-skill.md)
 - [365-autoui-pluggable-host-architecture.md](../plans/archive/365-autoui-pluggable-host-architecture.md)
 - [337-vue-gallery-widgets-sync-foundation.md](../plans/archive/337-vue-gallery-widgets-sync-foundation.md)
+- [399-autoui-examples-sse-crud-extension.md](../plans/archive/399-autoui-examples-sse-crud-extension.md)
+- [404-022-kanban.md](../plans/archive/404-022-kanban.md)
+- [407-a2vue-icon-text-expr.md](../plans/archive/407-a2vue-icon-text-expr.md)
+- [409-widgets-gallery.md](../plans/archive/409-widgets-gallery.md)

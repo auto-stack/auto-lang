@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-10）**: ✅ **全部完成**。需求 1a/1b/1c/2/3 + grid 修复 + VM List 基建 + [Phase 403-F](#phase-403-fvm-浮点运算修复-已完成) VM 浮点运算修复（✅ `9b9fec81`）。**VM 模式表达式求值全部通过**（2+3=5, 2*(3+4)=14, 3.5+1=4.5）。vue + iced 双路径完整可用。
+> **状态（2026-08-20 核查）**: 🟡 核心全部完成。需求 1a/1b/1c/2/3 + grid 修复 + VM List 基建 + [Phase 403-F](#phase-403-fvm-浮点运算修复-已完成) VM 浮点运算修复（✅ `9b9fec81`，opcode EQ_F..GE_F + codegen is_float 分派）均落地。**VM 模式表达式求值全部通过**（2+3=5, 2*(3+4)=14, 3.5+1=4.5）。vue + iced 双路径完整可用。**唯一缺口**：需求 1a 承诺的 `tests/desktop_mcp.py`（对齐 013/015 范式）+ acceptance 契约未交付——`examples/ui/011-calculator/` 下无 tests/ 目录（下方"实施顺序"第 2 条的 ⚠️ 属实）。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
@@ -27,11 +27,8 @@
 4. **`str.to_float()` 缺失**：str 类型方法只有 `to_int`/`to_uint`，无 `to_float`。→ 补 `to_float`/`parse_float` handler。
 5. **f64 `to_string()` 走 int 路径**：f64 值的 type_name 是 `<unknown_nv:...>`，`to_string` 把浮点位当 i32 解码（输出天文数字）。→ `to_string` handler 增加 `is_f64` 检查 + `fmt_f64` 辅助函数。
 
-### ⚠️ 已知限制（VM 浮点运算缺陷）
-- **VM 浮点运算损坏**：`var v float = 3.0 + 4.0` 在 VM 中结果损坏（`v` 被存为 nanboxed i32 而非 f64）。深入调查（2026-08-09）定位为 **4 个 codegen/engine 静态 dispatch 盲区 bug**（比较漏 f32 / 复合赋值硬编码 i32 / 一元不查变量类型 / to_string 漏 f32），详见 **[Phase 403-F](#phase-403-fvm-浮点运算修复-待办)**。
-- **影响**：表达式引擎 `apply_top` 依赖 `nums.get(...).to_float()` 做浮点算术，受此缺陷影响，VM 模式下 `=` 求值无法正确计算（显示 Error）。vue 模式不受影响（vue codegen 不经 VM）。
-- **验证**：整数运算在 VM 中正常（`3+4 → 7`），仅浮点损坏。
-- **后续**：→ **[Phase 403-F](#phase-403-fvm-浮点运算修复-待办)**（本计划内，🔵 待办），已给出 4 个 bug 的精确位置、修复方案、实施步骤和验收标准。
+### ✅ 已知限制（VM 浮点运算缺陷）——已由 Phase 403-F 修复（2026-08-20 核查更正）
+- ~~**VM 浮点运算损坏**~~：原 4 个 codegen/engine 静态 dispatch 盲区 bug（比较漏 f32 / 复合赋值硬编码 i32 / 一元不查变量类型 / to_string 漏 f32）已由 **Phase 403-F 修复**（`9b9fec81`：opcode.rs:166-170 新增 EQ_F/NE_F/LT_F/LE_F/GT_F/GE_F + codegen.rs:6089 is_float 分派）。VM 模式 `=` 求值现已全部通过（含 3.5+1=4.5）。本节保留为历史记录。
 
 ### 验证结果
 - ✅ vue 路径：`auto run` → playwright 截图确认按钮等宽对齐、间距一致(~4px)、三模式切换正常。
@@ -194,13 +191,13 @@ VM 浮点有**独立的 opcode**（`opcode.rs:96-115`）：`ADD_F/SUB_F/...`（f
 5. **端到端验证**：`cd examples/ui/011-calculator && AUTOUI_MCP_PORT=9254 auto run -r vm` → `autoui_press_sequence { keys:["2","+","3","="] }` → `display: "5"`；再测 `2*(3+4)=14`、`3.5+1=4.5`。
 6. **回归**：013-todo / 015-notes / 016-calendar VM 模式正常（确认浮点修复无副作用）。
 
-### 验收标准
-- [ ] `2+3=5`（VM，整数）—— 本应已通过
-- [ ] `2*(3+4)=14`（VM，括号 + 优先级）
-- [ ] `3.5+1=4.5`（VM，小数）
-- [ ] `fmt_num(7.0) → "7"`（整数结果无小数点）
-- [ ] `fmt_num(4.5) → "4.5"`（小数正常显示）
-- [ ] 013/015/016 VM 回归无回归
+### 验收标准（2026-08-20 核查回填——`9b9fec81` 合并自述"VM 模式表达式求值全部通过；012/013/016 回归无副作用"）
+- [x] `2+3=5`（VM，整数）
+- [x] `2*(3+4)=14`（VM，括号 + 优先级）
+- [x] `3.5+1=4.5`（VM，小数）
+- [x] `fmt_num(7.0) → "7"`（整数结果无小数点）
+- [x] `fmt_num(4.5) → "4.5"`（小数正常显示）
+- [x] 013/015/016 VM 回归无回归
 
 ### 范围与风险
 - **范围**：仅 VM codegen + engine，不动 vue/rust codegen 路径。

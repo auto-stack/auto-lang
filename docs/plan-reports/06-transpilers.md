@@ -16,11 +16,11 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 083 | a2r with .rs.at and #[rs] | Partial | Platform-specific Rust implementation files and #[rs] annotation support |
 | 100 | a2js to a2ts Migration | Partial | Upgrade JavaScript generator to TypeScript with ArkTS variant support |
 | 161 | a2r List + Auto Features | Done | #[rs] target selector, .as(Type) cast, and a2r List<T> support |
-| 162 | .to(Type) Method Keyword | Planned | Explicit type conversion method keyword complementing .as(Type) reinterpret cast |
+| 162 | .to(Type) Method Keyword | Complete | Explicit type conversion method keyword（Expr::To + rust.rs:3509 + golden 002_to_convert，2026-08-20 核实） |
 | 163 | a2r Core Struct Support | Done | 5 core struct features: static fn, nested fields, enum tag values, Option/Result, user attrs |
-| 164 | a2r ext for Trait | Planned | External trait implementation via ext Type for Trait syntax in a2r |
-| 165 | Struct Destructuring in is | Planned | Rust-style {field1, field2} struct destructuring in is match arms |
-| 166 | a2r Generic Constraints | Planned | Emit #[with(T as Trait)] annotations as <T: Trait> in Rust output |
+| 164 | a2r ext for Trait | Complete | External trait implementation via ext Type for Trait syntax（parser.rs:4749/4697 + rust.rs:1580，2026-08-20 核实） |
+| 165 | Struct Destructuring in is | Complete | Rust-style {field1, field2} struct destructuring in is match arms（StructPattern + golden 002_struct_destructure，2026-08-20 核实） |
+| 166 | a2r Generic Constraints | Complete | Emit #[with(T as Trait)] as <T: Trait>（Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，2026-08-20 核实） |
 | 170 | a2r Test Reorganization | Done | Reorganized ~60 a2r tests into 17 categorized directories, 144 tests passing |
 | 171 | a2c Test Reorganization | Done | Reorganized 239 a2c test directories into 25 categorized directories, 106 tests passing |
 | 172 | a2ts Test Reorganization | Done | Reorganized 24 a2ts tests into 10 categorized directories, all passing |
@@ -42,6 +42,8 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 240 | Rust Cookbook a2r Tests | Complete | Systematic a2r test suite — 163 `.at` files across all Cookbook chapters, all assert-based (Phase 14), de-stubbed for non-architecture-blocked files (Phase 15), FAIL-driven fix loop (Phase 16); 124/124 a2r + 236/236 transpiler pass. DB/async/cc stubs handed off to Plan 242 tracker #10/#12/#17 |
 | 241 | a2r String Type Cleanup | Complete | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if, Add operator variable detection |
 | 264 | a2r Dot to Double Colon | Complete | module_types mapping, qualify_type_name(), expression path handling, use stmt `.` → `::` for cross-module types |
+| 308 | Godot Demo Reverse Translation | Complete | 4 个官方 Godot demo 逆向翻译为 a2gd 回归测试：6 fixture + 11 测试函数，5 条 documented gaps 留档 |
+| 364 | a2r COSMIC Replication Readiness | Complete | W1-W7 全落地（dotted 注解/multi-bound/move 闭包/~{} 全语句/~Stream parity/path 依赖）+ Phase 8 F1-F3；Try 降级与 F4 deferred 登记债务簿 |
 | 391 | a2r Parity Debt from Musk | Complete | D1-D6 六项 a2r 限制修复 + §8 多段路径 codegen（std::env::var 用 ::） |
 | 392 | a2r Codegen Fixes from Musk | Complete | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 393） |
 | 393 | a2r Method Dispatch Fixes | Complete | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
@@ -50,7 +52,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 
 ## Status
 
-**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232).
+**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232); .to(Type)/ext-for-Trait/struct-destructuring/generic-constraints (162/164/165/166, 2026-08-20 核实), Godot demo reverse translation (308), a2r COSMIC readiness W1-W7 (364).
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
@@ -135,3 +137,5 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [393-a2r-method-dispatch-fixes.md](../plans/archive/393-a2r-method-dispatch-fixes.md)
 - [395-turbofish-generic-call-args.md](../plans/archive/395-turbofish-generic-call-args.md)
 - [397-send-sync-supertrait-and-arc-fn-spec-param.md](../plans/archive/397-send-sync-supertrait-and-arc-fn-spec-param.md)
+- [308-godot-demo-reverse-translation.md](../plans/archive/308-godot-demo-reverse-translation.md)
+- [364-a2r-cosmic-replication-readiness.md](../plans/archive/364-a2r-cosmic-replication-readiness.md)

@@ -1,6 +1,6 @@
 # Plan 407: 扫雷 render=rust 版完整支持
 
-> **状态**: 📋 计划阶段（2026-08-10）
+> **状态（2026-08-20 核查更新）**: 🟡 Phase 1–2 完成 + Phase 3 部分，均已合并 master（merge `f863be5e`）：Phase 1 render=rust 启动成功（acb6c759 + 2268a67b R1/R2/R4/store-on + 83dbb259 语句支持 + f7318259 LCG 溢出修复）、Phase 2 计时器（a130512a tick_msg + 871b4226 tick_interval_ms）、Phase 3 的 R6 右键 oncontextmenu（2fc6c562）与 R9 grid 居中（fb4870c2）已落地。**未做**：R7 动态窗口 resize（difficulty 切换→窗口尺寸，ui_gen/rust.rs 无 resize 逻辑，生成 main.rs 固定 370×506）、Phase 4（三后端对比验证 + 015/011 回归）。
 > **优先级**: 中 — vue 版和 VM 版已可用，rust 版是第三后端
 > **目标**: 038 扫雷 render=rust 版达到与 VM 版完全一致的功能（左键展开、右键插旗、计时、难度切换、动态窗口）
 

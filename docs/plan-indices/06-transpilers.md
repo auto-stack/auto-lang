@@ -15,11 +15,11 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 083 | a2r with .rs.at and #[rs] | 🔧 | Platform-specific Rust implementation files and #[rs] annotation support |
 | 100 | a2js to a2ts Migration | 🔧 | Upgrade JavaScript generator to TypeScript with ArkTS variant support |
 | 161 | a2r List + Auto Features | ✅ | #[rs] target selector, .as(Type) cast, and a2r List<T> support |
-| 162 | .to(Type) Method Keyword | ⏳ | Explicit type conversion method keyword complementing .as(Type) reinterpret cast |
+| 162 | .to(Type) Method Keyword | ✅ | Explicit type conversion method keyword（Expr::To ast.rs:507 + rust.rs:3509 + golden 002_to_convert，2026-08-20 核实） |
 | 163 | a2r Core Struct Support | ✅ | 5 core struct features: static fn, nested fields, enum tag values, Option/Result, user attrs |
-| 164 | a2r ext for Trait | ⏳ | External trait implementation via ext Type for Trait syntax in a2r |
-| 165 | Struct Destructuring in is | ⏳ | Rust-style {field1, field2} struct destructuring in is match arms |
-| 166 | a2r Generic Constraints | ⏳ | Emit #[with(T as Trait)] annotations as <T: Trait> in Rust output |
+| 164 | a2r ext for Trait | ✅ | External trait implementation via ext Type for Trait syntax（parser.rs:4749 可选 TraitName + 4697 + rust.rs:1580，2026-08-20 核实） |
+| 165 | Struct Destructuring in is | ✅ | Rust-style {field1, field2} struct destructuring in is match arms（ast.rs:372 StructPattern + golden 002_struct_destructure，2026-08-20 核实） |
+| 166 | a2r Generic Constraints | ✅ | Emit #[with(T as Trait)] as <T: Trait>（Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，2026-08-20 核实） |
 | 170 | a2r Test Reorganization | ✅ | Reorganized ~60 a2r tests into categorized structure, 144 tests passing |
 | 171 | a2c Test Reorganization | ✅ | Reorganized 239 a2c test directories into categorized structure, 106 tests passing |
 | 172 | a2ts Test Reorganization | ✅ | Reorganized 24 a2ts tests into categorized structure, all passing |
@@ -41,7 +41,8 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 240 | Rust Cookbook a2r Tests | ✅ | Systematic a2r test suite — 163 .at files, 124/124 pass, all assert-based; DB/async/cc stubs handed off to Plan 242 #10/#12/#17 |
 | 241 | a2r String Type Cleanup | ✅ | Fix get_or/insert .to_string() heuristics, return newline support, not-in-if |
 | 264 | a2r Dot to Double Colon | ✅ | module_types mapping, qualify_type_name(), use stmt path handling for `.` → `::` |
-| 364 | a2r COSMIC Replication Readiness | ⏳ | Dotted attribute-macro annotations, multi-bound `#[with(T as A + B)]`, move closures, full `~{}` statements, stream parity — closing a2r gaps for COSMIC desktop replication |
+| 308 | Godot Demo Reverse Translation | ✅ | 4 个官方 Godot demo 逆向翻译为 a2gd 回归测试：6 fixture（test/a2gd/tscn/godot_demos/）+ 11 测试函数（gdscript.rs 5 + tscn.rs 6），5 条 documented gaps 留档 |
+| 364 | a2r COSMIC Replication Readiness | ✅ | W1-W7 全落地：dotted 注解/Fn.attrs/multi-bound `T: A + B`/move 闭包/`~{}` 全语句/~Stream parity/path 依赖 + Phase 8 F1-F3（Try 降级与 F4 deferred 已登记债务簿） |
 | 391 | a2r Parity Debt from Musk | ✅ | D1-D6 六项 a2r 限制修复（.len() cast、Option<&T> 标注、List<str> split、:: 路径、() 类型、trait impl 错误）+ §8 多段路径 codegen（std::env::var 用 ::） |
 | 392 | a2r Codegen Fixes from Musk | ✅ | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 Plan 393） |
 | 393 | a2r Method Dispatch Fixes | ✅ | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
@@ -49,7 +50,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 397 | Spec Supertrait + Arc<Fn> Spec-Param | ✅ | `pub spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> spec-param golden 确认 |
 
 ## Status Summary
-- Completed: 20 | Partial: 3 | Planned: 13 | Deprecated: 0
+- Completed: 26 | Partial: 3 | Planned: 9 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)
@@ -60,4 +61,4 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 ## Remaining Work
 - Complete a2ts migration with TypeScript type annotations and expanded test coverage (Plan 215)
 - Implement UI backend generators (a2rust-ui, a2vscode) and migrate auto-ui
-- Add struct destructuring, generic constraints, and external trait impl to a2r
+- a2r remaining gaps tracked in Plan 242 (HashMap::from, closure inference, Redis/SQLite backend, GPUI, self-hosting, dep cc)

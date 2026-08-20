@@ -13,10 +13,11 @@ Error handling in AutoLang spans three deeply interconnected domains: compiler d
 | 010 | Type Inference Subsystem | Completed | Full type inference with Hindley-Milner unification, ~2,770 LOC across 7 implementation stages, 285+ unit tests, integrated into parser |
 | 191 | Assert and Precise Linker Errors | Complete | Add assert/assert_eq/assert_ne intrinsics and propagate source positions into linker error spans |
 | 208 | Result Heap Object | Complete | CREATE_OK/CREATE_ERR heap objects, IS_OK, UNWRAP_OK/ERR, ERROR_PROPAGATE |
+| 410 | check_symbol Error Span | Complete | undefined_variable 报错 span 从解析器游标改为表达式起始标识符（err_span + 3 调用点 + error_spans_tests）；Phase 2 留后续 |
 
 ## Status
 
-**Implemented**: Comprehensive diagnostic system with miette (error codes, source snippets, multi-error recovery, warnings, JSON output, "did you mean?" suggestions); full type-inference engine with Robinson unification, expression/statement/function inference, and parser integration (~2,770 LOC, 285+ tests).
+**Implemented**: Comprehensive diagnostic system with miette (error codes, source snippets, multi-error recovery, warnings, JSON output, "did you mean?" suggestions); full type-inference engine with Robinson unification, expression/statement/function inference, and parser integration (~2,770 LOC, 285+ tests); precise undefined-variable error spans pointing at the expression-start identifier (Plan 410).
 
 **Partial**: Runtime error integration in the evaluator (Plan 009). The `RuntimeError` enum is defined (E0301--E0305) and the infrastructure is in place, but the evaluator still contains `panic!` calls and returns raw `Value` instead of `AutoResult<Value>`. Span tracking in AST nodes and stack-trace capture are not yet implemented.
 
@@ -171,3 +172,4 @@ The estimated effort is 12--18 hours. This is the primary remaining gap in the e
 - docs/plans/010-type-inference-subsystem.md
 - [191-assert-and-precise-linker-errors.md](../plans/191-assert-and-precise-linker-errors.md)
 - [208-result-heap-object.md](../plans/208-result-heap-object.md)
+- [410-check-symbol-error-span.md](../plans/archive/410-check-symbol-error-span.md)

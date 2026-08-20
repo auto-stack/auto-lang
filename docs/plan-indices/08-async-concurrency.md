@@ -16,9 +16,10 @@ AutoLang implements an Actor-based concurrency model using Task/Msg primitives, 
 | 127 | AutoVM TaskSystem Execution | 🔧 | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply() |
 | 128 | Scheduler Message Dispatch Loop | ✅ | Zero-shared-mutable-state scheduler with Tokio async, Arc + mpsc channels |
 | 195 | HTTP Client + auto.http Unification | 🔧 | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
+| 317 | VM 真异步调度统一 | ✅ | actor 执行引擎 / `~{}.await` 取值（Plan 348 T22）/ lazy yield SSE / HTTP 异步 server（serve_async + spawn_local 接入活路径）/ Phase 11 e2e CI（http-e2e-ci.yml）；Phase 6/9/10 决议不做（§11 论证）；serve_async 生命周期留 follow-up（登记债务簿） |
 
 ## Status Summary
-- Completed: 8 | Partial: 0 | Planned: 1 | Deprecated: 0
+- Completed: 9 | Partial: 0 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - Complete Actor-based concurrency stack from lexer through bytecode to runtime execution

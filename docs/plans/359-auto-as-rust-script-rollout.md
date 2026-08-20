@@ -1,6 +1,6 @@
 # Plan 359 — Auto as Rust's Script Layer — Rollout Implementation Plan
 
-> **状态**: 🟡 大部分已落地（2026-08-04 实测）。C1（conformance）+ C2（parity CI `parity-ci.yml`）+ B1（CodeView.vue + ScriptShipView.vue）+ B2（docs/script-to-ship/ 6 章中英双语 tour）+ D1（serde_json/regex/CLI parity）+ D2 部分（trait_advanced parity）均已交付。**真实遗留**：C3（公开 parity 仪表盘网页 + L1/L2/L3 成熟度目录）+ D2 的 generators 用例未做。下方 165 个 checkbox 多数已落地但未回填。
+> **状态**: 🟡 大部分已落地（2026-08-20 复核）。C1（conformance）+ C2（parity CI `parity-ci.yml`）+ **C3（已落地：`parity/crates/auto-parity/src/report.rs:81-260` render_maturity_directory L1/L2/L3 + `parity/docs/parity-dashboard.html` 241/241 + CI artifact，commit 769bfeb8——2026-08-04 自述"未做"已过时）**+ B1（CodeView.vue + ScriptShipView.vue）+ B2（docs/script-to-ship/ 6 章中英双语 tour）+ D1（serde_json/regex/CLI parity）+ D2 部分（trait_advanced parity）均已交付。**真实遗留**：D2 generators 用例（parity/libs/ 33 目录无 generators，D2.3 双 demo 缺）+ D3 http_client_sync（README 自记 blocked by DIV-HTTP-LANG-1，D3.3 双 demo 缺）+ Phase E（known-divergences.md 五项 open：DIV-TRAIT-VM-1/VM-2/LANG-1/HTTP-LANG-1/CHAR-AT-1）+ A1/A2 落地页（website/index.md 无 parity 链接，V3 未达）。下方 165 个 checkbox 多数已落地但未回填。
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为下一版本宣传点"Auto 是 Rust 的脚本层"补齐从地基到门面的全部交付物——VM↔a2R 一致性验证体系、Rust 生态用例库、"From Script to Ship"互动教程、英雄演示与核心叙事——使宣传点具备可审计的证据、可上手的教育路径、可传播的演示。

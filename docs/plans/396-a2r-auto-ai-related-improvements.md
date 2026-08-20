@@ -7,6 +7,8 @@ status: in-progress # draft | in-progress | complete
 
 # Plan 396: a2r 改进（auto-ai 相关）— 滚动聚合计划
 
+> **2026-08-20 核查**: §2.1–§2.5 五条均未修（0/5 落地），auto-ai 侧 sed workaround 全部仍在（retranspile.sh:172-181 / ai-config:88 / client:99-100）。§2.1 的症状可能已被 Plan 399 P11.4 `borrowed_iter_vars`（rust.rs:173/8767）部分覆盖，待验证后删对应 sed。
+
 > **For Claude:**
 > - 构建/测试命令：`cargo test -p auto-lang --lib --features test-trans -- tests::a2r_tests`（a2r golden，基线 319/0）。
 > - 验证（auto-ai 侧）：`AUTO=target/debug/auto.exe` 跑 auto-ai 两 `retranspile.sh`，三转译 crate 独立 build 0 错 + workspace 全绿。

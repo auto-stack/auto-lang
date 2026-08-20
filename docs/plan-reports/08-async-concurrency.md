@@ -17,10 +17,11 @@ AutoLang implements a complete Actor-based concurrency stack spanning eight impl
 | 127 | AutoVM TaskSystem Execution | Partial | Bytecode compilation for Task/Msg systems, on-block compilation, ctx.reply(); ask/reply sync deferred |
 | 128 | Scheduler Message Dispatch Loop | Complete | Zero-shared-mutable-state scheduler with Tokio async, Arc + mpsc channels |
 | 195 | HTTP Client + auto.http Unification | Partial | Upgrade to reqwest, unify http_stream, add async HTTP (Phase 3.2 blocked by Plan 196) |
+| 317 | VM 真异步调度统一 | Complete | actor 引擎 / `~{}.await` 取值 / lazy yield SSE / HTTP 异步 server（serve_async + spawn_local）/ Phase 11 e2e CI；Phase 6/9/10 决议不做；serve_async 生命周期留 follow-up |
 
 ## Status
 
-**Implemented**: Plans 121-126, 128 (fully complete), Plan 127 (Phases 1-3, 5 complete).
+**Implemented**: Plans 121-126, 128 (fully complete), Plan 127 (Phases 1-3, 5 complete), Plan 317 (VM 真异步调度统一 — actor/~await 取值/lazy yield SSE/HTTP 异步 server/e2e CI 全落地).
 
 **Partial**: Plan 127 Phase 4 (Ask/Reply synchronization) is deferred pending an async/sync bridge. The `.send()` fire-and-forget and `.go` patterns provide sufficient concurrency for current use cases, so blocking `ask().await` is postponed.
 
@@ -156,3 +157,4 @@ The scheduler supports dynamic task spawning via `SystemCommand::Spawn`, with a 
 - Plan 127: `docs/plans/127-autovm-task-system-execution.md`
 - Plan 128: `docs/plans/128-scheduler-message-dispatch.md`
 - [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)
+- [317-vm-async-scheduling-investigation.md](../plans/archive/317-vm-async-scheduling-investigation.md)

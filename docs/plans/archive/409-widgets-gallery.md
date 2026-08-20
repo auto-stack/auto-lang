@@ -310,6 +310,8 @@ examples/widgets-gallery/          # app.at + 49 pages + pac.at
 |---|---|---|
 | CodeBlock/PreviewCard 改纯 Auto widget | ⚪ 暂缓 | 当前是「Auto 声明壳 + codegen 硬编码 UI」混合模式（`.at` 的 view 是占位 `div`，真实 UI 在 `generate_codeblock_html`/`generate_previewcard_html`）。改成纯 Auto 需把 Prism 高亮 / clipboard / setTimeout / Auto-Vue tab 切换等命令式逻辑搬进 `.at` 的 model/on/computed/view，codegen transpile 这些浏览器/API 调用的能力需先验证。作为后续独立任务。 |
 
+> 2026-08-20 归档复审：本暂缓项已登记至 `KNOWN-DEBT-AND-RISKS.md`（📋 未来增强）。VM 侧 preview-card/codeblock 识别已由 §10 组 E 补上（aura_view_builder.rs:1748）。
+
 ### 9.7 提交与文件
 
 - `1e59c791` feat(plan-410): toast() import 检测 + widget gallery 更新 — §9.1.3/9.1.5/9.1.6 + §9.2 全部 + §9.3.1 + §9.4.1（vue.rs 110 行 + validators.rs + 8 个 .at + README）

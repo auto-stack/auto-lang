@@ -1,5 +1,7 @@
 # Plan 412 — Layout Gallery（布局专区）+ VM 布局引擎对齐
 
+> **状态（2026-08-20 核查）**: 🟡 Phase 1-2/结构通道 ✅（`4bfd6d27`/`6ee1a5e1`/`f51c8882`——12 个 layout 页全部落地 + `rederive_layout` 全路径 + `grid_row_placements` 分配器 + plan412_tests）。**§6.2/§6.3 视觉+交互验证待桌面会话补跑**（§10.4）：全页双端并排截图与像素测量（≤1px）、scroll/Overlay 交互抽验未执行，§9.2/§9.3 验收标准未闭环。
+
 > 2026-08-14 立项。widgets-gallery 现有 50 页全部展示"组件"，缺"布局"专区。
 > 目标：新增 Layout 分组（row/col/center/flex/grid 等，参照 Tailwind 布局能力全集），
 > **硬约束：同一份 .at 源码，vue 与 VM 两端行为与 UI 完全一致**（Plan 411 的延续）。

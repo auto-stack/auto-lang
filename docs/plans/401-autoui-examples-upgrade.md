@@ -1,6 +1,6 @@
 # Plan 401: AutoUI 示例升级 — 018-027 从单文件玩具到完整 App
 
-> **状态（2026-08-09）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018 已完成；022 阶段 1 完成（Plan 404）。
+> **状态（2026-08-20 核查）**: 🟡 进行中。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018/022（Plan 404）/023（Plan 405）已完成；011 已拆 Plan 403。待办：019/020/021/024/025（024 gallery 已由 [Plan 409](409-widgets-gallery.md) 以 `examples/widgets-gallery/` 形态完成，见总表注）。
 > **分支**: 各示例独立分支 `plan401/0NN-xxx`（018 已合并 master）。
 > **动机**: 计划 399 §后续第 166 行"继续升级 018-027 为正规 App"。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
 > **与 Plan 399 的关系**: 399 是 codegen 基建（SSE 多事件 / a2r 根治 / 混合状态硬检查）；本计划是**纯示例升级**，不引入新 codegen 基建（升级过程中发现的 codegen bug 单独修复并在此记录）。
@@ -45,7 +45,7 @@
 - **`auto run` 增量重生成不重扫 routes**（缓存所致）：必须先 `auto gen` 保证 `router/index.ts` 存在，再 `auto run`。这是已知边际，记此备查。
 - **handmade vue 件需 `.gitignore` 放行**：仓库根 `examples/**/vue/` + `*.json` 会吞掉 `vue/` 和 `tests/package.json`。需 per-example `.gitignore` 加 `!vue/` + `!tests/package.json`（cf. examples/a3ui-replica/.gitignore）。
 - **per-example 专属端口避免并发冲突**：多个示例同时测试时，默认 3000/8080 会互相抢占（vite 代理指错后端 → 前端收到 HTML 而非 JSON → `Unexpected token '<'`）。每个示例在 pac.at 声明专属端口：`front_port: 30NN` / `back_port: 80NN`（NN = 示例号）。playwright `baseURL` 需同步改成专属前端端口。
-  - ⚠️ **端口缺口（2026-08-09 Plan 404 实测发现）**：`pac.at` 的 `front_port`/`back_port` 已在 `pac.rs` 解析、`automan.rs` 有 `pac_dev_ports()` getter，但 **`auto run`（`run_vue`/`run_vue_project`）当前未调用它注入环境变量**，`main.rs` 也无 `-F`/`-B` CLI 参数定义。结果 `auto run` 仍默认 3000/8080，pac.at 端口声明不生效（018 README 描述的 `-F`/`-B` 与自动注入当前未实现）。**临时方案（022 已验证）**：环境变量分离启动——后端 `AUTO_HTTP_PORT=80NN ./app-NNNN-back.exe`；前端 `cd gen/front/vue && AUTO_FRONT_PORT=30NN AUTO_HTTP_PORT=80NN pnpm dev`。playwright `baseURL` 用 `http://localhost:30NN`（vite 默认监听 IPv6 `[::1]`，`127.0.0.1` 连不上）。**根治**：在 `run_vue_project` 调 `pac_dev_ports()` 并 `env::set_var("AUTO_FRONT_PORT"/"AUTO_HTTP_PORT")`，属独立 codegen 改进。
+  - ✅ **端口缺口已修复（2026-08-20 核查更正）**：下述 08-09 记录的缺口实际已于 08-08 commit e865566e 修复——`main.rs:824` 的 `Commands::Run` 已调 `pac_dev_ports()` 注入环境变量，且 `-B`/`-F` CLI 参数已定义（main.rs:332-387）。原文留档：`pac.at` 的 `front_port`/`back_port` 已在 `pac.rs` 解析、`automan.rs` 有 `pac_dev_ports()` getter，但 **`auto run`（`run_vue`/`run_vue_project`）当前未调用它注入环境变量**，`main.rs` 也无 `-F`/`-B` CLI 参数定义。结果 `auto run` 仍默认 3000/8080，pac.at 端口声明不生效（018 README 描述的 `-F`/`-B` 与自动注入当前未实现）。**临时方案（022 已验证）**：环境变量分离启动——后端 `AUTO_HTTP_PORT=80NN ./app-NNNN-back.exe`；前端 `cd gen/front/vue && AUTO_FRONT_PORT=30NN AUTO_HTTP_PORT=80NN pnpm dev`。playwright `baseURL` 用 `http://localhost:30NN`（vite 默认监听 IPv6 `[::1]`，`127.0.0.1` 连不上）。**根治**：在 `run_vue_project` 调 `pac_dev_ports()` 并 `env::set_var("AUTO_FRONT_PORT"/"AUTO_HTTP_PORT")`，属独立 codegen 改进。
 - **拖拽 codegen 事件已支持，但属性/数据未验证**：`vue.rs` 有完整 HTML5 事件映射（`ondragstart/drag/dragend/dragover/drop`）；`onmousemove.window` 全局修饰符也已支持（026 自定义滚动条即此模式）。但 `draggable` 属性 + `dataTransfer` 在 codegen 无专门处理，属"需验证"灰区（022 阶段 2 待评估）。
 - **for + if 模式的 :key**（R006 warning，已验证无害）：`for x in xs { if cond { el{...} } }` 会触发 R006 warning，但 codegen 实际会为内层元素生成 `:key`（022 实测 `for card in .store.cards { if card.column=="todo" { row{key:card.id,...} } }` 生成 `:key="card.id"`）。warning 判断滞后于 key 生成，可忽略；若要消 warning 就改用 store 预派生分组（让 for 体直接是 Element）。
 - **row/col 布局元素现在支持任意 HTML 属性**（022 阶段2 修复）：之前 row/col 的 shadcn 分支只输出 class，丢弃 draggable 等普通 prop。现已通过 `push_passthrough_attrs` 透传（vue.rs）。后续示例在 row/col 上写 `draggable`/`data-*` 等任意属性均可。
@@ -102,12 +102,12 @@ examples/ui/018-book-reader/
 | 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
 | 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
 | 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
-| 024-widget-gallery | 283 行展示型 | ⬜ 待办 | — | 低（可能无需后端） |
+| 024-widget-gallery | 283 行展示型 | 🔀 已由 409 承接 | [Plan 409](409-widgets-gallery.md) | gallery 已落地为 `examples/widgets-gallery/`（62 页三模式一致性）；旧 `examples/ui/024-*` 目录仅剩 README/gen 残留 |
 | 025-notes-extended | 6 文件无后端 | ⬜ 待办 | — | 低 |
 | 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 | 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
 
-**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 019/020/021（中等）→ 024/025（低）。
+**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 024（✅ 经 409）→ 019/020/021（中等）→ 025（低）。
 
 ---
 

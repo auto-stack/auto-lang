@@ -1,6 +1,6 @@
 # Plan 366: 跨平台 UI 测试契约与 DSL（长期方向）
 
-> **状态**: 设计阶段，暂不实现。当前用 AutoDown 契约 + Playwright 执行（见 §6）。
+> **状态**: 设计阶段，暂不实现（366b-f DSL 维持）。366a 近端交付已大部分落地（2026-08-20 复核）：acceptance.atd（T1–T13 + T12-DARK 回归，C-DARK-1 契约）与 Playwright spec.ts（smoke + accent-dark）在 `examples/ui/015-notes/tests/`；`auto test:ui` 一键命令未实现，实际由 Plan 371 的 run_autotest.py/.autotest 承担。
 >
 > **目标**: 让 UI 测试契约**目标无关**，通过转译器生成各后端的可执行测试。
 

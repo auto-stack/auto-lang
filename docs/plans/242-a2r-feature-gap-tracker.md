@@ -1,6 +1,6 @@
 # Plan 242: a2r Feature Gap Tracker
 
-> **实测状态（2026-08-04）**: 🟡 追踪文档状态过时——Item #1（泛型约束）实际已实现（rust.rs:8273）但表格未标记；Item #2（HashMap::from）仍未做。多数核心 gap 仍未解决。引用的 372/373/376/384 计划文件已归档至 archive/。本追踪文档持续维护，不归档。
+> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。确认未做：#2 HashMap::from / #10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 根因仍在（rust.rs:8342 `infer_type_from_expr` 缺 `Expr::Closure` 分支）。本追踪文档持续维护，不归档。
 
 ## Background
 
@@ -16,18 +16,18 @@ This tracker serves as a **living document** that inventories all outstanding a2
 
 | # | Feature | Status | Plan | Difficulty | Owner | Blockers | Completion Date |
 |---|---------|--------|------|------------|-------|----------|-----------------|
-| 1 | Generic constraints output (`<T: Trait>`) | ⏳ Planned | 166 / 364 | ⭐ Low | — | fn-level done (Plan 166); type/impl-level + multi-bound tracked in Plan 364 W3 | — |
+| 1 | Generic constraints output (`<T: Trait>`) | ✅ Done | 166 / 364 | ⭐ Low | — | fn-level (Plan 166) + type/impl-level multi-bound `T: A + B` (Plan 364 W3, rust.rs:10525/12210/12437+) | 2026-08-20 核实 |
 | 2 | HashMap literal transpilation | ⚠️ Workaround | 159 | ⭐⭐ Low-Mid | — | Type context propagation in transpiler | — |
-| 3 | `.to(Type)` method keyword | ⏳ Planned | 162 | ⭐⭐ Low-Mid | — | None (`.as(Type)` provides reference pattern) | — |
+| 3 | `.to(Type)` method keyword | ✅ Done | 162 | ⭐⭐ Low-Mid | — | ast.rs:507 `Expr::To` + rust.rs:3509 发射 + 测试 15_type_conversion/002_to_convert | 2026-08-20 核实 |
 | 4 | `Result<T>` error handling chains | 🔧 Partial | 159 | ⭐⭐ Mid | — | None | — |
-| 5 | Struct destructuring in `is` (`{x,y}`) | ⏳ Planned | 165 | ⭐⭐⭐ Mid | — | Pattern parser extensions | — |
-| 6 | External trait impl (`ext Type for Trait`) | ⏳ Planned | 164 | ⭐⭐⭐ Mid | — | Parser/AST ext block extensions | — |
+| 5 | Struct destructuring in `is` (`{x,y}`) | ✅ Done | 165 | ⭐⭐⭐ Mid | — | ast.rs:372 StructPattern + parser.rs:3991 + rust.rs:2738 + 测试 06_pattern_matching/002_struct_destructure | 2026-08-20 核实 |
+| 6 | External trait impl (`ext Type for Trait`) | ✅ Done | 164 | ⭐⭐⭐ Mid | — | parser.rs:4749（可选 TraitName）+ parser.rs:4697 + rust.rs:1580 | 2026-08-20 核实 |
 | 7 | `String` vs `&str` distinction | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | Type system or transpiler heuristic enhancements | — |
 | 8 | Complex closure type inference | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | Type inference engine enhancements | — |
 | 9 | Platform-specific files (`.rs.at`, `#[rs]`) | 🔧 Partial | 083 | ⭐⭐⭐⭐ High | — | Compiler file-loading pipeline refinements | — |
 | 10 | a2rs backend stdlib (Redis/SQLite) | 🔧 Partial | 119 | ⭐⭐⭐⭐ High | — | Plan 121 async system maturity; 6 cookbook DB stubs handed off from Plan 240 Phase 10 | — |
 | 11 | Ownership and borrowing model (beyond `Rc<T>`/`clone()`) | ⚠️ Workaround | — | ⭐⭐⭐⭐⭐ Very High | — | Precise ownership analysis in transpiler | — |
-| 12 | a2rs async model (blocking → tokio) | ⚠️ Workaround | 119 / 355 | ⭐⭐⭐⭐⭐ Very High | — | Plan 355 a2r async/await; 13 cookbook async stubs handed off from Plan 240 Phase 12 | — |
+| 12 | a2rs async model (blocking → tokio) | 🔧 Partial | 119 / 355 | ⭐⭐⭐⭐⭐ Very High | — | a2r 发射侧 ✅（Plan 355：.await + async fn + `#[tokio::main]` rust.rs:10456/10466）；VM 内嵌 tokio 的 13 cookbook stub 仍阻塞（属 VM 侧，非 a2r） | — |
 | 13 | Core a2r completeness / a2c parity | 🔧 Partial | 007 / 067 | ⭐⭐⭐⭐⭐ Very High | — | Many edge cases across expr/stmt/types | — |
 | 14 | Rust Cookbook systematic test suite | ✅ Done | 240 | ⭐⭐⭐⭐⭐ Very High | — | Core suite complete (163 .at, 124/124 a2r pass); DB/async/cc stubs handed to #10/#12/#17 | 2026-07-14 |
 | 15 | a2r UI generator (GPUI/ICED) | ⏳ Planned | 180 | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration | — |

@@ -43,9 +43,13 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 365 | AutoUI Pluggable Host Architecture | ✅ | `HostBackend` unified interface (headless/iced/gpui); `auto-cosmic` crate family (ports+mock+demo+libcosmic host+Linux adapters); cfg-gated cross-platform; de-iced Component trait; gpui backend fixed; RenderQueue moved to Plan 386 |
 | 371 | AutoUI MCP 功能大改进 | ✅ | Agent-driven UI automation via MCP (snapshot/action/state/find/screenshot), path-addressed actions (Task 19), pixel-diff screenshots (Task 20), Rust state snapshot (Task 21), L1 special-case generalization, L3 persistent child-component instances, API PATCH/DELETE + store clone + var-name sanitization, 013-todo multi-component verification (VM+Rust 8/0/0) |
 | 337 | vue-gallery ↔ @auto-ui/widgets 薄同步层 | ✅ | LIBRARY_WIDGETS self-consistency test, AURA drift guard (covers_aura_tag), `auto ui backlog` command, widgets.ts split (generated+meta), `auto ui build --target gallery-stubs` page scaffolding, InstallHint component |
+| 399 | AutoUI 示例 SSE/CRUD 扩展 | ✅ | 017-chat 首个 SSE 实时聊天 App（playwright 9/9）+ Phase 11 a2r 根治（i64/Slice/borrowed_iter/mutated_let）+ Phase 12 typing + Phase 13 混合状态硬检查；路线A 移交 Plan 400；api_gen 后处理兜底登记债务簿 |
+| 404 | 022-kanban 示例升级 | ✅ | CRUD + 列移动 + HTML5 拖拽完整 App，playwright 6/6；修 row/col 属性穿透 bug（push_passthrough_attrs vue.rs:7310） |
+| 407 | a2vue icon/text 表达式 | ✅ | lucide 图标子节点 + text 节点 t() 函数调用表达式（parser.rs:12876 + golden 005/006 + auto-musk 侧回流完成） |
+| 409 | Widgets Gallery 三模式一致性 | ✅ | §1-§10：link 子组件 VM 渲染/主题色/§10 六残留差距全修复（plan409_tests + golden）；CodeBlock/PreviewCard 纯 Auto 化暂缓（登记债务簿） |
 
 ## Status Summary
-- Completed: 19 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 23 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

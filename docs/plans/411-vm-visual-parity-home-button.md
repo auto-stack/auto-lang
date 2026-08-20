@@ -1,5 +1,7 @@
 # Plan 411 — VM 端视觉对齐 vue（Home + Button 页深度对比）
 
+> **状态（2026-08-20 核查）**: 🟡 P0-A/P0-B/P1-A/gap 废弃/pac.at 窗口声明 ✅（2026-08-14 四批，`eace0bd7`）；P1-B toast 与 P2-A 部分（preview-card copy icon/折叠钮）已于 08-15 随 `65a5c489`/`dd6e99ea` 落地（§8.4 待刷新）。**未完成**：P1-C Inter 字体内嵌（ui/ 无字体加载代码）、P2-A① codeblock Rich 高亮对齐 Prism 色板、P2-A④ 表格表头/分隔/padding 细节、P2-B MCP 四项强化（`Button.content` 子树仍未序列化进 vtree，vnode.rs:192 仍 `label: String`——R3 误判根源仍在）。§8.5 gap 兼容分支（vue.rs 3 处 + view_builder 8 处）保留未拆、validator 白名单未加。
+
 > 2026-08-14。对 `examples/widgets-gallery` 同一份 Auto 源码的两种转译产物做
 > 逐区域对比（vue dev server @3024 vs `auto run -r vm` iced 原生窗口 @1400×1050），
 > 聚焦 Home（`/`）与 Button（`/button`）两页。本文登记差距、根因（已用插桩 +
