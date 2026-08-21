@@ -90,4 +90,46 @@
 
 ---
 
+## 5. 补全任务清单（Backlog，2026-08-20 登记）
+
+> 本节把 §1/§2 中**可在本仓落地**的功能遗漏与 workaround 转为可执行任务；每项用独立 worktree + 分支实施（`plan-fix/<id>`），完成即合并 master 并回填状态。
+> 验证方式均为仓库内可跑的命令（cargo test / golden / e2e）；需 GUI 桌面会话或跨仓库协调的项目单列在 §5.3 暂缓。
+
+### 5.1 本轮执行（代码级修复，按优先级）
+
+| ID | 来源 | 任务 | 修复点 | 验证 | 分支 | 状态 |
+|---|---|---|---|---|---|---|
+| A1 | 408 §11 P5-2 | `auto clean` 读 `.am/pac.atom.at` 时 `root` 包裹节点触发 panic | pac.rs targets 循环：拍平 `root` 包裹层；未知 kind 告警跳过（不再 panic） | `cargo test -p auto-man` | plan-fix/408-clean-root | ⬜ |
+| A2 | 400 | `is_thin_delegation` 只认 If/For，while/match 体被误判为薄委托走模板路线B | api_gen.rs:1121 补 `Stmt::While`/`Stmt::Match` 臂 | `cargo test -p auto-man`（新增 while/match 用例） | plan-fix/400-thin-delegation | ⬜ |
+| A3 | 398 §14.1 | parser `[][]T` + sibling-handler rewrite 无回归测试 | parser.rs 测试模块 + handler_codegen.rs tests 模块补用例 | `cargo test -p auto-lang --lib` | plan-fix/398-regression-tests | ⬜ |
+| A4 | 406（潜伏 bug） | GET_ELEM 对 `List<bool>`/`List<Value>::Bool` 压裸 i32 1/0 而非 `encode_bool`，下游 `is_bool` 消费者（to_string/类型检查/EQ 位比较）失效 | engine.rs GET_ELEM 两个分支改 `push_nv(encode_bool(...))` | `run_with_capture` 新增 e2e 测试 | plan-fix/406-getelem-bool | ⬜ |
+| A5 | 346 3c | HTTP 缺重定向（redirect/302）能力 | http_server.rs 新增 `redirect` shim（302/301 + Location） | e2e 模块新增用例 | plan-fix/346-redirect | ⬜ |
+| A6 | 242 #8 | `infer_type_from_expr` 缺 `Expr::Closure` 分支（闭包推断落 Unknown，靠 task-struct 特判绕过） | rust.rs:8342 补 Closure 推断 + golden | `cargo test -p auto-lang --lib a2r` | plan-fix/242-closure-infer | ⬜ |
+| A7 | 366a-3 | `auto test:ui` 一键命令缺失（当前手动 npx playwright / run_autotest.py） | crates/auto 新增 `test:ui` 子命令（委托 playwright） | 手动冒烟 + `cargo build` | plan-fix/366-test-ui | ⬜ |
+| A8 | 403 需求1a | 011-calculator 缺 `tests/desktop_mcp.py` + acceptance 契约（对齐 013/015 范式） | 新增 tests/ 四件套 | 对齐 013 结构 + 手动跑 | plan-fix/403-desktop-mcp | ⬜ |
+
+### 5.2 待立项/需协调（本轮不做）
+
+| ID | 来源 | 任务 | 暂缓原因 |
+|---|---|---|---|
+| B1 | 405 | 023-realworld 真 token 认证（current_user 空桩） | 应用级功能，需 api/db/playwright 联动改造，建议独立小计划 |
+| B2 | 408 §11 P5-4 | 纯 module fn 文件不被 codegen（有 workaround：塞进 widget/store 文件） | 🟢 低优先，方案需先验证 codegen 入口扩展 |
+| B3 | 396 | 五条 a2r 根因修复 + 删 auto-ai sed（§2.1 疑似已被 399 P11.4 覆盖） | 跨仓库验证（auto-ai retranspile + build），先验证 §2.1 再定范围 |
+| B4 | 406 剩余 | JMP_IF pop_i32 魔数、EQ 无 is_bool 臂（清理级，非缺陷） | 待 A4 落地后评估是否仍必要 |
+| B5 | 242 剩余项 | #2 HashMap::from、#10 Redis/SQLite、#15 GPUI、#16 自举、#17 dep cc | 均为大件，独立立项 |
+| B6 | 346 剩余 | 服务端 multipart 上传、Rate Limit、Request-ID | 中低优先级，无下游消费者 |
+| B7 | 243 Phase 5/6 | VSCode TS 迁移、semantic tokens、CI 启用 | 需 VSCode 侧联调 |
+| B8 | 359 | D2 generators 用例、D3 解锁、Phase E 五项、A1/A2 落地页 | 依赖语言特性（Phase E 各 DIV） |
+
+### 5.3 需桌面会话（GUI/实机，无法 headless 补全）
+
+| ID | 来源 | 任务 |
+|---|---|---|
+| G1 | 412 §6.2/§6.3 | Layout gallery 全页双端截图 ≤1px + scroll/Overlay 交互抽验（§9.2/§9.3 验收） |
+| G2 | 413 | IME 实机输入、150% DPI、Linux 复验、TESTING.md 交互清单 |
+| G3 | 402 §13.8 | 扫雷连锁展开/数字显示/胜负实机目视确认 |
+| G4 | 411 | P1-C Inter 字体内嵌、P2-A① Prism 色板、P2-A④ 表格细节、P2-B MCP 四项（含 Button.content vtree 序列化） |
+
+---
+
 *本文档由 2026-08-20 plans 状态审计生成（6 代理代码级核验，基准 master `f21dc88f`）。实际代码进度以仓库为准。*
