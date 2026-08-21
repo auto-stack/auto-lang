@@ -719,11 +719,24 @@ impl VmBridge {
     /// materialization, the MCP snapshot's `for i, note in .store.notes` loop
     /// cannot expand (it sees a VmRef, not an Array), so the note list renders
     /// empty even though the data exists.
+    ///
+    /// Audit B10(a): the compiled `List<T>.new` / `[...]`-literal paths store
+    /// the heap array id as a plain `Value::Int` (Plan 289 convention), which
+    /// the VmRef-only materialization missed — autoui_state rendered 015's
+    /// `notes: 4000014 (int)` instead of the array and desktop_mcp's element
+    /// count assertions went blind. Probe Int values through the same
+    /// `vmref_to_vec` heap lookup; a genuine Int either has no heap object or
+    /// one that isn't a ListData, and stays untouched.
     pub fn read_all_state_materialized(&self) -> HashMap<String, Value> {
         let mut result = self.read_all_state();
         for (_name, val) in result.iter_mut() {
-            if let Value::VmRef(r) = val {
-                if let Ok(elems) = self.vmref_to_vec(r.id) {
+            let handle = match val {
+                Value::VmRef(r) => Some(r.id),
+                Value::Int(id) => Some(*id as usize),
+                _ => None,
+            };
+            if let Some(id) = handle {
+                if let Ok(elems) = self.vmref_to_vec(id) {
                     *val = Value::Array(auto_val::Array { values: elems });
                 }
             }
@@ -1319,6 +1332,7 @@ mod tests {
         assert_eq!(bridge.widget_name(), "EmptyWidget");
         assert!(bridge.state_fields().is_empty());
         assert!(bridge.handler_names().is_empty());
+
     }
 
     #[test]
@@ -1497,6 +1511,47 @@ mod tests {
         assert_eq!(state.get("x"), Some(&Value::Int(1)));
         assert_eq!(state.get("y"), Some(&Value::Int(2)));
         assert_eq!(state.get("name"), Some(&Value::str("test")));
+    }
+
+    /// Audit B10(a): compiled `List<T>.new` / `[...]`-literal state fields hold
+    /// the heap array id as a plain `Value::Int` (Plan 289 convention).
+    /// read_all_state_materialized must inline them as `Value::Array` —
+    /// previously only `Value::VmRef` fields were materialized, so
+    /// autoui_state rendered 015's notes as `notes: 4000014 (int)` and
+    /// desktop_mcp's element-count assertions went blind.
+    #[test]
+    fn test_read_all_state_materializes_int_handle_list() {
+        let widget = make_test_widget("Store", vec![
+            AuraStateDef {
+                name: "notes".to_string(),
+                type_info: Type::Unknown,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(7),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let arr_id = bridge.vm.insert_heap_object(
+            crate::vm::types::ListData::<Value> {
+                elems: vec![Value::Int(1), Value::Int(2)],
+                storage: None,
+            },
+        );
+        bridge.write_state("notes", Value::Int(arr_id as i32)).unwrap();
+
+        let state = bridge.read_all_state_materialized();
+        assert_eq!(
+            state.get("notes"),
+            Some(&Value::Array(auto_val::Array { values: vec![Value::Int(1), Value::Int(2)] })),
+            "Int-held list handle should materialize to an inline array"
+        );
+        // A genuine Int with no ListData behind it must stay untouched.
+        assert_eq!(state.get("count"), Some(&Value::Int(7)));
     }
 
     #[test]
