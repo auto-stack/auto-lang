@@ -1482,11 +1482,12 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
 
 /// Plan 335: 把 ListData<Value> 里取出的 `Value` 推回 VM 栈（nanbox 编码）。
 /// 用于 get/pop/remove 等 struct List 元素访问的返回值。
-/// VmRef → encode_object；Str → 新增 string pool 条目；Int/Bool → i32。
+/// VmRef → encode_object；Str → 新增 string pool 条目；Int → i32；
+/// Bool → encode_bool（Plan 406：裸 1/0 会让 is_bool 消费者失效）。
 fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
     match val {
         auto_val::Value::Int(i) => task.ram.push_i32(*i),
-        auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+        auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
         auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
         auto_val::Value::Str(s) => {
             let mut strings = vm.strings.write().unwrap();

@@ -854,3 +854,85 @@ fn test_list_filter_direct_via_spec() {
     assert!(result.contains("4"), "Second even should be 4, got: {}", result);
     assert!(result.contains("nil"), "Done should be nil");
 }
+
+// ============================================================================
+// Plan 406 audit fix: GET_ELEM must return tagged bools for List<bool>
+// ============================================================================
+
+/// `[true, false][0].to_string()` must yield "true". Note: VM print renders a
+/// bool tag as "1"/"0" by design (shim_print_unified), but to_string routes
+/// through the is_bool arm (Plan 403-F Bug D) and yields "true"/"false" —
+/// with the old raw 1/0 push it took the int path and yielded "1"/"0".
+#[test]
+fn test_bool_list_element_to_string_true() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    let s = flags[0].to_string()
+    print(s)
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(
+        s.trim().contains("true"),
+        "flags[0].to_string() should be 'true', got stdout={:?} result={:?}",
+        s, r
+    );
+}
+
+#[test]
+fn test_bool_list_element_to_string_false() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    let s = flags[1].to_string()
+    print(s)
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(
+        s.trim().contains("false"),
+        "flags[1].to_string() should be 'false', got stdout={:?} result={:?}",
+        s, r
+    );
+}
+
+/// Equality against a bool literal: `flags[0] == true` — EQ compares nanbox
+/// bits, so a raw 1 element would compare unequal to tagged `true`.
+#[test]
+fn test_bool_list_element_equality_with_literal() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    if flags[0] == true {
+        print("eq-true")
+    }
+    if flags[1] == false {
+        print("eq-false")
+    }
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(s.contains("eq-true"), "stdout={:?} result={:?}", s, r);
+    assert!(s.contains("eq-false"), "stdout={:?} result={:?}", s, r);
+}
+
+/// `if flags[0]` control flow keeps working with tagged bools
+/// (JMP_IF magic-value handling, Plan 091).
+#[test]
+fn test_bool_list_element_in_if_condition() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    if flags[0] {
+        print("taken")
+    }
+    if flags[1] {
+        print("not-taken")
+    }
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(s.contains("taken"), "stdout={:?} result={:?}", s, r);
+    assert!(!s.contains("not-taken"), "stdout={:?} result={:?}", s, r);
+}
