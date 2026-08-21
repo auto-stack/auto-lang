@@ -1064,6 +1064,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.response_html", 2214, Void),
             ("auto.http.response_bytes", 2215, Void),
             ("auto.http.response_redirect", 3108, Void),
+            // Plan 346 5e (B6): Rate limiting
+            ("auto.http.rate_limit", 3109, Void),
+            ("http.rate_limit", 3109, Void),
             // Plan 346: Redirect
             ("auto.http.response.redirect", 2219, Void),
             ("http.response.redirect", 2219, Void),
@@ -1842,6 +1845,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.response_html", 2214),
     ("auto.http.response_bytes", 2215),
     ("auto.http.response_redirect", 3108),
+    ("auto.http.rate_limit", 3109),
+    ("http.rate_limit", 3109),
     ("auto.http.response.redirect", 2219),
     ("http.response.redirect", 2219),
     ("auto.session.create", 2284),

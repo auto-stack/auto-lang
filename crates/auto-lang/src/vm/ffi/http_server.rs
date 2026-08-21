@@ -116,7 +116,83 @@ pub(crate) fn cors_headers() -> String {
     )
 }
 
-/// Plan 346 3c: reason phrase for common status codes (redirect focus).
+/// Plan 346 B6: process-wide rate limiter (fixed window per client IP) and
+/// request-id minting for `handle_connection_async`.
+
+/// Plan 346 5e (B6): active rate-limit config `(max_requests, window_ms)`.
+/// `None` (default) = no limiting — backwards compatible until
+/// `http.rate_limit(n, ms)` is called.
+static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> =
+    std::sync::Mutex::new(None);
+/// Plan 346 5e (B6): per-IP fixed-window buckets `ip -> (window_start_ms, count)`.
+static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u32)>>> =
+    std::sync::Mutex::new(None);
+/// Plan 346 #12 (B6): request-id counter for minted ids (incoming ids pass
+/// through unchanged).
+static REQ_ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Plan 346 5e (B6): enable per-IP fixed-window rate limiting.
+/// Called by the `http.rate_limit(max_requests, window_ms)` native.
+pub fn set_rate_limit(max_requests: u32, window_ms: u64) {
+    if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
+        *cfg = if max_requests == 0 { None } else { Some((max_requests, window_ms.max(1))) };
+    }
+}
+
+/// Plan 346 5e (B6): reset config + buckets. Called from `clear_http_routes`
+/// so each e2e test starts unthrottled (same-process tests share 127.0.0.1).
+pub fn clear_rate_limit() {
+    if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
+        *cfg = None;
+    }
+    if let Ok(mut buckets) = RATE_BUCKETS.lock() {
+        *buckets = None;
+    }
+}
+
+/// Plan 346 5e (B6): consume one request slot for `ip`.
+/// Returns `Some(retry_after_ms)` when the request exceeds the window quota
+/// (and must be rejected with 429), `None` when allowed.
+fn rate_limit_take(ip: &str) -> Option<u64> {
+    let cfg = RATE_LIMIT_CFG.lock().ok()?.clone()?;
+    let (max, window_ms) = cfg;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut guard = RATE_BUCKETS.lock().ok()?;
+    let buckets = guard.get_or_insert_with(std::collections::HashMap::new);
+    let entry = buckets.entry(ip.to_string()).or_insert((now_ms, 0));
+    if now_ms.saturating_sub(entry.0) >= window_ms {
+        *entry = (now_ms, 0);
+    }
+    entry.1 += 1;
+    if entry.1 > max {
+        let retry_after = window_ms.saturating_sub(now_ms.saturating_sub(entry.0));
+        Some(retry_after.max(1))
+    } else {
+        None
+    }
+}
+
+/// Plan 346 #12 (B6): mint a request id (`req-<unix_ms>-<counter>-<hex>`),
+/// used only when the client did not supply `X-Request-Id`.
+fn gen_request_id() -> String {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let n = REQ_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    format!("req-{:x}-{:x}", now_ms, n)
+}
+
+/// Plan 346 #12 (B6): response-header block carrying the request id
+/// (CRLF-terminated), appended next to `cors_headers()` on every response.
+fn request_id_header(request_id: &str) -> String {
+    format!("X-Request-Id: {}\r\n", request_id)
+}
+
+/// Plan 349 步骤 7/8 (W5): reason phrase for common status codes (redirect focus).
 fn http_status_reason(code: u16) -> &'static str {
     match code {
         200 => "OK",
@@ -146,6 +222,7 @@ async fn write_http_response_object(
     req_method: &str,
     req_path: &str,
     elapsed_ms: u128,
+    request_id: &str,
 ) {
     use tokio::io::AsyncWriteExt;
     let (status, headers, body) = res;
@@ -162,6 +239,7 @@ async fn write_http_response_object(
         head.push_str("\r\n");
     }
     head.push_str(&cors_headers());
+    head.push_str(&request_id_header(request_id));
     head.push_str("\r\n");
     let _ = stream.write_all(head.as_bytes()).await;
     if !body.is_empty() {
@@ -169,8 +247,8 @@ async fn write_http_response_object(
     }
     let _ = stream.flush().await;
     eprintln!(
-        "[HTTP] {} {} → {} ({}ms)",
-        req_method, req_path, status, elapsed_ms
+        "[HTTP] {} {} [{}] → {} ({}ms)",
+        req_method, req_path, request_id, status, elapsed_ms
     );
 }
 
@@ -710,6 +788,30 @@ mod plan326_tests {
             resp
         }
 
+        /// Plan 346 B6: GET with extra request headers (e.g. X-Request-Id
+        /// passthrough test).
+        fn http_get_with_headers(port: u16, path: &str, headers: &[(&str, &str)]) -> String {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("could not connect to test HTTP server");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+            let mut req = format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n", path);
+            for (k, v) in headers {
+                req.push_str(&format!("{}: {}\r\n", k, v));
+            }
+            req.push_str("\r\n");
+            write!(stream, "{}", req).unwrap();
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).ok();
+            resp
+        }
+
         /// Extract the body (after the blank line) from a raw HTTP response.
         fn body_of(resp: &str) -> &str {
             resp.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(resp)
@@ -923,6 +1025,98 @@ fn new_handler() str {
                 body_of(&follow).contains("arrived"),
                 "follow target should serve body, got: {:?}",
                 follow
+            );
+        }
+
+        /// Plan 346 #12 (B6): every response carries X-Request-Id — minted
+        /// (`req-<ms>-<n>`) when the client sends none.
+        #[test]
+        fn e2e_b6_request_id_generated_and_echoed() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/rid")]
+fn rid() int {
+    return 7
+}
+"#, 18741);
+            let resp = http_get(port, "/api/rid");
+            assert!(
+                resp.contains("X-Request-Id: req-"),
+                "minted request id header expected, got: {:?}",
+                resp
+            );
+            // 404 responses carry it too.
+            let not_found = http_get(port, "/api/nope");
+            assert!(
+                not_found.contains("X-Request-Id: req-"),
+                "404 should carry request id, got: {:?}",
+                not_found
+            );
+        }
+
+        /// Plan 346 #12 (B6): an incoming X-Request-Id passes through verbatim
+        /// (trace propagation).
+        #[test]
+        fn e2e_b6_request_id_incoming_passthrough() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/rid2")]
+fn rid2() int {
+    return 8
+}
+"#, 18742);
+            let resp = http_get_with_headers(
+                port,
+                "/api/rid2",
+                &[("X-Request-Id", "my-trace-42")],
+            );
+            assert!(
+                resp.contains("X-Request-Id: my-trace-42"),
+                "incoming request id should be echoed verbatim, got: {:?}",
+                resp
+            );
+            assert!(
+                !resp.contains("X-Request-Id: req-"),
+                "minted id should not override the incoming one, got: {:?}",
+                resp
+            );
+        }
+
+        /// Plan 346 5e (B6): http.rate_limit(2, 60000) — the third request
+        /// from the same IP gets 429 + Retry-After. start_server resets the
+        /// limiter via clear_http_routes, so this test cannot poison others.
+        #[test]
+        fn e2e_zz_rate_limit_429_after_quota() {
+            let port = start_server(r#"
+http.rate_limit(2, 60000)
+
+#[api(method = "GET", path = "/api/rl")]
+fn rl() int {
+    return 1
+}
+"#, 18743);
+            let first = http_get(port, "/api/rl");
+            let second = http_get(port, "/api/rl");
+            assert!(first.starts_with("HTTP/1.1 200"), "first should pass, got: {:?}", first);
+            assert!(second.starts_with("HTTP/1.1 200"), "second should pass, got: {:?}", second);
+            let third = http_get(port, "/api/rl");
+            assert!(
+                third.starts_with("HTTP/1.1 429"),
+                "third request should be rate limited, got: {:?}",
+                third
+            );
+            assert!(
+                third.to_lowercase().contains("retry-after:"),
+                "429 should carry Retry-After, got: {:?}",
+                third
+            );
+            assert!(
+                body_of(&third).contains("rate limit exceeded"),
+                "429 body should explain, got: {:?}",
+                third
+            );
+            assert!(
+                third.contains("X-Request-Id: "),
+                "429 should carry the request id, got: {:?}",
+                third
             );
         }
 
@@ -1338,6 +1532,7 @@ async fn handle_connection_async(
     let mut content_type = String::new();
     let mut cookie_header = String::new();
     let mut auth_header = String::new();
+    let mut incoming_request_id = String::new();
     for line in lines {
         if !header_done {
             if line.is_empty() {
@@ -1369,16 +1564,53 @@ async fn handle_connection_async(
             if lower.starts_with("authorization:") {
                 auth_header = line[14..].trim().to_string();
             }
+            // Plan 346 #12 (B6): honor an incoming X-Request-Id (trace
+            // propagation); otherwise mint one below.
+            if lower.starts_with("x-request-id:") {
+                incoming_request_id = line[14..].trim().to_string();
+            }
         } else if body.len() < content_length {
             body.push_str(line);
         }
+    }
+
+    // Plan 346 B6: resolve this request's id (incoming value wins, else mint).
+    // Present on every response as X-Request-Id and in the middleware
+    // request-info JSON, so logs/middleware/handler share one trace id.
+    let request_id = if incoming_request_id.is_empty() {
+        gen_request_id()
+    } else {
+        incoming_request_id
+    };
+
+    // Plan 346 5e (B6): per-IP fixed-window rate limit — checked after the
+    // CORS preflight short-circuit (preflights stay free) but before the
+    // middleware chain and route matching. 429 carries Retry-After + the
+    // request id.
+    let client_ip = stream
+        .peer_addr()
+        .map(|a| a.ip().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    if let Some(retry_after_ms) = rate_limit_take(&client_ip) {
+        let body = format!("{{\"error\":\"rate limit exceeded\",\"retry_after_ms\":{}}}", retry_after_ms);
+        let resp = format!(
+            "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
+            (retry_after_ms + 999) / 1000,
+            body.len(),
+            cors_headers(),
+            request_id_header(&request_id),
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes()).await;
+        eprintln!("[HTTP] {} {} [{}] → 429 rate limited (ip {})", req_method, req_path, request_id, client_ip);
+        return;
     }
 
     // Route match
     let route_match = match match_route(routes, &req_method, &req_path) {
         Some(rm) => rm,
         None => {
-            let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
+            let resp = format!("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n{}{}\r\n", cors_headers(), request_id_header(&request_id));
             let _ = stream.write_all(resp.as_bytes()).await;
             return;
         }
@@ -1496,9 +1728,11 @@ async fn handle_connection_async(
     // Each middleware is a VM fn that receives a request-info JSON string.
     // If it returns a non-empty/non-null value, that becomes the response
     // (short-circuit). If it returns nil/empty, the handler runs normally.
+    // Plan 346 #12 (B6): request_id is part of the request-info payload so
+    // middleware (logging/auth) can correlate with the X-Request-Id header.
     let request_info = format!(
-        r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{}}}"#,
-        req_method, req_path, content_type, !body.is_empty()
+        r#"{{"method":"{}","path":"{}","content_type":"{}","has_body":{},"request_id":"{}"}}"#,
+        req_method, req_path, content_type, !body.is_empty(), request_id
     );
     let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
         .lock().map(|c| c.clone()).unwrap_or_default();
@@ -1538,10 +1772,10 @@ async fn handle_connection_async(
     }
     if let Some(ref mw_resp) = middleware_response {
         // Middleware short-circuited — return its response directly.
-        eprintln!("[HTTP] {} {} → MW ({}ms)", req_method, req_path, 0);
+        eprintln!("[HTTP] {} {} [{}] → MW ({}ms)", req_method, req_path, request_id, 0);
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-            mw_resp.len(), cors_headers(), mw_resp
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
+            mw_resp.len(), cors_headers(), request_id_header(&request_id), mw_resp
         );
         let _ = stream.write_all(response.as_bytes()).await;
         return;
@@ -1615,6 +1849,7 @@ async fn handle_connection_async(
                             &req_method,
                             &req_path,
                             request_start.elapsed().as_millis(),
+                            &request_id,
                         )
                         .await;
                         drop(ht);
@@ -1636,6 +1871,7 @@ async fn handle_connection_async(
                                 &req_method,
                                 &req_path,
                                 request_start.elapsed().as_millis(),
+                                &request_id,
                             )
                             .await;
                             drop(ht);
@@ -1672,12 +1908,12 @@ async fn handle_connection_async(
         let status = if is_error { "500 Internal Server Error" } else { "200 OK" };
         // Log successful request (non-SSE, non-error already logged above).
         if !is_error {
-            eprintln!("[HTTP] {} {} → 200 ({}ms)",
-                req_method, req_path, request_start.elapsed().as_millis());
+            eprintln!("[HTTP] {} {} [{}] → 200 ({}ms)",
+                req_method, req_path, request_id, request_start.elapsed().as_millis());
         }
         let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-            status, result_json.len(), cors_headers(), result_json
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}{}\r\n{}",
+            status, result_json.len(), cors_headers(), request_id_header(&request_id), result_json
         );
         let _ = stream.write_all(response.as_bytes()).await;
     }

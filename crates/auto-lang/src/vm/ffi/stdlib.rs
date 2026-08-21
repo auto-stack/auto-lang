@@ -2659,6 +2659,10 @@ pub fn clear_http_routes() {
     if let Ok(mut table) = HTTP_ROUTES.lock() {
         table.clear();
     }
+    // Plan 346 5e (B6): also reset the per-IP rate limiter — e2e tests share
+    // 127.0.0.1, so a previous test's http.rate_limit(2, 60000) would 429
+    // every later test in the same process.
+    super::http_server::clear_rate_limit();
 }
 
 // Thread-local storage for TCP listeners
@@ -3679,6 +3683,18 @@ pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, 
             .get(&handle)
             .map(|res| (res.status, res.headers.clone(), res.body.clone()))
     })
+}
+
+/// Plan 346 5e (B6): `http.rate_limit(max_requests, window_ms)` — enable the
+/// per-client-IP fixed-window rate limiter on the async HTTP server.
+/// Requests beyond `max_requests` within `window_ms` get 429 + Retry-After.
+/// `max_requests = 0` disables limiting again.
+pub fn shim_http_rate_limit(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let window_ms: i32 = task.ram.pop_i32();
+    let max_requests: i32 = task.ram.pop_i32();
+    super::http_server::set_rate_limit(max_requests.max(0) as u32, window_ms.max(0) as u64);
+    task.ram.push_i32(0);
+    Ok(())
 }
 
 // ============================================================================
@@ -6612,6 +6628,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.response.redirect", shim_http_response_redirect);
     natives.register_shim_by_name("auto.http.response_redirect", shim_http_response_redirect);
     natives.register_shim_by_name("http.response.redirect", shim_http_response_redirect);
+    // Plan 346 5e (B6): Rate limiting
+    natives.register_shim_by_name("auto.http.rate_limit", shim_http_rate_limit);
+    natives.register_shim_by_name("http.rate_limit", shim_http_rate_limit);
     // Plan 352: Session management
     natives.register_shim_by_name("auto.session.create", shim_session_create);
     natives.register_shim_by_name("session.create", shim_session_create);
