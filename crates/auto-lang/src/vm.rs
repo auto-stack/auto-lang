@@ -60,6 +60,9 @@ pub mod virt_memory;
 // Plan 091: Extracted from universe.rs
 pub mod object_data;
 
+// Plan 413 follow-up: in-app console ring buffer (print/console_log sink)
+pub mod ui_console;
+
 // Plan 094: Hybrid FFI Bridge
 pub mod ffi;
 

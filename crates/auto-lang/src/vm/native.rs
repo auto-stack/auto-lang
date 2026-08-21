@@ -545,6 +545,9 @@ fn vm_print(vm: &AutoVM, s: &str) {
     } else {
         println!("{}", s);
     }
+    // Mirror into the in-app console ring buffer (041 Console panel); the
+    // capped buffer makes this cheap enough for non-UI CLI runs too.
+    crate::vm::ui_console::ui_console_push(s);
 }
 
 /// Helper for write() — same as vm_print but without trailing newline
@@ -713,6 +716,33 @@ pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         0
     };
     task.ram.push_i32(code);
+    Ok(())
+}
+
+// ── Plan 413 follow-up: console natives (in-app Console panel) ──────────
+// Backed by the process-wide ring buffer in vm::ui_console (also fed by
+// vm_print, so plain `print()` lines show up in the panel too).
+
+/// `console_log(msg) -> Bool` — append one line to the console buffer.
+pub fn shim_console_log(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg = pop_string_arg(task, vm);
+    crate::vm::ui_console::ui_console_push(&msg);
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `console_lines() -> String` — newest-first snapshot for panel display.
+pub fn shim_console_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text = crate::vm::ui_console::ui_console_lines(crate::vm::ui_console::DEFAULT_LINES);
+    let idx = vm.add_string(text.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
+/// `console_clear() -> Bool` — drop all console lines.
+pub fn shim_console_clear(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    crate::vm::ui_console::ui_console_clear();
+    task.ram.push_nv(auto_val::encode_bool(true));
     Ok(())
 }
 
@@ -7382,6 +7412,43 @@ print(t2)
             let err = crate::run(r#"let x = code_editor_text("__code_editor_no-such")"#);
             assert!(err.is_err());
         }
+    }
+
+    // ── Plan 413 follow-up: console natives (in-app Console panel) ──────
+    #[test]
+    fn vm_console_natives_end_to_end() {
+        crate::vm::ui_console::ui_console_clear();
+        // Script-level native calls through the full Codegen → VM → shim
+        // pipeline; plain `print()` must mirror into the ring buffer too.
+        let (_result, out) = crate::run_with_capture(
+            r#"
+print("from-print")
+let ok = console_log("from-console-log")
+print(ok)
+let panel = console_lines()
+print(panel)
+let n = 2
+let m = "edit #" + n.str()
+print(m)
+"#,
+        )
+        .unwrap();
+        // Newest-first: the console_log line precedes the mirrored print.
+        let snapshot = crate::vm::ui_console::ui_console_lines(10);
+        let log_pos = snapshot.find("from-console-log").expect("console_log line");
+        let print_pos = snapshot.find("from-print").expect("mirrored print line");
+        assert!(log_pos < print_pos, "newest first: {snapshot}");
+        // console_lines() delivered the snapshot back into the script.
+        assert!(out.contains("from-console-log"), "panel roundtrip: {out}");
+        // int→str + concat composes with the natives (041 logs use it —
+        // f-strings do NOT interpolate in VM expressions, verified above).
+        assert!(out.contains("edit #2"), "concat: {out}");
+        // clear() empties the ring buffer (other tests may print in parallel,
+        // so assert on our markers rather than strict emptiness).
+        crate::run_with_capture("let c = console_clear()").unwrap();
+        let after = crate::vm::ui_console::ui_console_lines(50);
+        assert!(!after.contains("from-console-log"), "cleared: {after}");
+        assert!(!after.contains("from-print"), "cleared: {after}");
     }
 
     #[test]

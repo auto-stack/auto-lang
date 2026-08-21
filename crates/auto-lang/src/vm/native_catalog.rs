@@ -29,6 +29,10 @@ macro_rules! for_each_native {
             (2913, NATIVE_CODE_EDITOR_SELECTION_LEN, shim_code_editor_selection_len, "auto.code_editor.selection_len"),
             (2914, NATIVE_CODE_EDITOR_FIND, shim_code_editor_find, "auto.code_editor.find"),
             (2915, NATIVE_CODE_EDITOR_SET_TEXT, shim_code_editor_set_text, "auto.code_editor.set_text"),
+            // === Plan 413 follow-up: console natives (in-app Console panel) ===
+            (2916, NATIVE_CONSOLE_LOG, shim_console_log, "auto.console.log"),
+            (2917, NATIVE_CONSOLE_LINES, shim_console_lines, "auto.console.lines"),
+            (2918, NATIVE_CONSOLE_CLEAR, shim_console_clear, "auto.console.clear"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),
             (6, NATIVE_ASSERT_NE, shim_assert_ne, "auto.assert_ne"),
@@ -606,6 +610,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.code_editor.selection_len", 2913, Int),
             ("auto.code_editor.find", 2914, Bool),
             ("auto.code_editor.set_text", 2915, Void),
+            // === Plan 413 follow-up: console natives (in-app Console panel) ===
+            ("auto.console.log", 2916, Bool),
+            ("auto.console.lines", 2917, String),
+            ("auto.console.clear", 2918, Bool),
 
             ("auto.list.new", 100, Void),
             ("auto.list.push", 101, Void),

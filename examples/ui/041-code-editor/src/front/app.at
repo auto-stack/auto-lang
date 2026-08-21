@@ -2,27 +2,109 @@ widget App {
     model {
         var source str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
         var wrap bool = false
-        var echo str = ""
         var edits int = 0
+        var line int = 1
+        var col int = 0
+        var sel int = 0
+        var console_open bool = false
+        var console str = ""
     }
 
     view {
-        col {
+        col (style: "h-full w-full") {
             code_editor (key: "playground", lang: "auto", wrap: .wrap, style: "flex-1 w-full") {
                 content: .source
                 oninput: .SourceChanged
+                oncursor: .CursorMoved
             }
-            text "edits: ${.edits}"
-            text "echo: ${.echo}"
-            text "中文字体测试：你好世界 □对照"
-            style: "p-3 gap-2 h-full"
+
+            if .console_open {
+                col (style: "w-full shrink-0") {
+                    col (style: "h-px w-full bg-border")
+                    row (style: "h-7 items-center bg-muted/30 shrink-0") {
+                        text "CONSOLE" {
+                            style: "text-[11px] font-bold text-zinc-400 px-2 font-mono"
+                        }
+                        button (text: "Clear") {
+                            onclick: .ConsoleClear
+                            style: "text-[11px] h-5 px-2"
+                        }
+                        text "edits: ${.edits}" {
+                            style: "text-[11px] text-zinc-500 px-2 font-mono ml-auto"
+                        }
+                    }
+                    scroll (style: "h-40 w-full bg-muted/10 shrink-0") {
+                        col (style: "p-2") {
+                            text .console {
+                                style: "text-xs font-mono text-zinc-300"
+                            }
+                        }
+                    }
+                }
+            }
+
+            col (style: "h-px w-full bg-border")
+            row (style: "h-6 items-center bg-card shrink-0 w-full") {
+                text "Auto" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
+                text "UTF-8" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
+                text "Spaces: 4" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
+
+                text "Ln ${.line}, Col ${.col}" {
+                    style: "text-[11px] text-zinc-300 px-2 font-mono ml-auto"
+                }
+                if .sel > 0 {
+                    text "Sel ${.sel}" { style: "text-[11px] text-zinc-300 px-2 font-mono" }
+                }
+                if .wrap == false {
+                    button (text: "Wrap: Off") {
+                        onclick: .ToggleWrap
+                        style: "text-[11px] h-5 px-2"
+                    }
+                }
+                if .wrap == true {
+                    button (text: "Wrap: On") {
+                        onclick: .ToggleWrap
+                        style: "text-[11px] h-5 px-2"
+                    }
+                }
+                if .console_open == false {
+                    button (text: "Console") {
+                        onclick: .ConsoleToggle
+                        style: "text-[11px] h-5 px-2"
+                    }
+                }
+                if .console_open == true {
+                    button (text: "Console") {
+                        onclick: .ConsoleToggle
+                        style: "text-[11px] h-5 px-2"
+                    }
+                }
+            }
         }
     }
 
     on {
         .SourceChanged -> {
-            .echo = code_editor_text("playground")
             .edits = .edits + 1
+            console_log("edit #" + .edits.str())
+            .console = console_lines()
+        }
+        .CursorMoved -> {
+            .line = code_editor_cursor_line("playground") + 1
+            .col = code_editor_cursor_col("playground")
+            .sel = code_editor_selection_len("playground")
+            .console = console_lines()
+        }
+        .ToggleWrap -> {
+            .wrap = !.wrap
+        }
+        .ConsoleToggle -> {
+            .console_open = !.console_open
+            .console = console_lines()
+        }
+        .ConsoleClear -> {
+            console_clear()
+            .console = ""
         }
     }
 }
