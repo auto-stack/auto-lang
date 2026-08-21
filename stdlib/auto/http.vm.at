@@ -92,6 +92,9 @@ fn response_html(res Response, body str) Response
 #[vm]
 fn response_bytes(res Response, data []byte) Response
 
+#[vm]
+fn response_redirect(url str, code int) Response
+
 // ═══════════════════════════════════════════════════════════
 // Quick Response Helpers
 // ═══════════════════════════════════════════════════════════
