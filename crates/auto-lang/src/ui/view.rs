@@ -290,6 +290,10 @@ pub enum View<M: Clone + Debug> {
         /// "ctrl.r"…)→ handler。VM 端经 iced key_binding 以 Binding::Custom
         /// 拦截派发(iced 默认静默丢弃 Tab);空 = 无绑定走默认。
         keydown: std::collections::HashMap<String, M>,
+        /// Plan 057 续(行内编辑 keymap):编辑模式名("emacs"|"vi-insert"|
+        /// "vi-normal")。VM 端据此选渲染层行编辑键位表(纯编辑键在渲染层
+        /// 直接翻译为 iced 原生动作,不进 .at);Vue 端浏览器原生支持,忽略。
+        keymap: String,
     },
 
     /// Plan 413: 代码编辑器(语法高亮/行号/软换行/搜索/vi/undo/IME)。
@@ -996,6 +1000,7 @@ impl<M: Clone + Debug> View<M> {
             highlight: Vec::new(),
             ghost: String::new(),
             keydown: std::collections::HashMap::new(),
+            keymap: String::new(),
         }
     }
 
@@ -1324,7 +1329,7 @@ impl<M: Clone + Debug> View<M> {
                 password,
                 style,
             },
-            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown } => View::Textarea {
+            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown, keymap } => View::Textarea {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
@@ -1334,6 +1339,7 @@ impl<M: Clone + Debug> View<M> {
                 highlight,
                 ghost,
                 keydown: keydown.into_iter().map(|(k, m)| (k, f(m))).collect(),
+                    keymap,
             },
             View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => View::CodeEditor {
                 key,
@@ -1680,6 +1686,8 @@ pub struct ViewTextareaBuilder<M: Clone + Debug> {
     ghost: String,
     /// Plan 057 续(Tab 补全):onkeydown 绑定。
     keydown: std::collections::HashMap<String, M>,
+    /// Plan 057 续(行内编辑 keymap):编辑模式名。
+    keymap: String,
 }
 
 impl<M: Clone + Debug> ViewTextareaBuilder<M> {
@@ -1719,6 +1727,13 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
     /// Plan 057 续(Tab 补全):设置 onkeydown 绑定(规范化键名 → handler)。
     pub fn keydown(mut self, bindings: std::collections::HashMap<String, M>) -> Self {
         self.keydown = bindings;
+        self
+    }
+
+    /// Plan 057 续(行内编辑 keymap):设置编辑模式("emacs"|"vi-insert"|
+    /// "vi-normal")。VM 端选择渲染层键位表;缺省 "emacs"。
+    pub fn keymap(mut self, keymap: impl Into<String>) -> Self {
+        self.keymap = keymap.into();
         self
     }
 
@@ -1793,6 +1808,7 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
             highlight: self.highlight,
             ghost: self.ghost,
             keydown: self.keydown,
+            keymap: self.keymap,
         }
     }
 }
