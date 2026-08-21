@@ -25,9 +25,11 @@ use crate::ui::code_editor::theme::{current_theme, CodeEditorTheme, Rgba};
 
 /// Padding between gutter digits and the text area.
 pub const GUTTER_PAD: f32 = 6.0;
-/// Width of the fold-tool column between the numbers and the text area
-/// (Plan 414 §5 Phase A: chevrons on block-opener lines).
-pub const FOLD_GUTTER_W: f32 = 14.0;
+/// Width of the fold-tool column between the numbers and the text area.
+/// 19 = 6px pad + 7px chevron + 6px pad — the same 6px that pads the
+/// numbers' right edge and the text area's left edge, so the three
+/// columns read as evenly spaced (Plan 414 §5.3).
+pub const FOLD_GUTTER_W: f32 = 19.0;
 /// Caret width in logical px.
 pub const CARET_WIDTH: f32 = 2.0;
 

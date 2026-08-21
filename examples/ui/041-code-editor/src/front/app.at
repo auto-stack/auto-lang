@@ -1,6 +1,7 @@
 widget App {
     model {
         var tab int = 0
+        var menu_open str = ""
         var src_main str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
         var src_util str = "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"
         var edits int = 0
@@ -13,11 +14,135 @@ widget App {
 
     view {
         col (style: "h-full w-full") {
+            row (style: "h-7 items-center bg-muted/30 shrink-0 w-full gap-0") {
+                button (text: "文件", variant: "text") {
+                    onclick: .MenuToggle("file")
+                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                }
+                button (text: "编辑", variant: "text") {
+                    onclick: .MenuToggle("edit")
+                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                }
+                button (text: "视图", variant: "text") {
+                    onclick: .MenuToggle("view")
+                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                }
+                button (text: "帮助", variant: "text") {
+                    onclick: .MenuToggle("help")
+                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                }
+                text "auto-edit" { style: "text-[11px] text-zinc-600 ml-auto pr-2" }
+            }
+            if .menu_open == "file" {
+                col (style: "w-44 py-1 bg-card shrink-0") {
+                    button (text: "新建    Ctrl+N", variant: "text") { onclick: .MenuPick("文件>新建")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "打开…  Ctrl+O", variant: "text") { onclick: .MenuPick("文件>打开")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "保存    Ctrl+S", variant: "text") { onclick: .MenuPick("文件>保存")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "退出    Alt+F4", variant: "text") { onclick: .MenuPick("文件>退出")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                }
+            }
+            if .menu_open == "edit" {
+                col (style: "w-44 py-1 bg-card shrink-0") {
+                    button (text: "撤销    Ctrl+Z", variant: "text") { onclick: .MenuPick("编辑>撤销")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "重做    Ctrl+Y", variant: "text") { onclick: .MenuPick("编辑>重做")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "剪切    Ctrl+X", variant: "text") { onclick: .MenuPick("编辑>剪切")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "复制    Ctrl+C", variant: "text") { onclick: .MenuPick("编辑>复制")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "全选    Ctrl+A", variant: "text") { onclick: .MenuPick("编辑>全选")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                }
+            }
+            if .menu_open == "view" {
+                col (style: "w-44 py-1 bg-card shrink-0") {
+                    button (text: "切换 Console", variant: "text") { onclick: .MenuPick("视图>Console")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                    button (text: "切换 Tab", variant: "text") { onclick: .MenuPick("视图>切换Tab")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                }
+            }
+            if .menu_open == "help" {
+                col (style: "w-44 py-1 bg-card shrink-0") {
+                    button (text: "关于 auto-edit", variant: "text") { onclick: .MenuPick("帮助>关于")
+                        style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
+                    }
+                }
+            }
+
+            row (style: "h-9 items-center bg-card shrink-0 w-full gap-1 px-2") {
+                button (variant: "text") { icon (name: "file-plus"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>新建")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") { icon (name: "folder-open"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>打开")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") { icon (name: "save"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>保存")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                col (style: "w-px h-5 bg-border mx-1")
+                button (variant: "text") { icon (name: "undo-2"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>撤销")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") { icon (name: "redo-2"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>重做")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                col (style: "w-px h-5 bg-border mx-1")
+                button (variant: "text") { icon (name: "scissors"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>剪切")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") { icon (name: "copy"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>复制")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") { icon (name: "clipboard"
+                    style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .MenuPick("工具>粘贴")
+                    style: "h-7 w-8 px-0 py-0"
+                }
+            }
+
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
                 if .tab == 0 {
-                    button (text: "main.at", variant: "text") {
-                        onclick: .TabMain
-                        style: "h-8 px-3 text-[12px] text-zinc-200 bg-card font-medium"
+                    row (style: "items-center bg-[#1C1D24]") {
+                        button (text: "main.at", variant: "text") {
+                            onclick: .TabMain
+                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                        }
+                        button (variant: "text") {
+                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                            onclick: .CloseTab("main.at")
+                            style: "h-7 w-6 px-0 py-0 mr-2"
+                        }
                     }
                 }
                 if .tab != 0 {
@@ -27,9 +152,16 @@ widget App {
                     }
                 }
                 if .tab == 1 {
-                    button (text: "util.at", variant: "text") {
-                        onclick: .TabUtil
-                        style: "h-8 px-3 text-[12px] text-zinc-200 bg-card font-medium"
+                    row (style: "items-center bg-[#1C1D24]") {
+                        button (text: "util.at", variant: "text") {
+                            onclick: .TabUtil
+                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                        }
+                        button (variant: "text") {
+                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                            onclick: .CloseTab("util.at")
+                            style: "h-7 w-6 px-0 py-0 mr-2"
+                        }
                     }
                 }
                 if .tab != 1 {
@@ -38,7 +170,6 @@ widget App {
                         style: "h-8 px-3 text-[12px] text-zinc-500"
                     }
                 }
-                text "auto-edit" { style: "text-[11px] text-zinc-600 ml-auto pr-2" }
             }
             col (style: "h-px w-full bg-border shrink-0")
 
@@ -95,15 +226,17 @@ widget App {
                     text "Sel ${.sel}" { style: "text-[11px] text-zinc-300" }
                 }
                 if .console_open == false {
-                    button (icon: "terminal", variant: "text") {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-400") {}
                         onclick: .ConsoleToggle
-                        style: "h-5 w-7 text-zinc-400"
+                        style: "h-5 w-8 px-0 py-0"
                     }
                 }
                 if .console_open == true {
-                    button (icon: "terminal", variant: "text") {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-200") {}
                         onclick: .ConsoleToggle
-                        style: "h-5 w-7 text-zinc-200"
+                        style: "h-5 w-8 px-0 py-0"
                     }
                 }
             }
@@ -111,6 +244,22 @@ widget App {
     }
 
     on {
+        .MenuToggle(m) -> {
+            if .menu_open == m {
+                .menu_open = ""
+            } else {
+                .menu_open = m
+            }
+        }
+        .MenuPick(label) -> {
+            console_log("menu: " + label)
+            .menu_open = ""
+            .console = console_lines()
+        }
+        .CloseTab(name) -> {
+            console_log("close tab " + name + " (MVP: dummy)")
+            .console = console_lines()
+        }
         .TabMain -> {
             .tab = 0
             .line = code_editor_cursor_line("tab-main") + 1
