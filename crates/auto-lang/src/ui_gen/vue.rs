@@ -6117,6 +6117,13 @@ impl VueGenerator {
                 // must render as `field[0]` — `field.0` is valid JS but invalid
                 // TypeScript in Vue templates (TS treats `.0` as a property, not
                 // a tuple index).
+                // plan 013 follow-up: a binop/unary RECEIVER keeps its parens
+                // — `(a + b).x`, not `a + b.x` (the AST drops explicit parens).
+                let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", object_js)
+                } else {
+                    object_js
+                };
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
                     Ok(format!("{}[{}]", object_js, field))
                 } else {
@@ -6199,6 +6206,14 @@ impl VueGenerator {
                     }
 
                     let object_js = self.expr_to_js(object)?;
+                    // plan 013 follow-up: a binop/unary RECEIVER keeps its
+                    // parens — `(a + b).toLowerCase()`, not
+                    // `a + b.toLowerCase()` (the AST drops explicit parens).
+                    let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", object_js)
+                    } else {
+                        object_js
+                    };
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
@@ -6864,6 +6879,12 @@ impl VueGenerator {
                     }
                 }
                 let object_str = self.expr_to_vue_text_raw(object)?;
+                // plan 013 follow-up: binop/unary receiver keeps its parens.
+                let object_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", object_str)
+                } else {
+                    object_str
+                };
                 // Plan 043: numeric field (tuple index, e.g. `field.0`) → `field[0]`
                 // for valid TypeScript in Vue templates.
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
@@ -6902,6 +6923,12 @@ impl VueGenerator {
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     let method = method.clone();
                     let obj_str = self.expr_to_vue_text_raw(object)?;
+                    // plan 013 follow-up: binop/unary receiver keeps its parens.
+                    let obj_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", obj_str)
+                    } else {
+                        obj_str
+                    };
                     let is_self = obj_str == "self";
                     let args: Vec<crate::ast::Expr> = call.args.args.iter()
                         .filter_map(|a| match a {
@@ -6998,6 +7025,13 @@ impl VueGenerator {
                     }
                 }
                 let obj_str = self.expr_to_vue_bound_value(object)?;
+                // plan 013 follow-up: a binop/unary receiver keeps its
+                // parens — `(a + b).x`, not `a + b.x`.
+                let obj_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", obj_str)
+                } else {
+                    obj_str
+                };
                 // Plan 043: numeric field (tuple index) → bracket form for valid TS.
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
                     Ok(format!("{}[{}]", obj_str, field))
@@ -7101,6 +7135,12 @@ impl VueGenerator {
                     let method = method.clone();
                     let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
                     let object_js = self.expr_to_vue_bound_value(object)?;
+                    // plan 013 follow-up: binop/unary receiver keeps its parens.
+                    let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", object_js)
+                    } else {
+                        object_js
+                    };
                     let args_js: Vec<String> = call.args.args.iter()
                         .filter_map(|a| match a {
                             crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),

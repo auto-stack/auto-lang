@@ -531,6 +531,36 @@ widget P {
     );
 }
 
+/// plan 013 follow-up: a binop/unary method-call RECEIVER keeps its
+/// parens too — `(a + b).toUpperCase()`, not `a + b.toUpperCase()`
+/// (the AST drops explicit parens; receivers are Dot/Call children, a
+/// different path from Bina operands).
+#[test]
+fn cap_bina_parens_on_call_receiver() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var first str = "a"
+        var last str = "b"
+    }
+    computed {
+        shout => (.first + " " + .last).to_upper()
+    }
+    view {
+        col {
+            text f"${.shout}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("(first.value + ' ' + last.value).toUpperCase()"),
+        "binop receiver re-parenthesized:\n{sfc}"
+    );
+}
+
 /// editor README note 3 / jade batch 2 (CodeBlockMenu, jade first use):
 /// v-model FOLD — `value: .query` + `oninput: .QueryInput($event)` on a
 /// state field collapses to `v-model="query"`; the handler function is
