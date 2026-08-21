@@ -47,6 +47,12 @@ pub struct AuraTsContext {
     /// Plan 408 P12 §10.4: composable ref 字段标注——key = facade local name，
     /// value = 标注为 ref 的字段名集合。ts_adapter 的 Dot 分支对命中字段加 `.value`。
     facade_ref_fields: std::collections::HashMap<String, HashSet<String>>,
+    /// Plan 014 (demo Auto 化除法回归修复): state/prop names whose declared
+    /// Auto type is int-ish (`Int`/`i64`/...). `/` and `%` lower to
+    /// `Math.trunc` only when BOTH operands are proven int; float-typed and
+    /// unknown-type operands keep native JS float semantics
+    /// (pre-c2f57577 behavior).
+    typed_ints: HashSet<String>,
     /// Plan 053 M5/P5-6: when Some(seq_var), this context is transpiling the
     /// body of a debounced complete-handler (wrapped in setTimeout). State-ref
     /// assignments (`.suggestions = x`) get guarded with
@@ -81,6 +87,7 @@ impl AuraTsContext {
             typed_strings: HashSet::new(),
             facade_names: HashSet::new(),
             facade_ref_fields: std::collections::HashMap::new(),
+            typed_ints: HashSet::new(),
             debounce_seq_var: None,
             warnings: std::cell::RefCell::new(Vec::new()),
         }
@@ -160,6 +167,11 @@ impl AuraTsContext {
         self.typed_strings.contains(name)
     }
 
+    /// Plan 014: proven int-typed state/prop (division lowers to Math.trunc).
+    fn is_typed_int(&self, name: &str) -> bool {
+        self.typed_ints.contains(name)
+    }
+
     /// Plan 012 Batch A (gap 19): declare facade/plain-object names (widget
     /// `use { composable: ... }` locals). Their `.remove`/`.contains` calls
     /// always pass through — never mapped to `.splice`/`.includes`.
@@ -172,6 +184,14 @@ impl AuraTsContext {
     /// 命中字段注入 `.value`。
     pub fn with_facade_ref_fields(mut self, fields: std::collections::HashMap<String, HashSet<String>>) -> Self {
         self.facade_ref_fields = fields;
+        self
+    }
+
+    /// Plan 014: declare which state/prop names are proven int-typed at the
+    /// Auto level. Division lowering (`Math.trunc`) applies only when both
+    /// operands are proven int.
+    pub fn with_typed_ints(mut self, ints: HashSet<String>) -> Self {
+        self.typed_ints = ints;
         self
     }
 
@@ -283,25 +303,29 @@ fn expr_brief(expr: &Expr, ctx: &AuraTsContext) -> String {
     String::from_utf8(tmp).unwrap_or_else(|_| "?".to_string())
 }
 
-/// Heuristic: does this expression contain a float/double literal (or a
-/// nested sub-expression that does)? Used to decide whether `/` should be
-/// integer division (`Math.trunc(a/b)`) or JS float division (`a/b`).
+/// Plan 014: is this expression PROVEN to evaluate to an integer? Used to
+/// decide whether `/` / `%` should lower to integer ops (`Math.trunc(a/b)`)
+/// or keep native JS float semantics (`a/b`).
 ///
 /// AutoLang `/` on two ints is integer division (matches VM `DIV` opcode =
-/// `wrapping_div`), but the TS adapter has no type symbol table, so this is a
-/// conservative structural check: if neither operand visibly contains a float
-/// literal, treat it as integer division. Variable operands of unknown type
-/// fall through to float division (numerically safe, just maybe not truncated).
-fn expr_looks_float(expr: &Expr) -> bool {
+/// `wrapping_div`), but the TS adapter only has a partial type table
+/// (`typed_ints`/`typed_floats` for state/props), so the rule is:
+/// - int literals and int-typed state/props (and combos thereof) → proven int
+/// - float literals and float-typed state/props → NOT int (float division)
+/// - unknown-type variables → NOT int (float division — numerically safe,
+///   matches the pre-c2f57577 behavior; truncating an actually-float value
+///   is a silent correctness bug, see demo CustomScrollbar thumb math)
+fn expr_proven_int(expr: &Expr, ctx: &AuraTsContext) -> bool {
     match expr {
-        Expr::Float(_, _) | Expr::Double(_, _) => true,
-        Expr::Bina(lhs, _, rhs) => expr_looks_float(lhs) || expr_looks_float(rhs),
-        Expr::Unary(_, inner) => expr_looks_float(inner),
-        Expr::Block(body) => body.stmts.iter().any(|s| match s {
-            Stmt::Expr(e) => expr_looks_float(e),
-            Stmt::Store(s) => expr_looks_float(&s.expr),
-            _ => false,
-        }),
+        Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_)
+        | Expr::U64(_) | Expr::Byte(_) | Expr::Char(_) => true,
+        Expr::Ident(n) | Expr::GenName(n) => ctx.is_typed_int(n.as_str()),
+        Expr::Dot(obj, field) => {
+            matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
+                && ctx.is_typed_int(field.as_str())
+        }
+        Expr::Bina(lhs, _, rhs) => expr_proven_int(lhs, ctx) && expr_proven_int(rhs, ctx),
+        Expr::Unary(_, inner) => expr_proven_int(inner, ctx),
         _ => false,
     }
 }
@@ -1288,10 +1312,12 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 Op::Div | Op::Mod => {
                     // AutoLang `/` and `%` on two ints are integer ops (matches
                     // VM DIV/MOD opcodes = wrapping_div/wrapping_rem). JS `/`
-                    // and `%` are float, so when neither operand looks float,
-                    // wrap in Math.trunc to get integer semantics. Float
-                    // operands fall through to native JS behavior.
-                    let is_int = !expr_looks_float(lhs) && !expr_looks_float(rhs);
+                    // and `%` are float, so wrap in Math.trunc ONLY when both
+                    // operands are proven int (Plan 014). Float-typed and
+                    // unknown-type operands fall through to native JS behavior
+                    // — truncating an actually-float value silently zeroes
+                    // ratio math (demo CustomScrollbar thumb regression).
+                    let is_int = expr_proven_int(lhs, ctx) && expr_proven_int(rhs, ctx);
                     let js_op = if matches!(op, Op::Mod) { " %" } else { " / " };
                     if is_int {
                         write!(out, "Math.trunc(").ok();
