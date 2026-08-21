@@ -1,6 +1,6 @@
 # Plan 403: 011-calculator 扩展 — MCP 操纵 + Grid 布局 + 多模式 UI
 
-> **状态（2026-08-20 核查）**: 🟡 核心全部完成。需求 1a/1b/1c/2/3 + grid 修复 + VM List 基建 + [Phase 403-F](#phase-403-fvm-浮点运算修复-已完成) VM 浮点运算修复（✅ `9b9fec81`，opcode EQ_F..GE_F + codegen is_float 分派）均落地。**VM 模式表达式求值全部通过**（2+3=5, 2*(3+4)=14, 3.5+1=4.5）。vue + iced 双路径完整可用。**唯一缺口**：需求 1a 承诺的 `tests/desktop_mcp.py`（对齐 013/015 范式）+ acceptance 契约未交付——`examples/ui/011-calculator/` 下无 tests/ 目录（下方"实施顺序"第 2 条的 ⚠️ 属实）。
+> **状态（2026-08-20 核查）**: 🟡 核心全部完成。需求 1a/1b/1c/2/3 + grid 修复 + VM List 基建 + [Phase 403-F](#phase-403-fvm-浮点运算修复-已完成) VM 浮点运算修复（✅ `9b9fec81`，opcode EQ_F..GE_F + codegen is_float 分派）均落地。**VM 模式表达式求值全部通过**（2+3=5, 2*(3+4)=14, 3.5+1=4.5）。vue + iced 双路径完整可用。需求 1a 的 `tests/desktop_mcp.py` + `tests/acceptance.atd` ✅ 已交付（2026-08-20 audit-A8）：**14/14 全绿**（快照结构/初始态/整数 2+3=5/链式/小数 3.5+1=4.5（403-F e2e）/科学模式括号 2*(3+4)=14/清零），脚本经 `AUTOUI_MCP_PORT` 自动挑空闲端口（免疫僵尸 auto.exe 占 9247——本机实测踩中）。
 > **分支**: `plan403/011-calculator`（worktree `D:/autostack/auto-lang/.worktree/plan-403`）。
 > **动机**: 011 是纯前端整数加减乘除玩具（325 行单文件、col/row 嵌套 + 22 个硬编码样式、无括号/小数、README 与代码脱节）。本计划把它扩展为可被 MCP 完整操纵、grid 布局、并支持多模式（Scientific/Programmer）的示例。
 > **与 Plan 401 的关系**: 401 是"018-027 玩具→完整 App 升级"。011 的扩展性质不同——涉及 MCP 基建（新工具）+ grid 重构 + 多模式 UI 工程，是独立主题，故单独立项。401 §待办已加指引"→ 见 Plan 403"。
