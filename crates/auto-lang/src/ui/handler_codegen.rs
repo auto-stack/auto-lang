@@ -1597,4 +1597,93 @@ mod tests {
         assert_eq!(handler_fn_name("Msg::PrevMonth"), "handler_PrevMonth");
         assert_eq!(handler_fn_name(".SelectDay"), "handler_SelectDay");
     }
+
+    // ---- Plan 398 §14.1 regression tests: sibling-handler call rewriting ----
+    // `.Sibling()` inside a widget's own handler must become
+    // `handler_<Widget>_<Sibling>(__state, ...)` instead of falling through to
+    // the `.field` path and emitting a bogus `<W>_State.Sibling` symbol.
+
+    fn sibling_call(method: &str, args: Vec<crate::ast::Arg>) -> Stmt {
+        Stmt::Expr(Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from("."))),
+                Name::from(method),
+            )),
+            args: Args { args },
+            ret: Type::Void,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        }))
+    }
+
+    #[test]
+    fn rewrites_sibling_handler_call_to_handler_fn() {
+        let mut stmt = sibling_call("Exit", vec![]);
+        set_current_widget(
+            "PromptBar",
+            ["Exit", "OnCtrlD"].iter().map(|s| s.to_string()).collect(),
+        );
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        clear_current_widget();
+        match &stmt {
+            Stmt::Expr(Expr::Call(c)) => {
+                let rendered = format!("{}", c.name);
+                assert!(
+                    rendered.contains("handler_PromptBar_Exit"),
+                    "sibling call must become handler fn, got: {}",
+                    rendered
+                );
+                // __state is injected as the first positional arg
+                assert_eq!(c.args.args.len(), 1, "state param injected");
+            }
+            other => panic!("expected Call after rewrite, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rewrites_sibling_handler_call_with_args() {
+        let mut stmt = sibling_call("Refresh", vec![crate::ast::Arg::Pos(Expr::Int(5))]);
+        set_current_widget(
+            "ShellStore",
+            ["Refresh", "Init"].iter().map(|s| s.to_string()).collect(),
+        );
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        clear_current_widget();
+        match &stmt {
+            Stmt::Expr(Expr::Call(c)) => {
+                let rendered = format!("{}", c.name);
+                assert!(
+                    rendered.contains("handler_ShellStore_Refresh"),
+                    "got: {}",
+                    rendered
+                );
+                // __state + the original arg
+                assert_eq!(c.args.args.len(), 2, "__state + original arg");
+            }
+            other => panic!("expected Call after rewrite, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn does_not_rewrite_non_msg_variant_dot_call() {
+        // `.notAVariant()` — method not a msg variant of the current widget
+        // and not a state field → must NOT become a handler_ call.
+        let mut stmt = sibling_call("notAVariant", vec![]);
+        set_current_widget("PromptBar", ["Exit"].iter().map(|s| s.to_string()).collect());
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        clear_current_widget();
+        match &stmt {
+            Stmt::Expr(Expr::Call(c)) => {
+                let rendered = format!("{}", c.name);
+                assert!(
+                    !rendered.contains("handler_"),
+                    "non-variant call must stay a Dot call, got: {}",
+                    rendered
+                );
+                assert_eq!(c.args.args.len(), 0, "no state param injected");
+            }
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
 }
