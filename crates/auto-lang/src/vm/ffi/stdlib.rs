@@ -1493,24 +1493,23 @@ pub fn shim_str_char_at(s: String, index: i32) -> i32 {
 
 /// Get substring (byte indices)
 ///
-/// Plan 057: VM callers (tokenize/ghost scans) walk strings byte-by-byte with
-/// `substr(i, i+1)`, which lands mid-char for multi-byte UTF-8 input and used
-/// to panic the whole app. Clamp indices to the nearest char boundaries and
-/// return the (possibly empty) slice instead — ASCII behavior is unchanged.
+/// str-parity (audit B1 finding): `(start, LEN)` semantics, matching
+/// a2r_std::str_substr — the old `(start, END)` reading made the same
+/// `.substr` call mean different things in VM vs transpiled Rust
+/// (013/023 token helpers hit this: `substr(6, 5)` gave "world" in Rust but
+/// "" in the VM). Use `.slice(start, end)` for END semantics — that one is
+/// unified across both backends.
 ///
-/// The clamp must be unconditional: stopping as soon as `lo == hi` still
-/// panics, because Rust checks char boundaries even for empty slices —
-/// `substr(1, 2)` on "送…" clamps lo 1→2 and exits with lo==hi==2 mid-char.
-/// So: push lo forward to the next boundary (up to len), pull hi back to the
-/// previous one (down to 0); if they cross, the range sits inside one
-/// multi-byte char and the slice is empty.
+/// Plan 057: clamp indices to the nearest char boundaries and return the
+/// (possibly empty) slice instead of panicking when a byte index lands
+/// mid-char in multi-byte UTF-8 input.
 #[auto_macros::rust_fn("Str.substr")]
-pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
-    if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
+pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
+    if start < 0 || len < 0 || start as usize > s.len() {
         return String::new();
     }
     let mut lo = start as usize;
-    let mut hi = end as usize;
+    let mut hi = (start as usize + len as usize).min(s.len());
     // Debug preview must itself be boundary-safe: truncating at a raw byte
     // count would panic the same way the slice below used to.
     let preview: String = s.chars().take(16).collect();
@@ -1524,6 +1523,28 @@ pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
             eprintln!("[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}", hi, preview);
         }
+        hi -= 1;
+    }
+    if hi < lo {
+        return String::new();
+    }
+    s[lo..hi].to_string()
+}
+
+/// END-semantics substring for the `.slice(start, end)` / `.sub(start, end)`
+/// spellings — matches a2r's `s[start..end]` / `&s[start..end]` emission.
+/// Same Plan 057 boundary clamps as the LEN sibling above.
+#[auto_macros::rust_fn("Str.slice")]
+pub fn shim_str_slice(s: String, start: i32, end: i32) -> String {
+    if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
+        return String::new();
+    }
+    let mut lo = start as usize;
+    let mut hi = end as usize;
+    while lo < s.len() && !s.is_char_boundary(lo) {
+        lo += 1;
+    }
+    while hi > 0 && !s.is_char_boundary(hi) {
         hi -= 1;
     }
     if hi < lo {
@@ -6580,6 +6601,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // String method — manual shim
     natives.register_shim_by_name("auto.str.find", shim_str_find_manual);
+    // str-parity: .slice/.sub are END-semantics (a2r s[a..b]) — distinct
+    // from .substr's (start, LEN). All three previously aliased one shim;
+    // shim_str_slice registers via its #[rust_fn("Str.slice\)] attribute +
+    // the catalog's auto.str.slice/sub entries (id 1524).
     natives.register_shim_by_name("Str.find", shim_str_find_manual);
     natives.register_shim_by_name("str.find", shim_str_find_manual);
 
@@ -8023,14 +8048,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_substr_clamps_to_char_boundaries() {
-        // ASCII behavior is unchanged.
-        assert_eq!(shim_str_substr("hello".to_string(), 1, 3), "el");
-        assert_eq!(shim_str_substr("hello".to_string(), 2, 2), "");
+    fn test_substr_clamps_to_char_boundaries() {        // str-parity: (start, LEN) semantics — ASCII cases updated from the
+        // old (start, END) reading to match a2r_std::str_substr.
+        assert_eq!(shim_str_substr("hello".to_string(), 1, 3), "ell");
+        assert_eq!(shim_str_substr("hello".to_string(), 2, 2), "ll");
         // Byte-walk inside a multi-byte char clamps instead of panicking.
-        // "送" occupies bytes 0..3; substr(1, 2) used to panic because the
-        // lo-clamp stopped at lo==hi==2, still mid-char (empty slices also
-        // require a boundary). The whole range sits inside one char → empty.
+        // "送" occupies bytes 0..3; lo/hi inside one char → empty after clamp.
         assert_eq!(shim_str_substr("送你".to_string(), 1, 2), "");
         assert_eq!(shim_str_substr("送你".to_string(), 2, 2), "");
         // Range spanning a char boundary clamps inward: lo→3, hi→3 → empty.
@@ -8039,10 +8062,75 @@ mod tests {
         // A range that fully contains a char keeps it.
         assert_eq!(shim_str_substr("送你".to_string(), 0, 6), "送你");
         assert_eq!(shim_str_substr("送你".to_string(), 3, 6), "你");
-        // Out-of-range / inverted indices stay empty.
+        // Out-of-range / negative indices stay empty (or clamp to the tail).
         assert_eq!(shim_str_substr("送".to_string(), 3, 3), "");
-        assert_eq!(shim_str_substr("送".to_string(), 0, 9), "");
-        assert_eq!(shim_str_substr("送".to_string(), 2, 1), "");
+        assert_eq!(shim_str_substr("送".to_string(), 0, 9), "送");
+        assert_eq!(shim_str_substr("送".to_string(), 2, -1), "");
+    }
+
+    /// str-parity (audit B1 finding): the VM shim and a2r_std must agree on
+    /// `.substr(start, LEN)` — before the fix the same call gave "world" in
+    /// transpiled Rust but "" in the VM (start, END reading).
+    #[test]
+    fn test_substr_parity_with_a2r_std() {
+        for (s, start, len) in [
+            ("hello world", 6, 5),
+            ("hello world", 0, 5),
+            ("hello", 1, 3),
+            ("hello", 2, 2),
+            ("a送b", 0, 4),
+            ("送你", 3, 3),
+        ] {
+            assert_eq!(
+                shim_str_substr(s.to_string(), start, len),
+                crate::a2r_std::str_substr(s, start, len),
+                "VM shim vs a2r_std mismatch on ({:?}, {}, {})",
+                s, start, len
+            );
+        }
+        // The exact audit-B1 divergence case: old END semantics returned "".
+        assert_eq!(shim_str_substr("hello world".to_string(), 6, 5), "world");
+    }
+
+    /// str-parity routing lock: `.slice`/`.sub` route to the END-semantics
+    /// shim, `.substr` to the LEN one — three spellings, two shims, all
+    /// matching a2r emission for the same calls.
+    #[test]
+    fn vm_slice_sub_end_substr_len() {
+        let (_r, out) = crate::run_with_capture(r#"
+fn main() {
+    var s str = "hello world"
+    print(s.slice(3, 6))
+    print(s.sub(3, 6))
+    print(s.substr(6, 5))
+}
+"#).unwrap();
+        let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines, vec!["lo ", "lo ", "world"]);
+    }
+
+    /// str-parity end-to-end: the same .at source run in the VM must see the
+    /// LEN semantics for .substr, END semantics for .slice, and index/-1 for
+    /// .find — matching what a2r emits for the same calls.
+    #[test]
+    fn vm_substr_slice_find_semantics() {
+        let (_r, out) = crate::run_with_capture(r#"
+fn main() {
+    var s str = "hello world"
+    print(s.substr(6, 5))
+    print(s.slice(6, 11))
+    print(s.sub(6, 11))
+    print(s.find("world"))
+    print(s.find("o", 5))
+    print(s.substr(6, 5) == s.slice(6, 11))
+}
+"#).unwrap();
+        let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(
+            lines,
+            vec!["world", "world", "world", "6", "7", "1"],
+            "VM str semantics: substr(len) / slice(end) / find(idx[, from])"
+        );
     }
 
     #[test]
