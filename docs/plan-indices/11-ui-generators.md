@@ -49,8 +49,9 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 403 | 011 计算器 MCP+Grid+多模式 | ✅ | 需求 1a/1b/1c/2/3 + Phase 403-F VM 浮点修复全落地；1a 的 desktop_mcp.py + acceptance.atd 由 audit-A8 补齐（实机 14/14） |
 | 409 | Widgets Gallery 三模式一致性 | ✅ | §1-§10：link 子组件 VM 渲染/主题色/§10 六残留差距全修复（plan409_tests + golden）；CodeBlock/PreviewCard 纯 Auto 化暂缓（登记债务簿） |
 
+| 408 | view fn → Vue 组件合成 | ✅ | P1–P12 + §10 能力缺口全修复（plan408_tests 17 + golden 007-010）；auto-musk 试点完成（023/028）；P5-2 auto clean 由 audit-A1 修复；P5-4 🟢 延期登记 |
 ## Status Summary
-- Completed: 24 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 25 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

@@ -49,9 +49,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 403 | 011 计算器 MCP+Grid+多模式 | Complete | 需求全落地 + Phase 403-F 浮点修复；desktop_mcp.py 由 audit-A8 补齐（14/14） |
 | 409 | Widgets Gallery 三模式一致性 | Complete | §1-§10：link 子组件 VM 渲染/主题色/六残留差距全修复；CodeBlock 纯 Auto 化暂缓（登记债务簿） |
 
+| 408 | view fn → Vue 组件合成 | Complete | P1–P12 全落地 + auto-musk 试点完成；P5-2 由 audit-A1 修复；P5-4 延期 |
+
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 404, 407, 409 (23 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 404, 407, 409 (24 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -165,3 +167,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [407-a2vue-icon-text-expr.md](../plans/archive/407-a2vue-icon-text-expr.md)
 - [409-widgets-gallery.md](../plans/archive/409-widgets-gallery.md)
 - [403-calculator-mcp-grid-modes.md](../plans/archive/403-calculator-mcp-grid-modes.md)
+- [408-view-fn-vue-component-synthesis.md](../plans/archive/408-view-fn-vue-component-synthesis.md)

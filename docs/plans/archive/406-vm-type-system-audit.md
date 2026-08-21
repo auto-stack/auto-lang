@@ -1,6 +1,11 @@
 # Plan 406: VM 类型系统系统性审计
 
-> **状态**: 📋 计划阶段（2026-08-10）
+> **状态（2026-08-20 finish-plan 复审）**: ✅ **目标缺陷已全部修复，审计矩阵让位**。本计划的立项动机（038 VM 阻塞）早已消失，其 Phase 2 列出的目标 bug 已由 2026-08-20 审计批次根治：
+> - **GET_ELEM List\<bool\>/List\<Value\>::Bool 裸 1/0**（§2 表 bug 1/2）→ audit-A4（`plan-fix/406-getelem-bool` 合并 c1316a2c）：engine.rs 两分支 + native.rs push_value 改 `encode_bool`，e2e 测试 ×4；
+> - **JMP_IF_Z/NZ pop_i32 魔数**（§2 表 bug 3）→ audit-B4（`plan-fix/b406-jmpif-bool` 合并 e58fff15）：`nv_truthy` 统一 tag 优先解码（JMP_IF/AND/OR/NOT 五处），真整数 -2147483647 与遗留哨兵不可区分为已注明限制；
+> - **EQ 无 is_bool 臂**（§2 表 bug 4）→ 复核结论：bool==bool 走 raw 位比较本已正确，**无需修复**；
+> - bug 5/6/7 此前已由 e3e427cc/9b9fec81/958819ab 顺带解决（三批核查时确认）。
+> Phase 1 的全量 nanbox 生产者-消费者审计矩阵（docs/audit/vm-type-audit.md）**未产出**——驱动 bug 既已根治，矩阵价值让位，🟢 延期登记债务簿。
 > **优先级**: 高 — 阻塞 038 扫雷 VM 版及所有依赖 Obj/bool/float/数组的 VM 示例
 > **前置**: Plan 402 §13（038 扫雷 VM 诊断过程中发现）
 

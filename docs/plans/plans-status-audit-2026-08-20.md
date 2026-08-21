@@ -27,7 +27,7 @@
 | **400** | api_gen a2r body 转译（399 路线A） | Phase 1+2 已合并（d2642943：`is_thin_delegation`/`try_transpile_body`/`AUTO_A2R_BODY` api_gen.rs:1117/1133/1463 + 单测） | Phase 3（多 `back/*.at` + `extern fn` 语言扩展）；Phase 4（auto-musk 全栈端到端验收）；§4.4 `use.rust` 收集 | `is_thin_delegation` 只 match `Stmt::If\|For`（api_gen.rs:1121-1128），**while/match 循环体会被误判为薄委托走模板路线B**——注释与实现不符的逻辑遗漏 |
 | **403** | 011 计算器 MCP+grid+多模式 | 需求 1a/1b/1c/2/3 + VM List 基建 + Phase 403-F 浮点修复（9b9fec81）全落地，VM 求值全通过 | **需求 1a 承诺的 `tests/desktop_mcp.py` + acceptance 契约未交付**（`examples/ui/011-calculator/` 无 tests/ 目录） | 文档曾自相矛盾（正文称浮点损坏待办，与顶部 ✅ 冲突，已更正）；验收 checklist 已回填 |
 | **405** | 023-realworld（Conduit） | 阶段1 8/8 + 阶段2 14/14 全绿（编辑器遗留已由 plan401/023-editor-fix 修复）；VM 多 store bug 已由 Plan 370 外部解决 | **真正的 token 认证未做且未移交任何计划**——`current_user()` 返回空 User 桩（db.at:56-59），端点无鉴权；store struct 字面量 null 已记 401 技术约定留后续 | 023 规避的 a2r 限制（双路径参数只提取第一个、slug 前端手输避开 String 借用）仍在 |
-| **408** | view fn → Vue 组件合成 | P1–P12 全部合并（plan408_tests 17 测试 + golden 007-010）；**§6.3 auto-musk 试点已完成**（auto-musk 023：20/21 逃生舱原生化 + StreamingRenderer 经 028 升格平台实现） | §11 两项：**P5-2 🟡 `auto clean root` panic 未修**（target.rs:284 仍 `panic!`，from_str 无 "root" 分支）；P5-4 🟢 纯 module fn 文件不被 codegen（api.rs:456 报错） | P5-4 的 workaround = 塞进 widget/store 文件；新债流入：auto-musk 029 登记 shadcn Button 映射丢动态 class/title 为本仓债务 |
+| **408** | view fn → Vue 组件合成 | ✅ **已归档（2026-08-20 finish-plan 复核：验证重跑全绿）**——P1–P12 + §6.3 auto-musk 试点 + P5-2（audit-A1 修复）全部完成 | P5-4（🟢 纯 module fn 不被 codegen）延期登记债务簿 | 新债流入：auto-musk 029 登记 shadcn Button 映射丢动态 class/title 为本仓债务 |
 | **411** | VM 视觉对齐 vue（Home/Button） | P0-A/P0-B/P1-A/gap 废弃/pac.at 窗口 ✅；P1-B toast + P2-A 部分（copy icon/折叠钮）08-15 落地 | P1-C Inter 字体内嵌；P2-A① codeblock Prism 色板、P2-A④ 表格细节；**P2-B MCP 四项强化**（`Button.content` 子树仍未序列化进 vtree，vnode.rs:192 仍 `label: String`——R3 误判根源仍在） | §8.5 gap 兼容分支（vue.rs 3 处 + view_builder 8 处）保留未拆、validator 白名单未加（防 AI 再写 gap 属性） |
 | **412** | Layout Gallery + VM 布局引擎 | 12 layout 页 + `rederive_layout` 全路径 + `grid_row_placements` 分配器 + plan412_tests（结构通道全绿） | **§6.2/§6.3 视觉+交互验证未执行**（实施会话无 GUI/MCP 环境）：全页双端并排截图 ≤1px、scroll/Overlay 抽验；§9.2/§9.3 验收未闭环 | 降级矩阵类（flex-wrap 单行、absolute 就近位等）渲染期一次性 eprintln 提示——计划内显式降级 |
 | **413** | 跨平台代码编辑器（code_editor widget） | 代码交付物 100% 落地（三分支全合并 master `06cb1881`：cosmic-text ViEditor 三层结构 + View/DSL + VM natives + a2r + vue CodeMirror shell + MCP + LRU/warm-up + e2e） | **人工验收清单未实机闭环**：微软拼音 IME、150% DPI 行号、Linux(X11/Wayland) 复验、TESTING.md 交互（三击/Ctrl+词跳转/滚动条/vi 模式）；`@codemirror` 深化已明示另立计划 | `Box::leak` keyed 存储已在 §5.4 声明并配 LRU（cap=32）缓解。注意：master 近期 "PLAN-029" 提交属 **auto-musk 仓库** 029 计划，非 413 范围 |
@@ -44,7 +44,7 @@
 | **401** | AutoUI 示例升级纲领 | 018/022（404）/023（405）✅；011 拆 403；024 由 409 以 `examples/widgets-gallery/` 完成 | 待办：019/020/021/025（均单文件）；021 双目录并存易混淆；旧 `examples/ui/024-*` 目录仅剩 README/gen 残留可清理 |
 | **402** | 038 扫雷示例 | vue 完整；VM 核心流程可用（§13.8 修复 + §13.10 实机点击已修 7c09e371 + 右键/计时器落地） | 连锁展开/数字显示/胜负的**实机目视确认**未记录闭环（§13.8 🟡）；rust 版归 407 |
 | **407-minesweeper** | 038 扫雷 rust 第三后端 | Phase 1–2 + R6 右键 + R9 grid 居中，均合并（f863be5e）——文档原"计划阶段"严重滞后，已更正 | R7 动态窗口 resize（difficulty→窗口尺寸）；Phase 4（三后端对比 + 015/011 回归）；生成快照 stale（早于 R6 修复，重生成即带） |
-| **398** | VM expose/store sibling 修复 | 核心三修全在 master（§11 log/§12 parser `[][]T`/§2-§3 sibling rewrite）；§14.2 已被 b0434cff 顺带完成 | **§14.1 回归测试未做**（handler_codegen tests 仅 5 个、无 sibling 覆盖；parser 无 `[][]T` 用例）；M0.5/M1 为 auto-shell 侧下游任务 |
+| **398** | VM expose/store sibling 修复 | ✅ **已归档（2026-08-20 finish-plan 复核：5/5 测试重跑绿）**——核心三修 + §14.1 回归测试（audit-A3）+ §14.2（b0434cff）全部完成 | M0.5/M1 auto-shell 下游任务 🟢 延期登记债务簿 |
 
 ---
 
@@ -56,7 +56,7 @@
 | **332** | `#[derive(ToAtom)]` proc macro | Phase A–E 全未实施（auto-val/auto-lang-macros 无 ToAtom 命中） | Plan 381 serde Deserializer 落地后优先级已降；建议正式关闭或并入债务簿 |
 | **386** | AutoUI RenderQueue 分离渲染（未来优化） | Stage 1–3 零实施；启动条件明示"≥3 个 COSMIC app 跑通 Host ② + 内存预算证明"未满足 | ⏸ 自述准确，保持暂缓 |
 | **394** | AWAIT_FUTURE 通用 future 架构 | Phase A–D 零实施；§4 触发条件自评均未出现 | draft 自述准确；Plan 349 re-entry yield 为明示的务实替代 |
-| **406** | VM 类型系统审计（nanbox 生产者-消费者配对） | 18 checkbox 全空；`docs/audit/vm-type-audit.md` 不存在；Phase 2 目标项 master 仍未修（GET_ELEM List\<bool\> 压 i32、JMP_IF pop_i32 魔数、EQ 无 is_bool arm） | 原始动机（038 VM 阻塞）已消失；但 GET_ELEM bool 编码 / JMP_IF tag 解码仍是**潜伏 bug**，建议缩小范围重开或登记风险 |
+| **406** | VM 类型系统审计（nanbox 生产者-消费者配对） | ✅ **已关闭（2026-08-20 四批后 finish-plan 复审）**：Phase 2 目标 bug 全部根治——GET_ELEM bool（audit-A4 `c1316a2c`）、JMP_IF 魔数（audit-B4 `e58fff15` nv_truthy）、EQ 复核无需修复、bug 5/6/7 早前顺带解决；Phase 1 全量审计矩阵未产出（驱动已消，🟢 延期登记）。归档 |
 
 ---
 

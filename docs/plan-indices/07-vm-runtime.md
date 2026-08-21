@@ -54,8 +54,10 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 378 | to_uint() I64/U64 Method-Call Slot Fix | ✅ | Expr::Dot recognition in contains_u64/is_u64_expr; native to_uint → 2-slot i64; u64 print/compare opcodes; full u64 infra (fn_return_types population, REPL/global/let 2-slot) |
 | 339 | AutoVM Symbol 命名空间 | ✅ | module-qualified names (`module#name`), `current_module` in codegen, `collect_module_imports` with module name, `import_aliases` for `use` semantics, widget state field isolation, last-wins workaround replaced; 015-notes + 016-calendar VmBridge verified |
 
+| 398 | VM 兼容性修复（expose/store sibling） | ✅ | parse 错误静默 warn（§11）+ parser `[][]T`/`[](tuple)`（§12）+ sibling-handler 调用 rewrite（§2/§3 handler_<W>_<X>）；§14.1 回归测试由 audit-A3 补齐；M0.5/M1 为 auto-shell 下游（延期登记） |
+| 406 | VM 类型系统审计（nanbox 配对） | ✅ | 目标 bug 全部根治：GET_ELEM bool 编码（audit-A4）+ JMP_IF/AND/OR/NOT tag 解码 nv_truthy（audit-B4）+ EQ 复核无需修复；全量审计矩阵 🟢 延期登记 |
 ## Status Summary
-- Completed: 32 | Partial: 4 | Planned: 1 | Deprecated: 0
+- Completed: 34 | Partial: 4 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity

@@ -53,6 +53,9 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 | 249 | Unify Dual Registry | Complete | Single-registration architecture with lazy native function registration, catalog macros, opaque dispatch tables |
 | 339 | AutoVM Symbol 命名空间 | Complete | Module-qualified names (`module#name`), `current_module` in codegen, `import_aliases` for `use` semantics, last-wins workaround replaced; 015-notes + 016-calendar verified |
 
+| 398 | VM 兼容性修复（expose/store sibling） | Complete | parse 错误 warn + parser [][]T/[](tuple) + sibling-handler rewrite；audit-A3 回归测试；M0.5/M1 auto-shell 下游延期 |
+| 406 | VM 类型系统审计 | Complete | 目标 bug 全根治（GET_ELEM bool / nv_truthy / EQ 复核）；审计矩阵延期 |
+
 ## Status
 
 **Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269, 339
@@ -174,3 +177,5 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [249-unified-native-registry.md](../plans/archive/249-unified-native-registry.md)
 - [269-autovm-daemon-cli.md](../plans/archive/269-autovm-daemon-cli.md)
 - [339-symbol-namespace-design.md](../plans/archive/339-symbol-namespace-design.md)
+- [398-vm-expose-and-store-sibling-handler.md](../plans/archive/398-vm-expose-and-store-sibling-handler.md)
+- [406-vm-type-system-audit.md](../plans/archive/406-vm-type-system-audit.md)

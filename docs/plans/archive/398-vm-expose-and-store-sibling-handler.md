@@ -2,7 +2,7 @@
 plan: 398
 title: vm-expose-and-store-sibling-handler
 affects: [auto-lang/ui/handler_codegen, auto-lang/ui/vm_bridge, auto-lang/ui/dynamic]
-status: partial # 核心修复+回归测试全部完成(§12/§2/§3/§11 + §14.1 测试 c21eea16);M0.5/M1 为 auto-shell 侧下游任务
+status: complete # finish-plan 复核(2026-08-20):仓内全部任务验证通过(§12/§2/§3/§11 + §14.1/§14.2 测试重跑全绿);M0.5/M1 为 auto-shell 侧下游任务,🟢 延期登记债务簿
 ---
 
 # Plan 398: VM 兼容性修复 — expose 生效 + store handler 互调
