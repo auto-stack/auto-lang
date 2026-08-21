@@ -4687,6 +4687,129 @@ async fn http_sse_loop(
 /// VM RunOutput/RunResult handlers can't read renderer-written Value::Array
 /// blocks (type mismatch), so we update directly in Rust. Returns true if a
 /// block was found and modified.
+/// Plan 059(表格增强):对 block 的 output.Table.rows 做过滤 + 排序并
+/// 原地写回(VM 端 BlockItem.Sort/Filter 特例调用;与 .at 侧 Vue 实现
+/// 语义一致)。过滤词取 block.table_filter_q(小写),排序按 sort_col 列
+/// 单元格文本,数字感知("1.2 KB"/"900 B"/"42" 按数值含 K/M/G 缩放,
+/// 否则字节序)。原始行序无法恢复 —— 过滤词非空时从"过滤后的原序"重排,
+/// 故过滤变化时先按原序重建:这里简单重跑"过滤 + 稳定选择排序"。
+fn table_cell_text(cell: &auto_val::Value) -> String {
+    if let auto_val::Value::Obj(o) = cell {
+        if let Some(t) = o.get("Text") {
+            return t.as_str().to_string();
+        }
+        if let Some(t) = o.get("Tagged") {
+            if let auto_val::Value::Obj(tg) = t {
+                return tg.get("text").map(|v| v.as_str().to_string()).unwrap_or_default();
+            }
+        }
+    }
+    String::new()
+}
+
+/// 数字前缀解析:返回 (值, 是否有效)。单位 K/M/G 缩放(B=1)。
+fn table_numeric_prefix(t: &str) -> (f64, bool) {
+    let mut num = String::new();
+    let mut seen = false;
+    for ch in t.chars() {
+        if ch.is_ascii_digit() || ch == '.' {
+            num.push(ch);
+            seen = true;
+        } else if seen {
+            break;
+        }
+    }
+    if !seen {
+        return (0.0, false);
+    }
+    let mut v: f64 = num.parse().unwrap_or(0.0);
+    let rest = t[num.len()..].trim_start();
+    let u = rest.chars().next().unwrap_or(' ').to_ascii_uppercase();
+    v *= match u {
+        'K' => 1024.0,
+        'M' => 1048576.0,
+        'G' => 1073741824.0,
+        _ => 1.0,
+    };
+    (v, true)
+}
+
+fn table_row_text(row: &auto_val::Value, col: i64) -> String {
+    if col < 0 {
+        return String::new();
+    }
+    if let auto_val::Value::Array(cells) = row {
+        if let Some(c) = cells.values.get(col as usize) {
+            return table_cell_text(c);
+        }
+    }
+    String::new()
+}
+
+fn sort_table_rows(block: &mut auto_val::Obj, sort_col: i32, sort_dir: i32) {
+    use auto_val::Value;
+    // 取 output.Table.rows(原序由服务端/SSE 写入 —— 注意:一旦原地重排,
+    // "原序"丢失;接受此限制:清空过滤/切换排序均基于当前序的稳定重排,
+    // bash 也无"恢复原序"键;列指示 ● 未排序态在首次点击后不再出现)。
+    let query = block.get("table_filter_q").map(|v| v.as_str().to_lowercase()).unwrap_or_default();
+    let mut rows: Vec<Value> = {
+        let out = match block.get("output") {
+            Some(Value::Obj(o)) => o.clone(),
+            _ => return,
+        };
+        let tbl = match out.get("Table") {
+            Some(Value::Obj(t)) => t.clone(),
+            _ => return,
+        };
+        match tbl.get("rows") {
+            Some(Value::Array(a)) => a.values.clone(),
+            _ => return,
+        }
+    };
+    // 过滤(大小写不敏感,任一单元格命中)
+    if !query.is_empty() {
+        rows.retain(|r| {
+            let cells = match r {
+                Value::Array(a) => &a.values,
+                _ => return false,
+            };
+            cells.iter().any(|c| table_cell_text(c).to_lowercase().contains(&query))
+        });
+    }
+    // 排序(稳定:选择排序取"应排最前"者,按方向)
+    if sort_col >= 0 {
+        let sc = sort_col as usize;
+        let mut out: Vec<Value> = Vec::with_capacity(rows.len());
+        let mut remaining = rows;
+        while !remaining.is_empty() {
+            let mut best = 0usize;
+            for i in 1..remaining.len() {
+                let ta = table_row_text(&remaining[i], sc as i64);
+                let tb = table_row_text(&remaining[best], sc as i64);
+                let (na, va) = table_numeric_prefix(&ta);
+                let (nb, vb) = table_numeric_prefix(&tb);
+                let a_first = if va && vb {
+                    na < nb
+                } else {
+                    ta < tb
+                };
+                let take = if sort_dir > 0 { a_first } else { !a_first && ta != tb };
+                if take {
+                    best = i;
+                }
+            }
+            out.push(remaining.remove(best));
+        }
+        rows = out;
+    }
+    // 写回 output.Table.rows
+    if let Some(Value::Obj(out)) = block.get_mut("output") {
+        if let Some(Value::Obj(tbl)) = out.get_mut("Table") {
+            tbl.set("rows", Value::Array(auto_val::Array { values: rows }));
+        }
+    }
+}
+
 fn update_block_in_state(
     component: &mut DynamicComponent,
     block_id: i64,
@@ -6297,11 +6420,81 @@ fn compare_pngs(
         let diff_before = state.component.read_state("difficulty")
             .map(|v| v.as_str().to_string()).unwrap_or_default();
 
+        let msg_input_snapshot = msg.input_value.clone();
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // Plan 055 D5(补实现,此前缺失):BlockItem.ToggleCollapse(id) 的 .at handler
         // 是空体,设计上由 renderer emit 给父级翻转 blocks[id].collapsed —— 该桥
         // 一直没实现,VM 端点击折叠无效果。这里解码 payload 里的 id 直接翻转。
+        // ── Plan 059(表格增强):BlockItem 的表格交互特例(同 ToggleCollapse
+        // 模式 —— VM 剥离 child callback emit,.at handler 空体,renderer
+        // 直改 blocks 状态)。Sort/Filter 的 payload 是 "block_id" /
+        // "block_id:col" 编码串;Filter 的查询词在 msg.input_value。
+        if widget_name == "BlockItem" && event_name.starts_with("Sort") {
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let id = args.first()
+                .map(|v| v.as_int() as i64)
+                .unwrap_or_else(|| {
+                    args.first().map(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1)
+                });
+            let col = args.get(1).map(|v| v.as_int() as i64).unwrap_or(-1);
+            if true {
+                if id >= 0 {
+                    if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                        for b in blocks.iter_mut() {
+                            if let auto_val::Value::Obj(obj) = b {
+                                if obj.get("id").map(|v| v.as_int() as i64 == id).unwrap_or(false) {
+                                    // 同列翻转 / 异列重置升序
+                                    let cur_col = obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
+                                    let (nc, nd) = if cur_col == col as i32 {
+                                        let d = obj.get("table_sort_dir").map(|v| v.as_int()).unwrap_or(1);
+                                        (cur_col, -d)
+                                    } else {
+                                        (col as i32, 1)
+                                    };
+                                    obj.set("table_sort_col", auto_val::Value::Int(nc));
+                                    obj.set("table_sort_dir", auto_val::Value::Int(nd));
+                                    sort_table_rows(obj, nc, nd);
+                                    break;
+                                }
+                            }
+                        }
+                        let _ = state.component.write_state_vec("blocks", blocks);
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+        if widget_name == "BlockItem" && event_name.starts_with("Filter") {
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let id = args.first().map(|v| v.as_str()).and_then(|s| s.parse::<i64>().ok()).unwrap_or(-1);
+            let query = msg_input_snapshot.clone().unwrap_or_default().to_lowercase();
+            if id >= 0 {
+                if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                    for b in blocks.iter_mut() {
+                        if let auto_val::Value::Obj(obj) = b {
+                            if obj.get("id").map(|v| v.as_int() as i64 == id).unwrap_or(false) {
+                                obj.set("table_filter_q", auto_val::Value::str(&query));
+                                let sc = obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
+                                let sd = obj.get("table_sort_dir").map(|v| v.as_int()).unwrap_or(1);
+                                sort_table_rows(obj, sc, sd);
+                                break;
+                            }
+                        }
+                    }
+                    let _ = state.component.write_state_vec("blocks", blocks);
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
+        // Plan 059:表格单元格点击打开 → store.OpenPath(payload 携带路径)。
+        if widget_name == "BlockItem" && event_name.starts_with("OpenPath") {
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            if let Some(p) = args.first().map(|v| v.as_str()).filter(|p| !p.is_empty()) {
+                state.component.on_with_input_for("ShellStore", "OpenPath", Some(p.to_string()));
+                *state.view_dirty.borrow_mut() = true;
+            }
+        }
         if widget_name == "BlockItem" && event_name.starts_with("ToggleCollapse") {
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
             let id = args.first().map(|v| v.as_int() as i64).unwrap_or(-1);
@@ -6422,6 +6615,11 @@ fn compare_pngs(
                         block.set("output", auto_val::Value::Nil);
                         block.set("exit_code", auto_val::Value::Int(0));
                         block.set("collapsed", auto_val::Value::Bool(false));
+                        // Plan 059(表格增强):表格排序/过滤状态(前端字段,
+                        // 服务端数据无此概念;缺失会导致 .at 读取静默中止)。
+                        block.set("table_sort_col", auto_val::Value::Int(-1));
+                        block.set("table_sort_dir", auto_val::Value::Int(1));
+                        block.set("table_filter_q", auto_val::Value::str(""));
                         // store 的 RunCommand 已 push 同 id 的块,但 VM List 里的
                         // 元素是堆引用(非 Value::Obj),update_block_in_state 按
                         // Obj 匹配会失败 → 块永远停在 Running。这里用完整 Rust 块
@@ -6519,6 +6717,12 @@ fn compare_pngs(
                 block.set("status", auto_val::Value::Obj(status));
                 block.set("streamed_text", auto_val::Value::str(""));
                 block.set("duration_ms", auto_val::Value::Int(0));
+                block.set("output", auto_val::Value::Nil);
+                block.set("exit_code", auto_val::Value::Int(0));
+                block.set("collapsed", auto_val::Value::Bool(false));
+                block.set("table_sort_col", auto_val::Value::Int(-1));
+                block.set("table_sort_dir", auto_val::Value::Int(1));
+                block.set("table_filter_q", auto_val::Value::str(""));
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                     blocks.push(auto_val::Value::Obj(block));
                     let _ = state.component.write_state_vec("blocks", blocks);
