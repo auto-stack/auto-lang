@@ -786,6 +786,7 @@ mod tests {
             width: None,
             height: None,
             style: None,
+            auto_scroll: false,
         };
 
         let tree = view_to_vtree(view);

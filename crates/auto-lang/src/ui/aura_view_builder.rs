@@ -3403,6 +3403,14 @@ let tabs_inner = View::Row {
         }
         builder = builder.keydown(keydown);
 
+        // Plan 057 续(行内编辑 keymap):`keymap: .edit_mode` 绑定或静态串,
+        // 缺省 "emacs"。VM 端据此选渲染层行编辑键位表;Vue 端忽略
+        // (浏览器原生支持 Emacs 基础键)。
+        builder = builder.keymap(
+            self.extract_string_with(props, "keymap", bindings)
+                .unwrap_or_else(|| "emacs".to_string()),
+        );
+
         builder.build()
     }
 

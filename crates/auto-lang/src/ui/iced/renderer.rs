@@ -116,6 +116,379 @@ fn key_press_to_binding_name(kp: &text_editor::KeyPress) -> String {
     name + &base
 }
 
+// ═══ Plan 057 续(行内编辑 keymap):快捷键与功能分离 ═════════════════
+// 三层架构:.at onkeydown.*(App 语义) → 模式键位表(emacs/vi-*) → iced
+// 默认。纯编辑键(移动/词移/kill/yank/transpose)在渲染层直接执行
+// (Content::perform 组合 + 合成 on_change 消息同步状态),不经 .at 往返;
+// 语义键(Tab 补全/历史/ghost 接受/模式切换)派发 .at handler。
+
+/// 独立 kill-ring(readline 语义:最近 16 条;不污染系统剪贴板)。
+lazy_static::lazy_static! {
+    static ref TEXTAREA_KILL_RING: Mutex<std::collections::VecDeque<String>> =
+        Mutex::new(std::collections::VecDeque::new());
+    /// echo 标志:update 检测到消息源自编辑器自身(编辑/光标动作)时置位;
+    /// 下一次该 key 的 content 重建保持光标字节偏移(编辑点),而非钉到
+    /// value 末尾 —— C-b 后继续打字光标不再被拽走(行内编辑地基)。
+    static ref TEXTAREA_ECHO_KEYS: Mutex<std::collections::HashSet<String>> =
+        Mutex::new(std::collections::HashSet::new());
+}
+
+/// 与键位无关的行编辑功能抽象。表条目按模式声明,执行统一走 le_execute。
+#[derive(Debug, Clone)]
+enum LineEditOp {
+    /// 纯 iced 原生绑定(Move/Backspace/Enter…)—— 编辑器自己执行,保持
+    /// 捕获/选区语义;on_action 照常回投(状态同步 + echo 光标保持)。
+    Native(text_editor::Binding<IcedMessage>),
+    /// kill 到指定方向(End=行尾 C-k / Home=行首到光标 C-u / Word* =词)。
+    Kill(text_editor::Motion),
+    /// C-y:kill-ring 末条粘贴。
+    Yank,
+    /// C-t:交换光标两侧字符(行尾时交换最后两个)。
+    TransposeChars,
+    /// C-d:空输入(剥离 ghost 后)派发 .at 退出 handler;否则前删一字符。
+    DeleteCharOrExit,
+    /// vi x:前删一字符;空输入无动作(不退出)。
+    DeleteForward,
+    /// 语义键派发 .at handler(onkeydown 表)。
+    Handler,
+    /// 切换编辑模式(合成 SetEditMode 派发,input_value = 目标模式)。
+    SetMode(&'static str),
+    /// 复合操作(vi:append = 切 insert + 右移)。
+    Seq(Vec<LineEditOp>),
+    /// vi-normal 的 d 前缀进入 pending(dd/dw/db)。
+    BeginPending,
+    /// 吞掉按键(捕获但不动作)—— vi-normal 未映射可打印字符的兜底。
+    Swallow,
+}
+
+fn le_push_kill(text: String) {
+    let mut ring = TEXTAREA_KILL_RING.lock().unwrap();
+    if ring.back().map(|b| b == &text).unwrap_or(false) {
+        return; // 连续 kill 合并(readline 语义)
+    }
+    ring.push_back(text);
+    while ring.len() > 16 {
+        ring.pop_front();
+    }
+}
+
+/// Content 光标 → 全文字节偏移(列即行内字节偏移,cosmic-text 语义)。
+fn le_cursor_offset(c: &text_editor::Content) -> usize {
+    let cur = c.cursor();
+    let mut off = 0usize;
+    for (i, line) in c.lines().enumerate() {
+        if i == cur.position.line {
+            return off + cur.position.column.min(line.text.len());
+        }
+        off += line.text.len() + 1; // '\n'
+    }
+    off
+}
+
+/// 全文字节偏移 → move_to(单/多行,列按字节)。
+fn le_move_to_offset(c: &mut text_editor::Content, text: &str, off: usize) {
+    let pos = le_offset_to_pos(text, off);
+    c.move_to(text_editor::Cursor {
+        position: pos,
+        selection: None,
+    });
+}
+
+fn le_offset_to_pos(text: &str, off: usize) -> iced_widget::core::text::editor::Position {
+    let off = off.min(text.len());
+    let mut line = 0usize;
+    let mut before = 0usize;
+    for (i, l) in text.split('\n').enumerate() {
+        if before + l.len() >= off {
+            line = i;
+            break;
+        }
+        before += l.len() + 1;
+        line = i + 1;
+    }
+    iced_widget::core::text::editor::Position {
+        line,
+        column: off.saturating_sub(before),
+    }
+}
+
+fn ch_len_at(s: &str, i: usize) -> usize {
+    s[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1)
+}
+
+/// 在 key 的 Content 上删除显式字节范围 → 入 kill-ring。
+/// 返回删除的文本(None = 范围空)。不用 cosmic 的 Select(motion)——其
+/// 选区锚点会吸附词边界(实测起点 = 光标+1,跨空格错位);显式范围精确。
+fn le_kill_range(key: &str, range: std::ops::Range<usize>) -> Option<String> {
+    if range.start >= range.end {
+        return None;
+    }
+    let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+    let content = map.get_mut(key)?;
+    let text = content.text();
+    let range = range.start.min(text.len())..range.end.min(text.len());
+    if range.start >= range.end {
+        return None;
+    }
+    let killed = text[range.clone()].to_string();
+    // 不用 cosmic 选区删除 —— 显式选区 + Edit::Delete 的实测语义比设定
+    // 范围多删一个字形起始(Affinity::Before)。改为手动拼接重建,光标
+    // 落在删除起点(编辑点),完全确定性。
+    let new_text = format!("{}{}", &text[..range.start], &text[range.end..]);
+    **content = text_editor::Content::with_text(&new_text);
+    le_move_to_offset(content, &new_text, range.start);
+    Some(killed)
+}
+
+/// readline 语义的 kill 方向计算(基于当前光标,自算边界):
+/// End = 光标→行尾;Home = 行首→光标;WordRight = 跳过空白再吃一个词;
+/// WordLeft(unix-word-rubout)= 连空白带词向后吃。
+fn le_kill_motion(key: &str, motion: text_editor::Motion) -> Option<String> {
+    let (text, cur) = {
+        let map = TEXTAREA_CONTENTS.lock().unwrap();
+        let c = map.get(key)?;
+        (c.text(), le_cursor_offset(c))
+    };
+    let line_start = text[..cur].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let line_end = text[cur..].find('\n').map(|i| cur + i).unwrap_or(text.len());
+    let range = match motion {
+        text_editor::Motion::End => cur..line_end,
+        text_editor::Motion::Home => line_start..cur,
+        text_editor::Motion::DocumentEnd => cur..text.len(),
+        text_editor::Motion::DocumentStart => 0..cur,
+        text_editor::Motion::WordRight => {
+            // 跳过空白,吃一个词(非空白连续段),停在词尾。
+            let b = text.as_bytes();
+            let mut i = cur;
+            while i < b.len() && (b[i] as char).is_whitespace() {
+                i += 1;
+            }
+            while i < b.len() && !(b[i] as char).is_whitespace() {
+                i += 1;
+            }
+            cur..i
+        }
+        _ => {
+            // WordLeft / 其他:向后连空白带词一起吃。
+            let mut i = cur;
+            let b = text.as_bytes();
+            while i > 0 && (b[i - 1] as char).is_whitespace() {
+                i -= 1;
+            }
+            while i > 0 && !(b[i - 1] as char).is_whitespace() {
+                i -= 1;
+            }
+            i..cur
+        }
+    };
+    le_kill_range(key, range)
+}
+
+/// 执行复合原生操作;文本变化时返回合成 on_change 消息(Custom 派发)。
+fn le_execute(
+    key: &str,
+    op: LineEditOp,
+    on_change: &IcedMessage,
+) -> Option<text_editor::Binding<IcedMessage>> {
+    use text_editor::Binding;
+    let sync = |new_text: &str| -> Binding<IcedMessage> {
+        Binding::Custom(IcedMessage {
+            widget: on_change.widget.clone(),
+            event: on_change.event.clone(),
+            input_value: Some(strip_ghost_suffix(key, new_text)),
+        })
+    };
+    let dispatch = |event: &str, val: &str| -> Binding<IcedMessage> {
+        Binding::Custom(IcedMessage {
+            widget: on_change.widget.clone(),
+            event: event.to_string(),
+            input_value: Some(val.to_string()),
+        })
+    };
+    match op {
+        LineEditOp::Native(b) => Some(b),
+        LineEditOp::Swallow => Some(Binding::Sequence(vec![])),
+        LineEditOp::Seq(ops) => {
+            // 复合:依次执行,返回最后一个产生的绑定。
+            let mut last = Binding::Sequence(vec![]);
+            for sub in ops {
+                if let Some(b) = le_execute(key, sub, on_change) {
+                    last = b;
+                }
+            }
+            Some(last)
+        }
+        LineEditOp::Kill(motion) => match le_kill_motion(key, motion) {
+            Some(k) => {
+                le_push_kill(k);
+                let text = TEXTAREA_CONTENTS
+                    .lock()
+                    .unwrap()
+                    .get(key)
+                    .map(|c| c.text())
+                    .unwrap_or_default();
+                Some(sync(&text))
+            }
+            None => Some(Binding::Sequence(vec![])),
+        },
+        LineEditOp::Yank => {
+            let yank_text = TEXTAREA_KILL_RING.lock().unwrap().back().cloned();
+            match yank_text {
+                Some(t) => {
+                    let text = textarea_perform_action(
+                        key,
+                        text_editor::Action::Edit(text_editor::Edit::Paste(
+                            std::sync::Arc::new(t),
+                        )),
+                    );
+                    Some(sync(&text))
+                }
+                None => Some(Binding::Sequence(vec![])),
+            }
+        }
+        LineEditOp::TransposeChars => {
+            let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+            let content = map.get_mut(key)?;
+            let text = content.text();
+            if text.chars().count() < 2 {
+                return Some(Binding::Sequence(vec![]));
+            }
+            let off = le_cursor_offset(content).min(text.len());
+            // readline:光标在行尾时交换最后两个字符,否则交换光标前后字符。
+            let (a, b, c1, c2) = if off >= text.len() {
+                // 行尾:最后两个字符
+                let mut idx = text.char_indices().collect::<Vec<_>>();
+                idx.reverse();
+                let last_start = idx.first().map(|(i, _)| *i).unwrap_or(0);
+                let second_start = idx.get(1).map(|(i, _)| *i).unwrap_or(0);
+                (
+                    second_start,
+                    text.len(),
+                    text[second_start..last_start].chars().next().unwrap_or(' '),
+                    text[last_start..].chars().next().unwrap_or(' '),
+                )
+            } else {
+                let b_end = (off + ch_len_at(&text, off)).min(text.len());
+                let mut a_start = 0;
+                for (i, _) in text.char_indices() {
+                    if i + ch_len_at(&text, i) >= off {
+                        a_start = i;
+                        break;
+                    }
+                }
+                (
+                    a_start,
+                    b_end,
+                    text[a_start..off].chars().last().unwrap_or(' '),
+                    text[off..].chars().next().unwrap_or(' '),
+                )
+            };
+            let _ = (a, b);
+            // 选区 [a, b) → Delete → 按 c2、c1 顺序插入(净效果 = 交换)。
+            content.move_to(text_editor::Cursor {
+                position: le_offset_to_pos(&text, a),
+                selection: Some(le_offset_to_pos(&text, b)),
+            });
+            content.perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+            content.perform(text_editor::Action::Edit(text_editor::Edit::Insert(c2)));
+            content.perform(text_editor::Action::Edit(text_editor::Edit::Insert(c1)));
+            let new_text = content.text();
+            drop(map);
+            Some(sync(&new_text))
+        }
+        LineEditOp::DeleteCharOrExit => {
+            let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+            let content = map.get_mut(key)?;
+            let stripped_len = strip_ghost_suffix(key, &content.text()).len();
+            if stripped_len == 0 {
+                drop(map);
+                Some(dispatch("OnCtrlD", ""))
+            } else {
+                content.perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+                let t = content.text();
+                drop(map);
+                Some(sync(&t))
+            }
+        }
+        LineEditOp::DeleteForward => {
+            let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+            let content = map.get_mut(key)?;
+            if content.text().is_empty() {
+                return Some(Binding::Sequence(vec![]));
+            }
+            content.perform(text_editor::Action::Edit(text_editor::Edit::Delete));
+            let t = content.text();
+            drop(map);
+            Some(sync(&t))
+        }
+        LineEditOp::SetMode(mode) => Some(dispatch("SetEditMode", mode)),
+        LineEditOp::BeginPending => Some(Binding::Sequence(vec![])), // 闭包层处理
+        LineEditOp::Handler => None, // 交由外层回落(.at 未声明则默认)
+    }
+}
+
+/// 各模式键位表。键名与 key_press_to_binding_name 规范一致。
+fn line_edit_keymap(mode: &str) -> std::collections::HashMap<String, LineEditOp> {
+    use text_editor::{Binding, Motion};
+    let nat = |b: Binding<IcedMessage>| LineEditOp::Native(b);
+    let mut m: std::collections::HashMap<String, LineEditOp> = std::collections::HashMap::new();
+    // ── Emacs(readline)全集 ──
+    m.insert("ctrl.a".into(), nat(Binding::Move(Motion::Home)));
+    m.insert("ctrl.b".into(), nat(Binding::Move(Motion::Left)));
+    m.insert("ctrl.e".into(), nat(Binding::Move(Motion::End)));
+    m.insert("ctrl.f".into(), nat(Binding::Move(Motion::Right)));
+    m.insert("ctrl.h".into(), nat(Binding::Backspace));
+    m.insert("alt.b".into(), nat(Binding::Move(Motion::WordLeft)));
+    m.insert("alt.f".into(), nat(Binding::Move(Motion::WordRight)));
+    m.insert("ctrl.k".into(), LineEditOp::Kill(Motion::End));
+    m.insert("ctrl.u".into(), LineEditOp::Kill(Motion::Home));
+    m.insert("alt.d".into(), LineEditOp::Kill(Motion::WordRight));
+    m.insert("alt.backspace".into(), LineEditOp::Kill(Motion::WordLeft));
+    m.insert("ctrl.w".into(), LineEditOp::Kill(Motion::WordLeft));
+    m.insert("ctrl.y".into(), LineEditOp::Yank);
+    m.insert("ctrl.t".into(), LineEditOp::TransposeChars);
+    m.insert("ctrl.d".into(), LineEditOp::DeleteCharOrExit);
+    m.insert("enter".into(), nat(Binding::Enter));
+    match mode {
+        "vi-insert" => {
+            // insert 态 = Emacs 等价 + Esc 回 normal。
+            m.insert("escape".into(), LineEditOp::SetMode("vi-normal"));
+        }
+        "vi-normal" => {
+            m.clear();
+            m.insert("h".into(), nat(Binding::Move(Motion::Left)));
+            m.insert("l".into(), nat(Binding::Move(Motion::Right)));
+            m.insert("0".into(), nat(Binding::Move(Motion::Home)));
+            m.insert("^".into(), nat(Binding::Move(Motion::Home)));
+            m.insert("$".into(), nat(Binding::Move(Motion::End)));
+            m.insert("w".into(), nat(Binding::Move(Motion::WordRight)));
+            m.insert("b".into(), nat(Binding::Move(Motion::WordLeft)));
+            m.insert("e".into(), nat(Binding::Move(Motion::WordRight)));
+            m.insert("G".into(), nat(Binding::Move(Motion::End)));
+            m.insert("x".into(), LineEditOp::DeleteForward);
+            m.insert("X".into(), nat(Binding::Backspace));
+            m.insert("D".into(), LineEditOp::Kill(Motion::End));
+            m.insert("d".into(), LineEditOp::BeginPending);
+            m.insert("i".into(), LineEditOp::SetMode("vi-insert"));
+            m.insert("I".into(), LineEditOp::Seq(vec![
+                LineEditOp::SetMode("vi-insert"),
+                LineEditOp::Native(Binding::Move(Motion::Home)),
+            ]));
+            m.insert("a".into(), LineEditOp::Seq(vec![
+                LineEditOp::SetMode("vi-insert"),
+                LineEditOp::Native(Binding::Move(Motion::Right)),
+            ]));
+            m.insert("A".into(), LineEditOp::Seq(vec![
+                LineEditOp::SetMode("vi-insert"),
+                LineEditOp::Native(Binding::Move(Motion::End)),
+            ]));
+            m.insert("enter".into(), nat(Binding::Enter));
+        }
+        _ => {}
+    }
+    m
+}
+
 /// Plan 057 续(Tab 补全):给编辑器挂 key_binding — 声明过的 onkeydown 键
 /// 以 Binding::Custom 派发 handler(不落入编辑器默认行为,Tab 不再被静默
 /// 丢弃、up/down 走历史导航);未声明的键回落 iced 默认(输入/Enter/退格…)。
@@ -123,10 +496,15 @@ fn with_textarea_keydown<H>(
     editor: iced::widget::TextEditor<'static, H, IcedMessage>,
     keydown: std::collections::HashMap<String, IcedMessage>,
     ta_key: &str,
+    keymap_mode: &str,
+    on_change: Option<IcedMessage>,
 ) -> iced::widget::TextEditor<'static, H, IcedMessage>
 where
     H: iced_widget::core::text::Highlighter,
 {
+    if keydown.is_empty() && keymap_mode == "emacs" {
+        return editor; // 纯默认路径(无声明且默认模式),保持零开销
+    }
     if keydown.is_empty() {
         return editor;
     }
@@ -138,13 +516,74 @@ where
             reg.insert(format!("{}_{}", msg.widget, msg.event), ta_key.to_string());
         }
     }
+    // Plan 057 续(行内编辑 keymap):派发优先级 .at onkeydown 声明(App
+    // 语义,含 ghost 门控) → 模式键位表(emacs/vi-*) → vi-normal 吞可打印
+    // → iced 默认。复合原生操作(kill/yank/transpose)经 le_execute 在
+    // Content 上直接执行并合成 on_change 消息同步状态。
+    let mode = keymap_mode.to_string();
+    let action_key = ta_key.to_string();
+    let pending: std::rc::Rc<std::cell::RefCell<Option<&'static str>>> =
+        std::rc::Rc::new(std::cell::RefCell::new(None));
+    let pending2 = pending.clone();
     editor.key_binding(move |kp| {
         let name = key_press_to_binding_name(&kp);
+        // vi pending(d 前缀):dd/dw/db;其他键取消 pending。
+        if let Some(pfx) = pending2.borrow_mut().take() {
+            if pfx == "d" {
+                let op = match name.as_str() {
+                    "d" => Some(LineEditOp::Kill(text_editor::Motion::Home)),
+                    "w" => Some(LineEditOp::Kill(text_editor::Motion::WordRight)),
+                    "b" => Some(LineEditOp::Kill(text_editor::Motion::WordLeft)),
+                    _ => None,
+                };
+                if pfx == "d" && name == "d" {
+                    // dd = kill 整行:先 kill 到行首,再 kill 到行尾
+                    if let Some(oc) = on_change.as_ref() {
+                        let _ = le_execute(&action_key, LineEditOp::Kill(text_editor::Motion::Home), oc);
+                        return le_execute(&action_key, LineEditOp::Kill(text_editor::Motion::End), oc);
+                    }
+                    return Some(text_editor::Binding::Sequence(vec![]));
+                }
+                if let Some(op) = op {
+                    if let Some(oc) = on_change.as_ref() {
+                        return le_execute(&action_key, op, oc);
+                    }
+                }
+                return Some(text_editor::Binding::Sequence(vec![]));
+            }
+        }
         if !name.is_empty() {
+            // 1. .at 声明优先
             if let Some(msg) = keydown.get(&name) {
                 return Some(text_editor::Binding::Custom(msg.clone()));
             }
+            // 2. 模式表
+            if let Some(op) = line_edit_keymap(&mode).get(&name).cloned() {
+                match op {
+                    LineEditOp::Handler => {}
+                    LineEditOp::BeginPending => {
+                        *pending2.borrow_mut() = Some("d");
+                        return Some(text_editor::Binding::Sequence(vec![]));
+                    }
+                    op => {
+                        if let Some(oc) = on_change.as_ref() {
+                            if let Some(b) = le_execute(&action_key, op, oc) {
+                                return Some(b);
+                            }
+                        }
+                    }
+                }
+            }
         }
+        // 3. vi-normal 兜底:吞掉可打印字符
+        if mode == "vi-normal" {
+            if let Some(t) = kp.text.as_deref() {
+                if t.chars().any(|c| !c.is_control()) {
+                    return Some(text_editor::Binding::Sequence(vec![]));
+                }
+            }
+        }
+        // 4. iced 默认
         text_editor::Binding::from_key_press(kp)
     })
 }
@@ -510,14 +949,26 @@ fn get_textarea_content_rich(key: &str, value: &str, ghost: &str) -> &'static te
         };
         if let Some(content) = map.get_mut(key) {
             if content.text() != want || boundary_moved {
+                // Plan 057 续(行内编辑):echo 重建(编辑器自身编辑/移动引起)
+                // 保持光标字节偏移(编辑点,钳回 value 区);外部变更(历史/
+                // 补全/ghost 接受)维持 value 末尾 —— C-b 后打字不再被拽尾。
+                let echo = TEXTAREA_ECHO_KEYS.lock().unwrap().remove(key);
+                let preserve = if echo { Some(le_cursor_offset(content)) } else { None };
                 **content = text_editor::Content::with_text(&want);
-                content.perform(text_editor::Action::Move(
-                    text_editor::Motion::DocumentEnd,
-                ));
-                for _ in 0..ghost.chars().count() {
-                    content.perform(text_editor::Action::Move(
-                        text_editor::Motion::Left,
-                    ));
+                match preserve {
+                    Some(off) => {
+                        le_move_to_offset(content, &want, off.min(value.len()));
+                    }
+                    None => {
+                        content.perform(text_editor::Action::Move(
+                            text_editor::Motion::DocumentEnd,
+                        ));
+                        for _ in 0..ghost.chars().count() {
+                            content.perform(text_editor::Action::Move(
+                                text_editor::Motion::Left,
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -2022,7 +2473,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 input_widget.into()
             }
 
-            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, .. } => {
+            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, keymap, .. } => {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
@@ -3116,6 +3567,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             highlight,
             ghost,
             keydown,
+            keymap,
         } => AbstractView::Textarea {
             placeholder,
             value,
@@ -3126,6 +3578,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             highlight,
             ghost,
             keydown: keydown.into_iter().map(|(k, m)| (k, IcedMessage::from_dynamic(&m))).collect(),
+            keymap,
         },
 
         AbstractView::Checkbox {
@@ -5736,7 +6189,23 @@ fn compare_pngs(
                     eprintln!("[FOCUS-DBG] edit detected, key={}", ta_key);
                 }
                 state.needs_prompt_refocus.set(true);
-                *state.last_textarea_key.borrow_mut() = Some(ta_key);
+                *state.last_textarea_key.borrow_mut() = Some(ta_key.clone());
+                // Plan 057 续(行内编辑):编辑器自身消息 → echo:下一次该 key
+                // 的 content 重建保持光标偏移;顺带把光标字节偏移写入组件
+                // cursor_pos(仅当 .at 声明了该字段),供补全按真实光标计算。
+                TEXTAREA_ECHO_KEYS.lock().unwrap().insert(ta_key.clone());
+                {
+                    let cur_off = TEXTAREA_CONTENTS
+                        .lock()
+                        .unwrap()
+                        .get(&ta_key)
+                        .map(|c| le_cursor_offset(c) as i64)
+                        .unwrap_or(0);
+                    if state.component.read_state("cursor_pos").is_ok() {
+                        let _ = state.component
+                            .write_state("cursor_pos", auto_val::Value::Int(cur_off as i32));
+                    }
+                }
             }
         } else {
             // Plan 057 续(keydown 失焦修复):onkeydown 派发的 handler(AcceptGhost/
@@ -5749,7 +6218,10 @@ fn compare_pngs(
                     eprintln!("[FOCUS-DBG] keydown handler {}, refocus editor {}", ta_key, editor_key);
                 }
                 state.needs_prompt_refocus.set(true);
-                *state.last_textarea_key.borrow_mut() = Some(editor_key);
+                *state.last_textarea_key.borrow_mut() = Some(editor_key.clone());
+                // 外部变更(历史/补全/ghost 接受/模式切换):清 echo,
+                // 重建时光标回到 value 末尾。
+                TEXTAREA_ECHO_KEYS.lock().unwrap().remove(&editor_key);
             }
         }
 
@@ -9104,7 +9576,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown } => {
+        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown, keymap } => {
             let key = on_change.as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
                 .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
@@ -9159,7 +9631,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
                 let settings = build_span_lines(&highlight, &value, &ghost);
                 let rich_editor = rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
-                let rich_editor = with_textarea_keydown(rich_editor, keydown, &key);
+                let rich_editor = with_textarea_keydown(rich_editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(rich_editor, on_change, on_submit)
             } else {
                 let mut editor = text_editor(content).placeholder(ph);
@@ -9217,7 +9689,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
 
-                let editor = with_textarea_keydown(editor, keydown, &key);
+                let editor = with_textarea_keydown(editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(editor, on_change, on_submit)
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
@@ -11105,5 +11577,202 @@ mod tests {
             }
         }
         assert!(got_failed, "executor emitted Failed result for bad command");
+    }
+}
+
+// ═══ Plan 057 续(行内编辑)单元测试:Content 纯数据结构,无需窗口 ════
+#[cfg(test)]
+mod line_edit_tests {
+    use super::*;
+
+    /// 每个测试独立的 key(避免 TEXTAREA_CONTENTS 全局残留)。
+    fn setup(key: &str, text: &str) {
+        TEXTAREA_CONTENTS.lock().unwrap().insert(
+            key.to_string(),
+            Box::leak(Box::new(text_editor::Content::with_text(text))),
+        );
+        TEXTAREA_GHOSTS.lock().unwrap().insert(key.to_string(), String::new());
+    }
+
+    fn content_text(key: &str) -> String {
+        TEXTAREA_CONTENTS.lock().unwrap().get(key).map(|c| c.text()).unwrap_or_default()
+    }
+
+    fn set_cursor(key: &str, text: &str, off: usize) {
+        let mut map = TEXTAREA_CONTENTS.lock().unwrap();
+        if let Some(c) = map.get_mut(key) {
+            le_move_to_offset(c, text, off);
+        }
+    }
+
+    fn dummy_on_change() -> IcedMessage {
+        IcedMessage { widget: "W".into(), event: "E".into(), input_value: None }
+    }
+
+    #[test]
+    fn test_cursor_offset_roundtrip() {
+        let key = "ut_rt";
+        setup(key, "echo hi");
+        set_cursor(key, "echo hi", 5);
+        let off = {
+            let map = TEXTAREA_CONTENTS.lock().unwrap();
+            le_cursor_offset(map.get(key).unwrap())
+        };
+        assert_eq!(off, 5);
+    }
+
+    #[test]
+    fn test_cursor_offset_multibyte() {
+        // 中文字节偏移(3 字节/字符):"你好" 光标在两字之间 = 3
+        let key = "ut_cjk";
+        setup(key, "你好");
+        set_cursor(key, "你好", 3);
+        let off = {
+            let map = TEXTAREA_CONTENTS.lock().unwrap();
+            le_cursor_offset(map.get(key).unwrap())
+        };
+        assert_eq!(off, 3);
+    }
+
+    #[test]
+    fn test_kill_to_end() {
+        let key = "ut_ke";
+        setup(key, "echo hi");
+        set_cursor(key, "echo hi", 4); // echo| hi
+        let killed = le_kill_motion(key, text_editor::Motion::End);
+        assert_eq!(killed.as_deref(), Some(" hi"));
+        assert_eq!(content_text(key), "echo");
+    }
+
+    #[test]
+    fn test_kill_to_home() {
+        let key = "ut_kh";
+        setup(key, "echo hi");
+        set_cursor(key, "echo hi", 4); // |echo hi 前缀删除
+        let killed = le_kill_motion(key, text_editor::Motion::Home);
+        assert_eq!(killed.as_deref(), Some("echo"));
+        assert_eq!(content_text(key), " hi");
+    }
+
+    #[test]
+    fn test_kill_word_right() {
+        let key = "ut_kw";
+        setup(key, "echo hi world");
+        set_cursor(key, "echo hi world", 4); // echo| hi world
+        let killed = le_kill_motion(key, text_editor::Motion::WordRight);
+        assert_eq!(killed.as_deref(), Some(" hi"));
+        assert_eq!(content_text(key), "echo world");
+    }
+
+    #[test]
+    fn test_kill_empty_selection_noop() {
+        let key = "ut_kn";
+        setup(key, "abc");
+        set_cursor(key, "abc", 3); // 光标在行尾,kill-to-end 选区为空
+        let killed = le_kill_motion(key, text_editor::Motion::End);
+        assert_eq!(killed, None);
+        assert_eq!(content_text(key), "abc");
+    }
+
+    #[test]
+    fn test_transpose_mid() {
+        let key = "ut_tm";
+        setup(key, "ab");
+        set_cursor(key, "ab", 1); // 光标在 a b 之间 → 交换 → ba
+        le_execute(key, LineEditOp::TransposeChars, &dummy_on_change());
+        assert_eq!(content_text(key), "ba");
+    }
+
+    #[test]
+    fn test_transpose_at_end() {
+        let key = "ut_te";
+        setup(key, "ab");
+        set_cursor(key, "ab", 2); // 行尾 → 交换最后两个 → ba
+        le_execute(key, LineEditOp::TransposeChars, &dummy_on_change());
+        assert_eq!(content_text(key), "ba");
+    }
+
+    #[test]
+    fn test_transpose_short_noop() {
+        let key = "ut_ts";
+        setup(key, "a");
+        le_execute(key, LineEditOp::TransposeChars, &dummy_on_change());
+        assert_eq!(content_text(key), "a");
+    }
+
+    #[test]
+    fn test_yank_after_kill() {
+        let key = "ut_yk";
+        setup(key, "hello world");
+        set_cursor(key, "hello world", 5); // hello| world
+        le_execute(key, LineEditOp::Kill(text_editor::Motion::End), &dummy_on_change());
+        assert_eq!(content_text(key), "hello");
+        le_execute(key, LineEditOp::Yank, &dummy_on_change());
+        assert_eq!(content_text(key), "hello world");
+    }
+
+    #[test]
+    fn test_kill_ring_merge_consecutive() {
+        le_push_kill("ab".into());
+        le_push_kill("ab".into()); // 相同内容合并
+        let len = TEXTAREA_KILL_RING.lock().unwrap().len();
+        assert!(len >= 1);
+    }
+
+    #[test]
+    fn test_delete_forward() {
+        let key = "ut_df";
+        setup(key, "abc");
+        set_cursor(key, "abc", 0);
+        le_execute(key, LineEditOp::DeleteForward, &dummy_on_change());
+        assert_eq!(content_text(key), "bc");
+    }
+
+    #[test]
+    fn test_echo_cursor_preserved_on_rebuild() {
+        let key = "ut_echo";
+        setup(key, "ab");
+        set_cursor(key, "ab", 1); // 光标在 a|b
+        TEXTAREA_ECHO_KEYS.lock().unwrap().insert(key.to_string());
+        // echo 重建:新 value "aZb"(行中插入 Z 的等价外部重算),光标应保持 1→2?
+        // 语义:保持偏移(编辑点)。这里 value 变 "aZ" 光标钳 value 区。
+        get_textarea_content_rich(key, "aZ", "");
+        let off = {
+            let map = TEXTAREA_CONTENTS.lock().unwrap();
+            le_cursor_offset(map.get(key).unwrap())
+        };
+        // 重建后光标保持字节偏移 1(echo 语义:编辑点)
+        assert_eq!(off, 1);
+        assert_eq!(content_text(key), "aZ");
+    }
+
+    #[test]
+    fn test_external_change_cursor_to_value_end() {
+        let key = "ut_ext";
+        setup(key, "ab");
+        set_cursor(key, "ab", 0);
+        // 不置 echo(外部变更):光标钉 value 末尾
+        get_textarea_content_rich(key, "abcd", "");
+        let off = {
+            let map = TEXTAREA_CONTENTS.lock().unwrap();
+            le_cursor_offset(map.get(key).unwrap())
+        };
+        assert_eq!(off, 4);
+    }
+
+    #[test]
+    fn test_keymap_tables_sanity() {
+        let em = line_edit_keymap("emacs");
+        for k in ["ctrl.a", "ctrl.b", "ctrl.e", "ctrl.f", "ctrl.k", "ctrl.u",
+                  "ctrl.y", "ctrl.t", "alt.b", "alt.f", "alt.d", "ctrl.w"] {
+            assert!(em.contains_key(k), "emacs 缺 {}", k);
+        }
+        let vi = line_edit_keymap("vi-normal");
+        for k in ["h", "l", "0", "$", "w", "b", "e", "x", "i", "a", "A", "d"] {
+            assert!(vi.contains_key(k), "vi-normal 缺 {}", k);
+        }
+        let vii = line_edit_keymap("vi-insert");
+        assert!(vii.contains_key("escape"));
+        assert!(vii.contains_key("ctrl.k"));
     }
 }
