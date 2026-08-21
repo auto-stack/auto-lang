@@ -722,24 +722,35 @@ pub type SpanLines = Vec<Vec<(std::ops::Range<usize>, SpanKind)>>;
 
 /// 预计算着色的 Highlighter:lines 全量替换(update 时重置行游标,从行 0
 /// 重着色 —— iced_highlighter 的 update 同款约定),highlight_line 顺序消费。
+/// Plan 058(着色修复):Settings 携带完整文本参与相等比较。此前仅
+/// SpanLines(范围+kind)时,"ls Cargo.toml" 与 "ls Cargo.lock" 的 spans
+/// 完全相等(同长度同类型)→ iced settings-diff 判定无变化 → 不调
+/// update()/不重置行游标 → cosmic 增量着色跳过变更行 → 残留旧属性
+/// (Tab 轮换时 ls 时而普通色的根因)。文本入 Settings 后任何文本变化
+/// 都触发 update + 重置,增量契约恢复。
 #[derive(Debug, Clone, PartialEq)]
+pub struct SpanSettings {
+    pub text: String,
+    pub lines: SpanLines,
+}
+
 pub struct SpanHighlighter {
     lines: SpanLines,
     line_idx: usize,
 }
 
 impl iced_widget::core::text::Highlighter for SpanHighlighter {
-    type Settings = SpanLines;
+    type Settings = SpanSettings;
     type Highlight = SpanKind;
     type Iterator<'a> = std::vec::IntoIter<(std::ops::Range<usize>, SpanKind)>;
 
     fn new(settings: &Self::Settings) -> Self {
-        Self { lines: settings.clone(), line_idx: 0 }
+        Self { lines: settings.lines.clone(), line_idx: 0 }
     }
 
     fn update(&mut self, settings: &Self::Settings) {
-        // 整体替换 → 重置游标,让 draw 的 highlight 从行 0 重喂。
-        self.lines = settings.clone();
+        // 整体替换 → 重置游标,让增量 highlight 从行 0 重喂。
+        self.lines = settings.lines.clone();
         self.line_idx = 0;
     }
 
@@ -811,7 +822,7 @@ fn span_kind_to_format(
 
 /// (text, kind) 连续段 + ghost → 按行预切的字节范围段。spans 必须无缝覆盖
 /// value(DoTokenize 语义);不满足时返回空(不着色,防错位)。
-fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) -> SpanLines {
+fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) -> SpanSettings {
     let mut full: Vec<(std::ops::Range<usize>, SpanKind)> = Vec::new();
     let mut concat = String::new();
     let mut off = 0usize;
@@ -825,7 +836,7 @@ fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) ->
     }
     // 防线:段文本拼接必须恰为 value —— CJK 字节钳制等来源可能造成缺口/重叠。
     if concat != value {
-        return Vec::new();
+        return SpanSettings { text: String::new(), lines: Vec::new() };
     }
     if !ghost.is_empty() {
         full.push((value.len()..value.len() + ghost.len(), SpanKind::Ghost));
@@ -854,7 +865,7 @@ fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) ->
             }
         }
     }
-    lines
+    SpanSettings { text: content, lines }
 }
 
 /// Get or create a `&'static text_editor::Content` for the given key, synced to `value`.
