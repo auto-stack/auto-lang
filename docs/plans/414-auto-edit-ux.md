@@ -1,6 +1,6 @@
 # Plan 414: auto-edit 对齐 Zed 的 UX 改进（041 示例 + code_editor widget）
 
-> **状态**: 🚧 实施中（2026-08-21 起，分支 `plan-414-auto-edit-ux`，worktree `auto-edit-ux`）
+> **状态**: ✅ 本轮范围实施完成（2026-08-21，分支 `plan-414-auto-edit-ux` 提交 `d04f7e53`，worktree `auto-edit-ux`）—— §1.1-1.3 全部落地并实机验证（tab 切换 / 两位行号槽 / 折叠三角 / 1:1 行列 / terminal 图标开合 Console）；§3 后续项（真折叠 Phase B、深层多 tab、Menu/Toolbar widget）待立项。
 > **背景**: 用户对比 auto-edit（041）与 Zed 截图提出 7 项改进。逐项分析后：1-4 本轮实施；5 做 Phase A（gutter 列 + 折叠标记视觉，点击折叠为 Phase B）；6 做 MVP（DSL 级双 tab，状态按 key 独立）；7 仅设计（AutoUI VM 后端确认无 Menu/Toolbar widget）。
 > **上游**: Plan 413（code_editor widget）、`6b8ec73c`（状态栏 + Console 面板）、`6b70dc85`（状态栏样式修正）。
 
