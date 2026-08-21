@@ -5376,6 +5376,7 @@ mod tests {
                 variants: vec![AuraMsgVariant {
                     name: "SourceChanged".to_string(),
                     payload: vec![Type::StrFixed(0)],
+                    quoted: false,
                 }],
             }],
             view_tree: element,
@@ -5504,8 +5505,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)] },
-                    AuraMsgVariant { name: "CursorMoved".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
+                    AuraMsgVariant { name: "CursorMoved".to_string(), payload: vec![], quoted: false },
                 ],
             }],
             view_tree: element,
