@@ -40,6 +40,11 @@ pub enum OptionVariant {
 pub struct ResultCover {
     pub variant: ResultVariant,
     pub binding: Option<AutoStr>,  // Variable name to bind (Ok(x) => x, Err(e) => e)
+    /// Plan 396/B11(b): nested pattern inside the parens, e.g.
+    /// `Err(ToolError.SecurityDenied { kind, path })`. When set, `binding`
+    /// is None and the nested Expr (StructPattern / Cover::Tag / Ident)
+    /// is emitted inside Ok(...)/Err(...).
+    pub inner: Option<Box<crate::ast::Expr>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
