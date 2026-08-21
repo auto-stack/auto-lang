@@ -1,0 +1,16 @@
+// Test: Plan 396 §2.5 — qualified unit-variant pattern via a use.rust module.
+// `module.Type.UnitVariant` (no payload parens) must strip the module segment
+// and render `Type::UnitVariant`, matching the tuple-variant arm. Previously
+// a2r emitted the invalid `module::Type.UnitVariant` (ai-config loader.at).
+
+use.rust auto_val
+
+fn kind_prop_is_empty(v Value) bool {
+    is v {
+        auto_val.Value.Nil -> return true,
+        auto_val.Value.Null -> return true,
+        auto_val.Value.Void -> return true,
+        auto_val.Value.Str(s) -> return s.to_string().is_empty(),
+        else -> return false
+    }
+}

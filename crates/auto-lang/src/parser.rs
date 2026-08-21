@@ -3907,7 +3907,7 @@ impl<'a> Parser<'a> {
         }
 
         // Continue parsing to handle member access (e.g., Msg.Inc)
-        let result = self.expr_pratt_with_left(lhs, 0)?;
+        let mut result = self.expr_pratt_with_left(lhs, 0)?;
 
         // Plan 396/B11(b): qualified struct-variant pattern WITHOUT payload
         // parens: `Type.Variant { field, ... }` (and `module.Type.Variant
@@ -3966,6 +3966,32 @@ impl<'a> Parser<'a> {
                         tag: variant.clone(),
                         bindings,
                     })));
+                }
+            }
+        }
+
+        // Plan 396 §2.5: qualified unit-variant pattern WITHOUT payload
+        // parens: `module.Type.UnitVariant`. When the head is a use.rust
+        // module (not a known enum), lhs_expr's tag_cover consumed
+        // `module.Type` as a nil placeholder TagCover (bindings ["_"]) and
+        // the trailing Dot field is the actual variant. Strip the module
+        // segment — mirroring the Call conversion above — so a2r emits
+        // `Type::UnitVariant` instead of invalid `module::Type.UnitVariant`
+        // (ai-config loader.at: `auto_val.Value.Nil` → `Value::Nil`).
+        if let Expr::Dot(base, variant) = &result {
+            if let Expr::Cover(Cover::Tag(inner_tag)) = base.as_ref() {
+                if inner_tag.bindings.iter().all(|b| b.as_str() == "_") {
+                    let rewritten = Expr::Cover(Cover::Tag(TagCover {
+                        kind: inner_tag.tag.clone(),
+                        tag: variant.clone(),
+                        bindings: vec![Name::from("_")],
+                    }));
+                    // A following `{` is a struct-variant payload — let the
+                    // Plan 165 check below destructure it.
+                    if !self.is_kind(TokenKind::LBrace) {
+                        return Ok(rewritten);
+                    }
+                    result = rewritten;
                 }
             }
         }
@@ -16896,6 +16922,44 @@ fn msg(e E) str {
 ";
         let ast = parse_once(code);
         assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396 §2.5: 3-segment qualified unit-variant pattern
+    /// `module.Type.UnitVariant` (use.rust module head, no payload parens)
+    /// strips the module segment, mirroring the with-args conversion —
+    /// TagCover{Value, Nil} instead of a residual Dot(TagCover{auto_val,
+    /// Value}, Nil) that a2r rendered as invalid `auto_val::Value.Nil`.
+    #[test]
+    fn test_qualified_unit_variant_pattern_strips_module() {
+        let code = "use.rust auto_val
+
+fn f(v Value) bool {
+    is v {
+        auto_val.Value.Nil -> return true
+        else -> return false
+    }
+}
+";
+        let ast = parse_once(code);
+        let fd = ast.stmts.iter().find_map(|s| match s {
+            Stmt::Fn(fd) if fd.name == "f" => Some(fd),
+            _ => None,
+        }).expect("fn f present");
+        let is_stmt = fd.body.stmts.iter().find_map(|s| match s {
+            Stmt::Is(is_) => Some(is_),
+            _ => None,
+        }).expect("is statement present");
+        let pat = match &is_stmt.branches[0] {
+            IsBranch::EqBranch(patterns, _) => patterns[0].clone(),
+            other => panic!("expected EqBranch, got {:?}", other),
+        };
+        assert!(
+            matches!(&pat, Expr::Cover(crate::ast::Cover::Tag(tc))
+                if tc.kind == "Value" && tc.tag == "Nil"
+                    && tc.bindings.iter().all(|b| b.as_str() == "_")),
+            "expected TagCover{{Value, Nil, _}}, got {:?}",
+            pat
+        );
     }
 
     /// Plan 396/B11(b): enum struct-variant DECLARATION accepts colon-style
