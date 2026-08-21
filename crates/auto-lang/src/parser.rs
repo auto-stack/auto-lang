@@ -267,6 +267,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Create parser
+    /// Plan 059 续(§B8):把单个表达式文本(如 ".block.id")解析为 Expr。
+    /// 供事件参数求值复用视图表达式解析器。
+    pub fn parse_expr_fragment(src: &str) -> Option<crate::ast::Expr> {
+        let code = src.trim().trim_start_matches('.').to_string();
+        if code.is_empty() {
+            return None;
+        }
+        let mut parser = Parser::new(&code);
+        match parser.parse_expr() {
+            Ok(expr) => Some(expr),
+            Err(_) => None,
+        }
+    }
+
     pub fn new(code: &'a str) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next().expect("lexer should produce first token");

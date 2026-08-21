@@ -4401,6 +4401,13 @@ let tabs_inner = View::Row {
         for param in &event.params {
             if let Some(val) = self.resolve_binding_path(param, bindings) {
                 args.push(val);
+            } else if let Some(val) = self.parse_event_param_expr(param, bindings) {
+                // Plan 059 续(DEBTS §B8 修复):前导点路径(.block.id 等 widget
+                // 参数引用)在 binding 表(仅循环变量)中不存在 —— 解析为
+                // 表达式后经视图表达式解析器求值(可解析 .block.output.Table
+                // .columns 这类深 prop 路径)。此前落入字面量分支变垃圾串,
+                // 渲染层 as_int(Str) 静默 0 → 排序/折叠恒命中第一个 block。
+                args.push(val);
             } else {
                 // Not a binding — treat as a literal value.
                 args.push(parse_event_param_literal(param));
@@ -4416,6 +4423,24 @@ let tabs_inner = View::Row {
     /// Internal: convert handler string to DynamicMessage (used by event_to_message).
     /// Resolve a dotted binding path like "note.id" from loop variable bindings.
     /// Splits on '.', looks up the root in bindings, then navigates fields on Obj values.
+    /// Plan 059 续(§B8):把事件参数文本解析为 Expr 并经视图表达式解析器
+    /// 求值。用于前导点路径(.block.id)—— binding 表只有循环变量。
+    fn parse_event_param_expr(&self, param: &str, bindings: &Bindings) -> Option<Value> {
+        // parser 把前导点形式规整为 "this." 前缀(this.block.id)—— 两种都剥。
+        let path = if let Some(r) = param.strip_prefix("this.") {
+            r
+        } else if let Some(r) = param.strip_prefix('.') {
+            r
+        } else {
+            return None;
+        };
+        if path.is_empty() {
+            return None;
+        }
+        let expr = crate::parser::Parser::parse_expr_fragment(path)?;
+        self.resolve_expr_to_value(&expr, bindings)
+    }
+
     fn resolve_binding_path(&self, path: &str, bindings: &Bindings) -> Option<Value> {
         let parts: Vec<&str> = path.split('.').collect();
         if parts.is_empty() {
