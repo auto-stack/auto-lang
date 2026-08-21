@@ -5781,9 +5781,21 @@ impl VueGenerator {
             Expr::Bina(left, op, right) => {
                 use auto_val::Op;
                 match op {
-                    // Comparisons and logical ops always yield booleans.
-                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge
-                    | Op::And | Op::Or => "boolean".to_string(),
+                    // Comparisons always yield booleans.
+                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge => "boolean".to_string(),
+                    // JS `||`/`&&` yield one of the OPERANDS, not a boolean
+                    // (probe 14: `.a || "b"` was mis-typed `computed<boolean>`,
+                    // forcing the strOr/orNull extension helpers). Same-type
+                    // operands infer that type; mixed operands stay `any`.
+                    Op::And | Op::Or => {
+                        let lt = self.expr_to_ts_type(left);
+                        let rt = self.expr_to_ts_type(right);
+                        if lt == rt {
+                            lt
+                        } else {
+                            "any".to_string()
+                        }
+                    }
                     // `+` is string concatenation when either side is a string
                     // (JS semantics) — don't blindly infer number.
                     Op::Add => {
@@ -6022,13 +6034,26 @@ impl VueGenerator {
                         format!("!({})", other_js)
                     });
                 }
-                let left_js = self.expr_to_js(left)?;
-                let right_js = self.expr_to_js(right)?;
+                let mut left_js = self.expr_to_js(left)?;
+                let mut right_js = self.expr_to_js(right)?;
+                // Re-insert the parens the parser dropped (probe 09):
+                // `(a+b)*c` must not come out as `a + b * c`.
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, left, false) {
+                    left_js = format!("({})", left_js);
+                }
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, right, true) {
+                    right_js = format!("({})", right_js);
+                }
                 let op_js = Self::op_to_js(op);
                 Ok(format!("{} {} {}", left_js, op_js, right_js))
             }
             Expr::Unary(op, operand) => {
-                let operand_js = self.expr_to_js(operand)?;
+                let mut operand_js = self.expr_to_js(operand)?;
+                // `!` / unary `-` bind tighter than any binop — keep the
+                // operand's grouping (`!(a && b)`, `-(a + b)`).
+                if matches!(operand.as_ref(), Expr::Bina(..)) {
+                    operand_js = format!("({})", operand_js);
+                }
                 let op_js = match op {
                     Op::Not => "!",
                     Op::Sub => "-",
@@ -7004,8 +7029,15 @@ impl VueGenerator {
                 Ok(format!("{{{}}}", pairs_vue.join(", ")))
             }
             Expr::Bina(left, op, right) => {
-                let left_str = self.expr_to_vue_bound_value(left)?;
-                let right_str = self.expr_to_vue_bound_value(right)?;
+                let mut left_str = self.expr_to_vue_bound_value(left)?;
+                let mut right_str = self.expr_to_vue_bound_value(right)?;
+                // Re-insert the parens the parser dropped (probe 09).
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, left, false) {
+                    left_str = format!("({})", left_str);
+                }
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, right, true) {
+                    right_str = format!("({})", right_str);
+                }
                 let op_str = match op {
                     Op::Eq => "==",
                     Op::Neq => "!=",
@@ -7025,7 +7057,11 @@ impl VueGenerator {
                 Ok(format!("{} {} {}", left_str, op_str, right_str))
             }
             Expr::Unary(op, operand) => {
-                let expr_str = self.expr_to_vue_bound_value(operand)?;
+                let mut expr_str = self.expr_to_vue_bound_value(operand)?;
+                // Keep a Bina operand's grouping under `!` / unary `-`.
+                if matches!(operand.as_ref(), Expr::Bina(..)) {
+                    expr_str = format!("({})", expr_str);
+                }
                 match op {
                     Op::Not => Ok(format!("!{}", expr_str)),
                     Op::Sub => Ok(format!("-{}", expr_str)),

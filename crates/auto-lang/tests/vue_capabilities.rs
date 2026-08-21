@@ -376,6 +376,161 @@ widget Shell {
     );
 }
 
+/// plan 013 follow-up (probe 09): the parser drops explicit parentheses
+/// when building the `Bina` tree, so emitters must re-derive them from
+/// precedence/associativity — `(a+b)*c` used to silently come out as
+/// `a + b * c`, `(x||y)&&z` as `x || y && z` (both WRONG).
+#[test]
+fn cap_bina_parens_restored_in_computed() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 1
+        var b int = 2
+        var c int = 3
+        var x bool = true
+        var y bool = false
+        var z bool = false
+    }
+    computed {
+        arith => (.a + .b) * .c
+        logic => (.x || .y) && .z
+        plain => .a + .b * .c
+        neg => !(.x && .y)
+    }
+    view {
+        col {
+            text f"${.arith} ${.logic} ${.plain} ${.neg}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("(a.value + b.value) * c.value"),
+        "lower-precedence left child re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("(x.value || y.value) && z.value"),
+        "|| under && re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("a.value + b.value * c.value"),
+        "natural precedence stays paren-free:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("!(x.value && y.value)"),
+        "unary ! keeps the Bina operand grouped:\n{sfc}"
+    );
+}
+
+/// Right-child associativity: all DSL binops are left-associative, so an
+/// equal-precedence right child must be re-parenthesized —
+/// `a - (b - c)` ≠ `a - b - c`.
+#[test]
+fn cap_bina_parens_right_child_regroup() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 8
+        var b int = 5
+        var c int = 2
+    }
+    computed {
+        sub => .a - (.b - .c)
+        add => .a + (.b - .c)
+    }
+    view {
+        col {
+            text f"${.sub} ${.add}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("a.value - (b.value - c.value)"),
+        "right child of `-` re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("a.value + b.value - c.value"),
+        "`a + (b - c)` safely flattens (left-assoc equivalent):\n{sfc}"
+    );
+}
+
+/// The same regrouping applies in handler bodies (ts_adapter) and in view
+/// bindings (expr_to_vue_bound_value).
+#[test]
+fn cap_bina_parens_in_handler_and_view_binding() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 1
+        var b int = 2
+        var c int = 3
+        var r int = 0
+    }
+    view {
+        col {
+            div { title: (.a + .b) * .c }
+            button "go" { onclick: .Go }
+        }
+    }
+    on {
+        .Go -> { .r = (.a + .b) * .c }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains(".r.value = (a.value + b.value) * c.value")
+            || sfc.contains("r.value = (a.value + b.value) * c.value"),
+        "handler body keeps the grouping:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":title=\"(a + b) * c\""),
+        "view binding keeps the grouping:\n{sfc}"
+    );
+}
+
+/// plan 013 follow-up (probe 14): `||`/`&&` yield one of the OPERANDS in
+/// JS, so `.a || "b"` must infer `computed<string>`, not
+/// `computed<boolean>` (which forced the strOr/orNull extension helpers).
+#[test]
+fn cap_logical_computed_infers_operand_type() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a str = ""
+        var x bool = true
+        var y bool = false
+    }
+    computed {
+        or_str => .a || "b"
+        or_bool => .x || .y
+    }
+    view {
+        col {
+            text f"${.or_str} ${.or_bool}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("const or_str = computed<string>(() => a.value || 'b')"),
+        "|| over strings infers computed<string>:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("const or_bool = computed<boolean>(() => x.value || y.value)"),
+        "|| over booleans stays computed<boolean>:\n{sfc}"
+    );
+}
+
 /// editor README note 3 / jade batch 2 (CodeBlockMenu, jade first use):
 /// v-model FOLD — `value: .query` + `oninput: .QueryInput($event)` on a
 /// state field collapses to `v-model="query"`; the handler function is

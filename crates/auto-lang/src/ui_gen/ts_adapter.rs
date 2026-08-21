@@ -306,6 +306,73 @@ fn expr_looks_float(expr: &Expr) -> bool {
     }
 }
 
+/// JS/TS operator precedence for the binops the DSL emits (higher binds
+/// tighter). The parser builds the `Expr::Bina` tree honoring explicit
+/// parentheses but does NOT record them, so emitters must re-derive the
+/// parentheses needed to preserve the tree's grouping — otherwise
+/// `(a+b)*c` silently comes out as `a + b * c` (probe 09, plan 013).
+pub(crate) fn binop_js_prec(op: &auto_val::Op) -> u8 {
+    use auto_val::Op;
+    match op {
+        Op::Or => 1,
+        Op::And => 2,
+        Op::Eq | Op::Neq => 3,
+        Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::In => 4,
+        Op::Add | Op::Sub => 5,
+        Op::Mul | Op::Div | Op::Mod => 6,
+        _ => 0, // statement-level ops (Asn, *Eq, Dot, ...) — no paren rule
+    }
+}
+
+/// Whether a `Bina` child must be parenthesized under `parent_op` to keep
+/// the AST grouping. Extra parens are semantically harmless; missing ones
+/// silently change semantics, so this errs on the side of wrapping.
+pub(crate) fn bina_child_needs_parens(parent_op: &auto_val::Op, child: &Expr, is_right: bool) -> bool {
+    use auto_val::Op;
+    if let Expr::Bina(_, child_op, _) = child {
+        let (p, c) = (binop_js_prec(parent_op), binop_js_prec(child_op));
+        if p == 0 || c == 0 {
+            return false;
+        }
+        if c < p {
+            return true; // lower-precedence child: `(a+b)*c`, `(x||y)&&z`
+        }
+        if is_right && c == p {
+            // All DSL binops are left-associative, so an equal-precedence
+            // RIGHT child regroups (`a-(b-c)` ≠ `a-b-c`). Safe only for
+            // strictly associative same-op chains and `a+(b-c)`.
+            let safe = matches!(
+                (parent_op, child_op),
+                (Op::Add, Op::Add)
+                    | (Op::Add, Op::Sub)
+                    | (Op::Mul, Op::Mul)
+                    | (Op::And, Op::And)
+                    | (Op::Or, Op::Or)
+            );
+            return !safe;
+        }
+    }
+    false
+}
+
+/// Emit a Bina operand, re-inserting parentheses when the grouping
+/// requires them (see `bina_child_needs_parens`).
+fn transpile_bina_child(
+    child: &Expr,
+    parent_op: &auto_val::Op,
+    is_right: bool,
+    ctx: &AuraTsContext,
+    out: &mut Vec<u8>,
+) {
+    if bina_child_needs_parens(parent_op, child, is_right) {
+        write!(out, "(").ok();
+        transpile_expr(child, ctx, out);
+        write!(out, ")").ok();
+    } else {
+        transpile_expr(child, ctx, out);
+    }
+}
+
 /// Convert a snake_case identifier to camelCase (for TS/JS output).
 /// e.g. `list_notes` → `listNotes`, `create_note` → `createNote`
 pub fn snake_to_camel(name: &str) -> String {
@@ -1188,9 +1255,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         transpile_expr(rhs, ctx, out);
                         write!(out, ")").ok();
                     } else {
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, " + ").ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                     }
                 }
                 Op::Div | Op::Mod => {
@@ -1203,21 +1270,21 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     let js_op = if matches!(op, Op::Mod) { " %" } else { " / " };
                     if is_int {
                         write!(out, "Math.trunc(").ok();
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, "{}", js_op).ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                         write!(out, ")").ok();
                     } else {
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, "{}", js_op).ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                     }
                 }
                 _ => {
                     // Standard binary op
-                    transpile_expr(lhs, ctx, out);
+                    transpile_bina_child(lhs, op, false, ctx, out);
                     write!(out, " {} ", op.op()).ok();
-                    transpile_expr(rhs, ctx, out);
+                    transpile_bina_child(rhs, op, true, ctx, out);
                 }
             }
         }
@@ -1230,7 +1297,15 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 _ => "",
             };
             write!(out, "{}", op_str).ok();
-            transpile_expr(operand, ctx, out);
+            // `!` / unary `-` bind tighter than any binop — a Bina operand
+            // must keep its parens (`!(a && b)`, `-(a + b)`).
+            if matches!(operand.as_ref(), Expr::Bina(..) | Expr::NullCoalesce(..)) {
+                write!(out, "(").ok();
+                transpile_expr(operand, ctx, out);
+                write!(out, ")").ok();
+            } else {
+                transpile_expr(operand, ctx, out);
+            }
         }
 
         // Array literals
