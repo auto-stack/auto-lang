@@ -41,8 +41,23 @@ except ImportError:
     print("Please install requests: pip install requests")
     sys.exit(1)
 
-MCP_PORT = 9247
-MCP_URL = f"http://localhost:{MCP_PORT}/mcp"
+MCP_PORT_DEFAULT = 9247
+
+
+def pick_free_port(start=MCP_PORT_DEFAULT):
+    """First port in [start, start+100) that nothing is bound to.
+
+    Stale `auto.exe` VM processes from earlier sessions sometimes keep port
+    9247 open with a half-dead UI (window closed, MCP thread alive, empty
+    snapshot). Binding our own fresh port via AUTOUI_MCP_PORT makes the test
+    hermetic against such zombies instead of silently querying them
+    (same hardening as 011-calculator's desktop_mcp.py)."""
+    import socket
+    for port in range(start, start + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    raise RuntimeError(f"No free port in [{start}, {start + 100})")
 # Default auto binary: <repo>/target/debug/auto(.exe)
 _AUTO_BIN = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
                          "target", "debug", "auto.exe")
@@ -74,7 +89,7 @@ widget Counter {
 class McpClient:
     """JSON-RPC client for the UI MCP server."""
 
-    def __init__(self, url=MCP_URL):
+    def __init__(self, url):
         self.url = url
         self.req_id = 0
 
@@ -102,7 +117,7 @@ class McpClient:
         return self.call("autoui_state", fields=list(fields))
 
 
-def wait_for_server(url=MCP_URL, timeout=30):
+def wait_for_server(url, timeout=30):
     for _ in range(timeout):
         try:
             requests.post(url, json={
@@ -124,7 +139,7 @@ def find_element_by_event(snapshot_text, event_name):
     # Match blocks like `tag #aura_N {` ... `onclick: .Event` ... `}`
     # Simpler: scan lines, track the most recent `#aura_N`, and on an
     # `onclick: .<event>` line return that id.
-    pattern_id = re.compile(r"#(aura_\d+)")
+    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
     current_id = None
     target = f"onclick: .{event_name}"
     for line in snapshot_text.splitlines():
@@ -174,15 +189,16 @@ class TestResult:
 
 # ── Real 015-notes test suite ──────────────────────────────────────────────
 
-def run_tests_015():
-    mcp = McpClient()
+def run_tests_015(mcp_url):
+    mcp = McpClient(mcp_url)
     result = TestResult()
 
     # T1: Snapshot shows the real App structure
     print("\nT1: UI Snapshot of real 015-notes")
     snap = mcp.snapshot()
     result.check("Snapshot contains App widget name", 'widget: "App"' in snap, snap[:200])
-    result.check("Snapshot has aura IDs", "aura_" in snap, "No aura IDs found")
+    result.check("Snapshot has element IDs", "aura_" in snap or "vnode_" in snap,
+                 "No aura_/vnode_ IDs found (v2 snapshot)")
     result.check("Snapshot shows Notes header", '"Notes"' in snap, "Notes header missing")
     result.check("Snapshot shows New button label", '"New"' in snap, "New button missing")
 
@@ -243,14 +259,15 @@ def run_tests_015():
 
 # ── Self-check: Counter widget (MCP channel verification) ──────────────────
 
-def run_tests_counter():
-    mcp = McpClient()
+def run_tests_counter(mcp_url):
+    mcp = McpClient(mcp_url)
     result = TestResult()
 
     print("\nT-MCP-1: UI Snapshot (Counter)")
     snap = mcp.snapshot()
     result.check("Snapshot contains Counter", "Counter" in snap, snap[:200])
-    result.check("Snapshot has aura IDs", "aura_" in snap, "No aura IDs found")
+    result.check("Snapshot has element IDs", "aura_" in snap or "vnode_" in snap,
+                 "No aura_/vnode_ IDs found (v2 snapshot)")
 
     print("\nT-MCP-2: Initial State")
     state = mcp.state("count")
@@ -277,7 +294,7 @@ def run_tests_counter():
     return result
 
 
-def launch_counter_project(tmpdir):
+def launch_counter_project(tmpdir, mcp_port):
     """Write the self-check Counter widget into tmpdir and return the proc."""
     os.makedirs(os.path.join(tmpdir, "src", "front"))
     with open(os.path.join(tmpdir, "pac.at"), "w") as f:
@@ -287,6 +304,7 @@ def launch_counter_project(tmpdir):
     return subprocess.Popen(
         [AUTO_BIN, "run", "-r", "vm"],
         cwd=tmpdir,
+        env={**os.environ, "AUTOUI_MCP_PORT": str(mcp_port)},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -308,10 +326,16 @@ def main():
         print("or set AUTO_BIN env var to the binary path.")
         sys.exit(2)
 
+    mcp_port = pick_free_port()
+    mcp_url = f"http://localhost:{mcp_port}/mcp"
+    if mcp_port != MCP_PORT_DEFAULT:
+        print(f"NOTE: port {MCP_PORT_DEFAULT} busy (stale auto.exe?); "
+              f"using AUTOUI_MCP_PORT={mcp_port}")
+
     if self_check:
         tmpdir = tempfile.mkdtemp(prefix="auto_vm_selfcheck_")
         print(f"\nStarting Counter widget in {tmpdir}...")
-        proc = launch_counter_project(tmpdir)
+        proc = launch_counter_project(tmpdir, mcp_port)
         wait_marker = "Counter"
     else:
         if not os.path.exists(os.path.join(NOTES_PROJECT, "pac.at")):
@@ -321,14 +345,15 @@ def main():
         proc = subprocess.Popen(
             [AUTO_BIN, "run", "-r", "vm"],
             cwd=NOTES_PROJECT,
+            env={**os.environ, "AUTOUI_MCP_PORT": str(mcp_port)},
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         wait_marker = "Notes"
 
     try:
-        print(f"Waiting for MCP server on port {MCP_PORT}...")
-        if not wait_for_server():
+        print(f"Waiting for MCP server on port {mcp_port}...")
+        if not wait_for_server(mcp_url):
             print(f"ERROR: MCP server did not start within 30s. "
                   f"Is the auto binary built with --features ui-iced? "
                   f"Binary: {AUTO_BIN}")
@@ -338,7 +363,7 @@ def main():
 
         # Wait for UI to render (iced needs a few seconds to open window + first frame)
         print("Waiting for UI to render...")
-        client = McpClient()
+        client = McpClient(mcp_url)
         rendered = False
         for i in range(20):
             time.sleep(2)
@@ -353,7 +378,8 @@ def main():
         if not rendered:
             print("WARNING: UI may not have rendered; running tests anyway...")
 
-        result = run_tests_counter() if self_check else run_tests_015()
+        result = (run_tests_counter(mcp_url) if self_check
+                  else run_tests_015(mcp_url))
 
         print(f"\n{'=' * 60}")
         print(f"Results: {result.passed} passed, {result.failed} failed, "
