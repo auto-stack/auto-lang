@@ -127,7 +127,7 @@
 | B8 | 359 | D2 generators 用例、D3 解锁、Phase E 五项、A1/A2 落地页 | 依赖语言特性（Phase E 各 DIV） |
 | B9 | A8 副产品 | 013/015 端口硬编码 | ✅ 2026-08-20 二批完成（`plan-fix/b9-mcp-port` 合并 `f0ddb015`）：pick_free_port+AUTOUI_MCP_PORT 移植 + v2 快照 ID 兼容（vnode_）；实测 015 套件 8→10 pass、self-check 3/0/1→6/0/0 | 已关闭 |
 | B11 | B3 副产品 | 两处 master 新回归 | ✅ 2026-08-20 四批全部根治（`plan-fix/b11-regressions` 合并 `3f3d0ec3`）：(a) len() 强转按比较对端类型定向（partner_len_cast，Eq/Neq/Lt/Le/Gt/Ge 六运算符）；(b) 实为**四个解析缺口**——`Map<K>` 单参硬 arity 错、`Err(Type.Variant { fields })` 嵌套模式（ResultCover+inner+绑定注册+a2r 发射）、顶层 `Type.Variant { fields }` 模式缺 Dot+`{` 识别与 StructPattern 绑定臂（Plan 165 回归）、枚举结构变体声明不收冒号字段——修复后 tool.at/error.at 历史首次全量转译。**auto-ai 全量重生成归零（23→0，rust/src 全绿提交 auto-ai `156c6c8`）**；解析回归测试 ×4 | 已关闭（衍生 BOM panic 已修：1fb96eac——lexer 跳过 U+FEFF，带 BOM 的 .at 不再在 parser.rs:272 崩溃，2026-08-21） |
-| B10 | B9 副产品 | (a) 015 autoui_state 把 List<ToolCallRec> 类 notes 渲染为句柄 int（`notes: 4000014`）而非数组——desktop_mcp 的计数断言失效（物化漂移）；(b) 013 的 desktop_mcp.py 是 015 逐字节复制、语义从未适配 013（测 "Notes"/dark_mode 等 013 没有的东西）| 新登记：前者疑为 VM 状态渲染缺口，后者需按 013 实际 app 定制或移除 |
+| B10 | B9 副产品 | (a) ✅ **2026-08-21 已修**（`plan-fix/b10a-state-list` 合并见 git log）：`read_all_state_materialized` 只物化 `Value::VmRef`，漏了编译后 `List<T>.new`/`[...]` 字面量存的裸 `Value::Int(句柄)`（Plan 289 路径）——Int 经 `vmref_to_vec` 同一探测路径物化（真 Int 不受影响）；015 实机 desktop_mcp **13 过/0 败/1 跳过**（notes 计数断言复活，B9 时代 10 pass）；单测锁定（ui-iced）。(b) 013 的 desktop_mcp.py 是 015 逐字节复制、语义从未适配 013（测 "Notes"/dark_mode 等 013 没有的东西）——仍待按 013 实际 app 定制或移除 | (a) 已关闭；(b) 待办 |
 
 ### 5.3 需桌面会话（GUI/实机，无法 headless 补全）
 
