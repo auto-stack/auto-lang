@@ -64,7 +64,7 @@ store ArticleStore {
         .SetTag(t str) -> { .active_tag = t }
         .ClearTag -> { .active_tag = "" }
         .CreateArticle(slug str, title str, description str, body str, tagList str) -> {
-            create_article(slug, title, description, body, tagList, "Sarah Chen")
+            create_article(slug, title, description, body, tagList, "Bearer " + .me.token)
             .articles = list_articles()
         }
         .UpdateArticle(slug str, title str, description str, body str) -> {

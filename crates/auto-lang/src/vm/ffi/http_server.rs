@@ -960,6 +960,39 @@ mod plan326_tests {
             resp
         }
 
+        /// Audit B1: JSON POST with extra request headers (Authorization).
+        fn http_post_json_with_headers(
+            port: u16,
+            path: &str,
+            json_body: &str,
+            headers: &[(&str, &str)],
+        ) -> String {
+            let mut stream = None;
+            for _ in 0..50 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect to test server");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+            let mut req = format!(
+                "POST {} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+                path,
+                json_body.len()
+            );
+            for (k, v) in headers {
+                req.push_str(&format!("{}: {}\r\n", k, v));
+            }
+            req.push_str("\r\n");
+            req.push_str(json_body);
+            write!(stream, "{}", req).unwrap();
+            let mut resp = String::new();
+            stream.read_to_string(&mut resp).ok();
+            resp
+        }
+
         /// Extract the body (after the blank line) from a raw HTTP response.
         fn body_of(resp: &str) -> &str {
             resp.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(resp)
@@ -1173,6 +1206,152 @@ fn new_handler() str {
                 body_of(&follow).contains("arrived"),
                 "follow target should serve body, got: {:?}",
                 follow
+            );
+        }
+
+        /// Audit B1 (023-realworld real token auth): loads the REAL 023
+        /// back-end sources (api.at types + db.at auth logic) and drives the
+        /// full auth flow over HTTP. The VM server binds a POST body as ONE
+        /// string arg (per-field binding is the api_gen rust path), so thin
+        /// #[api] shims (h_login etc.) parse fields via the real json_str
+        /// helper; the db logic (password check, token minting/validation,
+        /// author-from-token) is the verbatim 023 source.
+        #[test]
+        fn e2e_b1_realworld_token_auth() {
+            let back = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/ui/023-realworld/src/back");
+            let api_src = match std::fs::read_to_string(back.join("api.at")) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("skip: 023 api.at unreadable: {}", e);
+                    return;
+                }
+            };
+            let db_src = std::fs::read_to_string(back.join("db.at"))
+                .expect("023 db.at must exist in-repo");
+
+            // Types block from api.at (up to `use db`), db.at minus its own
+            // `use api:` import, plus bearer_token/json_str extracted verbatim.
+            let types_block: String = api_src
+                .split("use db")
+                .next()
+                .unwrap_or("")
+                .to_string();
+            let db_body = db_src
+                .lines()
+                .filter(|l| !l.starts_with("use api:"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bearer_fn = api_src
+                .split("pub fn bearer_token")
+                .nth(1)
+                .and_then(|rest| rest.split("// --- Stage 1: auth ---").next())
+                .map(|body| format!("pub fn bearer_token{}", body))
+                .expect("bearer_token fn present");
+            let json_str_fn = api_src
+                .split("pub fn json_str")
+                .nth(1)
+                .and_then(|rest| rest.split("/// Extract the bearer").next())
+                .map(|body| format!("pub fn json_str{}", body))
+                .expect("json_str fn present");
+
+            let code = format!(
+                r#"{}{}
+{}
+{}
+#[api(method = "POST", path = "/api/users/login")]
+fn h_login(arg str) User {{
+    return login(json_str(arg, "email"), json_str(arg, "password"))
+}}
+
+#[api(method = "POST", path = "/api/users")]
+fn h_register(arg str) User {{
+    return register(json_str(arg, "username"), json_str(arg, "email"), json_str(arg, "password"))
+}}
+
+#[api(method = "GET", path = "/api/user")]
+fn h_current_user(meta str) User {{
+    return current_user(bearer_token(meta))
+}}
+
+
+#[api(method = "POST", path = "/api/articles")]
+fn h_create_article(arg str, meta str) Article {{
+    let u User = current_user(bearer_token(meta))
+    if u.id == 0 {{
+        let rejected Article = Article {{ slug: "", title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }}
+        return rejected
+    }}
+    return create_article(json_str(arg, "slug"), json_str(arg, "title"), json_str(arg, "description"), json_str(arg, "body"), json_str(arg, "tagList"), u.username)
+}}
+"#,
+                types_block, bearer_fn, json_str_fn, db_body
+            );
+            let port = start_server(&code, 18745);
+
+            // 1. Wrong password → empty user (the old stub matched email alone).
+            let bad = body_of(&http_post_json_with_headers(
+                port,
+                "/api/users/login",
+                r#"{"email":"sarah@vercel.com","password":"WRONG"}"#,
+                &[],
+            ))
+            .to_string();
+            assert!(bad.contains("\"id\": 0"), "wrong password must fail: {}", bad);
+
+            // 2. Correct login → real user + fresh unique token.
+            let ok = body_of(&http_post_json_with_headers(
+                port,
+                "/api/users/login",
+                r#"{"email":"sarah@vercel.com","password":"sarah-secret"}"#,
+                &[],
+            ))
+            .to_string();
+            assert!(ok.contains("\"id\": 1"), "login id: {}", ok);
+            assert!(ok.contains("\"token\": \"tok-"), "minted token: {}", ok);
+            let tok = {
+                let s = ok.find("\"token\": \"tok-").expect("token idx") + 10;
+                let e = ok[s..].find('"').expect("token end") + s;
+                ok[s..e].to_string()
+            };
+
+            // 3. GET /api/user with Bearer → the logged-in user (meta path).
+            let me = body_of(&http_get_with_headers(
+                port,
+                "/api/user",
+                &[("Authorization", &format!("Bearer {}", tok))],
+            ))
+            .to_string();
+            assert!(me.contains("\"username\": \"Sarah Chen\""), "me: {}", me);
+
+            // 4. Without a token → logged out.
+            let anon = body_of(&http_get(port, "/api/user")).to_string();
+            assert!(anon.contains("\"id\": 0"), "anon: {}", anon);
+
+            // 5. Author comes from the token, not the client.
+            let created = body_of(&http_post_json_with_headers(
+                port,
+                "/api/articles",
+                r#"{"slug":"authed-post","title":"Authed","description":"d","body":"b","tagList":"x"}"#,
+                &[("Authorization", &format!("Bearer {}", tok))],
+            ))
+            .to_string();
+            assert!(
+                created.contains("\"author\": \"Sarah Chen\""),
+                "author from token: {}",
+                created
+            );
+            let rejected = body_of(&http_post_json_with_headers(
+                port,
+                "/api/articles",
+                r#"{"slug":"anon-post","title":"A","description":"d","body":"b","tagList":"x"}"#,
+                &[],
+            ))
+            .to_string();
+            assert!(
+                rejected.contains("\"slug\": \"\""),
+                "anonymous create rejected: {}",
+                rejected
             );
         }
 

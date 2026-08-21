@@ -42,7 +42,60 @@ pub type Follow = {
     followee_username: str
 }
 
+/// An email/password credential with its session token. Kept SEPARATE from
+/// User so the password never appears in any API response (audit B1).
+pub type Cred = {
+    email: str
+    password: str
+    token: str
+}
+
 use db
+
+/// Extract `"key":"value"` from a flat JSON object string (a2r-safe
+/// .find/.slice). Used by VM-mode handlers, where the HTTP server binds the
+/// whole request body/query as ONE string argument (the api_gen rust backend
+/// instead binds each declared param to its JSON field).
+pub fn json_str(src str, key str) str {
+    let marker str = "\"" + key + "\":\""
+    let i int = src.find(marker)
+    if i < 0 {
+        return ""
+    }
+    let start int = i + marker.len()
+    let end int = src.find("\"", start)
+    if end < 0 || end <= start {
+        return ""
+    }
+    return src.slice(start, end)
+}
+
+/// Extract the bearer token from either the handler meta JSON
+/// ({"cookies":{...},"auth":"Bearer <tok>"}) or a bare "Bearer <tok>"
+/// (the in-process store-call form). a2r-safe primitives only
+/// (.find/.substr — a2r_std::str_find/str_substr).
+pub fn bearer_token(meta str) str {
+    let marker str = "Bearer "
+    let i int = meta.find(marker)
+    if i < 0 {
+        return ""
+    }
+    let start int = i + marker.len()
+    if start >= meta.len() {
+        return ""
+    }
+    // Token ends at the closing quote (JSON form) or end of string (bare).
+    // .slice(start, end) is END-semantics in BOTH the VM shim and a2r
+    // (s[start..end]) — the one substring method unified across backends.
+    let end int = meta.find("\"", start)
+    if end < 0 {
+        return meta.slice(start, meta.len())
+    }
+    if end <= start {
+        return ""
+    }
+    return meta.slice(start, end)
+}
 
 // --- Stage 1: auth ---
 
@@ -56,9 +109,13 @@ pub fn register(username str, email str, password str) User {
     return db.register(username, email, password)
 }
 
+/// GET /api/user — the logged-in user, identified by the Authorization
+/// bearer token (injected by the server as the meta arg). id=0 = logged out
+/// / invalid token. Signature keeps the no-arg `db.current_user()` shape for
+/// in-process (merged VM) callers via a token arg default of "".
 #[api(method = "GET", path = "/api/user")]
-pub fn current_user() User {
-    return db.current_user()
+pub fn current_user(meta str) User {
+    return db.current_user(bearer_token(meta))
 }
 
 // --- Stage 1: articles (read) ---
@@ -81,9 +138,16 @@ pub fn list_comments(slug str) []Comment {
 // --- Stage 2: article CRUD ---
 
 /// POST /api/articles — create. slug is supplied by the client (title→slug).
+/// Audit B1: the author is derived from the caller's bearer token — the old
+/// `author` client parameter let anyone publish as anyone. Anonymous or
+/// invalid tokens yield the empty article (slug="") as a flat 401 analog.
 #[api(method = "POST", path = "/api/articles")]
-pub fn create_article(slug str, title str, description str, body str, tagList str, author str) Article {
-    return db.create_article(slug, title, description, body, tagList, author)
+pub fn create_article(slug str, title str, description str, body str, tagList str, meta str) Article {
+    let u User = db.current_user(bearer_token(meta))
+    if u.id == 0 {
+        return Article { slug: "", title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }
+    }
+    return db.create_article(slug, title, description, body, tagList, u.username)
 }
 
 /// PUT /api/articles/:slug — edit title/description/body (slug stays; a real

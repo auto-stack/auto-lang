@@ -3,14 +3,25 @@
 // position (pre-declare result + let-ctor); avoid `tag` as a param name;
 // don't pass borrowed String fields to helper fns; avoid users[0]/len()>0.
 
-use api: User, Article, Comment, Follow
+use api: User, Article, Comment, Follow, Cred
 
 // --- Seed users ---
 var users List<User> = List<User>.new([
-    User { id: 1, email: "sarah@vercel.com", username: "Sarah Chen", bio: "Senior Frontend Engineer at Vercel. Writing about React, TypeScript, and the future of web development.", image: "https://i.pravatar.cc/100?u=sarah", token: "mock-token-sarah" },
-    User { id: 2, email: "marcus@example.com", username: "Marcus Johnson", bio: "API craftsman. tRPC, GraphQL, type safety enthusiast.", image: "https://i.pravatar.cc/100?u=marcus", token: "mock-token-marcus" },
+    User { id: 1, email: "sarah@vercel.com", username: "Sarah Chen", bio: "Senior Frontend Engineer at Vercel. Writing about React, TypeScript, and the future of web development.", image: "https://i.pravatar.cc/100?u=sarah", token: "" },
+    User { id: 2, email: "marcus@example.com", username: "Marcus Johnson", bio: "API craftsman. tRPC, GraphQL, type safety enthusiast.", image: "https://i.pravatar.cc/100?u=marcus", token: "" },
 ])
 var nextuserid int = 3
+
+// --- Credentials + session tokens (audit B1: real token auth) ---
+// Passwords live ONLY here — User (the API-facing type) never carries one.
+// Tokens are minted per successful login/register from a monotonic counter
+// ("tok-<n>"), so every session gets a unique secret; login re-mints (old
+// token invalidated).
+var creds List<Cred> = List<Cred>.new([
+    Cred { email: "sarah@vercel.com", password: "sarah-secret", token: "" },
+    Cred { email: "marcus@example.com", password: "marcus-secret", token: "" },
+])
+var nexttokenid int = 1
 
 // --- Seed articles ---
 var articles List<Article> = List<Article>.new([
@@ -30,31 +41,95 @@ var nextcommentid int = 4
 // --- Follow relationships (stage 2) ---
 var follows List<Follow> = List<Follow>.new([])
 
-// --- Auth (stage 1) ---
+// --- Auth (audit B1: real tokens) ---
 
-pub fn login(email str, password str) User {
-    var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+/// Mint a fresh unique token and record it on the cred + user (by email).
+/// Rebuilds the lists (immutable-style, a2r-safe like update_article).
+fn mint_token(email str) str {
+    let n int = nexttokenid
+    nexttokenid = nexttokenid + 1
+    let token str = "tok-" + n.to_string()
+    var new_creds List<Cred> = List<Cred>.new([])
+    for cred in creds {
+        if cred.email == email {
+            new_creds.push(Cred { email: cred.email, password: cred.password, token: token })
+        } else {
+            new_creds.push(Cred { email: cred.email, password: cred.password, token: cred.token })
+        }
+    }
+    creds = new_creds
+    var new_users List<User> = List<User>.new([])
     for user in users {
         if user.email == email {
-            let found = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token }
-            result = found
+            new_users.push(User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: token })
+        } else {
+            new_users.push(User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: user.token })
+        }
+    }
+    users = new_users
+    return token
+}
+
+/// Login with email + password verification. Returns the User (with fresh
+/// token) on success; empty User (id=0) on wrong email OR wrong password —
+/// the old stub matched on email alone and ignored the password entirely.
+pub fn login(email str, password str) User {
+    var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+    let empty User = result
+    for cred in creds {
+        if cred.email == email && cred.password == password {
+            let token str = mint_token(email)
+            for user in users {
+                if user.email == email {
+                    let matched User = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: token }
+                    result = matched
+                }
+            }
         }
     }
     return result
 }
 
+/// Register a new user. Rejects (empty User) duplicate emails or empty
+/// username/email/password; mints the first session token on success.
 pub fn register(username str, email str, password str) User {
+    var empty User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+    if username == "" || email == "" || password == "" {
+        return empty
+    }
+    for user in users {
+        if user.email == email {
+            return empty
+        }
+    }
     let id int = nextuserid
     nextuserid = nextuserid + 1
-    let token str = "mock-token-" + username
-    let u = User { id: id, email: email, username: username, bio: "", image: "", token: token }
+    let u User = User { id: id, email: email, username: username, bio: "", image: "", token: "" }
     users.push(u)
-    return u
+    creds.push(Cred { email: email, password: password, token: "" })
+    let token str = mint_token(email)
+    let registered User = User { id: id, email: email, username: username, bio: "", image: "", token: token }
+    return registered
 }
 
-// Stage 1: no token auth — always returns empty User (id=0 = logged out).
-pub fn current_user() User {
+/// Resolve the session token to its user. Empty token, unknown token, or a
+/// token invalidated by a later login all yield the empty User (id=0).
+pub fn current_user(token str) User {
     var result User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
+    if token == "" {
+        let logged_out User = result
+        return logged_out
+    }
+    for cred in creds {
+        if cred.token == token {
+            for user in users {
+                if user.email == cred.email {
+                    let matched User = User { id: user.id, email: user.email, username: user.username, bio: user.bio, image: user.image, token: token }
+                    result = matched
+                }
+            }
+        }
+    }
     return result
 }
 
