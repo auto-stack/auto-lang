@@ -14,6 +14,7 @@ widget App {
             }
             text "edits: {edits}"
             text "echo: {echo}"
+            text "中文字体测试：你好世界 □对照"
             style: "p-3 gap-2 h-full"
         }
     }

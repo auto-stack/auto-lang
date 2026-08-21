@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use cosmic_text::{
-    Action, Attrs, Buffer, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
+    Action, Attrs, Buffer, BufferRef, Cursor, Edit, Family, FontSystem, Metrics, Motion, Selection,
     Shaping, SyntaxEditor, ViEditor, Wrap,
 };
 
@@ -257,8 +257,6 @@ pub struct CodeEditorCore {
     /// The engine. Locked on the UI thread for every input/render; MCP
     /// set-text also takes this lock.
     editor: Mutex<SendEditor>,
-    /// Weak handle for the draw list (`fill_raw` handoff).
-    buffer: Weak<Buffer>,
 
     focused: std::sync::atomic::AtomicBool,
     drag: Mutex<Drag>,
@@ -376,6 +374,33 @@ pub fn with_font_system<R>(f: impl FnOnce(&mut FontSystem) -> R) -> R {
     slot.unwrap()
 }
 
+/// Family for editor body text. `Family::Monospace` goes through
+/// cosmic-text's monospace fallback path, which on Windows picks a font
+/// whose CJK glyphs come out as tofu boxes; a named real font uses the
+/// ordinary fallback chain (→ Microsoft YaHei for Han) that renders CJK
+/// correctly. Consolas ships with every Windows; elsewhere keep the generic
+/// monospace family.
+fn mono_family() -> Family<'static> {
+    if cfg!(windows) {
+        Family::Name("Consolas")
+    } else {
+        Family::Monospace
+    }
+}
+
+/// Weak handle to the editor's CURRENT buffer, for the draw list (`fill_raw`
+/// handoff). Must be acquired per frame and dropped at frame end: a
+/// longer-lived weak forces `Arc::make_mut` (cosmic-text's
+/// `Edit::with_buffer_mut` on the `BufferRef::Arc` variant) to clone the
+/// entire buffer on the next mutation, orphaning the previous handle — the
+/// body text then stops rendering (Plan 413 fix).
+pub(crate) fn editor_buffer_weak(editor: &ViEditor) -> Option<std::sync::Weak<Buffer>> {
+    match editor.buffer_ref() {
+        BufferRef::Arc(arc) => Some(Arc::downgrade(arc)),
+        _ => None,
+    }
+}
+
 impl CodeEditorCore {
     pub fn new(
         key: impl Into<String>,
@@ -383,14 +408,13 @@ impl CodeEditorCore {
         font_system: &mut FontSystem,
     ) -> Self {
         let key = key.into();
-        let attrs = Attrs::new().family(Family::Monospace);
+        let attrs = Attrs::new().family(mono_family());
 
         let mut buffer = Buffer::new(font_system, Metrics::new(config.font_size, config.line_height()));
         buffer.set_text(font_system, "", &attrs, Shaping::Advanced, None);
         buffer.set_wrap(font_system, if config.wrap { Wrap::Word } else { Wrap::None });
 
         let arc = Arc::new(buffer);
-        let weak = Arc::downgrade(&arc);
 
         let system = highlight::syntax_system();
         let mut syntax_editor = SyntaxEditor::new(arc, system, "base16-eighties.dark")
@@ -411,7 +435,6 @@ impl CodeEditorCore {
             key,
             config: Mutex::new(config.clone()),
             editor: Mutex::new(SendEditor(vi)),
-            buffer: weak,
             focused: std::sync::atomic::AtomicBool::new(false),
             drag: Mutex::new(Drag::None),
             click: Mutex::new(None),
@@ -459,7 +482,7 @@ impl CodeEditorCore {
                 // ViEditor does not expose a syntax setter — rebuild the
                 // editor around the same buffer (text/cursor preserved;
                 // undo history resets on language switch).
-                if let Some(arc) = self.buffer.upgrade() {
+                if let BufferRef::Arc(arc) = editor.0.buffer_ref().clone() {
                     let system = highlight::syntax_system();
                     let mut syntax_editor =
                         SyntaxEditor::new(arc, system, "base16-eighties.dark")
@@ -508,7 +531,7 @@ impl CodeEditorCore {
         if current == text {
             return;
         }
-        let attrs = Attrs::new().family(Family::Monospace);
+        let attrs = Attrs::new().family(mono_family());
         // Give the buffer a viewport before rewriting: with no size set,
         // Buffer::set_text's internal shape_until_scroll treats the scroll
         // window as infinite and shapes/highlights the WHOLE document (26s
@@ -672,10 +695,6 @@ impl CodeEditorCore {
         });
         let _ = font_system;
         true
-    }
-
-    pub(crate) fn buffer_weak(&self) -> Weak<Buffer> {
-        self.buffer.clone()
     }
 
     pub(crate) fn editor_lock(&self) -> EditorGuard<'_> {

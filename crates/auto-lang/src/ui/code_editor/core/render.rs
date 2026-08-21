@@ -219,12 +219,8 @@ pub fn render(
     }
 
     // ── body text ─────────────────────────────────────────────────────────
-    list.text = Some(TextSection {
-        buffer: core.buffer_weak(),
-        origin: Pt::new(text_rect.x, text_rect.y),
-        color: theme.foreground,
-        clip: text_rect,
-    });
+    // (built at the END of the pass — see the block above `list` return;
+    // the weak handle must be acquired after the last with_buffer_mut.)
 
     // ── caret + preedit overlay ───────────────────────────────────────────
     let mut caret_rect: Option<Rect> = None;
@@ -321,6 +317,21 @@ pub fn render(
     if needs_redraw {
         editor.set_redraw(false);
     }
+
+    // ── body text ─────────────────────────────────────────────────────────
+    // The weak handle is acquired LAST — after every `with_buffer_mut` in
+    // this pass (set_redraw above is the last one). cosmic-text's
+    // `Edit::with_buffer_mut` runs `Arc::make_mut` on the `BufferRef::Arc`
+    // variant; any weak alive at that moment forces a full-buffer clone and
+    // orphans the handle (the body text then stops rendering, Plan 413 fix).
+    // The handle dies with the draw list at frame end, so mutations between
+    // frames see zero weaks and mutate in place.
+    list.text = super::editor_buffer_weak(&editor).map(|buffer| TextSection {
+        buffer,
+        origin: Pt::new(text_rect.x, text_rect.y),
+        color: theme.foreground,
+        clip: text_rect,
+    });
 
     list
 }
