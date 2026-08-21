@@ -21,16 +21,16 @@ widget App {
             if .console_open {
                 col (style: "w-full shrink-0") {
                     col (style: "h-px w-full bg-border")
-                    row (style: "h-7 items-center bg-muted/30 shrink-0") {
+                    row (style: "h-7 items-center bg-muted/30 shrink-0 gap-3 px-2") {
                         text "CONSOLE" {
-                            style: "text-[11px] font-bold text-zinc-400 px-2 font-mono"
+                            style: "text-[11px] font-bold text-zinc-400"
                         }
                         button (text: "Clear") {
                             onclick: .ConsoleClear
-                            style: "text-[11px] h-5 px-2"
+                            style: "text-[11px] h-5 px-1 text-zinc-400"
                         }
                         text "edits: ${.edits}" {
-                            style: "text-[11px] text-zinc-500 px-2 font-mono ml-auto"
+                            style: "text-[11px] text-zinc-500 ml-auto"
                         }
                     }
                     scroll (style: "h-40 w-full bg-muted/10 shrink-0") {
@@ -44,39 +44,39 @@ widget App {
             }
 
             col (style: "h-px w-full bg-border")
-            row (style: "h-6 items-center bg-card shrink-0 w-full") {
-                text "Auto" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
-                text "UTF-8" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
-                text "Spaces: 4" { style: "text-[11px] text-zinc-400 px-2 font-mono" }
+            row (style: "h-6 items-center bg-card shrink-0 w-full gap-3 px-2") {
+                text "Auto" { style: "text-[11px] text-zinc-400" }
+                text "UTF-8" { style: "text-[11px] text-zinc-400" }
+                text "Spaces: 4" { style: "text-[11px] text-zinc-400" }
 
                 text "Ln ${.line}, Col ${.col}" {
-                    style: "text-[11px] text-zinc-300 px-2 font-mono ml-auto"
+                    style: "text-[11px] text-zinc-300 ml-auto"
                 }
                 if .sel > 0 {
-                    text "Sel ${.sel}" { style: "text-[11px] text-zinc-300 px-2 font-mono" }
+                    text "Sel ${.sel}" { style: "text-[11px] text-zinc-300" }
                 }
                 if .wrap == false {
                     button (text: "Wrap: Off") {
                         onclick: .ToggleWrap
-                        style: "text-[11px] h-5 px-2"
+                        style: "text-[11px] h-5 px-1 text-zinc-400"
                     }
                 }
                 if .wrap == true {
                     button (text: "Wrap: On") {
                         onclick: .ToggleWrap
-                        style: "text-[11px] h-5 px-2"
+                        style: "text-[11px] h-5 px-1 text-zinc-200"
                     }
                 }
                 if .console_open == false {
                     button (text: "Console") {
                         onclick: .ConsoleToggle
-                        style: "text-[11px] h-5 px-2"
+                        style: "text-[11px] h-5 px-1 text-zinc-400"
                     }
                 }
                 if .console_open == true {
                     button (text: "Console") {
                         onclick: .ConsoleToggle
-                        style: "text-[11px] h-5 px-2"
+                        style: "text-[11px] h-5 px-1 text-zinc-200"
                     }
                 }
             }
