@@ -827,6 +827,12 @@ pub struct VueGenerator {
     /// Event names for emit
     emit_events: Vec<String>,
 
+    /// Subset of emit_events that came from QUOTED msg variants
+    /// (contractual emit names like "update"/"link-click"): always
+    /// declared in defineEmits and always trailing-emitted, even when no
+    /// template binding references the handler.
+    quoted_events: std::collections::HashSet<String>,
+
     /// Whether emit is needed
     has_emit: bool,
 
@@ -1082,6 +1088,7 @@ impl VueGenerator {
             handlers: Vec::new(),
             debounced_handlers: HashSet::new(),
             emit_events: Vec::new(),
+            quoted_events: std::collections::HashSet::new(),
             has_emit: false,
             component_refs: Vec::new(),
             lucide_icons: HashSet::new(),
@@ -1294,6 +1301,7 @@ impl VueGenerator {
         self.state_types.clear();
         self.handlers.clear();
         self.emit_events.clear();
+        self.quoted_events.clear();
         self.has_emit = false;
         self.component_refs.clear();
         self.lucide_icons.clear();
@@ -1660,6 +1668,9 @@ impl VueGenerator {
             for msg in &widget.messages {
                 for variant in &msg.variants {
                     self.emit_events.push(variant.name.clone());
+                    if variant.quoted {
+                        self.quoted_events.insert(variant.name.clone());
+                    }
                 }
             }
         }
@@ -2256,9 +2267,15 @@ impl VueGenerator {
                     if let Some(ty) = variant.payload.first() {
                         // Only carry payload type if the handler actually has
                         // matching params (otherwise the emit() call won't pass
-                        // args, causing a TS mismatch).
+                        // args, causing a TS mismatch). QUOTED variants are
+                        // exempt (plan 013 Phase 2): they are contractual emit
+                        // names — a handler-less one is emitted from extension
+                        // code via getCurrentInstance().emit (untyped), so the
+                        // declared payload type is the faithful contract.
                         let pattern_key = format!(".{}", variant.name);
-                        if Self::get_handler_params(&widget.handler_params, &pattern_key).is_some() {
+                        if variant.quoted
+                            || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
+                        {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
                             // Plan 043 M5 B-2: a custom payload type (e.g.
                             // PickCompletion(CompletionItem)) must be imported
@@ -2292,7 +2309,13 @@ impl VueGenerator {
                 // function definitions, so declaring their emit types is noise.
                 // used_handlers holds sanitized fn names (emit names like
                 // "update:modelValue" sanitize to update_modelValue).
-                if !self.used_handlers.contains(event)
+                // QUOTED variants are contractual emit names (plan 013 Phase
+                // 2): they must ALWAYS be declared — bridge/extension code
+                // emits them via getCurrentInstance().emit with no handler,
+                // and undeclared listeners would fall through as native DOM
+                // listeners on the root element.
+                if !self.quoted_events.contains(event)
+                    && !self.used_handlers.contains(event)
                     && !self.used_handlers.contains(&Self::sanitize_ident(event))
                 {
                     continue;
@@ -2444,7 +2467,16 @@ impl VueGenerator {
                 // mark_self_called_handlers runs), so emitting would be a
                 // TS2769 "not assignable to parameter" (observed for DoTokenize).
                 // Template-bound handlers are already in used_handlers here.
-                if !already_notifies_parent && self.used_handlers.contains(&handler_name) {
+                // QUOTED variants (contractual emit names, plan 013 Phase 2)
+                // are always declared in defineEmits, so they always get the
+                // trailing emit — even when the handler is only self-called
+                // (the computed-payload relay pattern: an exposed/view-bound
+                // handler computes the payload, then self-calls the quoted
+                // handler to emit it).
+                if !already_notifies_parent
+                    && (self.used_handlers.contains(&handler_name)
+                        || self.quoted_events.contains(&emit_name))
+                {
                     // Plan 367 P1-4: pass handler params to emit() so the call
                     // matches the typed defineEmits declaration.
                     // Plan 043 M5 B-3: when the handler is a loop-param handler
@@ -5772,9 +5804,21 @@ impl VueGenerator {
             Expr::Bina(left, op, right) => {
                 use auto_val::Op;
                 match op {
-                    // Comparisons and logical ops always yield booleans.
-                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge
-                    | Op::And | Op::Or => "boolean".to_string(),
+                    // Comparisons always yield booleans.
+                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge => "boolean".to_string(),
+                    // JS `||`/`&&` yield one of the OPERANDS, not a boolean
+                    // (probe 14: `.a || "b"` was mis-typed `computed<boolean>`,
+                    // forcing the strOr/orNull extension helpers). Same-type
+                    // operands infer that type; mixed operands stay `any`.
+                    Op::And | Op::Or => {
+                        let lt = self.expr_to_ts_type(left);
+                        let rt = self.expr_to_ts_type(right);
+                        if lt == rt {
+                            lt
+                        } else {
+                            "any".to_string()
+                        }
+                    }
                     // `+` is string concatenation when either side is a string
                     // (JS semantics) — don't blindly infer number.
                     Op::Add => {
@@ -6013,13 +6057,26 @@ impl VueGenerator {
                         format!("!({})", other_js)
                     });
                 }
-                let left_js = self.expr_to_js(left)?;
-                let right_js = self.expr_to_js(right)?;
+                let mut left_js = self.expr_to_js(left)?;
+                let mut right_js = self.expr_to_js(right)?;
+                // Re-insert the parens the parser dropped (probe 09):
+                // `(a+b)*c` must not come out as `a + b * c`.
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, left, false) {
+                    left_js = format!("({})", left_js);
+                }
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, right, true) {
+                    right_js = format!("({})", right_js);
+                }
                 let op_js = Self::op_to_js(op);
                 Ok(format!("{} {} {}", left_js, op_js, right_js))
             }
             Expr::Unary(op, operand) => {
-                let operand_js = self.expr_to_js(operand)?;
+                let mut operand_js = self.expr_to_js(operand)?;
+                // `!` / unary `-` bind tighter than any binop — keep the
+                // operand's grouping (`!(a && b)`, `-(a + b)`).
+                if matches!(operand.as_ref(), Expr::Bina(..)) {
+                    operand_js = format!("({})", operand_js);
+                }
                 let op_js = match op {
                     Op::Not => "!",
                     Op::Sub => "-",
@@ -6083,6 +6140,13 @@ impl VueGenerator {
                 // must render as `field[0]` — `field.0` is valid JS but invalid
                 // TypeScript in Vue templates (TS treats `.0` as a property, not
                 // a tuple index).
+                // plan 013 follow-up: a binop/unary RECEIVER keeps its parens
+                // — `(a + b).x`, not `a + b.x` (the AST drops explicit parens).
+                let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", object_js)
+                } else {
+                    object_js
+                };
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
                     Ok(format!("{}[{}]", object_js, field))
                 } else {
@@ -6165,6 +6229,14 @@ impl VueGenerator {
                     }
 
                     let object_js = self.expr_to_js(object)?;
+                    // plan 013 follow-up: a binop/unary RECEIVER keeps its
+                    // parens — `(a + b).toLowerCase()`, not
+                    // `a + b.toLowerCase()` (the AST drops explicit parens).
+                    let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", object_js)
+                    } else {
+                        object_js
+                    };
                     let args_js: Vec<String> = args.iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
@@ -6830,6 +6902,12 @@ impl VueGenerator {
                     }
                 }
                 let object_str = self.expr_to_vue_text_raw(object)?;
+                // plan 013 follow-up: binop/unary receiver keeps its parens.
+                let object_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", object_str)
+                } else {
+                    object_str
+                };
                 // Plan 043: numeric field (tuple index, e.g. `field.0`) → `field[0]`
                 // for valid TypeScript in Vue templates.
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
@@ -6868,6 +6946,12 @@ impl VueGenerator {
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     let method = method.clone();
                     let obj_str = self.expr_to_vue_text_raw(object)?;
+                    // plan 013 follow-up: binop/unary receiver keeps its parens.
+                    let obj_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", obj_str)
+                    } else {
+                        obj_str
+                    };
                     let is_self = obj_str == "self";
                     let args: Vec<crate::ast::Expr> = call.args.args.iter()
                         .filter_map(|a| match a {
@@ -6964,6 +7048,13 @@ impl VueGenerator {
                     }
                 }
                 let obj_str = self.expr_to_vue_bound_value(object)?;
+                // plan 013 follow-up: a binop/unary receiver keeps its
+                // parens — `(a + b).x`, not `a + b.x`.
+                let obj_str = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                    format!("({})", obj_str)
+                } else {
+                    obj_str
+                };
                 // Plan 043: numeric field (tuple index) → bracket form for valid TS.
                 if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
                     Ok(format!("{}[{}]", obj_str, field))
@@ -6995,8 +7086,15 @@ impl VueGenerator {
                 Ok(format!("{{{}}}", pairs_vue.join(", ")))
             }
             Expr::Bina(left, op, right) => {
-                let left_str = self.expr_to_vue_bound_value(left)?;
-                let right_str = self.expr_to_vue_bound_value(right)?;
+                let mut left_str = self.expr_to_vue_bound_value(left)?;
+                let mut right_str = self.expr_to_vue_bound_value(right)?;
+                // Re-insert the parens the parser dropped (probe 09).
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, left, false) {
+                    left_str = format!("({})", left_str);
+                }
+                if crate::ui_gen::ts_adapter::bina_child_needs_parens(op, right, true) {
+                    right_str = format!("({})", right_str);
+                }
                 let op_str = match op {
                     Op::Eq => "==",
                     Op::Neq => "!=",
@@ -7016,7 +7114,11 @@ impl VueGenerator {
                 Ok(format!("{} {} {}", left_str, op_str, right_str))
             }
             Expr::Unary(op, operand) => {
-                let expr_str = self.expr_to_vue_bound_value(operand)?;
+                let mut expr_str = self.expr_to_vue_bound_value(operand)?;
+                // Keep a Bina operand's grouping under `!` / unary `-`.
+                if matches!(operand.as_ref(), Expr::Bina(..)) {
+                    expr_str = format!("({})", expr_str);
+                }
                 match op {
                     Op::Not => Ok(format!("!{}", expr_str)),
                     Op::Sub => Ok(format!("-{}", expr_str)),
@@ -7056,6 +7158,12 @@ impl VueGenerator {
                     let method = method.clone();
                     let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
                     let object_js = self.expr_to_vue_bound_value(object)?;
+                    // plan 013 follow-up: binop/unary receiver keeps its parens.
+                    let object_js = if matches!(object.as_ref(), Expr::Bina(..) | Expr::Unary(..)) {
+                        format!("({})", object_js)
+                    } else {
+                        object_js
+                    };
                     let args_js: Vec<String> = call.args.args.iter()
                         .filter_map(|a| match a {
                             crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),

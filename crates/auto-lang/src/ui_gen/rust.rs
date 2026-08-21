@@ -520,6 +520,7 @@ impl RustGenerator {
             if !self.message_variants.iter().any(|v| v.name == "Init") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Init".to_string(),
+                    quoted: false,
                     payload: vec![],
                 });
             }
@@ -534,6 +535,7 @@ impl RustGenerator {
             if !self.message_variants.iter().any(|v| v.name == "Tick") {
                 self.message_variants.push(AuraMsgVariant {
                     name: "Tick".to_string(),
+                    quoted: false,
                     payload: vec![],
                 });
             }
@@ -5299,8 +5301,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), payload: vec![] },
-                    AuraMsgVariant { name: "Dec".to_string(), payload: vec![] },
+                    AuraMsgVariant { name: "Inc".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant { name: "Dec".to_string(), quoted: false, payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col")
@@ -5615,7 +5617,7 @@ fn main() {{}}
             ],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Inc".to_string(), payload: vec![] }],
+                variants: vec![AuraMsgVariant { name: "Inc".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5664,7 +5666,7 @@ fn main() {{}}
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: vec![] }],
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5703,7 +5705,7 @@ fn main() {{}}
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), payload: vec![] }],
+                variants: vec![AuraMsgVariant { name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -5947,13 +5949,14 @@ fn main() {{}}
     fn test_msg_multi_param_enum_output() {
         use crate::ast::Type;
         let widget = widget_with_msg(vec![
-            AuraMsgVariant { name: "Init".to_string(), payload: vec![] },
-            AuraMsgVariant { name: "Complete".to_string(), payload: vec![Type::StrSlice, Type::Int] },
+            AuraMsgVariant { name: "Init".to_string(), quoted: false, payload: vec![] },
+            AuraMsgVariant { name: "Complete".to_string(), quoted: false, payload: vec![Type::StrSlice, Type::Int] },
             AuraMsgVariant {
                 name: "RunSmart".to_string(),
+                quoted: false,
                 payload: vec![Type::Int, Type::StrSlice, Type::Unknown],
             },
-            AuraMsgVariant { name: "SetTag".to_string(), payload: vec![Type::StrSlice] },
+            AuraMsgVariant { name: "SetTag".to_string(), quoted: false, payload: vec![Type::StrSlice] },
         ]);
 
         let mut gen = RustGenerator::new();

@@ -306,6 +306,86 @@ fn expr_looks_float(expr: &Expr) -> bool {
     }
 }
 
+/// JS/TS operator precedence for the binops the DSL emits (higher binds
+/// tighter). The parser builds the `Expr::Bina` tree honoring explicit
+/// parentheses but does NOT record them, so emitters must re-derive the
+/// parentheses needed to preserve the tree's grouping — otherwise
+/// `(a+b)*c` silently comes out as `a + b * c` (probe 09, plan 013).
+pub(crate) fn binop_js_prec(op: &auto_val::Op) -> u8 {
+    use auto_val::Op;
+    match op {
+        Op::Or => 1,
+        Op::And => 2,
+        Op::Eq | Op::Neq => 3,
+        Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::In => 4,
+        Op::Add | Op::Sub => 5,
+        Op::Mul | Op::Div | Op::Mod => 6,
+        _ => 0, // statement-level ops (Asn, *Eq, Dot, ...) — no paren rule
+    }
+}
+
+/// Whether a `Bina` child must be parenthesized under `parent_op` to keep
+/// the AST grouping. Extra parens are semantically harmless; missing ones
+/// silently change semantics, so this errs on the side of wrapping.
+pub(crate) fn bina_child_needs_parens(parent_op: &auto_val::Op, child: &Expr, is_right: bool) -> bool {
+    use auto_val::Op;
+    if let Expr::Bina(_, child_op, _) = child {
+        let (p, c) = (binop_js_prec(parent_op), binop_js_prec(child_op));
+        if p == 0 || c == 0 {
+            return false;
+        }
+        if c < p {
+            return true; // lower-precedence child: `(a+b)*c`, `(x||y)&&z`
+        }
+        if is_right && c == p {
+            // All DSL binops are left-associative, so an equal-precedence
+            // RIGHT child regroups (`a-(b-c)` ≠ `a-b-c`). Safe only for
+            // strictly associative same-op chains and `a+(b-c)`.
+            let safe = matches!(
+                (parent_op, child_op),
+                (Op::Add, Op::Add)
+                    | (Op::Add, Op::Sub)
+                    | (Op::Mul, Op::Mul)
+                    | (Op::And, Op::And)
+                    | (Op::Or, Op::Or)
+            );
+            return !safe;
+        }
+    }
+    false
+}
+
+/// Emit a Bina operand, re-inserting parentheses when the grouping
+/// requires them (see `bina_child_needs_parens`).
+fn transpile_bina_child(
+    child: &Expr,
+    parent_op: &auto_val::Op,
+    is_right: bool,
+    ctx: &AuraTsContext,
+    out: &mut Vec<u8>,
+) {
+    if bina_child_needs_parens(parent_op, child, is_right) {
+        write!(out, "(").ok();
+        transpile_expr(child, ctx, out);
+        write!(out, ")").ok();
+    } else {
+        transpile_expr(child, ctx, out);
+    }
+}
+
+/// Emit a method-call / field-access receiver. A binop/unary receiver must
+/// keep its parens — `(a + b).toLowerCase()`, not `a + b.toLowerCase()`
+/// (plan 013 follow-up; the AST does not record explicit parens).
+fn transpile_receiver(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
+    if matches!(expr, Expr::Bina(..) | Expr::Unary(..)) {
+        write!(out, "(").ok();
+        transpile_expr(expr, ctx, out);
+        write!(out, ")").ok();
+    } else {
+        transpile_expr(expr, ctx, out);
+    }
+}
+
 /// Convert a snake_case identifier to camelCase (for TS/JS output).
 /// e.g. `list_notes` → `listNotes`, `create_note` → `createNote`
 pub fn snake_to_camel(name: &str) -> String {
@@ -558,7 +638,7 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             write!(out, "while (").ok();
             match call.name.as_ref() {
                 Expr::Dot(object, method) => {
-                    transpile_expr(object, ctx, out);
+                    transpile_receiver(object, ctx, out);
                     write!(out, ".{}(", method.as_str()).ok();
                 }
                 Expr::Ident(name) => {
@@ -648,12 +728,12 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         .map(|fields| fields.contains(field.as_str()))
                         .unwrap_or(false)
                 {
-                    transpile_expr(obj, ctx, out);
+                    transpile_receiver(obj, ctx, out);
                     write!(out, ".{}.value", field.as_str()).ok();
                     return;
                 }
             }
-            transpile_expr(obj, ctx, out);
+            transpile_receiver(obj, ctx, out);
             write!(out, ".{}", field.as_str()).ok();
         }
 
@@ -971,7 +1051,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                         method = method.as_str(),
                                     ));
                                 }
-                                transpile_expr(object, ctx, out);
+                                transpile_receiver(object, ctx, out);
                                 write!(out, ".{}(", method.as_str()).ok();
                                 for (i, arg) in call.args.args.iter().enumerate() {
                                     if i > 0 {
@@ -988,31 +1068,31 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     match method.as_str() {
                         "to_int" | "parse_int" => {
                             write!(out, "parseInt(").ok();
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ")").ok();
                             return;
                         }
                         "to_float" | "to_double" | "parse_float" => {
                             write!(out, "parseFloat(").ok();
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ")").ok();
                             return;
                         }
                         "to_string" | "str" => {
                             write!(out, "(").ok();
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ").toString()").ok();
                             return;
                         }
                         "len" => {
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".length").ok();
                             return;
                         }
                         // Plan 345 (gap N1): Auto `.contains` -> JS `.includes`
                         // (JS strings and arrays both use .includes, not .contains).
                         "contains" => {
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".includes(").ok();
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i > 0 {
@@ -1025,7 +1105,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         }
                         "remove" => {
                             // AutoLang notes.remove(idx) → TypeScript notes.value.splice(idx, 1)
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".splice(").ok();
                             if let Some(first_arg) = call.args.args.first() {
                                 transpile_expr(&first_arg.get_expr(), ctx, out);
@@ -1048,7 +1128,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 "trim_right" => "trimEnd",
                                 _ => unreachable!(),
                             };
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".{}()", js_method).ok();
                             return;
                         }
@@ -1082,7 +1162,7 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 "repeat" => "repeat",
                                 _ => unreachable!(),
                             };
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".{}(", js_method).ok();
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 if i > 0 {
@@ -1094,20 +1174,20 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             return;
                         }
                         "is_empty" => {
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, ".length === 0").ok();
                             return;
                         }
                         // JS 无原生字符串 reverse
                         "reverse" => {
                             write!(out, "[...").ok();
-                            transpile_expr(object, ctx, out);
+                            transpile_receiver(object, ctx, out);
                             write!(out, "].reverse().join('')").ok();
                             return;
                         }
                         _ => {}
                     }
-                    transpile_expr(object, ctx, out);
+                    transpile_receiver(object, ctx, out);
                     write!(out, ".{}", method.as_str()).ok();
                     write!(out, "(").ok();
                     for (i, arg) in call.args.args.iter().enumerate() {
@@ -1200,9 +1280,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         transpile_expr(rhs, ctx, out);
                         write!(out, ")").ok();
                     } else {
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, " + ").ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                     }
                 }
                 Op::Div | Op::Mod => {
@@ -1215,21 +1295,21 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     let js_op = if matches!(op, Op::Mod) { " %" } else { " / " };
                     if is_int {
                         write!(out, "Math.trunc(").ok();
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, "{}", js_op).ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                         write!(out, ")").ok();
                     } else {
-                        transpile_expr(lhs, ctx, out);
+                        transpile_bina_child(lhs, op, false, ctx, out);
                         write!(out, "{}", js_op).ok();
-                        transpile_expr(rhs, ctx, out);
+                        transpile_bina_child(rhs, op, true, ctx, out);
                     }
                 }
                 _ => {
                     // Standard binary op
-                    transpile_expr(lhs, ctx, out);
+                    transpile_bina_child(lhs, op, false, ctx, out);
                     write!(out, " {} ", op.op()).ok();
-                    transpile_expr(rhs, ctx, out);
+                    transpile_bina_child(rhs, op, true, ctx, out);
                 }
             }
         }
@@ -1242,7 +1322,15 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 _ => "",
             };
             write!(out, "{}", op_str).ok();
-            transpile_expr(operand, ctx, out);
+            // `!` / unary `-` bind tighter than any binop — a Bina operand
+            // must keep its parens (`!(a && b)`, `-(a + b)`).
+            if matches!(operand.as_ref(), Expr::Bina(..) | Expr::NullCoalesce(..)) {
+                write!(out, "(").ok();
+                transpile_expr(operand, ctx, out);
+                write!(out, ")").ok();
+            } else {
+                transpile_expr(operand, ctx, out);
+            }
         }
 
         // Array literals

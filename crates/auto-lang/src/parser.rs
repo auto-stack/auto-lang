@@ -12303,6 +12303,10 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            // Quoted variant names ("update" / "link-click") are
+            // contractual emit names — record the quote so the Vue codegen
+            // always declares/emits them (see MsgVariant.quoted).
+            let quoted = self.is_kind(TokenKind::Str);
             let variant_name = self.cur.text.clone();
             self.next();
 
@@ -12328,6 +12332,7 @@ impl<'a> Parser<'a> {
 
             variants.push(MsgVariant {
                 name: variant_name,
+                quoted,
                 payload,
             });
 

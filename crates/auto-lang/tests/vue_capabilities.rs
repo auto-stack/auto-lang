@@ -311,6 +311,256 @@ widget App {
     );
 }
 
+/// plan 013 Phase 2 (shell elimination): quoted msg variants are
+/// CONTRACTUAL emit names — they must be declared in defineEmits even when
+/// no template binding references a handler (bridge/extension code emits
+/// them via getCurrentInstance().emit; undeclared listeners would fall
+/// through as native DOM listeners on the root element).
+#[test]
+fn cap_quoted_emit_declared_without_view_reference() {
+    let sfc = gen_sfc(
+        r#"
+widget Shell {
+    msg Msg { "update"(str), "blur", Internal }
+    view {
+        col {
+            button "x" { onclick: .Internal }
+        }
+    }
+    on {
+        .Internal -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("update: [string]"),
+        "handler-less quoted emit declared:\n{sfc}"
+    );
+    assert!(sfc.contains("blur: []"), "unit quoted emit declared:\n{sfc}");
+}
+
+/// plan 013 Phase 2: the computed-payload relay — a view-bound (or
+/// exposed) handler computes the payload, then self-calls the quoted
+/// handler which trailing-emits it (`emit('save', md)`), even though the
+/// quoted handler itself is never template-bound.
+#[test]
+fn cap_quoted_emit_self_called_relay() {
+    let sfc = gen_sfc(
+        r#"
+widget Shell {
+    msg Msg { "save"(str) }
+    view {
+        col {
+            button "save" { onclick: .HandleSave }
+        }
+    }
+    on {
+        .HandleSave -> { ."save"("md") }
+        ."save"(md) -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("save: [string]"),
+        "self-called quoted emit declared:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("emit('save', md)"),
+        "self-called quoted handler trailing-emits the payload:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("save('md')"),
+        "the relay call passes the computed payload:\n{sfc}"
+    );
+}
+
+/// plan 013 follow-up (probe 09): the parser drops explicit parentheses
+/// when building the `Bina` tree, so emitters must re-derive them from
+/// precedence/associativity — `(a+b)*c` used to silently come out as
+/// `a + b * c`, `(x||y)&&z` as `x || y && z` (both WRONG).
+#[test]
+fn cap_bina_parens_restored_in_computed() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 1
+        var b int = 2
+        var c int = 3
+        var x bool = true
+        var y bool = false
+        var z bool = false
+    }
+    computed {
+        arith => (.a + .b) * .c
+        logic => (.x || .y) && .z
+        plain => .a + .b * .c
+        neg => !(.x && .y)
+    }
+    view {
+        col {
+            text f"${.arith} ${.logic} ${.plain} ${.neg}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("(a.value + b.value) * c.value"),
+        "lower-precedence left child re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("(x.value || y.value) && z.value"),
+        "|| under && re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("a.value + b.value * c.value"),
+        "natural precedence stays paren-free:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("!(x.value && y.value)"),
+        "unary ! keeps the Bina operand grouped:\n{sfc}"
+    );
+}
+
+/// Right-child associativity: all DSL binops are left-associative, so an
+/// equal-precedence right child must be re-parenthesized —
+/// `a - (b - c)` ≠ `a - b - c`.
+#[test]
+fn cap_bina_parens_right_child_regroup() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 8
+        var b int = 5
+        var c int = 2
+    }
+    computed {
+        sub => .a - (.b - .c)
+        add => .a + (.b - .c)
+    }
+    view {
+        col {
+            text f"${.sub} ${.add}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("a.value - (b.value - c.value)"),
+        "right child of `-` re-parenthesized:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("a.value + b.value - c.value"),
+        "`a + (b - c)` safely flattens (left-assoc equivalent):\n{sfc}"
+    );
+}
+
+/// The same regrouping applies in handler bodies (ts_adapter) and in view
+/// bindings (expr_to_vue_bound_value).
+#[test]
+fn cap_bina_parens_in_handler_and_view_binding() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a int = 1
+        var b int = 2
+        var c int = 3
+        var r int = 0
+    }
+    view {
+        col {
+            div { title: (.a + .b) * .c }
+            button "go" { onclick: .Go }
+        }
+    }
+    on {
+        .Go -> { .r = (.a + .b) * .c }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains(".r.value = (a.value + b.value) * c.value")
+            || sfc.contains("r.value = (a.value + b.value) * c.value"),
+        "handler body keeps the grouping:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":title=\"(a + b) * c\""),
+        "view binding keeps the grouping:\n{sfc}"
+    );
+}
+
+/// plan 013 follow-up (probe 14): `||`/`&&` yield one of the OPERANDS in
+/// JS, so `.a || "b"` must infer `computed<string>`, not
+/// `computed<boolean>` (which forced the strOr/orNull extension helpers).
+#[test]
+fn cap_logical_computed_infers_operand_type() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var a str = ""
+        var x bool = true
+        var y bool = false
+    }
+    computed {
+        or_str => .a || "b"
+        or_bool => .x || .y
+    }
+    view {
+        col {
+            text f"${.or_str} ${.or_bool}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("const or_str = computed<string>(() => a.value || 'b')"),
+        "|| over strings infers computed<string>:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("const or_bool = computed<boolean>(() => x.value || y.value)"),
+        "|| over booleans stays computed<boolean>:\n{sfc}"
+    );
+}
+
+/// plan 013 follow-up: a binop/unary method-call RECEIVER keeps its
+/// parens too — `(a + b).toUpperCase()`, not `a + b.toUpperCase()`
+/// (the AST drops explicit parens; receivers are Dot/Call children, a
+/// different path from Bina operands).
+#[test]
+fn cap_bina_parens_on_call_receiver() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    model {
+        var first str = "a"
+        var last str = "b"
+    }
+    computed {
+        shout => (.first + " " + .last).to_upper()
+    }
+    view {
+        col {
+            text f"${.shout}"
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("(first.value + ' ' + last.value).toUpperCase()"),
+        "binop receiver re-parenthesized:\n{sfc}"
+    );
+}
+
 /// editor README note 3 / jade batch 2 (CodeBlockMenu, jade first use):
 /// v-model FOLD — `value: .query` + `oninput: .QueryInput($event)` on a
 /// state field collapses to `v-model="query"`; the handler function is

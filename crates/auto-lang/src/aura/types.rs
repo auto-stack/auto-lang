@@ -709,6 +709,11 @@ pub struct AuraMsgVariant {
     /// Variant name (e.g., "Inc", "Dec")
     pub name: String,
 
+    /// True when the variant name was written quoted in source — a
+    /// contractual emit name (see ast MsgVariant.quoted; Vue codegen
+    /// always declares/emits those).
+    pub quoted: bool,
+
     /// Payload types (empty = no payload). Plan 043 M5 #1: was
     /// `Option<Type>`; now `Vec<Type>` to support multi-param variants like
     /// `Complete(str, int)`.
@@ -1116,10 +1121,12 @@ mod tests {
             variants: vec![
                 AuraMsgVariant {
                     name: "Inc".to_string(),
+                    quoted: false,
                     payload: vec![],
                 },
                 AuraMsgVariant {
                     name: "Set".to_string(),
+                    quoted: false,
                     payload: vec![Type::Int],
                 },
             ],
