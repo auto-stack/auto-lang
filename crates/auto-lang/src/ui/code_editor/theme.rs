@@ -217,7 +217,10 @@ impl CodeEditorTheme {
                 .collect::<Vec<_>>()
         };
 
-        let italic = Some(FontStyle::ITALIC);
+        // Comments stay upright on purpose: cosmic-text filters font
+        // candidates by exact face style, and no Windows CJK font ships an
+        // italic face — Han in italic spans shapes to .notdef tofu
+        // (glyph_id 0, verified: Consolas-Italic has no CJK fallback).
         let scopes = [
             scope(&["keyword", "storage"], self.syntax.keyword, None),
             scope(
@@ -225,7 +228,7 @@ impl CodeEditorTheme {
                 self.syntax.string,
                 None,
             ),
-            scope(&["comment"], self.syntax.comment, italic),
+            scope(&["comment"], self.syntax.comment, None),
             scope(
                 &["entity.name.function", "support.function"],
                 self.syntax.function,
@@ -309,4 +312,33 @@ pub fn theme_source() -> (bool, String) {
     let dark = THEME_DARK.with(|d| d.get());
     let accent = THEME_ACCENT.with(|a| a.borrow().clone());
     (dark, accent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syntect::highlighting::FontStyle;
+
+    /// Comments must not request an italic face. cosmic-text filters font
+    /// candidates by exact face style and no Windows CJK font ships an
+    /// italic face, so Han in italic comment spans shapes to .notdef tofu
+    /// (Plan 413 regression: 041's Chinese comments rendered as boxes).
+    #[test]
+    fn comment_scope_is_not_italic() {
+        for theme in [CodeEditorTheme::dark("indigo"), CodeEditorTheme::light("indigo")] {
+            let syn = theme.syntax_theme();
+            let mut saw_comment_scope = false;
+            for item in &syn.scopes {
+                if format!("{:?}", item.scope).contains("comment") {
+                    saw_comment_scope = true;
+                    assert_ne!(
+                        item.style.font_style,
+                        Some(FontStyle::ITALIC),
+                        "italic comments turn CJK into tofu on Windows"
+                    );
+                }
+            }
+            assert!(saw_comment_scope, "synthesized theme must style comments");
+        }
+    }
 }
