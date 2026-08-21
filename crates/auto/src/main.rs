@@ -372,6 +372,20 @@ enum Commands {
         #[arg(short = 'v', long, help = "Show test output (print statements)")]
         verbose: bool,
     },
+    #[command(
+        name = "test:ui",
+        about = "Run Playwright UI tests in <dir>/tests (start the app first: auto run <dir>)"
+    )]
+    TestUi {
+        #[arg(short, long, help = "Project directory containing tests/ (default: current dir)")]
+        dir: Option<String>,
+        #[arg(short = 'H', long, help = "Run Playwright with a visible browser window")]
+        headed: bool,
+        #[arg(short, long, help = "Only run tests whose title contains this substring")]
+        filter: Option<String>,
+        #[arg(long, help = "Open the HTML report from the last run instead of testing")]
+        report: bool,
+    },
     #[command(about = "Remove the .auto/build directory and artifacts")]
     Clean {
         #[arg(short, long)]
@@ -575,6 +589,58 @@ enum Commands {
         /// Auto code to evaluate
         code: Option<String>,
     },
+}
+
+/// Plan 366a-3 (`auto test:ui`): is a command available in PATH?
+fn command_exists(cmd: &str) -> bool {
+    #[cfg(windows)]
+    let check = std::process::Command::new("where").arg(cmd).output();
+    #[cfg(not(windows))]
+    let check = std::process::Command::new("which").arg(cmd).output();
+    check.map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// Plan 366a-3: JS package manager detection (bun > pnpm > npm), same
+/// preference order as the vue dev-server tooling.
+fn pkg_cmd() -> &'static str {
+    if command_exists("bun") {
+        "bun"
+    } else if command_exists("pnpm") {
+        "pnpm"
+    } else {
+        "npm"
+    }
+}
+
+/// Plan 366a-3: run a command with live output (inherits stdio). On Windows,
+/// cmd.exe /C resolves npm/pnpm/bun .cmd shims from PATH.
+fn run_command_live(cmd: &str, args: &[&str], cwd: &std::path::Path) -> Result<(), String> {
+    use std::process::Stdio;
+    #[cfg(windows)]
+    let status = {
+        let mut full_args = vec!["/C", cmd];
+        full_args.extend(args);
+        std::process::Command::new("cmd")
+            .args(&full_args)
+            .current_dir(cwd)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
+    };
+    #[cfg(not(windows))]
+    let status = std::process::Command::new(cmd)
+        .args(args)
+        .current_dir(cwd)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{} exited with code {:?}", cmd, status.code()))
+    }
 }
 
 fn main() -> Result<()> {
@@ -967,6 +1033,100 @@ fn real_main(cli: Cli) -> Result<()> {
             // Plan 263 Phase 2-3: tests/a2r_tests.at, tests/vm_tests.at, tests/a2c_tests.at, tests/a2ts_tests.at
 
             if all_results.has_failures() {
+                std::process::exit(1);
+            }
+        }
+        // Plan 366a-3: one-shot Playwright runner. Delegates to the project's
+        // tests/ four-piece layout (playwright.config.ts + spec + package.json
+        // + acceptance.atd, the 017-chat convention) — the app itself must be
+        // running in another terminal (`auto run <dir>`), exactly like the
+        // documented per-example flow this command replaces.
+        Some(Commands::TestUi { dir, headed, filter, report }) => {
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
+            let project = std::path::PathBuf::from(dir.unwrap_or_else(|| ".".to_string()));
+            let tests_dir = project.join("tests");
+            let config = tests_dir.join("playwright.config.ts");
+            if !config.is_file() {
+                eprintln!("error: {} not found", config.display());
+                eprintln!("hint: `auto test:ui` expects the 017-chat style tests/ layout:");
+                eprintln!("      playwright.config.ts + *.spec.ts + package.json + acceptance.atd");
+                std::process::exit(1);
+            }
+
+            let pkg = pkg_cmd();
+            if !command_exists(pkg) {
+                eprintln!("error: '{}' not found in PATH (required to run Playwright)", pkg);
+                std::process::exit(1);
+            }
+
+            // First run: install @playwright/test and friends into tests/.
+            let package_json = tests_dir.join("package.json");
+            if package_json.is_file() && !tests_dir.join("node_modules").is_dir() {
+                println!("[test:ui] first run in {}: {} install ...", tests_dir.display(), pkg);
+                if let Err(e) = run_command_live(pkg, &["install"], &tests_dir) {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+
+            if report {
+                // Prefer the project's own `report` script, fall back to npx.
+                let has_script = |name: &str| {
+                    std::fs::read_to_string(&package_json)
+                        .map(|s| s.contains(&format!("\"{}\":", name)))
+                        .unwrap_or(false)
+                };
+                let args: Vec<&str> = if has_script("report") {
+                    vec!["run", "report"]
+                } else {
+                    vec!["exec", "playwright", "show-report", "playwright-report"]
+                };
+                if let Err(e) = run_command_live(pkg, &args, &tests_dir) {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+
+            // Build the playwright argv: `run test -- [--headed] [filter]`.
+            let mut extra: Vec<String> = Vec::new();
+            if headed {
+                extra.push("--headed".to_string());
+            }
+            if let Some(f) = &filter {
+                extra.push(f.clone());
+            }
+            let has_test_script = std::fs::read_to_string(&package_json)
+                .map(|s| s.contains("\"test\":"))
+                .unwrap_or(false);
+            let mut args: Vec<String> = vec!["run".into(), "test".into(), "--".into()];
+            args.extend(extra.clone());
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            if !has_test_script {
+                // No package script: run the local playwright binary directly.
+                let mut direct: Vec<String> =
+                    vec!["exec".into(), "playwright".into(), "test".into()];
+                direct.extend(extra);
+                let direct_refs: Vec<&str> = direct.iter().map(|s| s.as_str()).collect();
+                println!("[test:ui] {} {} (in {})", pkg, direct.join(" "), tests_dir.display());
+                if let Err(e) = run_command_live(pkg, &direct_refs, &tests_dir) {
+                    eprintln!("error: {}", e);
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+            println!(
+                "[test:ui] {} {} (in {}) — app must be running: auto run {}",
+                pkg,
+                args.join(" "),
+                tests_dir.display(),
+                project.display()
+            );
+            if let Err(e) = run_command_live(pkg, &arg_refs, &tests_dir) {
+                eprintln!("error: {}", e);
                 std::process::exit(1);
             }
         }
