@@ -3668,6 +3668,19 @@ pub fn shim_http_response_redirect(task: &mut AutoTask, _vm: &AutoVM) -> Result<
     Ok(())
 }
 
+/// Plan 346 3c: server-side lookup of a pending response by handle. Lets the
+/// HTTP server serve a handler-returned Response object (status/headers/body,
+/// e.g. from `http.response.redirect(url, 302)` or `http.response()` +
+/// `response_status`) instead of JSON-encoding the raw handle integer.
+/// Returns None for ints that are not response handles.
+pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, Vec<u8>)> {
+    HTTP_RESPONSES.with(|r| {
+        r.borrow()
+            .get(&handle)
+            .map(|res| (res.status, res.headers.clone(), res.body.clone()))
+    })
+}
+
 // ============================================================================
 // Plan 352: Session management natives
 // ============================================================================
@@ -6597,6 +6610,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.response_bytes", shim_http_response_bytes);
     // Plan 346: Redirect
     natives.register_shim_by_name("auto.http.response.redirect", shim_http_response_redirect);
+    natives.register_shim_by_name("auto.http.response_redirect", shim_http_response_redirect);
     natives.register_shim_by_name("http.response.redirect", shim_http_response_redirect);
     // Plan 352: Session management
     natives.register_shim_by_name("auto.session.create", shim_session_create);

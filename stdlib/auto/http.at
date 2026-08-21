@@ -118,6 +118,10 @@ pub fn Response.json[T](self Response, data T) Response;
 /// Set the body as bytes
 pub fn Response.bytes(self Response, data []byte) Response;
 
+/// Create a redirect response (Plan 346 3c)
+/// Example: return http.response_redirect("/new", 302)
+pub fn response_redirect(url str, code int) Response;
+
 // ═══════════════════════════════════════════════════════════
 // Quick Response Helpers
 // ═══════════════════════════════════════════════════════════

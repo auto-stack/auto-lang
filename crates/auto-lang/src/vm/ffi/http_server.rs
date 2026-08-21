@@ -116,6 +116,64 @@ pub(crate) fn cors_headers() -> String {
     )
 }
 
+/// Plan 346 3c: reason phrase for common status codes (redirect focus).
+fn http_status_reason(code: u16) -> &'static str {
+    match code {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "",
+    }
+}
+
+/// Plan 346 3c: write a handler-returned Response object (status/headers/body)
+/// directly to the connection. The parts come from
+/// `stdlib::lookup_http_response`.
+async fn write_http_response_object(
+    stream: &mut tokio::net::TcpStream,
+    res: (u16, Vec<(String, String)>, Vec<u8>),
+    req_method: &str,
+    req_path: &str,
+    elapsed_ms: u128,
+) {
+    use tokio::io::AsyncWriteExt;
+    let (status, headers, body) = res;
+    let mut head = format!(
+        "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n",
+        status,
+        http_status_reason(status),
+        body.len()
+    );
+    for (k, v) in &headers {
+        head.push_str(k);
+        head.push_str(": ");
+        head.push_str(v);
+        head.push_str("\r\n");
+    }
+    head.push_str(&cors_headers());
+    head.push_str("\r\n");
+    let _ = stream.write_all(head.as_bytes()).await;
+    if !body.is_empty() {
+        let _ = stream.write_all(&body).await;
+    }
+    let _ = stream.flush().await;
+    eprintln!(
+        "[HTTP] {} {} → {} ({}ms)",
+        req_method, req_path, status, elapsed_ms
+    );
+}
+
 /// Plan 349 步骤 7/8 (W5): write a CORS preflight (OPTIONS) response and return true if
 /// the request is an OPTIONS method; returns false otherwise so the caller can
 /// continue normal routing. Used by both blocking and async servers.
@@ -826,6 +884,48 @@ fn counter_handler() ~Iter<int> {
                 "conn2 incomplete: body={:?}", body2);
         }
 
+        /// Plan 346 3c: `http.response_redirect(url, 302)` end-to-end. The
+        /// handler returns a redirect Response object; the client must see
+        /// 302 + Location, and following it reaches the target endpoint.
+        ///
+        /// Named `e2e_a_...` so it sorts FIRST in the serial suite: a prior
+        /// test's detached server thread can auto-start late and read the
+        /// process-global AUTO_HTTP_PORT while THIS test owns it, binding our
+        /// port with its stale route table (404). Running first avoids the
+        /// pre-existing harness race (see Plan 317 §11 detached-server notes).
+        #[test]
+        fn e2e_a_redirect_302_with_location() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/old")]
+fn old_handler() int {
+    return http.response_redirect("/new", 302)
+}
+
+#[api(method = "GET", path = "/new")]
+fn new_handler() str {
+    return "arrived"
+}
+"#, 18736);
+            let resp = http_get(port, "/old");
+            assert!(
+                resp.starts_with("HTTP/1.1 302"),
+                "expected 302 status line, got full response: {:?}",
+                resp
+            );
+            assert!(
+                resp.to_lowercase().contains("location: /new"),
+                "expected Location: /new header, got: {:?}",
+                resp
+            );
+            // Following the redirect reaches the target.
+            let follow = http_get(port, "/new");
+            assert!(
+                body_of(&follow).contains("arrived"),
+                "follow target should serve body, got: {:?}",
+                follow
+            );
+        }
+
         /// Plan 317 Phase 4 validation: 015-notes-style CRUD on the async HTTP
         /// server. Exercises the same patterns as examples/ui/015-notes/src/back:
         ///   - list: returns []Note (array of structs → JSON array of objects)
@@ -1208,6 +1308,7 @@ async fn handle_connection_async(
         _ => return,
     };
     let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+
     let mut lines = raw.lines();
     let request_line = match lines.next() {
         Some(l) => l,
@@ -1498,8 +1599,49 @@ async fn handle_connection_async(
                             tokio::task::yield_now().await;
                         }
                         None
+                    } else if let Some(res) =
+                        crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64)
+                    {
+                        // Plan 346 3c: response-object return — the handler built a
+                        // Response (e.g. http.response_redirect(url, 302)) and
+                        // returned its handle; serve status/headers/body directly.
+                        // NOTE: do NOT vm.tasks.remove() here — we are inside the
+                        // `vm.tasks.get()` DashMap read-guard scope; removing the
+                        // same shard now self-deadlocks. Return None and let the
+                        // shared cleanup below (outside the scope) remove the task.
+                        write_http_response_object(
+                            stream,
+                            res,
+                            &req_method,
+                            &req_path,
+                            request_start.elapsed().as_millis(),
+                        )
+                        .await;
+                        drop(ht);
+                        None
                     } else {
                         nv_to_json(vm, nv, 0)
+                    }
+                } else if auto_val::is_i64(nv) {
+                    // Plan 346 3c: response handles built via http.response()/
+                    // response_status()/... are pushed as i64 (Plan 377 inline
+                    // tag 8). Serve them as response objects, not JSON ints.
+                    let handle = auto_val::decode_i64(nv) as u64;
+                    match crate::vm::ffi::stdlib::lookup_http_response(handle) {
+                        Some(res) => {
+                            // Same DashMap-guard caveat as the i32 branch above.
+                            write_http_response_object(
+                                stream,
+                                res,
+                                &req_method,
+                                &req_path,
+                                request_start.elapsed().as_millis(),
+                            )
+                            .await;
+                            drop(ht);
+                            None
+                        }
+                        None => nv_to_json(vm, nv, 0),
                     }
                 } else {
                     nv_to_json(vm, nv, 0)

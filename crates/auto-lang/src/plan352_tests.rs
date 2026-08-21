@@ -336,3 +336,4 @@ print("ok")
         assert!(stdout.contains("ok"), "expected ok: [{}]", stdout);
     }
 }
+
