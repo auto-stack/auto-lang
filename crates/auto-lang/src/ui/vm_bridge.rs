@@ -1982,6 +1982,33 @@ widget Store {
             "`.list = list_todos()` must assign a value, got {:?}",
             list
         );
+        // B12(ii) refinement: the pushed element must keep its GLOBAL-sourced
+        // field — `Todo { id: nextid, ... }` with nextid=2 must yield id=2,
+        // not 0 (GUI probe: constructed Obj carried id: 0 while nextid was
+        // verifiably 4 at LOAD_GLOBAL time). List must hold 3 (2 seeds + 1).
+        let elems = bridge.read_state_as_vec("list").expect("list readable as vec");
+        assert_eq!(elems.len(), 3, "2 seeds + 1 new, got {}", elems.len());
+        let new_id = elems
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Value::VmRef(r) => bridge
+                    .vm
+                    .get_heap_object(r.id as u64)
+                    .and_then(|o| {
+                        let g = o.read().ok()?;
+                        let inst = g
+                            .as_any()
+                            .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()?;
+                        inst.get_field(0).cloned()
+                    }),
+                Value::Obj(o) => o.get_str("id").map(|s| Value::str(s)),
+                _ => None,
+            });
+        match new_id {
+            Some(Value::Int(id)) => assert_eq!(id, 2, "constructed Todo.id must be nextid (2)"),
+            other => panic!("expected constructed Todo with id, got {:?}", other),
+        }
     }
 
     /// Repro for the SelectDay panic (bp - actual_offset overflow on param
