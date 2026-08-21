@@ -1,4 +1,4 @@
-import { h, defineComponent, watch, onMounted } from 'vue'
+import { h, defineComponent, watch, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vitepress'
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
@@ -23,6 +23,40 @@ function isSpaRoute(path: string): boolean {
   return SPA_ROUTES.some(r => path === r || path.startsWith(r))
 }
 
+// Reveal-on-scroll for landing page sections: adds .reveal to section
+// wrappers, then .is-visible when they enter the viewport. CSS lives in
+// landing.css and is gated behind prefers-reduced-motion: no-preference.
+const REVEAL_SELECTOR = [
+  '.landing-page .stats-section',
+  '.landing-page .showcase-wrapper',
+  '.landing-page .features-section',
+  '.landing-page .platforms-section',
+  '.landing-page .pillars-section',
+  '.landing-page .apps-section',
+  '.landing-page .apps-list',
+  '.landing-page .cta-section',
+].join(', ')
+
+function setupReveal() {
+  if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const els = Array.from(document.querySelectorAll(REVEAL_SELECTOR))
+    .filter(el => !el.classList.contains('is-visible'))
+  if (!els.length) return
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible')
+        observer.unobserve(entry.target)
+      }
+    }
+  }, { rootMargin: '0px 0px -10% 0px' })
+  for (const el of els) {
+    el.classList.add('reveal')
+    observer.observe(el)
+  }
+}
+
 const LayoutWrapper = defineComponent({
   setup() {
     const router = useRouter()
@@ -34,6 +68,7 @@ const LayoutWrapper = defineComponent({
         window.location.href = route.path
         return
       }
+      setupReveal()
     })
 
     watch(() => route.path, (to) => {
@@ -41,6 +76,7 @@ const LayoutWrapper = defineComponent({
         // Intercept client-side navigation to SPA routes — do full page load
         window.location.href = to
       }
+      nextTick(setupReveal)
     })
 
     return () => h(DefaultTheme.Layout, null, {

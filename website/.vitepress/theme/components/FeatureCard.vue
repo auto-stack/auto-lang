@@ -24,8 +24,8 @@ defineProps<{
 <style scoped>
 .feature-card {
   padding: 1.5rem;
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border) / 0.7);
   background: hsl(var(--card));
   transition: all 0.2s ease;
   text-decoration: none;
@@ -36,7 +36,7 @@ defineProps<{
 .feature-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-  border-color: rgba(99, 102, 241, 0.3);
+  border-color: color-mix(in srgb, var(--page-accent-1, #6366f1) 30%, transparent);
 }
 
 .dark .feature-card:hover {
@@ -51,6 +51,11 @@ defineProps<{
   align-items: center;
   justify-content: center;
   margin-bottom: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.feature-card:hover .icon-wrapper {
+  transform: scale(1.08);
 }
 
 .emoji-icon {

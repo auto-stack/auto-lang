@@ -100,3 +100,4 @@ The linker error precision improvement addresses the problem where "Undefined sy
 - `docs/plans/archive/261-migrate-rust-tests-to-auto.md`
 - `docs/plans/archive/262-file-based-tests.md`
 - `docs/plans/archive/263-transpiler-tests.md`
+- [366-cross-platform-ui-test-dsl.md](../plans/archive/366-cross-platform-ui-test-dsl.md)

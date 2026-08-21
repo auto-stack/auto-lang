@@ -1,0 +1,21 @@
+// Rust stdlib from Auto: the AutoVM calls Rust's std::path and std::time directly
+// (uses use.rust — runs in the VM and transpiles to Rust; C target unsupported)
+// Tip: click "Transpile → Rust" to see the Rust code this program generates.
+use.rust std::path::PathBuf
+use.rust std::time::Duration
+
+// PathBuf: build a path value; printing it shows the path
+let p = PathBuf.from("src/main.rs")
+print(p)
+
+// Duration: construct from whole seconds ...
+let five_secs = Duration.from_secs(5)
+print(f"5 seconds  -> $five_secs")
+
+// ... from milliseconds ...
+let quarter = Duration.from_millis(250)
+print(f"250 millis -> $quarter")
+
+// ... or from fractional seconds
+let one_and_half = Duration.from_secs_f64(1.5)
+print(f"1.5 secs   -> $one_and_half")

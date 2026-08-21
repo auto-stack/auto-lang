@@ -51,9 +51,9 @@ defineProps<{
   align-self: flex-start;
   padding: 0.375rem 0.875rem;
   border-radius: 9999px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  color: #6366f1;
+  background: color-mix(in srgb, var(--page-accent-1, #6366f1) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--page-accent-1, #6366f1) 20%, transparent);
+  color: var(--page-accent-1, #6366f1);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -102,7 +102,7 @@ defineProps<{
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
+  background: linear-gradient(135deg, var(--page-accent-1, #6366f1), var(--page-accent-2, #a855f7));
 }
 
 .showcase-visual {

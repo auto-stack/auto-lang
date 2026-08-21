@@ -1,0 +1,20 @@
+// URL utilities: percent-encoding and URL part extraction (built into the VM)
+
+// Percent-encode a value so it is safe inside a URL query string
+let q = Url.encode("hello world")
+print(f"encoded: $q")
+
+// Decode it back
+print(f"decoded: ${Url.decode(q)}")
+
+// Characters that are special in URLs get escaped
+print(f"params: ${Url.encode("a=b&c=d")}")
+
+// Split a URL into its parts
+let url = "https://example.com:8080/path/to/page?name=test#section"
+print(f"scheme:   ${Url.scheme(url)}")
+print(f"host:     ${Url.host(url)}")
+print(f"port:     ${Url.port(url)}")
+print(f"path:     ${Url.path(url)}")
+print(f"query:    ${Url.query(url)}")
+print(f"fragment: ${Url.fragment(url)}")

@@ -8,7 +8,9 @@ import StatCard from '../../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
-<div class="ui-hero">
+<div class="landing-page" style="--page-accent-1: #8b5cf6; --page-accent-2: #ec4899">
+
+<div class="landing-hero">
   <div class="badge">AutoUI <span class="alpha">Alpha</span></div>
   <h1 class="title">一套 UI，<span class="accent">全平台运行</span></h1>
   <p class="description">
@@ -166,120 +168,9 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   </div>
 </div>
 
+</div>
+
 <style scoped>
-.ui-hero {
-  padding: 6rem 2rem 4rem;
-  text-align: center;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #8b5cf6;
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin-bottom: 1.5rem;
-}
-
-.badge .alpha {
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  background: rgba(139, 92, 246, 0.2);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.title {
-  font-size: clamp(2.5rem, 5vw, 4rem);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: hsl(var(--foreground));
-  margin: 0 0 1.5rem;
-}
-
-.accent {
-  background: linear-gradient(120deg, #8b5cf6 30%, #ec4899 70%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.description {
-  font-size: 1.25rem;
-  line-height: 1.7;
-  color: hsl(var(--muted-foreground));
-  max-width: 700px;
-  margin: 0 auto 2.5rem;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
-}
-
-.btn-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.btn-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.stats-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 2.5rem;
-  color: hsl(var(--foreground));
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-}
-
 .platforms-section {
   padding: 4rem 2rem;
   max-width: 1200px;
@@ -346,7 +237,7 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 .status.demo { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 
 .platform-link {
-  color: #8b5cf6;
+  color: var(--page-accent-1);
   font-weight: 600;
   font-size: 0.95rem;
 }
@@ -355,128 +246,6 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
   color: hsl(var(--muted-foreground));
   font-size: 0.875rem;
 }
-
-.showcase-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.features-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(139, 92, 246, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.code-window {
-  background: #1e1e2e;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  width: 100%;
-  max-width: 420px;
-  text-align: left;
-}
-
-.code-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
-}
-
-.code-dots {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.code-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.code-dots span:nth-child(1) { background: #ff5f56; }
-.code-dots span:nth-child(2) { background: #ffbd2e; }
-.code-dots span:nth-child(3) { background: #27c93f; }
-
-.code-title {
-  font-size: 0.8rem;
-  color: #6c7086;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.code-body {
-  padding: 1.25rem;
-  margin: 0;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  color: #cdd6f4;
-  overflow-x: auto;
-}
-
-.keyword { color: #cba6f7; }
-.string { color: #a6e3a1; }
 
 .gallery-links {
   display: grid;
@@ -502,8 +271,8 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 }
 
 .gallery-link:hover {
-  border-color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.05);
+  border-color: var(--page-accent-1);
+  background: color-mix(in srgb, var(--page-accent-1) 5%, transparent);
 }
 
 .gallery-icon {
@@ -533,9 +302,6 @@ import ShowcaseSection from '../../.vitepress/theme/components/ShowcaseSection.v
 .mobile-item.arkts { background: linear-gradient(135deg, #f4a460, #d97706); }
 
 @media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
   .gallery-links {
     grid-template-columns: 1fr;
   }

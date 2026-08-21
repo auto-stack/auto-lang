@@ -1,0 +1,19 @@
+// Regex: pattern matching on strings (built into the VM)
+
+// is_match returns 1 when the pattern is found anywhere in the text
+print(f"has digits: ${Regex.is_match("\\d+", "abc123")}")
+print(f"has digits: ${Regex.is_match("\\d+", "abcdef")}")
+
+// Anchors work as usual: ^ start, $ end
+print(f"starts with abc: ${Regex.is_match("^abc", "abcdef")}")
+print(f"ends with xyz: ${Regex.is_match("xyz$", "abcdef")}")
+
+// find_all returns every match as a JSON array string,
+// which Json.parse can read back (see the Json example)
+let matches = Json.parse(Regex.find_all("\\d+", "a1 b22 c333"))
+print(f"match count: ${Json.len(matches)}")
+
+for i in 0..Json.len(matches) {
+    let m = Json.get_at(matches, i)
+    print(f"found '${Json.as_string(Json.get(m, "match"))}'")
+}

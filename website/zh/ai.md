@@ -9,6 +9,8 @@ import StatCard from '../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
+<div class="landing-page" style="--page-accent-1: #ec4899; --page-accent-2: #a855f7">
+
 <AIHero
   badge="AutoAI 架构"
   title="：Client / Daemon AI 基础设施"
@@ -74,7 +76,6 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         </div>
         <pre class="code-body"><code><span class="keyword">use</span> auto_ai_agent::Agent;
 <span class="keyword">use</span> auto_ai_client::AiClient;
-
 <span class="keyword">fn</span> <span class="function">main</span>() {
     <span class="keyword">let</span> client = AiClient::new();
     <span class="keyword">let</span> agent = Agent::from_profession(
@@ -107,7 +108,6 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 <span class="output">Daemon: running (pid 1234)
 Providers: zhipu, anthropic
 Active pools: 2/8</span>
-
 <span class="prompt">$</span> auto-ai-cli "explain this error"
 <span class="output">The error occurs because...</span></code></pre>
       </div>
@@ -160,214 +160,11 @@ Active pools: 2/8</span>
   </div>
 </div>
 
+</div>
+
 <style scoped>
-.stats-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 2.5rem;
-  color: hsl(var(--foreground));
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-}
-
-.showcase-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.features-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(236, 72, 153, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.code-window {
-  background: #1e1e2e;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  width: 100%;
-  max-width: 420px;
-  text-align: left;
-}
-
-.code-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
-}
-
-.code-dots {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.code-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.code-dots span:nth-child(1) { background: #ff5f56; }
-.code-dots span:nth-child(2) { background: #ffbd2e; }
-.code-dots span:nth-child(3) { background: #27c93f; }
-
-.code-title {
-  font-size: 0.8rem;
-  color: #6c7086;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.code-body {
-  padding: 1.25rem;
-  margin: 0;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  color: #cdd6f4;
-  overflow-x: auto;
-}
-
-.keyword { color: #cba6f7; }
-.function { color: #89b4fa; }
-.string { color: #a6e3a1; }
-.prompt { color: #a6e3a1; }
-.output { color: #6c7086; }
-
-.arch-diagram {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  max-width: 320px;
-}
-
-.arch-box {
-  width: 100%;
-  padding: 1rem 1.25rem;
-  border-radius: var(--radius);
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: white;
-}
-
-.arch-box small {
-  display: block;
-  font-weight: 400;
-  font-size: 0.75rem;
-  opacity: 0.85;
-  margin-top: 0.25rem;
-}
-
 .arch-box.apps { background: linear-gradient(135deg, #ec4899, #db2777); }
 .arch-box.client { background: linear-gradient(135deg, #a855f7, #8b5cf6); }
 .arch-box.daemon { background: linear-gradient(135deg, #6366f1, #4f46e5); }
 .arch-box.providers { background: linear-gradient(135deg, #14b8a6, #0d9488); }
-
-.arch-arrow {
-  color: hsl(var(--muted-foreground));
-  font-size: 1.2rem;
-}
-
-.config-tree {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 320px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  line-height: 1.8;
-}
-
-.config-file {
-  color: hsl(var(--foreground));
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.config-item {
-  color: hsl(var(--muted-foreground));
-}
-
-@media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
-}
 </style>

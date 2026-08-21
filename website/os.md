@@ -9,6 +9,8 @@ import StatCard from './.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
+<div class="landing-page" style="--page-accent-1: #14b8a6; --page-accent-2: #3b82f6">
+
 <OSHero
   badge="AutoOS Architecture"
   title=": Client / Daemon OS Foundation"
@@ -155,153 +157,12 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   </div>
 </div>
 
+</div>
+
 <style scoped>
-.stats-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 2.5rem;
-  color: hsl(var(--foreground));
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-}
-
-.showcase-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.features-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(20, 184, 166, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(20, 184, 166, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(20, 184, 166, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.config-tree {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 320px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  line-height: 1.8;
-}
-
-.config-file {
-  color: hsl(var(--foreground));
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.config-item {
-  color: hsl(var(--muted-foreground));
-}
-
-.arch-diagram {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  max-width: 320px;
-}
-
-.arch-box {
-  width: 100%;
-  padding: 1rem 1.25rem;
-  border-radius: var(--radius);
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: white;
-}
-
-.arch-box small {
-  display: block;
-  font-weight: 400;
-  font-size: 0.75rem;
-  opacity: 0.85;
-  margin-top: 0.25rem;
-}
-
 .arch-box.clients { background: linear-gradient(135deg, #14b8a6, #0d9488); }
 .arch-box.daemons { background: linear-gradient(135deg, #3b82f6, #2563eb); }
 .arch-box.system { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
-
-.arch-arrow {
-  color: hsl(var(--muted-foreground));
-  font-size: 1.2rem;
-}
 
 .path-grid {
   display: grid;
@@ -367,9 +228,6 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 }
 
 @media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
   .path-grid {
     grid-template-columns: 1fr;
   }

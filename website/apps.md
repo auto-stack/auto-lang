@@ -8,7 +8,9 @@ import StatCard from './.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
-<div class="apps-hero">
+<div class="landing-page" style="--page-accent-1: #6366f1; --page-accent-2: #8b5cf6">
+
+<div class="landing-hero">
   <div class="badge">Built with Auto</div>
   <h1 class="title">Real Apps, <span class="accent">Real Platform</span></h1>
   <p class="description">
@@ -180,112 +182,9 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   </div>
 </div>
 
+</div>
+
 <style scoped>
-.apps-hero {
-  padding: 6rem 2rem 4rem;
-  text-align: center;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #6366f1;
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin-bottom: 1.5rem;
-}
-
-.title {
-  font-size: clamp(2.5rem, 5vw, 4rem);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: hsl(var(--foreground));
-  margin: 0 0 1.5rem;
-}
-
-.accent {
-  background: linear-gradient(120deg, #6366f1 30%, #8b5cf6 70%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.description {
-  font-size: 1.25rem;
-  line-height: 1.7;
-  color: hsl(var(--muted-foreground));
-  max-width: 700px;
-  margin: 0 auto 2.5rem;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-}
-
-.btn-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.btn-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.stats-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 2.5rem;
-  color: hsl(var(--foreground));
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-}
-
 .apps-list {
   max-width: 1000px;
   margin: 0 auto;
@@ -353,74 +252,5 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   font-size: 0.875rem;
   color: hsl(var(--muted-foreground));
   line-height: 1.5;
-}
-
-.features-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-@media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
 }
 </style>

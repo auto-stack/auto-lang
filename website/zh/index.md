@@ -8,6 +8,8 @@ import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 </script>
 
+<div class="landing-page" style="--page-accent-1: #6366f1; --page-accent-2: #8b5cf6">
+
 <HomeHero
   badge="v0.5 现已发布"
   title="：语言 + 运行时 + AI + OS"
@@ -66,27 +68,13 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   <a href="https://beian.miit.gov.cn/" target="_blank">粤ICP备2026054131号-1</a>
 </div>
 
+</div>
+
 <style scoped>
 .pillars-section {
   padding: 4rem 2rem;
   max-width: 1200px;
   margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 1rem;
-  color: hsl(var(--foreground));
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 600px;
-  margin: 0 auto 2.5rem;
-  text-align: center;
 }
 
 .pillars-grid {
@@ -146,50 +134,6 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 
 .app-card a:hover {
   text-decoration: underline;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
 }
 
 .icp-footer {

@@ -1,0 +1,23 @@
+// JSON: parse, inspect, and encode JSON data (built into the VM)
+
+// Parse a JSON string into a value
+let obj = Json.parse("{\"name\":\"auto\",\"tags\":[\"lang\",\"vm\"],\"ver\":1}")
+
+// Look up fields and convert them to Auto values
+print(f"name: ${Json.as_string(Json.get(obj, "name"))}")
+print(f"ver: ${Json.as_int(Json.get(obj, "ver"))}")
+
+// Arrays: check the length of the "tags" list
+print(f"tags: ${Json.len(Json.get(obj, "tags"))}")
+
+// Membership and type checks
+print(f"has name: ${Json.has_key(obj, "name")}")
+print(f"has missing: ${Json.has_key(obj, "missing")}")
+print(f"type of ver: ${Json.type_of(Json.get(obj, "ver"))}")
+
+// Encode an Auto string back to JSON
+print(Json.encode("hello"))
+
+// Pretty-print compact JSON, and validate a broken document
+print(Json.prettify("{\"a\":1}"))
+print(f"valid: ${Json.is_valid("{bad json")}")

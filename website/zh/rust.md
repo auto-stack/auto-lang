@@ -8,7 +8,9 @@ import StatCard from '../.vitepress/theme/components/StatCard.vue'
 import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
-<div class="rust-hero">
+<div class="landing-page" style="--page-accent-1: #dea584; --page-accent-2: #f59e0b">
+
+<div class="landing-hero">
   <div class="badge">Rust 集成 <span class="beta">Beta</span></div>
   <h1 class="title">Auto <span class="accent">×</span> Rust</h1>
   <p class="description">
@@ -49,13 +51,12 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
           <div class="code-dots"><span></span><span></span><span></span></div>
           <span class="code-title">script.at</span>
         </div>
-        <pre class="code-body"><code><span class="keyword">use</span> rust::std::collections::HashMap;
-
-<span class="keyword">fn</span> <span class="function">main</span>() {
-    <span class="keyword">let</span> map = HashMap::new();
-    map.insert(<span class="string">"hello"</span>, <span class="string">"rust"</span>);
-    <span class="function">println</span>(map.get(<span class="string">"hello"</span>));
-}</code></pre>
+        <pre class="code-body"><code><span class="keyword">use.rust</span> std::path::PathBuf
+<span class="keyword">use.rust</span> std::time::Duration
+<span class="keyword">let</span> p = PathBuf.from(<span class="string">"src/main.rs"</span>)
+<span class="function">print</span>(p)
+<span class="keyword">let</span> d = Duration.from_secs(5)
+<span class="function">print</span>(d)  <span class="comment">// prints 5000ms</span></code></pre>
       </div>
     </template>
   </ShowcaseSection>
@@ -81,7 +82,6 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         </div>
         <pre class="code-body"><code><span class="comment">// Auto 源码</span>
 <span class="keyword">fn</span> <span class="function">add</span>(a: int, b: int) -> int { a + b }
-
 <span class="comment">// 生成的 Rust</span>
 <span class="keyword">fn</span> <span class="function">add</span>(a: i64, b: i64) -> i64 { a + b }</code></pre>
       </div>
@@ -102,12 +102,12 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <div class="mode-card auto">
           <h4>Auto 标准库</h4>
           <p>跨平台可移植</p>
-          <code>use std::http</code>
+          <code>Json.parse(data)</code>
         </div>
         <div class="mode-card rust">
           <h4>Rust 标准库</h4>
           <p>完整 crates.io 访问</p>
-          <code>use rust::std::net</code>
+          <code>use.rust std::net::TcpListener</code>
         </div>
       </div>
     </template>
@@ -135,244 +135,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   </div>
 </div>
 
+</div>
+
 <style scoped>
-.rust-hero {
-  padding: 6rem 2rem 4rem;
-  text-align: center;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: rgba(222, 165, 132, 0.1);
-  border: 1px solid rgba(222, 165, 132, 0.3);
-  color: #dea584;
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin-bottom: 1.5rem;
-}
-
-.badge .beta {
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  background: rgba(222, 165, 132, 0.2);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.title {
-  font-size: clamp(2.5rem, 5vw, 4rem);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: hsl(var(--foreground));
-  margin: 0 0 1.5rem;
-}
-
-.accent {
-  background: linear-gradient(120deg, #dea584 30%, #f59e0b 70%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.description {
-  font-size: 1.25rem;
-  line-height: 1.7;
-  color: hsl(var(--muted-foreground));
-  max-width: 700px;
-  margin: 0 auto 2.5rem;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  text-decoration: none;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #dea584 0%, #f59e0b 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(222, 165, 132, 0.3);
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(222, 165, 132, 0.4);
-}
-
-.btn-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.btn-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.stats-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 2.5rem;
-  color: hsl(var(--foreground));
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-}
-
-.showcase-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.features-section {
-  padding: 4rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.cta-section {
-  padding: 4rem 2rem;
-  text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(222, 165, 132, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
-}
-
-.cta-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.cta-primary {
-  background: linear-gradient(135deg, #dea584 0%, #f59e0b 100%);
-  color: white;
-  box-shadow: 0 4px 14px rgba(222, 165, 132, 0.3);
-}
-
-.cta-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(222, 165, 132, 0.4);
-}
-
-.cta-secondary {
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-}
-
-.cta-secondary:hover {
-  background: hsl(var(--accent));
-}
-
-.code-window {
-  background: #1e1e2e;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  width: 100%;
-  max-width: 420px;
-  text-align: left;
-}
-
-.code-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
-}
-
-.code-dots {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.code-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.code-dots span:nth-child(1) { background: #ff5f56; }
-.code-dots span:nth-child(2) { background: #ffbd2e; }
-.code-dots span:nth-child(3) { background: #27c93f; }
-
-.code-title {
-  font-size: 0.8rem;
-  color: #6c7086;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.code-body {
-  padding: 1.25rem;
-  margin: 0;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  color: #cdd6f4;
-  overflow-x: auto;
-}
-
-.keyword { color: #cba6f7; }
-.function { color: #89b4fa; }
-.string { color: #a6e3a1; }
-.comment { color: #6c7086; font-style: italic; }
-
 .mode-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -403,8 +168,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 .mode-card code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.8rem;
-  color: #dea584;
-  background: rgba(222, 165, 132, 0.1);
+  color: var(--page-accent-1);
+  background: color-mix(in srgb, var(--page-accent-1) 10%, transparent);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
 }

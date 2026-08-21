@@ -46,10 +46,11 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 399 | AutoUI 示例 SSE/CRUD 扩展 | ✅ | 017-chat 首个 SSE 实时聊天 App（playwright 9/9）+ Phase 11 a2r 根治（i64/Slice/borrowed_iter/mutated_let）+ Phase 12 typing + Phase 13 混合状态硬检查；路线A 移交 Plan 400；api_gen 后处理兜底登记债务簿 |
 | 404 | 022-kanban 示例升级 | ✅ | CRUD + 列移动 + HTML5 拖拽完整 App，playwright 6/6；修 row/col 属性穿透 bug（push_passthrough_attrs vue.rs:7310） |
 | 407 | a2vue icon/text 表达式 | ✅ | lucide 图标子节点 + text 节点 t() 函数调用表达式（parser.rs:12876 + golden 005/006 + auto-musk 侧回流完成） |
+| 403 | 011 计算器 MCP+Grid+多模式 | ✅ | 需求 1a/1b/1c/2/3 + Phase 403-F VM 浮点修复全落地；1a 的 desktop_mcp.py + acceptance.atd 由 audit-A8 补齐（实机 14/14） |
 | 409 | Widgets Gallery 三模式一致性 | ✅ | §1-§10：link 子组件 VM 渲染/主题色/§10 六残留差距全修复（plan409_tests + golden）；CodeBlock/PreviewCard 纯 Auto 化暂缓（登记债务簿） |
 
 ## Status Summary
-- Completed: 23 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 24 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

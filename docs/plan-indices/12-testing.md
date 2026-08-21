@@ -24,8 +24,10 @@ AutoLang's testing infrastructure matured from inline Rust unit tests to a compr
 | 261 | Migrate Rust Tests to Auto `#[test]` | ✅ | 8 test files migrated to `tests/auto/` (dstr, infer, list, field_access, memory, etc.) |
 | 263 | A2R Transpiler Test Runner | ✅ | Declarative test discovery via `tests/*.at` for a2r, vm, a2c, a2ts (~900 tests) |
 
+| 366 | 跨平台 UI 测试契约与 DSL | ✅ | 366a 近端交付全落地（acceptance.atd + Playwright + `auto test:ui` 命令 audit-A7）；366b-f DSL 登记为长期设计（由 Plan 371 实践路线承接） |
+
 ## Status Summary
-- Completed: 8 | Partial: 3 | Planned: 3 | Deprecated: 0
+- Completed: 9 | Partial: 3 | Planned: 3 | Deprecated: 0
 
 ## Key Achievements
 - All three transpiler test suites (a2r, a2c, a2ts) reorganized into consistent categorized directory structures with clear numbering

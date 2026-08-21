@@ -1,6 +1,6 @@
 # Plan 366: 跨平台 UI 测试契约与 DSL（长期方向）
 
-> **状态**: 设计阶段，暂不实现（366b-f DSL 维持）。366a 近端交付已大部分落地（2026-08-20 复核）：acceptance.atd（T1–T13 + T12-DARK 回归，C-DARK-1 契约）与 Playwright spec.ts（smoke + accent-dark）在 `examples/ui/015-notes/tests/`；`auto test:ui` ✅ 已实现（2026-08-20 audit-A7，合并 `6e7f25f5`：发现 tests/ 四件套 → 首跑自动 install → 委托项目 test/report 脚本，--headed/--filter 透传）。
+> **状态（2026-08-20 归档）**: ✅ 366a 近端交付全部完成（acceptance.atd + Playwright spec + `auto test:ui` 一键命令，audit-A7 `6e7f25f5`）；366b-f 目标无关 DSL 为登记的长期设计方向（明确暂不实现，由 Plan 371 的 run_autotest/.autotest 实践路线承接）。366a 近端交付已大部分落地（2026-08-20 复核）：acceptance.atd（T1–T13 + T12-DARK 回归，C-DARK-1 契约）与 Playwright spec.ts（smoke + accent-dark）在 `examples/ui/015-notes/tests/`；`auto test:ui` ✅ 已实现（2026-08-20 audit-A7，合并 `6e7f25f5`：发现 tests/ 四件套 → 首跑自动 install → 委托项目 test/report 脚本，--headed/--filter 透传）。
 >
 > **目标**: 让 UI 测试契约**目标无关**，通过转译器生成各后端的可执行测试。
 

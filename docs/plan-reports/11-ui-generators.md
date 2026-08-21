@@ -46,11 +46,12 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 399 | AutoUI 示例 SSE/CRUD 扩展 | Complete | 017-chat 首个 SSE 实时聊天 App（playwright 9/9）+ Phase 11-13 a2r 根治/typing/混合状态硬检查；路线A 移交 Plan 400 |
 | 404 | 022-kanban 示例升级 | Complete | CRUD + 列移动 + HTML5 拖拽完整 App，playwright 6/6；修 row/col 属性穿透 bug |
 | 407 | a2vue icon/text 表达式 | Complete | lucide 图标子节点 + text 节点 t() 函数调用表达式（golden 005/006 + auto-musk 回流完成） |
+| 403 | 011 计算器 MCP+Grid+多模式 | Complete | 需求全落地 + Phase 403-F 浮点修复；desktop_mcp.py 由 audit-A8 补齐（14/14） |
 | 409 | Widgets Gallery 三模式一致性 | Complete | §1-§10：link 子组件 VM 渲染/主题色/六残留差距全修复；CodeBlock 纯 Auto 化暂缓（登记债务簿） |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 404, 407, 409 (22 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 404, 407, 409 (23 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -163,3 +164,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [404-022-kanban.md](../plans/archive/404-022-kanban.md)
 - [407-a2vue-icon-text-expr.md](../plans/archive/407-a2vue-icon-text-expr.md)
 - [409-widgets-gallery.md](../plans/archive/409-widgets-gallery.md)
+- [403-calculator-mcp-grid-modes.md](../plans/archive/403-calculator-mcp-grid-modes.md)
