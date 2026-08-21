@@ -1112,22 +1112,30 @@ fn broadcast_event_name(endpoint: &ApiEndpoint, primary_type: &str) -> Option<St
 
 /// Plan 400 Phase 2: Check if an endpoint's body is a "thin delegation"
 /// (`return db.FN(args)` or simple let+return). Thin delegations go through
-/// route B; only non-thin bodies with real logic (if/for/while/multi-statement)
+/// route B; only non-thin bodies with real logic (if/for/while/is/try/multi-statement)
 /// go through the a2r body-transpilation path.
 fn is_thin_delegation(endpoint: &ApiEndpoint) -> bool {
     let body = match &endpoint.body {
         Some(b) => b,
         None => return true,
     };
-    // Thin delegation = no control-flow statements (if/for/while/match).
-    // A body with only return/let-return is "thin" (goes to route B or CRUD).
-    for stmt in &body.stmts {
-        match stmt {
-            auto_lang::ast::Stmt::If(_) | auto_lang::ast::Stmt::For(_) => return false,
-            _ => {}
-        }
+    // Thin delegation = no control-flow statements. A body with only
+    // return/let-return is "thin" (goes to route B or CRUD). Note `while`
+    // desugars to Stmt::For (parser while_stmt), and Auto has no `match`
+    // statement — pattern matching is `is` and error handling is `try`, both
+    // of which carry real logic and must take the a2r path.
+    !body.stmts.iter().any(stmt_is_control_flow)
+}
+
+/// A statement that makes a handler body "non-thin": control flow whose
+/// transpilation only the a2r path can handle. Blocks are recursed into.
+fn stmt_is_control_flow(stmt: &auto_lang::ast::Stmt) -> bool {
+    use auto_lang::ast::Stmt;
+    match stmt {
+        Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Try(_) => true,
+        Stmt::Block(b) => b.stmts.iter().any(stmt_is_control_flow),
+        _ => false,
     }
-    true
 }
 
 /// Plan 400 Phase 2: transpile body statements via a2r into indented Rust lines.
@@ -2866,6 +2874,100 @@ pub fn get_item(id int) Item {
             !api_rs.contains("db.lock()"),
             "non-thin body should not use CRUD template:\n{}",
             api_rs
+        );
+    }
+
+    /// Plan 400 audit fix (A2): `is` (pattern match) and `try` bodies carry
+    /// real control flow and must take the a2r path, not be misclassified as
+    /// thin delegations. `while` already desugars to Stmt::For (covered).
+    #[test]
+    fn test_is_statement_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    is id {
+        1 -> { return Item { id: id, name: "one" } }
+        _ -> { return Item { id: id, name: "many" } }
+    }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "is-statement body is non-thin"
+        );
+    }
+
+    #[test]
+    fn test_while_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    while id > 10 {
+        id = id - 1
+    }
+    return Item { id: id, name: "done" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "while body is non-thin (desugars to For)"
+        );
+    }
+
+    #[test]
+    fn test_try_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    try {
+        return Item { id: id, name: "ok" }
+    } catch e {
+        return Item { id: 0, name: "err" }
+    }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "try/catch body is non-thin"
+        );
+    }
+
+    #[test]
+    fn test_nested_block_control_flow_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    {
+        if id > 0 {
+            id = id * 2
+        }
+    }
+    return Item { id: id, name: "block" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "control flow hidden in a nested block is still non-thin"
         );
     }
 
