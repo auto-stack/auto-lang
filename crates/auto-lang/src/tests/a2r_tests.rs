@@ -896,6 +896,7 @@ fn test_escape_analysis_detects_multiple_bindings() {
 // === Plan 310 Phase 2: 19_ownership — escape-analysis codegen tests ===
 #[test] fn test_19_ownership_001_local_borrow() { test_a2r("19_ownership/001_local_borrow").unwrap(); }
 #[test] fn test_19_ownership_002_closure_capture() { test_a2r("19_ownership/002_closure_capture").unwrap(); }
+#[test] fn test_19_ownership_003_loopvar_owned_field() { test_a2r("19_ownership/003_loopvar_owned_field").unwrap(); }
 #[test] fn test_19_ownership_003_return_escape() { test_a2r("19_ownership/003_return_escape").unwrap(); }
 #[test] fn test_19_ownership_004_move_hint() { test_a2r("19_ownership/004_move_hint").unwrap(); }
 #[test] fn test_19_ownership_005_async_move() { test_a2r("19_ownership/005_async_move").unwrap(); }

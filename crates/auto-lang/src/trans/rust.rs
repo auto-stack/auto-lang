@@ -8735,6 +8735,7 @@ impl RustTrans {
                 if Self::is_self_dot(expr) {
                     write!(out, ".clone()")?;
                 }
+                self.maybe_clone_borrowed_iter_field(expr, out)?;
                 Ok(())
             }
             Arg::Name(name) => write!(out, "{}", name).map_err(Into::into),
@@ -8743,9 +8744,111 @@ impl RustTrans {
                 if Self::is_self_dot(expr) {
                     write!(out, ".clone()")?;
                 }
+                self.maybe_clone_borrowed_iter_field(expr, out)?;
                 Ok(())
             }
         }
+    }
+
+    /// Plan 396 §2.1: element type of an iterated collection expression.
+    /// `coll_var` (List<T>/[]T/[N]T) or `base.field` where base's struct
+    /// field is a collection. Returns None when the chain can't be resolved.
+    fn iter_elem_type(&self, range: &Expr) -> Option<Type> {
+        fn elem_of(ty: &Type) -> Option<Type> {
+            match ty {
+                Type::List(e) => Some((**e).clone()),
+                Type::Slice(sl) => Some((*sl.elem).clone()),
+                Type::Array(a) => Some((*a.elem).clone()),
+                _ => None,
+            }
+        }
+        match range {
+            Expr::Ident(name) => {
+                let ty = self.local_var_types.get(name.as_str())?;
+                elem_of(ty)
+            }
+            Expr::Dot(base, field) => {
+                let base_name = match base.as_ref() {
+                    Expr::Ident(n) => n,
+                    _ => return None,
+                };
+                let base_ty = self.local_var_types.get(base_name.as_str())?;
+                match base_ty {
+                    Type::User(type_decl) => {
+                        let fields = self
+                            .struct_field_types
+                            .get(type_decl.name.as_str())?;
+                        let (_, f_ty) = fields
+                            .iter()
+                            .find(|(n, _)| n.as_str() == field.as_str())?;
+                        elem_of(f_ty)
+                    }
+                    other => elem_of(other),
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Plan 396 §2.1: `tc.field` passed as a CALL ARGUMENT where `tc` is a
+    /// borrowed loop variable (`for tc in &coll`). Moving a non-Copy, non-str
+    /// field out of a shared ref is E0507 — append `.clone()`. Str fields are
+    /// excluded: fn params adapt to `&str` (see the str-param path), so a
+    /// String clone would break the call site. Unknown inferred types clone
+    /// conservatively (mirrors the struct-field site in
+    /// write_expr_for_struct_field, Plan 399 P11.4).
+    fn maybe_clone_borrowed_iter_field(
+        &self,
+        expr: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        if let Expr::Dot(obj, _field) = expr {
+            if let Expr::Ident(obj_name) = obj.as_ref() {
+                if self.borrowed_iter_vars.contains(obj_name) {
+                    // Resolve the field's declared type via the loop var's
+                    // element struct (registered at the loop site); fall back
+                    // to expression inference when the chain is unavailable.
+                    let field_ty = self
+                        .local_var_types
+                        .get(obj_name.as_str())
+                        .and_then(|obj_ty| {
+                            if let Type::User(type_decl) = obj_ty {
+                                self.struct_field_types
+                                    .get(type_decl.name.as_str())
+                                    .and_then(|fs| {
+                                        fs.iter()
+                                            .find(|(n, _)| n.as_str() == _field.as_str())
+                                            .map(|(_, t)| t.clone())
+                                    })
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| self.infer_type_from_expr(expr));
+                    let ty = field_ty;
+                    let str_like = matches!(
+                        ty,
+                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice
+                    );
+                    let copy_like = matches!(
+                        ty,
+                        Type::Int
+                            | Type::Uint
+                            | Type::U64
+                            | Type::I64
+                            | Type::USize
+                            | Type::Float
+                            | Type::Double
+                            | Type::Bool
+                            | Type::Char
+                    );
+                    if !str_like && !copy_like {
+                        write!(out, ".clone()")?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn write_expr_for_struct_field(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
@@ -11055,6 +11158,25 @@ impl RustTrans {
                         // (&T) so struct-field reads `x.field` of non-Copy types
                         // can emit .clone() (avoiding E0507 move out of shared ref).
                         self.borrowed_iter_vars.insert(name.clone());
+                        // Plan 396 §2.1: also resolve the loop var's ELEMENT
+                        // type (`for tc in result.tool_calls` with
+                        // tool_calls: List<ToolCallRec> → tc: ToolCallRec) so
+                        // later field-type queries (clone decisions in call
+                        // args / struct literals) resolve instead of Unknown.
+                        if let Some(elem_ty) = self.iter_elem_type(&for_stmt.range) {
+                            // Only register NON-str element types: str-yielding
+                            // loops have their own mechanism above (StrSlice +
+                            // current_fn_str_params), and registering StrOwned
+                            // here would flip bare  coercion to explicit
+                            // .as_str() at unrelated sites.
+                            let is_str = matches!(
+                                elem_ty,
+                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice
+                            );
+                            if !is_str {
+                                self.local_var_types.insert(name.clone(), elem_ty);
+                            }
+                        }
                     }
                     self.expr(&for_stmt.range, &mut sink.body)?;
                     sink.body.write(b" {\n")?;

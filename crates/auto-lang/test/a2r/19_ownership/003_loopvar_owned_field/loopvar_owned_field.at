@@ -1,0 +1,39 @@
+// Plan 396 §2.1: `for tc in result.tool_calls` where `result` is an OWNED fn
+// param read again after the loop. a2r borrows the iteration
+// (`for tc in &result.tool_calls`), so loopvar fields are borrows:
+//  - passing a non-Copy field to an OWNED fn parameter must clone
+//    (mirrors auto-ai driver.at extract_path(tc.args), args: JsonValue)
+//  - a str field in a struct literal must clone (description: tc.tool —
+//    Plan 399 P11.4 already covered this; locked here as regression)
+//  - a str field passed to a str-param fn must NOT clone (the fn adapts to
+//    &str; a String clone would break the call site)
+type Blob { data str }
+type ToolCallRec { tool str, blob Blob, note str }
+type WorkProduct { path str, description str }
+type AgentRes { tool_calls List<ToolCallRec>, total_tokens int }
+
+fn take_blob(b Blob) str {
+    return b.data
+}
+
+fn take_note(note str) str {
+    return note
+}
+
+fn build_handoff(result AgentRes) str {
+    var acc str = ""
+    for tc in result.tool_calls {
+        acc = take_blob(tc.blob)
+        let wp = WorkProduct { path: acc, description: tc.tool }
+        acc = wp.description
+        acc = take_note(tc.note)
+    }
+    var total int = result.total_tokens
+    total = total + 1
+    return acc
+}
+
+fn main() {
+    let r = AgentRes { tool_calls: [], total_tokens: 5 }
+    print(build_handoff(r))
+}
