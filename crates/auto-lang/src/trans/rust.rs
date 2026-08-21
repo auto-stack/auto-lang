@@ -8498,6 +8498,18 @@ impl RustTrans {
             }
             // Plan 376F: Cast expression (x as T) → T
             Expr::Cast { target_type, .. } => target_type.clone(),
+            // Plan 242 #8: closure literal → Fn(param types, ret). Previously
+            // fell to Unknown, so let-bound closures / closure-typed fields
+            // lost their type (masked by task-struct special-casing).
+            Expr::Closure(closure) => {
+                let params: Vec<Type> = closure
+                    .params
+                    .iter()
+                    .map(|p| p.ty.clone().unwrap_or(Type::Unknown))
+                    .collect();
+                let ret = closure.ret.clone().unwrap_or(Type::Void);
+                Type::Fn(params, Box::new(ret))
+            }
             _ => Type::Unknown,
         }
     }
