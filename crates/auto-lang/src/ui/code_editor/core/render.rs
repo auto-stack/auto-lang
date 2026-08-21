@@ -86,8 +86,10 @@ pub fn render(
                 core.set_gutter_width_cache(digits, width);
             }
         }
+        // Plan 414 §6.3: no pad between the numbers zone and the fold
+        // column — its own 6px inner padding IS the gap on both sides.
         (
-            (width + GUTTER_PAD * 2.0 + FOLD_GUTTER_W).ceil(),
+            (width + GUTTER_PAD + FOLD_GUTTER_W).ceil(),
             digits,
             fold_openers,
         )
@@ -384,7 +386,9 @@ fn digits_of(mut n: usize) -> usize {
 /// gutter's content width. cosmic-text caches shaped lines, so repeated
 /// probes are cheap.
 fn gutter_probe_layout(font_system: &mut FontSystem, digits: usize) -> Vec<cosmic_text::LayoutLine> {
-    let attrs = Attrs::new().family(Family::Monospace);
+    // Plan 414 §6.4: probe with the SAME family as the body text (the
+    // monospace generic's ascent/descent misaligns the number baseline).
+    let attrs = Attrs::new().family(super::mono_family());
     let text = format!("{:>width$}", 1, width = digits);
     let mut line = BufferLine::new(
         text,

@@ -80,3 +80,50 @@ worktree 内 `cargo build -p auto` → 跑 041（VM 模式）→ 截图核对：
 - `ui/code_editor/core/render.rs`：FOLD_GUTTER_W = 19.0
 - `ui/iced/renderer.rs`：lucide 补 7 个图标；run_dynamic_iced 启动日志 ×2 行
 - `examples/ui/041-code-editor/src/front/app.at`：menubar（文件/编辑/视图/帮助，展开式）+ toolbar（8 个 icon 按钮）+ tab 关闭按钮 + console icon 按钮修复（px-0 py-0 + icon 子组件）+ 激活 tab bg-[#1C1D24]
+
+
+---
+
+## 6. 第三轮需求（2026-08-21，第二轮实机反馈）
+
+| # | 需求 | 决策 |
+|---|------|------|
+| 1 | toolbar 并入 menu 行 + 分组分隔符做成 widget | 041 布局合并为一行；新增 `sep`/`separator` tag（orientation prop，vertical 默认）——`w-px self-stretch bg-border` 细线容器，用户 class 追加可覆盖（divider/hr 是硬编码横向 h-1，不适合行内） |
+| 2 | console icon 点击无反应 | 合成点击实测通过；放大热区（h-6 全状态栏高 × w-9）；**最可能环境因素：F12 调试模式下所有 button 按设计渲染为无 on_press**（inspect 捕获需要）——F12 开着时 menu/toolbar/tab 也全部点不动 |
+| 3 | 文本-gutter 间距 < 行号-gutter 间距 | 实测：行号右侧到三角 = 12px（pad6+内衬6），三角到正文 = 6px。修复 = 去中 pad（gutter_total = width + GUTTER_PAD + FOLD_GUTTER_W）+ 行号右对齐 → 两侧各 6px |
+| 4 | 行号/gutter/正文纵向不齐 | probe 字体与正文不一致（Monospace vs Consolas）→ 基线错位；统一 mono_family()，数字/三角/正文同字体同行高垂直居中 |
+| 5 | menu/toolbar 功能 + **action 概念** | §6.1 设计；Phase A 本轮：语义 action handler 三源绑定（menu/toolbar/`onkeydown.ctrl.*` 全局键——管道现成 Plan 275，编辑器不拦截 Ctrl+S/N/O 穿透）；真实动作 toggle console/switch tab/新建=set_text 清空；其余 dummy 日志 |
+
+### 6.1 Action 概念设计（对比 Event）
+
+- **Event** = 控件原始交互信号（oninput/oncursor），携带控件上下文；**Action** = 语义操作意图（save-file），多触发源可引用、可带参。Action 是 Event 之上的复用层。
+- **Phase A（本轮，零新语法）**：语义 handler 即 action（.ActSave 命名约定），menu/toolbar/快捷键三源绑同一 handler。
+- **Phase B 提案**：`actions { action save-file { ... } }` 声明块 + `menu-item (action: save-file, shortcut: "Ctrl+S")` 绑定 prop + shortcut 自动注册进 KEYBOARD_BINDINGS + `enabled`/`checked` 表达式（灰态/勾选态）；运行时 action 走 DynamicMessage 同一 dispatch（`__action/` 名空间），parser/view/aura/a2r 四端改造，独立立项。
+
+### 6.2 第三轮触点
+aura_view_builder（sep）/ core/render（gutter_total）/ iced/gutter（右对齐+字体）/ core/mod（mono_family pub(crate)）/ 041 app.at（同行工具栏+sep+action 三源+热区）
+
+
+---
+
+## 7. 第四轮（R3 实机反馈 + 调试发现）
+
+### 7.1 用户反馈落地
+- toolbar 并入 menubar 同行 ✓（扁平直接子元素形态）；`auto-edit` 字样移除 ✓
+- `sep` widget 交付（orientation prop, vertical=w-px h-4 bg-border, Column 实现）✓
+- 状态栏背景改 bg-muted/30（与 menubar 同系，去掉 bg-card 蓝调）✓
+- console 图标热区放大 h-6×w-9 ✓
+
+### 7.2 调试发现的 VM 渲染器限制（重要，待立项修复）
+**Row 子元素为 Fill 尺寸或 auto margin 时布局爆炸**，实证矩阵：
+- Row + `h-full`（Fill 高）子元素 → 其后所有兄弟消失
+- Row + `flex-1`/spacer（Fill 宽）子元素 → 其后所有兄弟消失（含嵌套子行形式）
+- Row + 容器类子元素带 `ml-auto` → 整窗右半变纯白
+- Row + 空文本 `ml-auto` → 无推右效果（疑似零尺寸节点被剪枝）
+- Row + 嵌套子行包含 icon-button → 图标消失
+- **唯一可靠右推**：有内容的 text 带 `ml-auto`（状态栏 Ln/Col 一直在用）
+→ 后果：041 的 toolbar 暂无法右对齐（渲染器修复前）；sep 用固定 h-4 规避 Fill 高度
+→ 另：**运行中的 VM 应用会热重载 app.at**（DynamicState.last_modified/dirty），文件编辑期间截图会抓到中间态——验证必须 kill+relaunch 后等 ≥12s
+
+### 7.3 Action Phase A（R3 §6.1）实施 ✓
+041 落地 13 个语义 action handler（.ActNew/.ActSave/.../.ActConsole/.ActSwitchTab），三源绑定：menu item / toolbar icon / `onkeydown.ctrl.{n,o,s,j}` 全局键（Plan 275 管道，编辑器不拦截的 Ctrl 组合穿透）。真实动作：toggle console / switch tab / 新建=code_editor_set_text 清空活动 tab；其余 dummy 日志。

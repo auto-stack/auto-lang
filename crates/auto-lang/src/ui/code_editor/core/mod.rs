@@ -385,7 +385,7 @@ pub fn with_font_system<R>(f: impl FnOnce(&mut FontSystem) -> R) -> R {
 /// ordinary fallback chain (→ Microsoft YaHei for Han) that renders CJK
 /// correctly. Consolas ships with every Windows; elsewhere keep the generic
 /// monospace family.
-fn mono_family() -> Family<'static> {
+pub(crate) fn mono_family() -> Family<'static> {
     if cfg!(windows) {
         Family::Name("Consolas")
     } else {

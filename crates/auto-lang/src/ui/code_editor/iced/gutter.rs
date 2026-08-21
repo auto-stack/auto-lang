@@ -55,7 +55,8 @@ impl GutterCache {
         self.layouts
             .entry((number, digits))
             .or_insert_with(|| {
-                let attrs = Attrs::new().family(Family::Monospace);
+                // Plan 414 §6.4: same family as the body (baseline parity).
+                let attrs = Attrs::new().family(crate::ui::code_editor::core::mono_family());
                 let text = format!("{number:>digits$}");
                 let mut line = BufferLine::new(
                     text,
@@ -123,7 +124,12 @@ impl GutterCache {
             let line_y = entry.y + centering + max_ascent;
 
             for glyph in &layout.glyphs {
-                let physical = glyph.physical((GUTTER_PAD, line_y), section.font_size);
+                // Plan 414 §6.3: RIGHT-align the digits against the fold
+                // column — a short "1" must not widen the visual gap.
+                let run_w = layout.w * section.font_size;
+                let right_edge = width as f32 - FOLD_GUTTER_W;
+                let x_anchor = (right_edge - run_w).max(GUTTER_PAD);
+                let physical = glyph.physical((x_anchor, line_y), section.font_size);
                 self.swash.with_pixels(
                     font_system,
                     physical.cache_key,

@@ -14,7 +14,10 @@ widget App {
 
     view {
         col (style: "h-full w-full") {
-            row (style: "h-7 items-center bg-muted/30 shrink-0 w-full gap-0") {
+            onkeydown.ctrl.n: .ActNew
+            onkeydown.ctrl.s: .ActSave
+            onkeydown.ctrl.j: .ActConsole
+            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-1 px-2") {
                 button (text: "文件", variant: "text") {
                     onclick: .MenuToggle("file")
                     style: "h-7 px-3 text-[12px] text-zinc-300"
@@ -31,7 +34,48 @@ widget App {
                     onclick: .MenuToggle("help")
                     style: "h-7 px-3 text-[12px] text-zinc-300"
                 }
-                text "auto-edit" { style: "text-[11px] text-zinc-600 ml-auto pr-2" }
+                button (variant: "text") {
+                    icon (name: "file-plus", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActNew
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") {
+                    icon (name: "folder-open", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActOpen
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") {
+                    icon (name: "save", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActSave
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                sep {}
+                button (variant: "text") {
+                    icon (name: "undo-2", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActUndo
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") {
+                    icon (name: "redo-2", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActRedo
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                sep {}
+                button (variant: "text") {
+                    icon (name: "scissors", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActCut
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") {
+                    icon (name: "copy", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActCopy
+                    style: "h-7 w-8 px-0 py-0"
+                }
+                button (variant: "text") {
+                    icon (name: "clipboard", style: "h-4 w-4 text-zinc-400") {}
+                    onclick: .ActPaste
+                    style: "h-7 w-8 px-0 py-0"
+                }
             }
             if .menu_open == "file" {
                 col (style: "w-44 py-1 bg-card shrink-0") {
@@ -83,51 +127,6 @@ widget App {
                     button (text: "关于 auto-edit", variant: "text") { onclick: .MenuPick("帮助>关于")
                         style: "h-6 w-full px-3 text-[12px] text-zinc-300 text-left"
                     }
-                }
-            }
-
-            row (style: "h-9 items-center bg-card shrink-0 w-full gap-1 px-2") {
-                button (variant: "text") { icon (name: "file-plus"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>新建")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                button (variant: "text") { icon (name: "folder-open"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>打开")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                button (variant: "text") { icon (name: "save"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>保存")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                col (style: "w-px h-5 bg-border mx-1")
-                button (variant: "text") { icon (name: "undo-2"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>撤销")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                button (variant: "text") { icon (name: "redo-2"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>重做")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                col (style: "w-px h-5 bg-border mx-1")
-                button (variant: "text") { icon (name: "scissors"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>剪切")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                button (variant: "text") { icon (name: "copy"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>复制")
-                    style: "h-7 w-8 px-0 py-0"
-                }
-                button (variant: "text") { icon (name: "clipboard"
-                    style: "h-4 w-4 text-zinc-400") {}
-                    onclick: .MenuPick("工具>粘贴")
-                    style: "h-7 w-8 px-0 py-0"
                 }
             }
 

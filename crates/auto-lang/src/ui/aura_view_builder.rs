@@ -43,7 +43,7 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::debug::{BuildProbe, ForIter};
-use crate::ui::view::View;
+use crate::ui::view::{View, ViewBuilder};
 use crate::ui_gen::vue::VueGenerator;
 use crate::ui::style::{Style, StyleClass, SizeValue};
 
@@ -901,6 +901,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
+            "sep" | "separator" => self.convert_sep(props, bindings),
             "avatar" => self.convert_avatar(props),
 
             // Child widget lookup or fallback.
@@ -1627,6 +1628,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
+            "sep" | "separator" => self.convert_sep(props, bindings),
             "avatar" => self.convert_avatar(props),
 
             // Child widget lookup or fallback
@@ -2958,6 +2960,49 @@ let tabs_inner = View::Row {
         builder = builder.with_style(
             Style::parse("w-full h-1 bg-gray-200").unwrap()
         );
+        builder.build()
+    }
+
+    /// Plan 414 §6: `sep` — inline separator widget (toolbar/menu group
+    /// gaps). Orientation-aware, theme-aware 1px hairline; user classes
+    /// append after the base (later classes win).
+    fn convert_sep(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let orientation = self
+            .extract_string_with(props, "orientation", bindings)
+            .unwrap_or_else(|| "vertical".to_owned());
+        // Vertical default: FIXED 16px height. Height::Fill (h-full) on a
+        // Row child breaks the layout of every following sibling in the VM
+        // renderer (verified: toolbar after a Fill-height sep vanishes),
+        // and `self-stretch` degrades to a no-op (0-height). A fixed small
+        // height centered by the row's items-center reads correctly in
+        // 24-32px bars; override with h-* classes when needed.
+        let base = if orientation == "horizontal" {
+            "w-full h-px bg-border"
+        } else {
+            "w-px h-4 bg-border"
+        };
+        let mut style = Style::parse(base).ok();
+        if let Some(user) = self.extract_style_with(props, bindings) {
+            style = match style {
+                Some(mut s) => {
+                    s.classes.extend(user.classes);
+                    Some(s)
+                }
+                None => Some(user),
+            };
+        }
+        // Build as a styled empty Column — a Container wrapping View::Empty
+        // inside a Row breaks the layout of following siblings (verified:
+        // toolbar icons after a container-sep vanish); the Column form is
+        // the same shape the 041 hairlines used before `sep` existed.
+        let mut builder = ViewBuilder::col();
+        if let Some(st) = style {
+            builder = builder.with_style(st);
+        }
         builder.build()
     }
 
