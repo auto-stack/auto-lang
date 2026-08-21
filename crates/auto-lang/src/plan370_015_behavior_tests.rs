@@ -302,4 +302,72 @@ mod plan370_015_behavior_tests {
         eprintln!("d10: edit_title after Edit = {:?}", title);
         assert!(!title.is_empty(), "edit_title should be filled from note.title");
     }
+
+    /// Audit B12(b) REAL-013 repro, same production path as the 015 tests:
+    /// build the actual 013-todo App (App + TodoList child + TodoStore store
+    /// + back.api/db imports), seed `.input`, dispatch App.AddTodo →
+    /// store.AddTodo(). Live-GUI evidence: the post-add `.todos` write landed
+    /// on a garbage object id, leaving todos = [new item only] instead of
+    /// 4 seeds + 1 new.
+    #[test]
+    fn repro_b12_real_013_addtodo_keeps_seed_todos() {
+        let mut dc = match crate::plan370_test_support::build_example_component("013-todo") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skip: 013-todo sources not present");
+                return;
+            }
+        };
+
+        let before = dc.read_state_as_vec("todos").expect("seed todos").len();
+        assert_eq!(before, 4, "db.at seeds exactly 4 todos after Init");
+
+        // The GUI path types into the input, then submit fires App.AddTodo.
+        dc.bridge_mut()
+            .write_state("input", Value::str("probe todo"))
+            .expect("seed .input");
+        dc.on_with_input("AddTodo", None);
+
+        let todos = dc.read_state_as_vec("todos").expect("todos after add");
+        assert_eq!(
+            todos.len(),
+            5,
+            "4 seeds + 1 new expected (B12: todos corrupted to {} entries)",
+            todos.len()
+        );
+    }
+
+    /// Audit B12(b) root cause lock: dispatching AddTodo WITH an input payload
+    /// (exactly what the GUI's type+submit path does — `on_with_input_for(…,
+    /// Some(text))`) must not corrupt a NO-param handler's frame. Before the
+    /// fix, the input text was pushed as a phantom handler argument, shifting
+    /// the frame and losing the `.todos` write.
+    #[test]
+    fn repro_b12_real_013_addtodo_with_input_payload() {
+        let mut dc = match crate::plan370_test_support::build_example_component("013-todo") {
+            Some(dc) => dc,
+            None => {
+                eprintln!("skip: 013-todo sources not present");
+                return;
+            }
+        };
+
+        let before = dc.read_state_as_vec("todos").expect("seed todos").len();
+        assert_eq!(before, 4, "db.at seeds exactly 4 todos after Init");
+
+        // Same call the iced loop makes for a submit action carrying text.
+        dc.bridge_mut()
+            .write_state("input", Value::str("probe todo"))
+            .expect("seed .input");
+        dc.on_with_input("AddTodo", Some("probe todo".to_string()));
+
+        let todos = dc.read_state_as_vec("todos").expect("todos after add");
+        assert_eq!(
+            todos.len(),
+            5,
+            "payload-carrying dispatch must not corrupt the no-param handler \
+             frame (B12: todos corrupted to {} entries)",
+            todos.len()
+        );
+    }
 }

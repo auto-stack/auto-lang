@@ -887,7 +887,19 @@ impl DynamicComponent {
         // `.EditTitle(t) -> { .edit_title = t }` receive it as parameter `t`.
         if args.is_empty() {
             if let Some(text) = &input_value {
-                args.push(auto_val::Value::Str(text.clone().into()));
+                // Audit B12(b): only pass the typed text as a handler argument
+                // when the handler DECLARES a parameter. A phantom arg at a
+                // no-param handler (e.g. 013-todo's `onenter: .AddTodo`) shifts
+                // the VM call frame — the handler's later state writes land on
+                // a garbage object id. Unknown arity keeps the legacy behavior.
+                let declares_param = self
+                    .bridge
+                    .handler_param_count(widget_name, &clean_name)
+                    .map(|n| n > 0)
+                    .unwrap_or(true);
+                if declares_param {
+                    args.push(auto_val::Value::Str(text.clone().into()));
+                }
             }
         }
         let is_trace = clean_name == "DeleteNote" || clean_name == "SaveNote" || clean_name == "NewNote" || clean_name == "SelectNote";

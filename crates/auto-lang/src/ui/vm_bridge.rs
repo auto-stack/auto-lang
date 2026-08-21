@@ -122,9 +122,55 @@ pub struct VmBridge {
     /// mutability so AuraViewBuilder (which holds &VmBridge) can create/update
     /// child states during rendering.
     child_state_map: std::cell::RefCell<std::collections::HashMap<String, u64>>,
+
+    /// Audit B12(b): declared parameter count per `(widget, event)` handler,
+    /// from the on-blocks the module was synthesized from. Dispatch sites use
+    /// this to avoid pushing a phantom string argument at a NO-param handler
+    /// (mcp submit/type pass the input text as `input_value`; the extra arg
+    /// shifted the handler frame — `.todos` writes landed on a garbage object
+    /// id in 013-todo's AddTodo).
+    handler_param_counts: std::collections::HashMap<(String, String), usize>,
+}
+
+/// Audit B12(b): collect `(widget, event) -> declared param count` from an
+/// AuraWidget's handler_params map (patterns like `.Inc` / `SelectNote`).
+fn collect_param_counts_from_widget(
+    widget: &AuraWidget,
+    out: &mut std::collections::HashMap<(String, String), usize>,
+) {
+    for (pattern, params) in &widget.handler_params {
+        let ev = pattern.trim_start_matches('.');
+        out.insert((widget.name.clone(), ev.to_string()), params.len());
+    }
+}
+
+/// Audit B12(b): same collection from a WidgetDecl's on-block (decl-based
+/// synthesis path — `new_from_decls`).
+fn collect_param_counts_from_decl(
+    decl: &crate::ast::WidgetDecl,
+    out: &mut std::collections::HashMap<(String, String), usize>,
+) {
+    for on in &decl.on {
+        for h in &on.handlers {
+            let ev = h.pattern.trim_start_matches('.');
+            out.insert((decl.name.to_string(), ev.to_string()), h.params.len());
+        }
+    }
 }
 
 impl VmBridge {
+    /// Audit B12(b): declared parameter count per `(widget, event)` handler.
+    /// Dispatch sites use this to avoid pushing a phantom string argument at
+    /// a NO-param handler (mcp submit/type pass the input text as
+    /// `input_value`; the extra arg shifted the handler frame — `.todos`
+    /// writes landed on a garbage object id in 013-todo's AddTodo).
+    pub fn handler_param_count(&self, widget_name: &str, event_name: &str) -> Option<usize> {
+        let ev = event_name.trim_start_matches('.');
+        self.handler_param_counts
+            .get(&(widget_name.to_string(), ev.to_string()))
+            .copied()
+    }
+
     /// Create a new VmBridge for a given AuraWidget, with no imported symbols.
     ///
     /// Delegates to [`VmBridge::new_with_imports`] with an empty import list.
@@ -214,12 +260,21 @@ impl VmBridge {
         );
         let state_obj_id = vm.insert_heap_object(instance);
 
+        // Audit B12(b): record declared handler arities (root + children) so
+        // dispatch can skip phantom string args at no-param handlers.
+        let mut handler_param_counts = std::collections::HashMap::new();
+        collect_param_counts_from_widget(widget, &mut handler_param_counts);
+        for child in child_widgets {
+            collect_param_counts_from_widget(child, &mut handler_param_counts);
+        }
+
         Ok(Self {
             vm,
             state_obj_id,
             state_field_names: field_names,
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
+            handler_param_counts,
         })
     }
 
@@ -357,12 +412,21 @@ impl VmBridge {
         );
         let state_obj_id = vm.insert_heap_object(instance);
 
+        // Audit B12(b): record declared handler arities (root + children) so
+        // dispatch can skip phantom string args at no-param handlers.
+        let mut handler_param_counts = std::collections::HashMap::new();
+        collect_param_counts_from_decl(decl, &mut handler_param_counts);
+        for child in child_decls {
+            collect_param_counts_from_decl(child, &mut handler_param_counts);
+        }
+
         Ok(Self {
             vm,
             state_obj_id,
             state_field_names: field_names,
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
+            handler_param_counts,
         })
     }
 
@@ -1825,6 +1889,99 @@ mod tests {
                 other
             ),
         }
+    }
+
+    /// Audit B12(b) reproducer: a store handler that (1) calls an imported fn
+    /// with a STRING state-field argument (discarding the result), then
+    /// (2) assigns a state field. In 013-todo's AddTodo this exact shape lost
+    /// the `.todos = …` write — SET_FIELD's object-id pop received a string
+    /// nanbox (negative pool index) instead of the state object id, so the
+    /// write silently landed nowhere.
+    #[test]
+    fn repro_b12_state_write_after_string_arg_call() {
+        use crate::ast::Stmt;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+
+        let src = r#"
+type Todo { id int; text str; done bool }
+
+var todos List<Todo> = List<Todo>.new([
+    Todo { id: 0, text: "one", done: true },
+    Todo { id: 1, text: "two", done: false },
+])
+
+var nextid int = 2
+
+fn create_todo(text str) Todo {
+    var todo = Todo { id: nextid, text: text, done: false }
+    todos.push(todo)
+    nextid = nextid + 1
+    return todo
+}
+
+fn all_todos() []Todo {
+    return todos.to_array()
+}
+
+fn list_todos() []Todo {
+    return all_todos()
+}
+
+widget Store {
+    msg Msg { Add }
+    model {
+        var input str = "seed"
+        var saved str = "none"
+        var list int = 0
+        var count int = 0
+    }
+    view { col { text .saved } }
+    on {
+        .Add -> {
+            if .input != "" {
+                create_todo(.input)
+                .list = list_todos()
+                .saved = "done"
+                .count = 7
+            }
+        }
+    }
+}
+"#;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("repro src should parse");
+        let mut widget = None;
+        let mut import_stmts: Vec<Stmt> = Vec::new();
+        for s in ast.stmts {
+            match s {
+                Stmt::WidgetDecl(d) => widget = crate::aura::extract_widget_from_decl(&d).ok(),
+                Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::Store(_) => import_stmts.push(s),
+                _ => {}
+            }
+        }
+        let widget = widget.expect("src must declare a widget");
+        let mut bridge = VmBridge::new_with_imports(&widget, import_stmts)
+            .expect("bridge builds");
+        bridge.run_module_init().expect("module init");
+
+        bridge.call_handler("Add", &[]).expect("Add handler runs");
+
+        let saved = bridge.read_state("saved").unwrap();
+        assert_eq!(
+            saved,
+            Value::str("done"),
+            "state write after a string-arg call must land (B12: write was lost)"
+        );
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(7));
+        // The list write must land a real value (handle/int), not stay 0.
+        let list = bridge.read_state("list").unwrap();
+        assert!(
+            !matches!(list, Value::Int(0)),
+            "`.list = list_todos()` must assign a value, got {:?}",
+            list
+        );
     }
 
     /// Repro for the SelectDay panic (bp - actual_offset overflow on param
