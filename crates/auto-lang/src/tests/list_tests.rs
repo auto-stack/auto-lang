@@ -936,3 +936,74 @@ fn main() {
     assert!(s.contains("taken"), "stdout={:?} result={:?}", s, r);
     assert!(!s.contains("not-taken"), "stdout={:?} result={:?}", s, r);
 }
+
+// ============================================================================
+// Plan 406 (audit B4): tag-first truthiness for AND/OR/NOT/if conditions
+// ============================================================================
+
+/// `a && b` / `a || b` with bool values — including a bool pulled from a
+/// List<bool> (tagged since the A4 fix) as one operand.
+#[test]
+fn test_logical_and_or_with_tagged_bools() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    if flags[0] && true {
+        print("and-tt")
+    }
+    if flags[0] && flags[1] {
+        print("and-tf")
+    }
+    if flags[1] || true {
+        print("or-ft")
+    }
+    if flags[1] || false {
+        print("or-ff")
+    }
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(s.contains("and-tt"), "true && true: stdout={:?} result={:?}", s, r);
+    assert!(!s.contains("and-tf"), "true && false must not fire: {:?}", s);
+    assert!(s.contains("or-ft"), "false || true: {:?}", s);
+    assert!(!s.contains("or-ff"), "false || false must not fire: {:?}", s);
+}
+
+/// `!x` negation with bools (tagged) and with the bool from a List<bool>.
+#[test]
+fn test_not_with_tagged_bools() {
+    let code = r#"
+fn main() {
+    let flags = [true, false]
+    if !flags[1] {
+        print("not-false")
+    }
+    if !flags[0] {
+        print("not-true")
+    }
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(s.contains("not-false"), "!false: stdout={:?} result={:?}", s, r);
+    assert!(!s.contains("not-true"), "!true must not fire: {:?}", s);
+}
+
+/// Integer conditions keep legacy semantics: 0 is falsy, nonzero truthy.
+#[test]
+fn test_if_condition_with_ints() {
+    let code = r#"
+fn main() {
+    let zero int = 0
+    let n int = 7
+    if zero {
+        print("int0-skipped")
+    }
+    if n {
+        print("int7-live")
+    }
+}
+"#;
+    let (r, s) = crate::run_with_capture(code).unwrap();
+    assert!(!s.contains("int0-skipped"), "0 must be falsy: {:?}", s);
+    assert!(s.contains("int7-live"), "nonzero must be truthy: {:?}", s);
+}
