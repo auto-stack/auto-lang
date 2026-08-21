@@ -48,11 +48,12 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | 392 | a2r Codegen Fixes from Musk | Complete | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 393） |
 | 393 | a2r Method Dispatch Fixes | Complete | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
 | 395 | Turbofish Generic Call Args | Complete | 调用泛型实参 `::<T>`，AST 字段 + parser 回溯 + 3 发射点 + golden |
+| 396 | a2r 改进（auto-ai 滚动聚合） | Complete | §2.1-§2.6 六条根因全根治（借用推理 B/C/D/E、unit-variant 模式、a2r_std time i64）；auto-ai 三转译 crate 首次同时全绿，§2 范围 sed 全部毕业 |
 | 397 | Spec Supertrait + Arc<Fn> Spec-Param | Complete | `spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> golden |
 
 ## Status
 
-**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232); .to(Type)/ext-for-Trait/struct-destructuring/generic-constraints (162/164/165/166, 2026-08-20 核实), Godot demo reverse translation (308), a2r COSMIC readiness W1-W7 (364).
+**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232); .to(Type)/ext-for-Trait/struct-destructuring/generic-constraints (162/164/165/166, 2026-08-20 核实), Godot demo reverse translation (308), a2r COSMIC readiness W1-W7 (364), a2r auto-ai 滚动缺陷聚合六条根治 (396).
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
@@ -119,7 +120,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 397.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 396, 397.
 
 - [204-a2r-transpiler-completeness.md](../plans/archive/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
@@ -136,6 +137,7 @@ Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171,
 - [392-a2r-codegen-fixes-from-musk.md](../plans/archive/392-a2r-codegen-fixes-from-musk.md)
 - [393-a2r-method-dispatch-fixes.md](../plans/archive/393-a2r-method-dispatch-fixes.md)
 - [395-turbofish-generic-call-args.md](../plans/archive/395-turbofish-generic-call-args.md)
+- [396-a2r-auto-ai-related-improvements.md](../plans/archive/396-a2r-auto-ai-related-improvements.md)
 - [397-send-sync-supertrait-and-arc-fn-spec-param.md](../plans/archive/397-send-sync-supertrait-and-arc-fn-spec-param.md)
 - [308-godot-demo-reverse-translation.md](../plans/archive/308-godot-demo-reverse-translation.md)
 - [364-a2r-cosmic-replication-readiness.md](../plans/archive/364-a2r-cosmic-replication-readiness.md)

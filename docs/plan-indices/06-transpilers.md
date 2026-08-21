@@ -47,10 +47,11 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 392 | a2r Codegen Fixes from Musk | ✅ | E4 sort_by + E5 HashMap.get 误归因（E1/E2/E3 移交 Plan 393） |
 | 393 | a2r Method Dispatch Fixes | ✅ | E1 .append 过宽、E2 Ok(None) 误改、E3 HashMap::insert 漏分号 |
 | 395 | Turbofish Generic Call Args | ✅ | 调用泛型实参 `method<Type>(args)` / `fn<Type>(args)` → Rust `::<T>`，AST 字段 + parser 回溯 + 3 发射点 + golden |
+| 396 | a2r 改进（auto-ai 滚动聚合） | ✅ | §2.1-§2.6 六条根因全根治：借用推理 B/C/D/E + 三段限定 unit-variant 模式剥模块段 + a2r_std time i64 对齐；auto-ai 三转译 crate 首次同时全绿，§2 范围 sed 全部毕业（golden 340/340） |
 | 397 | Spec Supertrait + Arc<Fn> Spec-Param | ✅ | `pub spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> spec-param golden 确认 |
 
 ## Status Summary
-- Completed: 26 | Partial: 3 | Planned: 9 | Deprecated: 0
+- Completed: 27 | Partial: 3 | Planned: 9 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)

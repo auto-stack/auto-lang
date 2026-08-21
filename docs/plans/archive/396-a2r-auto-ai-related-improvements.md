@@ -2,7 +2,7 @@
 plan: 396
 title: a2r-auto-ai-related-improvements
 affects: [auto-lang/a2r, auto-lang/trans-rust]
-status: in-progress # draft | in-progress | complete
+status: complete # draft | in-progress | complete
 ---
 
 # Plan 396: a2r 改进（auto-ai 相关）— 滚动聚合计划
@@ -10,7 +10,8 @@ status: in-progress # draft | in-progress | complete
 > **2026-08-20 核查**: §2.1–§2.5 五条均未修（0/5 落地），auto-ai 侧 sed workaround 全部仍在（retranspile.sh:172-181 / ai-config:88 / client:99-100）。
 > **2026-08-20 二批更新**: **§2.1 仓内根因 ✅ 已修**（`plan-fix/396-loopvar-clone` 合并 `be9d4213`）——golden 实测甄别：结构体字面量路径（description: tc.tool）P11.4 本就覆盖；**函数实参路径是真缺口**（extract_path(tc.args) 缺 clone → E0507），已补字段类型感知的 `maybe_clone_borrowed_iter_field` + 循环变量元素类型解析（golden 19_ownership/003 三形态锁定）。待跨仓验证 retranspile.sh B 段 sed 变 no-op 后删除。剩余 §2.5。
 > **2026-08-20 三批更新**: **§2.2/§2.3/§2.4 ✅ 全部根治**（`plan-fix/b3-sed-verify` 合并 efe84664，含 §2.1 裸循环变量补全与 Plan 405 前导回归修复）；auto-ai retranspile 的 Plan 019 B/C/D/E sed 段实证 no-op 后删除（auto-ai 64ba3b2）。剩余 §2.5；另发现两处 master 新回归登记审计 B11（len() 强转 as u32→i64；tool.at 解析失败致 Arc<Tool> 丢 dyn）。
-> **2026-08-20 四批更新（B11 根治，auto-ai 重生成归零）**: 上批登记的两处 master 回归由 `plan-fix/b11-regressions`（合并 3f3d0ec3）根治——(a) len() 比较强转按对端类型定向 `partner_len_cast`（Eq/Neq/Lt/Le/Gt/Ge）；(b) "tool.at 解析失败"实为**四个解析缺口**：`Map<K>` 单参硬 arity 错、`Err(Type.Variant { fields })` 嵌套模式（ResultCover+inner+绑定注册+a2r 发射）、顶层 `Type.Variant { fields }` 模式（Plan 165 回归：Dot+`{` 识别 + StructPattern 绑定臂）、枚举结构变体声明冒号字段。**auto-ai 全量重生成首次归零（23→0，rust/src 全绿提交 auto-ai 156c6c8）**。本计划剩余仅 §2.5（症状与排查路径见审计 backlog）。
+> **2026-08-20 四批更新（B11 根治，auto-ai 重生成归零）**: 上批登记的两处 master 回归由 `plan-fix/b11-regressions`（合并 3f3d0ec3）根治——(a) len() 比较强转按对端类型定向 `partner_len_cast`（Eq/Neq/Lt/Le/Gt/Ge）；(b) "tool.at 解析失败"实为**四个解析缺口**：`Map<K>` 单参硬 arity 错、`Err(Type.Variant { fields })` 嵌套模式（ResultCover+inner+绑定注册+a2r 发射）、顶层 `Type.Variant { fields }` 模式（Plan 165 回归：Dot+`{` 识别 + StructPattern 绑定臂）、枚举结构变体声明冒号字段。**auto-ai 全量重生成首次归零（23→0，rust/src 全绿提交 auto-ai 156c6c8）**。
+> **2026-08-21 收官（§2.5+§2.6）**: **§2.5 ✅ 根治**（`plan-fix/396-unit-variant` 合并 1ae3b33c）：两次插桩扑空的根因——`auto_val.Value.Nil` 的 AST 实为 `Dot(TagCover{auto_val,Value}, Nil)`（use.rust 模块名走 lhs_expr→tag_cover 两段吞并、`.Nil` 残留外层 Dot），a2r 由 Cover 裸分支（`{kind}::{tag}`）+ 普通字段访问（`.Nil`）拼出 `auto_val::Value.Nil`；修复在 parser `is_branch_cond_expr_inner` 补无括号三段转换（剥模块段，与带参 Call 转换对齐），golden 06/009 + 单测锁定；ai-config sed 实证 no-op 后删除（auto-ai 31a5304）。**§2.6 ✅ 新增并根治**（`plan-fix/396-nowms` 合并 283990bc）：client 重生成 4 处 E0308 暴露 a2r-std/src/time.rs 手抄滞后（i32 截断，与 stdlib time.rs.at/time.vm.at 声明的 i64 矛盾，epoch 毫秒每 ~24.8 天回绕本就是潜伏 bug），恢复 i64 后 client 归零（auto-ai e05e48d）——**三转译 crate 首次同时全绿**。a2r golden 340/340（基线 339+1）。
 
 > **For Claude:**
 > - 构建/测试命令：`cargo test -p auto-lang --lib --features test-trans -- tests::a2r_tests`（a2r golden，基线 319/0）。
@@ -36,10 +37,10 @@ status: in-progress # draft | in-progress | complete
 
 | Crate | sed 条数 | 类别 | 状态 |
 |---|---|---|---|
-| auto-ai-agent | 4 类（B/C/D/E 借用推理） | Plan 019 遗留 | ⏳ 本计划 |
+| auto-ai-agent | 4 类（B/C/D/E 借用推理） | Plan 019 遗留 | ✅ §2.1–§2.4 已修，sed 删（auto-ai 64ba3b2） |
 | auto-ai-agent | SOUL const `&str` 类型修正 | Plan 016 遗留 | 📋 可选（comptime 输出推断）|
-| ai-config | unit-variant quirk（`auto_val.Value.Nil`） | Plan 021 缺口 3 | ⏳ 本计划 |
-| auto-ai-client | （Plan 020 已清零，sed 在） | Plan 020 | 📋 根因修后清 |
+| ai-config | unit-variant quirk（`auto_val.Value.Nil`） | Plan 021 缺口 3 | ✅ §2.5 已修，sed 删（auto-ai 31a5304） |
+| auto-ai-client | （Plan 020 已清零，sed 在） | Plan 020 | 📋 根因修后清（tier `Some()` clone 属 Plan 019 B 类兄弟项） |
 
 ---
 
@@ -62,7 +63,7 @@ status: in-progress # draft | in-progress | complete
   s#description: tc\.tool,#description: tc.tool.clone(),#g
   s#tool_to_definition(t)#tool_to_definition(t.clone())#g
   ```
-- **状态**：⏳ 待修
+- **状态**：✅ 已修（be9d4213 函数实参路径 + B3 批 efe84664 裸循环变量补全；sed 已删 auto-ai 64ba3b2）
 
 ### §2.2 借用推理 C：for-in 对 ReadDir 无条件加 `&`（Plan 019）
 
@@ -73,7 +74,7 @@ status: in-progress # draft | in-progress | complete
   迭代器类型（ReadDir 等）不加 `&`。
 - **影响点**：`crates/auto-ai-agent/retranspile.sh` C 段（skill.rs / roles.rs）。
 - **sed 锚定**：`s#for entry in &entries {#for entry in entries {#g`
-- **状态**：⏳ 待修
+- **状态**：✅ 已修（efe84664，by_value_iter_bindings；sed 已删 auto-ai 64ba3b2）
 
 ### §2.3 借用推理 D：函数参数 move 后重用未借用（Plan 019）
 
@@ -83,7 +84,7 @@ status: in-progress # draft | in-progress | complete
   需改借用。
 - **影响点**：`crates/auto-ai-agent/retranspile.sh` D 段。
 - **sed 锚定**：`s#read_to_string(path)#read_to_string(&path)#g`
-- **状态**：⏳ 待修（命中数 0，可能已部分自愈——修时先验证）
+- **状态**：✅ 已修（efe84664，三处 dispatch 借用；sed 已删 auto-ai 64ba3b2）
 
 ### §2.4 借用推理 E：对 `&str` 多余插 `.as_str()`（Plan 019）
 
@@ -92,7 +93,7 @@ status: in-progress # draft | in-progress | complete
 - **根因方向**：a2r 的类型注解推断——对已是 `&str` 的值不应插 `as_str()`。
 - **影响点**：`crates/auto-ai-agent/retranspile.sh` E 段（skill.rs）。
 - **sed 锚定**：`s#after_open\.as_str()#after_open#g`
-- **状态**：⏳ 待修
+- **状态**：✅ 已修（efe84664，is_str_slice_var 补查 StrSlice；sed 已删 auto-ai 64ba3b2）
 
 ### §2.5 ai-config unit-variant quirk（Plan 021 缺口 3 残留）
 
@@ -100,7 +101,22 @@ status: in-progress # draft | in-progress | complete
   `auto_val::Value.Nil`（应为 `auto_val::Value::Nil`）。
 - **根因方向**：a2r 对限定 unit variant 的 path 渲染——`::` vs `.`。
 - **影响点**：`crates/ai-config/retranspile.sh`（unit-variant quirk sed）。
-- **状态**：⏳ 待修
+- **状态**：✅ 已修（1ae3b33c，2026-08-21；根因与修复详见顶部收官注记——
+  parser `is_branch_cond_expr_inner` 补无括号三段转换剥模块段，golden 06/009
+  锁定；ai-config sed 实证 no-op 后删除 auto-ai 31a5304）
+
+### §2.6 a2r_std time i32 手抄滞后（2026-08-21 收官批新登）
+
+- **症状**：auto-ai-client daemon.at 重生成 4 处 E0308——
+  `let deadline: i64 = a2r_std::time::now_ms() + 3000` vs `now_ms() -> i32`。
+- **根因**：`crates/a2r-std/src/time.rs` 是 stdlib 手抄的滞后版本——
+  `stdlib/auto/time.rs.at` 与 `time.vm.at` 均声明 `now_ms()/now_sec() i64`，
+  a2r_std 落成 `i32` + 截断。i32 截断 epoch 毫秒（~1.8e12）每 ~24.8 天回绕
+  一次，超时比较在回绕点失准——本就是潜伏 bug，并非 a2r 推理错误。
+- **修复**：恢复 i64（283990bc）；无仓内依赖者，golden 不涉及。
+- **验证**：client retranspile check 0 错（auto-ai e05e48d）——三转译 crate
+  首次同时全绿。
+- **状态**：✅ 已修
 
 ---
 
@@ -117,10 +133,14 @@ status: in-progress # draft | in-progress | complete
 
 ## §4 完成判定
 
-- [ ] §2.1–§2.5 五条根因全部修复
-- [ ] auto-ai 两 `retranspile.sh` 的对应 sed 全部删除（变 no-op 后清理）
-- [ ] a2r golden 回归零新增失败
-- [ ] auto-ai 三转译 crate 独立 build 0 错（无 sed）、workspace 全绿
+- [x] §2.1–§2.6 六条根因全部修复（finish-plan 2026-08-21 复审逐条验证）
+- [x] auto-ai 两 `retranspile.sh` 的对应 sed 全部删除（agent B/C/D/E：64ba3b2；
+      ai-config unit-variant：31a5304。tier `Some()` sed 属 Plan 020、SOUL const
+      属 Plan 016，均非本计划范围）
+- [x] a2r golden 回归零新增失败（340/340 = 基线 339 + 009_qualified_unit_variant）
+- [x] auto-ai 三转译 crate 独立 build 0 错 + 重生产物追平当前 a2r
+      （ai-config 0 错 / agent 0 错 / client 0 错，2026-08-21 实测；
+      auto-ai 侧配套提交 31a5304 + e05e48d）
 
 ---
 
