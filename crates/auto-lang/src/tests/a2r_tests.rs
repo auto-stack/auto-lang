@@ -458,6 +458,7 @@ ext Store {
 #[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }
 #[test] fn test_11_methods_002_struct_methods() { test_a2r("11_methods/002_struct_methods").unwrap(); }
 #[test] fn test_11_methods_003_closure() { test_a2r("11_methods/003_closure").unwrap(); }
+#[test] fn test_11_methods_004_closure_infer() { test_a2r("11_methods/004_closure_infer").unwrap(); }
 #[test] fn test_11_methods_004_static_fn() { test_a2r("11_methods/004_static_fn").unwrap(); }
 #[test] fn test_11_methods_005_func_literal_return() { test_a2r("11_methods/005_func_literal_return").unwrap(); }
 #[test] fn test_11_methods_006_ext_for() { test_a2r("11_methods/006_ext_for").unwrap(); }

@@ -1,0 +1,8 @@
+fn main() {
+    let double = (x int) => x * 2
+    let n = double(21)
+    print(n)
+    let anon = x => x + 1
+    let m = anon(41)
+    print(m)
+}
