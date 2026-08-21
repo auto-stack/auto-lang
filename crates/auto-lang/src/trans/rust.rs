@@ -171,6 +171,11 @@ pub struct RustTrans {
     /// emit `.clone()` because `x` is `&T`. Cleared per function (function-scope
     /// set; nested loops just add to it).
     borrowed_iter_vars: std::collections::HashSet<AutoStr>,
+    /// Plan 396 §2.2: `Ok(x)` is-arm bindings whose scrutinee yields a
+    /// BY-VALUE iterator (fs.read_dir → std::fs::ReadDir: IntoIterator is
+    /// impl'd for ReadDir only, `&ReadDir` is not an iterator → E0277).
+    /// The for-loop emitter skips the `&` borrow for these names.
+    by_value_iter_bindings: std::collections::HashSet<AutoStr>,
     /// Plan 399 Phase 11.5: names of `let` bindings that are mutated later in
     /// the same fn body (push/insert/extend/assign). When a `let` store matches,
     /// emit `let mut` so the mutation compiles. Populated by scanning the fn
@@ -366,6 +371,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            by_value_iter_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
@@ -443,6 +449,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            by_value_iter_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
@@ -4370,6 +4377,13 @@ impl RustTrans {
                                 ("fs", "read_to_string") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
                                     if let Some(arg) = call.args.args.first() {
+                                        // Plan 396 §2.3: a bare ident arg (a
+                                        // PathBuf local/param) must be BORROWED —
+                                        // moving it here breaks later uses
+                                        // (E0382); &PathBuf coerces to &Path.
+                                        if let Arg::Pos(Expr::Ident(_)) = arg {
+                                            write!(out, "&")?;
+                                        }
                                         if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
                                         else { self.arg(arg, out)?; }
                                     }
@@ -4537,12 +4551,16 @@ impl RustTrans {
                         "fs" => match method.as_str() {
                             "read_to_string" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
+                                // Plan 396 §2.3: borrow bare-ident PathBuf args (see the
+                                // (fs, read_to_string) dispatch above).
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "read_text" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
                                 if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
@@ -6380,6 +6398,11 @@ impl RustTrans {
                         // Plan 368 R-AREG: use shared expr_as_str instead of stale
                         // local_var_types/StrSlice check, so owned String locals
                         // correctly get .as_str() appended.
+                        // Plan 396 §2.3: borrow bare-ident PathBuf args — moving
+                        // them breaks later uses (E0382); &PathBuf → &Path coercion.
+                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                            write!(out, "&")?;
+                        }
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr_as_str(a, out)?;
                         }
@@ -8305,8 +8328,16 @@ impl RustTrans {
     /// (which maps to `mut x: &str` in Rust). Local variables typed `str` map to `String`.
     fn is_str_slice_var(&self, arg: &Arg) -> bool {
         if let Arg::Pos(Expr::Ident(name)) = arg {
-            // Function params declared as `str` are truly `&str` in Rust
+            // Function params declared as `str` are truly `&str` in Rust.
+            // Plan 396 §2.4: `Some(x)` is-arm bindings registered as StrSlice
+            // (is_str_returning_scrutinee) are ALSO `&str` — appending
+            // `.as_str()` on them is E0658 (str_as_str, unstable).
             self.current_fn_str_params.contains(name)
+                || self
+                    .local_var_types
+                    .get(name.as_str())
+                    .map(|t| matches!(t, Type::StrSlice))
+                    .unwrap_or(false)
         } else {
             false
         }
@@ -8802,6 +8833,38 @@ impl RustTrans {
         expr: &Expr,
         out: &mut impl Write,
     ) -> AutoResult<()> {
+        // Plan 396 §2.1 (bare loop var): passing the borrowed loop variable
+        // ITSELF (`for t in &coll { f(t) }` with t: &Arc<..>) to an owned
+        // param also needs .clone() — same gate as fields below.
+        if let Expr::Ident(name) = expr {
+            if self.borrowed_iter_vars.contains(name) {
+                let ty = self
+                    .local_var_types
+                    .get(name.as_str())
+                    .cloned()
+                    .unwrap_or(Type::Unknown);
+                let str_like = matches!(
+                    ty,
+                    Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice
+                );
+                let copy_like = matches!(
+                    ty,
+                    Type::Int
+                        | Type::Uint
+                        | Type::U64
+                        | Type::I64
+                        | Type::USize
+                        | Type::Float
+                        | Type::Double
+                        | Type::Bool
+                        | Type::Char
+                );
+                if !str_like && !copy_like {
+                    write!(out, ".clone()")?;
+                }
+                return Ok(());
+            }
+        }
         if let Expr::Dot(obj, _field) = expr {
             if let Expr::Ident(obj_name) = obj.as_ref() {
                 if self.borrowed_iter_vars.contains(obj_name) {
@@ -11151,7 +11214,8 @@ impl RustTrans {
                     let is_borrowable = matches!(
                         &for_stmt.range,
                         Expr::Ident(_) | Expr::Dot(_, _)
-                    );
+                    ) && !matches!(&for_stmt.range, Expr::Ident(n)
+                        if self.by_value_iter_bindings.contains(n));
                     if is_borrowable {
                         sink.body.write(b"&")?;
                         // Plan 399 Phase 11.4: record this loop var as borrowed
@@ -11566,6 +11630,19 @@ impl RustTrans {
     /// binding is `&str` (strip_prefix / strip_suffix / to_str → Option<&str>).
     /// Used to record bound vars as StrSlice so call-site auto-borrows don't
     /// append `.as_str()` (E0658 str_as_str).
+    /// Plan 396 §2.2: true when the is-scrutinee yields a by-value iterator
+    /// (only fs.read_dir today — std::fs::ReadDir has no &IntoIterator impl).
+    fn is_by_value_iter_scrutinee(target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            if let Expr::Dot(obj, method) = call.name.as_ref() {
+                if let Expr::Ident(m) = obj.as_ref() {
+                    return m.as_str() == "fs" && method.as_str() == "read_dir";
+                }
+            }
+        }
+        false
+    }
+
     fn is_str_returning_scrutinee(target: &Expr) -> bool {
         if let Expr::Call(call) = target {
             let m = match call.name.as_ref() {
@@ -11768,6 +11845,17 @@ impl RustTrans {
                                     self.expr(pat, &mut sink.body)?;
                                 }
                             }
+                        } else if let Expr::ResultPattern(cover) = pat {
+                            // Plan 396 §2.2: `Ok(x)` from a by-value-iterator
+                            // scrutinee (fs.read_dir) binds x as ReadDir —
+                            // later `for x in ...` must NOT borrow (&ReadDir is
+                            // not an iterator, E0277).
+                            if let Some(binding) = &cover.binding {
+                                if Self::is_by_value_iter_scrutinee(&is_stmt.target) {
+                                    self.by_value_iter_bindings.insert(binding.clone());
+                                }
+                            }
+                            self.expr(pat, &mut sink.body)?;
                         } else {
                             // Plan 013 (B16): record bare-ident args in any
                             // remaining pattern shape (e.g. a Dot-chain variant
