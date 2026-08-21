@@ -988,7 +988,12 @@ impl<'a> Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn skip_whitespace(&mut self) {
         while let Some(&c) = self.chars.peek() {
-            if c.is_whitespace() && c != '\n' {
+            // U+FEFF (BOM / zero-width no-break space) is invisible and not
+            // `char::is_whitespace()` — a UTF-8-BOM .at file used to reach
+            // next_step's UnknownCharacter arm and panic Parser::new's
+            // `lexer.next().expect(...)` (audit B11 衍生). Skip it like
+            // whitespace, anywhere it appears.
+            if (c.is_whitespace() && c != '\n') || c == '\u{FEFF}' {
                 self.chars.next();
                 // Update position tracking for accurate error reporting
                 self.pos += 1;
@@ -1492,6 +1497,15 @@ mod tests {
         let code = "(123)";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<(><int:123><)>");
+    }
+
+    /// Plan 396/B11 衍生：UTF-8 BOM (U+FEFF) 在词法层跳过，不再进
+    /// UnknownCharacter 致 Parser::new 的 `lexer.next().expect(...)` panic
+    /// （带 BOM 的 .at 文件直接崩溃，parser.rs:272）。
+    #[test]
+    fn test_bom_skipped() {
+        let tokens = parse_token_strings("\u{FEFF}fn main() { }");
+        assert_eq!(tokens, "<fn><ident:main><(><)><{><}>");
     }
 
     #[test]

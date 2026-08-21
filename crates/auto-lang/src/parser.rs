@@ -16962,6 +16962,19 @@ fn f(v Value) bool {
         );
     }
 
+    /// Plan 396/B11 衍生：带 UTF-8 BOM 的 .at 源文件能正常 parse——此前
+    /// U+FEFF 进 UnknownCharacter，`Parser::new` 的 `lexer.next().expect()`
+    /// 直接 panic（parser.rs:272）。词法层现已按不可见空白跳过。
+    #[test]
+    fn test_bom_prefixed_source_parses() {
+        let code = "\u{FEFF}fn main() {\n    print(\"ok\")\n}\n";
+        let ast = parse_once(code);
+        assert!(
+            ast.stmts.iter().any(|s| matches!(s, Stmt::Fn(fd) if fd.name == "main")),
+            "fn main should parse from BOM-prefixed source"
+        );
+    }
+
     /// Plan 396/B11(b): enum struct-variant DECLARATION accepts colon-style
     /// fields (`Denied { kind: str }`) alongside space-style.
     #[test]
