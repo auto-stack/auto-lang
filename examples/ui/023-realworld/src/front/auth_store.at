@@ -16,7 +16,7 @@ store AuthStore {
 
     on {
         .Init -> {
-            .me = current_user()
+            .me = current_user("Bearer " + .me.token)
         }
         .Login(email str, password str) -> {
             .me = login(email, password)
