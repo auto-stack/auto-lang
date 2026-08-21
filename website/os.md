@@ -10,151 +10,148 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
 <OSHero
-  badge="Language as OS"
-  title="Language as OS"
-  description="Auto blurs the line between language and operating system. Compile-time execution, multi-target transpilers, and a unified runtime from MCU to cloud."
+  badge="AutoOS Architecture"
+  title=": Client / Daemon OS Foundation"
+  description="AutoOS is evolving into a full operating system layer. Client/Daemon architecture, unified configuration, and two future paths: standalone distro and embedded virtual desktop."
   primary-text="Read the Docs"
   primary-link="/docs/os"
-  secondary-text="Explore LaOS"
-  secondary-link="/docs/os#laos"
+  secondary-text="Explore auto-os-config"
+  secondary-link="/docs/os#auto-os-config"
 />
 
 <div class="stats-section">
-  <h2 class="section-title">Breaking the Impossible Triangle</h2>
+  <h2 class="section-title">AutoOS Foundation</h2>
   <div class="stats-grid">
-    <StatCard value="9/10" label="Development Efficiency" description="Script mode, simple generics, and intuitive syntax." color="#f59e0b" />
-    <StatCard value="9/10" label="Memory Safety" description="Linear types, borrow checker, and smart casts." color="#3b82f6" />
-    <StatCard value="9/10" label="Runtime Performance" description="AOT compilation, zero-cost abstractions, no GC pauses." color="#ec4899" />
-    <StatCard value="6" label="Target Platforms" description="Windows, Linux, macOS, Android, HarmonyOS, MCU." color="#14b8a6" />
+    <StatCard value="1" label="Config Daemon" description="auto-os-config — one daemon for every config module." color="#14b8a6" />
+    <StatCard value="2" label="Future Paths" description="Standalone AutoOS distro or embedded virtual desktop." color="#3b82f6" />
+    <StatCard value="4+" label="Config Modules" description="AI Daemon, Harness, Skills, Roles, Auto Musk, and more." color="#8b5cf6" />
+    <StatCard value="0" label="Frontend Code" description="Generic editor auto-renders forms from .at file shapes." color="#f59e0b" />
   </div>
 </div>
 
 <div class="showcase-wrapper">
   <ShowcaseSection
-    title="Language as OS (LaOS)"
-    description="Traditional stacks separate language, runtime, and OS into disjoint layers. Auto fuses them into a single coherent system."
-    badge="Architecture"
+    title="auto-os-config — Unified Settings Center"
+    description="One daemon, one generic editor, for every config module. A Vue 3 SPA + Rust backend that reads/writes any .at config file directly."
+    badge="Config"
   >
     <ul>
-      <li><strong>Microkernel language</strong>: core features (AutoVM, transpilers, CTE) act as the kernel</li>
-      <li><strong>Memory subsystem</strong>: ownership + borrow checker + AutoFree + RC + escape analysis</li>
-      <li><strong>I/O subsystem</strong>: unified <code>io.at</code> interface with vm/rs/c backends</li>
-      <li><strong>Shell subsystem</strong>: ASH replaces Bash with structured data pipelines</li>
-      <li><strong>UI subsystem</strong>: Aura renders to Web, Desktop, Mobile, and MCU (LVGL)</li>
+      <li><strong>Unified daemon</strong> — the only config read/write service. URL → file path by convention.</li>
+      <li><strong>Generic editor</strong> — renders forms from .at data shape + key-name conventions. Zero frontend code for new modules.</li>
+      <li><strong>Module registry</strong> — drop-in .at files in <code>modules.d/</code> register new modules automatically.</li>
+      <li><strong>Custom UX</strong> — remote Vue components via <code>createComponent(Vue)</code> factory when the generic editor isn't enough.</li>
+    </ul>
+    <template #visual>
+      <div class="config-tree">
+        <div class="config-file">~/.config/autoos/</div>
+        <div class="config-item">├── ai-client.at</div>
+        <div class="config-item">├── ai-daemon.at</div>
+        <div class="config-item">├── auto-musk.at</div>
+        <div class="config-item">├── modules.d/</div>
+        <div class="config-item">│   └── my-module.at</div>
+        <div class="config-item">├── roles/</div>
+        <div class="config-item">└── skills/</div>
+      </div>
+    </template>
+  </ShowcaseSection>
+
+  <ShowcaseSection
+    title="Client / Daemon Architecture"
+    description="AutoOS apps follow a consistent pattern: a system daemon owns shared state and resources; thin clients connect to it."
+    badge="Architecture"
+    reverse
+  >
+    <ul>
+      <li><strong>aaid</strong> — AI daemon for LLM routing, concurrency, and usage tracking</li>
+      <li><strong>auto-os-config-daemon</strong> — unified config read/write service</li>
+      <li><strong>AutoShell daemon</strong> — shell session and job management</li>
+      <li><strong>Future</strong> — window manager, file system, and device daemons</li>
     </ul>
     <template #visual>
       <div class="arch-diagram">
-        <div class="arch-layer app">Applications</div>
+        <div class="arch-box clients">Clients<br /><small>AutoShell · AutoMusk · Config UI</small></div>
         <div class="arch-arrow">↓</div>
-        <div class="arch-layer lang">Auto Language</div>
+        <div class="arch-box daemons">Daemons<br /><small>aaid · config · shell</small></div>
         <div class="arch-arrow">↓</div>
-        <div class="arch-layer runtime">Auto Runtime</div>
-        <div class="arch-arrow">↓</div>
-        <div class="arch-layer hw">Hardware</div>
+        <div class="arch-box system">System<br /><small>~/.config/autoos · .at files</small></div>
       </div>
     </template>
   </ShowcaseSection>
 
   <ShowcaseSection
-    title="AutoVM & Transpilers"
-    description="One language, many targets. AutoVM runs scripts and embedded code, while transpilers generate native code for every platform."
-    badge="Execution"
-    reverse
+    title="Two Paths to AutoOS"
+    description="AutoOS is designed to grow in two directions, sharing the same core architecture."
+    badge="Roadmap"
   >
     <ul>
-      <li><strong>AutoVM</strong>: standalone, comptime, and embedded modes</li>
-      <li><strong>a2rs</strong>: Rust backend for systems programming</li>
-      <li><strong>a2c</strong>: C backend for embedded and automotive (90% C support)</li>
-      <li><strong>a2ts</strong>: TypeScript backend for web frontends</li>
-      <li><strong>a2py</strong>: Python backend for AI and scripting</li>
-      <li><strong>a2kt</strong>: Kotlin backend for Android / Jetpack Compose</li>
-      <li><strong>a2vue / a2jet / a2ark</strong>: UI targets for Web, Desktop, Harmony</li>
+      <li><strong>Standalone AutoOS</strong> — based on Pop!_OS and COSMIC Desktop. AutoOS ISO image with Auto-native system apps.</li>
+      <li><strong>Embedded Virtual Desktop</strong> — runs inside Windows, Linux, macOS, and HarmonyOS. A virtual desktop OS built with AutoUI.</li>
     </ul>
     <template #visual>
-      <div class="code-window">
-        <div class="code-header">
-          <div class="code-dots"><span /><span /><span /></div>
-          <span class="code-title">hello.at</span>
+      <div class="path-grid">
+        <div class="path-card standalone">
+          <h4>Standalone</h4>
+          <p>Pop!_OS + COSMIC</p>
+          <span>Full distro</span>
         </div>
-        <pre class="code-body"><code><span class="comment">// Runs on all targets</span>
-<span class="keyword">fn</span> <span class="function">main</span>() {
-    <span class="keyword">let</span> msg = <span class="string">"Hello, OS!"</span>;
-    <span class="function">println</span>(msg);
-}</code></pre>
+        <div class="path-card embedded">
+          <h4>Embedded</h4>
+          <p>AutoUI Virtual Desktop</p>
+          <span>Windows · Linux · macOS · Harmony</span>
+        </div>
       </div>
     </template>
   </ShowcaseSection>
 
   <ShowcaseSection
-    title="Memory & Concurrency"
-    description="Safety without sacrifice. Auto combines Rust-grade memory safety with multiple automatic reclamation strategies and Actor-model concurrency."
-    badge="Systems"
-  >
-    <ul>
-      <li><strong>Linear Type + Borrow Checker</strong>: compile-time ownership tracking</li>
-      <li><strong>AutoFree</strong>: deterministic automatic memory cleanup</li>
-      <li><strong>RC + Escape Analysis</strong>: automatic reference counting where safe</li>
-      <li><strong>Task / Msg</strong>: Actor-model concurrency with no shared state</li>
-      <li><strong>~T (async)</strong>: first-class asynchronous types</li>
-      <li><strong>Atom protocol</strong>: zero-copy serialization across task boundaries</li>
-    </ul>
-    <template #visual>
-      <div class="memory-grid">
-        <div class="mem-item safe">Linear</div>
-        <div class="mem-item safe">Borrow</div>
-        <div class="mem-item auto">AutoFree</div>
-        <div class="mem-item auto">RC</div>
-        <div class="mem-item auto">Escape</div>
-        <div class="mem-item task">Actor</div>
-      </div>
-    </template>
-  </ShowcaseSection>
-
-  <ShowcaseSection
-    title="Cross-Platform Adapters"
-    description="From automotive MCUs to cloud servers, Auto adapts to the platform rather than forcing the platform to adapt to Auto."
-    badge="Portability"
+    title="System Apps"
+    description="AutoOS will ship with a full suite of native applications, all written in Auto."
+    badge="Apps"
     reverse
   >
     <ul>
-      <li><strong>Windows / Linux / macOS</strong>: Rust-native backend</li>
-      <li><strong>SOC / Robotics</strong>: Rust / C++ (ROS) backend</li>
-      <li><strong>MCU / Embedded</strong>: C backend on FreeRTOS</li>
-      <li><strong>Mobile / Web</strong>: a2vue, a2jet, a2ark transpilers</li>
-      <li><strong>Inter-device COM</strong>: RPC via Auto Virtual Bus</li>
-      <li><strong>Vehicle development</strong>: full-stack from HPC to sensor MCU</li>
+      <li><strong>Text editor</strong> — code highlighting and AutoDown support</li>
+      <li><strong>Calculator</strong> — scientific and programming modes</li>
+      <li><strong>Minesweeper</strong> — classic game, AutoUI implementation</li>
+      <li><strong>Calendar</strong> — schedule management</li>
+      <li><strong>Launcher</strong> — Everything-style file search</li>
+      <li><strong>Task manager</strong> — HTOP-like system monitor</li>
+      <li><strong>File browser</strong> — dual-pane, keyboard-driven</li>
+      <li><strong>File comparator</strong> — Beyond Compare-style diff</li>
     </ul>
     <template #visual>
-      <div class="platform-grid">
-        <div class="plat-item desktop">Desktop</div>
-        <div class="plat-item mobile">Mobile</div>
-        <div class="plat-item soc">SOC / ROS</div>
-        <div class="plat-item mcu">MCU</div>
-        <div class="plat-item web">Web</div>
-        <div class="plat-item vehicle">Vehicle</div>
+      <div class="apps-grid-visual">
+        <div class="app-icon">📝</div>
+        <div class="app-icon">🧮</div>
+        <div class="app-icon">💣</div>
+        <div class="app-icon">📅</div>
+        <div class="app-icon">🔍</div>
+        <div class="app-icon">📊</div>
+        <div class="app-icon">📁</div>
+        <div class="app-icon">🔀</div>
       </div>
     </template>
   </ShowcaseSection>
 </div>
 
 <div class="features-section">
-  <h2 class="section-title">LaOS Subsystems</h2>
+  <h2 class="section-title">AutoOS Design Principles</h2>
   <div class="features-grid">
-    <FeatureCard icon="⚙️" title="Compile-Time Execution" description="Execute Auto code at compile time. Generate code, validate invariants, and configure the system before it runs." color="rgba(168, 85, 247, 0.15)" />
-    <FeatureCard icon="🔌" title="Auto Virtual Bus" description="Cross-process and cross-device RPC using the Atom protocol. Remote objects feel local." color="rgba(99, 102, 241, 0.15)" />
-    <FeatureCard icon="🖥️" title="AutoShell (ASH)" description="Structured shell with Atom pipelines. No more string parsing — commands return typed objects." color="rgba(20, 184, 166, 0.15)" />
-    <FeatureCard icon="🎨" title="Aura UI" description="Declarative UI framework that transpiles to Vue, Jetpack Compose, and ArkTS. One codebase, all screens." color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="📦" title="AutoMan" description="Universal project manager and package system. Build, test, and deploy across all targets." color="rgba(245, 158, 11, 0.15)" />
-    <FeatureCard icon="🛡️" title="SafeClaw Security" description="NanoClaw transpiled to safe runtime. IronClaw features plus Aura UI for secure agent interfaces." color="rgba(59, 130, 246, 0.15)" />
+    <FeatureCard icon="⚙️" title="One Config Format" description="All system settings use .at (auto-atom) files. Consistent, parseable, and version-controllable." color="rgba(20, 184, 166, 0.15)" />
+    <FeatureCard icon="🔌" title="Daemon-First" description="Shared state lives in daemons, not in apps. Apps are thin, replaceable clients." color="rgba(59, 130, 246, 0.15)" />
+    <FeatureCard icon="🎨" title="AutoUI Native" description="System UI is built with AutoUI. One framework for desktop, web, and mobile." color="rgba(168, 85, 247, 0.15)" />
+    <FeatureCard icon="🤖" title="AI Integrated" description="AI capabilities are system services, not app add-ons. Every app can use AI through aaid." color="rgba(236, 72, 153, 0.15)" />
+    <FeatureCard icon="📦" title="Drop-in Modules" description="New config modules register by dropping a .at file into modules.d/. No source changes needed." color="rgba(245, 158, 11, 0.15)" />
+    <FeatureCard icon="🌐" title="Cross-Platform" description="Run as a standalone distro or embed into existing operating systems." color="rgba(139, 92, 246, 0.15)" />
   </div>
 </div>
 
 <div class="cta-section">
-  <h2 class="section-title">Ready to build the next-generation OS?</h2>
-  <p class="section-desc">Learn how Auto unifies language, runtime, and operating system into a single toolchain.</p>
+  <h2 class="section-title">Explore AutoOS</h2>
+  <p class="section-desc">Read the design documents, try auto-os-config locally, or follow the roadmap to a full operating system.</p>
   <div class="cta-actions">
     <a href="/docs/os" class="cta-btn cta-primary">Read OS Docs</a>
-    <a href="/docs/" class="cta-btn cta-secondary">Explore Features</a>
+    <a href="/docs/releases/v0.5" class="cta-btn cta-secondary">v0.5 Release Notes</a>
   </div>
 </div>
 
@@ -200,7 +197,7 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 .cta-section {
   padding: 4rem 2rem;
   text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
+  background: linear-gradient(180deg, transparent 0%, rgba(20, 184, 166, 0.05) 100%);
 }
 
 .section-desc {
@@ -228,14 +225,14 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
 }
 
 .cta-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 14px rgba(20, 184, 166, 0.3);
 }
 
 .cta-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 6px 20px rgba(20, 184, 166, 0.4);
 }
 
 .cta-secondary {
@@ -248,60 +245,27 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   background: hsl(var(--accent));
 }
 
-.code-window {
-  background: #1e1e2e;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+.config-tree {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1.5rem;
   width: 100%;
-  max-width: 420px;
-  text-align: left;
-}
-
-.code-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: #181825;
-  border-bottom: 1px solid #313244;
-}
-
-.code-dots {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.code-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.code-dots span:nth-child(1) { background: #ff5f56; }
-.code-dots span:nth-child(2) { background: #ffbd2e; }
-.code-dots span:nth-child(3) { background: #27c93f; }
-
-.code-title {
-  font-size: 0.8rem;
-  color: #6c7086;
+  max-width: 320px;
   font-family: 'JetBrains Mono', monospace;
-}
-
-.code-body {
-  padding: 1.25rem;
-  margin: 0;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 0.85rem;
-  line-height: 1.6;
-  color: #cdd6f4;
-  overflow-x: auto;
+  line-height: 1.8;
 }
 
-.keyword { color: #cba6f7; }
-.function { color: #89b4fa; }
-.string { color: #a6e3a1; }
-.comment { color: #6c7086; font-style: italic; }
+.config-file {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.config-item {
+  color: hsl(var(--muted-foreground));
+}
 
 .arch-diagram {
   display: flex;
@@ -312,73 +276,102 @@ import ShowcaseSection from './.vitepress/theme/components/ShowcaseSection.vue'
   max-width: 320px;
 }
 
-.arch-layer {
+.arch-box {
   width: 100%;
-  padding: 1rem;
+  padding: 1rem 1.25rem;
   border-radius: var(--radius);
   text-align: center;
   font-weight: 700;
+  font-size: 0.9rem;
   color: white;
 }
 
-.arch-layer.app { background: linear-gradient(135deg, #f59e0b, #d97706); }
-.arch-layer.lang { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
-.arch-layer.runtime { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.arch-layer.hw { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.arch-box small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}
+
+.arch-box.clients { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.arch-box.daemons { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.arch-box.system { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
 
 .arch-arrow {
   color: hsl(var(--muted-foreground));
   font-size: 1.2rem;
 }
 
-.memory-grid {
+.path-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.path-card {
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  text-align: center;
+}
+
+.path-card h4 {
+  margin: 0 0 0.5rem;
+  color: hsl(var(--foreground));
+}
+
+.path-card p {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.path-card span {
+  font-size: 0.8rem;
+  color: #14b8a6;
+  font-weight: 600;
+}
+
+.path-card.standalone {
+  border-color: rgba(20, 184, 166, 0.3);
+  background: rgba(20, 184, 166, 0.05);
+}
+
+.path-card.embedded {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.apps-grid-visual {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.75rem;
   width: 100%;
   max-width: 320px;
 }
 
-.mem-item {
-  padding: 0.875rem;
-  border-radius: var(--radius);
-  text-align: center;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: white;
-}
-
-.mem-item.safe { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.mem-item.auto { background: linear-gradient(135deg, #6366f1, #4f46e5); }
-.mem-item.task { background: linear-gradient(135deg, #ec4899, #db2777); grid-column: span 2; }
-
-.platform-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+.app-icon {
   width: 100%;
-  max-width: 320px;
-}
-
-.plat-item {
-  padding: 0.875rem;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
   border-radius: var(--radius);
-  text-align: center;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: white;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
 }
-
-.plat-item.desktop { background: linear-gradient(135deg, #6366f1, #4f46e5); }
-.plat-item.mobile { background: linear-gradient(135deg, #ec4899, #db2777); }
-.plat-item.soc { background: linear-gradient(135deg, #f59e0b, #d97706); }
-.plat-item.mcu { background: linear-gradient(135deg, #14b8a6, #0d9488); }
-.plat-item.web { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.plat-item.vehicle { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
 
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .path-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

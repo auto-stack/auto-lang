@@ -10,9 +10,9 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 </script>
 
 <AIHero
-  badge="Made BY AI · Made FOR AI · Made of AI"
-  title="为 AI 而生的语言"
-  description="一门由 AI 构建、为 AI 优化、由 AI 构成的编程语言。从极低解析熵的语法到原生 Agent 架构。"
+  badge="AutoAI 架构"
+  title="：Client / Daemon AI 基础设施"
+  description="为所有 AutoOS 应用提供统一的 AI 基础设施。并发仲裁、API 密钥保管、模型路由与用量追踪 —— 全部通过单一 Daemon 完成。"
   primary-text="阅读文档"
   primary-link="/zh/docs/ai"
   secondary-text="在线体验"
@@ -20,109 +20,142 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 />
 
 <div class="stats-section">
-  <h2 class="section-title">以 AI 速度开发</h2>
+  <h2 class="section-title">AutoAI 核心数据</h2>
   <div class="stats-grid">
-    <StatCard value="100亿" label="Tokens 消耗" description="智谱 AI MAX 套餐驱动整个开发周期。" color="#6366f1" />
-    <StatCard value="1300+" label="Commits" description="短短两个月的快速迭代。" color="#8b5cf6" />
-    <StatCard value="20万" label="行 Rust 代码" description="生产级编译器、虚拟机和转译器基础设施。" color="#ec4899" />
-    <StatCard value="1+6" label="编译器矩阵" description="1 个解释器 + 6 个转译器（a2c、a2rs、a2ts、a2py、a2kt、a2vue）。" color="#14b8a6" />
+    <StatCard value="4" label="核心 Crates" description="ai-config、auto-ai-daemon、auto-ai-client、auto-ai-agent。" color="#ec4899" />
+    <StatCard value="2" label="Agent 应用" description="AutoAI-Cli 与 AutoMusk，均基于共享基础设施构建。" color="#a855f7" />
+    <StatCard value="1" label="Daemon" description="aaid —— 所有 AutoOS 应用的唯一 LLM 网关。" color="#6366f1" />
+    <StatCard value="∞" label="模型" description="跨 OpenAI、Anthropic、智谱等提供商的模型无关路由。" color="#14b8a6" />
   </div>
 </div>
 
 <div class="showcase-wrapper">
   <ShowcaseSection
-    title="Made BY AI"
-    description="Auto 诞生于一个激进实验：一门现代系统级语言能否几乎完全由 AI 构建？"
-    badge="开发模式"
+    title="Client / Daemon 架构"
+    description="AutoAI 在应用与 LLM 提供商之间引入清晰的分层。应用从不直接调用 LLM —— 每个请求都经过 aaid Daemon。"
+    badge="架构"
   >
     <ul>
-      <li>编译器前端与后端均由大模型协作生成</li>
-      <li>从概念到可工作转译器，仅用两个月冲刺</li>
-      <li>人类把控架构，AI 执行实现</li>
-      <li>证明 AI 能够攻克复杂系统编程任务</li>
+      <li><strong>auto-ai-daemon (aaid)</strong> —— 唯一 LLM 网关。掌握所有提供商知识、并发池、密钥保管与用量追踪。</li>
+      <li><strong>auto-ai-client</strong> —— 轻量 HTTP 客户端。发送规范化请求，接收规范化响应，不感知提供商。</li>
+      <li><strong>ai-config</strong> —— 共享线协议类型与提供商配置。规范化 ContentBlock 模型。</li>
+      <li><strong>auto-ai-agent</strong> —— Profession 库、ReAct 循环、Workflow 引擎。通过 ai-config 校验模型。</li>
+    </ul>
+    <template #visual>
+      <div class="arch-diagram">
+        <div class="arch-box apps">应用<br /><small>AutoAI-Cli · AutoMusk · Forge</small></div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-box client">auto-ai-client<br /><small>规范化 HTTP</small></div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-box daemon">aaid daemon<br /><small>并发 · 密钥 · 路由</small></div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-box providers">LLM 提供商<br /><small>OpenAI · Anthropic · 智谱</small></div>
+      </div>
+    </template>
+  </ShowcaseSection>
+
+  <ShowcaseSection
+    title="AutoMusk —— 通用 Coding Agent"
+    description="基于 AutoPlan 的通用 Coding Agent，使用 Auto 语言自身实现。"
+    badge="Agent"
+    reverse
+  >
+    <ul>
+      <li><strong>AutoPlan 集成</strong> —— 结构化规划与执行</li>
+      <li><strong>多提供商支持</strong> —— 兼容 aaid 服务的任意模型</li>
+      <li><strong>自托管</strong> —— 用 Auto 编写，运行在 AutoVM 上</li>
+      <li><strong>通过 auto-os-config 配置</strong> —— 统一设置管理</li>
     </ul>
     <template #visual>
       <div class="code-window">
         <div class="code-header">
-          <div class="code-dots"><span /><span /><span /></div>
-          <span class="code-title">generated.at</span>
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-title">automusk.at</span>
         </div>
-        <pre class="code-body"><code><span class="keyword">fn</span> <span class="function">main</span>() {
-    <span class="comment">// AI 生成的核心解析器</span>
-    <span class="keyword">let</span> ast = parser::parse(src);
-    <span class="function">println</span>(ast.dump());
+        <pre class="code-body"><code><span class="keyword">use</span> auto_ai_agent::Agent;
+<span class="keyword">use</span> auto_ai_client::AiClient;
+
+<span class="keyword">fn</span> <span class="function">main</span>() {
+    <span class="keyword">let</span> client = AiClient::new();
+    <span class="keyword">let</span> agent = Agent::from_profession(
+        <span class="string">"coder"</span>, client
+    );
+    agent.run(<span class="string">"fix the parser bug"</span>);
 }</code></pre>
       </div>
     </template>
   </ShowcaseSection>
 
   <ShowcaseSection
-    title="Made FOR AI"
-    description="每一项语法决策都致力于降低解析熵和 Token 消耗，使 Auto 成为最适合 AI 生成的语言。"
-    badge="语法设计"
-    reverse
+    title="AutoAI-Cli —— 终端 Coding Agent"
+    description="轻量级终端 Coding Agent，用于快速任务与 Shell 集成。"
+    badge="CLI"
   >
     <ul>
-      <li><strong>类型后置</strong>：<code>radius float</code> —— 先实体，后约束</li>
-      <li><strong>语义确定性</strong>：显式优于隐式，零歧义</li>
-      <li><strong>双模式错误信息</strong>：人类友好（miette）vs 结构化 JSON（供 AI 使用）</li>
-      <li><strong>意图注解</strong>：通过注解实现契约编程</li>
-      <li><strong>节省 80%~90% Tokens</strong>：同等逻辑下远低于传统语言消耗</li>
+      <li><strong>终端原生</strong> —— 无需离开 Shell 即可获得编码帮助</li>
+      <li><strong>相同基础设施</strong> —— 使用 auto-ai-client 与 aaid</li>
+      <li><strong>AutoShell 集成</strong> —— AutoShell 内的 F3 AI 模式</li>
+      <li><strong>低开销</strong> —— 快速启动，快速响应</li>
     </ul>
     <template #visual>
-      <div class="comparison-table">
-        <div class="comp-row">
-          <span class="comp-lang">C</span>
-          <code class="comp-code">float radius;</code>
+      <div class="code-window">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-title">terminal</span>
         </div>
-        <div class="comp-row">
-          <span class="comp-lang">Auto</span>
-          <code class="comp-code highlight">radius float</code>
-        </div>
-        <div class="comp-note">AI 先看到标识符，再确认类型约束</div>
+        <pre class="code-body"><code><span class="prompt">$</span> aictl status
+<span class="output">Daemon: running (pid 1234)
+Providers: zhipu, anthropic
+Active pools: 2/8</span>
+
+<span class="prompt">$</span> auto-ai-cli "explain this error"
+<span class="output">The error occurs because...</span></code></pre>
       </div>
     </template>
   </ShowcaseSection>
 
   <ShowcaseSection
-    title="Made of AI"
-    description="Auto 不仅是 AI 的工具，更成为 AI Agent 运行的底层基质。"
-    badge="Agent 架构"
+    title="统一配置"
+    description="所有 AutoAI 应用通过 auto-os-config 与 .at 文件共享配置。"
+    badge="配置"
+    reverse
   >
     <ul>
-      <li><strong>SafeClaw</strong>：转译型 Agent 集群（AutoAgent + AutoTool + AutoSkill + AutoKnowledge）</li>
-      <li><strong>AI 编译加速</strong>：直接转译到 CUDA、CANN、ROCm、MUSA</li>
-      <li><strong>Atom 协议</strong>：大模型输出结构化数据，由 Auto 安全执行</li>
-      <li><strong>一次生成，到处运行</strong>：一套代码，覆盖所有 GPU 平台</li>
+      <li><strong>~/.config/autoos/ai-client.at</strong> —— 提供商与默认配置</li>
+      <li><strong>~/.config/autoos/ai-daemon.at</strong> —— 监听地址、并发、真实 API 密钥</li>
+      <li><strong>auto-os-config</strong> —— 用于编辑所有配置模块的 Web UI</li>
+      <li><strong>环境变量回退</strong> —— ZHIPU_API_KEY、ANTHROPIC_API_KEY、OPENAI_API_KEY</li>
     </ul>
     <template #visual>
-      <div class="gpu-grid">
-        <div class="gpu-item nvidia">CUDA</div>
-        <div class="gpu-item huawei">CANN</div>
-        <div class="gpu-item amd">ROCm</div>
-        <div class="gpu-item moore">MUSA</div>
+      <div class="config-tree">
+        <div class="config-file">~/.config/autoos/</div>
+        <div class="config-item">├── ai-client.at</div>
+        <div class="config-item">├── ai-daemon.at</div>
+        <div class="config-item">├── auto-musk.at</div>
+        <div class="config-item">├── roles/</div>
+        <div class="config-item">└── skills/</div>
       </div>
     </template>
   </ShowcaseSection>
 </div>
 
 <div class="features-section">
-  <h2 class="section-title">核心 AI 优势</h2>
+  <h2 class="section-title">AutoAI 优势</h2>
   <div class="features-grid">
-    <FeatureCard icon="🧠" title="极低解析熵" description="简化的 AST 结构大幅降低大模型的幻觉率和上下文窗口压力。" color="rgba(99, 102, 241, 0.15)" />
-    <FeatureCard icon="🔍" title="物理透明" description="内存布局可见且可预测。AI 能精确计算数据占用和缓存行为。" color="rgba(168, 85, 247, 0.15)" />
-    <FeatureCard icon="⚡" title="Code for AI, Summary for Human" description="Auto 将机器优化表示与人类可读摘要分离，各取所需。" color="rgba(236, 72, 153, 0.15)" />
-    <FeatureCard icon="🛡️" title="SafeClaw Agents" description="转译型 Agent 框架，Auto 代码本身即为自治 AI 系统的运行时。" color="rgba(20, 184, 166, 0.15)" />
-    <FeatureCard icon="🎯" title="意图注解" description="注解意图而非实现。编译器与 AI 协作填充细节。" color="rgba(245, 158, 11, 0.15)" />
-    <FeatureCard icon="🔄" title="反向转译" description="通过将现有代码库反向转译为 Auto，生成大规模训练语料。" color="rgba(59, 130, 246, 0.15)" />
+    <FeatureCard icon="🎯" title="单一网关" description="一个 Daemon 掌握所有 LLM 通信。应用保持简单且提供商无关。" color="rgba(236, 72, 153, 0.15)" />
+    <FeatureCard icon="🔐" title="密钥保管" description="API 密钥保存在 Daemon 中，而非分散在每个应用里。集中式安全管理。" color="rgba(168, 85, 247, 0.15)" />
+    <FeatureCard icon="⚡" title="并发仲裁" description="按提供商划分的信号量池，防止跨应用的限流风暴。" color="rgba(99, 102, 241, 0.15)" />
+    <FeatureCard icon="📊" title="用量追踪" description="按应用统计 Token 与请求量。精确掌握每个 Agent 的成本。" color="rgba(20, 184, 166, 0.15)" />
+    <FeatureCard icon="🔄" title="模型路由" description="将请求路由至最佳可用模型。内置故障转移与回退。" color="rgba(245, 158, 11, 0.15)" />
+    <FeatureCard icon="🧩" title="Agent 框架" description="Profession、Workflow 与 ReAct 原语，用于构建复杂 Agent。" color="rgba(59, 130, 246, 0.15)" />
   </div>
 </div>
 
 <div class="cta-section">
-  <h2 class="section-title">准备好探索 AI 原生编程了吗？</h2>
-  <p class="section-desc">深入阅读详细文档，或在交互式 Playground 中体验 Auto。</p>
+  <h2 class="section-title">用 Auto 构建 AI 驱动的应用</h2>
+  <p class="section-desc">启动 aaid Daemon，链接 auto-ai-client，几分钟内发布你的第一个 Agent。</p>
   <div class="cta-actions">
-    <a href="/zh/docs/ai" class="cta-btn cta-primary">阅读 AI 文档</a>
+    <a href="/zh/docs/design/15-ai-daemon-infrastructure" class="cta-btn cta-primary">阅读设计文档</a>
     <a href="/zh/playground" class="cta-btn cta-secondary">打开 Playground</a>
   </div>
 </div>
@@ -169,7 +202,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 .cta-section {
   padding: 4rem 2rem;
   text-align: center;
-  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
+  background: linear-gradient(180deg, transparent 0%, rgba(236, 72, 153, 0.05) 100%);
 }
 
 .section-desc {
@@ -197,14 +230,14 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 }
 
 .cta-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.3);
 }
 
 .cta-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
 }
 
 .cta-secondary {
@@ -270,63 +303,21 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 .keyword { color: #cba6f7; }
 .function { color: #89b4fa; }
 .string { color: #a6e3a1; }
-.comment { color: #6c7086; font-style: italic; }
+.prompt { color: #a6e3a1; }
+.output { color: #6c7086; }
 
-.comparison-table {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 420px;
-}
-
-.comp-row {
+.arch-diagram {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-.comp-row:last-child {
-  border-bottom: none;
-}
-
-.comp-lang {
-  font-weight: 600;
-  width: 60px;
-  color: hsl(var(--muted-foreground));
-}
-
-.comp-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
-  color: hsl(var(--foreground));
-}
-
-.comp-code.highlight {
-  color: #a855f7;
-  font-weight: 600;
-}
-
-.comp-note {
-  margin-top: 1rem;
-  font-size: 0.8rem;
-  color: hsl(var(--muted-foreground));
-  text-align: center;
-}
-
-.gpu-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: 100%;
   max-width: 320px;
 }
 
-.gpu-item {
-  padding: 1rem;
+.arch-box {
+  width: 100%;
+  padding: 1rem 1.25rem;
   border-radius: var(--radius);
   text-align: center;
   font-weight: 700;
@@ -334,10 +325,45 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   color: white;
 }
 
-.gpu-item.nvidia { background: linear-gradient(135deg, #76b900, #558b00); }
-.gpu-item.huawei { background: linear-gradient(135deg, #cf0a2c, #9a0721); }
-.gpu-item.amd { background: linear-gradient(135deg, #ed1c24, #b71518); }
-.gpu-item.moore { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.arch-box small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}
+
+.arch-box.apps { background: linear-gradient(135deg, #ec4899, #db2777); }
+.arch-box.client { background: linear-gradient(135deg, #a855f7, #8b5cf6); }
+.arch-box.daemon { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+.arch-box.providers { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+
+.arch-arrow {
+  color: hsl(var(--muted-foreground));
+  font-size: 1.2rem;
+}
+
+.config-tree {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 320px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.config-file {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.config-item {
+  color: hsl(var(--muted-foreground));
+}
 
 @media (max-width: 768px) {
   .stats-grid {

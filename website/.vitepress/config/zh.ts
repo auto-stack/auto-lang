@@ -4,7 +4,7 @@ import { sidebarBooksZh } from './sidebar-books-zh'
 
 export const zh = defineConfig({
   lang: 'zh-CN',
-  description: 'Auto — 现代系统与 AI 语言。多目标转译器、Actor 并发、编译期元编程。',
+  description: 'Auto — 全栈应用平台。一门语言编写脚本、后端、UI、AI Agent 与操作系统组件。',
 
   themeConfig: {
     logo: '/auto.svg',
@@ -29,30 +29,21 @@ export const zh = defineConfig({
 function nav(): DefaultTheme.NavItem[] {
   return [
     { text: '首页', link: '/zh/' },
+    { text: '语言', link: '/zh/docs/language' },
+    { text: 'Rust', link: '/zh/rust' },
+    { text: 'Python', link: '/zh/python' },
+    { text: 'UI', link: '/zh/ui' },
     { text: 'AI', link: '/zh/ai' },
     { text: 'OS', link: '/zh/os' },
+    { text: '应用', link: '/zh/apps' },
     { text: '文档', link: '/zh/docs/' },
-    { text: '教程', link: '/zh/books/' },
     { text: 'Playground', link: '/zh/playground' },
     {
-      text: 'UI',
+      text: 'v0.5',
       items: [
-        { text: '概览', link: '/zh/ui/' },
-        { text: 'A2UI 演示', link: '/ui/a2ui/index.html', target: '_self' },
-        { text: '组件', link: '/ui/gallery/index.html', target: '_self' },
-        { text: '区块', link: '/ui/blocks/index.html', target: '_self' },
-        { text: '图表', link: '/ui/charts/index.html', target: '_self' },
-        { text: '桌面端', link: '/zh/ui-desktop' },
-        { text: 'Android', link: '/zh/ui-android' },
-        { text: '鸿蒙', link: '/zh/ui-harmony' },
-      ],
-    },
-    {
-      text: 'v0.3',
-      items: [
+        { text: 'v0.5 发布说明', link: '/zh/docs/releases/v0.5' },
+        { text: 'v0.4 发布说明', link: '/zh/docs/releases/v0.4' },
         { text: 'v0.3 发布说明', link: '/zh/docs/releases/v0.3' },
-        { text: 'v0.2 发布说明', link: '/zh/docs/releases/v0.2' },
-        { text: 'v0.1 发布说明', link: '/zh/docs/releases/v0.1' },
         { text: '参与贡献', link: '/zh/docs/' },
       ],
     },

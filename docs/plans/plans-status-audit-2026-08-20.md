@@ -119,13 +119,14 @@
 |---|---|---|---|
 | B1 | 405 | 023-realworld 真 token 认证（current_user 空桩） | 应用级功能，需 api/db/playwright 联动改造，建议独立小计划 |
 | B2 | 408 §11 P5-4 | 纯 module fn 文件不被 codegen（有 workaround：塞进 widget/store 文件） | 🟢 低优先，方案需先验证 codegen 入口扩展 |
-| B3 | 396 | 五条 a2r 根因修复 + 删 auto-ai sed（§2.1 疑似已被 399 P11.4 覆盖） | 跨仓库验证（auto-ai retranspile + build），先验证 §2.1 再定范围 |
-| B4 | 406 剩余 | JMP_IF pop_i32 魔数、EQ 无 is_bool 臂（清理级，非缺陷） | 待 A4 落地后评估是否仍必要 |
+| B3 | 396 | 五条 a2r 根因修复 + 删 auto-ai sed | **§2.1 仓内侧 ✅ 已根治**（2026-08-20 二批，`plan-fix/396-loopvar-clone` 合并 `be9d4213`）：函数实参路径补字段类型感知的 .clone()（golden 003 锁定三形态）；结构体字面量路径 P11.4 本就覆盖。**跨仓侧待办**：跑 auto-ai retranspile 验证 B 段 sed 变 no-op 后删除；§2.2–§2.5 四条仍未修 | 剩余 §2.2-§2.5 + 跨仓 sed 删除 |
+| B4 | 406 剩余 | JMP_IF 魔数、EQ is_bool 臂 | ✅ 2026-08-20 二批完成（`plan-fix/b406-jmpif-bool` 合并 `e58fff15`）：新增 nv_truthy 统一 tag 优先解码，JMP_IF_Z/NZ、AND、OR、NOT 五处弃魔数；**结论：EQ/NE 的 bool==bool raw 位比较本已正确，无需 is_bool 臂**；真整数 -2147483647 与遗留哨兵不可区分为已知限制（注释注明）。测试 ×3 + 全量 3035 过 | 已关闭 |
 | B5 | 242 剩余项 | #2 HashMap::from、#10 Redis/SQLite、#15 GPUI、#16 自举、#17 dep cc | 均为大件，独立立项 |
 | B6 | 346 剩余 | 服务端 multipart 上传、Rate Limit、Request-ID | 中低优先级，无下游消费者 |
 | B7 | 243 Phase 5/6 | VSCode TS 迁移、semantic tokens、CI 启用 | 需 VSCode 侧联调 |
 | B8 | 359 | D2 generators 用例、D3 解锁、Phase E 五项、A1/A2 落地页 | 依赖语言特性（Phase E 各 DIV） |
-| B9 | A8 副产品 | 013/015 的 desktop_mcp.py 硬编码 9247 端口——僵尸 auto.exe 占用时静默查询空快照（A8 实测踩中）；可移植 A8 的 pick_free_port + AUTOUI_MCP_PORT 方案 | 小改进，待批量套用 |
+| B9 | A8 副产品 | 013/015 端口硬编码 | ✅ 2026-08-20 二批完成（`plan-fix/b9-mcp-port` 合并 `f0ddb015`）：pick_free_port+AUTOUI_MCP_PORT 移植 + v2 快照 ID 兼容（vnode_）；实测 015 套件 8→10 pass、self-check 3/0/1→6/0/0 | 已关闭 |
+| B10 | B9 副产品 | (a) 015 autoui_state 把 List<ToolCallRec> 类 notes 渲染为句柄 int（`notes: 4000014`）而非数组——desktop_mcp 的计数断言失效（物化漂移）；(b) 013 的 desktop_mcp.py 是 015 逐字节复制、语义从未适配 013（测 "Notes"/dark_mode 等 013 没有的东西）| 新登记：前者疑为 VM 状态渲染缺口，后者需按 013 实际 app 定制或移除 |
 
 ### 5.3 需桌面会话（GUI/实机，无法 headless 补全）
 

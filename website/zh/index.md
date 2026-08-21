@@ -5,37 +5,60 @@ layout: home
 <script setup>
 import HomeHero from '../.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
-const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
+const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 </script>
 
 <HomeHero
-  badge="v0.3 现已发布"
-  title="：AI操作系统编程语言"
-  description="一门现代编程语言，可转译为 C、Rust、TypeScript 和 Python。<br>支持脚本运行、Actor 并发、编译期元编程和零成本抽象。"
+  badge="v0.5 现已发布"
+  title="：语言 + 运行时 + AI + OS"
+  description="Auto 是一个全栈应用平台。用同一门语言编写脚本、后端、UI、AI Agent 和操作系统组件 —— 运行在 AutoVM 上，或转译为 Rust、Python 和 TypeScript。"
   primary-text="快速开始"
   primary-link="/zh/docs/"
   secondary-text="在线体验"
   secondary-link="/zh/playground"
 />
 
-<div class="features-section">
-  <h2 class="section-title">为什么选择 Auto？</h2>
-  <div class="features-grid">
-    <FeatureCard icon="🎯" title="多目标转译器" description="一次编写，到处运行。Auto 可转译为 C、Rust、TypeScript 和 Python，实现零成本抽象。" color="rgba(239, 68, 68, 0.15)" link="/zh/docs/features/multi-target-transpiler" />
-    <FeatureCard icon="🖥️" title="AutoVM 解释器" description="专用虚拟机，支持 AOT/JIT 编译、热重载，从桌面到嵌入式跨平台运行。" color="rgba(20, 184, 166, 0.15)" link="/zh/docs/features/autovm-interpreter" />
-    <FeatureCard icon="🔮" title="编译期元编程" description="在编译期执行代码。生成代码、验证不变式、优化性能，无需宏。" color="rgba(168, 85, 247, 0.15)" link="/zh/docs/features/comptime-metaprogramming" />
-    <FeatureCard icon="🛡️" title="内存安全" description="受 Rust 启发的所有权系统，配合智能转换和流类型，提供符合人体工学的安全代码。" color="rgba(59, 130, 246, 0.15)" link="/zh/docs/features/memory-safety" />
-    <FeatureCard icon="⚡" title="Actor 并发" description="基于 Actor 模型，配合 async ~T 类型。编写天生安全的并发代码。" color="rgba(245, 158, 11, 0.15)" link="/zh/docs/features/actor-concurrency" />
-    <FeatureCard icon="🤖" title="AI 原生设计" description="对 AI 工作负载的一流支持，包括基于节点的数据流和嵌入式模型推理。" color="rgba(6, 182, 212, 0.15)" link="/zh/docs/features/ai-native-design" />
+<div class="pillars-section">
+  <h2 class="section-title">一门语言，贯穿每一层</h2>
+  <p class="section-desc">v0.5 将 Auto 从一门语言进化为构建现代应用的完整平台。</p>
+  <div class="pillars-grid">
+    <FeatureCard icon="🌐" title="语言" description="Actor 并发、类 Rust 泛型、编译期元编程、内存安全。" color="rgba(99, 102, 241, 0.15)" link="/zh/docs/language" />
+    <FeatureCard icon="🦀" title="Rust" description="AutoVM 可作为 Rust 脚本环境。A2R 将 Auto 转译为生产级 Rust。支持双标准库模式。" color="rgba(222, 165, 132, 0.15)" link="/zh/rust" />
+    <FeatureCard icon="🐍" title="Python" description="AutoVM 可直接调用 Python 代码。a2py 将 Auto 转译为 Python。" color="rgba(59, 130, 246, 0.15)" link="/zh/python" />
+    <FeatureCard icon="🎨" title="UI" description="Vue 和 Tauri 版本已成熟。桌面版（Rust/iced）基本可用。鸿蒙与 Android 通过可行性验证。" color="rgba(168, 85, 247, 0.15)" link="/zh/ui" />
+    <FeatureCard icon="🤖" title="AI" description="Client/Daemon 架构。AutoAI-Cli 终端 Coding Agent。AutoMusk 通用 Coding Agent。" color="rgba(236, 72, 153, 0.15)" link="/zh/ai" />
+    <FeatureCard icon="💻" title="OS" description="Client/Daemon 架构、统一配置系统。未来双路线：独立 AutoOS 发行版与嵌入式虚拟桌面。" color="rgba(20, 184, 166, 0.15)" link="/zh/os" />
+  </div>
+</div>
+
+<div class="apps-section">
+  <h2 class="section-title">用 Auto 构建</h2>
+  <p class="section-desc">证明平台可用的真实应用。</p>
+  <div class="apps-grid">
+    <div class="app-card">
+      <h3>AutoShell</h3>
+      <p>跨平台 Shell，支持 CLI/TUI/GUI 三种形态，具备类 Warp 的 AI 能力。</p>
+      <a href="/zh/apps#autoshell">了解更多 →</a>
+    </div>
+    <div class="app-card">
+      <h3>AutoMusk</h3>
+      <p>基于 AutoPlan 的通用 Coding Agent，用 Auto 语言自身实现。</p>
+      <a href="/zh/apps#automusk">了解更多 →</a>
+    </div>
+    <div class="app-card">
+      <h3>AutoDown</h3>
+      <p>Auto 语言的方言，融合 Markdown 与 YAML，可用于表达任意知识库。</p>
+      <a href="/zh/apps#autodown">了解更多 →</a>
+    </div>
   </div>
 </div>
 
 <div class="cta-section">
-  <h2 class="section-title">准备好尝试 Auto 了吗？</h2>
-  <p class="section-desc">进入交互式 Playground，或阅读教程从零开始学习 Auto。</p>
+  <h2 class="section-title">v0.5 新特性</h2>
+  <p class="section-desc">迄今最大里程碑：Rust 集成、Python 支持、双标准库模式、成熟 AutoUI、AutoAI 架构与 AutoOS 基础。</p>
   <div class="cta-actions">
-    <a href="/zh/playground" class="cta-btn cta-primary">打开 Playground</a>
-    <a href="/zh/books/tapl/" class="cta-btn cta-secondary">阅读教程</a>
+    <a href="/zh/docs/releases/v0.5" class="cta-btn cta-primary">阅读发布说明</a>
+    <a href="/zh/playground" class="cta-btn cta-secondary">打开 Playground</a>
   </div>
 </div>
 
@@ -44,7 +67,7 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
 </div>
 
 <style scoped>
-.features-section {
+.pillars-section {
   padding: 4rem 2rem;
   max-width: 1200px;
   margin: 0 auto;
@@ -54,27 +77,81 @@ const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
   font-size: 2rem;
   font-weight: 700;
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1rem;
   color: hsl(var(--foreground));
 }
 
-.features-grid {
+.section-desc {
+  font-size: 1.1rem;
+  color: hsl(var(--muted-foreground));
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  text-align: center;
+}
+
+.pillars-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
+}
+
+.apps-section {
+  padding: 4rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.app-card {
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.dark .app-card:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.app-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  color: hsl(var(--foreground));
+}
+
+.app-card p {
+  margin: 0 0 1rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.app-card a {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.app-card a:hover {
+  text-decoration: underline;
 }
 
 .cta-section {
   padding: 4rem 2rem;
   text-align: center;
   background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
 }
 
 .cta-actions {

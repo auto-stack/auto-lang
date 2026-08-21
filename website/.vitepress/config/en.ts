@@ -4,7 +4,7 @@ import { sidebarBooksEn } from './sidebar-books-en'
 
 export const en = defineConfig({
   lang: 'en-US',
-  description: 'Auto — A modern systems and AI language. Multi-target transpiler, actor concurrency, comptime metaprogramming.',
+  description: 'Auto — A full-stack application platform. One language for scripts, backends, UIs, AI agents, and OS components.',
 
   themeConfig: {
     logo: '/auto.svg',
@@ -29,30 +29,21 @@ export const en = defineConfig({
 function nav(): DefaultTheme.NavItem[] {
   return [
     { text: 'Home', link: '/' },
+    { text: 'Language', link: '/docs/language' },
+    { text: 'Rust', link: '/rust' },
+    { text: 'Python', link: '/python' },
+    { text: 'UI', link: '/ui' },
     { text: 'AI', link: '/ai' },
     { text: 'OS', link: '/os' },
+    { text: 'Apps', link: '/apps' },
     { text: 'Docs', link: '/docs/' },
-    { text: 'Tutorials', link: '/books/' },
     { text: 'Playground', link: '/playground' },
     {
-      text: 'UI',
+      text: 'v0.5',
       items: [
-        { text: 'Overview', link: '/ui/' },
-        { text: 'A2UI Demo', link: '/ui/a2ui/index.html', target: '_self' },
-        { text: 'Components', link: '/ui/gallery/index.html', target: '_self' },
-        { text: 'Blocks', link: '/ui/blocks/index.html', target: '_self' },
-        { text: 'Charts', link: '/ui/charts/index.html', target: '_self' },
-        { text: 'Desktop', link: '/ui-desktop' },
-        { text: 'Android', link: '/ui-android' },
-        { text: 'Harmony', link: '/ui-harmony' },
-      ],
-    },
-    {
-      text: 'v0.3',
-      items: [
+        { text: 'v0.5 Release Notes', link: '/docs/releases/v0.5' },
+        { text: 'v0.4 Release Notes', link: '/docs/releases/v0.4' },
         { text: 'v0.3 Release Notes', link: '/docs/releases/v0.3' },
-        { text: 'v0.2 Release Notes', link: '/docs/releases/v0.2' },
-        { text: 'v0.1 Release Notes', link: '/docs/releases/v0.1' },
         { text: 'Contributing', link: '/docs/' },
       ],
     },

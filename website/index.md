@@ -6,7 +6,7 @@ layout: home
 import { onMounted } from 'vue'
 import HomeHero from './.vitepress/theme/components/HomeHero.vue'
 import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
-const icons = ['🎯', '⚡', '🔮', '🛡️', '🖥️', '🤖']
+const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 onMounted(() => {
   if (sessionStorage.getItem('auto-lang-checked')) return;
   sessionStorage.setItem('auto-lang-checked', '1');
@@ -17,33 +17,56 @@ onMounted(() => {
 </script>
 
 <HomeHero
-  badge="v0.3 is now available"
-  title=": Language for AI &amp; OS"
-  description="A modern programming language that transpiles to C, Rust, TypeScript, and Python. Featuring actor concurrency, compile-time metaprogramming, and zero-cost abstractions."
+  badge="v0.5 is now available"
+  title=": Language + Runtime + AI + OS"
+  description="Auto is a full-stack application platform. Write scripts, backends, UIs, AI agents, and OS components in one language — run them on AutoVM or transpile to Rust, Python, and TypeScript."
   primary-text="Get Started"
   primary-link="/docs/"
   secondary-text="Try Online"
   secondary-link="/playground"
 />
 
-<div class="features-section">
-  <h2 class="section-title">Why Auto?</h2>
-  <div class="features-grid">
-    <FeatureCard icon="🎯" title="Multi-Target Transpiler" description="Write once, run anywhere. Auto transpiles to C, Rust, TypeScript, and Python with zero-cost abstractions." color="rgba(239, 68, 68, 0.15)" link="/docs/features/multi-target-transpiler" />
-    <FeatureCard icon="🖥️" title="AutoVM Interpreter" description="Dedicated VM with AOT/JIT compilation, hot reloading, and cross-platform support from desktop to embedded." color="rgba(20, 184, 166, 0.15)" link="/docs/features/autovm-interpreter" />
-    <FeatureCard icon="🔮" title="Comptime Metaprogramming" description="Execute code at compile time. Generate code, validate invariants, and optimize without macros." color="rgba(168, 85, 247, 0.15)" link="/docs/features/comptime-metaprogramming" />
-    <FeatureCard icon="🛡️" title="Memory Safety" description="Ownership system inspired by Rust, with smart casts and flow typing for ergonomic safe code." color="rgba(59, 130, 246, 0.15)" link="/docs/features/memory-safety" />
-    <FeatureCard icon="⚡" title="Actor Concurrency" description="Built on the Actor model with async ~T types. Write concurrent code that is safe by design." color="rgba(245, 158, 11, 0.15)" link="/docs/features/actor-concurrency" />
-    <FeatureCard icon="🤖" title="AI-Native Design" description="First-class support for AI workloads with node-based dataflow and embedded model inference." color="rgba(6, 182, 212, 0.15)" link="/docs/features/ai-native-design" />
+<div class="pillars-section">
+  <h2 class="section-title">One Language, Every Layer</h2>
+  <p class="section-desc">v0.5 turns Auto from a language into a complete platform for building modern applications.</p>
+  <div class="pillars-grid">
+    <FeatureCard icon="🌐" title="Language" description="Actor concurrency, Rust-like generics, comptime metaprogramming, and memory safety." color="rgba(99, 102, 241, 0.15)" link="/docs/language" />
+    <FeatureCard icon="🦀" title="Rust" description="AutoVM as a Rust scripting environment. A2R transpiles Auto to production-grade Rust. Dual stdlib modes." color="rgba(222, 165, 132, 0.15)" link="/rust" />
+    <FeatureCard icon="🐍" title="Python" description="Call Python code directly from AutoVM. a2py transpiles Auto to Python." color="rgba(59, 130, 246, 0.15)" link="/python" />
+    <FeatureCard icon="🎨" title="UI" description="Vue and Tauri are mature. Desktop (Rust/iced) is usable. Harmony and Android demos validated." color="rgba(168, 85, 247, 0.15)" link="/ui" />
+    <FeatureCard icon="🤖" title="AI" description="Client/Daemon architecture. AutoAI-Cli terminal agent. AutoMusk general-purpose coding agent." color="rgba(236, 72, 153, 0.15)" link="/ai" />
+    <FeatureCard icon="💻" title="OS" description="Client/Daemon architecture, unified config system. Future: standalone AutoOS and embedded virtual desktop." color="rgba(20, 184, 166, 0.15)" link="/os" />
+  </div>
+</div>
+
+<div class="apps-section">
+  <h2 class="section-title">Built with Auto</h2>
+  <p class="section-desc">Real applications that prove the platform works.</p>
+  <div class="apps-grid">
+    <div class="app-card">
+      <h3>AutoShell</h3>
+      <p>Cross-platform shell with CLI/TUI/GUI modes and Warp-like AI capabilities.</p>
+      <a href="/apps#autoshell">Learn more →</a>
+    </div>
+    <div class="app-card">
+      <h3>AutoMusk</h3>
+      <p>General-purpose coding agent built on AutoPlan, implemented in Auto itself.</p>
+      <a href="/apps#automusk">Learn more →</a>
+    </div>
+    <div class="app-card">
+      <h3>AutoDown</h3>
+      <p>An Auto dialect that combines Markdown and YAML for structured knowledge bases.</p>
+      <a href="/apps#autodown">Learn more →</a>
+    </div>
   </div>
 </div>
 
 <div class="cta-section">
-  <h2 class="section-title">Ready to try Auto?</h2>
-  <p class="section-desc">Jump into the interactive playground or read the tutorial to learn Auto from the ground up.</p>
+  <h2 class="section-title">What's New in v0.5</h2>
+  <p class="section-desc">The biggest milestone yet: Rust integration, Python support, dual stdlib modes, mature AutoUI, AutoAI architecture, and AutoOS foundations.</p>
   <div class="cta-actions">
-    <a href="/playground" class="cta-btn cta-primary">Open Playground</a>
-    <a href="/books/tapl/" class="cta-btn cta-secondary">Read the Tutorial</a>
+    <a href="/docs/releases/v0.5" class="cta-btn cta-primary">Read Release Notes</a>
+    <a href="/playground" class="cta-btn cta-secondary">Open Playground</a>
   </div>
 </div>
 
@@ -52,7 +75,7 @@ onMounted(() => {
 </div>
 
 <style scoped>
-.features-section {
+.pillars-section {
   padding: 4rem 2rem;
   max-width: 1200px;
   margin: 0 auto;
@@ -62,27 +85,81 @@ onMounted(() => {
   font-size: 2rem;
   font-weight: 700;
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1rem;
   color: hsl(var(--foreground));
 }
 
-.features-grid {
+.section-desc {
+  font-size: 1.1rem;
+  color: hsl(var(--muted-foreground));
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  text-align: center;
+}
+
+.pillars-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
+}
+
+.apps-section {
+  padding: 4rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.app-card {
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.dark .app-card:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.app-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  color: hsl(var(--foreground));
+}
+
+.app-card p {
+  margin: 0 0 1rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.app-card a {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.app-card a:hover {
+  text-decoration: underline;
 }
 
 .cta-section {
   padding: 4rem 2rem;
   text-align: center;
   background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
-}
-
-.section-desc {
-  font-size: 1.1rem;
-  color: hsl(var(--muted-foreground));
-  max-width: 500px;
-  margin: 0 auto 2rem;
 }
 
 .cta-actions {

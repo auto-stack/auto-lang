@@ -7,7 +7,8 @@ status: in-progress # draft | in-progress | complete
 
 # Plan 396: a2r 改进（auto-ai 相关）— 滚动聚合计划
 
-> **2026-08-20 核查**: §2.1–§2.5 五条均未修（0/5 落地），auto-ai 侧 sed workaround 全部仍在（retranspile.sh:172-181 / ai-config:88 / client:99-100）。§2.1 的症状可能已被 Plan 399 P11.4 `borrowed_iter_vars`（rust.rs:173/8767）部分覆盖，待验证后删对应 sed。
+> **2026-08-20 核查**: §2.1–§2.5 五条均未修（0/5 落地），auto-ai 侧 sed workaround 全部仍在（retranspile.sh:172-181 / ai-config:88 / client:99-100）。
+> **2026-08-20 二批更新**: **§2.1 仓内根因 ✅ 已修**（`plan-fix/396-loopvar-clone` 合并 `be9d4213`）——golden 实测甄别：结构体字面量路径（description: tc.tool）P11.4 本就覆盖；**函数实参路径是真缺口**（extract_path(tc.args) 缺 clone → E0507），已补字段类型感知的 `maybe_clone_borrowed_iter_field` + 循环变量元素类型解析（golden 19_ownership/003 三形态锁定）。待跨仓验证 retranspile.sh B 段 sed 变 no-op 后删除。剩余 §2.2–§2.5。
 
 > **For Claude:**
 > - 构建/测试命令：`cargo test -p auto-lang --lib --features test-trans -- tests::a2r_tests`（a2r golden，基线 319/0）。
