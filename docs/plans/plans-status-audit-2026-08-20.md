@@ -105,8 +105,8 @@
 | A4 | 406（潜伏 bug） | GET_ELEM 对 `List<bool>`/`List<Value>::Bool` 压裸 i32 1/0 而非 `encode_bool`，下游 `is_bool` 消费者（to_string/EQ 位比较）失效 | engine.rs GET_ELEM 两分支 + native.rs `push_value`（.get/.pop/.remove 路径）共 3 处改 `encode_bool` | e2e 测试 ×4（修复前 3 失败复现 bug） | plan-fix/406-getelem-bool | ✅ 已合并 `c1316a2c` |
 | A5 | 346 3c | HTTP 重定向不可用 | **审计初判修正**：redirect shim（Plan 346 已写）从未真正可用——三段链调用解析不到（null）+ serve_async 不认 Response 句柄（200+句柄数字）。修复：`response_redirect` 声明+catalog 3108（2216 已被占用即冲突根因）+ serve_async 句柄识别（i32/i64）；**教训：DashMap 读守卫作用域内 remove 同分片会自死锁** | e2e `e2e_a_redirect_302_with_location`（302+Location+跟随）；全套串行除预存 flake | plan-fix/346-redirect | ✅ 已合并 `e282e70e` |
 | A6 | 242 #8 | `infer_type_from_expr` 缺 `Expr::Closure` 分支（闭包推断落 Unknown，靠 task-struct 特判绕过） | rust.rs 补 Closure → `Type::Fn(params, ret)` + golden 004_closure_infer | a2r 套件失败集与 master **逐项一致**（48 个预存环境失败，零回归） | plan-fix/242-closure-infer | ✅ 已合并 `c2bd1d0c` |
-| A7 | 366a-3 | `auto test:ui` 一键命令缺失（当前手动 npx playwright / run_autotest.py） | crates/auto 新增 `test:ui` 子命令（委托 playwright） | 手动冒烟 + `cargo build` | plan-fix/366-test-ui | ⬜ 待下一批 |
-| A8 | 403 需求1a | 011-calculator 缺 `tests/desktop_mcp.py` + acceptance 契约（对齐 013/015 范式） | 新增 tests/ 四件套 | 对齐 013 结构 + 手动跑 | plan-fix/403-desktop-mcp | ⬜ 待下一批 |
+| A7 | 366a-3 | `auto test:ui` 一键命令缺失 | crates/auto 新增 `test:ui` 子命令：发现 tests/ 四件套 → 首跑自动 install（bun>pnpm>npm）→ 走项目 test/report 脚本（--headed/--filter 透传，无脚本退回 exec playwright） | 冒烟 ×3（help/缺目录报错/委托执行 DELEGATED-OK） | plan-fix/366-test-ui | ✅ 已合并 `6e7f25f5` |
+| A8 | 403 需求1a | 011-calculator 缺 `tests/desktop_mcp.py` + acceptance 契约 | 新增 desktop_mcp.py（经 autoui_press_sequence 真实按键驱动）+ acceptance.atd（T1-T7 契约）；**AUTOUI_MCP_PORT 自动挑空闲端口**（免疫僵尸进程占 9247） | **实机 14/14 全绿**（含 403-F 小数 e2e、科学模式括号） | plan-fix/403-desktop-mcp | ✅ 已合并 `d5ba7314` |
 
 > **本批执行发现（2026-08-20）**：
 > 1. **审计代理两处初判有误，已按实测修正**——(a) 400 的"while/match 误判"：Auto 无此二语句，真实缺口是 Is/Try/嵌套 Block；(b) 346 的"redirect 未实施"：shim 已存在但双重的不可用（调用解析 + 服务端识别），比"未实施"更隐蔽。
@@ -125,6 +125,7 @@
 | B6 | 346 剩余 | 服务端 multipart 上传、Rate Limit、Request-ID | 中低优先级，无下游消费者 |
 | B7 | 243 Phase 5/6 | VSCode TS 迁移、semantic tokens、CI 启用 | 需 VSCode 侧联调 |
 | B8 | 359 | D2 generators 用例、D3 解锁、Phase E 五项、A1/A2 落地页 | 依赖语言特性（Phase E 各 DIV） |
+| B9 | A8 副产品 | 013/015 的 desktop_mcp.py 硬编码 9247 端口——僵尸 auto.exe 占用时静默查询空快照（A8 实测踩中）；可移植 A8 的 pick_free_port + AUTOUI_MCP_PORT 方案 | 小改进，待批量套用 |
 
 ### 5.3 需桌面会话（GUI/实机，无法 headless 补全）
 
