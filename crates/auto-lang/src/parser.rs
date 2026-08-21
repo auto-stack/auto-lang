@@ -16730,5 +16730,42 @@ widget Counter {
         );
     }
 
+    /// Plan 398 §14.1 regression: `[][]T` (slice of slices) parses via the
+    /// recursive parse_type path in parse_array_type. Before §12 this failed
+    /// with "Expected term, got RBrace", silently dropping the whole module's
+    /// symbols (ash-gui back/api.at VM path).
+    #[test]
+    fn test_nested_slice_type_parses() {
+        let code = "pub type Cell = { v: int }\npub type Grid = { rows: [][]Cell }\n";
+        let ast = parse_once(code);
+        let grid = ast.stmts.iter().find_map(|s| match s {
+            Stmt::TypeDecl(td) if td.name == "Grid" => Some(td),
+            _ => None,
+        }).expect("Grid type decl present");
+        let rows = grid.find_member("rows").expect("rows member");
+        assert!(
+            matches!(&rows.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Slice(_))),
+            "[][]Cell should be Slice(Slice(Cell)), got {:?}",
+            rows.ty
+        );
+    }
+
+    /// Plan 398 §14.1 regression: `[](str, T)` (slice of tuples) parses.
+    #[test]
+    fn test_slice_of_tuple_type_parses() {
+        let code = "pub type Cell = { v: int }\npub type Sheet = { cells: [](str, Cell) }\n";
+        let ast = parse_once(code);
+        let sheet = ast.stmts.iter().find_map(|s| match s {
+            Stmt::TypeDecl(td) if td.name == "Sheet" => Some(td),
+            _ => None,
+        }).expect("Sheet type decl present");
+        let cells = sheet.find_member("cells").expect("cells member");
+        assert!(
+            matches!(&cells.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Tuple(ts) if ts.len() == 2)),
+            "[](str, Cell) should be Slice(Tuple(str, Cell)), got {:?}",
+            cells.ty
+        );
+    }
+
 
 }
