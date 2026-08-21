@@ -6902,9 +6902,20 @@ fn compare_pngs(
         }
 
         // Dynamic todo list: handle indexed Toggle:N / Delete:N / AddTodo
+        // Audit B12(ii): legacy demo fallback — run ONLY when the VM has no
+        // real handler for this event. 013-todo's App handlers (AddTodo/
+        // ToggleAll/ClearCompleted) used to run BOTH the VM handler and this
+        // hardcoded Rust-side todo list; its sync_todos_to_vm then clobbered
+        // the store's List<Todo> handle with a fabricated
+        // Array([Obj{id: enumerate-index}]) — losing the seed list and nextid
+        // ids (todos collapsed to [new item with id 0]).
         {
             let (base, idx) = parse_indexed_event(&event_name);
-            match base {
+            if state.component.bridge().has_handler(base) {
+                // Real VM handler already ran via on_with_input_for above —
+                // the hardcoded fallback must not double-apply.
+            } else {
+                match base {
                 "Toggle" | "ToggleTodo" => {
                     if let Some(i) = idx {
                         if i < state.todos.len() {
@@ -6999,6 +7010,7 @@ fn compare_pngs(
                     state.input_values.remove("EditBody");
                 }
                 _ => {}
+                }
             }
         }
 
