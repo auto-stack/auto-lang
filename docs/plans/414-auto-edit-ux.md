@@ -1,6 +1,7 @@
 # Plan 414: auto-edit 对齐 Zed 的 UX 改进（041 示例 + code_editor widget）
 
-> **状态**: ✅ 本轮范围实施完成（2026-08-21，分支 `plan-414-auto-edit-ux` 提交 `d04f7e53`，worktree `auto-edit-ux`）—— §1.1-1.3 全部落地并实机验证（tab 切换 / 两位行号槽 / 折叠三角 / 1:1 行列 / terminal 图标开合 Console）；§3 后续项（真折叠 Phase B、深层多 tab、Menu/Toolbar widget）待立项。
+> **状态**: 🚧 第二轮实施中（2026-08-21，同分支 worktree）—— 第一轮见 §1；第二轮 5 项见 §5。
+> **第一轮**: ✅ 完成（2026-08-21，分支 `plan-414-auto-edit-ux` 提交 `d04f7e53`，worktree `auto-edit-ux`）—— §1.1-1.3 全部落地并实机验证（tab 切换 / 两位行号槽 / 折叠三角 / 1:1 行列 / terminal 图标开合 Console）；§3 后续项（真折叠 Phase B、深层多 tab、Menu/Toolbar widget）待立项。
 > **背景**: 用户对比 auto-edit（041）与 Zed 截图提出 7 项改进。逐项分析后：1-4 本轮实施；5 做 Phase A（gutter 列 + 折叠标记视觉，点击折叠为 Phase B）；6 做 MVP（DSL 级双 tab，状态按 key 独立）；7 仅设计（AutoUI VM 后端确认无 Menu/Toolbar widget）。
 > **上游**: Plan 413（code_editor widget）、`6b8ec73c`（状态栏 + Console 面板）、`6b70dc85`（状态栏样式修正）。
 
@@ -60,3 +61,23 @@ worktree 内 `cargo build -p auto` → 跑 041（VM 模式）→ 截图核对：
   - `menubar { menu (text: "File") { menu-item (text: "Open", onclick: .Open, shortcut: "Ctrl+O") ... } }` —— 语义 tag + 下拉弹层（VM 侧需 popup/overlay 层，现有 widget 无弹层原语，是主要工作量；code_editor 的 context_menu 回调已示范了锚点定位需求）
   - `toolbar { tool-button (icon: "...", variant: "text") divider ... }` —— 组合上 row+icon button 即可达成，语义 tag 的价值在于分隔线/分组/溢出菜单的默认样式与 a2r 代码生成
   - 建议作为独立 Plan（涉及 view.rs / aura_view_builder / renderer / ui_gen/rust.rs / vue map_tag 全链路）
+
+
+---
+
+## 5. 第二轮需求（2026-08-21，用户对比实机反馈）
+
+| # | 需求 | 根因/决策 |
+|---|------|-----------|
+| 1 | 窗口自动置顶挡住其他窗口 | **根因 = 验证脚本** `SetWindowPos(HWND_TOPMOST)`，应用本身无任何置顶设置（renderer 无 with_topmost）。脚本已改为普通前台激活；应用无需改动 |
+| 2 | 激活 tab 背景与编辑器内容区一致 + 右侧关闭 icon | 编辑器背景 = CodeEditorTheme::dark 的 `rgb(0.11,0.115,0.14)` ≈ `#1C1D24` → tab 用任意色类 `bg-[#1C1D24]`（class 解析器支持 `bg-[#hex]`）。关闭 icon：tab 名按钮 + 独立 `×` 小按钮拼接（整按钮单 onclick 无法区分点击区域）；MVP 关闭动作 = console dummy 日志 |
+| 3 | 行号/gutter 背景与内容框同色 + 三列 padding 一致 | theme.rs `gutter_background` 由 `bg.mix(BLACK,0.35)` 改为与 background 同值；`FOLD_GUTTER_W` 14→19（= 6+图标7+6），布局 `[6][行号][6][折叠7][6][正文]` —— 行号右 pad = gutter 两侧 = 正文左 pad = 6px |
+| 4 | console icon 不显示 + 点击无效 | **根因 = size preset `px-4`**：button 默认 preset 带 `h-10 px-4`，`w-7`(28px) 宽度被水平 padding 32px 挤成内容 0 宽（按钮框仍在 → 可 hover，图标不可见）。修复：改用 `icon (name:)` 子组件形式 + 显式 `px-0 py-0`。dummy 日志：run_dynamic_iced 启动时 ui_console_push 引导日志（app 名/端口），面板打开即有内容 |
+| 5 | menubar + toolbar（notepad 风格） | **回答：是，AutoUI 目前没有 menu/toolbar widget**（且无 overlay 弹层原语 —— 这是 menubar 下拉的核心缺口）。本轮 MVP：DSL 组合的展开式菜单（点击"文件"在条下方展开条目，推开内容；选中/再点收起）+ toolbar 为 icon-button 行（lucide 补 file-plus/folder-open/save/undo-2/redo-2/scissors/clipboard）。动作全部 console dummy 日志。Phase B（真弹层）路线：自定义 iced Widget::overlay 菜单 widget 或复用 pick_list 管道，见 §3 更新 |
+
+### 5.1 第二轮触点
+
+- `ui/code_editor/theme.rs`：gutter_background = background（dark/light 两套）
+- `ui/code_editor/core/render.rs`：FOLD_GUTTER_W = 19.0
+- `ui/iced/renderer.rs`：lucide 补 7 个图标；run_dynamic_iced 启动日志 ×2 行
+- `examples/ui/041-code-editor/src/front/app.at`：menubar（文件/编辑/视图/帮助，展开式）+ toolbar（8 个 icon 按钮）+ tab 关闭按钮 + console icon 按钮修复（px-0 py-0 + icon 子组件）+ 激活 tab bg-[#1C1D24]
