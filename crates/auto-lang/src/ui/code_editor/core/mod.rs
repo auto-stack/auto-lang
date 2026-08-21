@@ -939,6 +939,27 @@ impl CodeEditorCore {
                     }
                     .captured();
                 }
+                // Fallback: some platforms/layouts deliver plain characters
+                // as Key::Char without a `text` payload (e.g. Windows with the
+                // IME context disabled). Insert the character directly — but
+                // only while no IME composition is active, or the raw letters
+                // would double up with the committed text.
+                if self.preedit.lock().unwrap().is_none() {
+                    if let EditorKey::Char(c) = key {
+                        if !c.is_control() {
+                            let mut editor = self.editor_lock();
+                            editor.action(font_system, Action::Insert(c));
+                            drop(editor);
+                            self.bump_after_edit();
+                            return CoreOutput {
+                                text_changed: true,
+                                cursor_changed: true,
+                                ..CoreOutput::default()
+                            }
+                            .captured();
+                        }
+                    }
+                }
                 return CoreOutput::default();
             }
         };
