@@ -4187,7 +4187,9 @@ impl AutoVM {
                                 vm_debug!("DEBUG GET_ELEM: Found List<bool>");
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = list.elems[normalized_idx];
-                                    task.ram.push_i32(if elem { 1 } else { 0 });
+                                    // Plan 406: push a tagged bool so is_bool consumers
+                                    // (print/to_string/EQ bit-compare) behave like bool literals.
+                                    task.ram.push_nv(auto_val::encode_bool(elem));
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
                                 }
@@ -4206,7 +4208,7 @@ impl AutoVM {
                                             task.ram.push_str_idx(str_idx);
                                         }
                                         auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
-                                        auto_val::Value::Bool(b) => { task.ram.push_i32(if *b { 1 } else { 0 }); }
+                                        auto_val::Value::Bool(b) => { task.ram.push_nv(auto_val::encode_bool(*b)); }
                                         auto_val::Value::Float(f) => { task.ram.push_f32(*f as f32); }
                                         auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
                                         auto_val::Value::VmRef(r) => { task.ram.push_nv(auto_val::encode_object(r.id as u32)); }
