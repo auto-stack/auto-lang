@@ -1,6 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRoute } from 'vitepress'
 import { useDarkMode } from '../composables/useDarkMode'
+
+const route = useRoute()
+const isZh = computed(() => route.path === '/zh/' || route.path.startsWith('/zh/'))
+const langSwitchHref = computed(() => {
+  const p = route.path
+  if (p === '/zh' || p === '/zh/') return '/'
+  if (p.startsWith('/zh/')) return p.slice(3) || '/'
+  return p === '/' ? '/zh/' : '/zh' + p
+})
+const langSwitchLabel = computed(() => (isZh.value ? 'English' : '中文'))
 
 const props = withDefaults(defineProps<{
   showSearch?: boolean
@@ -21,6 +32,8 @@ let closeTimeout: ReturnType<typeof setTimeout> | undefined
 
 const NAV_ITEMS = [
   { text: 'Home', href: '/' },
+  { text: 'Rust', href: '/rust' },
+  { text: 'Python', href: '/python' },
   { text: 'AI', href: '/ai' },
   { text: 'OS', href: '/os' },
   { text: 'Docs', href: '/docs/' },
@@ -110,6 +123,12 @@ function closeDropdowns() {
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
           </svg>
         </button>
+
+        <!-- Language switch -->
+        <a :href="langSwitchHref"
+          class="inline-flex items-center justify-center h-9 px-2.5 rounded-md no-underline text-sm text-foreground/80 hover:text-foreground hover:bg-accent transition-colors">
+          {{ langSwitchLabel }}
+        </a>
 
         <!-- Dark mode toggle -->
         <button @click="toggle"
