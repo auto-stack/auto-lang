@@ -117,8 +117,27 @@ fn select_port(input: Option<String>, ports: &Vec<AutoStr>) -> AutoResult<AutoSt
 }
 
 impl Pac {
-    pub fn new(config: AutoConfig) -> Self {
+    pub fn new(mut config: AutoConfig) -> Self {
         use crate::node_ext::NodeExt;
+
+        // Plan 408 P5-2 (cont.): in `.am/pac.atom.at` history files all props
+        // live inside the `root { ... }` wrapper kid; hoist them onto the
+        // document root so name/version/render etc. parse like a plain pac.at.
+        if config.root.props_clone().is_empty() {
+            let wrapper_props = config.root.kids_iter().find_map(|(_, kid)| {
+                if let Kid::Node(n) = kid {
+                    if n.name == "root" {
+                        return Some(n.props_clone());
+                    }
+                }
+                None
+            });
+            if let Some(props) = wrapper_props {
+                for (k, v) in props.iter() {
+                    config.root.set_prop(k.clone(), v.clone());
+                }
+            }
+        }
 
         let pac_name = config.name();
         let version = config.version();
@@ -246,30 +265,52 @@ impl Pac {
 
         // targets, NOTE: ports are not targets
         let mut targets = vec![];
+        // Plan 408 P5-2: `.am/pac.atom.at` history files wrap everything in a
+        // top-level `root { ... }` node; flatten it so the real target kids are
+        // collected (previously the wrapper itself hit extract_kind's panic on
+        // the unknown "root" kind, breaking `auto clean`).
+        let mut target_nodes: Vec<Node> = vec![];
         for (_, kid) in config.root.kids_iter() {
-            if let Kid::Node(mut n) = kid.clone() {
-                if n.name != "port" {
-                    // main target should receive target related args from the pac
-                    if n.main_arg().to_astr() == pac_name && n.name == "device" {
-                        for p in &target_props {
-                            if config.args.has(*p) {
-                                let value = config.args.get(*p).unwrap();
-                                // println!("Setting prop: {}: {}", *p, value.clone());
-                                // TODO: find a better way to transfer args to dependencies target
-                                n.set_prop(*p, value);
-                            }
+            if let Kid::Node(n) = kid.clone() {
+                if n.name == "root" {
+                    for (_, inner) in n.kids_iter() {
+                        if let Kid::Node(inner_n) = inner.clone() {
+                            target_nodes.push((*inner_n).clone());
                         }
                     }
-
-                    // Inherit top-level lang into target if not explicitly set
-                    if !n.has_prop("lang") && top_lang != "c" {
-                        n.set_prop("lang", top_lang.as_str());
-                    }
-
-                    let mut target = Target::from((*n).clone(), pac_name.clone());
-                    target.set_defines(defines.clone());
-                    targets.push(target);
+                } else {
+                    target_nodes.push((*n).clone());
                 }
+            }
+        }
+        for mut n in target_nodes {
+            if n.name != "port" {
+                // Unknown node kinds are skipped with a warning instead of
+                // panicking inside Target::extract_kind.
+                if TargetKind::from_str(&n.name).is_err() {
+                    warn!("Pac::new: skipping unknown target node '{}'", n.name);
+                    continue;
+                }
+                // main target should receive target related args from the pac
+                if n.main_arg().to_astr() == pac_name && n.name == "device" {
+                    for p in &target_props {
+                        if config.args.has(*p) {
+                            let value = config.args.get(*p).unwrap();
+                            // println!("Setting prop: {}: {}", *p, value.clone());
+                            // TODO: find a better way to transfer args to dependencies target
+                            n.set_prop(*p, value);
+                        }
+                    }
+                }
+
+                // Inherit top-level lang into target if not explicitly set
+                if !n.has_prop("lang") && top_lang != "c" {
+                    n.set_prop("lang", top_lang.as_str());
+                }
+
+                let mut target = Target::from(n.clone(), pac_name.clone());
+                target.set_defines(defines.clone());
+                targets.push(target);
             }
         }
 
@@ -1655,6 +1696,47 @@ mod tests {
                 assert!(false, "{}", e);
             }
         }
+    }
+
+    /// Plan 408 P5-2: `.am/pac.atom.at` history files wrap everything in a
+    /// top-level `root { ... }` node. `Pac::new` must flatten the wrapper and
+    /// collect the inner target kids instead of panicking on kind "root"
+    /// (`auto clean` reads these files). Unknown kid kinds skip with a warning.
+    #[test]
+    fn test_pac_atom_root_wrapper_flattened() {
+        let code = r#"
+        root {
+            name: "widgets-gallery"
+            version: "1.0.0"
+            dep("mydep") { at: "some/path" }
+            stranger("x") {}
+        }
+        "#;
+        let config = AutoConfig::new(code).expect("parse ok");
+        let pac = Pac::new(config);
+        assert_eq!(pac.name, "widgets-gallery");
+        assert_eq!(
+            pac.targets.len(),
+            1,
+            "root wrapper flattened: dep collected, unknown 'stranger' skipped"
+        );
+        assert_eq!(pac.targets[0].name, "mydep");
+        assert_eq!(pac.targets[0].kind, TargetKind::Dep);
+    }
+
+    /// Plan 408 P5-2: unknown top-level node kinds (no root wrapper involved)
+    /// skip with a warning instead of panicking in Target::extract_kind.
+    #[test]
+    fn test_pac_unknown_kind_skipped_not_panicking() {
+        let code = r#"
+        name: "test"
+        oops("x") {}
+        app("main") {}
+        "#;
+        let config = AutoConfig::new(code).expect("parse ok");
+        let pac = Pac::new(config);
+        assert_eq!(pac.targets.len(), 1);
+        assert_eq!(pac.targets[0].kind, TargetKind::App);
     }
 
     #[test]
