@@ -8,7 +8,8 @@ status: in-progress # draft | in-progress | complete
 # Plan 396: a2r 改进（auto-ai 相关）— 滚动聚合计划
 
 > **2026-08-20 核查**: §2.1–§2.5 五条均未修（0/5 落地），auto-ai 侧 sed workaround 全部仍在（retranspile.sh:172-181 / ai-config:88 / client:99-100）。
-> **2026-08-20 二批更新**: **§2.1 仓内根因 ✅ 已修**（`plan-fix/396-loopvar-clone` 合并 `be9d4213`）——golden 实测甄别：结构体字面量路径（description: tc.tool）P11.4 本就覆盖；**函数实参路径是真缺口**（extract_path(tc.args) 缺 clone → E0507），已补字段类型感知的 `maybe_clone_borrowed_iter_field` + 循环变量元素类型解析（golden 19_ownership/003 三形态锁定）。待跨仓验证 retranspile.sh B 段 sed 变 no-op 后删除。剩余 §2.2–§2.5。
+> **2026-08-20 二批更新**: **§2.1 仓内根因 ✅ 已修**（`plan-fix/396-loopvar-clone` 合并 `be9d4213`）——golden 实测甄别：结构体字面量路径（description: tc.tool）P11.4 本就覆盖；**函数实参路径是真缺口**（extract_path(tc.args) 缺 clone → E0507），已补字段类型感知的 `maybe_clone_borrowed_iter_field` + 循环变量元素类型解析（golden 19_ownership/003 三形态锁定）。待跨仓验证 retranspile.sh B 段 sed 变 no-op 后删除。剩余 §2.5。
+> **2026-08-20 三批更新**: **§2.2/§2.3/§2.4 ✅ 全部根治**（`plan-fix/b3-sed-verify` 合并 efe84664，含 §2.1 裸循环变量补全与 Plan 405 前导回归修复）；auto-ai retranspile 的 Plan 019 B/C/D/E sed 段实证 no-op 后删除（auto-ai 64ba3b2）。剩余 §2.5；另发现两处 master 新回归登记审计 B11（len() 强转 as u32→i64；tool.at 解析失败致 Arc<Tool> 丢 dyn）。
 
 > **For Claude:**
 > - 构建/测试命令：`cargo test -p auto-lang --lib --features test-trans -- tests::a2r_tests`（a2r golden，基线 319/0）。
