@@ -2,7 +2,7 @@
 
 > 原编号 351；2026-07-23 因编号冲突改为 346（原号保留给 351-shared-store-rung4）
 
-> **状态**：调研文档；核心差距已实施——阶段 1a query 解析 / 1c 表单 / 2a 中间件链 / 2b 统一 500 / 2c 请求日志 / 3b 通配符路由均已落地（`ffi/http_server.rs:1595/1613/1394-1438/1127/1460-1534/79-80`，代码内以 "Plan 346" 标注），session/SSR/OpenAPI 由 Plan 352 完成。**未实施**：3c 重定向、5a 服务端 multipart 上传、5e Rate Limit、#12 Request-ID（中低优先级，无后续计划认领）。
+> **状态**：调研文档；核心差距已实施——阶段 1a query 解析 / 1c 表单 / 2a 中间件链 / 2b 统一 500 / 2c 请求日志 / 3b 通配符路由均已落地（`ffi/http_server.rs:1595/1613/1394-1438/1127/1460-1534/79-80`，代码内以 "Plan 346" 标注），session/SSR/OpenAPI 由 Plan 352 完成。3c 重定向 ✅ 2026-08-20 audit-A5 端到端打通（`plan-fix/346-redirect` 合并 `e282e70e`：`http.response_redirect(url, code)` 可调用 + serve_async 识别 Response 句柄按 status/headers/body 回写，e2e 测试守护；注：shim 早已注册但双重不可用）。**未实施**：5a 服务端 multipart 上传、5e Rate Limit、#12 Request-ID（中低优先级，无后续计划认领）。
 > **基于**：v0.4.1 + Plan 349/350（截至 2026-07-02）
 > **对比目标**：Axum (Rust)、Spring Boot (Java)、Express (Node.js)、Django/FastAPI (Python)
 

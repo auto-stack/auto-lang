@@ -99,14 +99,19 @@
 
 | ID | 来源 | 任务 | 修复点 | 验证 | 分支 | 状态 |
 |---|---|---|---|---|---|---|
-| A1 | 408 §11 P5-2 | `auto clean` 读 `.am/pac.atom.at` 时 `root` 包裹节点触发 panic | pac.rs targets 循环：拍平 `root` 包裹层；未知 kind 告警跳过（不再 panic） | `cargo test -p auto-man` | plan-fix/408-clean-root | ⬜ |
-| A2 | 400 | `is_thin_delegation` 只认 If/For，while/match 体被误判为薄委托走模板路线B | api_gen.rs:1121 补 `Stmt::While`/`Stmt::Match` 臂 | `cargo test -p auto-man`（新增 while/match 用例） | plan-fix/400-thin-delegation | ⬜ |
-| A3 | 398 §14.1 | parser `[][]T` + sibling-handler rewrite 无回归测试 | parser.rs 测试模块 + handler_codegen.rs tests 模块补用例 | `cargo test -p auto-lang --lib` | plan-fix/398-regression-tests | ⬜ |
-| A4 | 406（潜伏 bug） | GET_ELEM 对 `List<bool>`/`List<Value>::Bool` 压裸 i32 1/0 而非 `encode_bool`，下游 `is_bool` 消费者（to_string/类型检查/EQ 位比较）失效 | engine.rs GET_ELEM 两个分支改 `push_nv(encode_bool(...))` | `run_with_capture` 新增 e2e 测试 | plan-fix/406-getelem-bool | ⬜ |
-| A5 | 346 3c | HTTP 缺重定向（redirect/302）能力 | http_server.rs 新增 `redirect` shim（302/301 + Location） | e2e 模块新增用例 | plan-fix/346-redirect | ⬜ |
-| A6 | 242 #8 | `infer_type_from_expr` 缺 `Expr::Closure` 分支（闭包推断落 Unknown，靠 task-struct 特判绕过） | rust.rs:8342 补 Closure 推断 + golden | `cargo test -p auto-lang --lib a2r` | plan-fix/242-closure-infer | ⬜ |
-| A7 | 366a-3 | `auto test:ui` 一键命令缺失（当前手动 npx playwright / run_autotest.py） | crates/auto 新增 `test:ui` 子命令（委托 playwright） | 手动冒烟 + `cargo build` | plan-fix/366-test-ui | ⬜ |
-| A8 | 403 需求1a | 011-calculator 缺 `tests/desktop_mcp.py` + acceptance 契约（对齐 013/015 范式） | 新增 tests/ 四件套 | 对齐 013 结构 + 手动跑 | plan-fix/403-desktop-mcp | ⬜ |
+| A1 | 408 §11 P5-2 | `auto clean` 读 `.am/pac.atom.at` 时 `root` 包裹节点触发 panic | pac.rs targets 循环：拍平 `root` 包裹层 + props 提升；未知 kind 告警跳过（不再 panic） | `cargo test -p auto-man` 214 全绿 + 回归测试 ×2 | plan-fix/408-clean-root | ✅ 已合并 `8f264dd8` |
+| A2 | 400 | `is_thin_delegation` 控制流识别不全，含真实逻辑的 handler 体被误判薄委托走模板路线B | **审计初判修正**：Auto 无 while/match 语句（while 脱糖为 For 原本已覆盖）；真实缺口是 `Stmt::Is`/`Stmt::Try`/嵌套 `Block`——补齐 + 递归检查 | `cargo test -p auto-man` 218 全绿 + 测试 ×4 | plan-fix/400-thin-delegation | ✅ 已合并 `a9c64fad` |
+| A3 | 398 §14.1 | parser `[][]T` + sibling-handler rewrite 无回归测试 | parser.rs 2 用例（Slice(Slice)/Slice(Tuple)）+ handler_codegen 3 用例（改写/带参/非变体不改写） | `--features ui-iced handler_codegen` 8/8 + 全量 lib 除已知环境失败 | plan-fix/398-regression-tests | ✅ 已合并 `c21eea16` |
+| A4 | 406（潜伏 bug） | GET_ELEM 对 `List<bool>`/`List<Value>::Bool` 压裸 i32 1/0 而非 `encode_bool`，下游 `is_bool` 消费者（to_string/EQ 位比较）失效 | engine.rs GET_ELEM 两分支 + native.rs `push_value`（.get/.pop/.remove 路径）共 3 处改 `encode_bool` | e2e 测试 ×4（修复前 3 失败复现 bug） | plan-fix/406-getelem-bool | ✅ 已合并 `c1316a2c` |
+| A5 | 346 3c | HTTP 重定向不可用 | **审计初判修正**：redirect shim（Plan 346 已写）从未真正可用——三段链调用解析不到（null）+ serve_async 不认 Response 句柄（200+句柄数字）。修复：`response_redirect` 声明+catalog 3108（2216 已被占用即冲突根因）+ serve_async 句柄识别（i32/i64）；**教训：DashMap 读守卫作用域内 remove 同分片会自死锁** | e2e `e2e_a_redirect_302_with_location`（302+Location+跟随）；全套串行除预存 flake | plan-fix/346-redirect | ✅ 已合并 `e282e70e` |
+| A6 | 242 #8 | `infer_type_from_expr` 缺 `Expr::Closure` 分支（闭包推断落 Unknown，靠 task-struct 特判绕过） | rust.rs 补 Closure → `Type::Fn(params, ret)` + golden 004_closure_infer | a2r 套件失败集与 master **逐项一致**（48 个预存环境失败，零回归） | plan-fix/242-closure-infer | ✅ 已合并 `c2bd1d0c` |
+| A7 | 366a-3 | `auto test:ui` 一键命令缺失（当前手动 npx playwright / run_autotest.py） | crates/auto 新增 `test:ui` 子命令（委托 playwright） | 手动冒烟 + `cargo build` | plan-fix/366-test-ui | ⬜ 待下一批 |
+| A8 | 403 需求1a | 011-calculator 缺 `tests/desktop_mcp.py` + acceptance 契约（对齐 013/015 范式） | 新增 tests/ 四件套 | 对齐 013 结构 + 手动跑 | plan-fix/403-desktop-mcp | ⬜ 待下一批 |
+
+> **本批执行发现（2026-08-20）**：
+> 1. **审计代理两处初判有误，已按实测修正**——(a) 400 的"while/match 误判"：Auto 无此二语句，真实缺口是 Is/Try/嵌套 Block；(b) 346 的"redirect 未实施"：shim 已存在但双重的不可用（调用解析 + 服务端识别），比"未实施"更隐蔽。
+> 2. **native 编号冲突是隐形地雷**：catalog 中 2216 已被 `response.status_code` 占用，新函数必须用全局唯一新号（本批用 3108）。
+> 3. **本机 a2r 套件环境注记**：需 `RUST_MIN_STACK=33554432`（否则栈溢出）；48 个 golden 因工作区内 stdlib 前导渲染差异（`from auto_lang crate` vs `from crate`）预存失败，master 与分支逐项一致。
 
 ### 5.2 待立项/需协调（本轮不做）
 

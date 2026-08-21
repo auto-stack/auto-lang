@@ -1,6 +1,6 @@
 # Plan 242: a2r Feature Gap Tracker
 
-> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。确认未做：#2 HashMap::from / #10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 根因仍在（rust.rs:8342 `infer_type_from_expr` 缺 `Expr::Closure` 分支）。本追踪文档持续维护，不归档。
+> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。确认未做：#2 HashMap::from / #10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
 
 ## Background
 
@@ -23,7 +23,7 @@ This tracker serves as a **living document** that inventories all outstanding a2
 | 5 | Struct destructuring in `is` (`{x,y}`) | ✅ Done | 165 | ⭐⭐⭐ Mid | — | ast.rs:372 StructPattern + parser.rs:3991 + rust.rs:2738 + 测试 06_pattern_matching/002_struct_destructure | 2026-08-20 核实 |
 | 6 | External trait impl (`ext Type for Trait`) | ✅ Done | 164 | ⭐⭐⭐ Mid | — | parser.rs:4749（可选 TraitName）+ parser.rs:4697 + rust.rs:1580 | 2026-08-20 核实 |
 | 7 | `String` vs `&str` distinction | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | Type system or transpiler heuristic enhancements | — |
-| 8 | Complex closure type inference | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | Type inference engine enhancements | — |
+| 8 | Complex closure type inference | 🔧 Partial | 159 | ⭐⭐⭐⭐ Mid-High | — | 8a ✅：infer_type_from_expr 补 Expr::Closure → Fn（audit-A6 c2bd1d0c）；剩余：无显式类型参数回推 + lib 基线回归 | 2026-08-20 |
 | 9 | Platform-specific files (`.rs.at`, `#[rs]`) | 🔧 Partial | 083 | ⭐⭐⭐⭐ High | — | Compiler file-loading pipeline refinements | — |
 | 10 | a2rs backend stdlib (Redis/SQLite) | 🔧 Partial | 119 | ⭐⭐⭐⭐ High | — | Plan 121 async system maturity; 6 cookbook DB stubs handed off from Plan 240 Phase 10 | — |
 | 11 | Ownership and borrowing model (beyond `Rc<T>`/`clone()`) | ⚠️ Workaround | — | ⭐⭐⭐⭐⭐ Very High | — | Precise ownership analysis in transpiler | — |

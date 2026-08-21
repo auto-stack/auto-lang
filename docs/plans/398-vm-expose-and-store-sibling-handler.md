@@ -2,7 +2,7 @@
 plan: 398
 title: vm-expose-and-store-sibling-handler
 affects: [auto-lang/ui/handler_codegen, auto-lang/ui/vm_bridge, auto-lang/ui/dynamic]
-status: partial # 核心 VM 修复完成并合并(§12 parser + §2/§3 sibling-handler + §11 log);唯一遗留 §14.1 回归测试;M0.5/M1 为 auto-shell 侧下游任务
+status: partial # 核心修复+回归测试全部完成(§12/§2/§3/§11 + §14.1 测试 c21eea16);M0.5/M1 为 auto-shell 侧下游任务
 ---
 
 # Plan 398: VM 兼容性修复 — expose 生效 + store handler 互调
@@ -318,7 +318,7 @@ workaround 可回退。
 
 ### §14 待办(plan 核心已闭环,这些是后续增强)
 
-- [ ] parser fix + sibling-handler fix 加 Rust 单元测试(回归保护,handler_codegen tests 模块)——2026-08-20 核查:仍未做,tests 模块仅 5 个测试且无一覆盖 sibling rewrite;parser.rs 无 `[][]T` 用例
+- [x] parser fix + sibling-handler fix 加 Rust 单元测试——✅ 2026-08-20 audit-A3（`plan-fix/398-regression-tests` 合并 `c21eea16`）：parser [][]T/[](tuple) ×2 + sibling rewrite（改写/带参透传/非 msg 变体不改写）×3
 - [x] synthesize_widget_module(AuraWidget 路径)同样补 set_current_widget——2026-08-14 由 commit b0434cff(Plan 056 blocker A)顺带完成(handler_codegen.rs:881)
 - [ ] 回 ash-gui-native-plan M0.5:MCP 连通已证 → 搭测试骨架(conftest/desktop_mcp/test_smoke)(auto-shell 侧下游任务)
 - [ ] ash-gui-native M1:in-process 后端(shell.at mock)+ SSE 桥(auto-shell 侧下游任务)

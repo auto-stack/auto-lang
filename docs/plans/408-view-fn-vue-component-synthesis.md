@@ -1,6 +1,6 @@
 # Plan 408: view fn → 独立 Vue 组件合成（a2vue codegen 扩展）
 
-> **状态（2026-08-20 核查更新）**: 🟡 P1–P12 全部完成并合并 master（plan408_tests.rs 17 个测试 + golden test/a2vue/007-010）。§7 缺陷 1-9 + §10 能力缺口（watch/宿主全局/composable facade ref）全部正式修复。**§6.3 auto-musk 试点已完成**——auto-musk Plan 023 "20/21 逃生舱原生化 + §3.1 共用组件收敛"（2026-08-11），其 src 有 62 处 `component fn` 实际用法；第 21 个 StreamingRenderer 经 auto-musk Plan 028 T18 升格为平台协议实现（不再是逃生舱）。**剩余 §11 两项**：P5-2 🟡 `auto clean root` panic 未修（auto-man/src/target.rs:284 仍 panic!，from_str 无 "root" 分支）；P5-4 🟢 纯 module fn 文件不被 codegen（ui_gen/api.rs:456 / lib.rs:4301 报错，workaround=塞进 widget/store 文件）。
+> **状态（2026-08-20 晚更新）**: 🟡 P1–P12 全部完成并合并 master（plan408_tests.rs 17 个测试 + golden test/a2vue/007-010）。§7 缺陷 1-9 + §10 能力缺口全部正式修复。**§6.3 auto-musk 试点已完成**——auto-musk Plan 023 "20/21 逃生舱原生化 + §3.1 共用组件收敛"，第 21 个 StreamingRenderer 经 auto-musk Plan 028 升格平台实现。**P5-2 ✅ 已修**（2026-08-20 audit-A1，`plan-fix/408-clean-root` 合并 `8f264dd8`：Pac::new 拍平 `.am/pac.atom.at` 的 root 包裹层 + props 提升 + 未知 kind 告警跳过，`auto clean` 不再 panic，回归测试 ×2）。**剩余仅 §11 P5-4** 🟢 纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错，workaround=塞进 widget/store 文件）。
 > **前置**: Plan 374（已完成，Rust 模式 view fn fragment 内联展开——本计划在 Vue 路径的"内联已有、独立合成缺失"基础上扩展）；Plan 367（codegen 质量改进，view fn 顺带提及）。
 > **仓库**: **auto-lang**（`crates/auto-lang/src/ui_gen/vue.rs` + `aura/extract.rs` + `ast`）；auto-musk 为验证方（023 的逃生舱渐进原生化）。
 > **目标**: 让 a2vue codegen 支持把 `.at` 的 `view fn` **合成为独立 Vue 组件（SFC）**——不仅内联展开（现状），还可被多个 widget 复用、成为 `.at` 单一真源组件，替代逃生舱 `.vue`。
