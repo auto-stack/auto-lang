@@ -1236,6 +1236,18 @@ pub fn storage_key(widget: &str) -> String {
     format!("__code_editor_{widget}")
 }
 
+/// Normalize a payload key: the registry stores editors under
+/// `__code_editor_{key}`, but `.at` handlers and a2r codegen call the payload
+/// natives with the raw DSL key (e.g. `code_editor_text("editor1")`). Accept
+/// both forms — prefix the raw key, pass full storage keys through unchanged.
+fn normalize_payload_key(key: &str) -> String {
+    if key.starts_with("__code_editor_") {
+        key.to_string()
+    } else {
+        storage_key(key)
+    }
+}
+
 /// Get or create the core for `key`, applying `config` (diffed). The core
 /// is leaked once and lives for the process (explicit disposal via
 /// [`code_editor_dispose`], §5.4).
@@ -1281,30 +1293,34 @@ pub fn code_editor(key: &str, config: &CodeEditorConfig) -> &'static CodeEditorC
 
 /// Explicitly dispose an editor (route-change cleanup, §5.4).
 pub fn code_editor_dispose(key: &str) {
+    let key = normalize_payload_key(key);
     let mut map = CODE_EDITORS.lock().unwrap();
     // The core itself stays leaked (safe); dropping the map entry releases
     // the registry slot and lets the key be reused fresh.
-    map.remove(key);
+    map.remove(&key);
 }
 
 /// Read the current text of an editor (payload accessor, §3.2).
 pub fn code_editor_text(key: &str) -> Option<String> {
+    let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(key).map(|core| core.text())
+    map.get(&key).map(|core| core.text())
 }
 
 /// Read the cursor position of an editor: (line 0-based, char column,
 /// selection length in bytes).
 pub fn code_editor_cursor(key: &str) -> Option<(usize, usize, usize)> {
+    let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(key).map(|core| core.cursor_info())
+    map.get(&key).map(|core| core.cursor_info())
 }
 
 /// Programmatic set-text by key (MCP automation / app code). Returns true
 /// when the text changed.
 pub fn code_editor_set_text(key: &str, text: &str) -> bool {
+    let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    if let Some(core) = map.get(key) {
+    if let Some(core) = map.get(&key) {
         let current = core.text();
         if current == text {
             return false;
@@ -1318,15 +1334,17 @@ pub fn code_editor_set_text(key: &str, text: &str) -> bool {
 
 /// Run a closure with the core registered under `key` (if any).
 pub fn code_editor_with<R>(key: &str, f: impl FnOnce(&CodeEditorCore) -> R) -> Option<R> {
+    let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(key).map(|core| f(core))
+    map.get(&key).map(|core| f(core))
 }
 
 /// Jump to the next search match of the editor under `key` (wraps).
 /// Returns false when the editor, pattern or match is missing.
 pub fn code_editor_find(key: &str) -> bool {
+    let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    if let Some(core) = map.get(key) {
+    if let Some(core) = map.get(&key) {
         with_font_system(|fs| core.find_next(fs))
     } else {
         false

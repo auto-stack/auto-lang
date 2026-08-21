@@ -1,15 +1,27 @@
 widget App {
     model {
-        var source str = "fn add(a int, b int) int"
+        var source str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
         var wrap bool = false
+        var echo str = ""
+        var edits int = 0
     }
 
     view {
         col {
             code_editor (key: "playground", lang: "auto", wrap: .wrap, style: "flex-1 w-full") {
                 content: .source
+                oninput: .SourceChanged
             }
+            text "edits: {edits}"
+            text "echo: {echo}"
             style: "p-3 gap-2 h-full"
+        }
+    }
+
+    on {
+        .SourceChanged -> {
+            .echo = code_editor_text("playground")
+            .edits = .edits + 1
         }
     }
 }
