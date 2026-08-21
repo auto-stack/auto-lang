@@ -9526,8 +9526,11 @@ impl DebugRenderCtx {
         // disrupted widget-tree state retention (button is_pressed) under the
         // ~200ms MCP heartbeat rebuild cadence, so real mouse clicks never
         // fired on_press. MCP @rect bounds are still collected under debug_mode.
+        // Plan 413 follow-up: code_editor joins input/textarea in the exclusion —
+        // the wrapper breaks the custom widget's fill_raw body text (verified:
+        // F12 → editor body text vanishes while gutter/caret still render).
         let el: iced::Element<'static, IcedMessage> = if self.debug_mode && aura_id.is_some()
-            && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea")
+            && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea" | "code_editor")
         {
             // Use the unique id (with counter suffix) instead of raw aura_id
             // to avoid duplicate iced widget IDs from ForLoop iterations.
