@@ -361,6 +361,24 @@ fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
     }
 }
 
+/// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
+/// authoritative; null is falsy; everything else falls back to legacy i32
+/// truthiness (0 / i32::MIN+1 sentinels) for values pushed by older code
+/// paths that still use push_i32. NOTE: a REAL integer -2147483647 is
+/// indistinguishable from the legacy false sentinel at the i32 layer — an
+/// accepted, documented limitation until all push_i32-bool sites are gone.
+#[inline]
+fn nv_truthy(nv: auto_val::NanoValue) -> bool {
+    if auto_val::is_bool(nv) {
+        auto_val::decode_bool(nv)
+    } else if auto_val::is_null(nv) {
+        false
+    } else {
+        let v = auto_val::decode_i32(nv);
+        v != 0 && v != -2147483647
+    }
+}
+
 impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
@@ -3041,15 +3059,7 @@ impl AutoVM {
                 // Plan 193: bool -> String
                 OpCode::TYPE_BOOL_TO_STR => {
                     let nv = task.ram.pop_nv();
-                    // Prefer the TAG_BOOL encoding; fall back to legacy i32 truthiness
-                    // (0 / i32::MIN+1 = false, anything else = true) for values pushed
-                    // by older code paths that still use push_i32.
-                    let is_true = if auto_val::is_bool(nv) {
-                        auto_val::decode_bool(nv)
-                    } else {
-                        let v = auto_val::decode_i32(nv);
-                        v != 0 && v != -2147483647
-                    };
+                    let is_true = nv_truthy(nv);
                     let string_value = if is_true { "true" } else { "false" };
                     let mut strings = self.strings.write().unwrap();
                     let str_idx = strings.len();
@@ -4907,13 +4917,7 @@ impl AutoVM {
                 OpCode::NOT => {
                     {
                         let nv = task.ram.pop_nv();
-                        // Falsy: null nanbox, i32(0), i32(false sentinel -2147483647), or bool false
-                        let decoded = auto_val::decode_i32(nv);
-                        let is_false = auto_val::is_null(nv)
-                            || decoded == 0
-                            || decoded == -2147483647
-                            || nv == auto_val::encode_bool(false);
-                        task.ram.push_nv(auto_val::encode_bool(is_false));
+                        task.ram.push_nv(auto_val::encode_bool(!nv_truthy(nv)));
                     }
                 }
                 OpCode::CALL => {
@@ -7261,20 +7265,16 @@ impl AutoVM {
 
                 // === Logical ===
                 OpCode::AND => {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    // Logical AND: both true → push true (i32::MIN), else false (i32::MIN+1)
-                    let a_true = a != 0 && a != -2147483647;
-                    let b_true = b != 0 && b != -2147483647;
-                    task.ram.push_nv(auto_val::encode_bool(a_true && b_true));
+                    // Plan 406: tag-first truthiness (was raw i32 magic compare)
+                    let b = task.ram.pop_nv();
+                    let a = task.ram.pop_nv();
+                    task.ram.push_nv(auto_val::encode_bool(nv_truthy(a) && nv_truthy(b)));
                 }
                 OpCode::OR => {
-                    let b = task.ram.pop_i32();
-                    let a = task.ram.pop_i32();
-                    // Logical OR: either true → push true (i32::MIN), else false (i32::MIN+1)
-                    let a_true = a != 0 && a != -2147483647;
-                    let b_true = b != 0 && b != -2147483647;
-                    task.ram.push_nv(auto_val::encode_bool(a_true || b_true));
+                    // Plan 406: tag-first truthiness (was raw i32 magic compare)
+                    let b = task.ram.pop_nv();
+                    let a = task.ram.pop_nv();
+                    task.ram.push_nv(auto_val::encode_bool(nv_truthy(a) || nv_truthy(b)));
                 }
                 OpCode::XOR => {
                     let b = task.ram.pop_i32();
@@ -7311,11 +7311,12 @@ impl AutoVM {
                     let offset = self.flash.read_i16(task.ip) as isize;
                     task.ip += 2;
 
-                    let cond = task.ram.pop_i32();
-                    // Plan 091: Handle boolean values
-                    // false = -2147483647 (i32::MIN + 1)
-                    // Also treat 0 as false for backward compatibility
-                    if cond == 0 || cond == -2147483647 {
+                    // Plan 406: decode the condition by its nanbox tag instead
+                    // of comparing raw i32 magic values. Tagged bools (Plan 091)
+                    // are authoritative; 0 stays falsy for i32 values pushed by
+                    // legacy paths.
+                    let cond_nv = task.ram.pop_nv();
+                    if !nv_truthy(cond_nv) {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
@@ -7327,11 +7328,9 @@ impl AutoVM {
                     let offset = self.flash.read_i16(task.ip) as isize;
                     task.ip += 2;
 
-                    let cond = task.ram.pop_i32();
-                    // Plan 091: Handle boolean values
-                    // true = -2147483648 (i32::MIN)
-                    // Jump if true (or any other non-zero, non-false value)
-                    if cond != 0 && cond != -2147483647 {
+                    // Plan 406: see JMP_IF_Z — tag-first truthiness.
+                    let cond_nv = task.ram.pop_nv();
+                    if nv_truthy(cond_nv) {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
