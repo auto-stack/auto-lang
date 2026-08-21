@@ -5506,12 +5506,14 @@ fn compare_pngs(
     let boot = move || -> DynamicState {
         let mut comp = init.borrow_mut().take()
             .expect("boot should only be called once");
-        // Sync initial VM state to renderer-side todos (empty by default —
-        // the app's .Init handler or user actions populate todos)
+        // Sync initial renderer-side todos (empty by default — the app's
+        // .Init handler or user actions populate todos).
+        // Audit B12(a): do NOT write active_count/todo_count = 0 here — this
+        // boot runs AFTER fire_init and used to clobber the app's real counts
+        // (013 Init correctly computed active_count=3; the GUI then showed 0).
+        // The legacy todo arms recompute counts from their own list on user
+        // actions, so no boot-time seeding is needed.
         let initial_todos: Vec<TodoItem> = Vec::new();
-        // Write derived counts to VM state
-        let _ = comp.write_state("active_count", auto_val::Value::Int(0));
-        let _ = comp.write_state("todo_count", auto_val::Value::Int(0));
         DynamicState {
             component: comp,
             input_values: std::collections::HashMap::new(),

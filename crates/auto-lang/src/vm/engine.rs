@@ -4577,7 +4577,13 @@ impl AutoVM {
                                         auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
                                         auto_val::Value::Double(d) => task.ram.push_f64(*d),
                                         auto_val::Value::Bool(b) => {
-                                            task.ram.push_i32(if *b { 1 } else { 0 })
+                                            // Audit B12(a)/A4 family: push TAG_BOOL
+                                            // (encode_bool), not raw i32 — `field == false`
+                                            // compares against a bool nanbox and never
+                                            // matched raw 0/1 (013 Init count loop read
+                                            // .done on each seed and counted nothing).
+                                            // Same fix as ObjectData (Plan 402 §13.10).
+                                            task.ram.push_nv(auto_val::encode_bool(*b))
                                         }
                                         auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                         auto_val::Value::Str(s) => {

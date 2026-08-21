@@ -322,6 +322,17 @@ mod plan370_015_behavior_tests {
         let before = dc.read_state_as_vec("todos").expect("seed todos").len();
         assert_eq!(before, 4, "db.at seeds exactly 4 todos after Init");
 
+        // B12(a): Init's counting loop reads `.todos[i].done` on each element —
+        // 3 of the 4 seeds are done=false, so active_count must be 3.
+        let active = match dc.bridge().read_state("active_count").unwrap() {
+            Value::Int(n) => n,
+            other => panic!("active_count should be int, got {:?}", other),
+        };
+        assert_eq!(
+            active, 3,
+            "Init count loop must see .done on VmRef elements (B12(a))"
+        );
+
         // The GUI path types into the input, then submit fires App.AddTodo.
         dc.bridge_mut()
             .write_state("input", Value::str("probe todo"))
