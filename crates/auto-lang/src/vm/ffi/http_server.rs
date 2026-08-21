@@ -131,6 +131,154 @@ static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (
 /// through unchanged).
 static REQ_ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+// ── Plan 346 5a (B6 multipart): server-side multipart/form-data parsing ──
+
+/// One parsed multipart part: a text field (`filename == None`) or a file
+/// part with its raw bytes.
+pub struct MultipartPart {
+    pub name: String,
+    pub filename: Option<String>,
+    pub data: Vec<u8>,
+}
+
+/// Plan 346 5a: split a multipart/form-data body on its boundary and parse
+/// each part's Content-Disposition (name/filename) + data (RFC 2046
+/// simplified: CRLF-delimited parts, closing `--boundary--`).
+pub fn parse_multipart(body: &[u8], boundary: &str) -> Vec<MultipartPart> {
+    let delim = format!("--{}", boundary);
+    let delim_b = delim.as_bytes();
+    let mut parts = Vec::new();
+    // Find the first delimiter line, then iterate delimiter-separated parts.
+    let mut pos = match find_sub(body, delim_b) {
+        Some(p) => p + delim_b.len(),
+        None => return parts,
+    };
+    loop {
+        // At delimiter end: either `--` (closing) or CRLF (part follows).
+        if body[pos..].starts_with(b"--") {
+            break;
+        }
+        if body[pos..].starts_with(b"\r\n") {
+            pos += 2;
+        } else if body[pos..].starts_with(b"\n") {
+            pos += 1;
+        }
+        // Part headers end at the first blank line.
+        let (headers_raw, data_start) = match find_sub(&body[pos..], b"\r\n\r\n") {
+            Some(h) => (pos..pos + h, pos + h + 4),
+            None => match find_sub(&body[pos..], b"\n\n") {
+                Some(h) => (pos..pos + h, pos + h + 2),
+                None => break,
+            },
+        };
+        let headers = String::from_utf8_lossy(&body[headers_raw]).to_string();
+        // Content-Disposition: form-data; name="x"; filename="y"
+        let mut name = String::new();
+        let mut filename = None;
+        for h_line in headers.lines() {
+            if h_line.to_lowercase().starts_with("content-disposition:") {
+                for attr in h_line.split(';').skip(1) {
+                    let attr = attr.trim();
+                    if let Some(v) = attr.strip_prefix("name=") {
+                        name = v.trim_matches('"').to_string();
+                    } else if let Some(v) = attr.strip_prefix("filename=") {
+                        filename = Some(v.trim_matches('"').to_string());
+                    }
+                }
+            }
+        }
+        // Data runs to the next CRLF + delimiter.
+        let mut search = Vec::with_capacity(delim_b.len() + 4);
+        search.extend_from_slice(b"\r\n");
+        search.extend_from_slice(delim_b);
+        let data_end = match find_sub(&body[data_start..], &search) {
+            Some(e) => data_start + e,
+            None => match find_sub(&body[data_start..], delim_b) {
+                Some(e) => data_start + e,
+                None => body.len(),
+            },
+        };
+        parts.push(MultipartPart {
+            name,
+            filename,
+            data: body[data_start..data_end].to_vec(),
+        });
+        // Advance past this part's closing delimiter.
+        pos = match find_sub(&body[data_end..], delim_b) {
+            Some(d) => data_end + d + delim_b.len(),
+            None => break,
+        };
+    }
+    parts
+}
+
+fn find_sub(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .position(|w| w == needle)
+}
+
+/// Plan 346 5a: save a file part under the upload dir (env `AUTO_UPLOAD_DIR`,
+/// default `./uploads`) and return the stored path. The original filename is
+/// reduced to its basename and prefixed with a counter so concurrent uploads
+/// of the same name cannot clobber each other.
+fn store_multipart_file(filename: &str, data: &[u8]) -> String {
+    static FILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let dir = std::env::var("AUTO_UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
+    let _ = std::fs::create_dir_all(&dir);
+    let base = filename
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("upload")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect::<String>();
+    let base = if base.is_empty() { "upload".to_string() } else { base };
+    let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
+    let _ = std::fs::write(&path, data);
+    path.to_string_lossy().to_string()
+}
+
+/// Plan 346 5a: build the handler-facing JSON for a multipart request:
+/// `{"fields":{"k":"v"},"files":[{"field","filename","path","size"}]}`.
+/// Text parts land in `fields`; file parts are persisted and described in
+/// `files` (handlers read metadata, not megabytes of bytes).
+pub fn multipart_to_handler_json(parts: Vec<MultipartPart>) -> String {
+    let mut fields: Vec<String> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+    for part in parts {
+        match part.filename {
+            None => {
+                let text = String::from_utf8_lossy(&part.data).to_string();
+                fields.push(format!(
+                    "\"{}\":\"{}\"",
+                    part.name.replace('"', "\\\""),
+                    text.replace('\\', "\\\\").replace('"', "\\\"")
+                ));
+            }
+            Some(fname) => {
+                let path = store_multipart_file(&fname, &part.data);
+                files.push(format!(
+                    "{{\"field\":\"{}\",\"filename\":\"{}\",\"path\":\"{}\",\"size\":{}}}",
+                    part.name.replace('"', "\\\""),
+                    fname.replace('"', "\\\""),
+                    path.replace('\\', "/").replace('"', "\\\""),
+                    part.data.len()
+                ));
+            }
+        }
+    }
+    format!(
+        "{{\"fields\":{{{}}},\"files\":[{}]}}",
+        fields.join(","),
+        files.join(",")
+    )
+}
+
 /// Plan 346 5e (B6): enable per-IP fixed-window rate limiting.
 /// Called by the `http.rate_limit(max_requests, window_ms)` native.
 pub fn set_rate_limit(max_requests: u32, window_ms: u64) {
@@ -1028,6 +1176,92 @@ fn new_handler() str {
             );
         }
 
+        /// Plan 346 5a (B6): server-side multipart/form-data — POST a text
+        /// field + a 20KB binary file (incl. 0xFF bytes and near-boundary
+        /// CRLF--X sequences, and a body > the initial 8KB read to exercise
+        /// the byte-level continuation). The handler receives
+        /// {"fields":{...},"files":[{field,filename,path,size}]} as its body
+        /// param; the test also verifies the persisted file's bytes.
+        #[test]
+        fn e2e_b6_multipart_upload_field_and_file() {
+            let upload_dir = std::env::temp_dir().join("auto_multipart_e2e");
+            let _ = std::fs::remove_dir_all(&upload_dir);
+            std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_str().unwrap());
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/upload")]
+fn upload(form str) str {
+    return form
+}
+"#, 18744);
+
+            let boundary = "AutoBoundary7381";
+            let mut file_data: Vec<u8> = Vec::new();
+            for i in 0..20_000usize {
+                // Pseudo-varied binary: high bytes, plain ascii, and a
+                // near-boundary sequence that must NOT split a part.
+                file_data.push([0xFFu8, b'A', b'\r', b'\n', b'-', b'-', b'X'][i % 7]);
+            }
+            let mut body: Vec<u8> = Vec::new();
+            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            body.extend_from_slice(
+                b"Content-Disposition: form-data; name=\"title\"\r\n\r\nhello upload\r\n",
+            );
+            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            body.extend_from_slice(
+                b"Content-Disposition: form-data; name=\"avatar\"; filename=\"pic a.bin\"\r\n\
+                  Content-Type: application/octet-stream\r\n\r\n",
+            );
+            body.extend_from_slice(&file_data);
+            body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+            let req = format!(
+                "POST /api/upload HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: multipart/form-data; boundary={}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                boundary,
+                body.len()
+            );
+            use std::io::Write as _;
+            stream.write_all(req.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+            let mut resp = String::new();
+            use std::io::Read as _;
+            stream.read_to_string(&mut resp).ok();
+
+            let resp_body = body_of(&resp).to_string();
+            assert!(
+                resp_body.contains("hello upload"),
+                "text field must reach the handler, got: {:?}",
+                &resp_body[..resp_body.len().min(400)]
+            );
+            assert!(
+                resp_body.contains("pic a.bin"),
+                "file part metadata expected, got: {:?}",
+                &resp_body[..resp_body.len().min(400)]
+            );
+            // The response wraps the handler JSON as a JSON string (inner
+            // quotes escaped), so pin size via the unescaped `:<len>` tail.
+            assert!(
+                resp_body.contains(&format!(":{}", file_data.len())),
+                "binary size must survive byte-level reads, got: {:?}",
+                &resp_body[..resp_body.len().min(400)]
+            );
+            // The persisted file is discoverable in the upload dir — verify
+            // its bytes match the uploaded binary exactly (escape-free).
+            let mut stored_files: Vec<_> = std::fs::read_dir(&upload_dir)
+                .expect("upload dir exists")
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.is_file())
+                .collect();
+            stored_files.sort();
+            assert_eq!(stored_files.len(), 1, "exactly one stored file: {:?}", stored_files);
+            let stored = std::fs::read(&stored_files[0])
+                .unwrap_or_else(|e| panic!("stored file readable: {}", e));
+            assert_eq!(stored, file_data, "persisted bytes must match uploaded bytes exactly");
+
+            let _ = std::fs::remove_dir_all(&upload_dir);
+        }
+
         /// Plan 346 #12 (B6): every response carries X-Request-Id — minted
         /// (`req-<ms>-<n>`) when the client sends none.
         #[test]
@@ -1530,6 +1764,7 @@ async fn handle_connection_async(
     let mut header_done = false;
     let mut is_websocket = false;
     let mut content_type = String::new();
+    let mut content_type_raw = String::new();
     let mut cookie_header = String::new();
     let mut auth_header = String::new();
     let mut incoming_request_id = String::new();
@@ -1555,7 +1790,11 @@ async fn handle_connection_async(
                 is_websocket = true;
             }
             if lower.starts_with("content-type:") {
+                // Keep the lowercased copy for `contains` checks, plus the
+                // original case — multipart boundaries are case-sensitive
+                // (Plan 346 5a: a lowercased boundary never matched the body).
                 content_type = lower[13..].trim().to_string();
+                content_type_raw = line[13..].trim().to_string();
             }
             // Plan 346 stage 4: Parse Cookie and Authorization headers.
             if lower.starts_with("cookie:") {
@@ -1604,6 +1843,41 @@ async fn handle_connection_async(
         let _ = stream.write_all(resp.as_bytes()).await;
         eprintln!("[HTTP] {} {} [{}] → 429 rate limited (ip {})", req_method, req_path, request_id, client_ip);
         return;
+    }
+
+    // Plan 346 5a (B6): multipart/form-data — the body is BINARY (file
+    // bytes) and may exceed the initial 8KB read, so acquire it at the byte
+    // level (split at \r\n\r\n, then read until Content-Length satisfied).
+    // The legacy lossy-UTF-8 `body` path stays untouched for other types.
+    let mut multipart_json: Option<String> = None;
+    if content_type.starts_with("multipart/form-data") {
+        let boundary = content_type_raw
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("boundary="))
+            .map(|b| b.trim_matches('"').to_string());
+        if let Some(boundary) = boundary {
+            let header_split = find_sub(&buf[..n], b"\r\n\r\n")
+                .map(|p| p + 4)
+                .or_else(|| find_sub(&buf[..n], b"\n\n").map(|p| p + 2));
+            if let Some(split) = header_split {
+                let mut body_bytes = buf[split..n].to_vec();
+                while body_bytes.len() < content_length {
+                    let mut chunk = vec![0u8; (content_length - body_bytes.len()).min(8192)];
+                    match stream.read(&mut chunk).await {
+                        Ok(r) if r > 0 => body_bytes.extend_from_slice(&chunk[..r]),
+                        _ => break,
+                    }
+                }
+                let parts = parse_multipart(&body_bytes, &boundary);
+                multipart_json = Some(multipart_to_handler_json(parts));
+                eprintln!(
+                    "[HTTP] {} {} [{}] multipart: {} bytes parsed",
+                    req_method, req_path, request_id, body_bytes.len()
+                );
+            }
+        } else {
+            eprintln!("[HTTP] {} {} [{}] multipart without boundary — ignored", req_method, req_path, request_id);
+        }
     }
 
     // Route match
@@ -1785,7 +2059,7 @@ async fn handle_connection_async(
     // Plan 346 stage 2: Request logging + error handling.
     let request_start = std::time::Instant::now();
     let handler_task_id = vm.spawn_task(0, 65536);
-    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header);
+    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header, multipart_json.as_deref());
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
         let mut ht = match _task_arc.try_lock() {
@@ -1950,6 +2224,7 @@ fn build_handler_args(
     content_type: &str,
     cookie_header: &str,
     auth_header: &str,
+    multipart_json: Option<&str>,
 ) -> usize {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
@@ -1987,7 +2262,18 @@ fn build_handler_args(
             }
 
             // Plan 346: Push body.
-            if !body.is_empty() {
+            if let Some(mp) = multipart_json {
+                // Plan 346 5a (B6): multipart push — fields + persisted-file
+                // metadata as JSON (takes the body arg slot).
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    let i = strings.len();
+                    strings.push(mp.as_bytes().to_vec());
+                    i
+                };
+                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                n_args += 1;
+            } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
                     let pairs: Vec<String> = body.split('&')
                         .filter_map(|pair| {
