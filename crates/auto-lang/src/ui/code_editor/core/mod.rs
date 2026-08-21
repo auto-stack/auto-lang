@@ -265,6 +265,11 @@ pub struct CodeEditorCore {
     shift_anchor: Mutex<Option<Cursor>>,
     preedit: Mutex<Option<String>>,
     scale: Mutex<f32>,
+    /// The last value pushed from the outside (DSL content binding / MCP).
+    /// `code_editor_set_text` diffs against THIS, not the live editor text —
+    /// a view rebuild that re-syncs an unchanged DSL value must not clobber
+    /// the user's in-progress edits.
+    last_external: Mutex<Option<String>>,
 
     /// Geometry from the latest render (widget-local logical px) — drives
     /// scrollbar hit testing and IME caret placement.
@@ -442,6 +447,7 @@ impl CodeEditorCore {
             shift_anchor: Mutex::new(None),
             preedit: Mutex::new(None),
             scale: Mutex::new(1.0),
+            last_external: Mutex::new(None),
             layout_info: Mutex::new(LayoutInfo::default()),
             applied_theme: Mutex::new(None),
             search: Mutex::new(SearchState::default()),
@@ -548,13 +554,21 @@ impl CodeEditorCore {
             b.set_text(font_system, text, &attrs, Shaping::Advanced, None)
         });
         // Clamp the cursor to the new text and drop any selection — a
-        // stale selection past the end would panic the engine later.
+        // stale selection past the end would panic the engine later. A byte
+        // offset that was valid in the previous text can land inside a
+        // multi-byte char in the replacement (e.g. a CJK edit reverted by a
+        // value re-sync), so walk back to the nearest char boundary — a
+        // mid-char cursor would panic the engine's next insert_at.
         editor.set_selection(Selection::None);
         let mut cursor = editor.cursor();
         editor.with_buffer(|b| {
             cursor.line = cursor.line.min(b.lines.len().saturating_sub(1));
-            let len = b.lines.get(cursor.line).map(|l| l.text().len()).unwrap_or(0);
-            cursor.index = cursor.index.min(len);
+            let text = b.lines.get(cursor.line).map(|l| l.text()).unwrap_or("");
+            let mut index = cursor.index.min(text.len());
+            while !text.is_char_boundary(index) {
+                index -= 1;
+            }
+            cursor.index = index;
         });
         editor.set_cursor(cursor);
         self.revision.fetch_add(1, Ordering::Relaxed);
@@ -1335,15 +1349,21 @@ pub fn code_editor_cursor(key: &str) -> Option<(usize, usize, usize)> {
 }
 
 /// Programmatic set-text by key (MCP automation / app code). Returns true
-/// when the text changed.
+/// when the text changed. The diff is against the last EXTERNAL value, not
+/// the live editor text: the DSL content binding re-pushes its value on
+/// every view rebuild, and an unchanged value must leave the user's
+/// in-progress edits alone (a naive current-text diff would revert every
+/// keystroke).
 pub fn code_editor_set_text(key: &str, text: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     if let Some(core) = map.get(&key) {
-        let current = core.text();
-        if current == text {
+        let mut last = core.last_external.lock().unwrap();
+        if last.as_deref() == Some(text) {
             return false;
         }
+        *last = Some(text.to_owned());
+        drop(last);
         with_font_system(|fs| core.set_text(text, fs));
         true
     } else {
@@ -1597,6 +1617,57 @@ let beta = alpha + 2;
         assert_eq!(code_editor_text(&key).as_deref(), Some("changed"));
     }
 
+    /// Plan 413 regression: a view rebuild re-syncs the DSL content value on
+    /// every frame; re-pushing an UNCHANGED value must not revert the user's
+    /// in-progress edits (the naive current-text diff did exactly that).
+    #[test]
+    fn registry_resync_does_not_clobber_user_edits() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-resync-keeps-edit");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let core = code_editor(&key, &config);
+        // First external push seeds the editor (top-level: the registry
+        // wrapper takes the font-system lock internally — must never be
+        // called from inside a with_font_system closure, it would deadlock).
+        assert!(code_editor_set_text(&key, "hello world"));
+        // A keystroke diverges the live text from the external value.
+        with_font_system(|fs| {
+            core.set_focused(true);
+            core.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::End,
+                    text: None,
+                    modifiers: EditorModifiers::none(),
+                },
+                &mut NullClipboard,
+            );
+            core.handle_input(
+                fs,
+                EditorInput::KeyPressed {
+                    key: EditorKey::Char('!'),
+                    text: Some("!".to_owned()),
+                    modifiers: EditorModifiers::none(),
+                },
+                &mut NullClipboard,
+            );
+        });
+        assert_eq!(core.text(), "hello world!");
+        // View rebuild re-syncs the SAME external value — the user's edit
+        // must survive.
+        assert!(!code_editor_set_text(&key, "hello world"));
+        assert_eq!(
+            core.text(),
+            "hello world!",
+            "unchanged re-sync must not revert the user's edit"
+        );
+        // A genuinely changed external value still rewrites.
+        assert!(code_editor_set_text(&key, "reset"));
+        assert_eq!(core.text(), "reset");
+    }
+
     /// Plan 413 §6.4 performance criterion: a ~1MB source shapes and renders
     /// without pathological stalls. Ignored by default (slow init); run with
     /// `cargo test --lib code_editor -- --ignored`.
@@ -1653,5 +1724,106 @@ line two", &mut fs);
 line two", &mut fs);
         let (line, col, _) = core.cursor_info();
         assert_eq!((line, col), (1, 0));
+    }
+
+    /// Plan 413 regression: clicking into a line containing multi-byte UTF-8
+    /// (CJK) must never leave the cursor on a non-char-boundary byte offset —
+    /// the next typed character would panic cosmic-text's `insert_at`
+    /// (`String::split_off`). Sweeps a grid of click x-positions across the
+    /// first (CJK) line, typing after each click.
+    #[test]
+    fn cjk_click_keeps_cursor_on_char_boundary() {
+        let mut fs = FontSystem::new();
+        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("test-cjk-click", config, &mut fs);
+        core.set_text(
+            "// 预填文本显示测试 — 你好世界\nfn add(a int, b int) int {\n    return a + b\n}\n",
+            &mut fs,
+        );
+        core.set_focused(true);
+        // Establish layout (records the text rect for hit testing).
+        render::render(&core, &mut fs, 600.0, 400.0, None);
+
+        let mut clip = NullClipboard;
+        let line_h = core.config().line_height();
+        let mut clicked_line: Option<usize> = None;
+        for x in (0..560).step_by(8) {
+            for y in [line_h / 2.0, line_h * 1.5, line_h * 2.5] {
+                core.handle_input(
+                    &mut fs,
+                    EditorInput::MousePressed {
+                        button: EditorButton::Left,
+                        x: x as f32,
+                        y,
+                    },
+                    &mut clip,
+                );
+                let (line, col, _) = core.cursor_info();
+                clicked_line = Some(line);
+                // Typing must not panic regardless of where the click landed.
+                core.handle_input(
+                    &mut fs,
+                    EditorInput::KeyPressed {
+                        key: EditorKey::Char('x'),
+                        text: Some("x".to_owned()),
+                        modifiers: EditorModifiers::none(),
+                    },
+                    &mut clip,
+                );
+            }
+        }
+        assert!(clicked_line.is_some());
+        assert!(core.text().contains('x'));
+    }
+
+    /// Plan 413 regression: an external value diff that rewrites the buffer
+    /// (view rebuild re-syncs `content:` to the DSL value) must not leave the
+    /// cursor on a mid-char byte offset when the old text had multi-byte
+    /// chars the new one lacks. Sequence: click into CJK text → type → the
+    /// framework rewrites the buffer back to the original value → type again.
+    #[test]
+    fn set_text_resync_after_edit_keeps_cursor_on_boundary() {
+        let mut fs = FontSystem::new();
+        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("test-cjk-resync", config, &mut fs);
+        let original = "// 预填文本显示测试 — 你好世界\nfn add(a int, b int) int {\n    return a + b\n}\n";
+        core.set_text(original, &mut fs);
+        core.set_focused(true);
+        render::render(&core, &mut fs, 600.0, 400.0, None);
+
+        let mut clip = NullClipboard;
+        // Click after "// " (byte 3: start of the first Han char).
+        core.handle_input(
+            &mut fs,
+            EditorInput::MousePressed {
+                button: EditorButton::Left,
+                x: 60.0,
+                y: core.config().line_height() / 2.0,
+            },
+            &mut clip,
+        );
+        // Type one character — the editor now differs from the DSL value.
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::Char('x'),
+                text: Some("x".to_owned()),
+                modifiers: EditorModifiers::none(),
+            },
+            &mut clip,
+        );
+        assert!(core.text() != original, "edit must diverge from the DSL value");
+        // The framework re-syncs the value: buffer rewritten + cursor clamped.
+        core.set_text(original, &mut fs);
+        // The next keystroke must not panic (cursor on a char boundary).
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::Char('y'),
+                text: Some("y".to_owned()),
+                modifiers: EditorModifiers::none(),
+            },
+            &mut clip,
+        );
     }
 }
