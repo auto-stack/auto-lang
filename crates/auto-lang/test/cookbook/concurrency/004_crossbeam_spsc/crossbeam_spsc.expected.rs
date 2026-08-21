@@ -7,7 +7,7 @@ fn main() {
     queue.push("msg1".to_string());
     queue.push("msg2".to_string());
     queue.push("msg3".to_string());
-    assert!((queue.len() as i32) == 3);
+    assert!((queue.len() as i64) == 3);
 
     assert!(queue[0 as usize].clone() == "msg1");
     assert!(queue[1 as usize].clone() == "msg2");

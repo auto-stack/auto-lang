@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 fn main() {
-    let v: Vec<i32> = vec![1, 2, 3, 4, 5];
+    let v: Vec<i64> = vec![1, 2, 3, 4, 5];
     let has_even = v.par_iter().any(|x| x % 2 == 0);
     let all_positive = v.par_iter().all(|x| x > 0);
     assert!(has_even == true);

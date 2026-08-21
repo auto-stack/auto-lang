@@ -6,9 +6,9 @@ fn main() {
     dirs.push("src/".to_string());
     dirs.push("docs/".to_string());
     dirs.push("test/".to_string());
-    let count = (dirs.len() as i32);
+    let count = (dirs.len() as i64);
     assert!(count == 3);
     for d in &dirs {
-        assert!((d.len() as i32) > 0);
+        assert!((d.len() as i64) > 0);
     }
 }

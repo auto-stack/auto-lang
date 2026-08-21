@@ -338,7 +338,19 @@ fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
 ///   regardless of return position (`rust.rs:1184`), no owned-Vec rewrite.
 /// - str param → String field missing `.to_string()` : no such logic in a2r.
 /// Do NOT delete these rewrites unless the a2r root cause is fixed first.
+/// Plan 405/396-B3: generated backends depend on `auto-lang.workspace` (not
+/// the standalone a2r-std crate), so re-qualify the bare `a2r_std` preamble
+/// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
+/// comment) into the `auto_lang::` form that resolves against our deps.
+fn qualify_a2r_std(mut code: String) -> String {
+    code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
+    code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
+    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
+    code
+}
+
 fn post_process_db_rs(mut code: String) -> String {
+    code = qualify_a2r_std(code);
     code = code.replace("use crate::api::", "use crate::types::");
     // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
     // array literal is already vec![...]). Bracket-balanced over the .new(...) parens.
@@ -623,7 +635,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     };
 
     // Generate api.rs with route handlers
-    let api_rs = generate_api_rs(api_module, db_fns.as_ref());
+    let api_rs = qualify_a2r_std(generate_api_rs(api_module, db_fns.as_ref()));
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
 
