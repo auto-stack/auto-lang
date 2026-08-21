@@ -4707,6 +4707,34 @@ fn table_cell_text(cell: &auto_val::Value) -> String {
     String::new()
 }
 
+/// Plan 059:TableOutput → CSV 文本(复制/导出)。转义与 .at 侧一致:
+/// 引号加倍;含逗号/引号/换行的字段整体加引号。
+fn table_to_csv(tbl: &auto_val::Obj) -> Option<String> {
+    let cols: Vec<String> = match tbl.get("columns") {
+        Some(auto_val::Value::Array(a)) => a.values.iter().map(|v| csv_escape(&table_cell_text(v))).collect(),
+        _ => return None,
+    };
+    let mut out = cols.join(",");
+    if let Some(auto_val::Value::Array(rows)) = tbl.get("rows") {
+        for r in rows.values.iter() {
+            if let auto_val::Value::Array(cells) = r {
+                let line: Vec<String> = cells.values.iter().map(|c| csv_escape(&table_cell_text(c))).collect();
+                out.push('\n');
+                out.push_str(&line.join(","));
+            }
+        }
+    }
+    Some(out)
+}
+
+fn csv_escape(t: &str) -> String {
+    if t.contains(',') || t.contains('"') || t.contains('\n') || t.contains('\n') {
+        format!("\"{}\"", t.replace('"', "\"\""))
+    } else {
+        t.to_string()
+    }
+}
+
 /// 数字前缀解析:返回 (值, 是否有效)。单位 K/M/G 缩放(B=1)。
 fn table_numeric_prefix(t: &str) -> (f64, bool) {
     let mut num = String::new();
@@ -6484,6 +6512,48 @@ fn compare_pngs(
                     }
                     let _ = state.component.write_state_vec("blocks", blocks);
                     *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
+        // Plan 059:复制按钮 VM 桥 —— navigator 是浏览器全局,VM 运行时
+        // 不存在(.at handler 在 guard 静默中止),由 arboard 写系统剪贴板。
+        // CopyCommand → 命令文本;CopyOutput → Text 原文 / Table 导出
+        // CSV(与 .at 侧 Vue 实现同语义:引号加倍、含分隔符/换行加引号)。
+        if widget_name == "BlockItem"
+            && (event_name.starts_with("CopyCommand") || event_name.starts_with("CopyOutput"))
+        {
+            let (_, cargs) = crate::ui::dynamic::decode_payload(&msg.event);
+            let cid = cargs.first().map(|v| v.as_int() as i64).unwrap_or(-1);
+            if cid >= 0 {
+                if let Ok(blocks) = state.component.read_state_as_vec("blocks") {
+                    let mut text: Option<String> = None;
+                    for b in blocks.iter() {
+                        if let auto_val::Value::Obj(obj) = b {
+                            if !obj.get("id").map(|v| v.as_int() as i64 == cid).unwrap_or(false) {
+                                continue;
+                            }
+                            if event_name.starts_with("CopyCommand") {
+                                text = obj.get("command").map(|v| v.as_str().to_string());
+                            } else if let Some(auto_val::Value::Obj(out)) = obj.get("output") {
+                                if let Some(auto_val::Value::Str(t)) = out.get("Text") {
+                                    text = Some(t.as_str().to_string());
+                                } else if let Some(auto_val::Value::Obj(tbl)) = out.get("Table") {
+                                    text = table_to_csv(&tbl);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    if let Some(t) = text {
+                        match arboard::Clipboard::new() {
+                            Ok(mut cb) => {
+                                if let Err(e) = cb.set_text(t) {
+                                    eprintln!("[copy] set_text failed: {}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("[copy] clipboard unavailable: {}", e),
+                        }
+                    }
                 }
             }
         }
