@@ -2446,13 +2446,51 @@ impl RustTrans {
                     Op::Eq | Op::Neq => {
                         // Auto char literals ('a') are emitted as i32, string literals stay as strings
                         let op_str = op.op();
+                        // Plan 396/B11(a): cast .len() to the partner's type
+                        // instead of the default i64 (see partner_len_cast).
+                        let rhs_is_len = Self::expr_is_len_call(rhs);
+                        let lhs_is_len = Self::expr_is_len_call(lhs);
+                        let rhs_cast = if rhs_is_len { self.partner_len_cast(lhs) } else { None };
+                        let lhs_cast = if lhs_is_len { self.partner_len_cast(rhs) } else { None };
+                        let saved_suppress = self.len_i32_cast_suppressed;
+                        if rhs_cast.is_some() || lhs_cast.is_some() {
+                            self.len_i32_cast_suppressed = true;
+                        }
                         self.expr(lhs, out)?;
+                        if let Some(c) = lhs_cast {
+                            write!(out, "{}", c)?;
+                        }
                         write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
+                        if let Some(c) = rhs_cast {
+                            write!(out, "{}", c)?;
+                        }
+                        self.len_i32_cast_suppressed = saved_suppress;
                     }
                     _ => {
                         // Binary operators: lhs OP rhs
+                        // Plan 396/B11(a): for comparisons, cast .len() to the
+                        // partner's type instead of the default i64 (E0308
+                        // when the partner is a u32 var/field).
+                        let is_cmp = matches!(op, Op::Lt | Op::Gt | Op::Le | Op::Ge);
+                        let rhs_cast = if is_cmp && Self::expr_is_len_call(rhs) {
+                            self.partner_len_cast(lhs)
+                        } else {
+                            None
+                        };
+                        let lhs_cast = if is_cmp && Self::expr_is_len_call(lhs) {
+                            self.partner_len_cast(rhs)
+                        } else {
+                            None
+                        };
+                        let saved_suppress = self.len_i32_cast_suppressed;
+                        if rhs_cast.is_some() || lhs_cast.is_some() {
+                            self.len_i32_cast_suppressed = true;
+                        }
                         self.expr(lhs, out)?;
+                        if let Some(c) = lhs_cast {
+                            write!(out, "{}", c)?;
+                        }
                         // Plan 072: Convert and/or to Rust's &&/||
                         // Plan 067: Support ?? operator (May system)
                         let op_str = match op {
@@ -2463,6 +2501,10 @@ impl RustTrans {
                         };
                         write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
+                        if let Some(c) = rhs_cast {
+                            write!(out, "{}", c)?;
+                        }
+                        self.len_i32_cast_suppressed = saved_suppress;
                     }
                 }
                 Ok(())
@@ -2783,6 +2825,18 @@ impl RustTrans {
                 }
             }
             Expr::ResultPattern(cover) => {
+                // Plan 396/B11(b): nested pattern (e.g. Err(Enum.Variant { x }))
+                // — emit Ok(<pattern>)/Err(<pattern>) via the inner expr.
+                if let Some(ref inner) = cover.inner {
+                    let kw = match cover.variant {
+                        crate::ast::cover::ResultVariant::Ok => "Ok",
+                        crate::ast::cover::ResultVariant::Err => "Err",
+                    };
+                    write!(out, "{}(", kw)?;
+                    self.expr(inner, out)?;
+                    write!(out, ")")?;
+                    return Ok(());
+                }
                 match cover.variant {
                     crate::ast::cover::ResultVariant::Ok => {
                         if let Some(ref binding) = cover.binding {
@@ -10060,6 +10114,40 @@ impl RustTrans {
     /// either AST form: `Expr::Call{ name: Expr::Dot(_, m) }` or the legacy
     /// `Expr::Call{ name: Expr::Bina(_, Dot, m) }`). Used by store()/assignment
     /// to decide whether to set `len_i32_cast_suppressed` for a wide-typed binding.
+    /// Plan 396/B11(a): the `.len()` cast target when compared against `other`.
+    /// Rust len() is usize; the default emission casts it to i64 (Auto's int),
+    /// but comparing against a u32 field/var then mismatches (E0308). Resolve
+    /// the partner's type (Ident via local_var_types; `self.field` via a
+    /// unique field-name scan across known structs) and cast len() to MATCH.
+    /// Returns None when unresolvable (caller keeps the default i64 cast).
+    fn partner_len_cast(&self, other: &Expr) -> Option<&'static str> {
+        let ty = match other {
+            Expr::Ident(n) => self.local_var_types.get(n.as_str()).cloned(),
+            Expr::Dot(_, f) => {
+                let mut hit: Option<Type> = None;
+                for fields in self.struct_field_types.values() {
+                    for (n, t) in fields {
+                        if n.as_str() == f.as_str() {
+                            if hit.is_some() {
+                                return None; // ambiguous field name
+                            }
+                            hit = Some(t.clone());
+                        }
+                    }
+                }
+                hit
+            }
+            _ => None,
+        }?;
+        Some(match ty {
+            Type::Int | Type::I64 => " as i64",
+            Type::Uint => " as u32",
+            Type::USize => " as usize",
+            Type::U64 => " as u64",
+            _ => return None,
+        })
+    }
+
     fn expr_is_len_call(expr: &Expr) -> bool {
         if let Expr::Call(call) = expr {
             return match call.name.as_ref() {

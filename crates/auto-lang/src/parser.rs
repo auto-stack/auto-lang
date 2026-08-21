@@ -3909,6 +3909,30 @@ impl<'a> Parser<'a> {
         // Continue parsing to handle member access (e.g., Msg.Inc)
         let result = self.expr_pratt_with_left(lhs, 0)?;
 
+        // Plan 396/B11(b): qualified struct-variant pattern WITHOUT payload
+        // parens: `Type.Variant { field, ... }` (and `module.Type.Variant
+        // { ... }` — strip the module segment). expr_pratt yields a Dot
+        // chain; the trailing `{` starts the struct cover.
+        if let Expr::Dot(base, variant) = &result {
+            let tv = match base.as_ref() {
+                Expr::Ident(type_name) => Some((type_name.clone(), variant.clone())),
+                Expr::Dot(mod_name, sub_type) => {
+                    // module.Type.Variant { .. } — ensure base is module.Ident
+                    if matches!(mod_name.as_ref(), Expr::Ident(_)) {
+                        Some((sub_type.clone(), variant.clone()))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some((type_name, variant)) = tv {
+                if self.is_kind(TokenKind::LBrace) {
+                    return self.parse_struct_cover(type_name, Some(variant));
+                }
+            }
+        }
+
         // Convert Call(Dot(Ident(type_name), variant_name), [bindings]) into Cover::Tag
         // This handles enum variant patterns for imported types where lookup_type returns User instead of Enum
         // Also handles 3-level paths: Call(Dot(Dot(Ident(mod), type_name), variant_name), [bindings])
@@ -4021,25 +4045,36 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse Result pattern: Ok(binding) or Err(binding) for is statement
+    /// Parse Result pattern: Ok(binding) / Err(binding) for is statement.
+    /// Plan 396/B11(b): the parenthesized inner may also be a NESTED PATTERN
+    /// (e.g. `Err(ToolError.SecurityDenied { kind, path, .. })` or
+    /// `Err(Enum.Variant(x))`) — parsed via is_branch_cond_expr_inner.
     fn parse_result_pattern(&mut self, variant: ResultVariant) -> AutoResult<Expr> {
         self.next(); // consume 'Ok' or 'Err'
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume '('
-            // Expect an identifier (binding variable)
-            if !self.is_kind(TokenKind::Ident) {
-                let span = pos_to_span(self.cur.pos);
-                return Err(SyntaxError::Generic {
-                    message: format!("Pattern {}(x) expects an identifier", variant),
-                    span,
-                }.into());
-            }
-            let binding = self.parse_name()?;
+            // Parse the inner via the branch-pattern parser — it handles
+            // plain idents (normalized to a binding below) AND nested
+            // patterns: Type.Variant(binds), Type { fields },
+            // module.Type.Variant { fields } (Plan 396/B11(b)).
+            let prev_skip = self.skip_check;
+            self.skip_check = true;
+            let inner = self.is_branch_cond_expr_inner();
+            self.skip_check = prev_skip;
+            let inner = inner?;
             self.expect(TokenKind::RParen)?; // consume ')'
-
+            // A bare nested ident is normalized to a plain binding.
+            if let Expr::Ident(name) = inner {
+                return Ok(Expr::ResultPattern(ResultCover {
+                    variant,
+                    binding: Some(name),
+                    inner: None,
+                }));
+            }
             Ok(Expr::ResultPattern(ResultCover {
                 variant,
-                binding: Some(binding),
+                binding: None,
+                inner: Some(Box::new(inner)),
             }))
         } else {
             // Ok/Err without parens - treat as identifier
@@ -5343,6 +5378,11 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
             let name: AutoStr = self.cur.text.clone().into();
             self.next();
+            // Plan 396/B11(b): accept both  and 
+            // (auto-ai's error.at declares struct-variant fields colon-style).
+            if self.is_kind(TokenKind::Colon) {
+                self.next();
+            }
             let field_type = self.parse_type()?;
             fields.push(EnumField { name, field_type });
             if self.is_kind(TokenKind::Comma) {
@@ -7283,6 +7323,31 @@ impl<'a> Parser<'a> {
                         // None pattern - no binding
                         self.parse_expr_or_body()?
                     }
+                } else if let Expr::StructPattern(sc) = &expr {
+                    // Plan 396/B11(b): struct-variant destructuring pattern
+                    // `Type.Variant { field, .. }` (or bare `Type { .. }`) —
+                    // register the field bindings for the arm body. Without
+                    // this the body's uses of the bindings are "undefined
+                    // variable" and error recovery mangles the rest.
+                    self.enter_scope();
+                    for fb in &sc.fields {
+                        if fb.binding.as_str() != "_" {
+                            self.define(
+                                fb.binding.as_str(),
+                                Meta::Store(Store {
+                                    name: fb.binding.clone(),
+                                    kind: StoreKind::Let,
+                                    attrs: vec![],
+                                    is_pub: false,
+                                    ty: Type::Unknown,
+                                    expr: Expr::Int(0), // pattern-bound placeholder
+                                }),
+                            );
+                        }
+                    }
+                    let body = self.parse_expr_or_body()?;
+                    self.exit_scope();
+                    body
                 } else if let Expr::ResultPattern(res_cover) = &expr {
                     // Plan 120: Result pattern: Ok(x) => ... or Err(e) => ...
                     if let Some(binding) = &res_cover.binding {
@@ -7303,6 +7368,51 @@ impl<'a> Parser<'a> {
                                 }),
                             }),
                         );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else if let Some(inner) = &res_cover.inner {
+                        // Plan 396/B11(b): nested pattern inside Ok()/Err(),
+                        // e.g. `Err(ToolError.SecurityDenied { kind, path })`.
+                        // Define the inner pattern's bindings for the arm body.
+                        self.enter_scope();
+                        match inner.as_ref() {
+                            Expr::StructPattern(sc) => {
+                                for fb in &sc.fields {
+                                    if fb.binding.as_str() != "_" {
+                                        self.define(
+                                            fb.binding.as_str(),
+                                            Meta::Store(Store {
+                                                name: fb.binding.clone(),
+                                                kind: StoreKind::Let,
+                                                attrs: vec![],
+                                                is_pub: false,
+                                                ty: Type::Unknown,
+                                                expr: Expr::Int(0), // pattern-bound placeholder
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                            Expr::Cover(Cover::Tag(tc)) => {
+                                for b in &tc.bindings {
+                                    if b.as_str() != "_" {
+                                        self.define(
+                                            b.as_str(),
+                                            Meta::Store(Store {
+                                                name: b.clone(),
+                                                kind: StoreKind::Let,
+                                                attrs: vec![],
+                                                is_pub: false,
+                                                ty: Type::Unknown,
+                                                expr: Expr::Int(0), // pattern-bound placeholder
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                         let body = self.parse_expr_or_body()?;
                         self.exit_scope();
                         body
@@ -10202,20 +10312,23 @@ impl<'a> Parser<'a> {
                     .into())
                 }
             }
-            "Map" => {
-                if args.len() == 2 {
-                    Ok(Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone())))
-                } else {
-                    Err(SyntaxError::Generic {
-                        message: format!(
-                            "Map expects exactly 2 type parameters (Map<K, V>), but got {}",
-                            args.len()
-                        ),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into())
+            "Map" => match args.len() {
+                2 => Ok(Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone()))),
+                // Plan 396/B11(b):  (single arg) leaves the value type
+                // unspecified — default V to Unknown, mirroring the bare 
+                // shortcut (parser.rs common-collection default). The previous
+                // hard error rejected valid sources (auto-ai tool.at's
+                // ), silently skipping whole-module transpile.
+                1 => Ok(Type::Map(Box::new(args[0].clone()), Box::new(Type::Unknown))),
+                n => Err(SyntaxError::Generic {
+                    message: format!(
+                        "Map expects 1 or 2 type parameters (Map<K> / Map<K, V>), but got {}",
+                        n
+                    ),
+                    span: pos_to_span(self.cur.pos),
                 }
-            }
+                .into()),
+            },
             "Fixed" if args.len() == 1 => {
                 // Fixed<N> storage type - parse capacity from first argument
                 // The capacity should be a constant expression (int literal or const)
@@ -16733,6 +16846,71 @@ widget Counter {
             "return value on same line, got {:?}",
             fd.body.stmts[0]
         );
+    }
+
+    /// Plan 396/B11(b): single-arg `Map<K>` type annotation parses (V
+    /// defaults to Unknown). Previously a hard arity error, which silently
+    /// skipped whole-module transpiles (auto-ai tool.at).
+    #[test]
+    fn test_single_arg_map_type_parses() {
+        let code = "fn main() {
+    var m Map<str> = Map.new()
+    print(\"ok\")
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396/B11(b): `Err(Type.Variant { fields })` nested pattern parses
+    /// and the field bindings are visible in the arm body.
+    #[test]
+    fn test_err_nested_struct_variant_pattern() {
+        let code = "enum TE {
+    Denied { kind str }
+}
+fn msg(r Result<str, TE>) str {
+    is r {
+        Err(TE.Denied { kind }) -> return kind
+    }
+    return \"\"
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396/B11(b): top-level struct-variant pattern
+    /// `Type.Variant { fields } -> body` parses; bindings usable.
+    #[test]
+    fn test_top_level_struct_variant_pattern() {
+        let code = "enum E {
+    Denied { kind str }
+}
+fn msg(e E) str {
+    is e {
+        E.Denied { kind } -> return kind
+    }
+    return \"\"
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396/B11(b): enum struct-variant DECLARATION accepts colon-style
+    /// fields (`Denied { kind: str }`) alongside space-style.
+    #[test]
+    fn test_enum_variant_colon_field_style() {
+        let code = "enum E {
+    Denied { kind: str }
+}
+fn main() {
+    print(\"ok\")
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
     }
 
     /// Plan 398 §14.1 regression: `[][]T` (slice of slices) parses via the
