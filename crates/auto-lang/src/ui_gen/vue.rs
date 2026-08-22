@@ -929,6 +929,12 @@ pub struct VueGenerator {
     /// When a tag matches one of these, skip shadcn component mapping and treat as custom component
     known_sub_widgets: HashSet<String>,
 
+    /// PLAN-037 T5: sub-widget name -> its model var names (the bindable
+    /// channels). A call-site prop whose name hits a channel and whose value
+    /// is a writable state slot compiles to `v-model:name`; any other value
+    /// shape is a hard error (model channels require writable slots).
+    sub_widget_models: std::collections::HashMap<String, Vec<String>>,
+
     /// Current for-loop variable name (e.g., "note") — used to pass loop var as event arg
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
@@ -1139,6 +1145,7 @@ impl VueGenerator {
             needs_toast_import: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
+            sub_widget_models: std::collections::HashMap::new(),
             current_loop_var: None,
             current_loop_var_is_index: false,
             widget_key_counter: 0,
@@ -1161,6 +1168,12 @@ impl VueGenerator {
     /// Set known sub-widget names (to avoid shadcn name collisions)
     pub fn with_sub_widgets(mut self, names: Vec<String>) -> Self {
         self.known_sub_widgets = names.into_iter().collect();
+        self
+    }
+
+    /// PLAN-037 T5: provide the sub-widget model-var map (name -> channels).
+    pub fn with_sub_widget_models(mut self, models: std::collections::HashMap<String, Vec<String>>) -> Self {
+        self.sub_widget_models = models;
         self
     }
 
@@ -1618,6 +1631,16 @@ impl VueGenerator {
     pub fn generate_sfc(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
         self.reset();
+        // PLAN-037 T5 (D1 rule 3): a prop and a model var of the same name
+        // would compile to conflicting defineProps/defineModel entries.
+        for prop in &widget.props {
+            if widget.state_vars.iter().any(|sv| sv.name == prop.name) {
+                return Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                    "widget `{}` declares both a prop and a model var named `{}`; rename one (model vars are bindable channels via `v-model:{}`)",
+                    widget.name, prop.name, prop.name
+                )));
+            }
+        }
         // Widget `use { ... }` external imports — must be registered before
         // template generation so view tags resolve to external components.
         self.register_ext_imports(widget);
@@ -3731,6 +3754,19 @@ impl VueGenerator {
                             }
                             continue;
                         }
+                        // PLAN-037 T5: call-site model addressing — a prop
+                        // name matching the sub-widget's model var is a
+                        // two-way channel (v-model), never a plain :prop.
+                        if is_known_sub_widget {
+                            let slot = match value {
+                                AuraPropValue::Expr(expr) => self.model_channel_slot(expr),
+                                _ => None,
+                            };
+                            if let Some(attr) = self.try_model_channel_attr(tag, key, slot)? {
+                                attrs.push(attr);
+                                continue;
+                            }
+                        }
                         // NOTE: `html:` is deliberately NOT intercepted as
                         // v-html on components (same reason as the dyn path):
                         // it must pass through as a plain `:html` prop so ext
@@ -4169,6 +4205,21 @@ impl VueGenerator {
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
 
+                    // PLAN-037 T5: native input/textarea with a state-slot
+                    // `value:` and NO oninput handler still folds to v-model —
+                    // a bare `input { value: .x }` must be two-way (the DOM
+                    // input event is the writeback), never a one-way :value.
+                    // (The pair-with-handler case was already handled above.)
+                    if (tag == "input" || tag == "textarea")
+                        && value_state_ref.is_some()
+                        && !attrs.iter().any(|a| a.starts_with("v-model="))
+                    {
+                        if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
+                            let model_ref = value_state_ref.as_ref().unwrap().clone();
+                            attrs[pos] = format!("v-model=\"{}\"", model_ref);
+                        }
+                    }
+
                     // v-html overrides inner content in Vue: warn when the
                     // element also carries a `text:` prop or child nodes
                     // (both still emitted; the Vue runtime ignores them).
@@ -4435,6 +4486,15 @@ impl VueGenerator {
                             attrs.push(format!("ref=\"{}\"", ref_name));
                         }
                         continue;
+                    }
+                    // PLAN-037 T5: call-site model addressing for component
+                    // fn children (same contract as the sub-widget path).
+                    {
+                        let slot = self.model_channel_slot(value);
+                        if let Some(attr) = self.try_model_channel_attr(name, key, slot)? {
+                            attrs.push(attr);
+                            continue;
+                        }
                     }
                     // Plan 408 P6 / §7.1 缺陷 1+2: use the binding-mode
                     // translator (expr_to_vue_bound_value) so literal props
@@ -10925,6 +10985,54 @@ impl VueGenerator {
     /// - `Ident(".name")` — legacy dot-prefixed identifier (dot stripped)
     /// - `Dot(Ident("self") | Ident("."), "name")` — what `dot_item` actually
     ///   produces for `.name` in real widget source (parser.rs dot_item).
+    /// PLAN-037 T5: the writable-state-slot target of a model-channel value.
+    /// `.field` (Dot(self, field) or leading-dot Ident) -> Some("field");
+    /// `store.field` where `store` is a store dep -> Some("store.field").
+    /// Anything else (expression, prop, literal) -> None — the caller must
+    /// raise the "model channel requires a writable state slot" error.
+    fn model_channel_slot(&self, expr: &crate::ast::Expr) -> Option<String> {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Dot(obj, field) => {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    if obj_name == "self" {
+                        return Some(field.to_string());
+                    }
+                    if self.store_deps.iter().any(|d| d == obj_name) {
+                        return Some(format!("{}.{}", obj_name, field));
+                    }
+                }
+                None
+            }
+            Expr::Ident(name) if name.starts_with('.') => Some(name[1..].to_string()),
+            _ => None,
+        }
+    }
+
+    /// PLAN-037 T5: try to emit the model-channel binding for a call-site
+    /// prop. Returns Some(attr) when `key` is a model var of `tag` (emitting
+    /// `v-model:key="slot"`), or a hard error when the channel is fed a
+    /// non-writable value. Returns None when `key` is not a channel (normal
+    /// prop path continues).
+    fn try_model_channel_attr(
+        &self,
+        tag: &str,
+        key: &str,
+        slot: Option<String>,
+    ) -> Result<Option<String>, crate::ui_gen::GenError> {
+        match self.sub_widget_models.get(tag) {
+            Some(channels) if channels.iter().any(|v| v == key) => {}
+            _ => return Ok(None),
+        }
+        match slot {
+            Some(slot) => Ok(Some(format!("v-model:{}=\"{}\"", key, slot))),
+            None => Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                "model channel `{}.{}` requires a writable state slot (e.g. `.field` or `store.field`); model channels cannot be fed expressions, props, or literals",
+                tag, key
+            ))),
+        }
+    }
+
     fn extract_state_ref(&self, value: &AuraPropValue) -> Option<String> {
         match value {
             AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
@@ -16677,6 +16785,58 @@ widget App {
     /// Same as gen_sfc_from_widget_src, but registers sibling sub-widget
     /// names (the production app-build path passes them via
     /// with_sub_widgets; the known-sub-widget auto-:key logic only runs then).
+    /// PLAN-037 T5: call-site model addressing — a prop name matching the
+    /// child's model var with a writable state-slot target folds to
+    /// v-model:key; the same channel fed an expression is a hard error.
+    #[test]
+    fn test_model_channel_addressing_vmodel() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+widget App {
+    model { var draft str = "" }
+    view { col { BindChild(value: .draft) text .draft { } } }
+}
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
+        let mut models = std::collections::HashMap::new();
+        models.insert("BindChild".to_string(), vec!["value".to_string()]);
+        let mut gen = VueGenerator::new_shadcn()
+            .with_sub_widgets(vec!["BindChild".to_string()])
+            .with_sub_widget_models(models);
+        let sfc = gen.generate_sfc(&widget).expect("generate");
+        assert!(sfc.contains("v-model:value=\"draft\""), "channel folds to v-model:
+{}", sfc);
+
+        // Non-slot target on the same channel must fail generation.
+        let session2 = crate::session::CompilerSession::ui();
+        let src2 = r#"
+widget App {
+    model { var draft str = "" }
+    view { col { BindChild(value: .draft + "!") text .draft { } } }
+}
+"#;
+        let mut parser2 = crate::parser::Parser::from(src2).with_session(session2);
+        let ast2 = parser2.parse().expect("parse");
+        let decl2 = ast2.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget2 = crate::aura::extract_widget_from_decl(decl2).expect("extract");
+        let mut models2 = std::collections::HashMap::new();
+        models2.insert("BindChild".to_string(), vec!["value".to_string()]);
+        let mut gen2 = VueGenerator::new_shadcn()
+            .with_sub_widgets(vec!["BindChild".to_string()])
+            .with_sub_widget_models(models2);
+        let err = gen2.generate_sfc(&widget2).expect_err("must fail");
+        assert!(format!("{}", err).contains("requires a writable state slot"), "err: {}", err);
+    }
+
     fn gen_sfc_with_sub_widgets(src: &str, subs: &[&str]) -> String {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);

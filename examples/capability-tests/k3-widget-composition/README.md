@@ -84,3 +84,28 @@ Vue listener camelize (`@select`/`@Select` both compile to the `onSelect`
 prop) makes them runtime-equivalent against a `Select` msg-variant emit.
 **Migration rule: component fn → widget renames need NO parent-side binding
 changes** (child-kind-agnostic event-binding conversion on the parent side).
+
+## Phase 6 — three-layer v-model chain (PLAN-037 T4/T5) ✅
+
+`item_bind.at`: widget `BindChild` with NO props — its only surface is the
+model var `value` (→ `defineModel<string>("value", {default: ''})`). The
+parent binds `BindChild(value: .draft)` where `.draft` is App's model var.
+
+Generated chain, verified end-to-end:
+
+- App.vue: `<BindChild v-model:value="draft" />` (call-site model addressing —
+  a prop name matching the child's model var + a writable state slot folds to
+  `v-model:key`; expressions/props/literals on the channel are a HARD build
+  error: "model channel `X.y` requires a writable state slot").
+- BindChild.vue: `const value = defineModel<string>("value", { default: '' })`
+  + `<input v-model="value" />` — the internal input folds to v-model too,
+  including the native-HTML path (a bare `input { value: .x }` with no
+  oninput handler now still two-ways; previously it silently degraded to a
+  one-way `:value` when a style class forced the native element).
+
+Plumbing: sub-widget model vars are collected same-file (api.rs) and
+cross-file (auto-man from_workspace prescan →
+`ui_build_shadcn_with_sub_widgets_and_stores_full` → ComponentGenOptions →
+`VueGenerator.with_sub_widget_models`); both the sub-widget and
+AuraNode::Component prop paths enforce the channel contract; a child
+declaring a prop and a model var of the same name is a generation error.

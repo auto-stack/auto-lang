@@ -292,6 +292,10 @@ use std::collections::HashSet;
 pub struct ComponentGenOptions {
     /// Known sub-widget names (avoids shadcn-vue name collisions).
     pub sub_widgets: Option<Vec<String>>,
+    /// PLAN-037 T5: cross-file sub-widget model-var map (name -> channels),
+    /// collected by the workspace prescan (auto-man from_workspace). Merged
+    /// with the same-file widgets' state vars inside generate_component_from_file.
+    pub sub_widget_models: Option<std::collections::HashMap<String, Vec<String>>>,
     /// Override API imports. When `None`, auto-detected from `use back.api:`.
     pub api_imports_override: Option<Vec<String>>,
     /// Override store dependencies. When `None`, auto-detected from `use store:`.
@@ -465,6 +469,19 @@ pub fn generate_component_from_file(
         }
     }
 
+    // PLAN-037 T5: sub-widget model-var map = cross-file (opts) + same-file
+    // widgets' state vars. Powers call-site model addressing (v-model).
+    let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> =
+        opts.sub_widget_models.clone().unwrap_or_default();
+    for w in &widgets {
+        let entry = sub_widget_models.entry(w.name.clone()).or_default();
+        for sv in &w.state_vars {
+            if !entry.contains(&sv.name) {
+                entry.push(sv.name.clone());
+            }
+        }
+    }
+
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
@@ -485,7 +502,8 @@ pub fn generate_component_from_file(
             .with_mode(vue_mode)
             .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
-            .with_sub_widgets(all_sub_widgets.clone());
+            .with_sub_widgets(all_sub_widgets.clone())
+            .with_sub_widget_models(sub_widget_models.clone());
         if !api_imports.is_empty() {
             gen = gen.with_project_api_functions(api_imports.clone());
         }

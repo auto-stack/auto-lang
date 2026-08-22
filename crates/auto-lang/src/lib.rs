@@ -4697,6 +4697,58 @@ pub fn ui_build_shadcn_with_sub_widgets(
 /// `default_classes` (Plan 014): `None`/`Some(true)` = inject doc-theme
 /// default Tailwind classes (default); `Some(false)` = skip them except for
 /// structural layout primitives (row/col/grid/...).
+/// PLAN-037 T5: `ui_build_shadcn_with_sub_widgets_and_stores` + the
+/// cross-file sub-widget model-var map (call-site model addressing). The
+/// legacy entry delegates here with `None`.
+pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
+    path: &str,
+    output: Option<&str>,
+    sub_widget_names: Vec<String>,
+    sub_widget_models: Option<std::collections::HashMap<String, Vec<String>>>,
+    root_dir: Option<&str>,
+    shadcn: Option<bool>,
+    default_classes: Option<bool>,
+) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
+    use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
+
+    let at_path = std::path::Path::new(path);
+    let stream_endpoints = root_dir
+        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let opts = ComponentGenOptions {
+        sub_widgets: Some(sub_widget_names),
+        sub_widget_models,
+        stream_endpoints,
+        shadcn,
+        default_classes,
+        ..Default::default()
+    };
+    let result = generate_component_from_file(at_path, opts)
+        .map_err(|e| format!("{}", e))?;
+    let store_composables = result.store_composables.clone();
+
+    crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
+
+    if let Some(out_dir) = output {
+        std::fs::create_dir_all(out_dir).ok();
+        for (name, code) in &result.all_widget_codes {
+            let out_path = std::path::Path::new(out_dir)
+                .join(format!("{}.vue", name));
+            std::fs::write(&out_path, code)
+                .map_err(|e| format!("Failed to write output file: {}", e))?;
+        }
+        for (filename, code) in &result.store_composables {
+            let out_path = std::path::Path::new(out_dir).join(filename);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::write(&out_path, code)
+                .map_err(|e| format!("Failed to write store file: {}", e))?;
+        }
+    }
+
+    Ok((result.vue_code, result.widgets, store_composables))
+}
+
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     path: &str,
     output: Option<&str>,

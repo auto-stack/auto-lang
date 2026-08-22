@@ -1,0 +1,20 @@
+// item_bind.at — Phase 6 (PLAN-037 T5): the v-model three-layer chain.
+//
+// BindChild owns NO props — its only input surface is the model var `value`,
+// which compiles to defineModel<string>("value"). The internal Input binding
+// (`.value` state slot) folds to v-model, completing:
+//   App.draft  <->  BindChild.value  <->  Input
+
+widget BindChild {
+    model { var value str = "" }
+    view {
+        row {
+            style: "flex items-center gap-2"
+            input {
+                value: .value
+                placeholder: "type here"
+                style: "flex-1 px-2 py-1 border rounded text-sm"
+            }
+        }
+    }
+}

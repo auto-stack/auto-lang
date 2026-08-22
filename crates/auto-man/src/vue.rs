@@ -1557,6 +1557,8 @@ export default router
         // "" = default). Used to warn when a parent passes slot children a
         // widget cannot render.
         let mut sub_widget_slot_outlets: std::collections::HashMap<String, Vec<String>> = Default::default();
+        // PLAN-037 T5: sub-widget model var names (name -> bindable channels)
+        let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
             for entry in fs::read_dir(&front_dir)
                 .map_err(|e| format!("Failed to read front directory: {}", e))?
@@ -1574,6 +1576,10 @@ export default router
                     if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                         for widget in &widgets {
                             sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
+                            sub_widget_models.insert(
+                                widget.name.clone(),
+                                widget.state_vars.iter().map(|sv| sv.name.clone()).collect(),
+                            );
                             sub_widget_names.push(widget.name.clone());
                         }
                     }
@@ -1583,7 +1589,7 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -1616,7 +1622,8 @@ export default router
                             };
                             let mut gen = gen
                                 .with_default_classes(default_classes)
-                                .with_sub_widgets(sub_widget_names.clone());
+                                .with_sub_widgets(sub_widget_names.clone())
+                                .with_sub_widget_models(sub_widget_models.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }
@@ -1770,7 +1777,8 @@ export default router
                             };
                             let mut gen = gen
                                 .with_default_classes(default_classes)
-                                .with_sub_widgets(sub_widget_names.clone());
+                                .with_sub_widgets(sub_widget_names.clone())
+                                .with_sub_widget_models(sub_widget_models.clone());
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }

@@ -7,16 +7,24 @@
 
 use row: ItemRow
 use matrix: MatrixItem
+use bind: BindChild
 
 widget App {
     msg Msg { ItemSelected(str) }
     model {
         var items List<str> = ["alpha", "beta", "gamma"]
         var last_selected str = "(none)"
+        var draft str = "hello"
     }
     view {
         col {
             style: "p-4 gap-2 max-w-md"
+            // Phase 6 (T5): three-layer v-model chain — App.draft is the
+            // single source of truth; BindChild.value is its channel.
+            BindChild(value: .draft)
+            text .draft {
+                style: "text-xs text-gray-500"
+            }
             for item in .items {
                 ItemRow(label: item, on_select: .ItemSelected(item))
                 MatrixItem(label: item, on_select: .ItemSelected(item)) {
