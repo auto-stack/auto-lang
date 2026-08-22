@@ -6919,6 +6919,43 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// Plan 060(api.at 契约归一):merged 模式 shell 执行提交。
+/// shell.at 的 run_command 调 auto.shell.exec_submit(block_id, cmd, cwd),
+/// 请求进 vm::shell_bridge 队列,由 renderer 的 merged_exec_loop 取走执行。
+/// Stack: int(block_id), str_idx(cmd), str_idx(cwd) ->
+pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cwd_idx = task.ram.pop_str_idx() as u16;
+    let cmd_idx = task.ram.pop_str_idx() as u16;
+    let block_id = task.ram.pop_i32() as i64;
+    let cmd = vm.get_string(cmd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Process,
+        block_id,
+        cmd,
+        cwd,
+        result_json: String::new(),
+    });
+    Ok(())
+}
+
+/// Plan 060(M2):merged 模式 builtin 直发 —— shell.at 对 ls/cd/pwd 等
+/// 已在 .at 侧算好语义结果,经此把完整 command_result payload JSON 压入
+/// 队列(执行线程直发,不 spawn)。Stack: int(block_id), str_idx(json) ->
+pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let json_idx = task.ram.pop_str_idx() as u16;
+    let block_id = task.ram.pop_i32() as i64;
+    let json = vm.get_string(json_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Result,
+        block_id,
+        cmd: String::new(),
+        cwd: String::new(),
+        result_json: json,
+    });
+    Ok(())
+}
+
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

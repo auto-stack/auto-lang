@@ -4267,17 +4267,10 @@ struct ShellStreamEvent {
     payload_json: String,
 }
 
-/// 待执行的命令(merged 模式:由 update 闭包在 `.RunCommand` 后写入队列)。
-#[derive(Clone)]
-struct PendingShellCommand {
-    block_id: i64,
-    cmd: String,
-    cwd: String,
-}
-
-/// 执行器线程的共享句柄:命令队列 + 取消标志 + HTTP 后端地址(若为 HTTP 模式)。
+/// 执行器线程的共享句柄:取消标志 + HTTP 后端地址(若为 HTTP 模式)。
+/// Plan 060:命令队列已迁至 vm::shell_bridge(shell.at 经 native 生产,
+/// PendingShellCommand 退役,由 ShellExecRequest 顶替)。
 struct ShellExecutorHandle {
-    queue: std::collections::VecDeque<PendingShellCommand>,
     /// block_id → cancel flag。Cancel 时插入 true;执行器轮询后清除。
     cancel_flags: std::collections::HashMap<i64, bool>,
     /// HTTP 模式后端 base URL(如 "http://127.0.0.1:3000");None = merged 模式。
@@ -4311,7 +4304,6 @@ fn shell_bridge_is_http() -> bool {
 fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
     let (tx, rx) = std::sync::mpsc::channel::<ShellStreamEvent>();
     let handle = std::sync::Arc::new(std::sync::Mutex::new(ShellExecutorHandle {
-        queue: std::collections::VecDeque::new(),
         cancel_flags: std::collections::HashMap::new(),
         http_backend: std::env::var("AUTO_BACKEND").ok().filter(|s| !s.is_empty()),
     }));
@@ -4375,227 +4367,6 @@ fn json_to_auto_val(v: &serde_json::Value) -> auto_val::Value {
     }
 }
 
-/// Plan 045: 处理 `show <file>` —— 读文件,产出 RenderedOutput::Code 变体。
-///
-/// `show` 是 ash 内置命令(对齐 ash-core show.rs:221-235 的 run_atom 路径),
-/// 系统无 show 可执行文件,故不走 std::process,在 renderer 侧直接读文件。
-///
-/// MVP:每行一个白色(0xff,0xff,0xff)span,无真实语法高亮。
-/// 后续可引 syntect 或手写着色(参考 ash-core code_highlight.rs:117 highlight_code_spans)。
-///
-/// 返回 (status, output):成功 → ("Success", {Code:{lines, language}});
-/// 失败(缺参数/读文件错) → ({"Failed": msg}, null)。
-fn handle_show_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
-    let args: Vec<&str> = cmd.split_whitespace().collect();
-    if args.len() < 2 {
-        return (
-            serde_json::json!({"Failed": "show: missing file path"}),
-            serde_json::Value::Null,
-        );
-    }
-    let filepath = args[1];
-    // 拼路径:绝对路径直用;相对路径拼 cwd。
-    let full_path = if std::path::Path::new(filepath).is_absolute() {
-        filepath.to_string()
-    } else if cwd.is_empty() || cwd == "." {
-        filepath.to_string()
-    } else {
-        format!("{}/{}", cwd.trim_end_matches('/'), filepath)
-    };
-    match std::fs::read_to_string(&full_path) {
-        Ok(content) => {
-            let ext = std::path::Path::new(filepath)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_string();
-            // MVP:每行一个白色 span(r/g/b = 0xff)。
-            let lines: Vec<serde_json::Value> = content
-                .lines()
-                .map(|line| {
-                    serde_json::json!([{
-                        "text": line,
-                        "r": 0xff, "g": 0xff, "b": 0xff,
-                        "bold": false, "italic": false
-                    }])
-                })
-                .collect();
-            let output = serde_json::json!({
-                "Code": { "lines": lines, "language": ext }
-            });
-            (serde_json::Value::String("Success".to_string()), output)
-        }
-        Err(e) => (
-            serde_json::json!({"Failed": format!("show: {}: {}", filepath, e)}),
-            serde_json::Value::Null,
-        ),
-    }
-}
-
-/// Plan 046: 处理 `ls [path]` / `dir [path]` —— renderer 侧用 std::fs::read_dir
-/// 列目录,产出 RenderedOutput::Table 变体(对齐 ash-core ls.rs 的 run_atom 路径)。
-///
-/// 不走 std::process(避免 powershell/dir 文本闪现 + 解析脆弱)。
-/// 列序 ["name","type","size"](短模式,ash-core renderer.rs:329-361 权威)。
-///
-/// 支持参数:ls / ls <path> / ls -a(显示隐藏) / ls -l(忽略,短模式)。
-/// 排序:目录优先 + 字母序(对齐 ash-core fs.rs:274-300)。
-/// Plan 053 后续:文件名语义 kind —— 对齐 ash-core renderer.rs 的 file_name_kind
-/// (目录→Dir;.at/.rs→CodeAtRs;.exe/.dll→Executable;.toml/.json/.yaml→Config;
-/// 其余→Plain)。VM 执行器是 ash-core ls 的独立重实现(避免循环依赖),此前只产
-/// 纯 Text 单元格,BlockBody 的按 kind 着色(.at 侧已就绪)拿不到数据 → 高亮丢失。
-fn ls_file_kind(name: &str, is_dir: bool) -> &'static str {
-    if is_dir {
-        return "Dir";
-    }
-    let lower = name.to_lowercase();
-    let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
-    match ext {
-        "at" | "rs" => "CodeAtRs",
-        "exe" | "dll" | "bat" | "cmd" | "ps1" => "Executable",
-        "toml" | "json" | "yaml" | "yml" | "ini" | "conf" | "cfg" => "Config",
-        _ => "Plain",
-    }
-}
-
-fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
-    // 2026-08-22:管道 DSL 子集 —— `ls | where <col> <op> <value>`。merged 模式
-    // 无 ash-core,整串此前直接进参数解析,'|' 被当目标路径(read_dir("…/|")
-    // os error 123 → 无结果)。此处拆出管道段,列过滤在 items 上原地执行。
-    // 支持 where/filter 两种动词,op:==、!=、contains(字符串,大小写不敏感)、
-    // >、>=、<、<=(数值,双方可解析时)。未知列/未知 op 不过滤(宽松降级)。
-    let (ls_part, pipe_part) = match cmd.find('|') {
-        Some(i) => (cmd[..i].trim(), Some(cmd[i + 1..].trim())),
-        None => (cmd, None),
-    };
-    let mut filter: Option<(String, String, String)> = None; // (col, op, value)
-    if let Some(p) = pipe_part {
-        let toks: Vec<&str> = p.split_whitespace().collect();
-        if toks.len() >= 4 && (toks[0] == "where" || toks[0] == "filter") {
-            // value 取剩余 token 拼接(支持含空格),剥包裹引号。
-            let value = toks[3..].join(" ").trim_matches('"').to_string();
-            filter = Some((toks[1].to_string(), toks[2].to_string(), value));
-        }
-    }
-
-    let args: Vec<&str> = ls_part.split_whitespace().collect();
-    // 解析 flags 和路径(args[0] = "ls"/"dir")
-    let mut show_hidden = false;
-    let mut target_path: Option<&str> = None;
-    for arg in &args[1..] {
-        if arg.starts_with('-') {
-            if arg.contains('a') || arg.contains('A') {
-                show_hidden = true;
-            }
-            // -l / -t / -r 等忽略(MVP 只做短模式)
-        } else if target_path.is_none() {
-            target_path = Some(arg);
-        }
-    }
-
-    // 拼完整路径:绝对路径直用;相对路径拼 cwd。
-    let base = if cwd.is_empty() || cwd == "." {
-        // std::fs 相对进程 CWD(ash-gui-auto 项目目录)
-        std::env::current_dir().unwrap_or_default().to_string_lossy().to_string()
-    } else {
-        cwd.to_string()
-    };
-    let target = match target_path {
-        Some(p) if std::path::Path::new(p).is_absolute() => p.to_string(),
-        Some(p) => format!("{}/{}", base.trim_end_matches('/'), p),
-        None => base,
-    };
-
-    match std::fs::read_dir(&target) {
-        Ok(entries) => {
-            // 收集 (name, is_dir, size),过滤隐藏(除非 -a)。
-            let mut items: Vec<(String, bool, u64)> = Vec::new();
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !show_hidden && name.starts_with('.') {
-                    continue;
-                }
-                let metadata = entry.metadata().ok();
-                let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-                items.push((name, is_dir, size));
-            }
-            // 排序:目录优先 + 字母序(不区分大小写)。
-            items.sort_by(|a, b| {
-                b.1.cmp(&a.1) // 目录优先(true > false)
-                    .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
-            });
-
-            // 管道过滤:`| where <col> <op> <value>`(见函数头注释)。
-            if let Some((col, op, val)) = &filter {
-                let col_l = col.to_lowercase();
-                let val_l = val.to_lowercase();
-                items.retain(|(name, is_dir, size)| {
-                    let cell = match col_l.as_str() {
-                        "name" => name.clone(),
-                        "type" => if *is_dir { "dir" } else { "file" }.to_string(),
-                        "size" => size.to_string(),
-                        _ => return true, // 未知列:不过滤
-                    };
-                    match op.as_str() {
-                        "==" => cell.to_lowercase() == val_l,
-                        "!=" => cell.to_lowercase() != val_l,
-                        "contains" => cell.to_lowercase().contains(&val_l),
-                        ">" | ">=" | "<" | "<=" => {
-                            match (cell.parse::<i64>(), val.parse::<i64>()) {
-                                (Ok(a), Ok(b)) => match op.as_str() {
-                                    ">" => a > b,
-                                    ">=" => a >= b,
-                                    "<" => a < b,
-                                    _ => a <= b,
-                                },
-                                _ => false, // 数值 op 但任一侧非数值 → 不匹配
-                            }
-                        }
-                        _ => true, // 未知 op:不过滤
-                    }
-                });
-            }
-
-            let rows: Vec<serde_json::Value> = items
-                .iter()
-                .map(|(name, is_dir, size)| {
-                    let file_type = if *is_dir { "dir" } else { "file" };
-                    let size_str = if *is_dir {
-                        String::new()
-                    } else {
-                        size.to_string()
-                    };
-                    // 标准 RenderedCell 格式 {Text: "..."}(对齐 ash-core)。
-                    // Plan 046 已修 VM 二维数组 for 循环 bug(aura_view_builder
-                    // ForLoop 现在先查 bindings),for cell in row 正常迭代。
-                    serde_json::json!([
-                        { "Tagged": { "text": name, "tag": { "FileName": ls_file_kind(name, *is_dir) }, "kind": ls_file_kind(name, *is_dir) } },
-                        { "Tagged": { "text": file_type, "tag": if *is_dir { "Dir" } else { "Plain" }, "kind": if *is_dir { "Dir" } else { "Plain" } } },
-                        { "Tagged": { "text": size_str, "tag": "Plain", "kind": "Plain" } },
-                    ])
-                })
-                .collect();
-            let output = serde_json::json!({
-                "Table": { "columns": ["name", "type", "size"], "rows": rows }
-            });
-            (serde_json::Value::String("Success".to_string()), output)
-        }
-        Err(e) => (
-            serde_json::json!({"Failed": format!("ls: {}: {}", target, e)}),
-            serde_json::Value::Null,
-        ),
-    }
-}
-
-/// Plan 044 M1: 把命令 stdout 解析成 RenderedOutput JSON(对齐 vue 版 ash-core 渲染)。
-/// 在 renderer 侧实现(不依赖 auto-shell/ash-core,避免循环依赖)。
-/// Plan 046: ls/dir 已改为 spawn 前拦截(handle_ls_command),此处只剩 Text 回退。
-fn parse_output_to_structured(cmd: &str, stdout: &str) -> serde_json::Value {
-    let _ = cmd; // cmd_name 不再用(ls/dir 已拦截);保留签名供未来扩展
-    serde_json::json!({ "Text": stdout })
-}
-
 /// merged 模式执行循环:从队列取命令 → std::process::Command 执行 → 推流式 + 结果事件。
 async fn merged_exec_loop(
     handle: std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
@@ -4604,10 +4375,9 @@ async fn merged_exec_loop(
     use std::io::Read;
     loop {
         // 取一条命令(队列空则短歇,避免忙等)。
-        let pending = {
-            let mut h = handle.lock().unwrap();
-            h.queue.pop_front()
-        };
+        // Plan 060(M1-T1):队列源切换为 vm::shell_bridge(shell.at 经
+        // auto.shell.exec_submit native 生产;旧的 handle.queue 已退役)。
+        let pending = crate::vm::shell_bridge::pop();
         let pending = match pending {
             Some(p) => p,
             None => {
@@ -4619,121 +4389,21 @@ async fn merged_exec_loop(
         let cmd = pending.cmd;
         let cwd = pending.cwd;
 
-        // Plan 045:show 是 ash 内置命令,系统无 show 可执行文件 —— 若走 std::process
-        // (cmd /C show ...) 会 spawn 失败。故在 spawn 前拦截,renderer 侧读文件 +
-        // 着色,产出 {Code:{lines, language}} 变体(对齐 ash-core show 的 run_atom 路径)。
-        let cmd_name = cmd.split_whitespace().next().unwrap_or("").to_lowercase();
-        if cmd_name == "show" {
-            let (status_val, output_val) = handle_show_command(&cmd, &cwd);
+        // Plan 060(M2):Result 变体 —— shell.at 对 builtin(ls/cd/pwd)已在
+        // .at 侧算好完整 command_result payload,直接回流(不 spawn)。
+        // 语义在提交侧(api.at 契约内),传输层零语义。
+        if matches!(pending.kind, crate::vm::shell_bridge::ShellExecKind::Result) {
             let _ = tx.send(ShellStreamEvent {
                 event: "command_result".to_string(),
-                payload_json: serde_json::json!({
-                    "block_id": block_id,
-                    "cwd": cwd,
-                    "status": status_val,
-                    "output": output_val,
-                    "duration_ms": 0,
-                })
-                .to_string(),
+                payload_json: pending.result_json,
             });
             continue;
         }
 
-        // Plan 046:ls/dir 同 show —— ash 内置命令,renderer 侧用 std::fs::read_dir
-        // 列目录(对齐 ash-core ls 的 run_atom 路径),不走 std::process。
-        // 解决三个问题:(1) 消除 powershell/dir 文本闪现(无流式 chunk);
-        // (2) 数据来源正确(read_dir 而非解析文本);(3) 同步返回 Table 变体。
-        if cmd_name == "ls" || cmd_name == "dir" {
-            let (status_val, output_val) = handle_ls_command(&cmd, &cwd);
-            let _ = tx.send(ShellStreamEvent {
-                event: "command_result".to_string(),
-                payload_json: serde_json::json!({
-                    "block_id": block_id,
-                    "cwd": cwd,
-                    "status": status_val,
-                    "output": output_val,
-                    "duration_ms": 0,
-                })
-                .to_string(),
-            });
-            continue;
-        }
-
-        // 2026-08-21:cd/pwd 是 ash 内置会话命令 —— 子进程里的 cd 影响不了
-        // 会话状态,与 show/ls 同理在 renderer 侧拦截。cd 解析目标目录
-        // (支持 ~ / ~/x / 相对 / 绝对路径,".." 走相对 join 即可),canonicalize
-        // 后把新 cwd 放进 command_result —— command_result 处理器会回写
-        // state.cwd 并触发 RefreshContext(见上方 cwd 回写),标题栏与后续
-        // 命令的执行目录随之更新:merge 模式的"会话 cwd"就靠这条回写链。
-        // pwd 输出跟踪的 cwd(与标题栏同源),不再依赖 PATH 里的 pwd.exe
-        // (Git 的 pwd.exe 输出 MSYS 风格 /d/... 路径,与标题栏不一致)。
-        if cmd_name == "cd" {
-            let arg = cmd.split_whitespace().nth(1).unwrap_or("").trim_matches('"');
-            let home = std::env::var("USERPROFILE")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(|| std::env::var("HOME").ok().filter(|s| !s.is_empty()));
-            let target: std::path::PathBuf = if let Some(rest) = arg.strip_prefix('~') {
-                let base = home.clone().map(std::path::PathBuf::from).unwrap_or_default();
-                // "~/x"(或空 "~")→ home + rest;rest 以 / 或 \ 开头时剥掉。
-                base.join(rest.trim_start_matches(['/', '\\']))
-            } else {
-                let p = std::path::Path::new(arg);
-                if p.is_absolute() {
-                    p.to_path_buf()
-                } else {
-                    std::path::Path::new(if cwd.is_empty() { "." } else { &cwd }).join(arg)
-                }
-            };
-            let (status_val, new_cwd) = match std::fs::canonicalize(&target) {
-                Ok(real) if real.is_dir() => (
-                    serde_json::Value::String("Success".to_string()),
-                    real.to_string_lossy()
-                        .trim_start_matches(r"\\?\")
-                        .to_string(),
-                ),
-                _ => (
-                    serde_json::json!({"Failed": format!("cd: no such directory: {}", arg)}),
-                    cwd.clone(),
-                ),
-            };
-            let _ = tx.send(ShellStreamEvent {
-                event: "command_result".to_string(),
-                payload_json: serde_json::json!({
-                    "block_id": block_id,
-                    "cwd": new_cwd,
-                    "status": status_val,
-                    "output": null,
-                    "duration_ms": 0,
-                })
-                .to_string(),
-            });
-            continue;
-        }
-        if cmd_name == "pwd" {
-            let shown = if cwd.is_empty() || cwd == "." {
-                std::env::current_dir()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .trim_start_matches(r"\\?\")
-                    .to_string()
-            } else {
-                cwd.clone()
-            };
-            let _ = tx.send(ShellStreamEvent {
-                event: "command_result".to_string(),
-                payload_json: serde_json::json!({
-                    "block_id": block_id,
-                    "cwd": cwd,
-                    "status": "Success",
-                    "output": {"Text": shown},
-                    "duration_ms": 0,
-                })
-                .to_string(),
-            });
-            continue;
-        }
-
+        // Plan 060(M2-T5):拦截全数退役 —— show/ls/dir/cd/pwd 的 ash 语义
+        // 已下沉 .at(shell.at run_command 提交侧分派)。执行线程只剩
+        // 传输:cmd /C | sh -c + 逐块流式 + 取消 + 退出码。stdout 以
+        // {"Text": ...} 直通。
         // 跨平台:Windows 用 cmd /C,Unix 用 sh -c。对齐 ash-server 的执行语义
         // (外部命令经 shell 解析,支持管道/重定向)。
         let (program, args) = if cfg!(windows) {
@@ -4825,13 +4495,18 @@ async fn merged_exec_loop(
             continue;
         }
 
-        // Plan 044 M1: output 支持 Table/Text 变体。ls 等命令解析成 Table(对齐 vue 版),
-        // 其余作 Text。parse_output_to_structured 在 renderer 侧实现(不依赖 auto-shell/
-        // ash-core,避免循环依赖:auto-shell → auto-lang,反向不可)。
+        // Plan 060(M2-T5):renderer 不再做任何输出结构化(旧 ls→Table 拦截
+        // 与 parse_output_to_structured 已退役 —— 曾为规避 auto-shell →
+        // auto-lang 的反向依赖而在 renderer 侧重实现 ash 语义,现语义归位
+        // .at 层,见 docs/plans/060)。
         let success = matches!(status_code, Some(0));
         let (status_val, output_val) = if success {
-            let parsed = parse_output_to_structured(&cmd, &full_stdout);
-            (serde_json::Value::String("Success".to_string()), parsed)
+            // Plan 060(M2-T5):结构化下沉前端 —— stdout 以 Text 直通,
+            // ls/cd/pwd 语义由 store .RunResult 幂等修复补齐。
+            (
+                serde_json::Value::String("Success".to_string()),
+                serde_json::json!({ "Text": full_stdout }),
+            )
         } else {
             let msg = if err_text.is_empty() {
                 format!("exit code {:?}", status_code)
@@ -6990,21 +6665,12 @@ fn compare_pngs(
                                 }),
                             );
                         }
-                        // 执行器提交:无论块由谁推入,命令都必须进队列。
-                        // Plan 057:HTTP 模式跳过 —— store 的 run_command() 已被
-                        // api_over_http 改写为直连后端的 POST(在上方
-                        // on_with_input_for 内同步完成),再进队列会双提交。
-                        if !shell_bridge_is_http() {
-                            if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                                if let Ok(mut h) = handle.lock() {
-                                    h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
-                                        block_id: bid,
-                                        cmd: cmd.to_string(),
-                                        cwd,
-                                    });
-                                }
-                            }
-                        }
+                        // Plan 060(M1-T3):执行提交已退役 —— shell.at 的
+                        // run_command(经 api.at,上方 on_with_input_for 内同步
+                        // 调用)已通过 auto.shell.exec_submit native 把请求压入
+                        // vm::shell_bridge 队列,merged_exec_loop 从那里取。
+                        // renderer 不再读 __pending_command 提交执行(旧链绕过
+                        // api.at 契约)。此处置换块后仅需标脏。
                         *state.view_dirty.borrow_mut() = true;
                     }
                 }
@@ -7075,18 +6741,8 @@ fn compare_pngs(
                     blocks.push(auto_val::Value::Obj(block));
                     let _ = state.component.write_state_vec("blocks", blocks);
                 }
-                // Plan 057:HTTP 模式跳过队列提交(同 emit 模拟路径,防双提交)。
-                if !shell_bridge_is_http() {
-                    if let Some(handle) = SHELL_EXEC_HANDLE.get() {
-                        if let Ok(mut h) = handle.lock() {
-                            h.queue.push_back(crate::ui::iced::renderer::PendingShellCommand {
-                                block_id: bid,
-                                cmd,
-                                cwd,
-                            });
-                        }
-                    }
-                }
+                // Plan 060(M1-T3):同上 —— 执行提交由 shell.at 的
+                // run_command → auto.shell.exec_submit 完成,renderer 不再插手。
                 *state.view_dirty.borrow_mut() = true;
             }
         }
@@ -12243,9 +11899,9 @@ mod tests {
 
         // ── 成功路径:echo ──
         {
-            let handle = SHELL_EXEC_HANDLE.get().expect("executor handle registered");
-            let mut h = handle.lock().unwrap();
-            h.queue.push_back(PendingShellCommand {
+            // Plan 060:提交走 vm::shell_bridge(与 shell.at 的
+            // auto.shell.exec_submit native 同一队列)。
+            crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
                 block_id: 42,
                 cmd: "echo hello_m1_bridge".to_string(),
                 cwd: ".".to_string(),
@@ -12278,9 +11934,7 @@ mod tests {
 
         // ── 失败路径:nonexistent command ──
         {
-            let handle = SHELL_EXEC_HANDLE.get().unwrap();
-            let mut h = handle.lock().unwrap();
-            h.queue.push_back(PendingShellCommand {
+            crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
                 block_id: 7,
                 cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
                 cwd: ".".to_string(),
