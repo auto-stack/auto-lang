@@ -689,6 +689,18 @@ async fn execute_autovm_with_path(
 
     // 2. Compile to bytecode
     // Plan 091: Wrap script-level code with FN_PROLOG/RESERVE_STACK for proper local variable support
+    // Plan 417-E4 (DIV-TRAIT-VM-2): pre-register spec decls into the shared
+    // TypeStore BEFORE codegen — the script path compiles TypeDecls before
+    // other statements, and default-method synthesis on implementing types
+    // looks specs up via the store (order-independent).
+    {
+        let mut ts = parser.type_store.write().unwrap();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::SpecDecl(sd) = stmt {
+                ts.register_spec_decl(sd);
+            }
+        }
+    }
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
     // Separate type/ext declarations from other statements

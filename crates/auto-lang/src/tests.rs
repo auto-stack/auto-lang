@@ -23,6 +23,7 @@ mod ffi_tests;
 mod field_access_tests; // Plan 056: Field access tests
 mod ffi_dual_tests; // Plan 212 Phase 3D.1: FFI dual-test infrastructure
 mod generic_spec_tests; // Plan 057: Generic spec tests
+mod trait_vm_tests; // Plan 417-E4: spec default-method inheritance
 mod list_growth_tests;
 mod list_tests; // Comprehensive List operation tests (Plan 051)
 mod may_tests;

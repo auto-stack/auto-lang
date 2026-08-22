@@ -31,7 +31,7 @@ Open gaps (each detailed in its own section below, fix plans in
 | ID | Area | Status | Blocks |
 |----|------|--------|--------|
 | DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | open (L3) | trait_advanced sub-scenario |
-| DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | open (L3) | — |
+| DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | ✅ fixed (2026-08-22, Plan 417-E4) | trait_vm_tests ×2 |
 | DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
 | DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | ✅ fixed (verified 2026-08-22, Plan 417-E5) | http_client_sync 三方 5/5 |
 | DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | ✅ fixed (2026-08-22, Plan 417-E1) | golden 007_char_at_infer |
@@ -274,9 +274,13 @@ current status of each:
   `<T has Spec>` bound syntax is unsupported. 状态: open (L3).
 
 - **DIV-TRAIT-VM-2 — VM trait checker requires re-declaration of default
-  methods (open, VM side).** Implementers must re-declare every default-
-  bodied spec method even though the language intends inheritance. Worked
-  around in the library by re-declaring. 状态: open (L3).
+  methods (✅ fixed 2026-08-22, Plan 417-E4).** 双端修复:①trait_checker 的
+  None 臂跳过带默认体的方法(继承合法);②VM codegen 在 TypeDecl 编译臂
+  为未重声明的默认方法合成 `Type.method`(经共享 TypeStore 查询 spec,
+  顺序无关;脚本路径 TypeDecl 先编译由 execute_autovm 预注册兜底)。
+  实现者重声明=覆盖,语义正确(trait_vm_tests:继承/覆盖/抽象仍强制三态)。
+  a2r 侧本就正确(spec→Rust trait 默认方法,天然继承)。库内 workaround
+  重声明保留(等价于显式覆盖)。状态: ✅ fixed。
 
 - **DIV-TRAIT-LANG-1 — associated types not supported (open, language).**
   Auto's spec grammar has no `type Item;` construct. 状态: open (L3).
