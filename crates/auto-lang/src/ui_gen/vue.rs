@@ -16785,6 +16785,39 @@ widget App {
     /// Same as gen_sfc_from_widget_src, but registers sibling sub-widget
     /// names (the production app-build path passes them via
     /// with_sub_widgets; the known-sub-widget auto-:key logic only runs then).
+    /// PLAN-037 T6: `use.web` statement parses all four forms into ExtImport
+    /// entries with the right kind/symbols/path (refs for composable).
+    #[test]
+    fn test_use_web_stmt_four_forms() {
+        use crate::ast::Stmt;
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+use.web agentAvatarData from "src/front/forge_helpers.at"
+use.web component MessageSquare, ListTodo from "lucide-vue-next"
+use.web composable useT from "src/front/composables/useT.ts"
+use.web composable useI18n refs: [locale] from "vue-i18n"
+widget App { view { col { text "x" { } } } }
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let entries: Vec<&crate::ast::ui::ExtImport> = ast.stmts.iter()
+            .filter_map(|s| match s {
+                Stmt::UseWeb(v) => v.first(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(entries.len(), 4, "four use.web entries");
+        assert!(matches!(entries[0].kind, crate::ast::ui::ExtImportKind::Fn));
+        assert_eq!(entries[0].symbols.len(), 1);
+        assert!(entries[0].symbols[0].as_str() == "agentAvatarData");
+        assert!(matches!(entries[1].kind, crate::ast::ui::ExtImportKind::Component));
+        assert_eq!(entries[1].symbols.len(), 2);
+        assert!(matches!(entries[2].kind, crate::ast::ui::ExtImportKind::Composable));
+        assert!(entries[3].ref_fields.len() == 1);
+        assert!(entries[3].ref_fields[0].as_str() == "locale");
+        assert!(entries[3].path.as_str() == "vue-i18n");
+    }
+
     /// PLAN-037 T5: call-site model addressing — a prop name matching the
     /// child's model var with a writable state-slot target folds to
     /// v-model:key; the same channel fed an expression is a hard error.

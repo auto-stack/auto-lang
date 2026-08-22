@@ -3,11 +3,14 @@
 //   use{fn} + computed(fn-call & chained) + msg/emit contract + model
 //   (per-instance) + watch + .Init/.Destroy + style + slot outlet,
 //   all while being instantiated from a parent loop with a callback prop.
+//
+// Phase 8 (PLAN-037 T8): the helper import moved from the in-widget use
+// block to the top-level `use.web` statement (same ExtImport payload,
+// same generated import + ext copy).
+
+use.web matrixGreet from "src/front/matrix_helpers.at"
 
 widget MatrixItem(label: str, on_select: msg) {
-    use {
-        fn: matrixGreet from "src/front/matrix_helpers.at"
-    }
     computed {
         shouted => matrixGreet(.label)
         upper => .shouted + "!"

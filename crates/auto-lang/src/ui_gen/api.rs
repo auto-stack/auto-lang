@@ -456,6 +456,21 @@ pub fn generate_component_from_file(
         }
     }
 
+    // PLAN-037 T6: file-level `use.web` statements attach their entries to
+    // EVERY widget declared in the file (the import lands in each generated
+    // SFC whose source references the symbol).
+    let mut web_ext_imports: Vec<crate::ast::ui::ExtImport> = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::UseWeb(entries) = stmt {
+            web_ext_imports.extend(entries.iter().cloned());
+        }
+    }
+    if !web_ext_imports.is_empty() {
+        for w in widgets.iter_mut() {
+            w.ext_imports.extend(web_ext_imports.iter().cloned());
+        }
+    }
+
     if widgets.is_empty() && store_composables.is_empty() {
         return Err("No widget or store declarations found in input file".into());
     }

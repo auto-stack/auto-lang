@@ -198,6 +198,13 @@ pub enum Stmt {
     SpecDecl(SpecDecl),
     Node(Node),
     Use(Use),
+
+    /// PLAN-037 T6: top-level `use.web` statement — web (Vue/TS/npm) ecosystem
+    /// imports, the frontend sibling of `use.rust` / `use.py`. Each entry is
+    /// an ExtImport (kind modifier component/composable, default plain import).
+    /// Consumed by the Vue codegen; other backends must fail with an explicit
+    /// "requires vue render" error.
+    UseWeb(Vec<crate::ast::ui::ExtImport>),
     Dep(DepStmt),  // Plan 092: Dependency declaration
     OnEvents(OnEvents),
     Comment(AutoStr),
@@ -268,6 +275,7 @@ impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Stmt::Use(use_stmt) => write!(f, "{}", use_stmt),
+            Stmt::UseWeb(entries) => write!(f, "use.web ({} web import{})", entries.len(), if entries.len() == 1 { "" } else { "s" }),
             Stmt::Expr(expr) => write!(f, "{}", expr),
             Stmt::If(if_stmt) => write!(f, "{}", if_stmt),
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
@@ -1135,6 +1143,8 @@ impl ToNode for Stmt {
             Stmt::SpecDecl(spec_decl) => spec_decl.to_node(),
             Stmt::Node(node) => node.to_node(),
             Stmt::Use(use_) => use_.to_node(),
+            // PLAN-037 T6: use.web entries carry no node payload.
+            Stmt::UseWeb(_) => AutoNode::new("use.web"),
             Stmt::OnEvents(on_events) => on_events.to_node(),
             Stmt::Comment(comment) => {
                 let mut node = AutoNode::new("comment");
@@ -1217,6 +1227,7 @@ impl AtomWriter for Stmt {
 impl ToAtom for Stmt {
     fn to_atom(&self) -> AutoStr {
         match self {
+            Stmt::UseWeb(_) => AutoStr::from("use.web"),
             Stmt::Expr(expr) => expr.to_atom(),
             Stmt::If(if_) => if_.to_atom(),
             Stmt::For(for_) => for_.to_atom(),

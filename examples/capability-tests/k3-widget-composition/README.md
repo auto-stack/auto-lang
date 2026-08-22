@@ -109,3 +109,20 @@ cross-file (auto-man from_workspace prescan →
 `VueGenerator.with_sub_widget_models`); both the sub-widget and
 AuraNode::Component prop paths enforce the channel contract; a child
 declaring a prop and a model var of the same name is a generation error.
+
+## Phase 8 — `use.web` statement pilot (PLAN-037 T8) ✅
+
+`item_matrix.at`'s in-widget `use { fn: matrixGreet from ... }` block became a
+top-level statement:
+
+```
+use.web matrixGreet from "src/front/matrix_helpers.at"
+```
+
+Same ExtImport payload end-to-end: identical generated import
+(`import { matrixGreet } from '@/ext/src/front/matrix_helpers'`), identical
+ext copy, build green. Grammar (T6): default plain import (fn/object/const),
+`component` (instantiable tags), `composable` (+ optional `refs: [...]`);
+entries attach to every widget declared in the file. Non-vue backends fail
+fast with "use.web requires the vue render target" (T7) instead of silently
+dropping the imports. The in-widget use block remains as a deprecated alias.

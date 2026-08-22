@@ -64,6 +64,9 @@ use miette::SourceSpan;
 /// ```
 pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoError> {
     match stmt {
+        // PLAN-037 T6: web ecosystem imports — nothing to infer.
+        Stmt::UseWeb(_) => Ok(Type::Void),
+
         // Variable declaration (let/mut/var)
         Stmt::Store(store) => check_store(ctx, store),
 

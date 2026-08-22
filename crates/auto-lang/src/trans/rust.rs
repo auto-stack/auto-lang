@@ -9263,6 +9263,13 @@ impl RustTrans {
                 Ok(true)
             }
 
+            // PLAN-037 T7: web ecosystem imports are vue-render only — fail
+            // fast on the Rust target instead of silently dropping them.
+            Stmt::UseWeb(entries) => Err(AutoError::Msg(format!(
+                "use.web requires the vue render target (pac.at render: vue); found {} web import(s)",
+                entries.len()
+            ))),
+
             Stmt::TypeDecl(type_decl) => {
                 self.type_decl(type_decl, sink)?;
                 Ok(true)
@@ -18256,6 +18263,13 @@ impl Trans for RustTrans {
                         sink.set_source_line(line);
                         self.use_stmt(&use_stmt, &mut sink.body)?;
                         sink.body.write(b"\n")?;
+                    }
+                    // PLAN-037 T7: web imports never compile on the Rust target.
+                    Stmt::UseWeb(entries) => {
+                        return Err(AutoError::Msg(format!(
+                            "use.web requires the vue render target (pac.at render: vue); found {} web import(s)",
+                            entries.len()
+                        )));
                     }
                     Stmt::Dep(dep) => {
                         // Record dep name so crate.func() → crate::func()
