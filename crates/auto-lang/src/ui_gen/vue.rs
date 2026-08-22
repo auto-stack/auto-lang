@@ -839,6 +839,14 @@ pub struct VueGenerator {
     /// template binding references the handler.
     quoted_events: std::collections::HashSet<String>,
 
+    /// PLAN-037 T3: subset of emit_events that are callback-CONTRACT
+    /// channels — the Pascal name of an `on_xxx: msg` prop with a matching
+    /// msg variant (prop dropped from defineProps, parent binds `@Pascal`).
+    /// Like quoted events they are ALWAYS declared in defineEmits and carry
+    /// the variant payload type, even when no template binding fires them
+    /// (the body may invoke the callback from a handler instead).
+    callback_contract_events: std::collections::HashSet<String>,
+
     /// Whether emit is needed
     has_emit: bool,
 
@@ -1096,6 +1104,7 @@ impl VueGenerator {
             debounced_handlers: HashSet::new(),
             emit_events: Vec::new(),
             quoted_events: std::collections::HashSet::new(),
+            callback_contract_events: std::collections::HashSet::new(),
             has_emit: false,
             component_refs: Vec::new(),
             lucide_icons: HashSet::new(),
@@ -1668,6 +1677,16 @@ impl VueGenerator {
             self.prop_types.insert(prop.name.clone(), Self::auto_type_to_ts_type(&prop.type_info));
             if Self::is_int_auto_type(&prop.type_info) {
                 self.int_names.insert(prop.name.clone());
+            }
+        }
+
+        // PLAN-037 T3: callback-contract channels (`on_xxx: msg` prop with a
+        // matching Pascal msg variant) always declare their emit.
+        for prop in &widget.props {
+            if Self::prop_is_emitted_callback(prop, widget) {
+                if let Some(snake) = prop.name.strip_prefix("on_") {
+                    self.callback_contract_events.insert(Self::snake_to_pascal(snake));
+                }
             }
         }
 
@@ -2288,6 +2307,7 @@ impl VueGenerator {
                         // declared payload type is the faithful contract.
                         let pattern_key = format!(".{}", variant.name);
                         if variant.quoted
+                            || self.callback_contract_events.contains(&variant.name)
                             || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
                         {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
@@ -2329,6 +2349,7 @@ impl VueGenerator {
                 // and undeclared listeners would fall through as native DOM
                 // listeners on the root element.
                 if !self.quoted_events.contains(event)
+                    && !self.callback_contract_events.contains(event)
                     && !self.used_handlers.contains(event)
                     && !self.used_handlers.contains(&Self::sanitize_ident(event))
                 {
@@ -2461,7 +2482,15 @@ impl VueGenerator {
             // calls in the body to `emit('<Pascal>', args)` for real callback
             // props. The parent binds `@Pascal` (never `:on_xxx`), so the raw
             // `props.on_xxx()` would be undefined at runtime.
-            for cb_snake in Self::real_callback_prop_snakes(widget) {
+            // PLAN-037 T3: also rewrite EMITTED-callback props (dropped from
+            // defineProps because a matching msg variant exists) — for those,
+            // `props.on_xxx(` is definitionally dangling and the `Pascal`
+            // emit is definitionally declared (the variant), so the rewrite
+            // closes the gap between the two mechanisms (k2 canary).
+            for cb_snake in Self::real_callback_prop_snakes(widget)
+                .into_iter()
+                .chain(Self::emitted_callback_prop_snakes(widget))
+            {
                 let props_call = format!("props.on_{}(", cb_snake);
                 if body.contains(&props_call) {
                     let pascal = Self::snake_to_pascal(&cb_snake);
@@ -11515,6 +11544,21 @@ impl VueGenerator {
                 if !p.name.starts_with("on_") { return None; }
                 // Only props that are NOT emitted-callbacks (i.e. they're in defineProps).
                 if Self::prop_is_emitted_callback(p, widget) { return None; }
+                p.name.strip_prefix("on_").map(|s| s.to_string())
+            })
+            .collect()
+    }
+
+    /// PLAN-037 T3: the snake_names of `on_xxx` callback props that ARE
+    /// emitted-callbacks (dropped from defineProps because a matching msg
+    /// variant exists). A handler body invoking these as `props.on_xxx(...)`
+    /// must be rewritten to `emit('<Pascal>', ...)` — the prop does not exist
+    /// at runtime, while the Pascal emit is declared via the msg variant.
+    fn emitted_callback_prop_snakes(widget: &AuraWidget) -> Vec<String> {
+        widget.props.iter()
+            .filter_map(|p| {
+                if !p.name.starts_with("on_") { return None; }
+                if !Self::prop_is_emitted_callback(p, widget) { return None; }
                 p.name.strip_prefix("on_").map(|s| s.to_string())
             })
             .collect()
