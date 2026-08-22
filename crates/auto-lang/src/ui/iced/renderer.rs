@@ -1318,14 +1318,30 @@ fn needs_visual_wrap(is: &IcedStyle) -> bool {
 }
 
 /// Convert IcedFontWeight to iced::Font.
+/// Plan 411 P1-C: Inter 字体内嵌——对齐 vue 栈字体族 `Inter, system-ui...`。
+/// Inter 以 SIL OFL 1.1 发布(全文见 assets/INTER-OFL.txt),静态三字重
+/// regular/medium/semibold 打进二进制;中文字形由 cosmic-text 回退系统字体。
+pub const INTER_FONT_REGULAR: &[u8] = include_bytes!("assets/Inter-Regular.ttf");
+pub const INTER_FONT_MEDIUM: &[u8] = include_bytes!("assets/Inter-Medium.ttf");
+pub const INTER_FONT_SEMIBOLD: &[u8] = include_bytes!("assets/Inter-SemiBold.ttf");
+
+/// Inter family 引用 —— application 的 `.default_font` 与带字重文本共用。
+pub const INTER_FONT: iced::Font = iced::Font {
+    family: iced::font::Family::Name("Inter"),
+    ..iced::Font::DEFAULT
+};
+
 fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
+    // Plan 411 P1-C: 带字重的文本钉住 Inter family,内嵌三字重才会真正
+    // 被选中(Medium 此前近似映射 Semibold,内嵌后恢复正身);bold/light
+    // 超出内嵌字重由 cosmic-text 合成/回退。
     match weight {
-        IcedFontWeight::Bold => iced::Font { weight: iced::font::Weight::Bold, ..Default::default() },
-        IcedFontWeight::Medium => iced::Font { weight: iced::font::Weight::Semibold, ..Default::default() },
-        IcedFontWeight::Normal => iced::Font::default(),
-        IcedFontWeight::Light => iced::Font { weight: iced::font::Weight::Light, ..Default::default() },
-        IcedFontWeight::ExtraLight => iced::Font { weight: iced::font::Weight::Thin, ..Default::default() },
-        IcedFontWeight::SemiBold => iced::Font { weight: iced::font::Weight::Semibold, ..Default::default() },
+        IcedFontWeight::Bold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Bold, ..Default::default() },
+        IcedFontWeight::Medium => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Medium, ..Default::default() },
+        IcedFontWeight::Normal => INTER_FONT,
+        IcedFontWeight::Light => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Light, ..Default::default() },
+        IcedFontWeight::ExtraLight => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Thin, ..Default::default() },
+        IcedFontWeight::SemiBold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Semibold, ..Default::default() },
     }
 }
 
@@ -7463,6 +7479,11 @@ fn compare_pngs(
     iced::application(boot, update, dynamic_view)
         .title(title_fn)
         .window_size(startup_window_size())
+        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+        .font(INTER_FONT_REGULAR)
+        .font(INTER_FONT_MEDIUM)
+        .font(INTER_FONT_SEMIBOLD)
+        .default_font(INTER_FONT)
         // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
         .theme(theme_fn)
         .subscription(|_state: &DynamicState| {
@@ -10775,6 +10796,11 @@ where
             }
         })
         .window_size(startup_window_size())
+        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+        .font(INTER_FONT_REGULAR)
+        .font(INTER_FONT_MEDIUM)
+        .font(INTER_FONT_SEMIBOLD)
+        .default_font(INTER_FONT)
         .run()
         .map_err(|e| e.into())
 }
@@ -10799,6 +10825,11 @@ where
         view,
     )
     .window_size(iced::Size::new(1600.0, 900.0))
+    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
     .run()
     .map_err(|e| e.into())
 }
@@ -11529,6 +11560,11 @@ where
         iced::Subscription::batch(subs)
     })
     .window_size(startup_window_size())
+    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
     .run()
     .map_err(|e| e.into())
 }
@@ -11559,6 +11595,11 @@ where
     )
     .subscription(devtools_subscription)
     .window_size(iced::Size::new(1600.0, 900.0))
+    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
     .run()
     .map_err(|e| e.into())
 }
