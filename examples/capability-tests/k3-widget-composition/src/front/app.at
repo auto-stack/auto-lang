@@ -1,9 +1,12 @@
 // app.at — k3 page-level widget App.
 //
-// Phase 2: child defined as widget (item_w.at), same loop + per-instance
-// props + upward callback as Phase 1.
+// Phase 4: the loop now instantiates TWO children — ItemRow (minimal widget
+// child, Phase 2) and MatrixItem (full capability matrix: use{fn}/computed/
+// msg/model/watch/lifecycle/style/slot) — both with per-instance props and
+// the §18.5 loop-var callback; MatrixItem additionally receives slot content.
 
 use row: ItemRow
+use matrix: MatrixItem
 
 widget App {
     msg Msg { ItemSelected(str) }
@@ -16,6 +19,16 @@ widget App {
             style: "p-4 gap-2 max-w-md"
             for item in .items {
                 ItemRow(label: item, on_select: .ItemSelected(item))
+                MatrixItem(label: item, on_select: .ItemSelected(item)) {
+                    slot(name: "extra") { text "*" }
+                }
+                // Phase 5 (T2): the component-fn callback idiom — `onselect:` (no
+                // underscore) + $event payload — on a WIDGET child. If it wires to
+                // @Select="ItemSelected($event)" the two idioms are interchangeable
+                // and Phase-4 migration needs no parent-side renames.
+                MatrixItem(label: item, onselect: .ItemSelected($event)) {
+                    slot(name: "extra") { text "@" }
+                }
             }
             row {
                 style: "pt-2 text-sm text-gray-600"

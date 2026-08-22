@@ -59,3 +59,28 @@ With that contract the output is byte-equivalent to Phase 1 (emit names Pascal).
 - Auto-key synthesis picks `item.id ?? item` for `:key` automatically.
 
 See [Plan 345](../../../docs/plans/345-gap-canary-tests.md) for the canary series.
+
+## Phase 4 — full capability matrix on a widget child (T1) ✅
+
+`item_matrix.at`: widget `MatrixItem(label, on_select: msg)` with use{fn}
+(matrix_helpers.at ext import), computed (imported-fn call + chained),
+msg/emit contract, per-instance model, watch, .Init/.Destroy, style scoped,
+slot outlet — instantiated from the parent loop with the §18.5 loop-var
+callback and injected slot content. **First build green.** Generated
+MatrixItem.vue carries every capability (import/computed×2/ref/watch/
+onMounted/onUnmounted/defineEmits/scoped style/<slot name="extra"/>);
+App.vue renders `<template #extra>` injection. Note: "No widget or store
+declarations found" warning for pure-fn helper files is non-fatal (ext
+import still lands, same as musk forge_helpers.at).
+
+## Phase 5 — callback idiom equivalence (T2) ✅
+
+Both parent-side callback forms work on a WIDGET child:
+
+- `on_select: .ItemSelected(item)` → `@Select="ItemSelected(item)"` (contract form)
+- `onselect: .ItemSelected($event)` → `@select="ItemSelected($event)"` (component-fn idiom)
+
+Vue listener camelize (`@select`/`@Select` both compile to the `onSelect`
+prop) makes them runtime-equivalent against a `Select` msg-variant emit.
+**Migration rule: component fn → widget renames need NO parent-side binding
+changes** (child-kind-agnostic event-binding conversion on the parent side).
