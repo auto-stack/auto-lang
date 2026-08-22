@@ -170,6 +170,12 @@ pub struct SharedState {
     /// EDGE-01: key bindings (including element-attribute onkeydown.*) for
     /// tool_keyboard lookup. Set by renderer each view() via update().
     key_bindings: HashMap<String, String>,
+    /// 2026-08-22(心跳活联门控):最近一次 MCP 请求到达的 Unix 毫秒。
+    /// 心跳 subscription 据此判断"agent 最近活跃" —— 只有活跃时才周期性
+    /// 刷快照(Plan 314 本意 "while an agent is connected");空闲 app 不再
+    /// 周期性 view 重建(大 Code 块下该循环会触发静默退出:实测 ~10s 内
+    /// 进程消失,关掉心跳后 30s+ 存活)。
+    last_activity_ms: std::sync::atomic::AtomicU64,
 }
 
 /// Screenshot request stored in SharedState for the iced thread to pick up (Plan 285).
@@ -244,7 +250,31 @@ impl SharedState {
             styled_vtree: None,
             screenshot_request: None,
             key_bindings: HashMap::new(),
+            last_activity_ms: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// 记一次 MCP 请求到达(HTTP 任何入口)。
+    pub fn note_activity(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.last_activity_ms
+            .store(now, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// 最近 `within_secs` 秒内是否有 MCP 请求(agent 活跃)。
+    pub fn mcp_active_recently(&self, within_secs: u64) -> bool {
+        let last = self.last_activity_ms.load(std::sync::atomic::Ordering::Relaxed);
+        if last == 0 {
+            return false;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        now.saturating_sub(last) < within_secs.saturating_mul(1000)
     }
 
     /// Check whether a view has been pushed yet.
@@ -419,6 +449,8 @@ async fn mcp_http_handler(
     axum::extract::State(shared): axum::extract::State<SharedStateHandle>,
     axum::Json(request): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
+    // 2026-08-22:记一次 agent 请求 —— 心跳 subscription 的活联门控依据。
+    shared.lock().unwrap().note_activity();
     let response = handle_request_static(&shared, request);
     axum::Json(response)
 }
