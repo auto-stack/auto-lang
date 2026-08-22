@@ -2299,6 +2299,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Button { label, content, onclick, style, on_right_click } => {
+                // Plan 418 P2-3 续: EE03 PUA marker carries an icon-button
+                // tooltip (synthesized toolbar buttons embed the action title
+                // there — the label itself stays icon-only so the resting
+                // render is a bare svg). Stripped here; wrapped around the
+                // final element at the arm's end.
+                let (label, pua_tooltip): (String, Option<String>) =
+                    match label.find('\u{EE03}') {
+                        Some(i) => (
+                            label[..i].to_string(),
+                            Some(label[i + '\u{EE03}'.len_utf8()..].to_string()),
+                        ),
+                        None => (label, None),
+                    };
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 // Plan 409 §6: if the button carries a content subtree (a `link`
@@ -2628,8 +2641,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     el
                 };
                 // Wrap in container if margin_top (from mt-*) needs to be applied
-                if let Some(ref is) = iced_style {
+                let el: iced::Element<'static, M> = if let Some(ref is) = iced_style {
                     wrap_with_margin_top(el, is)
+                } else {
+                    el
+                };
+                // Plan 418 P2-3 续: EE03 tooltip — icon-only toolbar buttons
+                // show their action title in a small dark rounded bubble
+                // below the icon while hovered (menu-panel palette).
+                if let Some(tip) = pua_tooltip {
+                    iced::widget::tooltip(
+                        el,
+                        iced::widget::text(tip).size(12.0),
+                        iced::widget::tooltip::Position::Bottom,
+                    )
+                    .gap(6.0)
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgb8(
+                            0x16, 0x17, 0x1B,
+                        ))),
+                        border: iced::Border {
+                            color: iced::Color::from_rgb8(0x3F, 0x3F, 0x46),
+                            width: 1.0,
+                            radius: 6.0.into(),
+                        },
+                        text_color: Some(iced::Color::from_rgb8(0xE4, 0xE4, 0xE7)),
+                        ..Default::default()
+                    })
+                    .into()
                 } else {
                     el
                 }

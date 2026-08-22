@@ -3292,7 +3292,12 @@ let tabs_inner = View::Row {
                     let label = if icon.is_empty() {
                         a.title.clone()
                     } else {
-                        format!("\u{EE01}{}\u{EE02}{}", icon, a.title)
+                        // Icon-only: the title rides a third PUA marker (EE03)
+                        // so the resting render is a bare svg; the renderer
+                        // wraps it in an iced tooltip (shown on hover). The
+                        // hover: classes give the icon square a rounded
+                        // highlight box while hovered.
+                        format!("\u{EE01}{}\u{EE02}\u{EE03}{}", icon, a.title)
                     };
                     children.push(View::Button {
                         label,
@@ -3301,7 +3306,10 @@ let tabs_inner = View::Row {
                             event_name: handler,
                             args: vec![],
                         },
-                        style: Style::parse("h-7 w-7 px-0 py-0").ok(),
+                        style: Style::parse(
+                            "h-7 w-7 px-0 py-0 hover:bg-zinc-700/50 hover:rounded-md",
+                        )
+                        .ok(),
                         on_right_click: None,
                         content: None,
                     });
