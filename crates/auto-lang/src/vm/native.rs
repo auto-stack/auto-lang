@@ -7194,6 +7194,7 @@ pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 模式同构(json body / json 响应),前端桩可复用 json.to_value。
 /// Stack: str_idx(name), str_idx(args_json) -> str_idx(response_json)
 pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    eprintln!("[DBG-HOSTCALL-ENTER] shim_host_call entered");
     let args_idx = task.ram.pop_str_idx() as u16;
     let name_idx = task.ram.pop_str_idx() as u16;
     let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
