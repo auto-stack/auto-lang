@@ -2141,8 +2141,8 @@ impl AutoVM {
                     task.ram.push_i32(1);
                 }
                 OpCode::LOAD_STR => {
-                    let str_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let str_idx = self.flash.read_u32(task.ip);
+                    task.ip += 4;
                     // Push string reference (NaN-boxed tag)
                     push_str_tag(&mut task.ram, str_idx as u32);
                     // Reset result type since this produces a string, not a number
@@ -2150,12 +2150,12 @@ impl AutoVM {
                 }
                 // Plan 073: Node support
                 OpCode::CREATE_NODE => {
-                    let name_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let name_idx = self.flash.read_u32(task.ip);
+                    task.ip += 4;
                     let arg_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
-                    let id_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let id_idx = self.flash.read_u32(task.ip);
+                    task.ip += 4;
 
                     // Pop kids_id and props_id first
                     let kids_id = task.ram.pop_i32();
@@ -2234,9 +2234,9 @@ impl AutoVM {
                 // Plan 364 Step 5: Config accumulation opcodes.
                 // PUSH_ACCUM name_str_idx:u16, id_str_idx:u16 — push a fresh Node container.
                 OpCode::PUSH_ACCUM => {
-                    let name_idx = self.flash.read_u16(task.ip);
-                    let id_idx = self.flash.read_u16(task.ip + 2);
-                    task.ip += 4;
+                    let name_idx = self.flash.read_u32(task.ip);
+                    let id_idx = self.flash.read_u32(task.ip + 4);
+                    task.ip += 8;
                     let (name, id) = {
                         let strings = self.strings.read().unwrap();
                         let name = strings
@@ -2262,8 +2262,8 @@ impl AutoVM {
                 }
                 // ACCUM_PAIR key_str_idx:u16 — pop value, set_prop(key, value) on top container.
                 OpCode::ACCUM_PAIR => {
-                    let key_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let key_idx = self.flash.read_u32(task.ip);
+                    task.ip += 4;
                     let value = self.pop_auto_value(task);
                     let key = {
                         let strings = self.strings.read().unwrap();
@@ -2335,8 +2335,8 @@ impl AutoVM {
                 }
                 // Plan 073: Object literal support
                 OpCode::CREATE_OBJ => {
-                    let key_index = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let key_index = self.flash.read_u32(task.ip);
+                    task.ip += 4;
                     let field_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
 
@@ -4457,8 +4457,8 @@ impl AutoVM {
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
                     use crate::vm::generic_registry::GenericInstanceData;
-                    let field_idx = self.flash.read_u16(task.ip);
-                    task.ip += 2;
+                    let field_idx = self.flash.read_u32(task.ip);
+                    task.ip += 4;
 
                     // Pop object ID from stack
                     let obj_id = {
@@ -5052,10 +5052,10 @@ impl AutoVM {
                 }
                 OpCode::CALL_SPEC => {
                     // Dynamic dispatch via spec vtable
-                    // Reads: method_name string index (u16), arg_count (u8)
+                    // Reads: method_name string index (u32), arg_count (u8)
                     // Stack: [..., receiver, arg0, arg1, ..., argN-1]
-                    let method_name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    let method_name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
                     let arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
@@ -6270,8 +6270,8 @@ impl AutoVM {
                     let creator_bp = task.bp; // Plan 385: 记录创建者的 bp
                     for _i in 0..capture_count {
                         // Read variable name from string table (stored in reverse order)
-                        let var_name_idx = self.flash.read_u16(task.ip) as usize;
-                        task.ip += 2;
+                        let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                        task.ip += 4;
 
                         // Plan 385: Read slot offset (u16) — 0xFFFF means "no slot" (兼容旧字节码)
                         let slot_offset = self.flash.read_u16(task.ip) as usize;
@@ -6309,10 +6309,10 @@ impl AutoVM {
                 }
                 OpCode::CAPTURE_VAR => {
                     // Stack: -> value
-                    // Immediate: var_name_idx (u16)
+                    // Immediate: var_name_idx (u32)
                     // Load variable by name from current scope and push value
-                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     // Plan 073: Now uses RwLock for strings access
                     let strings = self.strings.read().unwrap();
@@ -6334,9 +6334,9 @@ impl AutoVM {
                 OpCode::LOAD_CAPTURED => {
                     // Plan 071 Phase 5: Load captured variable from current closure
                     // Stack: -> value (no longer pops closure_id)
-                    // Immediate: var_name_idx (u16)
-                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    // Immediate: var_name_idx (u32)
+                    let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     // Use current_closure_id instead of popping from stack
                     let closure_id = task.current_closure_id.ok_or_else(|| {
@@ -6388,9 +6388,9 @@ impl AutoVM {
                 OpCode::STORE_CAPTURED => {
                     // Plan 071 Phase 5: Store to captured variable in current closure
                     // Stack: value -> (no longer pops closure_id)
-                    // Immediate: var_name_idx (u16)
-                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    // Immediate: var_name_idx (u32)
+                    let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     let value_nv = task.ram.pop_nv();
 
@@ -6967,10 +6967,10 @@ impl AutoVM {
                     }
                 }
                 // Plan 317: Global variable access (module-level var).
-                // name_idx: u16 indexes the string pool.
+                // name_idx: u32 indexes the string pool.
                 OpCode::LOAD_GLOBAL => {
-                    let name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    let name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
                     let name = self.strings.read().unwrap()
                         .get(name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -6979,8 +6979,8 @@ impl AutoVM {
                     task.ram.push_nv(nv);
                 }
                 OpCode::STORE_GLOBAL => {
-                    let name_idx = self.flash.read_u16(task.ip) as usize;
-                    task.ip += 2;
+                    let name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
                     let name = self.strings.read().unwrap()
                         .get(name_idx)
                         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -7510,8 +7510,8 @@ impl AutoVM {
                     let mut capture_names: Vec<String> = Vec::with_capacity(capture_count);
                     let strings = self.strings.read().unwrap();
                     for _ in 0..capture_count {
-                        let name_idx = self.flash.read_u16(task.ip) as usize;
-                        task.ip += 2;
+                        let name_idx = self.flash.read_u32(task.ip) as usize;
+                        task.ip += 4;
                         let name = strings
                             .get(name_idx)
                             .map(|b| String::from_utf8_lossy(b).to_string())

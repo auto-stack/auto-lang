@@ -131,7 +131,7 @@ impl TemplateCodegen {
     /// Emit separator string
     fn emit_separator(&mut self) {
         let sep_bytes = self.separator.as_bytes().to_vec();
-        let sep_idx = self.base.strings.len() as u16;
+        let sep_idx = self.base.strings.len() as u32;
         self.base.strings.push(sep_bytes);
 
         self.base.code.push(OpCode::LOAD_STR as u8);
@@ -143,7 +143,7 @@ impl TemplateCodegen {
 
     /// Emit empty string for empty templates
     fn emit_empty_string(&mut self) {
-        let empty_idx = self.base.strings.len() as u16;
+        let empty_idx = self.base.strings.len() as u32;
         self.base.strings.push(Vec::new());
 
         self.base.code.push(OpCode::LOAD_STR as u8);

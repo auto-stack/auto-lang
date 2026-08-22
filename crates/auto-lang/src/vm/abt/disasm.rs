@@ -252,22 +252,29 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
 
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => 8,
 
-        OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
-        | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
+        OpCode::CALL_NAT | OpCode::JMP | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER | OpCode::IS_VARIANT
-        | OpCode::ACCUM_PAIR
             => 2,
 
-        // Plan 364: PUSH_ACCUM has 4 operand bytes (name_str_idx + id_str_idx)
-        OpCode::PUSH_ACCUM => 4,
+        // 2026-08-22(池 u32 化):池索引操作数 4 字节。
+        OpCode::LOAD_STR | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
+        | OpCode::STORE_CAPTURED | OpCode::GET_FIELD
+        | OpCode::ACCUM_PAIR
+        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+            => 4,
+
+        // Plan 364: PUSH_ACCUM(池 u32 化后 8 字节)
+        OpCode::PUSH_ACCUM => 8,
 
         OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
 
         OpCode::SPAWN => 5,
 
-        OpCode::CREATE_OBJ | OpCode::CALL_PY => 3,
+        OpCode::CREATE_OBJ => 5,
 
-        OpCode::CREATE_NODE => 5,
+        OpCode::CALL_PY => 3,
+
+        OpCode::CREATE_NODE => 9,
 
         OpCode::BUILD_FSTR => {
             let part_count = flash.read_u8(ip);
@@ -405,7 +412,6 @@ fn decode_operands(
 
         OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
         | OpCode::PUSH_BOOL => {  // Plan 318: 1 byte operand (0|1)
             let v = flash.read_u8(ip);
             // Plan 087/088: parameters encoded as 0x80 + param_index
@@ -417,26 +423,31 @@ fn decode_operands(
             (vec![operand], 1)
         }
         OpCode::PUSH_ACCUM => {
-            let name = flash.read_u16(ip);
-            let id = flash.read_u16(ip + 2);
+            let name = flash.read_u32(ip);
+            let id = flash.read_u32(ip + 4);
             (
                 vec![
                     AbtOperand::StringIdx(name as usize),
                     AbtOperand::StringIdx(id as usize),
                 ],
-                4,
+                8,
             )
         }
         OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
         | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => (vec![], 0),
 
         OpCode::LOAD_STR => {
-            let v = flash.read_u16(ip);
-            (vec![AbtOperand::StringIdx(v as usize)], 2)
+            let v = flash.read_u32(ip);
+            (vec![AbtOperand::StringIdx(v as usize)], 4)
+        }
+        // 池 u32 化:全局名索引(原先混在 u8 组,宽度本就与 engine 不符)
+        OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
+            let v = flash.read_u32(ip);
+            (vec![AbtOperand::StringIdx(v as usize)], 4)
         }
         OpCode::ACCUM_PAIR => {
-            let v = flash.read_u16(ip);
-            (vec![AbtOperand::StringIdx(v as usize)], 2)
+            let v = flash.read_u32(ip);
+            (vec![AbtOperand::StringIdx(v as usize)], 4)
         }
         OpCode::CALL_NAT => {
             let v = flash.read_u16(ip);
@@ -492,9 +503,9 @@ fn decode_operands(
         }
 
         OpCode::CREATE_OBJ => {
-            let key_index = flash.read_u16(ip);
-            let field_count = flash.read_u8(ip + 2);
-            (vec![AbtOperand::ImmU16(key_index), AbtOperand::ImmU8(field_count)], 3)
+            let key_index = flash.read_u32(ip);
+            let field_count = flash.read_u8(ip + 4);
+            (vec![AbtOperand::ImmU32(key_index), AbtOperand::ImmU8(field_count)], 5)
         }
 
         // Plan 369 Task 10: py-FFI call: u16 native_id + u8 arg_count
@@ -514,21 +525,21 @@ fn decode_operands(
         }
 
         OpCode::GET_FIELD => {
-            let v = flash.read_u16(ip);
-            (vec![AbtOperand::FieldIdx(v as usize)], 2)
+            let v = flash.read_u32(ip);
+            (vec![AbtOperand::FieldIdx(v as usize)], 4)
         }
 
         OpCode::CREATE_NODE => {
-            let name = flash.read_u16(ip);
-            let argc = flash.read_u8(ip + 2);
-            let id_idx = flash.read_u16(ip + 3);
+            let name = flash.read_u32(ip);
+            let argc = flash.read_u8(ip + 4);
+            let id_idx = flash.read_u32(ip + 5);
             (
                 vec![
                     AbtOperand::StringIdx(name as usize),
                     AbtOperand::ImmU8(argc),
                     AbtOperand::StringIdx(id_idx as usize),
                 ],
-                5,
+                9,
             )
         }
 

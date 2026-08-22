@@ -401,3 +401,4 @@ dep("log") {
         assert!(!cfg.root.has_prop("default_classes"));
     }
 }
+

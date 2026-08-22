@@ -163,15 +163,20 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
 
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => 8,
 
-        OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
-        | OpCode::STORE_CAPTURED | OpCode::GET_FIELD | OpCode::JMP | OpCode::JMP_IF_Z
+        OpCode::CALL_NAT | OpCode::JMP | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ
         | OpCode::PUSH_HANDLER
-        | OpCode::ACCUM_PAIR
             => 2,
 
-        // Plan 364: PUSH_ACCUM has 4 operand bytes (name_str_idx + id_str_idx)
-        OpCode::PUSH_ACCUM => 4,
+        // 2026-08-22(池 u32 化):池索引操作数 2B→4B,与 engine/disasm 对齐。
+        OpCode::LOAD_STR | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
+        | OpCode::STORE_CAPTURED | OpCode::GET_FIELD
+        | OpCode::ACCUM_PAIR
+        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+            => 4,
+
+        // Plan 364: PUSH_ACCUM(池 u32 化后 8 字节:name + id 两枚 u32)
+        OpCode::PUSH_ACCUM => 8,
 
         OpCode::IS_VARIANT => {
             match instr.operands.first() {
@@ -180,13 +185,20 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
             }
         }
 
-        OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
+        OpCode::JMP_L | OpCode::JMP_FAR => 4,
+
+        // CALL_SPEC:注意 asm 发射器(spec+method 双 u16)与 engine
+        // (method u32 + argc u8)形态不一致 —— 先例债,无消费者测试,
+        // 此处保持 asm 内部自洽(长度=发射 4B),待 ABT 管线启用时统一。
+        OpCode::CALL_SPEC => 4,
 
         OpCode::SPAWN => 5,
 
-        OpCode::CREATE_OBJ | OpCode::CALL_PY => 3,
+        OpCode::CREATE_OBJ => 5,
 
-        OpCode::CREATE_NODE => 5,
+        OpCode::CALL_PY => 3,
+
+        OpCode::CREATE_NODE => 9,
 
         OpCode::BUILD_FSTR => {
             let part_count = match instr.operands.first() {
@@ -276,13 +288,19 @@ fn emit_operands(
         | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
         | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
         | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
         | OpCode::PUSH_BOOL   // Plan 318: 1 byte operand (0|1)
             => {
                 let v = operand_u8(&instr.operands, 0)?;
                 bytecode.push(v);
                 Ok(())
             }
+
+        // 池 u32 化:全局名索引 4 字节
+        OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
+            let v = operand_u32(&instr.operands, 0)?;
+            bytecode.extend_from_slice(&v.to_le_bytes());
+            Ok(())
+        }
 
         OpCode::FN_PROLOG => {
             let args = operand_u8(&instr.operands, 0)?;
@@ -332,19 +350,26 @@ fn emit_operands(
             Ok(())
         }
 
-        OpCode::LOAD_STR | OpCode::CALL_NAT | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
+        OpCode::CALL_NAT => {
+            let v = operand_u16(&instr.operands, 0)?;
+            bytecode.extend_from_slice(&v.to_le_bytes());
+            Ok(())
+        }
+
+        // 池 u32 化:以下操作数的池索引按 u32 发射。
+        OpCode::LOAD_STR | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
         | OpCode::STORE_CAPTURED
         | OpCode::ACCUM_PAIR
             => {
-                let v = operand_u16(&instr.operands, 0)?;
+                let v = operand_u32(&instr.operands, 0)?;
                 bytecode.extend_from_slice(&v.to_le_bytes());
                 Ok(())
             }
 
-        // Plan 364: PUSH_ACCUM emits two u16 (name_str_idx, id_str_idx).
+        // Plan 364: PUSH_ACCUM emits two u32 (name_str_idx, id_str_idx).
         OpCode::PUSH_ACCUM => {
-            let name = operand_u16(&instr.operands, 0)?;
-            let id = operand_u16(&instr.operands, 1)?;
+            let name = operand_u32(&instr.operands, 0)?;
+            let id = operand_u32(&instr.operands, 1)?;
             bytecode.extend_from_slice(&name.to_le_bytes());
             bytecode.extend_from_slice(&id.to_le_bytes());
             Ok(())
@@ -401,7 +426,7 @@ fn emit_operands(
         }
 
         OpCode::CREATE_OBJ => {
-            let key_index = operand_u16(&instr.operands, 0)?;
+            let key_index = operand_u32(&instr.operands, 0)?;
             let field_count = operand_u8(&instr.operands, 1)?;
             bytecode.extend_from_slice(&key_index.to_le_bytes());
             bytecode.push(field_count);
@@ -418,9 +443,9 @@ fn emit_operands(
         }
 
         OpCode::CREATE_NODE => {
-            let name = operand_u16(&instr.operands, 0)?;
+            let name = operand_u32(&instr.operands, 0)?;
             let argc = operand_u8(&instr.operands, 1)?;
-            let id_idx = operand_u16(&instr.operands, 2)?;
+            let id_idx = operand_u32(&instr.operands, 2)?;
             bytecode.extend_from_slice(&name.to_le_bytes());
             bytecode.push(argc);
             bytecode.extend_from_slice(&id_idx.to_le_bytes());
@@ -438,7 +463,7 @@ fn emit_operands(
         }
 
         OpCode::GET_FIELD => {
-            let v = operand_u16(&instr.operands, 0)?;
+            let v = operand_u32(&instr.operands, 0)?;
             bytecode.extend_from_slice(&v.to_le_bytes());
             Ok(())
         }
@@ -559,6 +584,10 @@ fn operand_u32(operands: &[AbtOperand], idx: usize) -> Result<u32, String> {
         Some(AbtOperand::ImmI32(v)) => Ok(*v as u32),
         Some(AbtOperand::ImmU16(v)) => Ok(*v as u32),
         Some(AbtOperand::ImmU8(v)) => Ok(*v as u32),
+        // 池 u32 化:LOAD_STR/CAPTURE 系/ACCUM 系的池索引现在按 u32 发射,
+        // 反汇编侧产 StringIdx/FieldIdx —— 往返(assemble∘disasm)须接受。
+        Some(AbtOperand::StringIdx(v)) => Ok(*v as u32),
+        Some(AbtOperand::FieldIdx(v)) => Ok(*v as u32),
         other => Err(format!("Expected u32 operand at {}, got {:?}", idx, other)),
     }
 }

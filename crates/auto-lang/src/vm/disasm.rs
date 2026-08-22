@@ -190,10 +190,10 @@ impl<'a> Disassembler<'a> {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }
-            // 2-byte global name index (string pool)
+            // 4-byte global name index (string pool, u32 化)
             OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL => {
-                let v = self.flash.read_u16(ip);
-                (format!("{}", v), 2)
+                let v = self.flash.read_u32(ip);
+                (format!("{}", v), 4)
             }
             OpCode::LOAD_LOC_0 => ("0".to_string(), 0),
             OpCode::LOAD_LOC_1 => ("1".to_string(), 0),
@@ -201,10 +201,10 @@ impl<'a> Disassembler<'a> {
             OpCode::STORE_LOC_0 => ("0".to_string(), 0),
             OpCode::STORE_LOC_1 => ("1".to_string(), 0),
 
-            // 2-byte operand (u16)
+            // 4-byte string pool index (u32 化)
             OpCode::LOAD_STR => {
-                let v = self.flash.read_u16(ip);
-                (format!("str[{}]", v), 2)
+                let v = self.flash.read_u32(ip);
+                (format!("str[{}]", v), 4)
             }
             OpCode::CALL_NAT => {
                 let v = self.flash.read_u16(ip);
@@ -217,8 +217,8 @@ impl<'a> Disassembler<'a> {
                 (format!("py.nat#{}/{}", v, n), 3)
             }
             OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED => {
-                let v = self.flash.read_u16(ip);
-                (format!("str[{}]", v), 2)
+                let v = self.flash.read_u32(ip);
+                (format!("str[{}]", v), 4)
             }
 
             // Jump: i16 offset
@@ -256,14 +256,12 @@ impl<'a> Disassembler<'a> {
                 (format!("addr=0x{:04x}, n_args={}", addr, n_args), 5)
             }
 
-            // CALL_SPEC: u16 method_name string idx, u8 arg_count
-            // (Plan 417-E3: real encoding is 3 operand bytes — the old u16+u16
-            // decode misread the arg-count byte into the method index and
-            // desynced every following instruction in the listing.)
+            // CALL_SPEC: u32 method_name string idx, u8 arg_count
+            // (Plan 417-E3 修正过一次操作数宽度;2026-08-22 池 u32 化再扩。)
             OpCode::CALL_SPEC => {
-                let method = self.flash.read_u16(ip);
-                let argc = self.flash.read_u8(ip + 2);
-                (format!("method={}, argc={}", method, argc), 3)
+                let method = self.flash.read_u32(ip);
+                let argc = self.flash.read_u8(ip + 4);
+                (format!("method={}, argc={}", method, argc), 5)
             }
 
             // CREATE_ARRAY/CREATE_TUPLE: u8 count
@@ -272,11 +270,11 @@ impl<'a> Disassembler<'a> {
                 (format!("count={}", v), 1)
             }
 
-            // CREATE_OBJ: u16 key_index, u8 field_count
+            // CREATE_OBJ: u32 key_index, u8 field_count
             OpCode::CREATE_OBJ => {
-                let key_index = self.flash.read_u16(ip);
-                let field_count = self.flash.read_u8(ip + 2);
-                (format!("keys={}, fields={}", key_index, field_count), 3)
+                let key_index = self.flash.read_u32(ip);
+                let field_count = self.flash.read_u8(ip + 4);
+                (format!("keys={}, fields={}", key_index, field_count), 5)
             }
 
             // BUILD_FSTR: u8 part_count, then part_count * u8 type_tags
@@ -289,18 +287,18 @@ impl<'a> Disassembler<'a> {
                 (format!("parts={}, tags={:?}", part_count, tags), 1 + part_count as usize)
             }
 
-            // GET_FIELD: u16 field_idx
+            // GET_FIELD: u32 field_idx
             OpCode::GET_FIELD => {
-                let v = self.flash.read_u16(ip);
-                (format!("field[{}]", v), 2)
+                let v = self.flash.read_u32(ip);
+                (format!("field[{}]", v), 4)
             }
 
-            // CREATE_NODE: u16 name_idx, u8 argc, u16 id_idx
+            // CREATE_NODE: u32 name_idx, u8 argc, u32 id_idx
             OpCode::CREATE_NODE => {
-                let name = self.flash.read_u16(ip);
-                let argc = self.flash.read_u8(ip + 2);
-                let id_idx = self.flash.read_u16(ip + 3);
-                (format!("name[{}], argc={}, id={}", name, argc, id_idx), 5)
+                let name = self.flash.read_u32(ip);
+                let argc = self.flash.read_u8(ip + 4);
+                let id_idx = self.flash.read_u32(ip + 5);
+                (format!("name[{}], argc={}, id={}", name, argc, id_idx), 9)
             }
 
             // CREATE_OK: type_tag u8
@@ -359,12 +357,12 @@ impl<'a> Disassembler<'a> {
 
             // Async
             // Plan 348 Task 22: CREATE_FUTURE now carries capture metadata:
-            //   body_offset: u32, capture_count: u8, capture_name_idx: u16 *
+            //   body_offset: u32, capture_count: u8, capture_name_idx: u32 *
             OpCode::CREATE_FUTURE => {
                 let offset_val = self.flash.read_u32(ip);
                 let capture_count = self.flash.read_u8(ip + 4);
-                // Total immediate length: 4 (offset) + 1 (count) + 2*count (names)
-                let total = 4 + 1 + 2 * capture_count as usize;
+                // Total immediate length: 4 (offset) + 1 (count) + 4*count (names)
+                let total = 4 + 1 + 4 * capture_count as usize;
                 (format!("body=0x{:04x} captures={}", offset_val, capture_count), total)
             }
 
@@ -388,13 +386,13 @@ impl<'a> Disassembler<'a> {
 
             // Plan 364 Step 5: Config accumulation opcodes
             OpCode::PUSH_ACCUM => {
-                let name = self.flash.read_u16(ip);
-                let id = self.flash.read_u16(ip + 2);
-                (format!("name={}, id={}", name, id), 4)
+                let name = self.flash.read_u32(ip);
+                let id = self.flash.read_u32(ip + 4);
+                (format!("name={}, id={}", name, id), 8)
             }
             OpCode::ACCUM_PAIR => {
-                let idx = self.flash.read_u16(ip);
-                (format!("key={}", idx), 2)
+                let idx = self.flash.read_u32(ip);
+                (format!("key={}", idx), 4)
             }
             OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM => {
                 (String::new(), 0)
