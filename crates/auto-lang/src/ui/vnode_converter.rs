@@ -207,6 +207,8 @@ where
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
         View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
+        View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
 
         View::Text { content, .. } => (
             VNodeKind::Text,
@@ -439,6 +441,12 @@ where
             children
         }
         View::Tabs { contents, .. } => contents.clone(),
+        // Plan 422: 弹层的 anchor(widget 锚)与 content 都是 VNode 子节点
+        // (坐标锚无 anchor 子)。子序 = snapshot/probe 约定 0/1。
+        View::Popover { anchor: crate::ui::view::PopoverAnchor::Widget(w), content, .. } => {
+            vec![*w.clone(), *content.clone()]
+        }
+        View::Popover { content, .. } => vec![*content.clone()],
         _ => Vec::new(),
     }
 }
@@ -473,6 +481,11 @@ where
             out
         }
         View::Tabs { contents, .. } => contents.iter().collect(),
+        // Plan 422: 与 extract_children 保持同序(widget 锚在前)。
+        View::Popover { anchor: crate::ui::view::PopoverAnchor::Widget(w), content, .. } => {
+            vec![w.as_ref(), content.as_ref()]
+        }
+        View::Popover { content, .. } => vec![content.as_ref()],
         _ => Vec::new(),
     }
 }

@@ -2854,6 +2854,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 iced::widget::stack![base_el, iced::widget::opaque(content_el)].into()
             }
 
+            // Plan 422: 锚定弹层 —— wrapper widget(Tooltip 同型),open 时
+            // 经 iced overlay 机制置顶;chrome 由 content 自带。inspect 捕获
+            // 模式下丢 on_dismiss(与其余 handler 同规则)。
+            AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+                use crate::ui::iced::popover::Popover as PopoverWidget;
+                use crate::ui::view::PopoverAnchor;
+                let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, M>) =
+                    match anchor {
+                        PopoverAnchor::Widget(w) => (None, w.into_iced()),
+                        // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
+                        // 面板定位由 at_point 决定。
+                        PopoverAnchor::Point { x, y } => {
+                            (Some((x, y)), iced::widget::Space::new().into())
+                        }
+                    };
+                let mut p = PopoverWidget::new(anchor_el, content.into_iced())
+                    .placement(placement)
+                    .open(open);
+                if let Some((x, y)) = anchor_point {
+                    p = p.at_point(x, y);
+                }
+                let handler = if inspect_capture_active() { None } else { on_dismiss };
+                if let Some(msg) = handler {
+                    p = p.on_dismiss(msg);
+                }
+                p.into()
+            }
+
             AbstractView::Radio {
                 label,
                 is_selected,
@@ -4006,6 +4034,26 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             cells: cells.into_iter().map(convert_view_messages).collect(),
             style,
         },
+
+        // Plan 422: Popover 携带 on_dismiss 消息 —— MUST be explicit,否则掉进
+        // 下方 `_ => Empty` 兜底,弹层在 VM 模式整体消失(menubar 迁移的
+        // 生命线;Overlay 至今仍走兜底,是已知差异)。
+        AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+            use crate::ui::view::PopoverAnchor;
+            let anchor = match anchor {
+                PopoverAnchor::Widget(w) => {
+                    PopoverAnchor::Widget(Box::new(convert_view_messages(*w)))
+                }
+                PopoverAnchor::Point { x, y } => PopoverAnchor::Point { x, y },
+            };
+            AbstractView::Popover {
+                anchor,
+                content: Box::new(convert_view_messages(*content)),
+                placement,
+                open,
+                on_dismiss: on_dismiss.map(|m| IcedMessage::from_dynamic(&m)),
+            }
+        }
 
         // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
@@ -10079,6 +10127,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Empty => None,
         // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
         AbstractView::Overlay { .. } => None,
+        // Plan 422: Popover 的 chrome 在 content 上(anchor 各自带)。
+        AbstractView::Popover { .. } => None,
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
@@ -10110,6 +10160,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
     match view {
         AbstractView::Empty => "empty",
         AbstractView::Overlay { .. } => "overlay",
+        AbstractView::Popover { .. } => "popover",
         AbstractView::Text { .. } => "text",
         AbstractView::Button { .. } => "button",
         AbstractView::Checkbox { .. } => "checkbox",
@@ -10373,6 +10424,42 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 stk.clip(clip).into()
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
+        }
+
+        // Plan 422: 锚定弹层(VM 模式路径)。子路径约定:anchor = 0,
+        // content = 1 —— 与 snapshot 遍历 / BuildProbe 记录路径对齐
+        // (convert_menubar 的面板项路径按 [base, popover_idx, 1, item_idx]
+        // 记录)。坐标锚时 anchor 轨道为零尺寸占位,不占路径 0 之外的空间。
+        AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+            use crate::ui::iced::popover::Popover as PopoverWidget;
+            use crate::ui::view::PopoverAnchor;
+            let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, IcedMessage>) =
+                match anchor {
+                    PopoverAnchor::Widget(w) => {
+                        path.push(0);
+                        let el = render_dynamic_view(*w, debug_ctx, path);
+                        path.pop();
+                        (None, el)
+                    }
+                    PopoverAnchor::Point { x, y } => {
+                        (Some((x, y)), iced::widget::Space::new().into())
+                    }
+                };
+            path.push(1);
+            let content_el = render_dynamic_view(*content, debug_ctx, path);
+            path.pop();
+            let mut p = PopoverWidget::new(anchor_el, content_el)
+                .placement(placement)
+                .open(open);
+            if let Some((x, y)) = anchor_point {
+                p = p.at_point(x, y);
+            }
+            let handler = if inspect_capture_active() { None } else { on_dismiss };
+            if let Some(msg) = handler {
+                p = p.on_dismiss(msg);
+            }
+            let el: iced::Element<'static, IcedMessage> = p.into();
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "popover", el, vec![], None) } else { el }
         }
 
         AbstractView::Row { children, spacing, padding, style } => {
