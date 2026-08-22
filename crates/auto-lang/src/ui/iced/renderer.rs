@@ -5971,6 +5971,33 @@ fn compare_pngs(
                 }
                 _ => {}
             }
+        } else if msg.event.starts_with("__popover") {
+            // Plan 422 P4: DSL popover 自管开合(无 open 属性的 widget 锚
+            // 形态,gallery 的 popover/popover-trigger/popover-content 页)。
+            // 与 menubar 同型:slot id 为构建路径键,dismiss 走 popover 自身
+            // 的 on_dismiss 内部消息。
+            let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            match name.as_str() {
+                "__popover_toggle" => {
+                    if let Some(auto_val::Value::Str(slot)) = args.get(0) {
+                        let next =
+                            if crate::ui::action_config::popover_open().as_deref() == Some(slot.as_str()) {
+                                None
+                            } else {
+                                Some(slot.to_string())
+                            };
+                        crate::ui::action_config::set_popover_open(next);
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                    return iced::Task::none();
+                }
+                "__popover_close" => {
+                    crate::ui::action_config::set_popover_open(None);
+                    *state.view_dirty.borrow_mut() = true;
+                    return iced::Task::none();
+                }
+                _ => {}
+            }
         } else if crate::ui::action_config::menubar_open().is_some()
             && !msg.event.starts_with("__")
         {

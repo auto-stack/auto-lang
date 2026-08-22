@@ -280,6 +280,19 @@ pub fn set_menubar_open(v: Option<String>) {
     *MENUBAR_OPEN.lock().unwrap() = v;
 }
 
+/// Plan 422 P4: which DSL popover (self-managed form, no `open` prop) is
+/// open, keyed by instance slot id (`pv_<path>`; stable across rebuilds).
+/// Same renderer-local pattern as MENUBAR_OPEN.
+static POPOVER_OPEN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn popover_open() -> Option<String> {
+    POPOVER_OPEN.lock().unwrap().clone()
+}
+
+pub fn set_popover_open(v: Option<String>) {
+    *POPOVER_OPEN.lock().unwrap() = v;
+}
+
 /// Process-wide config (loaded once from AUTO_VM_ACTION_CONFIG, injected by
 /// `auto run` from pac.at `ui_config:`). None when unset/unreadable/invalid
 /// — callers fall back to DSL-declared bindings.

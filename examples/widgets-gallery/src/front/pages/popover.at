@@ -7,6 +7,7 @@ widget PopoverPage {
         col {
             h1 "Popover"
             text "Popover displays floating content — forms, menus, or rich panels — anchored to a trigger element. It appears on click and closes when the user clicks outside or presses Escape. Ideal for quick configuration panels, color pickers, and contextual toolbars without the weight of a full Dialog."
+            text "vm/iced 模式(Plan 422):popover-trigger/popover-content 由原生弹层原语驱动 —— 点击触发器开合,点击面板外/Esc 关闭,无需应用态。"
 
             h2 "Installation"
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add popover") {}

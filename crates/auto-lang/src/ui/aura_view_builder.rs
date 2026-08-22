@@ -3272,14 +3272,18 @@ let tabs_inner = View::Row {
         }
     }
 
-    /// Plan 422 P3: `popover` DSL 标签 —— 锚定弹层的应用侧入口。两形态:
+    /// Plan 422 P3/P4: `popover` DSL 标签 —— 锚定弹层的应用侧入口。三形态:
     ///
     /// * 坐标锚(contextmenu):`popover (open: .ctx_open, x: .ctx_x, y: .ctx_y,
     ///   ondismiss: .CtxClose, class: "面板样式") { 面板子节点… }` —— 面板
     ///   左上角对齐 (x, y) 落点;class 给面板 chrome(bg/border/shadow)。
-    /// * widget 锚:`popover (placement: "bottom-start") { 触发按钮; 面板子节点… }`
-    ///   —— children[0] 为锚,其余为面板内容。
+    /// * shadcn 嵌套(gallery 兼容,自管开合):`popover { popover-trigger {
+    ///   按钮等 } popover-content { 面板子节点… } }` —— 触发按钮点击开合
+    ///   (内部 __popover_toggle 消息,menubar 同型注册表),无 open 属性。
+    /// * widget 锚(first-child):`popover (placement: "bottom-start") {
+    ///   触发按钮; 面板子节点… }` —— children[0] 为锚,其余为面板内容。
     ///
+    /// 显式 `open` 属性优先(应用态驱动);缺失时走自管注册表。
     /// 子路径约定与 vnode/snapshot/find_view_by_path 的 extract_children 同序:
     /// widget 锚 anchor=0/content=1;坐标锚 content=0。
     fn convert_popover(
@@ -3291,6 +3295,7 @@ let tabs_inner = View::Row {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        use crate::ui::action_config::popover_open;
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
 
         let expr_value = |key: &str| -> Option<Value> {
@@ -3301,9 +3306,9 @@ let tabs_inner = View::Row {
                 _ => None,
             }
         };
-        let open = expr_value("open")
-            .map(|v| matches!(v, Value::Bool(true)))
-            .unwrap_or(false);
+        let has_open_prop = props.contains_key("open");
+        let open_prop = expr_value("open")
+            .map(|v| matches!(v, Value::Bool(true)));
         let coord = |key: &str| -> Option<f32> {
             match expr_value(key)? {
                 Value::Float(f) => Some(f as f32),
@@ -3327,50 +3332,128 @@ let tabs_inner = View::Row {
                 _ => None,
             })
             .unwrap_or(PopoverPlacement::BottomStart);
-        let on_dismiss = self
-            .extract_string_with(props, "ondismiss", bindings)
-            .map(|h| DynamicMessage::Typed {
-                widget_name: self.widget_name.clone(),
-                event_name: h.trim_start_matches('.').to_string(),
-                args: vec![],
-            });
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
         let panel_style = self.extract_style_with(props, bindings);
 
-        let panel_col = |items: Vec<View<DynamicMessage>>| View::Column {
-            children: items,
-            spacing: 0,
-            padding: 0,
-            style: panel_style.clone(),
+        // shadcn 嵌套形态分区:popover-trigger / popover-content 子标签拆解。
+        let mut trigger_node: Option<&AuraNode> = None;
+        let mut content_node: Option<&AuraNode> = None;
+        let mut plain: Vec<&AuraNode> = Vec::new();
+        for n in children {
+            match popover_node_tag(n) {
+                Some("popover-trigger") | Some("popover_trigger") => trigger_node = Some(n),
+                Some("popover-content") | Some("popover_content") => content_node = Some(n),
+                _ => plain.push(n),
+            }
+        }
+
+        // 自管开合:slot id 按构建路径键(结构稳定则跨重建稳定)。
+        let slot_id = format!("pv_{}", path.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("_"));
+        let self_managed_open = || popover_open().as_deref() == Some(slot_id.as_str());
+
+        let internal_toggle = DynamicMessage::Typed {
+            widget_name: self.widget_name.clone(),
+            event_name: "__popover_toggle".to_string(),
+            args: vec![Value::str(&slot_id)],
         };
 
         match (px, py) {
-            (Some(x), Some(y)) => View::Popover {
-                anchor: PopoverAnchor::Point { x, y },
-                content: Box::new(panel_col(
-                    self.convert_popover_items(children, 0, path, id_map, probe, bindings),
-                )),
-                placement,
-                open,
-                on_dismiss,
-            },
+            (Some(x), Some(y)) => {
+                let open = open_prop.unwrap_or_else(self_managed_open);
+                let on_dismiss = self
+                    .extract_string_with(props, "ondismiss", bindings)
+                    .map(|h| DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: h.trim_start_matches('.').to_string(),
+                        args: vec![],
+                    });
+                View::Popover {
+                    anchor: PopoverAnchor::Point { x, y },
+                    content: Box::new(View::Column {
+                        children: self.convert_popover_items(children, 0, path, id_map, probe, bindings),
+                        spacing: 0,
+                        padding: 0,
+                        style: panel_style,
+                    }),
+                    placement,
+                    open,
+                    on_dismiss,
+                }
+            }
             _ => {
-                let mut it = children.iter();
-                let anchor = match it.next() {
-                    Some(n) => {
-                        path.push(0);
-                        let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                        path.pop();
-                        v
-                    }
-                    None => View::Empty,
+                // 锚子节点:trigger 形态取其 children;first-child 形态取 plain[0]。
+                let anchor_src: Vec<&AuraNode> = if let Some(t) = trigger_node {
+                    popover_node_children(t).iter().collect()
+                } else {
+                    plain.iter().take(1).copied().collect()
                 };
-                let rest: Vec<AuraNode> = it.cloned().collect();
+                // 内容子节点:content 形态的 children + (first-child 形态的)其余 plain。
+                let mut content_src: Vec<&AuraNode> = content_node
+                    .map(|c| popover_node_children(c).iter().collect())
+                    .unwrap_or_default();
+                if trigger_node.is_none() {
+                    content_src.extend(plain.iter().skip(1).copied());
+                } else {
+                    content_src.extend(plain.iter().copied());
+                }
+
+                // 锚转换:单子直接占槽 0;多子包 Row(槽 0,子槽 i)。
+                let mut anchor = if anchor_src.len() == 1 {
+                    path.push(0);
+                    let v = self.convert_node_tracked_ctx(anchor_src[0], path, id_map, probe, bindings);
+                    path.pop();
+                    v
+                } else if anchor_src.is_empty() {
+                    View::Empty
+                } else {
+                    let inner: Vec<View<DynamicMessage>> = self
+                        .convert_popover_items(&anchor_src.iter().map(|n| (*n).clone()).collect::<Vec<_>>(), 0, path, id_map, probe, bindings);
+                    View::Row {
+                        children: inner,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                    }
+                };
+
+                let open = open_prop.unwrap_or_else(self_managed_open);
+                let on_dismiss = Some(self
+                    .extract_string_with(props, "ondismiss", bindings)
+                    .map(|h| DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: h.trim_start_matches('.').to_string(),
+                        args: vec![],
+                    })
+                    .unwrap_or_else(|| DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: "__popover_close".to_string(),
+                        args: vec![],
+                    }));
+
+                // 自管形态:默认 onclick(无 handler 时 convert_button 产出
+                // String("click"))的 Button 锚注入内部 toggle(点锚开合)。
+                // 已有真实 onclick 的锚保留用户语义(改用 open 属性驱动)。
+                if !has_open_prop {
+                    if let View::Button { onclick, .. } = &mut anchor {
+                        let is_default = match onclick {
+                            DynamicMessage::String(s) => s.is_empty() || s == "click",
+                            DynamicMessage::Typed { event_name, .. } => event_name.is_empty(),
+                        };
+                        if is_default {
+                            *onclick = internal_toggle;
+                        }
+                    }
+                }
+
+                let owned_content: Vec<AuraNode> = content_src.iter().map(|n| (*n).clone()).collect();
                 View::Popover {
                     anchor: PopoverAnchor::Widget(Box::new(anchor)),
-                    content: Box::new(panel_col(
-                        self.convert_popover_items(&rest, 1, path, id_map, probe, bindings),
-                    )),
+                    content: Box::new(View::Column {
+                        children: self.convert_popover_items(&owned_content, 1, path, id_map, probe, bindings),
+                        spacing: 0,
+                        padding: 0,
+                        style: panel_style,
+                    }),
                     placement,
                     open,
                     on_dismiss,
@@ -6758,5 +6841,21 @@ mod tests {
         let r_neq = builder_edit.eval_condition_with(cond_edit_neq, &bindings);
         eprintln!("editing_id==-1, todo.id=0: '.editing_id != todo.id' => {}", r_neq);
         assert!(r_neq, "editing_id=-1 should NOT equal todo.id=0 (neq)");
+    }
+}
+
+/// Plan 422 P4: popover 子标签的 tag/children 读取(闭包无法表达返回借用的
+/// 生命周期,落为模块级函数)。
+fn popover_node_tag(n: &AuraNode) -> Option<&str> {
+    match n {
+        AuraNode::Element { tag, .. } => Some(tag.as_str()),
+        _ => None,
+    }
+}
+
+fn popover_node_children(n: &AuraNode) -> &[AuraNode] {
+    match n {
+        AuraNode::Element { children, .. } => children,
+        _ => &[],
     }
 }
