@@ -15,6 +15,7 @@ members = [
     "hero-section",
     "login",
     "myapp-back",
+    "plan-032-back",
     "pricing-table",
     "profile-card",
     "stats-board"
