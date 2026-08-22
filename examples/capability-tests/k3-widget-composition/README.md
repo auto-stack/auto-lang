@@ -2,6 +2,14 @@
 
 Status: **GREEN** — both phases pass `auto build` (vue-tsc + vite).
 
+> Plan 425: `component fn` is now syntactic sugar over `widget` (parse-time
+> WidgetDecl). Phase 1 (`item_cf.at.disabled`) was revived once post-sugar as
+> a verification: builds green, vue-tsc green; its output differs from
+> `item_w.at` only in msg-variant casing — the source spells variants
+> lowercase (`select`/`bump`) while Phase 2 spells them Pascal (`Select`/
+> `Bump`), and each track emits names as declared. Same-spelling sources are
+> byte-identical (pinned by `test_plan425_component_fn_widget_equivalence`).
+
 Question: can a page-level `widget` compose a child defined as a `component fn`
 vs the same child defined as a `widget` — props down, per-instance state,
 events up, instantiated inside a `for` loop with the parent closing over the
