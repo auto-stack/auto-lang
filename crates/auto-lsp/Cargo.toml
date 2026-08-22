@@ -17,6 +17,10 @@ auto-val = { path = "../auto-val" }
 env_logger = "0.11"
 url = "2.5"
 
+[dev-dependencies]
+tower = "0.5"
+futures = "0.3"
+
 [lib]
 name = "auto_lsp"
 path = "src/lib.rs"
