@@ -111,6 +111,16 @@ impl TraitChecker {
                     }
                 }
                 None => {
+                    // Plan 417-E4 (DIV-TRAIT-VM-2): a spec method with a
+                    // DEFAULT body is INHERITED by the implementer — the VM
+                    // codegen synthesizes `Type.method` from the default at
+                    // the TypeDecl arm, so it must not be reported missing.
+                    // Previously every default-bodied method had to be
+                    // re-declared by the implementer (workaround recorded in
+                    // parity trait_advanced).
+                    if spec_method.body.is_some() {
+                        continue;
+                    }
                     errors.push(
                         SyntaxError::Generic {
                             message: format!(

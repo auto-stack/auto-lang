@@ -530,6 +530,7 @@ impl Codegen {
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
         };
+
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
         codegen
@@ -2130,6 +2131,69 @@ impl Codegen {
 
                     self.current_type_members = None;
                 }
+
+                // Plan 417-E4 (DIV-TRAIT-VM-2): synthesize INHERITED spec
+                // default methods the type did not re-declare. The spec body
+                // is compiled exactly like a declared method (mangled
+                // Type.method, self injected as the first param), so
+                // `r.announce()` on an implementer resolves without the
+                // historical re-declaration workaround.
+                for spec_name in &type_decl.specs {
+                    // Plan 417-E4: look up via the shared TypeStore — specs are
+                    // pre-registered there before codegen (compile.rs), so the
+                    // synthesis is independent of statement order (the script
+                    // path compiles TypeDecls BEFORE other statements).
+                    let spec_decl = {
+                        let ts = self.type_store.read().unwrap();
+                        ts.lookup_spec_decl(spec_name).cloned()
+                    };
+                    let Some(spec_decl) = spec_decl else {
+                        continue; // unknown spec — checker reports
+                    };
+                    for spec_method in &spec_decl.methods {
+                        let Some(default_body) = &spec_method.body else {
+                            continue; // abstract method — checker enforces
+                        };
+                        if type_decl.methods.iter().any(|m| m.name == spec_method.name) {
+                            continue; // implementer overrides the default
+                        }
+                        let mangled_name = format!("{}.{}", type_name, spec_method.name);
+                        let mut method_fn = crate::ast::Fn {
+                            name: crate::ast::Name::from(mangled_name.as_str()),
+                            params: spec_method.params.clone(),
+                            ret: spec_method.ret.clone(),
+                            body: match default_body.as_ref() {
+                                crate::ast::Expr::Block(b) => b.clone(),
+                                other => crate::ast::Body {
+                                    stmts: vec![Stmt::Expr(other.clone())],
+                                    ..Default::default()
+                                },
+                            },
+                            ..Default::default()
+                        };
+                        method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
+                        let has_self = method_fn
+                            .params
+                            .first()
+                            .map(|p| p.name.to_string() == "self")
+                            .unwrap_or(false);
+                        if !has_self {
+                            method_fn.params.insert(
+                                0,
+                                crate::ast::Param {
+                                    name: crate::ast::Name::from("self"),
+                                    ty: Type::User(type_decl.clone()),
+                                    default: None,
+                                    mode: crate::ast::ParamMode::View,
+                                    destructure: None,
+                                },
+                            );
+                        }
+                        self.current_type_members = Some(member_names.clone());
+                        self.compile_stmt(&Stmt::Fn(method_fn))?;
+                        self.current_type_members = None;
+                    }
+                }
             }
             Stmt::Ext(ext_block) => {
                 // Compile ext methods as standalone functions (same pattern as TypeDecl methods)
@@ -2282,11 +2346,10 @@ impl Codegen {
                     }
                 }
             }
-            Stmt::SpecDecl(_spec_decl) => {
+            Stmt::SpecDecl(spec_decl) => {
                 // Plan 073 Phase 8.6: Spec declaration support
                 // Spec declarations (traits) don't generate bytecode at compile time
                 // They register method signatures for type checking and constraint validation
-                // TODO: Register spec in type registry for future use
                 // For now, specs are metadata-only and used during type checking
             }
             // Plan 073: For statement support
