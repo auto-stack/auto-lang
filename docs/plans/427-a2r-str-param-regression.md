@@ -110,9 +110,26 @@ fn check_parse_ok(n: i64, name: &str, input: &str, expected: &str) {
 
 ## 3. 明确不做
 
-- 不修 `c_*` 系 consumer 库的既有部分失败（c_env_app 6/7 等）——独立事项，
-  与本回归无关（其失败形态不同，跑 `run c_env_app` 看诊断再决定是否立项）。
+- 不修 `c_*` 系 consumer 库的既有部分失败——独立事项。
+  （复审更新 2026-08-23：c_env_app 当时的 6/7 其实同为 STRPARAM 形态，
+  修复后顺带恢复 7/7；c_crawler/c_http_get/c_json_app/c_wget/tokio_stream
+  的 0% 合并前后不变，维持另行立项口径。）
 - tokio_stream 0/4 不在本计划（sorted TAP 之外的形态问题，另行登记）。
+
+## 5. 复审记录（2026-08-23，合并后）
+
+- 仪表盘逐库 diff（e03a0d91 → 合并后）：变化恰为目标三库 + http_client_sync
+  （竞态恢复）+ c_env_app（6/7→7/7 顺带）；其余 13 库零变化——无回归。
+- 修复完整性：RustTrans 仅 2 个构造器均已初始化 str_slice_pattern_bindings；
+  Some(x) 注册仅 is_stmt 发射器两处（Expr::Some / OptionPattern），均已接入；
+  match 无独立发射器（Auto 模式匹配走 is 块），无遗漏路径。
+- 合并树补测：分支点验证不等价于合并后验证（master 并行并入 421/422/428/
+  420），合并后 master 全量 test-trans **3440/0**（route::discovery 环境项
+  本次亦过，佐明其为环境抖动）。golden 008 含在其中。
+- workaround 检查：无。修复为主流写法（fn 作用域专属集合，仿
+  by_value_iter_bindings/spec_bound_idents 家族）；is-arm 处保留
+  local_var_types 双登记系有意为之（Plan 376E `.to_string()` 路径仍消费），
+  已在代码注释与本节说明。
 
 ## 4. 工作流备注（沿用既有模式）
 
