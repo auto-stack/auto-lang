@@ -12286,8 +12286,19 @@ export function cn(...inputs: ClassValue[]) {
             let specifier = Self::ext_import_specifier(imp.path.as_str());
             match imp.kind {
                 crate::ast::ui::ExtImportKind::Fn => {
+                    // import:供本模块 wrapper fn 体内引用(PLAN-037 Phase 5
+                    // 路径不变);export:纯转发(Plan 424)——无 wrapper 的端口
+                    // 直接把符号递给调用方。export-from 不引入局部绑定,两行
+                    // 共存合法;无 wrapper 使用时 import 仅未使用(基线
+                    // noUnusedLocals: false)。
                     code.push_str(&format!(
                         "import {{ {} }} from '{}'
+",
+                        names.join(", "),
+                        specifier
+                    ));
+                    code.push_str(&format!(
+                        "export {{ {} }} from '{}'
 ",
                         names.join(", "),
                         specifier
@@ -13786,10 +13797,16 @@ fn rel_time(ts int) str {
             .flatten()
             .collect();
         let code = VueGenerator::generate_fn_module_full(&fns, &web_imports);
-        // fn kind: import (wrapper 路径不变)
+        // fn kind: import(wrapper 路径不变)+ export(纯转发)
         assert!(
             code.contains("import { format_rel } from '@/ext/time_fmt'"),
             "fn kind still imports:
+{}",
+            code
+        );
+        assert!(
+            code.contains("export { format_rel } from '@/ext/time_fmt'"),
+            "fn kind also re-exports:
 {}",
             code
         );
@@ -13825,6 +13842,50 @@ fn rel_time(ts int) str {
         assert!(
             code.contains("export function rel_time(ts: any)"),
             "wrapper fn still exported:
+{}",
+            code
+        );
+    }
+
+    /// Plan 424 T3: 纯转发端口——零 wrapper fn,仅 use.web 条目。生成侧
+    /// 照常发射 re-export(fns 为空不报错;auto-man 侧同步放宽)。
+    #[test]
+    fn test_fn_module_pure_forwarding_port() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+use.web component MessageSquare, ListTodo from "lucide-vue-next"
+use.web composable useT from "./i18n.ts"
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("pure port must parse");
+        let fns: Vec<crate::aura::AuraModuleFn> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Fn(f) => crate::aura::extract_module_fn(f),
+                _ => None,
+            })
+            .collect();
+        let web_imports: Vec<crate::ast::ui::ExtImport> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert!(fns.is_empty(), "pure port has no wrappers");
+        let code = VueGenerator::generate_fn_module_full(&fns, &web_imports);
+        assert!(
+            code.contains("export { MessageSquare, ListTodo } from 'lucide-vue-next'"),
+            "component forwarding:
+{}",
+            code
+        );
+        assert!(
+            code.contains("export { useT } from '@/ext/i18n'"),
+            "composable forwarding:
 {}",
             code
         );

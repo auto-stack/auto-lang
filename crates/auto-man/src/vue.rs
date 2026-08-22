@@ -2033,9 +2033,15 @@ export default router
                 _ => None,
             })
             .collect();
-        if fns.is_empty() {
+        // Plan 424: a module with `use.web` entries but no top-level fns is a
+        // pure forwarding port (re-exports only) — legitimate. A module with
+        // neither fns nor web bindings transpiles to an empty module — error.
+        let has_web_bindings = ast.stmts.iter().any(|s| {
+            matches!(s, auto_lang::ast::Stmt::UseWeb(_))
+        });
+        if fns.is_empty() && !has_web_bindings {
             return Err(format!(
-                "use-block fn module {} declares no top-level fns",
+                "use-block fn module {} declares no top-level fns or use.web bindings",
                 src.display()
             )
             .into());
@@ -2043,7 +2049,8 @@ export default router
         // PLAN-037 Phase 5: the module's own `use.web` statements become ES
         // imports in the generated TS (port files bind web symbols and expose
         // wrapper fns). Plan 424: component/composable kinds are re-exported
-        // by the generator (ports symbol forwarding).
+        // by the generator (ports symbol forwarding); fn kinds are both
+        // imported (wrapper use) and re-exported (forwarding).
         let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast.stmts.iter()
             .filter_map(|s| match s {
                 auto_lang::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
