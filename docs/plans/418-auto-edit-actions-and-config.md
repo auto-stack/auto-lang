@@ -275,3 +275,9 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **③ 离线布局测试台落地(414 §8.2"单独立项"提前完成)**:`iced_test`(headless wgpu)接入,新 feature `iced-layout-tests` + `layout_tests.rs` 四测:冒烟/414 §7.2 Fill 子元素兄弟存活/418 ml-auto 右对齐锁定/§8.1 嵌套行按钮(文本变体;svg 图标 bounds 需 id 插桩,留后续)。4/4 通过(0.83s)。§7.2 "Fill 子元素兄弟消失"经 into_iced 全链路**未复现**(现行路径无此病,回归锁已立)。
 - **④ §8.4② 根因定位(环境,非应用 bug)**:WER 全档仅 2-3 月旧构建 3 例 c0000409/c0000374,近期零原生崩溃记录;"高负载偶发静默退出"实为**并行会话 `taskkill //IM auto.exe` 误杀**(按映像名杀全部实例,本会话亲历两次)。缓解:并行活跃时复制 exe 独立命名跑矩阵(`cp target/debug/auto.exe target/debug/auto-uitest.exe` + `AUTO_BIN=...`);套件已复跑即过。§8.4② 就此关闭(环境项登记)。
 - **回归**:code_editor 22 + iced 44 + cfg 3 + mcp 6 + 矩阵 **29/29**(T6 为真文本断言版)。
+
+### 8.9 editor 残留批(2026-08-22 第五批续,A/B/C)
+- **A. 414 §8.1"嵌套行 icon-button 消失"结案(不复现)**:iced_test 增 FocusableCollector 自定义 Selector(按钮在 iced 0.14 仅走 container 钩子;fixed_both 按钮另有居中 wrapper → 每图标按钮两条同尺寸记录)。复现树(嵌套行 EE01 图标+文本按钮+扁平图标)实测全部 28×28 完好——与 §7.2 同判:414 时代的"消失"系旧构建/截图不稳产物。回归锁:nested_row_icon_button_keeps_bounds(layout_tests 现 5 测)。
+- **B. `code-editor` 单独启用编译不过(§8.4 既有项)修复**:根因=style/class.rs 的语义色 alpha 混合引用 `ui-iced` 门控的 iced_adapter。抽取**纯主题层** `style/theme.rs`(DARK_MODE/ACCENT/WINDOW_WIDTH thread-local + resolve_semantic_rgb/resolve_border_rgb,零 iced 依赖),iced_adapter `pub use` 转发保持全部既有调用点兼容,class.rs 改调 theme。`cargo check --features code-editor` 零错误。
+- **C. gallery 过时文案**:code-editor 页"vue 后端降级 textarea"描述更新为 CodeMirror shell 已落地(注明 oncursor/oncontextmenu 事件仍缺)。
+- **回归**:build 0 error;iced 44 + code_editor 22 + layout_tests 5 + cfg 3 + mcp 6 + 矩阵 29/29。
