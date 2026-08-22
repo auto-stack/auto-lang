@@ -5236,7 +5236,7 @@ impl AutoVM {
                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                             shim(task, self)?;
                         } else {
-                            return Err(VMError::MissingNative(native_id));
+                            { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                         }
                         // After shim returns, remove duplicate args+receiver from CALL_SPEC layout.
                         // Stack: [..., receiver, arg0..argN-1, receiver, return_value(s)]
@@ -5274,7 +5274,7 @@ impl AutoVM {
                             if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                 shim(task, self)?;
                             } else {
-                                return Err(VMError::MissingNative(native_id));
+                                { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                             }
                             let return_val = task.ram.pop_i32();
                             // Remove old receiver (1 item)
@@ -5287,7 +5287,7 @@ impl AutoVM {
                             if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                 shim(task, self)?;
                             } else {
-                                return Err(VMError::MissingNative(native_id));
+                                { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                             }
                             let return_val = task.ram.pop_i32();
                             for _ in 0..=arg_count {
@@ -5301,7 +5301,7 @@ impl AutoVM {
                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                             shim(task, self)?;
                         } else {
-                            return Err(VMError::MissingNative(native_id));
+                            { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                         }
                     } else if type_name == "str" {
                         // Inline str type method dispatch for CALL_SPEC
@@ -6167,7 +6167,7 @@ impl AutoVM {
                         }
                     } else {
                         eprintln!("[DBG-CALLNAT] missing native_id={}", native_id);
-                        return Err(VMError::MissingNative(native_id));
+                        { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                     }
                 }
                 // Plan 369 Task 10: Python FFI native call with explicit arg count.
@@ -6185,7 +6185,7 @@ impl AutoVM {
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         shim(task, self)?;
                     } else {
-                        return Err(VMError::MissingNative(native_id));
+                        { eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id); return Err(VMError::MissingNative(native_id)); }
                     }
                 }
                 OpCode::RET => {
