@@ -33,7 +33,7 @@ Open gaps (each detailed in its own section below, fix plans in
 | DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | open (L3) | trait_advanced sub-scenario |
 | DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | open (L3) | — |
 | DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
-| DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | open (L3) | **http_client_sync** (skeleton only) |
+| DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | ✅ fixed (verified 2026-08-22, Plan 417-E5) | http_client_sync 三方 5/5 |
 | DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | ✅ fixed (2026-08-22, Plan 417-E1) | golden 007_char_at_infer |
 
 The entries below are library/tooling limitations that shaped the
@@ -281,29 +281,32 @@ current status of each:
 - **DIV-TRAIT-LANG-1 — associated types not supported (open, language).**
   Auto's spec grammar has no `type Item;` construct. 状态: open (L3).
 
-## http_client_sync (Plan 359 D3) — blocked
+## http_client_sync (Plan 359 D3) — ✅ UNBLOCKED (2026-08-22, Plan 417-E5)
+
+Three-way parity now runs **5/5 green** (AutoVM / a2r / native Rust oracle,
+double-verified stable; first-run single Rust-oracle failure was a cold
+compile + mock-server startup race, not reproducible). The original block
+was recorded as:
 
 A partial `parity/libs/http_client_sync/` skeleton exists (mock-server crate
 + Auto wrapper + Rust oracle), but it **cannot run three-way** because of a
 pre-existing parser bug:
 
-- **DIV-HTTP-LANG-1 — the shipped stdlib `auto/http.at` does not parse (open,
-  parser).** `stdlib/auto/http.at:51` (mirrored under `~/.auto/libs/stdlib/`)
-  uses `pub fn Request.method(self Request) str;` — a `Type.method`
-  declaration with a trailing `;`. The current parser rejects this ("Expected
-  term, got Newline" at the `///` doc comment that follows), so any
-  `use auto.http: ...` fails before a request is ever made. This is
-  independent of a2r/parity — it blocks `auto.http` on the VM for everyone.
-  - AutoVM: parse error; `use auto.http` unusable.
-  - a2r: n/a (transpile also runs the parser, same failure).
-  - Rust: n/a.
-  - 偏差类型: 待修复 (parser must accept `Type.method` external declarations).
-  - 状态: open (L3, Plan 359 Phase E Task E4). Fix plan in
-    `docs/plans/359-auto-as-rust-script-rollout.md` §"Task E4".
+- **DIV-HTTP-LANG-1 — the shipped stdlib `auto/http.at` does not parse
+  (✅ fixed, verified 2026-08-22 / Plan 417-E5).** `stdlib/auto/http.at:51`
+  `pub fn Request.method(self Request) str;` — a `Type.method` declaration
+  with a trailing `;` — now parses on master (fixed by a later parser batch
+  after this divergence was logged; the recorded symptom predates it). The
+  mock-server setup/teardown hook the skeleton needed is also in place
+  (the parity runner auto-spawns `mock-server/`).
+  - AutoVM: `use auto.http` usable; http_client_sync VM backend passes.
+  - a2r: transpiles + runs; backend passes.
+  - Rust: native oracle passes.
+  - 偏差类型: 已修复(登记性翻转——文档滞后于代码的又一例,审计模式重演)。
+  - 状态: ✅ fixed;http_client_sync 三方 5/5(2026-08-22 双复跑稳定;首跑
+    单败为 oracle 冷编译 + mock-server 启动竞态,不可复现)。
 
-Once DIV-HTTP-LANG-1 is fixed, the skeleton needs a runner setup/teardown
-hook to spawn `mock-server/` around the three independent backend processes
-(mock server must outlive all three). The library is **not** in the L1 count.
+The library now counts toward L1.
 
 ## string_utils (Plan 359 D4) — a2r transpiler bug worked around
 
