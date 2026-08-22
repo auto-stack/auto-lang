@@ -192,12 +192,17 @@ impl AtomWriter for SpecDecl {
                 }
             }
         }
-        write!(f, "]), assoc_types([")?;
-        for (i, at) in self.associated_types.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
+        // Plan 417-E2: associated types only when declared — specs without
+        // them keep their pre-E2 atom shape (mirrors bounds, which never
+        // enters the atom form).
+        if !self.associated_types.is_empty() {
+            write!(f, "]), assoc_types([")?;
+            for (i, at) in self.associated_types.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "assoc_type(name(\"{}\"))", at.name)?;
             }
-            write!(f, "assoc_type(name(\"{}\")))", at.name)?;
         }
         write!(f, "]), methods([")?;
         for (i, method) in self.methods.iter().enumerate() {
@@ -390,6 +395,47 @@ mod tests {
 
         let not_found = spec.get_method(&Name::from("land"));
         assert!(not_found.is_none());
+    }
+
+    // Plan 417-E2: atom shape with and without associated types.
+
+    #[test]
+    fn test_spec_atom_without_associated_types_keeps_shape() {
+        let spec = SpecDecl::new(
+            Name::from("Flyer"),
+            vec![SpecMethod::new(Name::from("fly"), vec![], Type::Void)],
+        );
+        let atom = spec.to_atom_str();
+        // No assoc_types segment — pre-E2 atom shape preserved for specs
+        // that declare none.
+        assert!(!atom.contains("assoc_types"));
+        assert_eq!(
+            atom.matches('(').count(),
+            atom.matches(')').count(),
+            "atom parens must balance: {atom}"
+        );
+    }
+
+    #[test]
+    fn test_spec_atom_with_associated_types_balanced() {
+        let mut spec = SpecDecl::new(
+            Name::from("Container"),
+            vec![SpecMethod::new(Name::from("first"), vec![], Type::Unknown)],
+        );
+        spec.associated_types = vec![AssociatedType {
+            name: Name::from("Item"),
+            bound: None,
+        }];
+        let atom = spec.to_atom_str();
+        assert!(atom.contains("assoc_types([assoc_type(name(\"Item\"))])"));
+        assert_eq!(
+            atom.matches('(').count(),
+            atom.matches(')').count(),
+            "atom parens must balance: {atom}"
+        );
+        // Display form carries the type member.
+        let display = format!("{}", spec);
+        assert!(display.contains("type Item"));
     }
 
 }
