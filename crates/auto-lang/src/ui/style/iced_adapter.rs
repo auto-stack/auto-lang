@@ -1030,7 +1030,9 @@ fn convert_size(size: &SizeValue) -> IcedSize {
 }
 
 /// Convert a Color to iced::Color
-fn convert_color(color: &Color) -> iced::Color {
+/// pub since 2026-08-21 方案 A: renderer 的 svg hover 着色需要把 icon 的
+/// hover:text-* StyleClass::TextColor(Color) 转成 iced::Color。
+pub fn convert_color(color: &Color) -> iced::Color {
     match color {
         Color::Rgba { r, g, b, a } => {
             iced::Color::from_rgba(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0, *a as f32 / 255.0)
@@ -1070,6 +1072,19 @@ mod tests {
         let iced_style = IcedStyle::from_style(&style);
 
         assert_eq!(iced_style.padding, Some(16.0));
+    }
+
+    #[test]
+    fn test_hover_classes_merge_over_base() {
+        // The button renderer merges base + hover classes (base first, hover
+        // second — later application wins) before calling from_style.
+        let s = Style::parse("bg-transparent hover:bg-muted/60").unwrap();
+        let mut merged = s.classes.clone();
+        merged.extend(s.hover_classes.iter().cloned());
+        let is = IcedStyle::from_style(&Style { classes: merged, hover_classes: Vec::new() });
+        // hover bg-muted/60 wins over bg-transparent: semi-opaque surface.
+        let bg = is.background_color.expect("hover bg must be set");
+        assert!(bg.a > 0.0 && bg.a < 1.0, "expected muted/60 alpha, got {}", bg.a);
     }
 
     #[test]

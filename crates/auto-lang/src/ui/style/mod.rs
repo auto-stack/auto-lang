@@ -36,14 +36,28 @@ pub use headless_adapter::HeadlessStyle;
 #[derive(Debug, Clone, Default)]
 pub struct Style {
     pub classes: Vec<StyleClass>,
+    /// `hover:`-prefixed utilities, parsed into a parallel list. Consumed by
+    /// the iced button renderer (hover-status styling); every other consumer
+    /// iterates `classes` and ignores these, same as before when they were
+    /// silently dropped at parse time.
+    pub hover_classes: Vec<StyleClass>,
 }
 
 impl Style {
     /// Parse a style string into a Style collection
     pub fn parse(input: &str) -> Result<Self, String> {
-        let parser = StyleParser::new();
-        let classes = parser.parse(input)?;
-        Ok(Self { classes })
+        let mut classes = Vec::new();
+        let mut hover_classes = Vec::new();
+        for token in input.split_whitespace() {
+            if let Some(rest) = token.strip_prefix("hover:") {
+                if let Ok(c) = StyleClass::parse_single(rest) {
+                    hover_classes.push(c);
+                }
+            } else if let Ok(c) = StyleClass::parse_single(token) {
+                classes.push(c);
+            }
+        }
+        Ok(Self { classes, hover_classes })
     }
 
     /// Create an empty style
@@ -98,6 +112,25 @@ mod tests {
     fn test_from_str() {
         let style: Style = "flex items-center".into();
         assert_eq!(style.classes.len(), 2);
+    }
+
+    #[test]
+    fn test_hover_classes_split_from_base() {
+        let s = Style::parse("h-6 w-6 bg-transparent hover:bg-muted/60 hover:text-foreground")
+            .unwrap();
+        assert_eq!(s.classes.len(), 3, "base classes: {:?}", s.classes);
+        assert_eq!(s.hover_classes.len(), 2, "hover classes: {:?}", s.hover_classes);
+        assert!(s.hover_classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+        assert!(s.hover_classes.iter().any(|c| matches!(c, StyleClass::TextColor(_))));
+    }
+
+    #[test]
+    fn test_hover_class_with_alpha_parses() {
+        let s = Style::parse("hover:bg-red-500/10").unwrap();
+        assert!(matches!(
+            s.hover_classes.first(),
+            Some(StyleClass::BackgroundColor(Color::Rgba { a, .. })) if (*a as f32 / 255.0 - 0.1).abs() < 0.01
+        ));
     }
 }
 

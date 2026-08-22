@@ -365,7 +365,12 @@ macro_rules! for_each_native {
             (2840, NATIVE_FS_TEMP_DIR, shim_fs_temp_dir, "auto.fs.temp_dir"),
             (2841, NATIVE_FS_TEMP_FILE, shim_fs_temp_file, "auto.fs.temp_file"),
             (2842, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
-            (2843, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
+            // 2026-08-22:auto.fs.read_dir 换用 2866 —— 原 2843 与 BIGVM 表的
+            // File.position(:1281/:2009)撞号(shim 按 ID 注册,File.position 的
+            // CALL_NAT 2843 会错派到 read_dir shim)。read_dir 此前只在 shim 表
+            // 登记、白名单(for_each_bigvm_native/NATIVE_ID_ENTRIES)缺失,VM 模式
+            // 下 widget/back 模块调用报 Undefined symbol —— 一并补齐。
+            (2866, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -822,13 +827,15 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.size", 1008, Void),
             ("auto.fs.is_dir", 1009, Void),
 
-            // === FS extended (2860-2865) ===
+            // === FS extended (2860-2866) ===
             ("auto.fs.walk", 2860, String),
             ("auto.fs.metadata", 2861, String),
             ("auto.fs.copy_recursive", 2862, Void),
             ("auto.fs.filename", 2863, String),
             ("auto.fs.parent", 2864, String),
             ("auto.fs.join", 2865, String),
+            // 2026-08-22:read_dir 白名单补登记(ash-gui cd 目录补全用)。
+            ("auto.fs.read_dir", 2866, String),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2130,13 +2137,14 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("IO.read_line", 1150),
     ("io.read_line", 1150),
 
-    // === FS extended (2860-2865) ===
+    // === FS extended (2860-2866) ===
     ("auto.fs.walk", 2860),
     ("auto.fs.metadata", 2861),
     ("auto.fs.copy_recursive", 2862),
     ("auto.fs.filename", 2863),
     ("auto.fs.parent", 2864),
     ("auto.fs.join", 2865),
+    ("auto.fs.read_dir", 2866),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
