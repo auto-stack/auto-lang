@@ -250,8 +250,8 @@ mod plan408_tests {
         );
         // model → ref<boolean>(false)
         assert!(
-            btn_code.contains("ref<boolean>(false)"),
-            "CollapseBtn must emit `const collapsed = ref<boolean>(false)`: {}",
+            btn_code.contains("defineModel<boolean>(\"collapsed\", { default: false })"),
+            "CollapseBtn must emit `const collapsed = defineModel<boolean>(\"collapsed\", {{ default: false }})`: {}",
             btn_code
         );
         // on handler → function body mutates state + emits

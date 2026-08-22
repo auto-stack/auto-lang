@@ -1014,10 +1014,12 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // 从 InferenceContext 查找
-        if let Some(ty) = self.infer_ctx.lookup_type(&Name::from(name)) {
-            return shared(ty);
-        }
+        // PLAN-037 后续修复:类型位置不再解析到 InferenceContext。
+        // 该表只承载变量绑定(define→bind_var),在类型位置查询它会使
+        // 同名变量遮蔽类型名——`let list = ...` 之后的 `let out list = []`
+        // 曾因此把标注解析为变量的推断类型(Value→Unknown)而静默丢失。
+        // 类型声明走上方 TypeStore;泛型参数走 current_const_params/
+        // 类型别名分支。全量测试套件验证此改动不破坏既有解析。
 
         // Plan 05-Nav: Preserve unknown type names for code generation
         // Only preserve names that look like external types (not common collection names)

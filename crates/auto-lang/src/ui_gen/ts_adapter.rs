@@ -2315,6 +2315,36 @@ mod tests {
         );
     }
 
+    /// PLAN-037 后续修复:同名变量不得遮蔽类型名——`let list = ...` 之后的
+    /// `let out list = []` 必须保留类型标注(此前 parser 在类型位置查询了
+    /// 变量环境,标注被解析为变量的推断类型而静默丢失)。
+    #[test]
+    fn let_type_annotation_not_shadowed_by_same_name_var() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "fn relayPreviewLines(entries Value) Value {
+    let list = entries ?? []
+    let out list = []
+    return out
+}
+";
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("must parse");
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::Fn(f) = s {
+                let m = crate::aura::extract_module_fn(f).unwrap();
+                let code = crate::ui_gen::vue::VueGenerator::generate_fn_module(&[m]);
+                assert!(
+                    code.contains("let out: any[] = []"),
+                    "annotation must survive a same-named local:
+{}",
+                    code
+                );
+                return;
+            }
+        }
+        panic!("no fn found");
+    }
+
     /// Plan 012 P2 (gap 4): Stmt::Try transpiles to JS try/catch/finally
     /// (was silently dropped by the a2ts fallback), and the api-call walker
     /// descends into all three bodies so the handler is still marked async.
