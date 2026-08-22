@@ -210,6 +210,12 @@ def run_tests(mcp_url, proc):
         print("  NOTE  editor node not yet in snapshot (render timing); skipping")
     result.check("menubar buttons present", find_button_by_text(snap, "文件") is not None
                  and find_button_by_text(snap, "帮助") is not None, "menu buttons not found")
+    # Plan 418 §8.4①: synthesized buttons now carry onclick in snapshots
+    # (probe paths aligned with the real vtree nesting) — lock it in.
+    result.check("toolbar synthesized onclick present",
+                 "onclick: .ActNew" in snap, "synthesized toolbar onclick missing")
+    result.check("menubar synthesized onclick present",
+                 "__menubar_toggle(\"file\")" in snap, "menubar toggle onclick missing")
     # (Plan 418 P2-3: DSL-declared bindings still render their args; the
     # synthesized menubar/toolbar are located by label/icon instead — probe
     # path alignment for synthesized subtrees is a known gap, plan 418 8.4.)

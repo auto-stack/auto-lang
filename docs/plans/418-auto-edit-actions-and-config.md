@@ -242,7 +242,7 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **交付**:builder 合成 `menubar {}`/`toolbar {}` 标签(读 ACTION_CONFIG;面板复用 Plan 409 overlay hoist,左偏移估算 8+Σ(字符×12+28),2 字按钮 52px 与手写间距一致);渲染器 update 拦截 `__menubar_toggle(id)`/`__menubar_close`(preview-card 内部消息同模式,open 态存 action_config::MENUBAR_OPEN);**任意非 `__` 前缀消息自动关菜单**(心跳/tick 排除);toolbar 图标按钮走 PUA label + variant:icon 同路径
 - **041 迁移**:app.at 530→338 行——删 4 菜单×手写样板/8 工具栏按钮/4 个 onkeydown DSL 属性/menu_open 态与 3 个菜单 handler,换 `menubar {}` + `toolbar (style: "ml-auto") {}` 两行;**快捷键全部经配置层**(Ctrl+D 仅配置,回退层锚点)
 - **验证**:041 MCP 矩阵 **29/29**(菜单项按标签定位/工具栏按 PUA 图标定位/开关菜单经 __menubar 内部消息/选择后自动关闭/quit 进程退出);回归 iced 44/44 + action_config 3/3 + mcp_server 6/6
-- **已知缺口**(后续):①合成子树的 probe 路径与 vtree 嵌套层级不对齐(面板列引入额外层),snapshot 无合成按钮 onclick 属性——测试以标签/图标定位替代,修法=按真实嵌套路径记录;②MCP 自动化在高负载下偶发应用静默退出(无 panic,疑似资源压力,复跑即过)——需隔离环境排查;③菜单项 checked 勾选态未渲染(checked-if 已解析)
+- **已知缺口**(后续):①~~合成子树 probe 路径不对齐~~ **已修(第五批,§8.7)**;②MCP 自动化在高负载下偶发应用静默退出(无 panic,疑似资源压力,复跑即过)——需隔离环境排查;③~~菜单项 checked 勾选态未渲染~~ **已修(随 8fc0cf30,§8.6)**
 
 ### 8.5 真实鼠标点击排查（2026-08-22 第四批,部分修复,未完全闭环）
 - **用户反馈**:右下角 console 图标真实点击无反应(应切换 Console)
@@ -261,3 +261,9 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **§8.4③ 已实现(随 8fc0cf30)**:菜单项 checked-if 勾选态渲染——item 内容行前置 16px 勾选槽,`.field` 布尔真值时渲染 lucide:check(h-3 w-3 text-zinc-200),空槽保持对齐;MCP E2E 验证(切换 Console 开→✓/关→空)。解锁态真实点击复验 **5/5**(ActRedo ×5,窗口定位正确)——结案铁证。
 - **遗留(低优)**:①工具栏图标偶发近黑——**最终构建 3 实例采样不复现**(亮度 231/114 一致),此前暗色观察疑为锁屏期 DWM 降级帧假象,暂不处理,复现再查;②合成子树 probe 路径对齐(§8.4①)未变。
 - **结论**:P2-3 真实点击问题**结案**——根因=旧心跳事件饿死(已修)+排查方法学两处偏差(坐标偏移、锁屏干扰),非 iced 事件路由/遮蔽缺陷;ml-auto 容器与 overlay hoist 均已实测排除。
+
+### 8.7 §8.4① 收官:合成子树 probe 路径对齐（2026-08-22 第五批续,snapshot 出现合成按钮 onclick）
+- **根因(双重)**:①`convert_element_tracked_ctx` 里 P2-3 会话留下了**重复的 `"menubar"/"toolbar"` 匹配臂**——传 `None` 的旧臂在前,带 path/probe 的新臂不可达(Rust match 首臂命中),记录从未执行;②计数器错位——`child_idx` 不计 sep/面板嵌套层(toolbar 的 sep 占位、menubar 面板项被记成行级子节点且令后续按钮索引漂移)。
+- **修复**:删重复臂(tracked 臂接管;probe 禁用时 record_event 早退,零开销);menubar/toolbar 一律按 `children.len()` 真实子位置记录;**面板项记嵌套两段路径** `[base, panel_idx, item_idx]`(FNV 哈希与 vtree 实测 id 全对齐,如 [0,0,4,0]=切换 Console 项)。
+- **验证**:snapshot onclick 4→16(工具栏 8+菜单栏 4+面板项+catcher 全出:`onclick: .ActNew`/`__menubar_toggle("file")`/`.ActConsole`/`__menubar_close`);矩阵 T1 新增 2 项锁定检查 → **31/31×2**;回归 iced 44+cfg 3+mcp 6。
+- **意义**:MCP 客户端(agent)现可从 snapshot 直接读出合成控件的处理器绑定,不必依赖标签定位约定。
