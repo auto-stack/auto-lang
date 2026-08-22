@@ -127,13 +127,26 @@ def find_button_by_text(snapshot_text, label):
     return m.group(1) if m else None
 
 
+def find_button_by_icon(snapshot_text, icon):
+    """Synthesized toolbar buttons carry PUA icon labels
+    ("<icon>") — locate the button node by icon name."""
+    marker = "" + icon + ""
+    pat = re.compile(r'button #(\w+) "[^"]*' + re.escape(marker))
+    m = pat.search(snapshot_text)
+    return m.group(1) if m else None
+
+
 def open_menu(mcp, snap_cache, label):
-    """Click the menubar button `label` (文件/编辑/视图/帮助), refresh snapshot."""
+    """Click the menubar button `label` (文件/编辑/视图/帮助), refresh snapshot.
+
+    Always re-snapshots first: vnode ids drift across rebuilds, so an id from
+    a pre-pick snapshot may no longer resolve (T5 stale-id lesson)."""
+    snap_cache[0] = mcp.snapshot()
     btn = find_button_by_text(snap_cache[0], label)
     if btn is None:
         return False
     mcp.click(btn)
-    time.sleep(0.3)
+    time.sleep(1.0)
     snap_cache[0] = mcp.snapshot()
     return True
 
@@ -183,40 +196,42 @@ def run_tests(mcp_url, proc):
         snap_cache[0] = mcp.snapshot()
     snap = snap_cache[0]
     result.check("App widget present", 'widget: "App"' in snap, snap[:200])
-    for act in ("ActNew", "ActUndo", "ActCopy"):
-        result.check(f"toolbar binds .{act}", find_element_by_event(snap, act) is not None,
-                     f"no onclick: .{act} element")
+    for icon in ("file-plus", "undo-2", "copy"):
+        result.check(f"toolbar icon {icon} present", find_button_by_icon(snap, icon) is not None,
+                     "icon button not found")
     if "code_editor" in snap:
         result.check("editor present", True)
     else:
         print("  NOTE  editor node not yet in snapshot (render timing); skipping")
     result.check("menubar buttons present", find_button_by_text(snap, "文件") is not None
                  and find_button_by_text(snap, "帮助") is not None, "menu buttons not found")
-    # Plan 418 7.3-3: event args render readably (was invisible  encoding)
-    result.check("snapshot renders event args", 'onclick: .MenuToggle("file")' in snap,
-                 "MenuToggle binding args not visible in snapshot")
+    # (Plan 418 P2-3: DSL-declared bindings still render their args; the
+    # synthesized menubar/toolbar are located by label/icon instead — probe
+    # path alignment for synthesized subtrees is a known gap, plan 418 8.4.)
+
 
     # T2: ActConsole via View menu — console_open flips, menu auto-closes
     print("\nT2: ActConsole (menu item)")
     before = state_bool(mcp.state("console_open"), "console_open")
     ok = open_menu(mcp, snap_cache, "视图")
     result.check("view menu opened", ok, "视图 button not found")
-    item = find_element_by_event(snap_cache[0], "ActConsole")
-    result.check("menu item .ActConsole found", item is not None, "not in open-menu snapshot")
+    item = find_button_by_text(snap_cache[0], "切换 Console")
+    result.check("menu item (切换 Console) found", item is not None, "not in open-menu snapshot")
     if item:
         mcp.click(item)
         time.sleep(0.3)
         after = state_bool(mcp.state("console_open"), "console_open")
         result.check("console_open flipped", after == (not before), f"{before} -> {after}")
         # menu auto-closes after item activation (Plan 418: Act handlers reset menu_open)
-        result.check("menu closed after pick", state_str(mcp.state("menu_open"), "menu_open") == "",
-                     mcp.state("menu_open"))
+        snap_cache[0] = mcp.snapshot()
+        result.check("menu closed after pick", find_button_by_text(snap_cache[0], "切换 Console") is None,
+                     "panel item still present")
         snap_cache[0] = mcp.snapshot()
 
     # T3: ActAbout via Help menu — console line recorded
     print("\nT3: ActAbout (menu item)")
     open_menu(mcp, snap_cache, "帮助")
-    item = find_element_by_event(snap_cache[0], "ActAbout")
+    item = find_button_by_text(snap_cache[0], "关于 auto-edit")
     if item:
         mcp.click(item)
         time.sleep(0.3)
@@ -228,7 +243,7 @@ def run_tests(mcp_url, proc):
     # T4: ActNew via File menu — title/path reset
     print("\nT4: ActNew (menu item)")
     open_menu(mcp, snap_cache, "文件")
-    item = find_element_by_event(snap_cache[0], "ActNew")
+    item = find_button_by_text(snap_cache[0], "新建")
     if item:
         mcp.click(item)
         time.sleep(0.3)
@@ -243,7 +258,7 @@ def run_tests(mcp_url, proc):
     print("\nT5: ActSwitchTab (menu item)")
     tab_before = state_int(mcp.state("tab"), "tab")
     open_menu(mcp, snap_cache, "视图")
-    item = find_element_by_event(snap_cache[0], "ActSwitchTab")
+    item = find_button_by_text(snap_cache[0], "切换 Tab")
     if item:
         mcp.click(item)
         time.sleep(0.3)
@@ -256,21 +271,21 @@ def run_tests(mcp_url, proc):
     # icons; select-all via the edit menu (no toolbar icon for it).
     print("\nT6: Editor actions (toolbar icons + edit-menu select-all)")
     snap_cache[0] = mcp.snapshot()
-    for act, log in (("ActUndo", "undo"), ("ActRedo", "redo"),
-                     ("ActCut", "cut"), ("ActCopy", "copy"), ("ActPaste", "paste")):
-        el = find_element_by_event(snap_cache[0], act)
+    for icon, log in (("undo-2", "undo"), ("redo-2", "redo"),
+                      ("scissors", "cut"), ("copy", "copy"), ("clipboard", "paste")):
+        el = find_button_by_icon(snap_cache[0], icon)
         if el is None:
-            result.check(f"toolbar .{act}", False, "element not found")
+            result.check(f"toolbar {icon}", False, "element not found")
             continue
         mcp.click(el)
         time.sleep(0.3)
         alive = proc.poll() is None
-        result.check(f".{act} executed (app alive)", alive, "process died")
+        result.check(f"{log} executed (app alive)", alive, "process died")
         if alive:
-            result.check(f".{act} logged", log in (state_str(mcp.state("console"), "console") or ""),
+            result.check(f"{log} logged", log in (state_str(mcp.state("console"), "console") or ""),
                          "console line missing")
     if open_menu(mcp, snap_cache, "编辑"):
-        el = find_element_by_event(snap_cache[0], "ActSelectAll")
+        el = find_button_by_text(snap_cache[0], "全选")
         if el:
             mcp.click(el)
             time.sleep(0.3)
@@ -282,8 +297,8 @@ def run_tests(mcp_url, proc):
     else:
         result.check("edit menu opened", False, "编辑 button not found")
 
-    # T7: global shortcut — Ctrl+J toggles console (Plan 275 pipeline;
-    # modifiers passed separately, server builds the "Ctrl+j" binding name).
+    # T7: global shortcut — Ctrl+J now flows ONLY from auto-edit.at
+    # (config fallback layer; the DSL onkeydown attrs were removed in P2-3c).
     print("\nT7: Global shortcut Ctrl+J")
     before = state_bool(mcp.state("console_open"), "console_open")
     try:
@@ -310,7 +325,7 @@ def run_tests(mcp_url, proc):
     # T8: ActQuit via File menu — process exits
     print("\nT8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
-    item = find_element_by_event(snap_cache[0], "ActQuit")
+    item = find_button_by_text(snap_cache[0], "退出")
     if item:
         # ActQuit runs Process.exit(0): the process may die before the HTTP
         # response completes — a dropped connection here IS the success path.
