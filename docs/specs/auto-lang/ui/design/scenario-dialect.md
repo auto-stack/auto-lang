@@ -17,6 +17,8 @@
 - `view fn` 前缀为 view fragment（plan-367 P2-3）——内联展开，调用点无独立组件。
 - `component fn`（plan-408）自 Plan 425 起为 **`widget` 的语法糖**：解析期直接产出 WidgetDecl（body 自动包 `view` 块、params→props），fragment 双轨已删除。**新代码请用 `widget`**；`component fn` 仅作兼容拼写保留。同文件 widget 引用自动走组件路径（`<Name/>` + `@/components/Name.vue`）。
 - `widget` 体支持 **view 可选化**（Plan 425）：体以视图元素开头（无 `view` 块）时体即视图，自动包裹——`widget X { col {...} }` ≡ `widget X { view { col {...} } }`。
+- view 可选化的已知取舍：widget 体内**未知的块关键字拼写错误会静默解析为视图元素**（如 `veiw {}` 变成 `<veiw>` 元素）而非清晰报错。
+- **根序语义**（Plan 425 定）：一个 `.at` 文件的根组件（`vue_code`/App）= **源序首个 widget**。`component fn` 糖化后不再追加到 widgets 之后——声明顺序即根序，App 应写在其他 widget 之前（真实工程 app.at 均如此）。
 - `setup { ... }` 前导槽（Plan 426）：每实例同步执行、先于首渲染的通用 setup 语句槽（`let`/表达式;`await` MVP 拒绝）。`refs <binding>: [f...]` 块级声明标注 ref 字段（script 侧访问注入 `.value`）。**`use.web composable` kind 降级为糖**——自动调用 + refs 标注可由 `setup { let x = useX() }` + `refs x: [...]` 完整表达,新代码推荐 setup 块。
 
 ## 生命周期三相位语义表（Plan 426 定版）

@@ -4,7 +4,7 @@
 // to .vue/.ts/npm sources at the call site.
 //
 // Expected generated App.vue (.at 源是命名导出模块,调用方一律 named import):
-//   import { portLabel, Badge, useTick } from '@/ext/src/front/ports/symbols.web'
+//   import { Badge, useTick, portLabel } from '@/ext/src/front/ports/symbols.web'
 //   const tick = useTick()
 //   <Badge :text="..." @select="Picked"/>
 //   {{ tick.label() }} / {{ portLabel(3) }}

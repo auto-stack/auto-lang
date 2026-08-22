@@ -3,10 +3,12 @@
 // component/composable 走 ES re-export。调用方只引用本文件(.at 路径)。
 //
 // 生成产物预期(src/ext/src/front/ports/symbols.web.ts):
-//   import { relLabel } from '@/ext/src/front/label_fmt'
+//   import { relLabel } from '@/ext/src/front/label_fmt'   // wrapper 使用 → import
+//   export { relLabel } from '@/ext/src/front/label_fmt'   // 转发(fn-kind)
 //   export { default as Badge } from '@/ext/src/front/badge.vue'
 //   export { useTick } from '@/ext/src/front/composables/useTick'
 //   export function portLabel(n) { return relLabel(n) }
+// (纯转发端口零 wrapper 时只发 export 行,无 unused import)
 
 use.web relLabel from "src/front/label_fmt.ts"
 use.web component Badge from "src/front/badge.vue"

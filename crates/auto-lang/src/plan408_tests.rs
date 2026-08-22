@@ -209,14 +209,17 @@ mod plan408_tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
         // CollapseBtn toggles its own `collapsed` state AND emits ToggleCollapse
-        // upward so the parent can react. App subscribes via the widget callback
-        // contract (Plan 425 单轨): `on_<snake>` prop + matching msg variant.
+        // upward so the parent can react. App subscribes via the legacy
+        // `on<event>` spelling — it parses as a ViewEvent (on-prefix) and the
+        // widget track delivers it as `@togglecollapse` exactly like the old
+        // component-fn track did (compatibility pinned; see also
+        // test_plan425_legacy_on_event_spelling in vue.rs tests).
         // Plan 425: App first (root = first widget in source order).
         std::fs::write(&at_path, concat!(
             "widget App {\n",
             "    model { var count int = 0 }\n",
             "    view {\n",
-            "        CollapseBtn(label: \"go\", on_toggle_collapse: .Bump)\n",
+            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)\n",
             "    }\n",
             "    on { .Bump -> { .count = .count + 1 } }\n",
             "}\n",
@@ -272,11 +275,11 @@ mod plan408_tests {
             btn_code
         );
 
-        // App subscribes to the event. Plan 425 单轨: the sub-widget callback
-        // contract delivers `on_toggle_collapse` as the PascalCase msg event
-        // `@ToggleCollapse` (dropped from defineProps).
+        // App subscribes to the event: `ontogglecollapse` (legacy no-underscore
+        // spelling) renders as `@togglecollapse` — same delivery the old
+        // component-fn track provided.
         assert!(
-            app_code.contains("@ToggleCollapse"),
+            app_code.contains("@togglecollapse"),
             "App must bind the toggle event on CollapseBtn: {}",
             app_code
         );

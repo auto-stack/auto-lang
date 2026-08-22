@@ -1675,7 +1675,21 @@ impl VueGenerator {
         // semantics) and refs annotations; name collisions with state/prop
         // are a compile error (PLAN-037 T5 precedent).
         if let Some(setup) = &widget.setup {
+            // Plan 426 §1.5: setup statements run BEFORE state/computed/props
+            // declarations (bindings first) — a reference to any of them is a
+            // runtime TDZ error, rejected at compile time.
+            let forbidden: std::collections::HashSet<&str> =
+                widget.state_vars.iter().map(|sv| sv.name.as_str())
+                .chain(widget.computed.iter().map(|c| c.name.as_str()))
+                .chain(widget.props.iter().map(|p| p.name.as_str()))
+                .collect();
             for stmt in &setup.body.stmts {
+                if let Some(name) = Self::stmt_references_any(stmt, &forbidden) {
+                    return Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                        "widget `{}` setup statement references `{}`, which is declared AFTER the setup preamble (state/computed/props run later); move the logic out of setup or into a handler",
+                        widget.name, name
+                    )));
+                }
                 if let crate::ast::Stmt::Store(store) = stmt {
                     let name = store.name.as_str();
                     if widget.state_vars.iter().any(|sv| sv.name == name) {
@@ -2100,11 +2114,30 @@ impl VueGenerator {
         // `.value`; await was rejected at parse time (MVP).
         if let Some(setup) = &self.current_setup_stmts {
             let ctx = self.handler_ts_ctx();
-            let body = crate::ui_gen::ts_adapter::transpile_handler_body(setup, &ctx);
+            // Plan 426 §1.2: setup 的 let 绑定 = script 顶层 **const**(组件
+            // 局部绑定,不可重赋值);逐语句转译,首行 let → const(`var`
+            // 绑定保持 let 可变)。语句输出必以 "let " 开头,replacen(1) 安全。
+            let mut emitted: Vec<String> = Vec::new();
+            for stmt in setup {
+                let body = crate::ui_gen::ts_adapter::transpile_handler_body(
+                    std::slice::from_ref(stmt), &ctx,
+                );
+                let body = match stmt {
+                    crate::ast::Stmt::Store(store)
+                        if matches!(store.kind, crate::ast::StoreKind::Let) =>
+                    {
+                        body.replacen("let ", "const ", 1)
+                    }
+                    _ => body,
+                };
+                emitted.push(body);
+            }
             self.drain_ctx_warnings(&ctx);
-            for line in body.lines() {
-                script.push_str(line);
-                script.push('\n');
+            for chunk in emitted {
+                for line in chunk.lines() {
+                    script.push_str(line);
+                    script.push('\n');
+                }
             }
             script.push('\n');
         }
@@ -3277,6 +3310,45 @@ impl VueGenerator {
 
     /// Plan 012 Batch A (gap 19): local names of `use { composable: ... }`
     /// imports, for the ts_adapter facade gate.
+    /// Plan 426: does a setup statement reference any forbidden name (state
+    /// var / computed / prop)? Flags bare `x` identifiers and self/props-based
+    /// field access (`.x` / `self.x` / `props.x`); returns the first hit.
+    fn stmt_references_any(
+        stmt: &crate::ast::Stmt,
+        names: &std::collections::HashSet<&str>,
+    ) -> Option<String> {
+        fn walk_expr(expr: &crate::ast::Expr, names: &std::collections::HashSet<&str>) -> Option<String> {
+            use crate::ast::Expr;
+            match expr {
+                Expr::Ident(n) if names.contains(n.as_str()) => Some(n.as_str().to_string()),
+                Expr::Dot(obj, field) => {
+                    // `.x` (implicit self), `self.x`, `props.x`
+                    let base_is_root = matches!(
+                        obj.as_ref(),
+                        Expr::Ident(n) if n.as_str() == "self" || n.as_str() == "." || n.as_str() == "props"
+                    );
+                    if base_is_root && names.contains(field.as_str()) {
+                        return Some(field.as_str().to_string());
+                    }
+                    walk_expr(obj, names)
+                }
+                Expr::Call(call) => {
+                    walk_expr(&call.name, names)
+                        .or_else(|| call.args.args.iter().find_map(|a| walk_expr(&a.get_expr(), names)))
+                }
+                Expr::Bina(l, _, r) => walk_expr(l, names).or_else(|| walk_expr(r, names)),
+                Expr::Unary(_, e) => walk_expr(e, names),
+                Expr::Array(items) => items.iter().find_map(|e| walk_expr(e, names)),
+                _ => None,
+            }
+        }
+        match stmt {
+            crate::ast::Stmt::Expr(expr) => walk_expr(expr, names),
+            crate::ast::Stmt::Store(store) => walk_expr(&store.expr, names),
+            _ => None,
+        }
+    }
+
     fn facade_local_names(&self) -> std::collections::HashSet<String> {
         let mut names: std::collections::HashSet<String> =
             self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect();
@@ -12428,6 +12500,15 @@ export function cn(...inputs: ClassValue[]) {
         let mut code = String::new();
         code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
 ");
+        // Plan 424 收口补强:先转译 wrapper fn 体,fn-kind 的 import 行只发射
+        // wrapper 实际引用的符号——纯转发端口(零 wrapper)不再产生 unused
+        // import,产出对 noUnusedLocals: true 的工程同样成立。export 行恒发
+        // (转发本体)。
+        let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
+        let mut wrapper_bodies = String::new();
+        for mfn in fns {
+            wrapper_bodies.push_str(&crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx));
+        }
         for imp in ext_imports {
             let names: Vec<&str> = imp.symbols.iter().map(|s| s.as_str()).collect();
             if names.is_empty() {
@@ -12436,17 +12517,22 @@ export function cn(...inputs: ClassValue[]) {
             let specifier = Self::ext_import_specifier(imp.path.as_str());
             match imp.kind {
                 crate::ast::ui::ExtImportKind::Fn => {
-                    // import:供本模块 wrapper fn 体内引用(PLAN-037 Phase 5
-                    // 路径不变);export:纯转发(Plan 424)——无 wrapper 的端口
-                    // 直接把符号递给调用方。export-from 不引入局部绑定,两行
-                    // 共存合法;无 wrapper 使用时 import 仅未使用(基线
-                    // noUnusedLocals: false)。
-                    code.push_str(&format!(
-                        "import {{ {} }} from '{}'
+                    // import:供本模块 wrapper fn 体内引用(仅实际使用的符号);
+                    // export:纯转发(Plan 424)——把符号递给调用方。export-from
+                    // 不引入局部绑定,两行共存合法。
+                    let used: Vec<&str> = names
+                        .iter()
+                        .copied()
+                        .filter(|n| wrapper_bodies.contains(n))
+                        .collect();
+                    if !used.is_empty() {
+                        code.push_str(&format!(
+                            "import {{ {} }} from '{}'
 ",
-                        names.join(", "),
-                        specifier
-                    ));
+                            used.join(", "),
+                            specifier
+                        ));
+                    }
                     code.push_str(&format!(
                         "export {{ {} }} from '{}'
 ",
@@ -12486,7 +12572,6 @@ export function cn(...inputs: ClassValue[]) {
         if !ext_imports.is_empty() {
             code.push('\n');
         }
-        let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
         for mfn in fns {
             let param_list = mfn.params.iter()
                 .map(|p| format!("{}: any", p))
@@ -14125,6 +14210,12 @@ use.web composable useT from "./i18n.ts"
             .collect();
         assert!(fns.is_empty(), "pure port has no wrappers");
         let code = VueGenerator::generate_fn_module_full(&fns, &web_imports);
+        // 收口补强:零 wrapper 时无 import 行(不再依赖 noUnusedLocals: false)。
+        assert!(
+            !code.contains("import {"),
+            "pure forwarding port emits no unused import:\n{}",
+            code
+        );
         assert!(
             code.contains("export { MessageSquare, ListTodo } from 'lucide-vue-next'"),
             "component forwarding:
@@ -15906,6 +15997,63 @@ widget Icon(language: str) {
     // Plan 426: setup preamble slot (per-instance setup phase).
     // ====================================================================
 
+    /// Plan 425 兼容性锁定:旧 component fn 的 `on<event>` 回调拼写
+    /// (`ontogglecollapse: .Bump`,无下划线)在糖化后经事件路径
+    /// (on 前缀 ViewEvent → sub_widget_event_to_vue)仍产出
+    /// `@togglecollapse`——与旧 Component 节点轨道一致,非普通 prop。
+    /// 根序语义变化(源序首个 widget 为根)由 App 前置体现。
+    #[test]
+    fn test_plan425_legacy_on_event_spelling() {
+        let tmp = std::env::temp_dir().join("audit_on_event");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, concat!(
+            "widget App {
+",
+            "    model { var count int = 0 }
+",
+            "    view {
+",
+            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)
+",
+            "    }
+",
+            "    on { .Bump -> { .count = .count + 1 } }
+",
+            "}
+",
+            "
+",
+            "component fn CollapseBtn(label: str) {
+",
+            "    msg Msg { ToggleCollapse }
+",
+            "    model { var collapsed bool = false }
+",
+            "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }
+",
+            "    button {
+",
+            "        text .label
+",
+            "        onclick: .ToggleCollapse
+",
+            "    }
+",
+            "}
+",
+        )).unwrap();
+        let result = crate::ui_gen::generate_component_from_file(
+            &at_path, crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("must compile");
+        let app = result.vue_code.clone();
+        assert!(app.contains("@togglecollapse"), "legacy event spelling works:
+{}", app);
+        assert!(!app.contains(":ontogglecollapse"), "not a plain prop:
+{}", app);
+    }
+
     /// Plan 426 T2: setup statements land at <script setup> top level BEFORE
     /// state/computed definitions (bindings first); the binding is usable in
     /// the template and in on handlers.
@@ -15929,7 +16077,7 @@ widget App {
     }
 }
 "#);
-        let setup_pos = sfc.find("let greeting");
+        let setup_pos = sfc.find("const greeting");
         let state_pos = sfc.find("const count = defineModel");
         assert!(setup_pos.is_some(), "setup statement emitted:\n{}", sfc);
         assert!(state_pos.is_some(), "state emitted:\n{}", sfc);
@@ -15964,8 +16112,27 @@ widget App {
     }
 }
 "#);
-        assert!(sfc.contains("let i18n = useI18n()"), "setup call emitted:\n{}", sfc);
+        assert!(sfc.contains("const i18n = useI18n()"), "setup binding emits const:\n{}", sfc);
+        assert!(!sfc.contains("let i18n"), "no let leakage:\n{}", sfc);
         assert!(sfc.contains("i18n.locale.value"), "refs field gains .value:\n{}", sfc);
+    }
+
+    /// Plan 426 收口补强:setup 语句引用 model 变量/computed/prop 在发射
+    /// 顺序上必 TDZ(setup 先于 state/computed/props 声明),编译期拒绝。
+    #[test]
+    fn test_plan426_setup_rejects_state_reference() {
+        let result = std::panic::catch_unwind(|| {
+            gen_sfc_from_widget_src(r#"
+widget App {
+    setup {
+        let label = .count
+    }
+    model { var count int = 0 }
+    view { col { text .count } }
+}
+"#)
+        });
+        assert!(result.is_err(), "setup referencing a model var must be a compile error");
     }
 
     /// Plan 426 T2 MVP: `await` inside a setup block is a hard parse error
