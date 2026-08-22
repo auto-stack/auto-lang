@@ -4455,7 +4455,26 @@ fn ls_file_kind(name: &str, is_dir: bool) -> &'static str {
 }
 
 fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Value) {
-    let args: Vec<&str> = cmd.split_whitespace().collect();
+    // 2026-08-22:管道 DSL 子集 —— `ls | where <col> <op> <value>`。merged 模式
+    // 无 ash-core,整串此前直接进参数解析,'|' 被当目标路径(read_dir("…/|")
+    // os error 123 → 无结果)。此处拆出管道段,列过滤在 items 上原地执行。
+    // 支持 where/filter 两种动词,op:==、!=、contains(字符串,大小写不敏感)、
+    // >、>=、<、<=(数值,双方可解析时)。未知列/未知 op 不过滤(宽松降级)。
+    let (ls_part, pipe_part) = match cmd.find('|') {
+        Some(i) => (cmd[..i].trim(), Some(cmd[i + 1..].trim())),
+        None => (cmd, None),
+    };
+    let mut filter: Option<(String, String, String)> = None; // (col, op, value)
+    if let Some(p) = pipe_part {
+        let toks: Vec<&str> = p.split_whitespace().collect();
+        if toks.len() >= 4 && (toks[0] == "where" || toks[0] == "filter") {
+            // value 取剩余 token 拼接(支持含空格),剥包裹引号。
+            let value = toks[3..].join(" ").trim_matches('"').to_string();
+            filter = Some((toks[1].to_string(), toks[2].to_string(), value));
+        }
+    }
+
+    let args: Vec<&str> = ls_part.split_whitespace().collect();
     // 解析 flags 和路径(args[0] = "ls"/"dir")
     let mut show_hidden = false;
     let mut target_path: Option<&str> = None;
@@ -4502,6 +4521,37 @@ fn handle_ls_command(cmd: &str, cwd: &str) -> (serde_json::Value, serde_json::Va
                 b.1.cmp(&a.1) // 目录优先(true > false)
                     .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
             });
+
+            // 管道过滤:`| where <col> <op> <value>`(见函数头注释)。
+            if let Some((col, op, val)) = &filter {
+                let col_l = col.to_lowercase();
+                let val_l = val.to_lowercase();
+                items.retain(|(name, is_dir, size)| {
+                    let cell = match col_l.as_str() {
+                        "name" => name.clone(),
+                        "type" => if *is_dir { "dir" } else { "file" }.to_string(),
+                        "size" => size.to_string(),
+                        _ => return true, // 未知列:不过滤
+                    };
+                    match op.as_str() {
+                        "==" => cell.to_lowercase() == val_l,
+                        "!=" => cell.to_lowercase() != val_l,
+                        "contains" => cell.to_lowercase().contains(&val_l),
+                        ">" | ">=" | "<" | "<=" => {
+                            match (cell.parse::<i64>(), val.parse::<i64>()) {
+                                (Ok(a), Ok(b)) => match op.as_str() {
+                                    ">" => a > b,
+                                    ">=" => a >= b,
+                                    "<" => a < b,
+                                    _ => a <= b,
+                                },
+                                _ => false, // 数值 op 但任一侧非数值 → 不匹配
+                            }
+                        }
+                        _ => true, // 未知 op:不过滤
+                    }
+                });
+            }
 
             let rows: Vec<serde_json::Value> = items
                 .iter()
