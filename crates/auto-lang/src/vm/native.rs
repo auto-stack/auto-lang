@@ -568,7 +568,7 @@ fn vm_write(vm: &AutoVM, s: &str) {
 fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
     let nv = task.ram.pop_nv();
     if auto_val::is_string(nv) {
-        let idx = auto_val::decode_string(nv) as u16;
+        let idx = auto_val::decode_string(nv);
         vm.get_string(idx)
             .map(|b| String::from_utf8_lossy(&b).into_owned())
             .unwrap_or_default()
@@ -975,7 +975,7 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let str_index = auto_val::decode_string(nv) as u16;
+            let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
                 vm_print(vm, &String::from_utf8_lossy(&bytes));
             } else {
@@ -992,7 +992,7 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let str_index = auto_val::decode_string(nv) as u16;
+            let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
                 vm_print(vm, &String::from_utf8_lossy(&bytes));
             } else {
@@ -1101,7 +1101,7 @@ pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         match tag {
             // TAG_STRING
             t if t == 2 => {
-                let str_index = auto_val::decode_string(nv) as u16;
+                let str_index = auto_val::decode_string(nv);
                 if let Some(bytes) = vm.get_string(str_index) {
                     vm_print(vm, &String::from_utf8_lossy(&bytes));
                 } else {
@@ -1237,7 +1237,7 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let str_index = auto_val::decode_string(nv) as u16;
+            let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
                 vm_print(vm, &String::from_utf8_lossy(&bytes));
             } else {
@@ -1291,7 +1291,7 @@ pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let str_index = auto_val::decode_string(nv) as u16;
+            let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
                 vm_write(vm, &String::from_utf8_lossy(&bytes));
             } else {
@@ -1341,7 +1341,7 @@ pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let msg = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let idx = auto_val::decode_string(nv) as u16;
+            let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
                 .map(|b| String::from_utf8_lossy(&b).to_string())
                 .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
@@ -1360,8 +1360,8 @@ pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let left_is_str = auto_val::is_string(left_nv);
         let right_is_str = auto_val::is_string(right_nv);
         let equal = if left_is_str && right_is_str {
-            let lidx = auto_val::decode_string(left_nv) as u16;
-            let ridx = auto_val::decode_string(right_nv) as u16;
+            let lidx = auto_val::decode_string(left_nv);
+            let ridx = auto_val::decode_string(right_nv);
             let left_str = vm.get_string(lidx)
                 .map(|b| String::from_utf8_lossy(&b).to_string());
             let right_str = vm.get_string(ridx)
@@ -1395,9 +1395,9 @@ pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let right_is_str = auto_val::is_string(right_nv);
 
         let equal = if left_is_str && right_is_str {
-            let left_str = vm.get_string(auto_val::decode_string(left_nv) as u16)
+            let left_str = vm.get_string(auto_val::decode_string(left_nv))
                 .map(|b| String::from_utf8_lossy(&b).to_string());
-            let right_str = vm.get_string(auto_val::decode_string(right_nv) as u16)
+            let right_str = vm.get_string(auto_val::decode_string(right_nv))
                 .map(|b| String::from_utf8_lossy(&b).to_string());
             left_str.as_deref() == right_str.as_deref()
         } else if left_nv == right_nv {
@@ -1599,7 +1599,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         // actual string and push it as a nanbox string value.
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
             if let Some(s) = list.pop() {
-                let idx = { let mut strings = vm.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
+                let idx = vm.add_string(s.into_bytes());
                 task.ram.push_str_idx(idx as u32);
             } else {
                 task.ram.push_i32(0);
@@ -1721,11 +1721,8 @@ fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
         auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
         auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
         auto_val::Value::Str(s) => {
-            let mut strings = vm.strings.write().unwrap();
-            let str_idx = strings.len() as u32;
-            strings.push(s.as_bytes().to_vec());
-            drop(strings);
-            task.ram.push_str_idx(str_idx);
+            let str_idx = vm.add_string(s.as_bytes().to_vec());
+            task.ram.push_str_idx(str_idx as u32);
         }
         _ => task.ram.push_i32(0), // Nil 等兜底为 0
     }
@@ -1788,7 +1785,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             // return the element as a nanbox string.
             if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
                 if let Some(s) = list.get(index) {
-                    let idx = { let mut strings = vm.strings.write().unwrap(); let i = strings.len(); strings.push(s.clone().into_bytes()); i };
+                    let idx = vm.add_string(s.clone().into_bytes());
                     task.ram.push_str_idx(idx as u32);
                 } else {
                     task.ram.push_i32(0);
@@ -2892,12 +2889,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
                 match chunk_result {
                     Some(chunk) => {
-                        let idx = {
-                            let mut strings = vm.strings.write().unwrap();
-                            let i = strings.len();
-                            strings.push(chunk.into_bytes());
-                            i
-                        };
+                        let idx = vm.add_string(chunk.into_bytes());
                         task.ram.push_nv(auto_val::encode_string(idx as u32));
                     }
                     None => {}
@@ -2939,12 +2931,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
                 match event {
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
-                        let idx = {
-                            let mut strings = vm.strings.write().unwrap();
-                            let i = strings.len();
-                            strings.push(s.into_bytes());
-                            i
-                        };
+                        let idx = vm.add_string(s.into_bytes());
                         task.ram.push_nv(auto_val::encode_string(idx as u32));
                     }
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
@@ -3407,11 +3394,8 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                         return Ok(());
                     }
                     auto_val::Value::Str(s) => {
-                        let mut strings = vm.strings.write().unwrap();
-                        let str_idx = strings.len() as u32;
-                        strings.push(s.as_bytes().to_vec());
-                        drop(strings);
-                        task.ram.push_str_idx(str_idx);
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        task.ram.push_str_idx(str_idx as u32);
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
@@ -3432,11 +3416,8 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     // ${arr[key]} returns empty when key doesn't exist, not null/error).
     // Use contains_key to distinguish "missing" from "empty value".
     {
-        let mut strings = vm.strings.write().unwrap();
-        let str_idx = strings.len() as u32;
-        strings.push(Vec::new()); // empty string
-        drop(strings);
-        task.ram.push_str_idx(str_idx);
+        let str_idx = vm.add_string(Vec::new()); // empty string
+        task.ram.push_str_idx(str_idx as u32);
     }
     Ok(())
 }
@@ -3518,11 +3499,8 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                         return Ok(());
                     }
                     auto_val::Value::Str(s) => {
-                        let mut strings = vm.strings.write().unwrap();
-                        let str_idx = strings.len() as u32;
-                        strings.push(s.as_bytes().to_vec());
-                        drop(strings);
-                        task.ram.push_str_idx(str_idx);
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        task.ram.push_str_idx(str_idx as u32);
                         return Ok(());
                     }
                     _ => {
@@ -3627,11 +3605,8 @@ pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                     auto_val::Value::Uint(u) => { task.ram.push_i32(u as i32); return Ok(()); }
                     auto_val::Value::Bool(b) => { task.ram.push_i32(if b { 1 } else { 0 }); return Ok(()); }
                     auto_val::Value::Str(s) => {
-                        let mut strings = vm.strings.write().unwrap();
-                        let str_idx = strings.len() as u32;
-                        strings.push(s.as_bytes().to_vec());
-                        drop(strings);
-                        task.ram.push_str_idx(str_idx);
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        task.ram.push_str_idx(str_idx as u32);
                         return Ok(());
                     }
                     _ => {}
@@ -4327,11 +4302,8 @@ pub fn shim_btreemap_first_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         let guard = obj.read().unwrap();
         if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
             if let Some(first_key) = map.data.keys().next() {
-                // Add string to pool and return tagged index
-                let mut strings = vm.strings.write().unwrap();
-                let str_idx = strings.len() as u16;
-                strings.push(first_key.as_bytes().to_vec());
-                drop(strings);
+                // Add string to pool and return tagged index(dedup)
+                let str_idx = vm.add_string(first_key.as_bytes().to_vec());
                 // Return as tagged string index
                 -((str_idx as i32) + 1)
             } else {
@@ -4357,11 +4329,8 @@ pub fn shim_btreemap_last_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
         let guard = obj.read().unwrap();
         if let Some(map) = guard.as_any().downcast_ref::<crate::vm::collections::SpecializedBTreeMap>() {
             if let Some(last_key) = map.data.keys().next_back() {
-                // Add string to pool and return tagged index
-                let mut strings = vm.strings.write().unwrap();
-                let str_idx = strings.len() as u16;
-                strings.push(last_key.as_bytes().to_vec());
-                drop(strings);
+                // Add string to pool and return tagged index(dedup)
+                let str_idx = vm.add_string(last_key.as_bytes().to_vec());
                 // Return as tagged string index
                 -((str_idx as i32) + 1)
             } else {
@@ -4408,7 +4377,7 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }
         }
         // Normal string path
-        let str_idx = auto_val::decode_string(nv) as u16;
+        let str_idx = auto_val::decode_string(nv);
         if let Some(bytes) = vm.get_string(str_idx) {
             task.ram.push_i32(bytes.len() as i32);
         } else {
@@ -4421,7 +4390,7 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Helper: decode a NanoValue to a String (from string pool)
 fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
     if auto_val::is_string(nv) {
-        vm.get_string(auto_val::decode_string(nv) as u16)
+        vm.get_string(auto_val::decode_string(nv))
             .map(|b| String::from_utf8_lossy(&b[..]).to_string())
             .unwrap_or_default()
     } else {
@@ -4474,7 +4443,7 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         let nv = task.ram.pop_nv();
         let s = if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
-            vm.get_string(idx as u16)
+            vm.get_string(idx as u32)
                 .map(|b| String::from_utf8_lossy(&b[..]).to_string())
                 .unwrap_or_default()
         } else {
@@ -4500,7 +4469,7 @@ pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         let nv = task.ram.pop_nv();
         let s = if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
-            vm.get_string(idx as u16)
+            vm.get_string(idx as u32)
                 .map(|b| String::from_utf8_lossy(&b[..]).to_string())
                 .unwrap_or_default()
         } else {
@@ -4522,7 +4491,7 @@ pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
         // If it's a string, compute byte length directly
         if auto_val::is_string(nv) {
-            let str_idx = auto_val::decode_string(nv) as u16;
+            let str_idx = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_idx) {
                 task.ram.push_i32(bytes.len() as i32);
             } else {
@@ -4554,7 +4523,7 @@ pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _capacity = task.ram.pop_i32();
 
     // Pop initial string index
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
 
     // Get initial string content
     let initial_content = if let Some(bytes) = vm.get_string(str_idx) {
@@ -4581,7 +4550,7 @@ pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: str_idx (tagged), mut_str_id (i32) -> mut_str_id (i32)
 pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string to append
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
 
     // Pop mutable string ID
     let obj_id = task.ram.pop_i32() as u64;
@@ -4631,7 +4600,7 @@ pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: str_idx (tagged) -> str_idx (tagged)
 pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string index
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
 
     // Get string content
     let upper_str = if let Some(bytes) = vm.get_string(str_idx) {
@@ -4657,7 +4626,7 @@ pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::{Iterator, ListIterator};
     use crate::vm::types::ListData;
 
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
 
     // Get string bytes
     let bytes: Vec<i32> = if let Some(str_bytes) = vm.get_string(str_idx) {
@@ -4705,7 +4674,7 @@ pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Creates an owned mutable String (heap object) from a string literal.
 /// Stack: str_idx (tagged) -> sb_id (heap object ID)
 pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
 
     // Get string content from constant pool
     let content = if let Some(bytes) = vm.get_string(str_idx) {
@@ -5296,7 +5265,7 @@ fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
     {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let idx = auto_val::decode_string(nv) as u16;
+            let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
                 .map(|b| String::from_utf8_lossy(&b).into_owned())
                 .unwrap_or_default()
@@ -6706,7 +6675,7 @@ pub fn shim_chrono_weekday(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Parse CSV text into JSON array of arrays.
 /// Stack: str_idx -> str_idx (JSON)
 pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
     let text = if let Some(bytes) = vm.get_string(str_idx) {
         String::from_utf8_lossy(&bytes).to_string()
     } else {
@@ -6728,8 +6697,8 @@ pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Parse CSV text with custom delimiter.
 /// Stack: str_idx(delimiter), str_idx(text) -> str_idx (JSON)
 pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let delim_idx = task.ram.pop_str_idx() as u16;
-    let text_idx = task.ram.pop_str_idx() as u16;
+    let delim_idx = task.ram.pop_str_idx() as u32;
+    let text_idx = task.ram.pop_str_idx() as u32;
     let delim = if let Some(bytes) = vm.get_string(delim_idx) {
         String::from_utf8_lossy(&bytes).to_string()
     } else {
@@ -6757,7 +6726,7 @@ pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Encode list of list of strings (JSON) to CSV.
 /// Stack: str_idx (JSON) -> str_idx (CSV)
 pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let json_idx = task.ram.pop_str_idx() as u16;
+    let json_idx = task.ram.pop_str_idx() as u32;
     let json = if let Some(bytes) = vm.get_string(json_idx) {
         String::from_utf8_lossy(&bytes).to_string()
     } else {
@@ -6778,8 +6747,8 @@ pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Encode CSV with custom delimiter.
 /// Stack: str_idx(delim), str_idx(JSON) -> str_idx (CSV)
 pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let delim_idx = task.ram.pop_str_idx() as u16;
-    let json_idx = task.ram.pop_str_idx() as u16;
+    let delim_idx = task.ram.pop_str_idx() as u32;
+    let json_idx = task.ram.pop_str_idx() as u32;
     let delim = if let Some(bytes) = vm.get_string(delim_idx) {
         String::from_utf8_lossy(&bytes).to_string()
     } else {
@@ -6807,7 +6776,7 @@ pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// MD5 hash.
 /// Stack: str_idx -> str_idx (hex digest)
 pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
     let data = if let Some(bytes) = vm.get_string(str_idx) {
         bytes.clone()
     } else {
@@ -6823,7 +6792,7 @@ pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// SHA1 hash.
 /// Stack: str_idx -> str_idx (hex digest)
 pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
     let data = if let Some(bytes) = vm.get_string(str_idx) {
         bytes.clone()
     } else {
@@ -6838,7 +6807,7 @@ pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// SHA256 one-shot hash.
 /// Stack: str_idx -> str_idx (hex digest)
 pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
     let data = if let Some(bytes) = vm.get_string(str_idx) {
         bytes.clone()
     } else {
@@ -6853,7 +6822,7 @@ pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// SHA512 hash.
 /// Stack: str_idx -> str_idx (hex digest)
 pub fn shim_hash_sha512(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let str_idx = task.ram.pop_str_idx() as u16;
+    let str_idx = task.ram.pop_str_idx() as u32;
     let data = if let Some(bytes) = vm.get_string(str_idx) {
         bytes.clone()
     } else {
@@ -6903,7 +6872,7 @@ fn sha512_hash(data: &[u8]) -> String {
 /// Assert true.
 /// Stack: message_str_idx, condition (i32) -> void
 pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let msg_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
     let condition = task.ram.pop_i32();
     if condition == 0 {
         let msg = if let Some(bytes) = vm.get_string(msg_idx) {
@@ -6919,7 +6888,7 @@ pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Assert false.
 /// Stack: message_str_idx, condition (i32) -> void
 pub fn shim_test_assert_false(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let msg_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
     let condition = task.ram.pop_i32();
     if condition != 0 {
         let msg = if let Some(bytes) = vm.get_string(msg_idx) {
@@ -6935,9 +6904,9 @@ pub fn shim_test_assert_false(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Assert string contains.
 /// Stack: message_str_idx, needle_str_idx, haystack_str_idx -> void
 pub fn shim_test_assert_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let msg_idx = task.ram.pop_str_idx() as u16;
-    let needle_idx = task.ram.pop_str_idx() as u16;
-    let haystack_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let needle_idx = task.ram.pop_str_idx() as u32;
+    let haystack_idx = task.ram.pop_str_idx() as u32;
     let haystack = vm.get_string(haystack_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let needle = vm.get_string(needle_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
@@ -6951,7 +6920,7 @@ pub fn shim_test_assert_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 /// Stack: message_str_idx, expected_len (i32), list_handle -> void
 pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    let msg_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
     let expected = task.ram.pop_i32();
     let handle = task.ram.pop_i32() as u64;
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
@@ -6974,7 +6943,7 @@ pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Assert result is Ok.
 /// Stack: message_str_idx, result_val -> void
 pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let msg_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
     let val = task.ram.pop_i32();
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     if val < 0 {
@@ -6986,7 +6955,7 @@ pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Assert result is Err.
 /// Stack: message_str_idx, result_val -> void
 pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let msg_idx = task.ram.pop_str_idx() as u16;
+    let msg_idx = task.ram.pop_str_idx() as u32;
     let val = task.ram.pop_i32();
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     if val >= 0 {
@@ -7001,7 +6970,7 @@ pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: ...args..., arg_count (i32), format_str_idx -> str_idx
 pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let arg_count = task.ram.pop_i32();
-    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
     // Pop arguments in reverse order
@@ -7029,7 +6998,7 @@ pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// printf — format and print to stdout.
 pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let arg_count = task.ram.pop_i32();
-    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
     let mut args: Vec<String> = Vec::new();
@@ -7053,7 +7022,7 @@ pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// eprintf — format and print to stderr.
 pub fn shim_fmt_eprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let arg_count = task.ram.pop_i32();
-    let fmt_idx = task.ram.pop_str_idx() as u16;
+    let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
     let mut args: Vec<String> = Vec::new();
@@ -7103,8 +7072,8 @@ pub fn shim_fs_temp_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Rename a file or directory.
 /// Stack: str_idx(new), str_idx(old) -> void
 pub fn shim_fs_rename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let new_idx = task.ram.pop_str_idx() as u16;
-    let old_idx = task.ram.pop_str_idx() as u16;
+    let new_idx = task.ram.pop_str_idx() as u32;
+    let old_idx = task.ram.pop_str_idx() as u32;
     let old_path = vm.get_string(old_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let new_path = vm.get_string(new_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     std::fs::rename(&old_path, &new_path)
@@ -7116,7 +7085,7 @@ pub fn shim_fs_rename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Read directory entries (non-recursive) — returns JSON array of filenames.
 /// Stack: str_idx(path) -> str_idx (JSON)
 pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let entries: Vec<String> = std::fs::read_dir(&path)
         .map_err(|e| VMError::RuntimeError(format!("read_dir failed: {}: {}", path, e)))?
@@ -7135,8 +7104,8 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// 请求进 vm::shell_bridge 队列,由 renderer 的 merged_exec_loop 取走执行。
 /// Stack: int(block_id), str_idx(cmd), str_idx(cwd) ->
 pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let cwd_idx = task.ram.pop_str_idx() as u16;
-    let cmd_idx = task.ram.pop_str_idx() as u16;
+    let cwd_idx = task.ram.pop_str_idx() as u32;
+    let cmd_idx = task.ram.pop_str_idx() as u32;
     let block_id = task.ram.pop_i32() as i64;
     let cmd = vm.get_string(cmd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
@@ -7154,7 +7123,7 @@ pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// 已在 .at 侧算好语义结果,经此把完整 command_result payload JSON 压入
 /// 队列(执行线程直发,不 spawn)。Stack: int(block_id), str_idx(json) ->
 pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let json_idx = task.ram.pop_str_idx() as u16;
+    let json_idx = task.ram.pop_str_idx() as u32;
     let block_id = task.ram.pop_i32() as i64;
     let json = vm.get_string(json_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
@@ -7173,8 +7142,8 @@ pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// shell.at 只做路径归一后调本 native。Stack: int(block_id), str_idx(path),
 /// str_idx(cwd) ->
 pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let cwd_idx = task.ram.pop_str_idx() as u16;
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let cwd_idx = task.ram.pop_str_idx() as u32;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let block_id = task.ram.pop_i32() as i64;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
@@ -7194,8 +7163,8 @@ pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 模式同构(json body / json 响应),前端桩可复用 json.to_value。
 /// Stack: str_idx(name), str_idx(args_json) -> str_idx(response_json)
 pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let args_idx = task.ram.pop_str_idx() as u16;
-    let name_idx = task.ram.pop_str_idx() as u16;
+    let args_idx = task.ram.pop_str_idx() as u32;
+    let name_idx = task.ram.pop_str_idx() as u32;
     let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let args_json = vm.get_string(args_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     match crate::vm::host_bridge::call_host(&name, &args_json) {
@@ -7212,8 +7181,8 @@ pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// (复用 json.to_value 的转换管线)—— 前端桩免一层 json.to_value 调用。
 /// Stack: str_idx(name), str_idx(args_json) -> value
 pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let args_idx = task.ram.pop_str_idx() as u16;
-    let name_idx = task.ram.pop_str_idx() as u16;
+    let args_idx = task.ram.pop_str_idx() as u32;
+    let name_idx = task.ram.pop_str_idx() as u32;
     let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let args_json = vm.get_string(args_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let resp = crate::vm::host_bridge::call_host(&name, &args_json)
@@ -7226,7 +7195,7 @@ pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let canonical = std::fs::canonicalize(&path)
         .map(|p| p.to_string_lossy().to_string())
@@ -7239,7 +7208,7 @@ pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Get file extension.
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let ext = std::path::Path::new(&path)
         .extension()
@@ -7253,7 +7222,7 @@ pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Get filename stem (name without extension).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let stem = std::path::Path::new(&path)
         .file_stem()
@@ -7267,7 +7236,7 @@ pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Walk directory recursively, returning only files — JSON array of paths.
 /// Stack: str_idx(dir) -> str_idx (JSON)
 pub fn shim_fs_walk_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let dir_idx = task.ram.pop_str_idx() as u16;
+    let dir_idx = task.ram.pop_str_idx() as u32;
     let dir = vm.get_string(dir_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let mut files: Vec<String> = Vec::new();
     if let Ok(entries) = walkdir_recursive(&dir) {
@@ -7302,7 +7271,7 @@ fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
 /// Walk directory recursively, return JSON array of ALL paths (files + dirs).
 /// Stack: str_idx(dir) -> str_idx (JSON)
 pub fn shim_fs_walk(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let dir_idx = task.ram.pop_str_idx() as u16;
+    let dir_idx = task.ram.pop_str_idx() as u32;
     let dir = vm.get_string(dir_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let mut paths: Vec<String> = Vec::new();
     if let Ok(entries) = walkdir_all(&dir) {
@@ -7335,7 +7304,7 @@ fn walkdir_all(dir: &str) -> Result<Vec<String>, std::io::Error> {
 /// Get file metadata as JSON string.
 /// Stack: str_idx(path) -> str_idx (JSON with len, is_dir, is_file, readonly)
 pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let metadata = std::fs::metadata(&path)
         .map_err(|e| VMError::RuntimeError(format!("metadata failed: {}: {}", path, e)))?;
@@ -7355,8 +7324,8 @@ pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Recursive copy of directory or file.
 /// Stack: str_idx(dst), str_idx(src) -> void
 pub fn shim_fs_copy_recursive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let dst_idx = task.ram.pop_str_idx() as u16;
-    let src_idx = task.ram.pop_str_idx() as u16;
+    let dst_idx = task.ram.pop_str_idx() as u32;
+    let src_idx = task.ram.pop_str_idx() as u32;
     let dst = vm.get_string(dst_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let src = vm.get_string(src_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     copy_recursive(&src, &dst)
@@ -7384,7 +7353,7 @@ fn copy_recursive(src: &str, dst: &str) -> Result<(), std::io::Error> {
 /// Extract filename from path.
 /// Stack: str_idx(path) -> str_idx (filename)
 pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let filename = std::path::Path::new(&path)
         .file_name()
@@ -7398,7 +7367,7 @@ pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Get parent directory of path.
 /// Stack: str_idx(path) -> str_idx (parent)
 pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let parent = std::path::Path::new(&path)
         .parent()
@@ -7412,8 +7381,8 @@ pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Join path components.
 /// Stack: str_idx(b), str_idx(a) -> str_idx (joined path)
 pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let b_idx = task.ram.pop_str_idx() as u16;
-    let a_idx = task.ram.pop_str_idx() as u16;
+    let b_idx = task.ram.pop_str_idx() as u32;
+    let a_idx = task.ram.pop_str_idx() as u32;
     let b = vm.get_string(b_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
     let a = vm.get_string(a_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
     let joined = std::path::Path::new(&a).join(&b).to_string_lossy().to_string();
@@ -7427,8 +7396,8 @@ pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// HMAC-SHA256.
 /// Stack: str_idx(key), str_idx(data) -> str_idx (hex digest)
 pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key_idx = task.ram.pop_str_idx() as u16;
-    let data_idx = task.ram.pop_str_idx() as u16;
+    let key_idx = task.ram.pop_str_idx() as u32;
+    let data_idx = task.ram.pop_str_idx() as u32;
     let key = vm.get_string(key_idx).unwrap_or_default();
     let data = vm.get_string(data_idx).unwrap_or_default();
     let digest = hmac_sha256_hash(&key, &data);
@@ -7440,7 +7409,7 @@ pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// MD5 hash of file contents.
 /// Stack: str_idx(path) -> str_idx (hex digest)
 pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let data = std::fs::read(&path)
         .map_err(|e| VMError::RuntimeError(format!("file_md5: {}: {}", path, e)))?;
@@ -7453,7 +7422,7 @@ pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// SHA256 hash of file contents.
 /// Stack: str_idx(path) -> str_idx (hex digest)
 pub fn shim_hash_file_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let data = std::fs::read(&path)
         .map_err(|e| VMError::RuntimeError(format!("file_sha256: {}: {}", path, e)))?;
@@ -7580,8 +7549,8 @@ pub fn shim_f64_debug(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// String lexicographic comparison, returns Ordering (-1, 0, 1).
 /// Stack: str_idx(b), str_idx(a) -> i32 (-1, 0, 1)
 pub fn shim_str_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let b_idx = task.ram.pop_str_idx() as u16;
-    let a_idx = task.ram.pop_str_idx() as u16;
+    let b_idx = task.ram.pop_str_idx() as u32;
+    let a_idx = task.ram.pop_str_idx() as u32;
     let a = vm.get_string(a_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let b = vm.get_string(b_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
     use std::cmp::Ordering;

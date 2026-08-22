@@ -159,7 +159,7 @@ impl VMConvertible for String {
         if auto_val::is_string(nv) {
             let str_idx = auto_val::decode_string(nv) as usize;
             let bytes = vm
-                .get_string(str_idx as u16)
+                .get_string(str_idx as u32)
                 .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
             let s = String::from_utf8_lossy(&bytes).to_string();
             return Ok(s);
@@ -171,7 +171,7 @@ impl VMConvertible for String {
             if val < 0 {
                 let str_idx = (-val - 1) as usize;
                 let bytes = vm
-                    .get_string(str_idx as u16)
+                    .get_string(str_idx as u32)
                     .ok_or_else(|| FFIError::InvalidStringIndex(str_idx as u16))?;
                 let s = String::from_utf8_lossy(&bytes).to_string();
                 return Ok(s);
@@ -183,15 +183,7 @@ impl VMConvertible for String {
     }
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
-        let strings = vm.strings.read().unwrap();
-        let len = strings.len();
-        drop(strings);
-
-        {
-            let mut strings = vm.strings.write().unwrap();
-            strings.push(self.as_bytes().to_vec());
-        }
-
+        let len = vm.add_string(self.as_bytes().to_vec());
         task.ram.push_str_idx(len as u32);
         Ok(())
     }
@@ -374,13 +366,7 @@ impl VMConvertible for Vec<String> {
 
         for s in self.iter() {
             // Register string in the string table
-            let strings = vm.strings.read().unwrap();
-            let len = strings.len();
-            drop(strings);
-            {
-                let mut strings = vm.strings.write().unwrap();
-                strings.push(s.as_bytes().to_vec());
-            }
+            let len = vm.add_string(s.as_bytes().to_vec());
             // Encode as string index (negative i32), matching push_str_idx encoding
             list.push(-(len as i32) - 1);
         }

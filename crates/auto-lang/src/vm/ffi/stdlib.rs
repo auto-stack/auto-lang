@@ -930,12 +930,7 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         } else { String::new() }
     } else { String::new() };
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(line.into_bytes());
-        i
-    };
+    let idx = vm.add_string(line.into_bytes());
     task.ram.push_nv(auto_val::encode_string(idx as u32));
     Ok(())
 }
@@ -994,12 +989,7 @@ pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else { String::new() }
         } else { String::new() }
     } else { String::new() };
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(data.into_bytes());
-        i
-    };
+    let idx = vm.add_string(data.into_bytes());
     task.ram.push_nv(auto_val::encode_string(idx as u32));
     Ok(())
 }
@@ -1089,12 +1079,7 @@ pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
             } else { String::new() }
         } else { String::new() }
     } else { String::new() };
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(path_str.into_bytes());
-        i
-    };
+    let idx = vm.add_string(path_str.into_bytes());
     task.ram.push_nv(auto_val::encode_string(idx as u32));
     Ok(())
 }
@@ -2102,14 +2087,10 @@ pub(crate) fn json_to_vm_value(
             }
         }
         serde_json::Value::String(s) => {
-            let bytes = s.as_bytes().to_vec();
-            let str_idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let idx = strings.len();
-                strings.push(bytes);
-                idx as u32
-            };
-            crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+            // 2026-08-22(池去重):宿主桥/JSON 每次调用都重解析全量历史
+            // (438+ 条),直推令池随每条命令膨胀;去重后重复内容零增长。
+            let str_idx = vm.add_string(s.as_bytes().to_vec());
+            crate::vm::engine::push_str_tag(&mut task.ram, str_idx as u32);
         }
         serde_json::Value::Array(arr) => {
             use crate::vm::types::ListData;
@@ -6049,7 +6030,7 @@ pub fn shim_task_spawn_vm(
     let task_type = {
         let nv = task.ram.pop_nv();
         if auto_val::is_string(nv) {
-            let idx = auto_val::decode_string(nv) as u16;
+            let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
                 .map(|b| String::from_utf8_lossy(&b).to_string())
                 .unwrap_or_default()
@@ -7181,7 +7162,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     if val >= 4000000 {
                         // Heap object ID — push as object reference
                         task.ram.push_nv(auto_val::encode_object(val as u32));
-                    } else if let Some(bytes) = vm.get_string(val as u16) {
+                    } else if let Some(bytes) = vm.get_string(val as u32) {
                         let new_idx = vm.add_string(bytes.to_vec());
                         task.ram.push_str_idx(new_idx as u32);
                     } else {

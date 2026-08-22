@@ -14,6 +14,9 @@ pub mod trace;
 // config mode is now Codegen::new_for_config() + accumulation opcodes).
 #[cfg(test)]
 mod config_eval_tests;
+// 2026-08-22(侧栏串写根因):字符串池 u32 化 + 驻留去重的回归锁。
+#[cfg(test)]
+mod tests_string_pool;
 // Plan 075: TemplateCodegen for template file compilation
 pub mod collections;
 pub mod engine;

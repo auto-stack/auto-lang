@@ -1021,13 +1021,9 @@ impl RustType {
                             .to_string()
                     }
                 };
-                if let Ok(mut strings) = vm.strings.write() {
-                    let idx = strings.len() as u16;
-                    strings.push(s.into_bytes());
-                    task.ram.push_str_idx(idx as u32);
-                } else {
-                    task.ram.push_i32(0);
-                }
+                // 2026-08-22(池去重):直推绕过 dedup,改为 add_string。
+                let idx = vm.add_string(s.into_bytes());
+                task.ram.push_str_idx(idx as u32);
             }
             RustType::Pointer | RustType::PointerMut | RustType::Callback => {
                 task.ram.push_i64(raw as i64);

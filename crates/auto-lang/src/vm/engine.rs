@@ -632,10 +632,7 @@ impl AutoVM {
     /// index. Used by `inject_value` for Str globals (mirrors codegen's
     /// `add_string` but runs at injection time on an already-built VM).
     fn intern_string(&mut self, bytes: &[u8]) -> usize {
-        let mut strings = self.strings.write().unwrap();
-        let idx = strings.len();
-        strings.push(bytes.to_vec());
-        idx
+        self.add_string(bytes.to_vec())
     }
 
     /// Plan 199: Set a custom debugger controller
@@ -885,11 +882,7 @@ impl AutoVM {
     /// Push a Value onto the stack based on its type
     ///
     /// For Phase 2, supports: Int, Uint, Float, Double, Bool, Char, Nil, Str
-    fn push_value(
-        ram: &mut VirtualRAM,
-        value: &Value,
-        strings: &std::sync::Arc<RwLock<Vec<Vec<u8>>>>,
-    ) {
+    fn push_value(ram: &mut VirtualRAM, value: &Value, vm: &AutoVM) {
         match value {
             Value::Int(i) => {
                 ram.push_nv(auto_val::encode_i32(*i));
@@ -911,11 +904,11 @@ impl AutoVM {
             Value::Str(s) => {
                 // Store string in constant pool and push its tagged index
                 // String indices are stored as -(index+1) to distinguish from integers
-                let s_bytes = s.as_bytes().to_vec();
-                let mut strings = strings.write().unwrap();
-                let idx = strings.len();
-                strings.push(s_bytes);
-                drop(strings);
+                // 2026-08-22(侧栏串写根因):Value::Str 字段每次被读取都会走到
+                // 这里 —— 直推无去重曾令池随每次视图重建膨胀(81 命令 × name/
+                // description,每敲一键全量重建),越过 u16 上限后索引回绕互串。
+                // 改走 add_string(内容去重):重复内容零增长。
+                let idx = vm.add_string(s.as_bytes().to_vec());
                 push_str_tag(ram, idx as u32);
             }
             Value::VmRef(vmref) => {
@@ -1270,8 +1263,13 @@ impl AutoVM {
         id
     }
 
-    /// Get string by index from the constant pool
-    pub fn get_string(&self, index: u16) -> Option<Vec<u8>> {
+    /// Get string by index from the constant pool.
+    /// 2026-08-22(侧栏串写根因):u16 → u32。运行期池会持续增长(字段读
+    /// 重新驻留/STR_CAT 中间串/宿主桥 JSON),会话活跃几分钟即可越过
+    /// 65535;u16 截断令新旧索引回绕互串(ash-gui 侧栏 alias/bash 条目
+    /// 消失、ash 名字变 "." 的根因)。nanbox 字符串标签本就是 u32 负数
+    /// 编码,容量到 2^31,此处放开没有表示性问题。
+    pub fn get_string(&self, index: u32) -> Option<Vec<u8>> {
         let strings = self.strings.read().unwrap();
         strings.get(index as usize).cloned()
     }
@@ -2713,12 +2711,9 @@ impl AutoVM {
                     // Join all parts into a single string
                     let result = parts.join("");
 
-                    // Add to strings pool and push tagged index
-                    let mut strings = self.strings.write().unwrap();
-                    let result_idx = strings.len();
-                    strings.push(result.into_bytes());
-                    drop(strings);
-
+                    // Add to strings pool and push tagged index(dedup:重复
+                    // 中间串不再膨胀池 —— 2026-08-22 侧栏串写根因治理)
+                    let result_idx = self.add_string(result.into_bytes());
                     push_str_tag(&mut task.ram, result_idx as u32);
                 }
                 OpCode::NULL_COALESCE => {
@@ -2737,7 +2732,7 @@ impl AutoVM {
                                 task.ram.push_nv(default_nv);
                             } else if self.is_option_some(obj_id) {
                                 if let Some(field_val) = self.get_option_inner(obj_id) {
-                                    Self::push_value(&mut task.ram, &field_val, &self.strings);
+                                    Self::push_value(&mut task.ram, &field_val, self);
                                 } else {
                                     task.ram.push_nv(may_nv);
                                 }
@@ -2798,7 +2793,7 @@ impl AutoVM {
                                         // Ok case: unwrap the inner value (continue execution)
                                         should_propagate = false;
                                         if let Some(field) = inst.fields.first() {
-                                            Self::push_value(&mut task.ram, field, &self.strings);
+                                            Self::push_value(&mut task.ram, field, self);
                                         } else {
                                             task.ram.push_i32(may_bits);
                                         }
@@ -2807,7 +2802,7 @@ impl AutoVM {
                                         // Option.Some: unwrap the inner value (continue execution)
                                         should_propagate = false;
                                         if let Some(field) = inst.fields.first() {
-                                            Self::push_value(&mut task.ram, field, &self.strings);
+                                            Self::push_value(&mut task.ram, field, self);
                                         } else {
                                             task.ram.push_i32(may_bits);
                                         }
@@ -3293,7 +3288,7 @@ impl AutoVM {
                             let nv = task.ram.pop_nv();
                             if auto_val::is_string(nv) {
                                 let idx = auto_val::decode_string(nv) as usize;
-                                let s = self.get_string(idx as u16)
+                                let s = self.get_string(idx as u32)
                                     .map(|b| String::from_utf8_lossy(&b).to_string())
                                     .unwrap_or_default();
                                 auto_val::Value::Str(auto_val::AutoStr::from(s))
@@ -3392,7 +3387,7 @@ impl AutoVM {
                         if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                             if inst.mono_name == "Result.Ok" {
                                 if let Some(field) = inst.fields.first() {
-                                    Self::push_value(&mut task.ram, field, &self.strings);
+                                    Self::push_value(&mut task.ram, field, self);
                                     return Ok(StepResult::Continue);
                                 }
                             }
@@ -3423,7 +3418,7 @@ impl AutoVM {
                         if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                             if inst.mono_name == "Result.Err" {
                                 if let Some(field) = inst.fields.first() {
-                                    Self::push_value(&mut task.ram, field, &self.strings);
+                                    Self::push_value(&mut task.ram, field, self);
                                     return Ok(StepResult::Continue);
                                 }
                             }
@@ -3770,7 +3765,7 @@ impl AutoVM {
                                         guard.as_any().downcast_ref::<GenericInstanceData>()
                                     {
                                         if let Some(value) = instance.get_field(field_index) {
-                                            Self::push_value(&mut task.ram, value, &self.strings);
+                                            Self::push_value(&mut task.ram, value, self);
                                         } else {
                                             return Err(VMError::RuntimeError(format!(
                                                 "Field index {} out of bounds", field_index
@@ -5595,7 +5590,7 @@ impl AutoVM {
                                             if v >= 4000000 {
                                                 // Heap object ID — push as object reference
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(v as u32)); }
-                                            } else if let Some(bytes) = self.get_string(v as u16) {
+                                            } else if let Some(bytes) = self.get_string(v as u32) {
                                                 let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(new_idx as u32)); }
                                             } else {
@@ -7044,8 +7039,8 @@ impl AutoVM {
                         let b = auto_val::decode_object(b_nv) as i32;
                         self.struct_eq(a, b)
                     } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7081,8 +7076,8 @@ impl AutoVM {
                         let b = auto_val::decode_object(b_nv) as i32;
                         !self.struct_eq(a, b)
                     } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7109,8 +7104,8 @@ impl AutoVM {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7171,8 +7166,8 @@ impl AutoVM {
                             a > b
                         }
                     } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7198,8 +7193,8 @@ impl AutoVM {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7223,8 +7218,8 @@ impl AutoVM {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
-                        let a_idx = auto_val::decode_string(a_nv) as u16;
-                        let b_idx = auto_val::decode_string(b_nv) as u16;
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
                         let a_str = self.get_string(a_idx);
                         let b_str = self.get_string(b_idx);
                         match (a_str, b_str) {
@@ -7565,7 +7560,7 @@ impl AutoVM {
                                     let result = future.result.clone();
                                     drop(future); // Release lock before push_value
                                     if let Some(ref r) = result {
-                                        Self::push_value(&mut task.ram, r, &self.strings);
+                                        Self::push_value(&mut task.ram, r, self);
                                     } else {
                                         task.ram.push_i32(0); // No result = nil
                                     }
@@ -7616,7 +7611,7 @@ impl AutoVM {
                                     let result = future.result.clone();
                                     drop(future); // Release lock before push_value
                                     if let Some(ref r) = result {
-                                        Self::push_value(&mut task.ram, r, &self.strings);
+                                        Self::push_value(&mut task.ram, r, self);
                                     } else {
                                         task.ram.push_i32(0);
                                     }
@@ -7855,7 +7850,7 @@ impl AutoVM {
         }
 
         // Push result onto caller's stack
-        Self::push_value(&mut task.ram, &result_value, &self.strings);
+        Self::push_value(&mut task.ram, &result_value, self);
 
         Ok(())
     }
