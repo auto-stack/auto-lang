@@ -216,7 +216,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         _renderer: &iced::Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
-        Node::new(limits.max())
+        // Plan 418 修复:经 limits.resolve 按 Fill 语义解析尺寸,而不是无条件
+        // 取 limits.max() —— 后者在父约束宽松时让编辑器布局覆盖全窗,
+        // 配合 update 的鼠标处理把兄弟控件的点击全部吞掉。
+        let size = limits.resolve(
+            iced::Length::Fill,
+            iced::Length::Fill,
+            limits.max(),
+        );
+        Node::new(size)
     }
 
     fn update(
@@ -238,8 +246,18 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         self.core.sync_syntax_theme(dark, &accent);
 
         let local = |p: Point| (p.x - bounds.x, p.y - bounds.y);
+        // Plan 418 修复:所有鼠标输入必须先过 is_over(bounds) 门控 —— 此前
+        // ButtonPressed/Released/CursorMoved 不检查边界,窗口内任何点击都进
+        // 编辑器核心(置光标+capture_event),把工具栏/菜单/状态栏按钮的
+        // press/release 全部吞掉(实机:仅 __ 内部事件按钮存活)。门控后
+        // 界外点击不再被捕获,事件正常传播到兄弟控件。
+        // 已知取舍:拖选越过编辑器边缘时,越界 move/release 被丢弃,选中
+        // 停在边缘(标准编辑器 clamp 行为的近似)。
         let input = match event {
             Event::Mouse(mouse::Event::ButtonPressed(button)) => {
+                if !cursor.is_over(bounds) {
+                    return;
+                }
                 let button = match button {
                     mouse::Button::Left => EditorButton::Left,
                     mouse::Button::Right => EditorButton::Right,
@@ -252,6 +270,9 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 })
             }
             Event::Mouse(mouse::Event::ButtonReleased(button)) => {
+                if !cursor.is_over(bounds) {
+                    return;
+                }
                 let button = match button {
                     mouse::Button::Left => EditorButton::Left,
                     mouse::Button::Right => EditorButton::Right,
@@ -261,6 +282,9 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 Some(EditorInput::MouseReleased { button })
             }
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                if !cursor.is_over(bounds) {
+                    return;
+                }
                 let (x, y) = local(*position);
                 Some(EditorInput::MouseMoved { x, y })
             }

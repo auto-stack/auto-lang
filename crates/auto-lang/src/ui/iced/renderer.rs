@@ -2656,6 +2656,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         iced::widget::tooltip::Position::Bottom,
                     )
                     .gap(6.0)
+                    // 300ms delay: iced Tooltip opens with invalidate_layout
+                    // at delay=ZERO — a hover instantly rebuilds the tree and
+                    // kills any in-flight button press (toolbar icons became
+                    // unclickable). Resting hover still shows the bubble.
+                    .delay(std::time::Duration::from_millis(300))
                     .style(|_| iced::widget::container::Style {
                         background: Some(iced::Background::Color(iced::Color::from_rgb8(
                             0x16, 0x17, 0x1B,
@@ -5760,6 +5765,9 @@ fn compare_pngs(
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
+            eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
+        }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
         // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
         // 触发,每次都是新 toast)。必须在所有事件分支**之前**:按钮点击等

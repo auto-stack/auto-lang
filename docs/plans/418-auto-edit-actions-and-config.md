@@ -243,3 +243,10 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **041 迁移**:app.at 530→338 行——删 4 菜单×手写样板/8 工具栏按钮/4 个 onkeydown DSL 属性/menu_open 态与 3 个菜单 handler,换 `menubar {}` + `toolbar (style: "ml-auto") {}` 两行;**快捷键全部经配置层**(Ctrl+D 仅配置,回退层锚点)
 - **验证**:041 MCP 矩阵 **29/29**(菜单项按标签定位/工具栏按 PUA 图标定位/开关菜单经 __menubar 内部消息/选择后自动关闭/quit 进程退出);回归 iced 44/44 + action_config 3/3 + mcp_server 6/6
 - **已知缺口**(后续):①合成子树的 probe 路径与 vtree 嵌套层级不对齐(面板列引入额外层),snapshot 无合成按钮 onclick 属性——测试以标签/图标定位替代,修法=按真实嵌套路径记录;②MCP 自动化在高负载下偶发应用静默退出(无 panic,疑似资源压力,复跑即过)——需隔离环境排查;③菜单项 checked 勾选态未渲染(checked-if 已解析)
+
+### 8.5 真实鼠标点击排查（2026-08-22 第四批,部分修复,未完全闭环）
+- **用户反馈**:右下角 console 图标真实点击无反应(应切换 Console)
+- **已确认事实**(SendInput 真实鼠标 + DPI 感知几何 + 每实例实测窗口矩形):menubar 文件/编辑按钮可点(菜单开合);**工具栏图标/菜单项/状态栏 console 图标点击后 update 零消息**;MCP 派发(旁路)一切正常
+- **已落地的防御性修复**:①code_editor iced widget 的 update 对 ButtonPressed/Released/CursorMoved 增加 `cursor.is_over(bounds)` 门控(此前窗口内任何点击都进编辑器核心并被 capture_event 吞掉——插桩实测 CursorMain 洪流为证);②layout 由无条件 `Node::new(limits.max())` 改 `limits.resolve(Fill,Fill,max)`;③EE03 tooltip 加 300ms delay(iced Tooltip delay=0 时 hover 即 invalidate_layout,会打断进行中的按钮点击)
+- **未解**:上述修复后工具栏/console 图标真实点击仍零消息;剩余疑点=状态栏/工具栏区域的 ml-auto Fill 包装容器或 overlay hoist 层的事件遮蔽,需下一轮以 iced 层级 dump/DevTools 实测定位
+- **回归**:MCP 矩阵 29/29 全绿(自动化路径无回归)
