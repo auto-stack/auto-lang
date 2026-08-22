@@ -6166,6 +6166,7 @@ impl AutoVM {
                             return Ok(StepResult::Yield);
                         }
                     } else {
+                        eprintln!("[DBG-CALLNAT] missing native_id={}", native_id);
                         return Err(VMError::MissingNative(native_id));
                     }
                 }
