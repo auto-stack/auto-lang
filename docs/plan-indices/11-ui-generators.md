@@ -53,8 +53,12 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 402 | 038 扫雷示例 | ✅ | vue 完整 + VM 全流程(§13.6/§13.10/右键/计时器);实机目视确认由 G3 闭环(desktop_mcp 21/0,洪水填充/数字/胜负/Reset 真机验证);rust 后端归 407 |
 | 411 | VM 视觉对齐 vue(Home/Button) | ✅ | P0/P1/P2 全数落地:响应式前缀/窗口宽度/active/toast + P2-B MCP 四项(Button.content 序列化/check 对齐/快照过滤/layout 回填)+ P1-C Inter 三字重 + P2-A①prism 色板/④表格;§8.5 gap 分支保留与 Inter 截图核对登记债务簿 |
 | 418 | auto-edit 动作真实化与 Action 配置化绑定 | ✅ | Phase1 natives ×11(2919-2929)+13 handler;Phase2 ui_config→ACTION_CONFIG→menubar{}/toolbar{} 声明式渲染(样板清零)+快捷键回退+probe 对齐(P2-7 超预期);checked ✓,enabled-if→423,Phase3→423;041 实机 40/40;3 条债务登记 |
+| 424 | ports 符号转发 | ✅ | 端口 re-export 三 kind 全通（component default-as/composable named/fn 按 wrapper 使用精确 import+export 纯转发）；k4 canary GREEN；musk 四端口 34 处调用面迁移、非 .at 零命中、PLAN-037 白名单清零 |
+| 425 | component fn 双轨退役 | ✅ | 糖化为 widget（AST 级，产物逐字节等价）+ view 可选化 + fragment 双轨删除（净 199 行）；on<event> 旧拼写经事件路径兼容（单测锁定）；根序=源序首个 widget |
+| 426 | setup 前导槽 | ✅ | setup{} 前导槽（const 绑定先于 state/computed、refs 块级声明 .value、await 拒绝、TDZ/命名冲突编译错误）；setup/.Init/.Destroy 三相位语义表定版；musk 9 文件迁 setup 块对拍等价 |
+
 ## Status Summary
-- Completed: 28 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 31 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL
