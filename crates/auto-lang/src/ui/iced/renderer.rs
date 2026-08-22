@@ -1171,8 +1171,12 @@ fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
             let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
             push(&mut spans, code[s..i].to_string(), None);
         } else {
-            push(&mut spans, code[i..i + 1].to_string(), Some(C_PUN));
-            i += 1;
+            // G3 (038-minesweeper live crash): the byte-wise code[i..i+1]
+            // panicked on multi-byte labels ("⏱ 0s" — end byte 1 is inside
+            // the 3-byte emoji). Advance by the full UTF-8 char length.
+            let ch_len = code[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+            push(&mut spans, code[i..i + ch_len].to_string(), Some(C_PUN));
+            i += ch_len;
         }
     }
     spans
