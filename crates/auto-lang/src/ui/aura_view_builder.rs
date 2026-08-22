@@ -2996,15 +2996,17 @@ let tabs_inner = View::Row {
             }
             return b.build();
         }
-        // Vertical: rendered as a box-drawing glyph TEXT node. Text is the
-        // one row-child kind with WORKING margins in this renderer (via
-        // wrap_with_margin_top) — BUT only the per-side ml-*/mr-* classes
-        // reach it: mx-* lands in the never-read `margin_x` field and is
-        // silently dropped. leading-none tightens the line box so the
-        // glyph doesn't ride low on its baseline (it sat ~2px low without
-        // it). The DSL surface stays a dedicated `sep` widget; user
-        // classes append after the base (later wins).
-        let base = "text-zinc-500 text-[14px] leading-none ml-2 mr-2";
+        // Vertical: a chromeless BUTTON wrapping a 1px bg-filled column.
+        // Construction-centered, no font metrics to fight: the Button arm's
+        // fixed-height wrapper does align_y(Center) on the content (the
+        // text-glyph variant sat 2px low on its baseline and its ink
+        // landed ~8px right of center inside its own advance box); the ink
+        // IS the block here, and ml-*/mr-* margins reach the button
+        // through the same proven wrap path (mx-* is silently dropped by
+        // the adapter). The DSL surface stays a dedicated `sep` widget;
+        // user classes append after the base (later wins) and restyle the
+        // line.
+        let base = "px-0 py-0 ml-2 mr-2 h-7";
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
             style = match style {
@@ -3015,9 +3017,15 @@ let tabs_inner = View::Row {
                 None => Some(user),
             };
         }
-        View::Text {
-            content: "\u{2502}".to_owned(),
+        let line = ViewBuilder::col()
+            .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
+            .build();
+        View::Button {
+            label: String::new(),
+            content: Some(Box::new(line)),
+            onclick: None,
             style,
+            on_right_click: None,
         }
     }
 
