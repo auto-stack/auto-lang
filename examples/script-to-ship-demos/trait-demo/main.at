@@ -1,0 +1,50 @@
+// trait-demo — spec(trait) + 有界泛型 + 默认方法,"Auto 即 Rust 脚本"的类型系统演示。
+//
+// Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
+//
+// 对应 parity 用例: parity/libs/trait_advanced/ (L1 ✓ 三向一致)
+// 覆盖特性:
+//   * spec 声明与 type-as 实现 (trait + impl)
+//   * 有界泛型函数 fn max_of<T has Comparable> (Rust: <T: Comparable>)
+//   * VM 按接收者运行时类型动态分派 (两个实现者,一个反向 compare)
+
+spec Comparable {
+    fn compare(other int) int
+}
+
+/// 升序比较器: val 越大越"大"
+type ScoreUp as Comparable {
+    val int
+
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+/// 降序比较器: compare 反向,"最大"变成数值最小 —— 证明分派跟随接收者类型
+type ScoreDown as Comparable {
+    val int
+
+    fn compare(other int) int {
+        return other - self.val
+    }
+}
+
+/// 有界泛型: T 必须实现 Comparable。a2r 发射 Rust 原生 <T: Comparable>;
+/// VM 在运行时按实参的堆类型标签分派 compare。
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
+fn main() {
+    var a ScoreUp = ScoreUp { val: 3 }
+    var b ScoreUp = ScoreUp { val: 9 }
+    // 同一个泛型函数,升序比较下选出 9
+    print("max(up): " + max_of(a, b).val.to(str))
+
+    var c ScoreDown = ScoreDown { val: 3 }
+    var d ScoreDown = ScoreDown { val: 9 }
+    // 同一个泛型函数,降序比较下选出 3 —— 分派跟随接收者,不是第一个实现者
+    print("max(down): " + max_of(c, d).val.to(str))
+}

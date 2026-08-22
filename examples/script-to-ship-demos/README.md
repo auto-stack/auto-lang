@@ -30,6 +30,10 @@ AutoVM、a2r 转译 Rust、原生 Rust 输出 100% 一致。详见 [parity 仪�
 | [`serde_json-demo`](serde_json-demo/) | JSON 序列化/解析 | serde_json | `parity/libs/serde_json/` (L1 ✓ 56/56) |
 | [`regex-demo`](regex-demo/) | 正则匹配 | regex | `parity/libs/regex/` (L1 ✓ 45/45) |
 | [`cli-demo`](cli-demo/) | 文本统计 (wc 风格) | std 纯 Rust 输出 | `parity/libs/cli_app/` (L1 ✓ 32/32) |
+| [`trait-demo`](trait-demo/) | spec/trait + 有界泛型 `<T has Spec>` | trait + 泛型 | `parity/libs/trait_advanced/` (L1 ✓ 18/18) |
+| [`generators-demo`](generators-demo/) | yield 生成器 / 惰性序列 | 迭代器/Stream | `parity/libs/generators/` (L1 ✓ 6/6) |
+| [`http-client-demo`](http-client-demo/) | 同步 HTTP 客户端 | ureq/http | `parity/libs/http_client_sync/` (L1 ✓ 5/5) |
+| [`async-demo`](async-demo/) | async/await 串行组合 | tokio Future | `parity/libs/tokio/` (L1 ✓ 13/13) |
 
 ## 三段式叙事
 

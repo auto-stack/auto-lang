@@ -55,6 +55,15 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   </div>
 </div>
 
+<div class="apps-section">
+  <h2 class="section-title">脚本即时跑，发布即 Rust —— 有实证</h2>
+  <p class="section-desc">同一份 Auto 源码在 AutoVM 上秒级运行，也可转译为地道的 Rust。行为一致性由三向 parity 体系（AutoVM = a2r 转译 Rust = 原生 Rust）强制验证，而非口头承诺。</p>
+  <div class="cta-actions">
+    <a href="/zh/script-as-rust" class="cta-btn cta-primary">Auto 如何作为 Rust 脚本层</a>
+    <a href="https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html" class="cta-btn cta-secondary">Parity 仪表盘（一致性证据）</a>
+  </div>
+</div>
+
 <div class="cta-section">
   <h2 class="section-title">v0.5 新特性</h2>
   <p class="section-desc">迄今最大里程碑：Rust 集成、Python 支持、双标准库模式、成熟 AutoUI、AutoAI 架构与 AutoOS 基础。</p>

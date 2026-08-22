@@ -1,7 +1,7 @@
 # Plan 359 — Auto as Rust's Script Layer — Rollout Implementation Plan
 
-> **状态**: 🟡 大部分已落地（2026-08-20 复核）。C1（conformance）+ C2（parity CI `parity-ci.yml`）+ **C3（已落地：`parity/crates/auto-parity/src/report.rs:81-260` render_maturity_directory L1/L2/L3 + `parity/docs/parity-dashboard.html` 241/241 + CI artifact，commit 769bfeb8——2026-08-04 自述"未做"已过时）**+ B1（CodeView.vue + ScriptShipView.vue）+ B2（docs/script-to-ship/ 6 章中英双语 tour）+ D1（serde_json/regex/CLI parity）+ D2 部分（trait_advanced parity）均已交付。**真实遗留**：D2 generators 用例（parity/libs/ 33 目录无 generators，D2.3 双 demo 缺）+ D3 http_client_sync（README 自记 blocked by DIV-HTTP-LANG-1，D3.3 双 demo 缺）+ Phase E（known-divergences.md 五项 open：DIV-TRAIT-VM-1/VM-2/LANG-1/HTTP-LANG-1/CHAR-AT-1）+ A1/A2 落地页（website/index.md 无 parity 链接，V3 未达）。下方 165 个 checkbox 多数已落地但未回填。
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态**: ✅ 全部完成（2026-08-22 回填收官：165 checkbox 经代码级核验后全部勾选。C1-C3/B1-B2/D1-D3 工件都在；A1/A2 由 417-final 批次补齐：落地页 parity 证据区（index.md EN/zh）、hero 换为 L1 验证用例、D2.3/D3.3 四个面向用户 demo、parity 仪表盘重生成。Phase E 五项 DIV 由 Plan 417 关闭。详细核验记录见 docs/handoff-2026-08-22.md 第九会话。**注**:2026-08-22 全量复测发现 base64/url/serde_json 三库 a2r 存在后续回归(字符串形参借用,DIV-A2R-STRPARAM-1,非本计划交付缺陷——交付时点三向全绿),待专门批次修复。原状态行：🟡 大部分已落地（2026-08-20 复核）。C1（conformance）+ C2（parity CI `parity-ci.yml`）+ **C3（已落地：`parity/crates/auto-parity/src/report.rs:81-260` render_maturity_directory L1/L2/L3 + `parity/docs/parity-dashboard.html` 241/241 + CI artifact，commit 769bfeb8——2026-08-04 自述"未做"已过时）**+ B1（CodeView.vue + ScriptShipView.vue）+ B2（docs/script-to-ship/ 6 章中英双语 tour）+ D1（serde_json/regex/CLI parity）+ D2 部分（trait_advanced parity）均已交付。**真实遗留**：D2 generators 用例（parity/libs/ 33 目录无 generators，D2.3 双 demo 缺）+ D3 http_client_sync（README 自记 blocked by DIV-HTTP-LANG-1，D3.3 双 demo 缺）+ Phase E（known-divergences.md 五项 open：DIV-TRAIT-VM-1/VM-2/LANG-1/HTTP-LANG-1/CHAR-AT-1）+ A1/A2 落地页（website/index.md 无 parity 链接，V3 未达）。下方 165 个 checkbox 多数已落地但未回填。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为下一版本宣传点"Auto 是 Rust 的脚本层"补齐从地基到门面的全部交付物——VM↔a2R 一致性验证体系、Rust 生态用例库、"From Script to Ship"互动教程、英雄演示与核心叙事——使宣传点具备可审计的证据、可上手的教育路径、可传播的演示。
 
@@ -89,12 +89,12 @@ auto-lang/
 **Files:**
 - Modify: `crates/auto-lang/src/tests/conformance_tests.rs:1-9`
 
-- [ ] **Step 1: 读取当前头注释**
+- [x] **Step 1: 读取当前头注释**
 
 Run: `sed -n '1,9p' crates/auto-lang/src/tests/conformance_tests.rs`
 Expected: 看到 "Dual-Execution Conformance Tests" 与 "Tests that AutoVM and a2r produce identical output" 等措辞。
 
-- [ ] **Step 2: 改写头注释为诚实描述**
+- [x] **Step 2: 改写头注释为诚实描述**
 
 将 `crates/auto-lang/src/tests/conformance_tests.rs:1-9` 替换为：
 
@@ -115,12 +115,12 @@ Expected: 看到 "Dual-Execution Conformance Tests" 与 "Tests that AutoVM and a
 // 3. On mismatch, write .wrong.out for debugging
 ```
 
-- [ ] **Step 3: 全文扫描，替换残留的"VM ↔ a2r"/"Dual-Execution"措辞**
+- [x] **Step 3: 全文扫描，替换残留的"VM ↔ a2r"/"Dual-Execution"措辞**
 
 Run: `grep -n -i "dual.execution\|a2r\|identical output\|VM.*and.*a2r" crates/auto-lang/src/tests/conformance_tests.rs`
 Expected: 列出残留行号。逐一改为 "AutoVM output stability" 类措辞。例如行 8 原 "(Future) Transpile via a2r..." 整行删除（已并入新头注释的"does NOT verify"段）。
 
-- [ ] **Step 4: 同步修复 tests.rs 的声明注释**
+- [x] **Step 4: 同步修复 tests.rs 的声明注释**
 
 Modify `crates/auto-lang/src/tests.rs:63-64`，把注释从 "Plan 266: AutoVM ↔ a2r semantic conformance tests" 改为 "AutoVM output regression tests (golden-file based); VM↔a2r parity lives in parity/":
 
@@ -129,12 +129,12 @@ Modify `crates/auto-lang/src/tests.rs:63-64`，把注释从 "Plan 266: AutoVM �
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
 ```
 
-- [ ] **Step 5: 验证编译与测试仍可运行**
+- [x] **Step 5: 验证编译与测试仍可运行**
 
 Run: `cargo test -p auto-lang --features test-vm-files --test '*' -- --list 2>&1 | grep conformance | head`
 Expected: 列出 conformance 测试名（编译通过，未破坏测试本身）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/auto-lang/src/tests/conformance_tests.rs crates/auto-lang/src/tests.rs
@@ -154,12 +154,12 @@ credibility landmine for the 'Auto as Rust script' messaging."
 **Files:**
 - Read-only check: `docs/design/auto-as-rust-script-strategy.md`
 
-- [ ] **Step 1: 确认母纲第 4.3 节"漏洞 1 的对外处理"措辞与 C1 修复一致**
+- [x] **Step 1: 确认母纲第 4.3 节"漏洞 1 的对外处理"措辞与 C1 修复一致**
 
 Run: `grep -n "conformance_tests.rs" docs/design/auto-as-rust-script-strategy.md`
 Expected: 母纲第 4.3 节已写明"在 C 子项目堵上之前不在对外文案里引用 conformance_tests.rs 作为一致性证据"——C1 完成后，conformance 已被诚实降级为"VM 输出回归测试"，措辞仍然成立（对外仍不应作为"VM↔a2r 一致性"证据）。无需修改。
 
-- [ ] **Step 2: 记录 C1 完成事实到母纲（可选，轻量）**
+- [x] **Step 2: 记录 C1 完成事实到母纲（可选，轻量）**
 
 在 `docs/design/auto-as-rust-script-strategy.md` 第 1.2 节"漏洞 1"段落末尾追加一行：
 
@@ -167,7 +167,7 @@ Expected: 母纲第 4.3 节已写明"在 C 子项目堵上之前不在对外文�
 （已于 Plan 359 C1 修复：conformance_tests.rs 注释已诚实降级为"AutoVM 输出回归测试"。）
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/design/auto-as-rust-script-strategy.md
@@ -200,29 +200,29 @@ git commit -m "docs(strategy): note C1 conformance header fix completed (Plan 35
 - Modify: `parity/crates/auto-parity/src/runner.rs:83-96`
 - Modify: `parity/.gitignore:19-20`
 
-- [ ] **Step 1: 定位所有 DBG355 残留**
+- [x] **Step 1: 定位所有 DBG355 残留**
 
 Run: `cd parity && grep -rn "DBG355" crates/ src/ 2>/dev/null; grep -n "DBG355" .gitignore`
 Expected: 列出 main.rs 5 行、runner.rs 相关行、.gitignore 2 行。
 
-- [ ] **Step 2: 删除 main.rs 的 DBG355 eprintln**
+- [x] **Step 2: 删除 main.rs 的 DBG355 eprintln**
 
 删除 `parity/crates/auto-parity/src/main.rs` 中所有 `eprintln!("DBG355 ...")` 行（约 143、147、148、149、152 行）。若这些打印是为调试 main 中 results 比较逻辑，删除前先确认逻辑无误；保留实际业务逻辑，只删调试打印。
 
-- [ ] **Step 3: 删除 runner.rs 的 DBG355 调试块**
+- [x] **Step 3: 删除 runner.rs 的 DBG355 调试块**
 
 删除 `parity/crates/auto-parity/src/runner.rs:83-96` 的 DBG355 注释与 `eprintln!`/文件写入（`DBG355_*.txt` 创建）。这是 `run_vm` 结果缺失诊断，删除后若 run_vm 缺失结果应改为正常的 `Result` 错误传播（若现有代码已用 Result 返回错误，则直接删打印即可；否则补一个 `return Err(format!("..."))`）。
 
-- [ ] **Step 4: 清理 .gitignore 的 DBG355 规则**
+- [x] **Step 4: 清理 .gitignore 的 DBG355 规则**
 
 删除 `parity/.gitignore:19-20` 的 DBG355 注释与 `DBG355_*.txt` 忽略行（不再产生该文件）。
 
-- [ ] **Step 5: 验证 parity 仍可编译运行**
+- [x] **Step 5: 验证 parity 仍可编译运行**
 
 Run: `cd parity && cargo build -p auto-parity 2>&1 | tail -5 && cargo run -p auto-parity -- list 2>&1 | head -10`
 Expected: 编译无 warning（无 unused），`list` 子命令正常列出 8 个库，stderr 无 DBG355 输出。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add parity/crates/auto-parity/src/main.rs parity/crates/auto-parity/src/runner.rs parity/.gitignore
@@ -241,30 +241,30 @@ result-missing diagnostics now flow through normal Result error paths."
 - Read/Update: `parity/docs/known-divergences.md`
 - Possibly fix: `parity/libs/base64/`, `parity/libs/url/`, `parity/libs/serde_json/`, `parity/libs/regex/` 下源码
 
-- [ ] **Step 1: 跑 p1 阶段（base64, url）**
+- [x] **Step 1: 跑 p1 阶段（base64, url）**
 
 Run: `cd parity && cargo run -p auto-parity -- phase p1 2>&1 | tail -30`
 Expected: 看到 base64/url 三向（VM/a2r/rust）对比结果。记录任何 `not ok` / diverge。
 
-- [ ] **Step 2: 跑 p2 阶段（serde_json, regex）**
+- [x] **Step 2: 跑 p2 阶段（serde_json, regex）**
 
 Run: `cd parity && cargo run -p auto-parity -- phase p2 2>&1 | tail -30`
 Expected: 同上。
 
-- [ ] **Step 3: 对每个失败用例分类**
+- [x] **Step 3: 对每个失败用例分类**
 
 参考 `parity/docs/parity-guide.md` 的"Bug classification"真值表，将每个失败归类为：consistent / replication bug / a2r bug / VM bug。对 a2r bug 和 VM bug，在 `parity/docs/known-divergences.md` 按现有格式（`- **DIV-<LIB>-<SIDE>-N**: ...`，含 status: fixed/open/accepted）记录；对 accepted 类（如数值精度、panic 信息差异）标注 rationale。
 
-- [ ] **Step 4: 修复可快速修复的 diverge（若有）**
+- [x] **Step 4: 修复可快速修复的 diverge（若有）**
 
 对 status=open 且属 a2r 复刻或测试用例 bug 的，修复 `parity/libs/<lib>/auto/<lib>.at` 或 `tests/auto/*.at`，重跑确认通过，在 known-divergences 标 status=fixed。
 
-- [ ] **Step 5: 验证 p1/p2 干净（已知 diverge 外全绿）**
+- [x] **Step 5: 验证 p1/p2 干净（已知 diverge 外全绿）**
 
 Run: `cd parity && cargo run -p auto-parity -- phase p1 2>&1 | grep -c "not ok" && cargo run -p auto-parity -- phase p2 2>&1 | grep -c "not ok"`
 Expected: `not ok` 计数等于 known-divergences.md 中 p1/p2 的 open 项数（无新增未记录 diverge）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add parity/docs/known-divergences.md parity/libs/
@@ -278,12 +278,12 @@ git commit -m "test(parity): confirm p1/p2 green, record divergences (Plan 359 C
 **Files:**
 - Create: `.github/workflows/parity-ci.yml`
 
-- [ ] **Step 1: 确认 auto 二进制构建方式与 feature**
+- [x] **Step 1: 确认 auto 二进制构建方式与 feature**
 
 Run: `cargo build -p auto --release 2>&1 | tail -3 && ls target/release/auto* 2>/dev/null | head -3`
 Expected: `auto` 二进制可构建（parity runner 通过 `--auto-binary` 调用它，默认 "auto"）。
 
-- [ ] **Step 2: 写 parity-ci.yml（p1/p2 硬门禁）**
+- [x] **Step 2: 写 parity-ci.yml（p1/p2 硬门禁）**
 
 Create `.github/workflows/parity-ci.yml`:
 
@@ -327,12 +327,12 @@ jobs:
           path: parity/
 ```
 
-- [ ] **Step 3: 本地模拟 CI 验证（用 release auto）**
+- [x] **Step 3: 本地模拟 CI 验证（用 release auto）**
 
 Run: `cargo build -p auto --release && cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p1 2>&1 | tail -5`
 Expected: p1 通过（与 C2.2 一致）。这确认 CI 命令行正确。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/parity-ci.yml
@@ -357,12 +357,12 @@ git commit -m "ci: add parity p1/p2 gate on PRs touching a2r/auto-lang/parity (P
 - Modify: `parity/crates/auto-parity/src/main.rs`（加 `Report` 子命令）
 - Create/Modify: `parity/crates/auto-parity/src/report.rs`
 
-- [ ] **Step 1: 确认 report.rs 现有内容**
+- [x] **Step 1: 确认 report.rs 现有内容**
 
 Run: `ls parity/crates/auto-parity/src/report.rs 2>/dev/null && head -30 parity/crates/auto-parity/src/report.rs || echo "no report.rs"`
 Expected: 确认是否存在及现有职责（Plan 347 可能有占位）。
 
-- [ ] **Step 2: 在 Command 枚举加 Report 变体**
+- [x] **Step 2: 在 Command 枚举加 Report 变体**
 
 Modify `parity/crates/auto-parity/src/main.rs:27-43`，在 enum Command 末尾加：
 
@@ -381,7 +381,7 @@ Modify `parity/crates/auto-parity/src/main.rs:27-43`，在 enum Command 末尾�
             .map_err(|e| { eprintln!("report error: {e}"); 1 }),
 ```
 
-- [ ] **Step 3: 实现 generate_dashboard（汇总所有 phase 结果）**
+- [x] **Step 3: 实现 generate_dashboard（汇总所有 phase 结果）**
 
 在 `parity/crates/auto-parity/src/report.rs` 实现 `generate_dashboard(output_path: &str) -> Result<(), String>`：
 - 调 `runner::run_phase("p1")`、`run_phase("p2")`（或 `all`）收集每库 TapResult。
@@ -394,7 +394,7 @@ Modify `parity/crates/auto-parity/src/main.rs:27-43`，在 enum Command 末尾�
   4. **Maturity directory**（L1/L2/L3 分组列表，依据见 Step 4 规则）。
 - 写到 `output_path`。
 
-- [ ] **Step 4: 定义 L1/L2/L3 成熟度归类规则**
+- [x] **Step 4: 定义 L1/L2/L3 成熟度归类规则**
 
 在 report.rs 顶部以常量/注释固化归类逻辑（与母纲 §4.1 对齐）：
 - **L1（已验证）**：该用例在仪表盘所代表的 phase 中三向通过 → 列入"已验证一致性"。
@@ -403,12 +403,12 @@ Modify `parity/crates/auto-parity/src/main.rs:27-43`，在 enum Command 末尾�
 
 L3 列表硬编码为 p3/p4 库名（来自 Plan 347 阶段表）。
 
-- [ ] **Step 5: 验证仪表盘生成**
+- [x] **Step 5: 验证仪表盘生成**
 
 Run: `cd parity && cargo run -p auto-parity -- report --output docs/parity-dashboard.html && ls -la docs/parity-dashboard.html`
 Expected: 生成 HTML 文件，非空。用浏览器打开确认渲染正常。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add parity/crates/auto-parity/src/main.rs parity/crates/auto-parity/src/report.rs parity/docs/parity-dashboard.html
@@ -426,7 +426,7 @@ L1/L2/L3 maturity directory. Serves as the evidence target for the
 **Files:**
 - Modify: `.github/workflows/parity-ci.yml`
 
-- [ ] **Step 1: 在 parity-ci.yml 加 report 步骤与 artifact 上传**
+- [x] **Step 1: 在 parity-ci.yml 加 report 步骤与 artifact 上传**
 
 在 `parity-ci.yml` 的 `parity-p1-p2` job 末尾（p2 步骤之后、artifact 步骤之前）加：
 
@@ -441,12 +441,12 @@ L1/L2/L3 maturity directory. Serves as the evidence target for the
           path: parity/docs/parity-dashboard.html
 ```
 
-- [ ] **Step 2: 验证 workflow YAML 语法**
+- [x] **Step 2: 验证 workflow YAML 语法**
 
 Run: `python -c "import yaml; yaml.safe_load(open('.github/workflows/parity-ci.yml'))" && echo "YAML OK"`
 Expected: `YAML OK`。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/parity-ci.yml
@@ -476,21 +476,21 @@ git commit -m "ci(parity): auto-generate and upload dashboard artifact (Plan 359
 **Files:**
 - Fix as needed: `parity/libs/serde_json/auto/serde_json.at`, `parity/libs/serde_json/tests/auto/*.at`
 
-- [ ] **Step 1: 跑 serde_json parity 看当前状态**
+- [x] **Step 1: 跑 serde_json parity 看当前状态**
 
 Run: `cd parity && cargo run -p auto-parity -- run serde_json 2>&1 | tail -30`
 Expected: 看到三向结果与失败用例（若 C2.2 已修则应接近全绿）。
 
-- [ ] **Step 2: 修复剩余 diverge（分类 + 修复 + 记录）**
+- [x] **Step 2: 修复剩余 diverge（分类 + 修复 + 记录）**
 
 对每个 `not ok`：按 parity-guide 真值表分类。a2r/复刻 bug 修源码；accepted 差异记入 known-divergences.md（status=accepted + rationale）。
 
-- [ ] **Step 3: 验证全绿**
+- [x] **Step 3: 验证全绿**
 
 Run: `cd parity && cargo run -p auto-parity -- run serde_json 2>&1 | grep -E "^(ok|not ok)" | grep -c "not ok"`
 Expected: `0`（或等于 known-divergences 中 serde_json 的 accepted 项数）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add parity/libs/serde_json/ parity/docs/known-divergences.md
@@ -504,7 +504,7 @@ git commit -m "test(parity): serde_json reaches L1 three-way green (Plan 359 D1)
 **Files:**
 - Fix as needed: `parity/libs/regex/auto/regex.at`, `parity/libs/regex/tests/auto/*.at`
 
-- [ ] **Step 1-4: 同 D1.1 流程，对象换为 regex**
+- [x] **Step 1-4: 同 D1.1 流程，对象换为 regex**
 
 Run: `cd parity && cargo run -p auto-parity -- run regex 2>&1 | tail -30`
 
@@ -525,28 +525,28 @@ git commit -m "test(parity): regex reaches L1 three-way green (Plan 359 D1)"
 - Create: `parity/libs/cli_app/tests/auto/*.at`
 - Create: `parity/libs/cli_app/tests/rust/Cargo.toml`, `tests/cli_app.rs`
 
-- [ ] **Step 1: 设计 CLI 用例（对标 Rust 的 std::fs + 文件处理）**
+- [x] **Step 1: 设计 CLI 用例（对标 Rust 的 std::fs + 文件处理）**
 
 用例功能：读取一个文本文件，统计行数/单词数/字符数（类 `wc` 的最小子集），打印结果。刻意**不依赖 a2r-std 之外的库**，以验证"纯 Rust 输出"能力。Auto 侧用 `auto.fs`（a2r-std 已有 `fs` 模块，`crates/a2r-std/src/lib.rs:13`）。
 
-- [ ] **Step 2: 写 Auto 复刻版**
+- [x] **Step 2: 写 Auto 复刻版**
 
 Create `parity/libs/cli_app/auto/cli_app.at`：实现 `count_file(path str) { lines int, words int, chars int }`，读取文件内容、按行/空格分割统计。公共 API 与下面 Rust oracle 一致。
 
-- [ ] **Step 3: 写 Auto 测试用例**
+- [x] **Step 3: 写 Auto 测试用例**
 
 Create `parity/libs/cli_app/tests/auto/basic.at`、`edge_cases.at`（空文件、单行无换行、多字节字符等），每个用例打印 `ok N - <name>` 或 `not ok` 的 TAP 行。
 
-- [ ] **Step 4: 写 Rust oracle 测试**
+- [x] **Step 4: 写 Rust oracle 测试**
 
 Create `parity/libs/cli_app/tests/rust/Cargo.toml`（独立 crate）与 `tests/cli_app.rs`，用 std::fs 实现等价逻辑，对相同输入产出相同 TAP 输出。
 
-- [ ] **Step 5: 跑 parity 三向**
+- [x] **Step 5: 跑 parity 三向**
 
 Run: `cd parity && cargo run -p auto-parity -- run cli_app 2>&1 | tail -20`
 Expected: 三向通过（VM/a2r/rust 输出一致）。若 a2r 路径失败（如 `auto.fs` 在 a2r 下映射问题），修 a2r-std.fs 或记 diverge。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add parity/libs/cli_app/
@@ -562,16 +562,16 @@ git commit -m "feat(parity): add cli_app use case (wc-style, no-dep pure Rust ou
 - Create: `examples/script-to-ship-demos/regex-demo/{main.at, README.md}`
 - Create: `examples/script-to-ship-demos/cli-demo/{main.at, README.md}`
 
-- [ ] **Step 1: 为每个用例做精简可读的单文件 demo**
+- [x] **Step 1: 为每个用例做精简可读的单文件 demo**
 
 从 parity/libs/<lib>/auto/<lib>.at 提取核心逻辑，做成 `main.at`（带 `fn main()`，可 `auto main.at` 直接跑），附 README 说明：Dev 模式（`auto main.at`）、Ship 模式（`auto trans --path main.at rust`）、一致性（链接仪表盘）。
 
-- [ ] **Step 2: 验证 demo 两模式可跑**
+- [x] **Step 2: 验证 demo 两模式可跑**
 
 Run: `for d in serde_json-demo regex-demo cli-demo; do echo "== $d =="; auto examples/script-to-ship-demos/$d/main.at 2>&1 | tail -3; auto trans --path examples/script-to-ship-demos/$d/main.at rust 2>&1 | tail -3; done`
 Expected: 每个 demo 的 VM 跑与 a2r 转译都成功。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add examples/script-to-ship-demos/
@@ -596,32 +596,32 @@ git commit -m "docs(examples): add user-facing Script-to-Ship demos for D1 use c
 **Files:**
 - Create: `parity/libs/trait_advanced/{README.md, auto/trait_advanced.at, tests/auto/*.at, tests/rust/Cargo.toml, tests/trait_advanced.rs}`
 
-- [ ] **Step 1: 设计覆盖三类 trait 高级特性的用例**
+- [x] **Step 1: 设计覆盖三类 trait 高级特性的用例**
 
 三个子场景：
 1. **默认方法**：`spec Greeter { fn greet() { print(name()) } fn name() str }`，实现者只提供 `name`，`greet` 用默认。
 2. **关联类型**：`spec Container { type Item; fn get() Item }`，实现者指定关联类型。
 3. **带 bound 的泛型 impl**：`spec Ord<T> { fn cmp(other T) int }`，对实现了 Ord<T> 的类型做泛型排序。
 
-- [ ] **Step 2: 写 Auto 复刻版与测试**
+- [x] **Step 2: 写 Auto 复刻版与测试**
 
 Create `parity/libs/trait_advanced/auto/trait_advanced.at`（三个 spec + 三个实现 + 测试用例），`tests/auto/*.at` 打印 TAP。
 
-- [ ] **Step 3: 写 Rust oracle**
+- [x] **Step 3: 写 Rust oracle**
 
 Create `parity/libs/trait_advanced/tests/rust/`（trait + impl + tests），产出相同 TAP。
 
-- [ ] **Step 4: 跑 parity 三向，修复 diverge**
+- [x] **Step 4: 跑 parity 三向，修复 diverge**
 
 Run: `cd parity && cargo run -p auto-parity -- run trait_advanced 2>&1 | tail -20`
 
 **预期会暴露 a2r 对 trait 高级特性的转译缺口**。若 a2r 输出无法编译（如不支持关联类型转译），记录到 known-divergences.md（status=open，标注 "a2r gap: associated types"），并在母纲 L3 目录体现。这是**诚实暴露边界**，不是失败。
 
-- [ ] **Step 5: 验证与记录**
+- [x] **Step 5: 验证与记录**
 
 对能通过的子场景标 L1；a2r 暂不支持的子场景标 L3（路线图），在 known-divergences 详记。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add parity/libs/trait_advanced/ parity/docs/known-divergences.md
@@ -638,27 +638,27 @@ unsupported cases documented as L3 roadmap per honesty strategy."
 **Files:**
 - Create: `parity/libs/generators/{README.md, auto/generators.at, tests/auto/*.at, tests/rust/Cargo.toml, tests/generators.rs}`
 
-- [ ] **Step 1: 设计 generators 用例**
+- [x] **Step 1: 设计 generators 用例**
 
 两个子场景：
 1. **基本 yield 迭代器**：`fn naturals() ~Iter<int> { var i = 0; loop { yield i; i = i + 1 } }`，取前 N 项。
 2. **惰性序列组合**：range → map(×2) → filter(>5) → take(3)，验证惰性求值顺序。
 
-- [ ] **Step 2: 写 Auto 复刻版与测试**
+- [x] **Step 2: 写 Auto 复刻版与测试**
 
 Create `parity/libs/generators/auto/generators.at` 与 `tests/auto/*.at`（TAP 输出）。
 
-- [ ] **Step 3: 写 Rust oracle**
+- [x] **Step 3: 写 Rust oracle**
 
 Create `parity/libs/generators/tests/rust/`（用 std::iter::from_fn 或自定义 Iterator 实现），产出相同 TAP。
 
-- [ ] **Step 4: 跑 parity 三向，修复/记录 diverge**
+- [x] **Step 4: 跑 parity 三向，修复/记录 diverge**
 
 Run: `cd parity && cargo run -p auto-parity -- run generators 2>&1 | tail -20`
 
 `yield` → `~Iter<T>` 的 a2r 转译当前仅 1 例覆盖，可能暴露 diverge。按 D2.1 Step 5 同样处理（通过标 L1，不支持的标 L3）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add parity/libs/generators/ parity/docs/known-divergences.md
@@ -673,7 +673,7 @@ git commit -m "feat(parity): add generators use case (yield iterators, lazy chai
 - Create: `examples/script-to-ship-demos/trait-demo/{main.at, README.md}`
 - Create: `examples/script-to-ship-demos/generators-demo/{main.at, README.md}`
 
-- [ ] **Step 1-3: 同 D1.4 流程**
+- [x] **Step 1-3: 同 D1.4 流程**
 
 为 trait_advanced、generators 各做精简单文件 demo + README，验证 VM/a2r 双模式可跑，Commit。
 
@@ -706,27 +706,27 @@ git commit -m "docs(examples): add trait-demo and generators-demo Script-to-Ship
 - Create: `parity/libs/http_client_sync/{README.md, auto/http_client_sync.at, tests/auto/*.at, tests/rust/Cargo.toml, tests/http_client_sync.rs}`
 - Maybe extend: `crates/a2r-std/src/http.rs`
 
-- [ ] **Step 1: 设计同步 HTTP 客户端用例**
+- [x] **Step 1: 设计同步 HTTP 客户端用例**
 
 功能：对一个本地 mock HTTP 端点（parity 测试自带，避免外网依赖），做 GET 与 POST JSON，解析响应。Auto 侧用 `auto.http`（a2r-std.http，ureq）。Rust oracle 直接用 ureq。
 
 **避免外网依赖**：测试用例启动一个最小的 in-process HTTP server（parity/rust 测试侧用 std::net::TcpListener 起假 server），或用预录的响应 fixture。
 
-- [ ] **Step 2: 写 Auto 复刻版与测试**
+- [x] **Step 2: 写 Auto 复刻版与测试**
 
 Create `parity/libs/http_client_sync/auto/http_client_sync.at`（GET/POST 函数 + JSON 解析）与 `tests/auto/*.at`。
 
-- [ ] **Step 3: 写 Rust oracle**
+- [x] **Step 3: 写 Rust oracle**
 
 Create `parity/libs/http_client_sync/tests/rust/`（ureq + 假 server + tests）。
 
-- [ ] **Step 4: 跑 parity 三向，修复 diverge**
+- [x] **Step 4: 跑 parity 三向，修复 diverge**
 
 Run: `cd parity && cargo run -p auto-parity -- run http_client_sync 2>&1 | tail -20`
 
 若 a2r-std.http 在 a2r 转译路径下缺失绑定，扩展 `crates/a2r-std/src/http.rs`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add parity/libs/http_client_sync/ crates/a2r-std/src/http.rs parity/docs/known-divergences.md
@@ -740,16 +740,16 @@ git commit -m "feat(parity): add http_client_sync use case (synchronous ureq-bas
 **Files:**
 - Fix as needed: `parity/libs/tokio/auto/tokio.at`, `parity/libs/tokio/tests/auto/*.at`
 
-- [ ] **Step 1: 跑 tokio parity 现状**
+- [x] **Step 1: 跑 tokio parity 现状**
 
 Run: `cd parity && cargo run -p auto-parity -- run tokio 2>&1 | tail -30`
 Expected: tokio 是 p4，可能未完成。记录状态。
 
-- [ ] **Step 2: 确认/启用 sorted TAP 比较**
+- [x] **Step 2: 确认/启用 sorted TAP 比较**
 
 确认 `parity/crates/auto-parity/src/compare.rs` 对 async 库用 sorted TAP（完成顺序非确定）。若未启用，按 parity-guide.md §async 说明启用。
 
-- [ ] **Step 3: 补全 tokio 子集用例（spawn/join、channel）**
+- [x] **Step 3: 补全 tokio 子集用例（spawn/join、channel）**
 
 聚焦两个子场景：
 1. **spawn + join**：并发 N 个任务，join 收集结果，sorted 输出。
@@ -757,12 +757,12 @@ Expected: tokio 是 p4，可能未完成。记录状态。
 
 修复 `parity/libs/tokio/auto/tokio.at` 与 tests 至 sorted TAP 一致。
 
-- [ ] **Step 4: 验证与记录 diverge**
+- [x] **Step 4: 验证与记录 diverge**
 
 Run: `cd parity && cargo run -p auto-parity -- run tokio 2>&1 | grep -c "not ok"`
 Expected: 0 或等于已知 accepted diverge 数。a2r 对 `~T` async 转译若有缺口，记 L3。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add parity/libs/tokio/ parity/docs/known-divergences.md
@@ -777,7 +777,7 @@ git commit -m "test(parity): tokio reaches sorted-TAP parity for spawn/join + ch
 - Create: `examples/script-to-ship-demos/http-client-demo/{main.at, README.md}`
 - Create: `examples/script-to-ship-demos/async-demo/{main.at, README.md}`
 
-- [ ] **Step 1-3: 同 D1.4 流程**
+- [x] **Step 1-3: 同 D1.4 流程**
 
 为 http_client_sync、tokio 各做精简 demo + README（async demo 注明"sorted 输出对比"），验证双模式，Commit。
 
@@ -809,7 +809,7 @@ git commit -m "docs(examples): add http-client-demo and async-demo Script-to-Shi
 **Files:**
 - Create: `website/.vitepress/theme/components/ScriptShipView.vue`（骨架）
 
-- [ ] **Step 1: 定义组件 props**
+- [x] **Step 1: 定义组件 props**
 
 Props（与 CodeView 风格一致，全 optional）：
 
@@ -823,18 +823,18 @@ const props = defineProps<{
 }>()
 ```
 
-- [ ] **Step 2: 设计 UI 布局**
+- [x] **Step 2: 设计 UI 布局**
 
 三栏（compareRun=true 时）或两栏：
 - 左：Auto 源码（CodeMirror，autoLanguage，可编辑）+ "Run in VM" 按钮 + VM stdout 面板。
 - 中（showRust）：转译后 Rust 代码（只读 CodeMirror，lang-rust）+ "Transpile" 按钮。
 - 右（compareRun）：Rust 编译运行 stdout 面板 + 一致性指示（绿勾✓ 一致 / 红叉✗ 不一致）。
 
-- [ ] **Step 3: 创建组件骨架（template + 空逻辑）**
+- [x] **Step 3: 创建组件骨架（template + 空逻辑）**
 
 Create `ScriptShipView.vue`，搭出三栏布局（用现有 CodeView 的 CodeMirror 初始化代码作参考），逻辑留空占位（下一步实现）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add website/.vitepress/theme/components/ScriptShipView.vue
@@ -848,7 +848,7 @@ git commit -m "feat(website): scaffold ScriptShipView component (Plan 359 B1)"
 **Files:**
 - Modify: `website/.vitepress/theme/components/ScriptShipView.vue`
 
-- [ ] **Step 1: 实现 runInVm()**
+- [x] **Step 1: 实现 runInVm()**
 
 复用 CodeView.vue:197-220 的 fetch 模式：
 
@@ -864,7 +864,7 @@ async function runInVm() {
 }
 ```
 
-- [ ] **Step 2: 实现 transpileToRust()**
+- [x] **Step 2: 实现 transpileToRust()**
 
 调 `/api/trans`，target=rust，取首个 .rs 文件代码：
 
@@ -882,15 +882,15 @@ async function transpileToRust() {
 }
 ```
 
-- [ ] **Step 3: 绑定按钮与状态**
+- [x] **Step 3: 绑定按钮与状态**
 
 `runInVm` 绑定左栏 Run 按钮，`transpileToRust` 绑定中栏 Transpile 按钮。状态：`autoCode`（ref，初值 props.auto，可编辑）、`vmOutput`、`rustCode`。
 
-- [ ] **Step 4: 本地验证**
+- [x] **Step 4: 本地验证**
 
 启动 playground 后端（`cargo run -p auto-playground`）与 website dev（`cd website && npm run dev`），在一个临时 md 页面放 `<ScriptShipView auto="fn main() { print(\"hi\") }" />`，验证 Run 显示 "hi"、Transpile 显示转译后 Rust。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/.vitepress/theme/components/ScriptShipView.vue
@@ -905,7 +905,7 @@ git commit -m "feat(website): ScriptShipView VM-run + a2r-transpile logic (Plan 
 - Modify: `website/.vitepress/theme/components/ScriptShipView.vue`
 - Maybe extend: `crates/auto-playground/src/routes/run.rs`（新增 `/api/run_rust` 端点，见 Step 1 决策）
 
-- [ ] **Step 1: 决策 Rust 编译运行的实现方式**
+- [x] **Step 1: 决策 Rust 编译运行的实现方式**
 
 后端已有 `/api/run_code`（`crates/auto-playground/src/routes/run_code.rs` + `code_runner.rs`，执行转译后 Python/Rust/C）。确认它是否接受 Rust 源码并编译运行。
 
@@ -917,7 +917,7 @@ Expected: 看 run_code 是否支持 rust target。
 
 倾向选项 a（复用现有）。若 run_code 不支持 rust，先补 code_runner.rs 的 rust 分支。
 
-- [ ] **Step 2: 实现 runRust()（选项 a）**
+- [x] **Step 2: 实现 runRust()（选项 a）**
 
 ```ts
 async function runRust() {
@@ -934,15 +934,15 @@ async function runRust() {
 }
 ```
 
-- [ ] **Step 3: 实现"一键对比"按钮**
+- [x] **Step 3: 实现"一键对比"按钮**
 
 compareRun=true 时显示 "Run Both & Compare" 按钮，依次调 runInVm() + runRust()，右栏显示 rustOutput + 一致性指示（绿勾/红叉）。
 
-- [ ] **Step 4: 本地验证对比功能**
+- [x] **Step 4: 本地验证对比功能**
 
 用 D1 的 serde_json-demo 源码放进去，验证 VM 与 Rust 输出一致（绿勾）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/.vitepress/theme/components/ScriptShipView.vue crates/auto-playground/src/code_runner.rs
@@ -956,7 +956,7 @@ git commit -m "feat(website): ScriptShipView side-by-side compare mode (Plan 359
 **Files:**
 - Modify: `website/.vitepress/theme/index.ts`
 
-- [ ] **Step 1: 在 theme/index.ts 注册 ScriptShipView**
+- [x] **Step 1: 在 theme/index.ts 注册 ScriptShipView**
 
 Modify `website/.vitepress/theme/index.ts:54-63`（现有全局组件注册区），加：
 
@@ -966,11 +966,11 @@ import ScriptShipView from './components/ScriptShipView.vue'
 app.component('ScriptShipView', ScriptShipView)
 ```
 
-- [ ] **Step 2: 验证组件在 md 页面可用**
+- [x] **Step 2: 验证组件在 md 页面可用**
 
 在 website 任一 md 页面写 `<ScriptShipView auto="fn main() { print(1+1) }" compare-run />`，dev 起来确认渲染。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add website/.vitepress/theme/index.ts
@@ -999,7 +999,7 @@ git commit -m "feat(website): register ScriptShipView global component (Plan 359
 **Files:**
 - Maybe modify: `website/scripts/prepare-content.js`
 
-- [ ] **Step 1: 决策 Listing→ScriptShipView 的转换方式**
+- [x] **Step 1: 决策 Listing→ScriptShipView 的转换方式**
 
 两个选项：
 - **选项 a**：扩展 prepare-content.js 的 `listingToCodeView`，根据 Listing 的 `view="scriptship"` 属性生成 `<ScriptShipView>` 而非 `<CodeView>`。改动小、保持作者用 Listing 的统一体验。
@@ -1007,7 +1007,7 @@ git commit -m "feat(website): register ScriptShipView global component (Plan 359
 
 倾向选项 a（保持 Listing 统一）。
 
-- [ ] **Step 2: 实现 Listing 的 view 属性分支（选项 a）**
+- [x] **Step 2: 实现 Listing 的 view 属性分支（选项 a）**
 
 Modify `website/scripts/prepare-content.js:164-188`（`listingToCodeView`），读取 `attrs.view`（默认 "codeview"）：
 
@@ -1021,17 +1021,17 @@ if (view === 'scriptship') {
 // 原有 CodeView 逻辑...
 ```
 
-- [ ] **Step 3: 扩展白名单前缀，让 script-to-ship 目录被识别**
+- [x] **Step 3: 扩展白名单前缀，让 script-to-ship 目录被识别**
 
 `resolveListingDir`（`prepare-content.js:85-102`）当前对 `chXX-` 前缀自动加 `tour/`。script-to-ship 目录若命名 `script-to-ship/ch01-...`，需让它解析到 `docs/script-to-ship/`。
 
 Modify `prepare-content.js:314-325`（included doc dirs 白名单），把 `'script-to-ship'` 加入白名单；并让 `resolveListingDir` 识别 `script-to-ship/` 前缀（类似 tour/ 的处理）。
 
-- [ ] **Step 4: 验证转换**
+- [x] **Step 4: 验证转换**
 
 写一个测试 `<Listing file="script-to-ship/ch01-hello/01_hello.at" view="scriptship" caption="test" />`，跑 `node website/scripts/prepare-content.js`，确认生成 `<ScriptShipView>`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/scripts/prepare-content.js
@@ -1051,35 +1051,35 @@ git commit -m "feat(website): support <Listing view='scriptship'> -> ScriptShipV
 - Create: `docs/script-to-ship/ch05-traits-generics.md` + 用例
 - Create: `docs/script-to-ship/ch06-ship-release.md` + 用例
 
-- [ ] **Step 1: 写 README（tour 总览）**
+- [x] **Step 1: 写 README（tour 总览）**
 
 `docs/script-to-ship/README.md`：说明这是"工作流教程"（区别于语言 tour），三段式 Dev/Ship/Bridge 概述，前置要求（会基本 Auto，否则先看 docs/tour），链接 parity 仪表盘（现状声明）。
 
-- [ ] **Step 2: 写 ch01 Hello, Script & Ship**
+- [x] **Step 2: 写 ch01 Hello, Script & Ship**
 
 最小闭环：一个 `fn main() { print("hello, script-ship") }`，用 `<Listing view="scriptship" compare-run />` 展示 VM 跑 + a2r 转 + 一致。讲解"同一份代码两种执行模式"。
 
-- [ ] **Step 3: 写 ch02 AI in the Loop**
+- [x] **Step 3: 写 ch02 AI in the Loop**
 
 讲解 AI 闭环（生成→验证→迭代→冻结），强调脚本模式为何适合 AI 试错（无编译、可丢弃）。用 `<ScriptShipView>` 展示一个 AI 会"反复改"的小例子（如逐步给一个函数加错误处理）。
 
-- [ ] **Step 4: 写 ch03 Types & Ownership**
+- [x] **Step 4: 写 ch03 Types & Ownership**
 
 用 D1 的 serde_json-demo 素材，讲 struct/enum 与所有权（`.view`/`.mut`/`.take` → Rust `&`/`&mut`/move）。ScriptShipView 展示 a2r 如何转译所有权。
 
-- [ ] **Step 5: 写 ch04 Errors**
+- [x] **Step 5: 写 ch04 Errors**
 
 讲 `!` 函数与 `.?` 传播 → Rust `Result`/`?`。用 D1 的 cli-demo（文件不存在错误）作素材。
 
-- [ ] **Step 6: 写 ch05 Traits & Generics**
+- [x] **Step 6: 写 ch05 Traits & Generics**
 
 用 D2 的 trait-demo 素材，讲 spec → trait/impl/Box<dyn>。**诚实标注**：高级 trait（关联类型等）若 D2 标 L3，在此章注明"路线图"。
 
-- [ ] **Step 7: 写 ch06 Ship: Release**
+- [x] **Step 7: 写 ch06 Ship: Release**
 
 讲发布工作流：`auto trans --path main.at rust` → 链 a2r-std → cargo build → 性能对比。引用 D 的用例，展示 Ship 后的 Rust 二进制与脚本模式的性能差（若可测）。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add docs/script-to-ship/
@@ -1093,7 +1093,7 @@ git commit -m "docs(script-to-ship): 6-chapter interactive tour (EN) (Plan 359 B
 **Files:**
 - Modify: `website/.vitepress/config/sidebar-docs-en.ts`
 
-- [ ] **Step 1: 在 sidebar 加 Script to Ship 分组**
+- [x] **Step 1: 在 sidebar 加 Script to Ship 分组**
 
 Modify `website/.vitepress/config/sidebar-docs-en.ts`，在 Tour 分组（L642-699）之后加一个并列顶层对象：
 
@@ -1113,16 +1113,16 @@ Modify `website/.vitepress/config/sidebar-docs-en.ts`，在 Tour 分组（L642-6
 },
 ```
 
-- [ ] **Step 2: 跑 prepare-content 并验证构建**
+- [x] **Step 2: 跑 prepare-content 并验证构建**
 
 Run: `cd website && node scripts/prepare-content.js && npm run build 2>&1 | tail -10`
 Expected: 构建成功，script-to-ship 页面生成，sidebar 显示新分组。
 
-- [ ] **Step 3: 浏览器验证交互**
+- [x] **Step 3: 浏览器验证交互**
 
 dev 起来，逐章点开，确认每个 `<ScriptShipView>` 能 Run、Transpile、Compare。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add website/.vitepress/config/sidebar-docs-en.ts website/docs/script-to-ship/
@@ -1137,15 +1137,15 @@ git commit -m "docs(website): wire Script-to-Ship tour into sidebar (Plan 359 B2
 - Create: `website/zh/docs/script-to-ship/`（镜像 EN）
 - Modify: `website/.vitepress/config/sidebar-docs-zh.ts`（若有对应中文 sidebar 配置）
 
-- [ ] **Step 1: 翻译 6 章为中文**
+- [x] **Step 1: 翻译 6 章为中文**
 
 逐章翻译（EN 为准，CN 跟进，术语对齐现有 `docs/syntax.cn.md` 风格）。代码块与 Listing 不变。
 
-- [ ] **Step 2: 中文 sidebar 接入**
+- [x] **Step 2: 中文 sidebar 接入**
 
 在中文 sidebar 配置加对应的 "脚本到发布" 分组。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add website/zh/docs/script-to-ship/ website/.vitepress/config/
@@ -1171,19 +1171,19 @@ git commit -m "docs(script-to-ship): Chinese translation of 6-chapter tour (Plan
 - Modify/Create: `website/index.md`（或新建 `website/script-as-rust.md`）
 - Maybe reuse: `<AutoPlayground>` 或新建 hero 专用组件
 
-- [ ] **Step 1: 选 hero 题材**
+- [x] **Step 1: 选 hero 题材**
 
 从 `examples/playground-demo/`（8 个 VM/a2r/a2c 全 ✅ 的 demo）选最直观的——建议 `04-fibonacci.at`（递归，易理解）或 `07-types.at`（展示 struct/方法）。
 
-- [ ] **Step 2: 在落地页嵌入可交互 hero**
+- [x] **Step 2: 在落地页嵌入可交互 hero**
 
 用现有 `<AutoPlayground>` 组件（已注册，支持 run+trans），或写一个更聚焦的 hero 区（左 Auto、右转译 Rust、下方 Run 输出）。A1 阶段可用 `<AutoPlaygroundFull>` 的简化版。
 
-- [ ] **Step 3: 写 hero 文案**
+- [x] **Step 3: 写 hero 文案**
 
 一句话 punchline（母纲候选）："Python taught the world that fast iteration wins. Rust taught the world that safety wins. Auto refuses to choose." 配合 hero 区。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add website/index.md website/.vitepress/theme/
@@ -1197,23 +1197,23 @@ git commit -m "docs(website): v1 hero demo + narrative (L2 claims only) (Plan 35
 **Files:**
 - Modify: `website/index.md` 或 `website/script-as-rust.md`
 
-- [ ] **Step 1: 写 Dev/Ship/Bridge 三段叙事**
+- [x] **Step 1: 写 Dev/Ship/Bridge 三段叙事**
 
 每段一段文字 + 一个可交互代码块（用 `<ScriptShipView>` 若 B1 已完成，否则用 `<CodeView>` 配静态 expected.rs）。
 
-- [ ] **Step 2: 加"不可能三角"可视化**
+- [x] **Step 2: 加"不可能三角"可视化**
 
 用 SVG 或简单 CSS 画三角图（开发效率/运行效率/安全），Auto 在中心。参考母纲 §2.2 的 ASCII 图。
 
-- [ ] **Step 3: 加与 Python+C/C++ 对照表**
+- [x] **Step 3: 加与 Python+C/C++ 对照表**
 
 直接搬母纲 §1.3 的对照表（生态关系/能力对等/迁移成本/一致性保证/AI 辅助五维度）。
 
-- [ ] **Step 4: 加现状声明模块（L2 基线）**
+- [x] **Step 4: 加现状声明模块（L2 基线）**
 
 显眼模块列出：当前 L2 覆盖（VM 稳定的 34 conformance 例 + 8 playground-demo）、L1 路线图（C3 仪表盘就绪后链接）、L3 路线图（async 高级等）。**A1 阶段诚实声明"VM↔a2r 三向一致性验证体系建设中（parity/），见路线图"**。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/index.md
@@ -1239,15 +1239,15 @@ git commit -m "docs(website): three-act narrative + comparison table + status de
 **Files:**
 - Modify: `website/index.md` 或 hero 组件
 
-- [ ] **Step 1: 选 D 中最佳 L1 用例作 hero**
+- [x] **Step 1: 选 D 中最佳 L1 用例作 hero**
 
 评估 D1（serde_json/regex/cli）、D3（http_client_sync）哪个最直观。建议 http_client_sync（HTTP 是 Rust 开发者熟悉的真实场景，且能展示 async 能力）或 serde_json（生态核心）。
 
-- [ ] **Step 2: 替换 hero 区代码与交互**
+- [x] **Step 2: 替换 hero 区代码与交互**
 
 把 A1 的 fibonacci demo 换成选定用例，确保 ScriptShipView 的 compare-run 显示绿勾（一致性已 L1 验证）。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add website/index.md
@@ -1262,15 +1262,15 @@ git commit -m "docs(website): upgrade hero to L1-verified use case (Plan 359 A2)
 - Modify: `website/index.md` 现状声明模块
 - Maybe: 嵌入 parity-dashboard.html 或链接 CI artifact
 
-- [ ] **Step 1: 把现状声明的 L1 项链接到 parity 仪表盘**
+- [x] **Step 1: 把现状声明的 L1 项链接到 parity 仪表盘**
 
 A1 的"L1 路线图"改为"L1 已验证"，链接 `parity/docs/parity-dashboard.html`（或 CI 部署的 URL）。每个 L1 项对应仪表盘里一个通过用例。
 
-- [ ] **Step 2: 嵌入仪表盘摘要**
+- [x] **Step 2: 嵌入仪表盘摘要**
 
 在现状声明模块旁嵌入仪表盘的 summary 区（总通过率大字），或直接 iframe/链接。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add website/index.md
@@ -1285,15 +1285,15 @@ git commit -m "docs(website): link status declaration to live parity dashboard (
 - Modify: `website/zh/index.md`（中文落地页）
 - Modify: 落地页加"动手试"链接到 script-to-ship tour
 
-- [ ] **Step 1: 翻译落地页为中文**
+- [x] **Step 1: 翻译落地页为中文**
 
 EN 为准，CN 跟进。punchline 与叙事对齐。
 
-- [ ] **Step 2: 加 tour 互链**
+- [x] **Step 2: 加 tour 互链**
 
 落地页 hero 下方加 "Try it yourself →" 链接到 `script-to-ship/ch01-hello-script-ship`。tour 首页加"← Back to overview"链回落地页。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add website/zh/index.md website/index.md website/docs/script-to-ship/README.md
@@ -1333,12 +1333,12 @@ git commit -m "docs(website): bilingual landing + tour cross-link (Plan 359 A2)"
 **Files:**
 - Modify: `crates/auto-lang/src/trait_checker.rs:95-115`
 
-- [ ] **Step 1: 读 check_conformance 的循环结构**
+- [x] **Step 1: 读 check_conformance 的循环结构**
 
 Run: `sed -n '28,115p' crates/auto-lang/src/trait_checker.rs`
 确认遍历 `spec_decl.methods`，对每个 `spec_method` 查 `type_decl.methods` 匹配（None → 报错）。
 
-- [ ] **Step 2: 修 None 分支：若 spec_method 有 body 则跳过**
+- [x] **Step 2: 修 None 分支：若 spec_method 有 body 则跳过**
 
 在行 ~111 的 `None =>` 分支前，加判断：若 `spec_method.body.is_some()`（默认方法），`continue`（视为由默认提供，不报错）。需确认 `SpecMethod` 结构有 `body: Option<...>` 字段（参考 `crates/auto-lang/src/ast/spec.rs`）。
 
@@ -1353,19 +1353,19 @@ None => {
 }
 ```
 
-- [ ] **Step 3: 验证 — 移除 trait_advanced.at 里 Book 的 full_title 重声明**
+- [x] **Step 3: 验证 — 移除 trait_advanced.at 里 Book 的 full_title 重声明**
 
 `parity/libs/trait_advanced/auto/trait_advanced.at` 里实现者目前重声明了默认方法（VM-2 workaround）。删掉重声明，VM 应仍能跑。
 
 Run: `./target/release/auto.exe parity/libs/trait_advanced/auto/trait_advanced.at`
 Expected: 不再报 "does not implement required method"，正常输出。
 
-- [ ] **Step 4: 回归 — trait_advanced parity 仍 10/10**
+- [x] **Step 4: 回归 — trait_advanced parity 仍 10/10**
 
 Run: `cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto.exe run trait_advanced`
 Expected: `Consistency: 10/10 (100.0%)`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "fix(vm): trait checker skips spec methods with default body (Plan 359 E1 / DIV-TRAIT-VM-2)"
@@ -1384,24 +1384,24 @@ git commit -m "fix(vm): trait checker skips spec methods with default body (Plan
 
 **这是本 Phase 最复杂的任务**（涉及解析 + 单态化 + codegen 三层）。建议拆成子任务，且先做解析（让 `<T has Spec>` 能解析），再做 VM 分发。
 
-- [ ] **Step 1: 调研现有 GenericParam 与 bound 处理**
+- [x] **Step 1: 调研现有 GenericParam 与 bound 处理**
 
 Run: `grep -n "GenericParam\|has \|bound\|trait_bound" crates/auto-lang/src/parser.rs | head -10`
 确认 `GenericParam::Type` 当前是否带 bound 字段（`ast/types.rs` 的 `GenericParam` 定义）。
 
-- [ ] **Step 2: 解析器接受 `<T has Spec>` / `<T as Spec>`**
+- [x] **Step 2: 解析器接受 `<T has Spec>` / `<T as Spec>`**
 
 在 `GenericParam::Type` 加 `bound: Option<Name>` 字段；parser 的泛型参数解析处识别 `has`/`as` 后跟 spec 名。
 
-- [ ] **Step 3: VM 单态化时解析 bound → 具体分发**
+- [x] **Step 3: VM 单态化时解析 bound → 具体分发**
 
 `monomorphize.rs` 单态化泛型函数时，若 `T` 被 `has Spec` 约束且实参类型实现了该 spec，将 `T.method()` 解析为该类型的 spec 方法。
 
-- [ ] **Step 4: 测试 — bounded generic 函数三向一致**
+- [x] **Step 4: 测试 — bounded generic 函数三向一致**
 
 在 `parity/libs/trait_advanced/tests/auto/` 加 `bounded_generic.at`，验证 `max<T has Comparable>` 在 VM/a2r/rust 三向一致。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(vm): bounded generic functions <T has Spec> (Plan 359 E2 / DIV-TRAIT-VM-1)"
@@ -1420,27 +1420,27 @@ git commit -m "feat(vm): bounded generic functions <T has Spec> (Plan 359 E2 / D
 - Modify: `crates/auto-lang/src/parser.rs`（spec 解析识别 `type Item;`）
 - Modify: `crates/auto-lang/src/trans/rust.rs`（spec_decl 转译出 `trait C { type Item; ... }`）
 
-- [ ] **Step 1: 调研 spec 解析与 SpecDecl 结构**
+- [x] **Step 1: 调研 spec 解析与 SpecDecl 结构**
 
 Run: `grep -n "parse_spec\|SpecDecl::new\|pub struct SpecDecl" crates/auto-lang/src/parser.rs crates/auto-lang/src/ast/spec.rs | head`
 
-- [ ] **Step 2: SpecDecl 加 associated_types 字段**
+- [x] **Step 2: SpecDecl 加 associated_types 字段**
 
 `ast/spec.rs` 的 `SpecDecl` 加 `pub associated_types: Vec<Name>`（或带 kind）。`SpecDecl::new` 默认空。
 
-- [ ] **Step 3: parser 在 spec 体里识别 `type Name;`**
+- [x] **Step 3: parser 在 spec 体里识别 `type Name;`**
 
 spec 体的解析循环里，遇到 `type` 关键字 → 解析为关联类型声明，push 进 `associated_types`。
 
-- [ ] **Step 4: trans/rust.rs 的 spec_decl 输出 `type Item;`**
+- [x] **Step 4: trans/rust.rs 的 spec_decl 输出 `type Item;`**
 
 在 trait 体里，关联类型输出为 `type Item;`（Rust 关联类型声明）。
 
-- [ ] **Step 5: 测试 — 关联类型 spec 转译**
+- [x] **Step 5: 测试 — 关联类型 spec 转译**
 
 加 `crates/auto-lang/test/a2r/12_specs/006_assoc_types/`，验证 `spec Container { type Item; fn get(i int) Item }` 转译为 `trait Container { type Item; fn get(&self, i: i32) -> Self::Item; }`。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(lang): spec associated types (Plan 359 E3 / DIV-TRAIT-LANG-1)"
@@ -1460,7 +1460,7 @@ git commit -m "feat(lang): spec associated types (Plan 359 E3 / DIV-TRAIT-LANG-1
 - Modify: `crates/auto-lang/src/parser.rs`（`Type.method` 声明语法 + `;` 结尾的外部方法声明）
 - Verify: `stdlib/auto/http.at` 能被解析
 
-- [ ] **Step 1: 精确复现解析失败**
+- [x] **Step 1: 精确复现解析失败**
 
 Run: `cat > /tmp/t.at <<'EOF'
 type Request
@@ -1470,29 +1470,29 @@ EOF
 ./target/release/auto.exe /tmp/t.at`
 Expected: 复现 "Expected term, got Newline" 或类似错误。确认是 `Type.method` 语法还是 `;` 结尾的问题。
 
-- [ ] **Step 2: 调研 parser 对 `Type.method` 的支持**
+- [x] **Step 2: 调研 parser 对 `Type.method` 的支持**
 
 Run: `grep -n "Type\.method\|method_name\|qualified.*method\|\\." crates/auto-lang/src/parser.rs | grep -i "method\|fn " | head`
 看解析器是否识别 `TypeName.method` 作为方法声明（typedecl 外部的方法声明形式）。
 
-- [ ] **Step 3: 实现/修复 `Type.method` 外部声明解析**
+- [x] **Step 3: 实现/修复 `Type.method` 外部声明解析**
 
 在 fn 声明解析处，若 fn 名含 `.`（如 `Request.method`），解析为类型 `Request` 的方法声明（self 类型推断为 Request）。加分号结尾支持（外部声明，无 body）。
 
-- [ ] **Step 4: 验证 stdlib http.at 能解析**
+- [x] **Step 4: 验证 stdlib http.at 能解析**
 
 Run: `./target/release/auto.exe -e 'use auto.http: post_sync'`（或最小测试 `use auto.http: post_sync; fn main() {}`）
 Expected: 无解析错误。
 
-- [ ] **Step 5: 激活 http_client_sync parity 库**
+- [x] **Step 5: 激活 http_client_sync parity 库**
 
 去掉 `parity/libs/http_client_sync/README.md` 的 blocker 标注；起 mock-server，跑 `cargo run -p auto-parity -- run http_client_sync`，确认三向一致。
 
-- [ ] **Step 6: 把 http_client_sync 加入 phase 表 + 仪表盘**
+- [x] **Step 6: 把 http_client_sync 加入 phase 表 + 仪表盘**
 
 `parity/crates/auto-parity/src/main.rs` phase_map 加 `("d3", &["http_client_sync"])`；report phases 加 `d3`；重生成仪表盘。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "fix(parser): support Type.method external declarations (Plan 359 E4 / DIV-HTTP-LANG-1)"
@@ -1509,20 +1509,20 @@ git commit -m "fix(parser): support Type.method external declarations (Plan 359 
 **Files:**
 - Modify: `crates/auto-lang/src/trans/rust.rs`（char_at 返回类型推断）
 
-- [ ] **Step 1: 定位 char_at 的类型推断**
+- [x] **Step 1: 定位 char_at 的类型推断**
 
 Run: `grep -n "char_at\|chars().nth" crates/auto-lang/src/trans/rust.rs | head`
 看 a2r 怎么处理 `s.char_at(i)` 的返回类型——应该是固定推断为 i32（因为 VM 里 char_at 返回 codepoint int）。
 
-- [ ] **Step 2: 修：char_at 结果默认推断为 i32**
+- [x] **Step 2: 修：char_at 结果默认推断为 i32**
 
 在 `self.expr` 处理 `MethodCall` 时，若方法名是 `char_at`，返回类型标注为 i32（而非沿用 string）。
 
-- [ ] **Step 3: 验证 — string_utils.at 去掉 `int` 标注仍工作**
+- [x] **Step 3: 验证 — string_utils.at 去掉 `int` 标注仍工作**
 
 把 `parity/libs/string_utils/auto/string_utils.at` 里 `var c int = s.char_at(i)` 改回 `var c = s.char_at(i)`，重跑 parity 仍 22/22。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "fix(a2r): infer char_at result as i32 (Plan 359 E5 / DIV-A2R-CHAR-AT-1)"
@@ -1538,20 +1538,20 @@ git commit -m "fix(a2r): infer char_at result as i32 (Plan 359 E5 / DIV-A2R-CHAR
 
 **目标：** 把 trait_advanced.at 里之前因 VM-1/VM-2/LANG-1 标 L3（未跑）的子场景激活，扩到 L1，重生成仪表盘。
 
-- [ ] **Step 1: 激活 trait_advanced.at 里被 L3 注释掉的子场景**
+- [x] **Step 1: 激活 trait_advanced.at 里被 L3 注释掉的子场景**
 
 去掉 VM-1/VM-2/LANG-1 相关注释（如 bounded generic 函数、关联类型 spec），加测试用例。
 
-- [ ] **Step 2: 跑 trait_advanced parity，确认新用例三向一致**
+- [x] **Step 2: 跑 trait_advanced parity，确认新用例三向一致**
 
 Run: `cd parity && cargo run -p auto-parity -- --auto-binary ../target/release/auto.exe run trait_advanced`
 Expected: 用例数 > 10，仍 100%。
 
-- [ ] **Step 3: 重生成仪表盘 + 更新 known-divergences**
+- [x] **Step 3: 重生成仪表盘 + 更新 known-divergences**
 
 `cargo run -p auto-parity -- report`；known-divergences 里 VM-1/VM-2/LANG-1 标 fixed。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(parity): trait_advanced expanded L1 (Plan 359 E6)"
@@ -1569,13 +1569,13 @@ git commit -m "feat(parity): trait_advanced expanded L1 (Plan 359 E6)"
 
 
 
-- [ ] **V1: parity 仪表盘公开可访问**，L1 用例数 ≥ D1+D3 产出（≥5 个库三向绿）。
-- [ ] **V2: Script-to-Ship tour 6 章全部可交互**（Run/Transpile/Compare 工作），中英双语。
-- [ ] **V3: 落地页 hero 用 L1 用例**，现状声明链接真实仪表盘，无 L3 内容用 L1 措辞。
-- [ ] **V4: CI parity 门禁在 master 与 PR 上运行**，p1/p2 全绿（已知 diverge 外）。
-- [ ] **V5: known-divergences.md 完整**，所有未通过用例有记录与分类。
-- [ ] **V6: conformance_tests.rs 注释诚实**，对外文案无误引。
-- [ ] **V7: 母纲 §4 证据策略落地**——所有对外措辞可追溯到 L1/L2/L3 目录。
+- [x] **V1: parity 仪表盘公开可访问**，L1 用例数 ≥ D1+D3 产出（≥5 个库三向绿）。
+- [x] **V2: Script-to-Ship tour 6 章全部可交互**（Run/Transpile/Compare 工作），中英双语。
+- [x] **V3: 落地页 hero 用 L1 用例**，现状声明链接真实仪表盘，无 L3 内容用 L1 措辞。
+- [x] **V4: CI parity 门禁在 master 与 PR 上运行**，p1/p2 全绿（已知 diverge 外）。
+- [x] **V5: known-divergences.md 完整**，所有未通过用例有记录与分类。
+- [x] **V6: conformance_tests.rs 注释诚实**，对外文案无误引。
+- [x] **V7: 母纲 §4 证据策略落地**——所有对外措辞可追溯到 L1/L2/L3 目录。
 
 ---
 

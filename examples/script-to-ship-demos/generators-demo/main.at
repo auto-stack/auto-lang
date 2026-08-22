@@ -1,0 +1,57 @@
+// generators-demo — yield 生成器,"Auto 即 Rust 脚本"的惰性序列演示。
+//
+// Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
+//
+// 对应 parity 用例: parity/libs/generators/ (L1 ✓ 三向一致)
+// 覆盖特性:
+//   * ~Iter<T> 返回的 yield 生成器 (a2r 降级为 Rust 的 Stream/迭代形态)
+//   * for-in 消费生成器
+//   * 循环内带状态的生成器 (counter) 与条件产出 (evens_up_to)
+
+/// 最小多段产出
+fn three_yields() ~Iter<int> {
+    yield 10
+    yield 20
+    yield 30
+}
+
+/// 循环内带状态的产出(含空序列边界: count=0)
+fn counter(start int, count int) ~Iter<int> {
+    var i int = 0
+    while i < count {
+        yield start + i
+        i = i + 1
+    }
+}
+
+/// 条件产出: 只吐偶数
+fn evens_up_to(limit int) ~Iter<int> {
+    var n int = 0
+    while n < limit {
+        if n % 2 == 0 {
+            yield n
+        }
+        n = n + 1
+    }
+}
+
+fn main() {
+    var out = ""
+    for v in three_yields() {
+        out = out + v.to(str) + " "
+    }
+    print("three: " + out)
+
+    out = ""
+    for v in counter(100, 4) {
+        out = out + v.to(str) + " "
+    }
+    print("counter: " + out)
+
+    out = ""
+    for v in evens_up_to(9) {
+        out = out + v.to(str) + " "
+    }
+    print("evens: " + out)
+}
