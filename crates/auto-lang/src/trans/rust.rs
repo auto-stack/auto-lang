@@ -176,6 +176,17 @@ pub struct RustTrans {
     /// impl'd for ReadDir only, `&ReadDir` is not an iterator → E0277).
     /// The for-loop emitter skips the `&` borrow for these names.
     by_value_iter_bindings: std::collections::HashSet<AutoStr>,
+    /// Plan 427 (DIV-A2R-STRPARAM-1): `Some(x)` is-arm bindings whose scrutinee
+    /// is &str-returning (strip_prefix / strip_suffix / to_str). These really
+    /// are `&str` in the emitted Rust — the call-site auto-borrow must skip
+    /// them (E0658 str_as_str). Registered at the is-arm emitters alongside
+    /// the local_var_types entry. Plan 396 §2.4 made `is_str_slice_var` look
+    /// up StrSlice in local_var_types instead, which also matched every plain
+    /// `let x str` local (an owned String in Rust) and suppressed the
+    /// call-site `.as_str()` → E0308 (serde_json/url/base64 a2r). The set
+    /// restores §2.4's exact intended scope. Function-scoped like
+    /// local_var_types (cleared at fn_decl / transpile_body_stmts entry).
+    str_slice_pattern_bindings: std::collections::HashSet<AutoStr>,
     /// Plan 399 Phase 11.5: names of `let` bindings that are mutated later in
     /// the same fn body (push/insert/extend/assign). When a `let` store matches,
     /// emit `let mut` so the mutation compiles. Populated by scanning the fn
@@ -389,6 +400,7 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
+            str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
@@ -470,6 +482,7 @@ impl RustTrans {
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
+            str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
             shared_type_store: None,
             known_enum_names: std::collections::HashSet::new(),
@@ -577,6 +590,7 @@ impl RustTrans {
         params: &[(AutoStr, Type)],
     ) -> AutoResult<Vec<String>> {
         self.local_var_types.clear();
+        self.str_slice_pattern_bindings.clear();
         for (name, ty) in params {
             self.local_var_types.insert(name.clone(), ty.clone());
         }
@@ -8487,15 +8501,15 @@ impl RustTrans {
     fn is_str_slice_var(&self, arg: &Arg) -> bool {
         if let Arg::Pos(Expr::Ident(name)) = arg {
             // Function params declared as `str` are truly `&str` in Rust.
-            // Plan 396 §2.4: `Some(x)` is-arm bindings registered as StrSlice
-            // (is_str_returning_scrutinee) are ALSO `&str` — appending
-            // `.as_str()` on them is E0658 (str_as_str, unstable).
+            // Plan 396 §2.4 / Plan 427: `Some(x)` is-arm bindings registered
+            // at the is-arm emitters (is_str_returning_scrutinee) are ALSO
+            // `&str` — appending `.as_str()` on them is E0658 (str_as_str,
+            // unstable). §2.4 keyed this off local_var_types' StrSlice
+            // entries, which also matched plain `let x str` locals (owned
+            // Strings in Rust) and suppressed the call-site `.as_str()` →
+            // E0308 (Plan 427); the dedicated set keeps §2.4's scope.
             self.current_fn_str_params.contains(name)
-                || self
-                    .local_var_types
-                    .get(name.as_str())
-                    .map(|t| matches!(t, Type::StrSlice))
-                    .unwrap_or(false)
+                || self.str_slice_pattern_bindings.contains(name)
         } else {
             false
         }
@@ -10851,6 +10865,9 @@ impl RustTrans {
 
         // Clear local var type cache for this function, register params
         self.local_var_types.clear();
+        // Plan 427: is-arm &str bindings are function-scoped (mirrors
+        // local_var_types above).
+        self.str_slice_pattern_bindings.clear();
         for param in &fn_decl.params {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
@@ -12131,6 +12148,9 @@ impl RustTrans {
                             if let Expr::Ident(binding) = inner.as_ref() {
                                 if Self::is_str_returning_scrutinee(&is_stmt.target) {
                                     self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                    // Plan 427: the precise &str marker consumed
+                                    // by is_str_slice_var (see its comment).
+                                    self.str_slice_pattern_bindings.insert(binding.clone());
                                 }
                                 // Plan 380: `Some(x)` from an Option<Spec>
                                 // scrutinee binds a Box<dyn Trait> — record so
@@ -12181,6 +12201,9 @@ impl RustTrans {
                                         // `.as_str()` (E0658 str_as_str).
                                         if Self::is_str_returning_scrutinee(&is_stmt.target) {
                                             self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                            // Plan 427: the precise &str marker
+                                            // consumed by is_str_slice_var.
+                                            self.str_slice_pattern_bindings.insert(binding.clone());
                                         }
                                         // Plan 380: Option<Spec> scrutinee → the
                                         // binding is a Box<dyn Trait>; skip

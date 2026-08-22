@@ -43,6 +43,32 @@ fn test_a2r(case: &str) -> AutoResult<()> {
     test_a2r_with_base("a2r", case)
 }
 
+/// Plan 427 (DIV-A2R-STRPARAM-1): the text-compare goldens above cannot catch
+/// compile-level regressions — the str-param borrow breakage produced
+/// plausible-looking Rust that failed E0308, and hid for days (a2r golden was
+/// 348/348 green throughout). This smoke typechecks one dependency-free
+/// golden product with bare rustc (`--crate-type=lib --emit=metadata`: full
+/// type check, no link, no cargo/network — ~1s). `#[ignore]`d because it
+/// shells out to rustc; run it on demand or in release checklists:
+/// `cargo test -p auto-lang --lib --features test-trans a2r_compile_smoke -- --ignored`
+#[test]
+#[ignore = "shells out to rustc; on-demand compile-level guard (Plan 427)"]
+fn a2r_compile_smoke_str_param_borrow() {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let rs = d.join("test/a2r/04_strings/008_str_param_borrow/str_param_borrow.expected.rs");
+    let out = std::env::temp_dir().join("auto_a2r_compile_smoke_008.rmeta");
+    let status = std::process::Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-name=a2r_compile_smoke_008")
+        .arg("--crate-type=lib")
+        .arg("--emit=metadata")
+        .arg("-o").arg(&out)
+        .arg(&rs)
+        .status()
+        .expect("failed to spawn rustc (is a Rust toolchain on PATH?)");
+    assert!(status.success(), "rustc typecheck failed for {}", rs.display());
+}
+
 /// Run an a2r case on a dedicated large-stack thread. Same rationale as
 /// `test_cookbook_deep`: some cases (notably `~{}` async blocks containing
 /// `for`/`if` — the COSMIC `Subscription::run` shape) drive deep recursion in
@@ -370,6 +396,7 @@ ext Store {
 #[test] fn test_04_strings_005_escaped_quotes() { test_a2r("04_strings/005_escaped_quotes").unwrap(); }
 #[test] fn test_04_strings_006_multi_fstr() { test_a2r("04_strings/006_multi_fstr").unwrap(); }
 #[test] fn test_04_strings_007_char_at_infer() { test_a2r("04_strings/007_char_at_infer").unwrap(); }
+#[test] fn test_04_strings_008_str_param_borrow() { test_a2r("04_strings/008_str_param_borrow").unwrap(); }
 
 // === 05_expressions ===
 #[test] fn test_05_expressions_001_arithmetic() { test_a2r("05_expressions/001_arithmetic").unwrap(); }

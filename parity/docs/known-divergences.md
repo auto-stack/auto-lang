@@ -20,16 +20,20 @@ Each entry has:
 
 ## Current phase status (Plan 348, verified 2026-07)
 
-**2026-08-22 复测警示（DIV-A2R-STRPARAM-1）**:全量仪表盘重跑发现 base64/
-url/serde_json 三库的 a2r 编译级回归(字符串实参 `&str` 借用缺失,如
-`check_str(n, name, actual, expected)` 把 `String` 直传 `&str` 形参→E0308),
-三库三向降为 0-64%。回归早于 Plan 417-E3 批次(已在其前置点 2ac2298f 复现),
-系 8-20~8-22 并行批次引入,专门批次修复中。当前稳定全绿核心集:**141 例/
-7 库**(regex 45、cli_app 32、string_utils 22、trait_advanced 18、tokio 13、
-generators 6、http_client_sync 5)+ consumer-mode 3 库(fs/process/text 22 例)
-——网站与仪表盘按此口径声明。历史 241/241 记录(交付时点)如下:
-base64 (33), url (30), serde_json (56), regex (45), cli_app (32),
-trait_advanced (10→18), string_utils (22), tokio (13)。
+**2026-08-23 修复记录（DIV-A2R-STRPARAM-1,已翻转 fixed）**:2026-08-22 全量
+仪表盘重跑发现的 base64/url/serde_json 三库 a2r 编译级回归(字符串实参
+`&str` 借用缺失,`String` 直传 `&str` 形参→E0308)已于当日 Plan 427 根治。
+引入提交实证为 **3f6aa1be**(Plan 396 §2.4, 2026-08-21):`is_str_slice_var`
+补查 `local_var_types` 的 StrSlice 登记,而该 map 把所有 str 型局部(含产物
+Rust 中实为 owned String 的显式 `let x str`)都记为 StrSlice,于是调用点
+`.as_str()` 自动借用被整体抑制→E0308。§2.4 的真实目标(&str 返回 scrutinee
+的 `Some(x)` is-arm 绑定)改走专属集合 `str_slice_pattern_bindings`。
+防线:golden 008_str_param_borrow(产物独立 cargo 编译运行 5/5 +
+rustc 类型检查冒烟)。三库恢复 **serde_json 56/56、url 30/30、base64
+33/33**;稳定全绿核心集回到 **260 例/10 库**(regex 45、cli_app 32、
+string_utils 22、trait_advanced 18、tokio 13、generators 6、
+http_client_sync 5 + serde_json 56、url 30、base64 33)+ consumer-mode
+3 库(fs/process/text 22 例)。
 
 Open gaps (each detailed in its own section below, fix plans in
 `docs/plans/359-auto-as-rust-script-rollout.md` Phase E):
@@ -41,6 +45,7 @@ Open gaps (each detailed in its own section below, fix plans in
 | DIV-TRAIT-LANG-1 | language: spec associated types | ✅ fixed (2026-08-22, Plan 417-E2) | trait_advanced 三方 14/14 |
 | DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | ✅ fixed (verified 2026-08-22, Plan 417-E5) | http_client_sync 三方 5/5 |
 | DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | ✅ fixed (2026-08-22, Plan 417-E1) | golden 007_char_at_infer |
+| DIV-A2R-STRPARAM-1 | a2r: call-site `&str` auto-borrow suppressed | ✅ fixed (2026-08-23, Plan 427) | base64/url/serde_json 三方全绿; golden 008_str_param_borrow |
 
 The entries below are library/tooling limitations that shaped the
 implementations but are **not** test-case divergences — every included case
