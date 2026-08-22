@@ -1,11 +1,35 @@
 # Plan 426: setup 前导槽——per-instance setup 相位 + 生命周期语义定版
 
-> **状态**: 🟢 立项待执行(draft;含设计决策,执行前需按 §1 定稿)
+> **状态**: 🔵 执行中(T1 设计定稿 + T2 parser/codegen/单测已落地 2026-08-23;T3 canary/musk 迁移、T4 文档收口进行中——见 §7 执行记录)
 > **前置**: Plan 408(已归档,composable kind 机制);auto-musk PLAN-037(use.web composable 现状与局限的一手实测)。
 > **仓库**: **auto-lang**(parser / ui_gen/vue / ts_adapter);auto-musk composables 域为迁移验证方。
 > **目标**: widget 获得通用的 **setup 相位语句槽**——每实例同步执行、先于首渲染,支持任意 setup 逻辑(不止无参 composable 调用)。`.Init`(onMounted,首渲染后)与 setup(同步,首渲染前)两相位语义文档定版;`use.web composable` kind 降级为糖(保留兼容)。
 
 ---
+
+## 1.5 设计定稿(2026-08-23,T1)
+
+§1 两处决策按执行实测定版:
+
+1. **语法形态:方案 A——块关键字 `setup { ... }`**(与 msg/model/on 同级,
+   位置任意,语义固定 setup 相位)。widget 与 component fn(425 糖化后的
+   兼容拼写)均支持。
+2. **绑定语义:`let x = expr` → script setup 顶层语句**(ts_adapter 直出,
+   `let`;绑定名注册为 facade local——script/handler 访问不注入 .value,
+   模板经 script-setup 顶层 const 天然可见)。
+   **refs 标注采用块级声明**:`refs <binding>: [f1, f2]`(setup 块内独立
+   语句)。§1.2 的"let 后缀"方案(`let x = useI18n() refs: [...]`)实测
+   与表达式语法冲突(表达式解析器把 `refs` 当中缀继续消费),改用块级
+   声明——即 §1.2 给出的第二选项。标注字段 script 侧访问注入 `.value`
+   (复用 composable kind 的 facade_ref_fields 机制)。
+3. **await:MVP 明确报错**(parser 层拒绝,表达式语句与 let 初始化器均
+   检查;错误信息指向 Suspense 限制)——按 §5 风险表决议,async setup
+   另立任务。
+4. **命名冲突**:setup 绑定与 model 变量/prop 同名 → 生成期编译错误
+   (对齐 PLAN-037 T5 先例)。
+5. **发射位置**:script setup 顶层,state/computed 定义**之前**(绑定
+   先行);解释器侧每实例执行约定登记后续(auto-ui interpreter 联动)。
+
 
 ## 0. 背景与设计动机(2026-08-22 会话结论)
 
