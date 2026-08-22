@@ -2096,6 +2096,31 @@ impl Codegen {
                 // Register the type in the type registry
                 self.register_type(type_decl);
 
+                // Plan 417-E2 (DIV-TRAIT-LANG-1): associated types have no
+                // runtime entity — methods are compiled with `Item` swapped
+                // for the concrete binding declared at the impl clause
+                // (`type IntBox as Container<Item=int>`). Bindings from all
+                // implemented specs merge into one table (assoc names are
+                // unique per spec; cross-spec collisions are pathological).
+                let (assoc_names, assoc_types): (Vec<crate::ast::Name>, Vec<Type>) = {
+                    let mut names = Vec::new();
+                    let mut types = Vec::new();
+                    for spec_impl in &type_decl.spec_impls {
+                        for (n, t) in &spec_impl.assoc_bindings {
+                            names.push(n.clone());
+                            types.push(t.clone());
+                        }
+                    }
+                    (names, types)
+                };
+                let subst_assoc = |ty: &Type| -> Type {
+                    if assoc_names.is_empty() {
+                        ty.clone()
+                    } else {
+                        ty.substitute(&assoc_names, &assoc_types)
+                    }
+                };
+
                 // Plan 087 Phase 3: Compile type methods as standalone functions
                 // Method naming: TypeName.method_name (e.g., Counter.increment)
                 // self becomes the first parameter
@@ -2109,6 +2134,12 @@ impl Codegen {
                     let mut method_fn = method.clone();
                     method_fn.name = crate::ast::Name::from(mangled_name.as_str());
                     method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
+                    // Plan 417-E2: substitute associated-type references in
+                    // the compiled signature (params + return).
+                    for param in &mut method_fn.params {
+                        param.ty = subst_assoc(&param.ty);
+                    }
+                    method_fn.ret = subst_assoc(&method_fn.ret);
 
                     // For instance methods (non-static), inject 'self' as first parameter
                     if !method.is_static {
@@ -2172,6 +2203,14 @@ impl Codegen {
                             },
                             ..Default::default()
                         };
+                        // Plan 417-E2: the synthesized default inherits the
+                        // spec signature — substitute associated-type
+                        // references (Item → the implementer's binding) so the
+                        // compiled Type.method matches the declared methods.
+                        for param in &mut method_fn.params {
+                            param.ty = subst_assoc(&param.ty);
+                        }
+                        method_fn.ret = subst_assoc(&method_fn.ret);
                         method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
                         let has_self = method_fn
                             .params
