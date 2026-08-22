@@ -37,6 +37,27 @@ impl TraitChecker {
         // the spec method signature before comparison, so `fn get(i int) Item`
         // checks against the concrete binding. References parse as bare
         // `Type::User(name)`, exactly what Type::substitute replaces.
+        //
+        // Plan 417-followup (DIV-TRAIT-A2R-2, checker side): POSITIONAL type
+        // args (`type ScoreCmp as Comparable<int>`) bind the spec's generic
+        // params the same way — collected separately (subst_names/types)
+        // because they must NOT pass through the unknown-associated-type
+        // gate below (T is a generic param, not an assoc type).
+        let (mut subst_names, mut subst_types): (Vec<crate::ast::Name>, Vec<Type>) = {
+            let mut names = Vec::new();
+            let mut types = Vec::new();
+            for spec_impl in &type_decl.spec_impls {
+                if spec_impl.spec_name == spec_decl.name {
+                    for (gp, arg) in spec_decl.generic_params.iter().zip(&spec_impl.type_args) {
+                        if let crate::ast::GenericParam::Type(tp) = gp {
+                            names.push(tp.name.clone());
+                            types.push(arg.clone());
+                        }
+                    }
+                }
+            }
+            (names, types)
+        };
         let (assoc_names, assoc_types): (Vec<crate::ast::Name>, Vec<Type>) = {
             let mut names = Vec::new();
             let mut types = Vec::new();
@@ -50,6 +71,10 @@ impl TraitChecker {
             }
             (names, types)
         };
+        subst_names.extend(assoc_names.iter().cloned());
+        subst_types.extend(assoc_types.iter().cloned());
+        let subst_names = &subst_names[..];
+        let subst_types = &subst_types[..];
         if !spec_decl.associated_types.is_empty() || !assoc_names.is_empty() {
             // Every declared associated type must be bound (Rust semantics),
             // and every binding must name a declared associated type —
@@ -91,7 +116,7 @@ impl TraitChecker {
         }
 
         for spec_method in &spec_decl.methods {
-            let spec_ret = spec_method.ret.substitute(&assoc_names, &assoc_types);
+            let spec_ret = spec_method.ret.substitute(subst_names, subst_types);
             let implemented = type_decl.methods.iter().find(|m| m.name == spec_method.name);
 
             match implemented {
@@ -100,7 +125,7 @@ impl TraitChecker {
                     // assoc name in its own signature (`fn first() Item`) —
                     // substitute both sides before comparing so it checks
                     // against the binding, not the bare name.
-                    let impl_ret = method.ret.substitute(&assoc_names, &assoc_types);
+                    let impl_ret = method.ret.substitute(subst_names, subst_types);
                     // Check parameter count
                     if method.params.len() != spec_method.params.len() {
                         errors.push(
@@ -385,7 +410,8 @@ mod tests {
             ret,
             ret_name: None,
             is_static: false,  // Plan 035 Phase 4: Default to instance method
-            type_params: Vec::new(),  // Plan 061: No generic parameters
+            type_params: Vec::new(),
+            const_params: Vec::new(),  // Plan 061: No generic parameters
             span: None,  // Plan 061: No source location
             is_mut: false,
             is_test: false,

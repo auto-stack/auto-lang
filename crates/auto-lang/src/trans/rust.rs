@@ -10954,12 +10954,17 @@ impl RustTrans {
         write!(sink.body, "fn {}", fn_decl.name)?;
 
         // Plan 166: Emit generic type parameters from #[with(T as Trait)]
-        if !fn_decl.type_params.is_empty() {
+        // Plan 052-followup (417 项④): const generic params (<N u32>) emit as
+        // Rust const generics (`<T, const N: u32>`) — previously dropped, so
+        // `fn f<T, N u32>` lost the N dimension entirely.
+        if !fn_decl.type_params.is_empty() || !fn_decl.const_params.is_empty() {
             write!(sink.body, "<")?;
-            for (i, tp) in fn_decl.type_params.iter().enumerate() {
-                if i > 0 {
+            let mut first = true;
+            for tp in &fn_decl.type_params {
+                if !first {
                     write!(sink.body, ", ")?;
                 }
+                first = false;
                 write!(sink.body, "{}", tp.name)?;
                 // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
                 if !tp.constraint.is_empty() {
@@ -10971,6 +10976,18 @@ impl RustTrans {
                         write!(sink.body, "{}", self.rust_bound_name(ct))?;
                     }
                 }
+            }
+            for cp in &fn_decl.const_params {
+                if !first {
+                    write!(sink.body, ", ")?;
+                }
+                first = false;
+                write!(
+                    sink.body,
+                    "const {}: {}",
+                    cp.name,
+                    self.rust_type_name(&cp.typ)
+                )?;
             }
             write!(sink.body, ">")?;
         }
@@ -14473,6 +14490,21 @@ impl RustTrans {
             writeln!(sink.body)?;
         }
 
+        // Plan 417-followup (DIV-TRAIT-A2R-2, checker-adjacent): the spec's
+        // generic params act as the "current fn" type params while emitting
+        // trait method signatures, so a return type referencing one renders
+        // as the bare param (`-> T`), never `impl T` (the PascalCase-trait
+        // heuristic misfires on single-letter params). Restored after the
+        // method loop (see the assignment just below the loop).
+        let saved_spec_type_params = std::mem::take(&mut self.current_fn_type_params);
+        for tp_name in spec_decl.generic_params.iter().filter_map(|gp| {
+            match gp {
+                GenericParam::Type(tp) => Some(tp.name.clone()),
+                _ => None,
+            }
+        }) {
+            self.current_fn_type_params.insert(tp_name);
+        }
         for method in &spec_decl.methods {
             // Plan 380: async spec methods emit `async fn` (mirrors fn_decl).
             // With `#[async_trait]` (added above when any method is async), a
@@ -14544,6 +14576,7 @@ impl RustTrans {
                 writeln!(sink.body, ";")?;
             }
         }
+        self.current_fn_type_params = saved_spec_type_params; // Plan 417-followup
 
         self.dedent();
         writeln!(sink.body, "}}\n")?;

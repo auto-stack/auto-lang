@@ -738,6 +738,7 @@ mod tests {
             is_mut: false,
             is_test: false,
             type_params: vec![],
+            const_params: Vec::new(),
             doc: None,
             span: None,
             api_attrs: None,

@@ -1,4 +1,4 @@
-use super::types::TypeParam;
+use super::types::{ConstParam, TypeParam};
 use super::{Body, Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
@@ -28,6 +28,9 @@ pub struct Fn {
     pub is_mut: bool,   // Plan 163: true for mut fn (generates &mut self)
     pub is_test: bool,  // Plan 260: true for #[test] functions
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
+    /// Plan 052-followup (417 项④): const generic params (`fn f<T, N u32>`) —
+    /// kept separately from type_params so Rust can emit `<T, const N: u32>`.
+    pub const_params: Vec<ConstParam>,
     pub doc: Option<AutoStr>,        /// Doc comment lines (///)
     pub span: Option<(usize, usize)>, // Source location for error reporting
     /// Plan 312: #[api(method, path)] annotation — makes the function an HTTP
@@ -65,6 +68,7 @@ impl Default for Fn {
             is_mut: false,
             is_test: false,
             type_params: vec![],
+            const_params: Vec::new(),
             doc: None,
             span: None,
             api_attrs: None,
@@ -132,6 +136,7 @@ impl Fn {
             is_mut: false,           // Plan 163: default immutable self
             is_test: false,          // Plan 260: default non-test
             type_params: Vec::new(), // Default to no generic parameters
+            const_params: Vec::new(),
             doc: None,
             span: None,
             api_attrs: None,
@@ -161,6 +166,7 @@ impl Fn {
             is_mut: false,           // Plan 163: default immutable self
             is_test: false,          // Plan 260: default non-test
             type_params: Vec::new(), // Default to no generic parameters
+            const_params: Vec::new(),
             doc: None,
             span: None,
             api_attrs: None,

@@ -1,0 +1,26 @@
+// Plan 417-followup (DIV-TRAIT-A2R-2 checker/VM side): a generic spec whose
+// method signature references the spec's own type param in BOTH the param and
+// the return position (`fn compare(other T) T`), implemented with a concrete
+// type argument (`as Comparable<int>`).
+//
+// The a2r impl emission was already fixed (005_generic_impl); this case locks
+// the two remaining halves: the trait declaration's `-> T` must render bare
+// (never `impl T`), and the VM trait checker must substitute the positional
+// type args into the spec signature before comparing (`T` -> `int`) instead
+// of rejecting the implementer.
+
+spec Comparable<T> {
+    fn compare(other T) T
+}
+
+type ScoreCmp as Comparable<int> {
+    val int
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+fn main() {
+    var s ScoreCmp = ScoreCmp { val: 10 }
+    print(s.compare(4))
+}
