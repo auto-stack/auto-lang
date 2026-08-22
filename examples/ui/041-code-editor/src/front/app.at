@@ -13,6 +13,10 @@ widget App {
         var sel int = 0
         var console_open bool = false
         var console str = ""
+        // Plan 422 P3: 右键菜单(contextmenu popover 的坐标锚状态)
+        var ctx_open bool = false
+        var ctx_x float = 0
+        var ctx_y float = 0
     }
 
     view {
@@ -69,6 +73,7 @@ widget App {
                     content: .src_main
                     oninput: .SrcMainChanged
                     oncursor: .CursorMain
+                    oncontextmenu: .EditorCtx
                 }
             }
             if .tab != 0 {
@@ -76,6 +81,25 @@ widget App {
                     content: .src_util
                     oninput: .SrcUtilChanged
                     oncursor: .CursorUtil
+                    oncontextmenu: .EditorCtx
+                }
+            }
+
+            // Plan 422 P3: 坐标锚弹层 —— 右键编辑器时 EditorCtx(x, y) 记录
+            // 落点并置开;面板项处理器负责关闭。ondismiss 覆盖点击外部/Esc。
+            popover (open: .ctx_open, x: .ctx_x, y: .ctx_y, ondismiss: .CtxClose,
+                     class: "w-40 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                button (text: "剪切", variant: "text") {
+                    onclick: .CtxCut
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                }
+                button (text: "复制", variant: "text") {
+                    onclick: .CtxCopy
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                }
+                button (text: "全选", variant: "text") {
+                    onclick: .CtxSelectAll
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
                 }
             }
 
@@ -178,6 +202,56 @@ widget App {
         .ConsoleClear -> {
             console_clear()
             .console = ""
+        }
+
+        // ---- Plan 422 P3: contextmenu popover ----
+        // 编辑器右键:坐标为视口系(renderer 侧已加 widget origin)。
+        .EditorCtx(x, y) -> {
+            .ctx_x = x
+            .ctx_y = y
+            .ctx_open = true
+            console_log("ctx menu opened")
+            .console = console_lines()
+        }
+        .CtxClose -> {
+            .ctx_open = false
+        }
+        .CtxCut -> {
+            .ctx_open = false
+            if .tab == 0 {
+                code_editor_cut("tab-main")
+                .src_main = code_editor_text("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_cut("tab-util")
+                .src_util = code_editor_text("tab-util")
+            }
+            console_log("ctx cut")
+            .console = console_lines()
+        }
+        .CtxCopy -> {
+            .ctx_open = false
+            if .tab == 0 {
+                code_editor_copy("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_copy("tab-util")
+            }
+            console_log("ctx copy")
+            .console = console_lines()
+        }
+        .CtxSelectAll -> {
+            .ctx_open = false
+            if .tab == 0 {
+                code_editor_select_all("tab-main")
+                .sel = code_editor_selection_len("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_select_all("tab-util")
+                .sel = code_editor_selection_len("tab-util")
+            }
+            console_log("ctx select all")
+            .console = console_lines()
         }
 
         // ---- Plan 418: semantic actions (menu / toolbar / shortcut 3-source) ----

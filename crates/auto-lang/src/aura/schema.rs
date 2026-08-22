@@ -2186,6 +2186,24 @@ impl AuraSchema {
             description: "Menubar container",
         });
 
+        // Plan 422: anchored popover primitive (iced overlay). Two forms —
+        // coordinate anchor (contextmenu: x/y + open + ondismiss, children are
+        // panel content) or widget anchor (first child = trigger, rest = panel).
+        elements.insert("popover", ElementDef {
+            tag: "popover",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "open", type_: PropType::Expr, required: false, default: None, description: "Open state (state binding, e.g. .ctx_open)" },
+                PropDef { name: "x", type_: PropType::Expr, required: false, default: None, description: "Coordinate anchor x (viewport px, contextmenu form)" },
+                PropDef { name: "y", type_: PropType::Expr, required: false, default: None, description: "Coordinate anchor y (viewport px, contextmenu form)" },
+                PropDef { name: "placement", type_: PropType::OneOf(vec!["bottom", "bottom-start", "bottom-end", "top", "top-start", "top-end", "left", "right"]), required: false, default: Some("bottom-start"), description: "Panel placement relative to anchor" },
+                PropDef { name: "ondismiss", type_: PropType::MsgRef, required: false, default: None, description: "Fired on outside click / anchor click / Esc / focus loss" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "Panel chrome classes (bg/border/shadow land on the panel)" },
+            ],
+            allows_children: true,
+            description: "Anchored popover (overlay)",
+        });
+
         elements.insert("menubar_menu", ElementDef {
             tag: "menubar_menu",
             category: ElementCategory::Navigation,

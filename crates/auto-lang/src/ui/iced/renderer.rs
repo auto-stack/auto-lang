@@ -10426,26 +10426,29 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
         }
 
-        // Plan 422: 锚定弹层(VM 模式路径)。子路径约定:anchor = 0,
-        // content = 1 —— 与 snapshot 遍历 / BuildProbe 记录路径对齐
-        // (convert_menubar 的面板项路径按 [base, popover_idx, 1, item_idx]
-        // 记录)。坐标锚时 anchor 轨道为零尺寸占位,不占路径 0 之外的空间。
+        // Plan 422: 锚定弹层(VM 模式路径)。子路径约定(与 snapshot/vnode/
+        // find_view_by_path 的 extract_children 同序):widget 锚 anchor=0、
+        // content=1;坐标锚无 anchor 子,content=0。convert_menubar 的面板项
+        // 路径按 [base, popover_idx, 1, item_idx] 记录。
         AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
             use crate::ui::iced::popover::Popover as PopoverWidget;
             use crate::ui::view::PopoverAnchor;
-            let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, IcedMessage>) =
-                match anchor {
-                    PopoverAnchor::Widget(w) => {
-                        path.push(0);
-                        let el = render_dynamic_view(*w, debug_ctx, path);
-                        path.pop();
-                        (None, el)
-                    }
-                    PopoverAnchor::Point { x, y } => {
-                        (Some((x, y)), iced::widget::Space::new().into())
-                    }
-                };
-            path.push(1);
+            let (anchor_point, content_slot, anchor_el): (
+                Option<(f32, f32)>,
+                usize,
+                iced::Element<'static, IcedMessage>,
+            ) = match anchor {
+                PopoverAnchor::Widget(w) => {
+                    path.push(0);
+                    let el = render_dynamic_view(*w, debug_ctx, path);
+                    path.pop();
+                    (None, 1, el)
+                }
+                PopoverAnchor::Point { x, y } => {
+                    (Some((x, y)), 0, iced::widget::Space::new().into())
+                }
+            };
+            path.push(content_slot);
             let content_el = render_dynamic_view(*content, debug_ctx, path);
             path.pop();
             let mut p = PopoverWidget::new(anchor_el, content_el)
@@ -10611,7 +10614,23 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 widget = widget.on_cursor(move || msg.clone());
             }
             if let Some(msg) = on_context_menu.clone() {
-                widget = widget.on_context_menu(move |_| msg.clone());
+                // Plan 422 P3: 坐标随消息携带(视口系,widget 已加 origin)——
+                // encode_payload 追加 f32 参数,VM 处理器形参收 (x, y)。
+                widget = widget.on_context_menu(move |pos| match pos {
+                    Some((x, y)) => {
+                        let (name, mut args) = crate::ui::dynamic::decode_payload(&msg.event);
+                        args.push(auto_val::Value::Float(x as f64));
+                        args.push(auto_val::Value::Float(y as f64));
+                        IcedMessage {
+                            widget: msg.widget.clone(),
+                            event: crate::ui::iced::encode_payload(&name, &args),
+                            input_value: None,
+                        }
+                    }
+                    // 其他按键的 None(关菜单语义)从不被 publish;返回模板
+                    // 以满足闭包类型。
+                    None => msg.clone(),
+                });
             }
 
             let el: iced::Element<'static, IcedMessage> = widget.into();

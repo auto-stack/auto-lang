@@ -358,3 +358,94 @@ fn popover_closed_hides_panel() {
     assert!(bw > 0.0 && bh > 0.0, "anchor button must render when closed: {bw}x{bh}");
     assert!(ui.find("HIDDENPANEL").is_err(), "panel content must NOT be reachable when closed");
 }
+
+// ── Plan 422 P1/P3: 弹层行为语义(捕获/dismiss)—— 消息级断言 ────────────
+// Simulator 的事件先派发给 overlay(UserInterface::update 语义),据此断言:
+// * 面板内点击 → 项消息发布、无 dismiss;
+// * 面板外点击 → dismiss 发布且放行(此处无基础树按钮,仅 Dismiss);
+// * 锚上点击 → dismiss 发布且【不】透传给锚按钮(点触发器 = 关);
+// * Esc → dismiss 发布并捕获。
+
+#[derive(Clone, Debug, PartialEq)]
+enum PopMsg {
+    Trig,
+    Item,
+    Dismiss,
+}
+
+/// 消息断言用的小视图:锚按钮 TRIGBTN + 开启面板(项按钮 PANELITEM)。
+fn popover_semantics_view() -> View<PopMsg> {
+    let panel_item = |label: &str| View::<PopMsg>::Button {
+        label: label.to_string(),
+        onclick: PopMsg::Item,
+        style: None,
+        on_right_click: None,
+        content: None,
+    };
+    View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "TRIGBTN".to_string(),
+                onclick: PopMsg::Trig,
+                style: None,
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(View::Column {
+                children: vec![panel_item("PANELITEM")],
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }),
+            placement: PopoverPlacement::BottomStart,
+            open: true,
+            on_dismiss: Some(PopMsg::Dismiss),
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    }
+}
+
+#[test]
+fn popover_panel_item_click_publishes_item() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    ui.click("PANELITEM").expect("panel item clickable");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Item), "panel item message must publish: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
+}
+
+#[test]
+fn popover_outside_click_dismisses() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    // 远离面板/锚的空白处点击。
+    ui.point_at(iced::Point::new(900.0, 700.0));
+    let _ = ui.simulate(iced_test::simulator::click());
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "outside click must publish dismiss: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Item), "no item message on outside click: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Trig), "no trigger leak on outside click: {msgs:?}");
+}
+
+#[test]
+fn popover_anchor_click_dismisses_without_trigger() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    ui.click("TRIGBTN").expect("anchor button visible");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(
+        msgs.contains(&PopMsg::Dismiss) && !msgs.contains(&PopMsg::Trig),
+        "clicking the anchor while open must dismiss WITHOUT re-triggering: {msgs:?}"
+    );
+}
+
+#[test]
+fn popover_escape_dismisses() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    let status = ui.tap_key(iced::keyboard::Key::Named(
+        iced::keyboard::key::Named::Escape,
+    ));
+    assert_eq!(status, iced::event::Status::Captured, "Esc must be captured by the popover");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "Esc must publish dismiss: {msgs:?}");
+}

@@ -929,6 +929,11 @@ impl<'a> AuraViewBuilder<'a> {
                 let p = path.clone();
                 self.convert_toolbar(props, bindings, Some((&p, probe)))
             }
+            // Plan 422 P3: `popover` DSL 标签 —— 锚定弹层的应用侧入口
+            // (contextmenu 坐标锚 / widget 锚两形态,见 convert_popover)。
+            "popover" => {
+                self.convert_popover(props, children, path, id_map, probe, bindings)
+            }
 
             // Child widget lookup or fallback.
             _ => {
@@ -3265,6 +3270,141 @@ let tabs_inner = View::Row {
                 Style::parse(&user).ok()
             },
         }
+    }
+
+    /// Plan 422 P3: `popover` DSL 标签 —— 锚定弹层的应用侧入口。两形态:
+    ///
+    /// * 坐标锚(contextmenu):`popover (open: .ctx_open, x: .ctx_x, y: .ctx_y,
+    ///   ondismiss: .CtxClose, class: "面板样式") { 面板子节点… }` —— 面板
+    ///   左上角对齐 (x, y) 落点;class 给面板 chrome(bg/border/shadow)。
+    /// * widget 锚:`popover (placement: "bottom-start") { 触发按钮; 面板子节点… }`
+    ///   —— children[0] 为锚,其余为面板内容。
+    ///
+    /// 子路径约定与 vnode/snapshot/find_view_by_path 的 extract_children 同序:
+    /// widget 锚 anchor=0/content=1;坐标锚 content=0。
+    fn convert_popover(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+
+        let expr_value = |key: &str| -> Option<Value> {
+            match props.get(key)? {
+                AuraPropValue::Expr(e) => {
+                    self.resolve_expr_to_value(e, bindings)
+                }
+                _ => None,
+            }
+        };
+        let open = expr_value("open")
+            .map(|v| matches!(v, Value::Bool(true)))
+            .unwrap_or(false);
+        let coord = |key: &str| -> Option<f32> {
+            match expr_value(key)? {
+                Value::Float(f) => Some(f as f32),
+                Value::Int(i) => Some(i as f32),
+                Value::Uint(u) => Some(u as f32),
+                _ => None,
+            }
+        };
+        let (px, py) = (coord("x"), coord("y"));
+        let placement = self
+            .extract_string_with(props, "placement", bindings)
+            .and_then(|s| match s.to_ascii_lowercase().as_str() {
+                "bottom" => Some(PopoverPlacement::Bottom),
+                "bottom-start" | "bottomstart" => Some(PopoverPlacement::BottomStart),
+                "bottom-end" | "bottomend" => Some(PopoverPlacement::BottomEnd),
+                "top" => Some(PopoverPlacement::Top),
+                "top-start" | "topstart" => Some(PopoverPlacement::TopStart),
+                "top-end" | "topend" => Some(PopoverPlacement::TopEnd),
+                "left" => Some(PopoverPlacement::Left),
+                "right" => Some(PopoverPlacement::Right),
+                _ => None,
+            })
+            .unwrap_or(PopoverPlacement::BottomStart);
+        let on_dismiss = self
+            .extract_string_with(props, "ondismiss", bindings)
+            .map(|h| DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: h.trim_start_matches('.').to_string(),
+                args: vec![],
+            });
+        // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
+        let panel_style = self.extract_style_with(props, bindings);
+
+        let panel_col = |items: Vec<View<DynamicMessage>>| View::Column {
+            children: items,
+            spacing: 0,
+            padding: 0,
+            style: panel_style.clone(),
+        };
+
+        match (px, py) {
+            (Some(x), Some(y)) => View::Popover {
+                anchor: PopoverAnchor::Point { x, y },
+                content: Box::new(panel_col(
+                    self.convert_popover_items(children, 0, path, id_map, probe, bindings),
+                )),
+                placement,
+                open,
+                on_dismiss,
+            },
+            _ => {
+                let mut it = children.iter();
+                let anchor = match it.next() {
+                    Some(n) => {
+                        path.push(0);
+                        let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                        path.pop();
+                        v
+                    }
+                    None => View::Empty,
+                };
+                let rest: Vec<AuraNode> = it.cloned().collect();
+                View::Popover {
+                    anchor: PopoverAnchor::Widget(Box::new(anchor)),
+                    content: Box::new(panel_col(
+                        self.convert_popover_items(&rest, 1, path, id_map, probe, bindings),
+                    )),
+                    placement,
+                    open,
+                    on_dismiss,
+                }
+            }
+        }
+    }
+
+    /// Plan 422 P3: popover 面板子节点转换(slot 计数与 column 的
+    /// "RESULTING slot" 约定一致 —— 视觉空节点出列,后续槽位左移)。
+    fn convert_popover_items(
+        &self,
+        children: &[AuraNode],
+        base_slot: usize,
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
+        let mut items: Vec<View<DynamicMessage>> = Vec::new();
+        let mut slot = 0usize;
+        path.push(base_slot);
+        for n in children {
+            path.push(slot);
+            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+            path.pop();
+            if is_visually_empty(&v) {
+                continue;
+            }
+            items.push(v);
+            slot += 1;
+        }
+        path.pop();
+        items
     }
 
     /// Plan 418 P2-3: synthesize the toolbar from the action config

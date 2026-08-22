@@ -121,7 +121,7 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
         self.core
     }
 
-    fn publish(&self, out: &CoreOutput, shell: &mut Shell<'_, M>) {
+    fn publish(&self, out: &CoreOutput, shell: &mut Shell<'_, M>, origin: Point) {
         if out.text_changed {
             if let Some(f) = &self.on_change {
                 shell.publish(f());
@@ -132,9 +132,11 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
                 shell.publish(f());
             }
         }
-        if let Some(pos) = out.context_menu {
+        if let Some((x, y)) = out.context_menu {
             if let Some(f) = &self.on_context_menu {
-                shell.publish(f(Some(pos)));
+                // Plan 422 P3: 坐标转视口系(core 输出为 widget-local)——
+                // contextmenu popover 的坐标锚按视口坐标定位。
+                shell.publish(f(Some((x + origin.x, y + origin.y))));
             }
         }
     }
@@ -358,7 +360,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         if out.captured {
             shell.capture_event();
         }
-        self.publish(&out, shell);
+        self.publish(&out, shell, bounds.position());
     }
 
     fn draw(

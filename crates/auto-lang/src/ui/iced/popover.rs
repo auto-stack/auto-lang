@@ -405,13 +405,18 @@ where
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
                 let over_panel = cursor.is_over(panel_bounds);
                 let over_anchor = self.at_point.is_none() && cursor.is_over(self.anchor_bounds);
+                if over_anchor {
+                    // 锚上点击:dismiss 并捕获 —— 基础树收不到 toggle,菜单经
+                    // on_dismiss 干净关闭(点触发器 = 关,menubar 语义)。
+                    dismiss(shell, &self.on_dismiss);
+                }
                 if !over_panel && !over_anchor {
                     // 面板/锚之外的点击:dismiss 但放行给基础树 —— 别的
                     // menubar 触发器可以直接切换菜单。
                     dismiss(shell, &self.on_dismiss);
                     return;
                 }
-                // 面板内或锚上:转发给 content(菜单项自行发布/捕获),
+                // 面板内(或锚上):转发给 content(菜单项自行发布/捕获),
                 // 未捕获时兜底捕获,基础树收不到这次点击。
                 let content_layout = layout.children().next().expect("panel has content child");
                 self.content.as_widget_mut().update(
