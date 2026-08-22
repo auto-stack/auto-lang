@@ -2368,16 +2368,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // the gaps next to a sep read uneven (user-verified via debug
                 // borders). CSS buttons center by default; shrink-width buttons
                 // are unaffected (content width = button width).
+                // Fill-width ONLY for buttons with an explicit width class: a Fill
+                // content wrapper also makes height-only buttons (menus, tabs)
+                // claim the whole row and stretch equally - regression fixed by
+                // scoping center_x to width-classed buttons.
                 let button_content: iced::Element<'static, M> = if iced_style
                     .as_ref()
-                    .map_or(false, |is| is.height.is_some() || is.width.is_some())
+                    .map_or(false, |is| is.height.is_some())
                 {
-                    iced::widget::container(button_content)
+                    let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                    let mut cont = iced::widget::container(button_content)
                         .height(iced::Length::Fill)
-                        .width(iced::Length::Fill)
-                        .align_y(iced::alignment::Vertical::Center)
-                        .center_x(iced::Length::Fill)
-                        .into()
+                        .align_y(iced::alignment::Vertical::Center);
+                    if has_width {
+                        cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+                    }
+                    cont.into()
                 } else {
                     button_content
                 };

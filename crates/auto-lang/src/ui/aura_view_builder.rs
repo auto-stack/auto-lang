@@ -2974,34 +2974,11 @@ let tabs_inner = View::Row {
         let orientation = self
             .extract_string_with(props, "orientation", bindings)
             .unwrap_or_else(|| "vertical".to_owned());
-        if orientation == "horizontal" {
-            // Horizontal: full-width 1px line (zinc-500 for dark-theme
-            // visibility). FIXED sizes only - h-full (Fill) on a Row child
-            // breaks every following sibling in the VM renderer.
-            let base = "w-full h-px bg-zinc-500";
-            let mut style = Style::parse(base).ok();
-            if let Some(user) = self.extract_style_with(props, bindings) {
-                style = match style {
-                    Some(mut s) => {
-                        s.classes.extend(user.classes);
-                        Some(s)
-                    }
-                    None => Some(user),
-                };
-            }
-            let mut b = ViewBuilder::col();
-            if let Some(st) = style {
-                b = b.with_style(st);
-            }
-            return b.build();
-        }
-        // Vertical (Plan 414 user spec): a w-8 box matching the icon
-        // buttons, with the 1px line centered via a Container's center_x/
-        // center_y (construction-centered, no font metrics). Spacing is
-        // governed purely by the parent row's gap so every item reads
-        // evenly pitched. User classes land on the box (e.g. debug
-        // borders); the line keeps its fixed 1x16 shape.
-        let base = "w-8 h-7 px-0 py-0";
+        let (base, vertical) = if orientation == "horizontal" {
+            ("w-full h-px bg-zinc-500", false)
+        } else {
+            ("w-7 h-7", true)
+        };
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
             style = match style {
@@ -3015,24 +2992,26 @@ let tabs_inner = View::Row {
         let line = ViewBuilder::col()
             .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
             .build();
-        let centered = View::Container {
+        if !vertical {
+            let mut b = ViewBuilder::col();
+            if let Some(st) = style {
+                b = b.with_style(st);
+            }
+            return b.build();
+        }
+        // Vertical (Plan 414 user spec): a w-7/h-7 box matching the
+        // variant=icon buttons, 1px line construction-centered via the
+        // Container center flags. Deliberately NOT a button: no pointer
+        // cursor on hover, no onclick registration. Spacing is governed
+        // purely by the parent row's gap.
+        View::Container {
             child: Box::new(line),
             padding: 0,
             width: None,
             height: None,
             center_x: true,
             center_y: true,
-            style: Some(Style::parse("w-full h-full").unwrap()),
-        };
-        // `onclick` is a plain DynamicMessage (not Option): dispatch an
-        // empty event name - no handler matches it, so a stray click on
-        // the separator is a harmless no-op.
-        View::Button {
-            label: String::new(),
-            content: Some(Box::new(centered)),
-            onclick: DynamicMessage::String(String::new()),
             style,
-            on_right_click: None,
         }
     }
 
@@ -3200,6 +3179,8 @@ let tabs_inner = View::Row {
             "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md",
             "outline" => "border border-input bg-background text-foreground rounded-md",
             "ghost" => "rounded-md",
+            // Plan 414 R13: icon button - chromeless SQUARE (w follows h).
+            "icon" => "h-7 w-7 px-0 py-0",
             "link" => "text-primary",
             // "text" 及未知 variant:无 preset — chromeless(由 user class 主导)。
             _ => "",

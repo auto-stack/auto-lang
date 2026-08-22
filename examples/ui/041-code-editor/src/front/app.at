@@ -36,47 +36,39 @@ widget App {
                     onclick: .MenuToggle("help")
                     style: "h-7 px-3 text-[12px] text-zinc-300"
                 }
-                button (variant: "text") {
-                    icon (name: "file-plus", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "file-plus") {
                     onclick: .ActNew
-                    style: "h-7 w-8 px-0 py-0 ml-auto border border-zinc-500"
+                    style: "ml-auto border border-zinc-500"
                 }
-                button (variant: "text") {
-                    icon (name: "folder-open", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "folder-open") {
                     onclick: .ActOpen
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
-                button (variant: "text") {
-                    icon (name: "save", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "save") {
                     onclick: .ActSave
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
                 sep (style: "border border-zinc-500")
-                button (variant: "text") {
-                    icon (name: "undo-2", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "undo-2") {
                     onclick: .ActUndo
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
-                button (variant: "text") {
-                    icon (name: "redo-2", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "redo-2") {
                     onclick: .ActRedo
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
                 sep (style: "border border-zinc-500")
-                button (variant: "text") {
-                    icon (name: "scissors", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "scissors") {
                     onclick: .ActCut
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
-                button (variant: "text") {
-                    icon (name: "copy", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "copy") {
                     onclick: .ActCopy
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
-                button (variant: "text") {
-                    icon (name: "clipboard", style: "h-4 w-4 text-zinc-400") {}
+                button (variant: "icon", icon: "clipboard") {
                     onclick: .ActPaste
-                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
+                    style: "border border-zinc-500"
                 }
             }
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
