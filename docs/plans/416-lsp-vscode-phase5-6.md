@@ -28,10 +28,14 @@
 - **验收**: 对 `examples/ui/013-todo/src/front/*.at` 截图对比 TextMate-only
   前后差异;LSP 侧单测锁 token 序列。
 
-### 5-C 生成关键字/类型/函数列表 + lsp-api-contract.md(预估 1 天)
+### 5-C 生成关键字/类型/函数列表 + lsp-api-contract.md ✅ 2026-08-22 完成
 
-- 243 Phase 6 遗留:从 parser 关键字表 + stdlib 目录生成补全数据源;
-  `docs/lsp-api-contract.md` 固化 LSP 方法与能力矩阵。
+- `Token::all_keywords()`(lexer 权威关键字表,56 词;and/or 显式 None、
+  grid/route 注释臂剔除,round-trip 单测锁定)→ keyword_completions 并入
+  (精选 snippet 优先);`stdlib_index.rs` 惰性解析 stdlib/auto/<mod>.at
+  (fn 签名 + type 声明)→ `json.`/`fs.` 模块成员补全 + 类型位模块名补全;
+  `docs/lsp-api-contract.md` 能力矩阵/补全数据源/传输约定/已知边界。
+  测试:stdlib 索引 + complete() 端到端(json 成员/yield 关键字)×2。
 
 ## 2. Phase 6 剩余(持续维护基建)
 
@@ -51,6 +55,6 @@
 
 ## 3. 执行顺序与联调安排
 
-5-A ✅ → 6-A ✅ → 5-B(唯一需 VSCode 实机)→ 5-C → 6-B →(新增 6-C
+5-A ✅ → 6-A ✅ → 5-C ✅ → 5-B(唯一需 VSCode 实机)→ 6-B →(6-C
 全仓 rustfmt 决策项)。5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
 gitee);6-A 落在 auto-lang(auto-lsp-ci.yml)。

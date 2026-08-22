@@ -133,7 +133,7 @@ fn determine_completion_context(
 
 /// Get all keyword completions
 fn keyword_completions() -> Vec<CompletionItem> {
-    vec![
+    let mut items = vec![
         // Declaration keywords
         completion_item(
             "fn",
@@ -362,7 +362,25 @@ fn keyword_completions() -> Vec<CompletionItem> {
             CompletionItemKind::KEYWORD,
             "take ",
         ),
-    ]
+    ];
+
+    // Plan 416 5-C: union in any lexer-authoritative keywords the curated
+    // list above missed (Token::all_keywords is the single source of truth;
+    // curated entries keep their richer snippets/docs and win by label).
+    let curated: std::collections::HashSet<String> =
+        items.iter().map(|i| i.label.clone()).collect();
+    for kw in auto_lang::token::Token::all_keywords() {
+        if !curated.contains(*kw) {
+            items.push(completion_item(
+                kw,
+                "keyword",
+                CompletionItemKind::KEYWORD,
+                kw,
+            ));
+        }
+    }
+
+    items
 }
 
 /// Get all type completions
@@ -460,6 +478,10 @@ fn type_completions(content: &str) -> Vec<CompletionItem> {
 
     // Add user-defined types from AST
     items.extend(user_defined_types(content));
+
+    // Plan 416 5-C: stdlib surface — module names (MODULE) and their declared
+    // types (STRUCT) from the stdlib declaration index.
+    items.extend(crate::stdlib_index::stdlib_module_completions());
 
     items
 }
@@ -576,6 +598,13 @@ fn is_identifier_char(c: char) -> bool {
 /// Get member completions (fields and methods) for a variable
 fn member_completions(content: &str, var_name: &str) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+
+    // Plan 416 5-C: `json.` / `fs.` … — stdlib module member completions
+    // (served from the lazily-built stdlib declaration index).
+    if crate::stdlib_index::is_stdlib_module(var_name) {
+        items.extend(crate::stdlib_index::stdlib_member_completions(var_name));
+        return items;
+    }
 
     // Try to infer the type of the variable using scope-aware type inference
     let type_name = infer_variable_type_from_parser_with_scope(content, var_name)
