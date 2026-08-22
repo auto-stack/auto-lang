@@ -1,0 +1,17 @@
+# Plan 428 P0 spike — Route A microbenchmark (standalone; NOT a workspace member).
+# Pinned to the EXACT cosmic-text version used by auto-lang + iced_graphics in
+# the root Cargo.lock (0.15.0; 0.14.2 is only pulled by gpui).
+[package]
+name = "fold-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cosmic-text = "=0.15.0"
+
+# Detach from the repo's workspace (standalone spike crate, tmp/ is gitignored).
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = false
