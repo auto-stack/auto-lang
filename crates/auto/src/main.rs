@@ -926,6 +926,23 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_TITLE", &t);
                 println!("  VM window title: {} (from pac.at)", t);
             }
+            // Plan 418: UI action/binding config (Action declaration layer).
+            // Resolved against the project dir (auto run's cwd) so the
+            // renderer can load it via a stable absolute path.
+            if let Some(cfg) = am.pac_ui_config() {
+                let path = std::path::Path::new(&cfg);
+                let abs = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    std::env::current_dir().unwrap_or_default().join(path)
+                };
+                if abs.exists() {
+                    std::env::set_var("AUTO_VM_ACTION_CONFIG", abs.to_string_lossy().to_string());
+                    println!("  VM action config: {} (from pac.at)", cfg);
+                } else {
+                    println!("  VM action config: {} not found (from pac.at) — skipped", cfg);
+                }
+            }
             if !ai_mode {
                 info!("Running project ...");
                 println!();

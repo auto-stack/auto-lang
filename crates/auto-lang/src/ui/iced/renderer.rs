@@ -5121,28 +5121,39 @@ fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscr
                 // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
                 // shifted symbol so bind { "+" -> ... } works on all platforms.
                 // Only applies when no Ctrl/Alt modifier is held.
-                let handler = bindings.get(&key_str).or_else(|| {
-                    if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
-                        let shifted_map: &[(&str, &str)] = &[
-                            ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
-                        ];
-                        shifted_map.iter()
-                            .find(|(from, _)| *from == key_str.as_str())
-                            .and_then(|(_, to)| bindings.get(*to))
-                    } else {
-                        None
-                    }
-                });
+                let handler: Option<String> = bindings
+                    .get(&key_str)
+                    .cloned()
+                    .or_else(|| {
+                        if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
+                            let shifted_map: &[(&str, &str)] = &[
+                                ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
+                            ];
+                            shifted_map.iter()
+                                .find(|(from, _)| *from == key_str.as_str())
+                                .and_then(|(_, to)| bindings.get(*to))
+                                .cloned()
+                        } else {
+                            None
+                        }
+                    })
+                    // Plan 418 P2-4: config-declared shortcuts (auto-edit.at via
+                    // pac.at `ui_config:`) are a fallback layer UNDER the
+                    // DSL-declared bindings — same key lookup form ("Ctrl+n").
+                    .or_else(|| {
+                        crate::ui::action_config::action_config()
+                            .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
+                    });
                 if let Some(handler) = handler {
                     // Strip the leading dot from ".Digit1" → "Digit1"
-                    let event_name = if handler.starts_with('.') {
-                        &handler[1..]
+                    let event_name = if let Some(stripped) = handler.strip_prefix('.') {
+                        stripped.to_string()
                     } else {
-                        handler
+                        handler.clone()
                     };
                     Some(IcedMessage {
                         widget: String::new(),
-                        event: event_name.to_string(),
+                        event: event_name,
                         input_value: None,
                     })
                 } else if key_str == "Tab" {

@@ -294,6 +294,19 @@ def run_tests(mcp_url, proc):
     except Exception as e:
         result.check("console_open flipped via Ctrl+J", False, f"keyboard tool error: {e}")
 
+    # T7b: config-layer shortcut — Ctrl+D exists ONLY in auto-edit.at
+    # (view.switch-tab); proves the P2-4 fallback fires under the DSL layer.
+    print("T7b: Config-layer shortcut Ctrl+D (auto-edit.at only)")
+    tab_before = state_int(mcp.state("tab"), "tab")
+    try:
+        mcp.call("autoui_keyboard", key="d", modifiers=["ctrl"])
+        time.sleep(0.3)
+        tab_after = state_int(mcp.state("tab"), "tab")
+        result.check("tab flipped via config Ctrl+D", tab_after == 1 - tab_before,
+                     f"{tab_before} -> {tab_after}")
+    except Exception as e:
+        result.check("tab flipped via config Ctrl+D", False, f"keyboard tool error: {e}")
+
     # T8: ActQuit via File menu — process exits
     print("\nT8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")

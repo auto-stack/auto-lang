@@ -1716,6 +1716,21 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
                 action: UiActionType::Press,
                 value: None,
             }
+        } else if let Some(cfg_handler) = crate::ui::action_config::action_config()
+            .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
+        {
+            // Plan 418 P2-4: config-declared shortcut (auto-edit.at) — same
+            // fallback layer as the iced keyboard listener, so MCP automation
+            // and real keys behave identically. Handler ".ActX" → root widget.
+            let event = cfg_handler.trim_start_matches('.').to_string();
+            ActionMessage {
+                target: ActionTarget::Event {
+                    widget: widget_name,
+                    event,
+                },
+                action: UiActionType::Press,
+                value: None,
+            }
         } else {
             // Fallback: legacy key_<lower> handler name.
             let handler = format!("key_{}", key.to_lowercase());

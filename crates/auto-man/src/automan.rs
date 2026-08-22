@@ -338,6 +338,11 @@ impl Automan {
         self.pac.title.as_ref().map(|t| t.to_string())
     }
 
+    /// Plan 418: UI action config file from pac.at `ui_config: "..."`.
+    pub fn pac_ui_config(&self) -> Option<String> {
+        self.pac.ui_config.as_ref().map(|t| t.to_string())
+    }
+
     /// Set --gen-only mode: build stops after code generation, skipping
     /// npm/gradle install+build steps (used by CI to gate generation only).
     pub fn set_gen_only(&mut self, gen_only: bool) {

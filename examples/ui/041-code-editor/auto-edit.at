@@ -1,0 +1,54 @@
+// auto-edit.at — 动作注册与三源绑定(Plan 418 Phase 2,auto-atom 格式)
+// 经 pac.at `ui_config: "auto-edit.at"` 声明,auto run 注入
+// AUTO_VM_ACTION_CONFIG,渲染器按需加载。
+// 当前生效层:shortcut(键盘回退层,DSL onkeydown 之下);menubar/toolbar
+// 结构段已解析校验,渲染迁移为 Phase 2 P2-3(见计划 §4)。
+auto-edit {
+    // ---- 动作注册表 ----
+    action { id : "file.new"        handler : ".ActNew"        title : "新建"   icon : "file-plus"   shortcut : "Ctrl+N" }
+    action { id : "file.open"       handler : ".ActOpen"       title : "打开…"  icon : "folder-open" shortcut : "Ctrl+O" }
+    action { id : "file.save"       handler : ".ActSave"       title : "保存"   icon : "save"        shortcut : "Ctrl+S" }
+    action { id : "file.quit"       handler : ".ActQuit"       title : "退出"   shortcut : "Alt+F4" }
+    action { id : "edit.undo"       handler : ".ActUndo"       title : "撤销"   icon : "undo-2"      shortcut : "Ctrl+Z" }
+    action { id : "edit.redo"       handler : ".ActRedo"       title : "重做"   icon : "redo-2"      shortcut : "Ctrl+Y" }
+    action { id : "edit.cut"        handler : ".ActCut"        title : "剪切"   icon : "scissors" }
+    action { id : "edit.copy"       handler : ".ActCopy"       title : "复制"   icon : "copy" }
+    action { id : "edit.paste"      handler : ".ActPaste"      title : "粘贴"   icon : "clipboard" }
+    action { id : "edit.select-all" handler : ".ActSelectAll"  title : "全选"   shortcut : "Ctrl+A" }
+    action { id : "view.console"    handler : ".ActConsole"    title : "切换 Console" icon : "terminal" shortcut : "Ctrl+J"
+             checked-if : ".console_open" }
+    // 仅配置层快捷键(验证 P2-4 回退层):Ctrl+D 切换 tab
+    action { id : "view.switch-tab" handler : ".ActSwitchTab"  title : "切换 Tab" shortcut : "Ctrl+D" }
+    action { id : "help.about"      handler : ".ActAbout"      title : "关于 auto-edit" }
+
+    // ---- 菜单栏结构(P2-3 渲染迁移前为声明性数据) ----
+    menubar {
+        menu {
+            id : "file"  title : "文件"
+            item { action : "file.new" }  item { action : "file.open" }  item { action : "file.save" }
+            sep {}
+            item { action : "file.quit" }
+        }
+        menu {
+            id : "edit"  title : "编辑"
+            item { action : "edit.undo" }  item { action : "edit.redo" }
+            sep {}
+            item { action : "edit.cut" }  item { action : "edit.copy" }  item { action : "edit.paste" }
+            item { action : "edit.select-all" }
+        }
+        menu {
+            id : "view"  title : "视图"
+            item { action : "view.console" }  item { action : "view.switch-tab" }
+        }
+        menu { id : "help" title : "帮助"  item { action : "help.about" } }
+    }
+
+    // ---- 工具栏结构(P2-3 渲染迁移前为声明性数据) ----
+    toolbar {
+        item { action : "file.new" }  item { action : "file.open" }  item { action : "file.save" }
+        sep {}
+        item { action : "edit.undo" }  item { action : "edit.redo" }
+        sep {}
+        item { action : "edit.cut" }  item { action : "edit.copy" }  item { action : "edit.paste" }
+    }
+}
