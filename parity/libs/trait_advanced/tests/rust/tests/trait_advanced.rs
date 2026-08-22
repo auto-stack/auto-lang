@@ -13,9 +13,10 @@
 //!     method. Rust supports default methods natively, so these pass on the
 //!     Rust side; a2r fails (DIV-TRAIT-A2R-1) and the case is an expected L3
 //!     divergence.
-//!   * Sub-scenario B (associated types): Rust supports associated types, but
-//!     Auto does not (parse error), so there is no corresponding Auto test and
-//!     therefore no Rust oracle test here. See README "Sub-scenario B".
+//!   * Sub-scenario B (associated types, live since Plan 417-E2): a spec
+//!     declares a type member and the implementer binds it by name at the
+//!     impl clause; the Rust side is the native trait associated type. These
+//!     pass on all three backends.
 
 // =============================================================================
 // Sub-scenario A, L1 baseline — required-method dispatch.
@@ -131,6 +132,45 @@ fn score_cmp(a: i32, b: i32) -> i32 {
 }
 
 // =============================================================================
+// Sub-scenario B — associated types (assoc_types.at). Native Rust form of
+// the Auto spec type member + named impl-clause binding (Plan 417-E2).
+// i64 mirrors the a2r mapping of Auto int.
+// =============================================================================
+
+trait Container {
+    type Item;
+
+    fn get(&self, i: i64) -> Self::Item;
+    fn first(&self) -> Self::Item;
+}
+
+struct IntBox {
+    data: Vec<i64>,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+
+    fn get(&self, i: i64) -> i64 {
+        self.data[i as usize]
+    }
+
+    fn first(&self) -> i64 {
+        self.data[0]
+    }
+}
+
+fn container_get(a: i64, b: i64, c: i64, i: i64) -> i64 {
+    let data = IntBox { data: vec![a, b, c] };
+    data.get(i)
+}
+
+fn container_first(a: i64, b: i64, c: i64) -> i64 {
+    let data = IntBox { data: vec![a, b, c] };
+    data.first()
+}
+
+// =============================================================================
 // Tests. Names match the Auto TAP test names.
 // =============================================================================
 
@@ -188,4 +228,26 @@ fn test_default_announce_robot() {
 #[test]
 fn test_required_label_method() {
     assert_eq!(robot_label(7), "robot-7");
+}
+
+// --- Sub-scenario B associated types (assoc_types.at) ---
+
+#[test]
+fn test_container_assoc_get_mid() {
+    assert_eq!(container_get(7, 8, 9, 1), 8);
+}
+
+#[test]
+fn test_container_assoc_get_last() {
+    assert_eq!(container_get(7, 8, 9, 2), 9);
+}
+
+#[test]
+fn test_container_assoc_first() {
+    assert_eq!(container_first(7, 8, 9), 7);
+}
+
+#[test]
+fn test_container_assoc_first_of_negative() {
+    assert_eq!(container_first(-7, 8, 9), -7);
 }

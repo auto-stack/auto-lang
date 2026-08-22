@@ -1,0 +1,36 @@
+/// trait_advanced / sub-scenario B — associated types (L1 baseline, TAP output).
+//
+// Covers the associated-type feature live since Plan 417-E2: a spec declares
+// a type member, references it in method signatures, and the implementer
+// binds it by name at the impl clause. The bound type flows through method
+// dispatch on all three backends (AutoVM, a2r, native Rust oracle).
+//
+// The parity runner sets the working directory to the library root
+// (parity/libs/trait_advanced), so the library at ./auto/trait_advanced.at is
+// imported as auto.trait_advanced. Test names MUST match the Rust #[test]
+// function names in tests/rust/tests/trait_advanced.rs.
+use auto.trait_advanced: container_get, container_first
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // Sub-scenario B, L1: Item bound to int; get indexes, first takes the head.
+    check_int(1, "test_container_assoc_get_mid", container_get(7, 8, 9, 1), 8)
+    check_int(2, "test_container_assoc_get_last", container_get(7, 8, 9, 2), 9)
+    check_int(3, "test_container_assoc_first", container_first(7, 8, 9), 7)
+    check_int(4, "test_container_assoc_first_of_negative", container_first(-7, 8, 9), -7)
+}
