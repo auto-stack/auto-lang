@@ -4174,21 +4174,27 @@ impl Codegen {
         self.emit_str_const_push(&bare);
 
         // 2. 参数 JSON 对象:{"p1":<v1>,...}(json.from_value 逐个序列化)。
-        self.emit_str_const_push("{");
-        for (i, expr) in arg_exprs.iter().enumerate() {
-            if i > 0 {
-                self.emit_str_const_push(",");
+        //    零参数直接推常量 "{}" —— 不经 STR_CAT(与 HTTP GET 路径同构,
+        //    规避疑似 STR_CAT 栈协议问题)。
+        if arg_exprs.is_empty() {
+            self.emit_str_const_push("{}");
+        } else {
+            self.emit_str_const_push("{");
+            for (i, expr) in arg_exprs.iter().enumerate() {
+                if i > 0 {
+                    self.emit_str_const_push(",");
+                    self.emit(OpCode::STR_CAT);
+                }
+                let pname = api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i));
+                self.emit_str_const_push(&format!("\"{}\":", pname));
+                self.emit(OpCode::STR_CAT);
+                self.compile_expr(expr)?;
+                self.emit_call_nat_by_name("auto.json.from_value", 1)?;
                 self.emit(OpCode::STR_CAT);
             }
-            let pname = api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i));
-            self.emit_str_const_push(&format!("\"{}\":", pname));
-            self.emit(OpCode::STR_CAT);
-            self.compile_expr(expr)?;
-            self.emit_call_nat_by_name("auto.json.from_value", 1)?;
+            self.emit_str_const_push("}");
             self.emit(OpCode::STR_CAT);
         }
-        self.emit_str_const_push("}");
-        self.emit(OpCode::STR_CAT);
 
         // 3. 直调宿主桥:name, args_json → 响应 JSON 串。
         self.emit_call_nat_by_name("auto.host.call", 2)?;
