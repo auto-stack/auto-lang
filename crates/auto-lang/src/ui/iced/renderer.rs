@@ -2286,10 +2286,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                             if let Some(c) = is.text_color { tw = tw.color(c); }
                         }
-                        iced::widget::row!(icon_el, tw)
-                            .spacing(6)
-                            .align_y(iced::alignment::Vertical::Center)
-                            .into()
+                        // Icon-only (no text part): return the bare svg - the row with its
+                        // spacing(6) adds trailing space after the icon, skewing it ~3px
+                        // left of center inside square buttons (Plan 414 R14).
+                        if text_label.is_empty() {
+                            icon_el.into()
+                        } else {
+                            iced::widget::row!(icon_el, tw)
+                                .spacing(6)
+                                .align_y(iced::alignment::Vertical::Center)
+                                .into()
+                        }
                     } else {
                         // Unknown icon: fall back to plain text label
                         text(text_label.to_string()).into()
