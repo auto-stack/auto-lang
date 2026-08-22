@@ -64,9 +64,9 @@ real `trait` / `impl` / `Box<dyn>`, generics, ownership, `Result` + `?`. Link
 `a2r-std`, `cargo build --release`, deploy.
 
 **Bridge** — the transpiler is on the hook for agreement. AutoVM output ==
-transpiled-Rust output. Not a claim: [verified by 141 three-way parity
+transpiled-Rust output. Not a claim: [verified by 260 three-way parity
 tests](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)
-across seven real libraries (plus consumer-mode crates — see dashboard).
+across ten real libraries (plus consumer-mode crates — see dashboard).
 
 ## Why this beats "Python now, rewrite in Rust later"
 
@@ -89,11 +89,14 @@ three-way parity harness: AutoVM vs a2r-transpiled Rust vs native Rust, on
 real libraries. This is the part that distinguishes a credible tool from
 marketing copy.
 
-**L1 — verified three-way today (141 test cases):**
+**L1 — verified three-way today (260 test cases):**
 
 | Library | Cases | What it exercises |
 |---------|-------|-------------------|
+| serde_json | 56/56 | full JSON parser: recursive descent, escapes, error paths |
 | regex | 45/45 | pattern matching, backtracking |
+| url | 30/30 | URL parse/normalize, scheme validation |
+| base64 | 33/33 | encode/decode, padding and alphabet edge cases |
 | cli_app | 32/32 | pure std text processing (wc-style) |
 | string_utils | 22/22 | string ops across module boundaries |
 | trait_advanced | 18/18 | specs/traits: default methods, associated types, bounded generics |
@@ -112,9 +115,6 @@ functions, the http_client_sync harness). What remains open is documented in
 [known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/known-divergences.md), not hidden:
 
 - **sha2 / rusqlite / reqwest parity libraries** — planned, not yet verified.
-- **serde_json / url / base64 three-way runs** — recently regressed in a2r
-  string-parameter borrowing (compile-stage); they passed at delivery and are
-  being restored — tracked in known-divergences.
 - **Generator lazy chains** (range → map → filter over `~Iter`) — no Auto
   syntax yet; language roadmap item.
 - **tokio spawn/join + mpsc channels** — the verified subset covers serial
