@@ -591,7 +591,7 @@ pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     };
     // Push the result string into the pool and tag-push its index.
     let idx = vm.add_string(out.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -609,7 +609,7 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     match crate::ui::code_editor::code_editor_text(&key) {
         Some(text) => {
             let idx = vm.add_string(text.into_bytes());
-            crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+            vm.rc_push_str_idx(task, idx as usize);
             Ok(())
         }
         None => Err(VMError::RuntimeError(format!(
@@ -748,7 +748,7 @@ pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_clipboard_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let text = crate::ui::clipboard::clipboard_get().unwrap_or_default();
     let idx = vm.add_string(text.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -783,7 +783,7 @@ pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let idx = vm.add_string(path.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -800,7 +800,7 @@ pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let idx = vm.add_string(path.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -811,7 +811,7 @@ pub fn shim_file_basename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let path = pop_string_arg(task, vm);
     let base = path.rsplit(['/', '\\']).next().unwrap_or("").to_string();
     let idx = vm.add_string(base.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -940,7 +940,7 @@ pub fn shim_console_log(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_console_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let text = crate::vm::ui_console::ui_console_lines(crate::vm::ui_console::DEFAULT_LINES);
     let idx = vm.add_string(text.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -1659,7 +1659,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
             if let Some(s) = list.pop() {
                 let idx = vm.add_string(s.into_bytes());
-                task.ram.push_str_idx(idx as u32);
+                vm.rc_push_str_idx(task, idx as usize);
             } else {
                 task.ram.push_i32(0);
             }
@@ -1809,7 +1809,7 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
 fn push_tagged_value_rc(vm: &AutoVM, task: &mut AutoTask, val: i32) {
     if val < 0 {
         let str_idx = (-(val) - 1) as u32;
-        task.ram.push_nv(auto_val::encode_string(str_idx));
+        vm.rc_push_str_idx(task, str_idx as usize);
     } else {
         vm.rc_push_id(task, val as u64);
     }
@@ -1836,7 +1836,7 @@ fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
         }
         auto_val::Value::Str(s) => {
             let str_idx = vm.add_string(s.as_bytes().to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
         _ => task.ram.push_i32(0), // Nil 等兜底为 0
     }
@@ -1905,7 +1905,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
                 if let Some(s) = list.get(index) {
                     let idx = vm.add_string(s.clone().into_bytes());
-                    task.ram.push_str_idx(idx as u32);
+                    vm.rc_push_str_idx(task, idx as usize);
                 } else {
                     task.ram.push_i32(0);
                 }
@@ -2532,14 +2532,14 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }).collect();
             let joined = parts.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
         // Try ListData<String>
         if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
             let joined = list.elems.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
         // Try ListData<i32> as fallback
@@ -2547,14 +2547,14 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let parts: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
             let joined = parts.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
     }
 
     // Fallback: return empty string
     let str_idx = vm.add_string(Vec::new());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -3153,7 +3153,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 match chunk_result {
                     Some(chunk) => {
                         let idx = vm.add_string(chunk.into_bytes());
-                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                        vm.rc_push_str_idx(task, idx as usize);
                     }
                     None => {}
                 }
@@ -3195,7 +3195,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 match event {
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
                         let idx = vm.add_string(s.into_bytes());
-                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                        vm.rc_push_str_idx(task, idx as usize);
                     }
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
                     | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_)) => {
@@ -3702,7 +3702,7 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
@@ -3724,7 +3724,7 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     // Use contains_key to distinguish "missing" from "empty value".
     {
         let str_idx = vm.add_string(Vec::new()); // empty string
-        task.ram.push_str_idx(str_idx as u32);
+        vm.rc_push_str_idx(task, str_idx as usize);
     }
     Ok(())
 }
@@ -3813,7 +3813,7 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                     }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
                         return Ok(());
                     }
                     // Plan 419: VmRef 值离开容器且不回栈 —— stake 死亡。
@@ -3944,7 +3944,7 @@ pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                     auto_val::Value::Bool(b) => { task.ram.push_i32(if b { 1 } else { 0 }); return Ok(()); }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
                         return Ok(());
                     }
                     _ => {}
@@ -4317,7 +4317,7 @@ pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     vm.strings.write().unwrap().push(result_str.into_bytes());
 
     // Return as tagged string index
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -5046,7 +5046,7 @@ pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -5068,7 +5068,7 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let new_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    task.ram.push_str_idx(new_idx as u32);
+    vm.rc_push_str_idx(task, new_idx as usize);
     Ok(())
 }
 
@@ -5122,7 +5122,7 @@ pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let bytes = hex_str.into_bytes();
     let str_idx = vm.add_string(bytes);
 
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -5813,7 +5813,7 @@ fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
 /// Helper: push a string onto the VM stack via string pool
 fn push_vm_string(task: &mut AutoTask, vm: &AutoVM, s: &str) {
     let idx = vm.add_string(s.as_bytes().to_vec()) as u32;
-    task.ram.push_str_idx(idx);
+    vm.rc_push_str_idx(task, idx as usize);
 }
 
 /// Regex.new(pattern) → opaque handle
@@ -7115,7 +7115,7 @@ pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let s = if is_true { "true" } else { "false" };
     let str_idx = vm.add_string(s.as_bytes().to_vec());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7125,7 +7125,7 @@ pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let val = task.ram.pop_f64();
     let s = format!("{}", val);
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7383,7 +7383,7 @@ pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json = serde_json::to_string(&rows)
         .map_err(|e| VMError::RuntimeError(format!("csv_parse: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7412,7 +7412,7 @@ pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let json = serde_json::to_string(&rows)
         .map_err(|e| VMError::RuntimeError(format!("csv_parse_delim: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7433,7 +7433,7 @@ pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         result.push_str(&row.join(","));
     }
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7460,7 +7460,7 @@ pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         result.push_str(&row.join(&delim));
     }
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7478,7 +7478,7 @@ pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Simple MD5 implementation using digest
     let digest = md5_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7493,7 +7493,7 @@ pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     };
     let digest = sha1_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7508,7 +7508,7 @@ pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let digest = sha256_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7523,7 +7523,7 @@ pub fn shim_hash_sha512(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let digest = sha512_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7700,7 +7700,7 @@ pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     }
 
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7768,7 +7768,7 @@ pub fn shim_fs_temp_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let temp = std::env::temp_dir();
     let s = temp.to_string_lossy().to_string();
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7782,7 +7782,7 @@ pub fn shim_fs_temp_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     std::fs::File::create(&path).map_err(|e| VMError::RuntimeError(format!("temp_file failed: {}", e)))?;
     let s = path.to_string_lossy().to_string();
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7812,7 +7812,7 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let json = serde_json::to_string(&entries)
         .map_err(|e| VMError::RuntimeError(format!("read_dir json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7893,7 +7893,7 @@ pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     match crate::vm::host_bridge::call_host(&name, &args_json) {
         Ok(resp) => {
             let idx = vm.add_string(resp.into_bytes());
-            task.ram.push_str_idx(idx as u32);
+            vm.rc_push_str_idx(task, idx as usize);
             Ok(())
         }
         Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name, e))),
@@ -7995,7 +7995,7 @@ pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or(path);
     let str_idx = vm.add_string(canonical.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8009,7 +8009,7 @@ pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|e| e.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(ext.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8023,7 +8023,7 @@ pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(stem.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8039,7 +8039,7 @@ pub fn shim_fs_walk_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let json = serde_json::to_string(&files)
         .map_err(|e| VMError::RuntimeError(format!("walk_files json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8074,7 +8074,7 @@ pub fn shim_fs_walk(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json = serde_json::to_string(&paths)
         .map_err(|e| VMError::RuntimeError(format!("walk json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8111,7 +8111,7 @@ pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let result = serde_json::to_string(&json)
         .map_err(|e| VMError::RuntimeError(format!("metadata json: {}", e)))?;
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8154,7 +8154,7 @@ pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(filename.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8168,7 +8168,7 @@ pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(parent.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8181,7 +8181,7 @@ pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let a = vm.get_string(a_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
     let joined = std::path::Path::new(&a).join(&b).to_string_lossy().to_string();
     let str_idx = vm.add_string(joined.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8196,7 +8196,7 @@ pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let data = vm.get_string(data_idx).unwrap_or_default();
     let digest = hmac_sha256_hash(&key, &data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8209,7 +8209,7 @@ pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(format!("file_md5: {}: {}", path, e)))?;
     let digest = md5_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8222,7 +8222,7 @@ pub fn shim_hash_file_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(format!("file_sha256: {}: {}", path, e)))?;
     let digest = sha256_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -8344,7 +8344,7 @@ pub fn shim_f64_debug(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_f64();
     let s = format!("{:?}", val);
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 

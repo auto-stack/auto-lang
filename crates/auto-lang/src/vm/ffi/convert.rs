@@ -184,7 +184,7 @@ impl VMConvertible for String {
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
         let len = vm.add_string(self.as_bytes().to_vec());
-        task.ram.push_str_idx(len as u32);
+        vm.rc_push_str_idx(task, len as usize);
         Ok(())
     }
 }

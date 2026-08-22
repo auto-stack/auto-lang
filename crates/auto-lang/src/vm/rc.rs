@@ -65,6 +65,52 @@ pub fn heap_ref_id(nv: auto_val::NanoValue) -> Option<u64> {
     }
 }
 
+// ============================================================================
+// Plan 419 Phase 2: 字符串池引用计数。
+//
+// - 仅 TAG_STRING nanbox 值参与池计数;ListData<i32> 裸负数等旧编码不参与
+//   (负数与字符串 tag 在裸 i32 域不可区分 —— 计数会误伤真负数)。
+// - flash 常量(load_strings 载入)标记 pinned:永活永复用、免计费 ——
+//   字节码立即数只引用 pinned 条目,免重映射的关键不变量(plan §3.1)。
+// - RC 归零的运行期条目 → 墓碑(内容清空释放字节)+ slot 进 freelist;
+//   add_string 新内容优先复用 freelist。释放时同步删除 dedup 键
+//   (freelist 复用不走 dedup,避免"一键两槽"竞态腐化)。
+// ============================================================================
+
+/// Plan 419 Phase 2: 池条目的并行状态(rc / pinned / freelist)。
+/// 索引永不移动(不做物理压缩),Vec 只增不缩。
+pub struct PoolState {
+    pub rc: Vec<AtomicU32>,
+    pub pinned: Vec<bool>,
+    /// 显式墓碑标记(与 rc==0 区分:条目"创建未推栈"时 rc 也是 0)。
+    pub tombstone: Vec<bool>,
+    pub freelist: Vec<usize>,
+}
+
+impl PoolState {
+    pub fn new() -> Self {
+        Self { rc: Vec::new(), pinned: Vec::new(), tombstone: Vec::new(), freelist: Vec::new() }
+    }
+
+    pub fn ensure_len(&mut self, n: usize) {
+        while self.rc.len() < n {
+            self.rc.push(AtomicU32::new(0));
+            self.pinned.push(false);
+            self.tombstone.push(false);
+        }
+    }
+}
+
+/// Plan 419 Phase 2: TAG_STRING 的池索引(其他编码 None)。
+#[inline(always)]
+pub fn pool_idx_nv(nv: auto_val::NanoValue) -> Option<u32> {
+    if auto_val::is_string(nv) {
+        Some(auto_val::decode_string(nv))
+    } else {
+        None
+    }
+}
+
 /// 测试断言钩子(plan §1 咽喉函数配套)。确定性计数,禁用 RSS 断言。
 pub struct RcStats {
     /// heap_objects 表中存活的对象数。
@@ -84,12 +130,22 @@ impl AutoVM {
     // ====================================================================
 
     /// 引用值入栈(+1)。非引用值直接入栈,零开销路径只有一次 tag 判定。
+    /// Phase 2 起 TAG_STRING 同走池计数(pinned 条目免计费)。
     #[inline(always)]
     pub fn rc_push(&self, task: &mut AutoTask, nv: auto_val::NanoValue) {
         if let Some(id) = heap_ref_id(nv) {
             self.rc_retain_id(id);
+        } else if let Some(idx) = pool_idx_nv(nv) {
+            self.pool_retain(idx as usize);
         }
         task.ram.push_nv(nv);
+    }
+
+    /// Plan 419 Phase 2: 池索引入栈(+1;pinned 免计费)。
+    #[inline(always)]
+    pub fn rc_push_str_idx(&self, task: &mut AutoTask, idx: usize) {
+        self.pool_retain(idx);
+        task.ram.push_str_idx(idx as u32);
     }
 
     /// 裸堆 id 入栈(+1)——旧式 push_i32(id) 推法的咽喉替代。
@@ -116,11 +172,13 @@ impl AutoVM {
         }
     }
 
-    /// NanoValue 形态的 retain。
+    /// NanoValue 形态的 retain(堆 + 池)。
     #[inline(always)]
     pub fn rc_retain(&self, nv: auto_val::NanoValue) {
         if let Some(id) = heap_ref_id(nv) {
             self.rc_retain_id(id);
+        } else if let Some(idx) = pool_idx_nv(nv) {
+            self.pool_retain(idx as usize);
         }
     }
 
@@ -148,11 +206,13 @@ impl AutoVM {
         }
     }
 
-    /// NanoValue 形态的 release。
+    /// NanoValue 形态的 release(堆 + 池)。
     #[inline(always)]
     pub fn rc_release(&self, nv: auto_val::NanoValue) {
         if let Some(id) = heap_ref_id(nv) {
             self.rc_release_id(id);
+        } else if let Some(idx) = pool_idx_nv(nv) {
+            self.pool_release(idx as usize);
         }
     }
 
@@ -166,7 +226,7 @@ impl AutoVM {
         let to = to.min(ram.raw_nv.len());
         for i in from..to {
             let nv = ram.raw_nv[i];
-            if is_heap_ref_nv(nv) {
+            if is_heap_ref_nv(nv) || auto_val::is_string(nv) {
                 self.rc_release(nv);
                 ram.raw_nv[i] = 0;
             }
@@ -182,7 +242,7 @@ impl AutoVM {
         task.ram.sp = 0;
         for i in 0..task.state_vars.len() {
             let nv = task.state_vars[i];
-            if is_heap_ref_nv(nv) {
+            if is_heap_ref_nv(nv) || auto_val::is_string(nv) {
                 self.rc_release(nv);
                 task.state_vars[i] = 0;
             }
@@ -201,7 +261,7 @@ impl AutoVM {
     pub fn rc_stats(&self) -> RcStats {
         RcStats {
             live_heap: self.heap_objects.len(),
-            live_pool: self.strings.read().map(|s| s.len()).unwrap_or(0),
+            live_pool: self.pool_live_count(),
             created_total: self.rc_created_total.load(Ordering::Relaxed),
             freed_total: self.rc_freed_total.load(Ordering::Relaxed),
             rc_traffic: self.rc_traffic.load(Ordering::Relaxed),
@@ -232,6 +292,80 @@ impl AutoVM {
         };
         for child in children {
             self.rc_release_id(child);
+        }
+    }
+
+    // ====================================================================
+    // Plan 419 Phase 2: 池计数咽喉
+    // ====================================================================
+
+    /// 池条目 +1(pinned 免计费)。越界索引(旧编码负数误入)跳过。
+    pub fn pool_retain(&self, idx: usize) {
+        let st = self.pool_state.read().unwrap();
+        if idx >= st.rc.len() || st.pinned[idx] {
+            return;
+        }
+        let cur = st.rc[idx].fetch_add(1, Ordering::Relaxed);
+        let _ = cur;
+        self.rc_traffic.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 池条目 -1;归零 → 墓碑(清内容)+ freelist + 删 dedup 键。
+    pub fn pool_release(&self, idx: usize) {
+        let zeroed = {
+            let st = self.pool_state.read().unwrap();
+            if idx >= st.rc.len() || st.pinned[idx] {
+                return;
+            }
+            st.rc[idx].fetch_sub(1, Ordering::AcqRel) == 1
+        };
+        self.rc_traffic.fetch_add(1, Ordering::Relaxed);
+        if zeroed {
+            self.pool_free_idx(idx);
+        }
+    }
+
+    /// 归零真释放:置墓碑、清内容、进 freelist、删 dedup 键(一键一槽不变量)。
+    fn pool_free_idx(&self, idx: usize) {
+        let key = {
+            let mut strings = self.strings.write().unwrap();
+            let key = strings.get(idx).cloned();
+            if let Some(k) = &key {
+                strings[idx] = Vec::new();
+            }
+            key
+        };
+        if let Some(k) = key {
+            self.string_dedup.lock().unwrap().remove(&k);
+        }
+        {
+            let mut pool = self.pool_state.write().unwrap();
+            pool.tombstone[idx] = true;
+            pool.freelist.push(idx);
+        }
+        self.rc_freed_total.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 池墓碑查询(canary 用)。
+    pub fn pool_is_tombstone(&self, idx: usize) -> bool {
+        let st = self.pool_state.read().unwrap();
+        idx < st.tombstone.len() && st.tombstone[idx]
+    }
+
+    /// live 池条目数(总长 - freelist)。
+    pub fn pool_live_count(&self) -> usize {
+        let strings_len = self.strings.read().map(|s| s.len()).unwrap_or(0);
+        let free = self.pool_state.read().unwrap().freelist.len();
+        strings_len.saturating_sub(free)
+    }
+
+    /// 池条目当前计数(pinned 视作永久;无记录 = 0)。
+    pub fn pool_count(&self, idx: usize) -> u32 {
+        let st = self.pool_state.read().unwrap();
+        if idx < st.rc.len() {
+            if st.pinned[idx] { u32::MAX } else { st.rc[idx].load(Ordering::Acquire) }
+        } else {
+            0
         }
     }
 

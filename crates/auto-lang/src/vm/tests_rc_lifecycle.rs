@@ -371,3 +371,111 @@ fn rc_balance_unit() {
     assert!(!vm2.contains_heap_object(parent_id), "parent freed");
     assert!(!vm2.contains_heap_object(child), "child cascade-freed with parent");
 }
+
+// ============================================================================
+// Plan 419 Phase 2 里程碑(§3.2):字符串池 RC + 空洞复用 + pinned
+// ============================================================================
+
+#[test]
+fn str_pool_rc_balance_unit() {
+    let mut vm = make_vm();
+    vm.load_strings(vec![b"flash-const".to_vec()]); // pinned
+    let pinned_idx = 0usize;
+
+    // pinned:计数免计费,重复 release 无效。
+    vm.pool_release(pinned_idx);
+    vm.pool_release(pinned_idx);
+    assert_eq!(vm.pool_count(pinned_idx), u32::MAX);
+    assert!(!vm.pool_is_tombstone(pinned_idx));
+
+    // 运行期条目:retain/release 配平 → 归零释放 → 墓碑 + freelist。
+    let idx = vm.add_string(b"runtime-str".to_vec());
+    assert!(!vm.pool_is_tombstone(idx));
+    vm.pool_retain(idx);
+    assert_eq!(vm.pool_count(idx), 1);
+    vm.pool_retain(idx);
+    assert_eq!(vm.pool_count(idx), 2);
+    vm.pool_release(idx);
+    assert!(!vm.pool_is_tombstone(idx), "still one owner");
+    vm.pool_release(idx);
+    assert!(vm.pool_is_tombstone(idx), "freed at zero");
+    // 墓碑读 → canary(debug)。AutoVM 非 UnwindSafe,用 AssertUnwindSafe。
+    #[cfg(debug_assertions)]
+    {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            vm.get_string(idx as u32)
+        }));
+        assert!(result.is_err(), "tombstone read must panic in debug");
+    }
+
+    // 复用:同内容 re-add 走 freelist 槽位(池总长不增)。
+    let len_before = vm.strings.read().unwrap().len();
+    let idx2 = vm.add_string(b"runtime-str".to_vec());
+    assert!(!vm.pool_is_tombstone(idx2), "slot revived");
+    assert!(idx2 == idx, "freelist reuse prefers the freed slot");
+    assert_eq!(vm.strings.read().unwrap().len(), len_before, "pool size bounded");
+
+    // dedup:活条目内容命中复用索引。
+    let idx3 = vm.add_string(b"runtime-str".to_vec());
+    assert_eq!(idx2, idx3);
+}
+
+#[tokio::test]
+async fn str_cat_temp_freed() {
+    // s = s + "x" 循环:中间串死亡,池 live 回基线(freelist 复用生效)。
+    let code = r#"
+fn main() int {
+    var s str = ""
+    for i in 0..2000 {
+        s = s + "x"
+    }
+    print(s.len())
+    0
+}
+"#;
+    let (vm, out) = run_code_vm(code).await;
+    assert_eq!(out.trim(), "2000", "concat result correct");
+    let live = vm.pool_live_count();
+    assert!(live < 64, "intermediate concat strings must be freed: live_pool={}", live);
+}
+
+#[tokio::test]
+async fn str_pinned_constants_survive() {
+    // LOAD_STR 常量条目 pinned:反复执行 + 池 churn 后仍可读。
+    let code = r#"
+fn main() int {
+    var total int = 0
+    for i in 0..100 {
+        let label str = "pinned-constant-label"
+        total = total + label.len() - 21
+    }
+    print(total)
+    0
+}
+"#;
+    let (_vm, out) = run_code_vm(code).await;
+    assert_eq!(out.trim(), "0", "pinned constant readable through churn");
+}
+
+#[tokio::test]
+async fn str_field_cycle_bounded() {
+    // 对象 str 字段随对象生命周期:churn 下池有界(字段持拷贝,SET_FIELD
+    // 时池 stake 即死 —— 语义等价于"随对象回收")。
+    let code = r#"
+type Note { id int, title str }
+
+fn main() int {
+    var keep int = 0
+    for i in 0..1000 {
+        var n Note = Note { id: i, title: "note-title" }
+        keep = n.id
+    }
+    print(keep)
+    0
+}
+"#;
+    let (vm, out) = run_code_vm(code).await;
+    assert_eq!(out.trim(), "999");
+    let live = vm.pool_live_count();
+    assert!(live < 128, "field strings must not accumulate: live_pool={}", live);
+}

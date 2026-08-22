@@ -931,7 +931,7 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     } else { String::new() };
 
     let idx = vm.add_string(line.into_bytes());
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -990,7 +990,7 @@ pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         } else { String::new() }
     } else { String::new() };
     let idx = vm.add_string(data.into_bytes());
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -1080,7 +1080,7 @@ pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         } else { String::new() }
     } else { String::new() };
     let idx = vm.add_string(path_str.into_bytes());
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -1180,7 +1180,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                 strings.push(content.into_bytes());
                 i
             };
-            task.ram.push_nv(auto_val::encode_string(idx as u32));
+            vm.rc_push_str_idx(task, idx as usize);
             return Ok(());
         }
         if let Some(Err(e)) = result {
@@ -1191,7 +1191,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                 strings.push(e.into_bytes());
                 i
             };
-            task.ram.push_nv(auto_val::encode_string(idx as u32));
+            vm.rc_push_str_idx(task, idx as usize);
             return Ok(());
         }
         // Still pending — yield again.
@@ -2093,7 +2093,7 @@ pub(crate) fn json_to_vm_value(
             // 2026-08-22(池去重):宿主桥/JSON 每次调用都重解析全量历史
             // (438+ 条),直推令池随每条命令膨胀;去重后重复内容零增长。
             let str_idx = vm.add_string(s.as_bytes().to_vec());
-            crate::vm::engine::push_str_tag(&mut task.ram, str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
         serde_json::Value::Array(arr) => {
             use crate::vm::types::ListData;
@@ -2316,7 +2316,7 @@ pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         strings.push(bytes);
         idx as u32
     };
-    crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -3733,7 +3733,7 @@ pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         strings.push(session_id.into_bytes());
         i
     };
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -3754,7 +3754,7 @@ pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         strings.push(data.into_bytes());
         i
     };
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -3866,7 +3866,7 @@ pub fn shim_openapi_generate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         strings.push(json_str.into_bytes());
         i
     };
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -3936,7 +3936,7 @@ pub fn shim_template_render(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         strings.push(rendered.into_bytes());
         i
     };
-    task.ram.push_nv(auto_val::encode_string(idx as u32));
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -5717,7 +5717,7 @@ fn push_string_result(task: &mut AutoTask, vm: &AutoVM, s: String) -> Result<(),
         strings.push(bytes);
         idx as u32
     };
-    crate::vm::engine::push_str_tag(&mut task.ram, str_idx);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7197,7 +7197,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                         vm.rc_push(task, auto_val::encode_object(val as u32));
                     } else if let Some(bytes) = vm.get_string(val as u32) {
                         let new_idx = vm.add_string(bytes.to_vec());
-                        task.ram.push_str_idx(new_idx as u32);
+                        vm.rc_push_str_idx(task, new_idx as usize);
                     } else {
                         task.ram.push_nv(auto_val::encode_i32(val));
                     }
@@ -7272,7 +7272,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 _ => ansi_term::Colour::Red,
             };
             let str_idx = vm.add_string(color.paint(s).to_string().into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- std::collections ----
@@ -7324,7 +7324,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let s: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("urlencoding.encode: {}", e)))?;
             let str_idx = vm.add_string(urlencoding::encode(&s).as_bytes().to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- log macros (no-op in VM) ----
@@ -7340,7 +7340,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let _s: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("toml.from_str: {}", e)))?;
             let str_idx = vm.add_string(b"{}".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- Path ----
@@ -7361,7 +7361,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         // ---- String ----
         ("String", "new") => {
             let str_idx = vm.add_string(b"".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- File ----
@@ -7438,7 +7438,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             // For MVP, return the value as-is (no actual serialization)
             let s = _value;
             let str_idx = vm.add_string(s.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- chrono DateTime methods ----
@@ -7483,7 +7483,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let bytes_handle = pop_rust_obj(task, vm, "percent_encode")?;
             let Some(obj) = vm.get_heap_object(bytes_handle) else {
                 let str_idx = vm.add_string(Vec::new());
-                task.ram.push_str_idx(str_idx as u32);
+                vm.rc_push_str_idx(task, str_idx as usize);
                 return Ok(());
             };
             let guard = obj.read().unwrap();
@@ -7507,7 +7507,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 .collect();
 
             let str_idx = vm.add_string(encoded.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
 
         // ---- Vec<u8> methods (for as_bytes results) ----
@@ -7623,7 +7623,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                         match String::from_utf8(bytes.clone()) {
                             Ok(s) => {
                                 let str_idx = vm.add_string(s.into_bytes());
-                                task.ram.push_str_idx(str_idx as u32);
+                                vm.rc_push_str_idx(task, str_idx as usize);
                                 return Ok(());
                             }
                             Err(_) => {
@@ -7798,7 +7798,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let json = serde_json::to_string(&paths)
                 .map_err(|e| VMError::RuntimeError(format!("WalkDir.new json: {}", e)))?;
             let str_idx = vm.add_string(json.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
         ("WalkDir", "into_iter") => {
             let handle = task.ram.pop_i32() as u64;
@@ -7815,7 +7815,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         ("walkdir::Error", "to_string") => {
             let _handle = task.ram.pop_i32() as u64;
             let str_idx = vm.add_string(b"io error".to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
         // TarGzip builder methods — Plan 267 Phase B
         ("Builder", "append_path") => {

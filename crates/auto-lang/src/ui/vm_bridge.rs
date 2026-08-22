@@ -998,7 +998,7 @@ impl VmBridge {
             if let Value::Str(s) = a {
                 // Plan 419/池去重一致性:走 add_string(原为裸 push,池漂移源)。
                 let idx = self.vm.add_string(s.as_bytes().to_vec());
-                task.ram.push_str_idx(idx as u32);
+                self.vm.rc_push_str_idx(&mut task, idx as usize);
             } else {
                 push_value(&mut task.ram, a);
             }
@@ -1038,7 +1038,7 @@ impl VmBridge {
             if let Value::Str(s) = a {
                 // Plan 419/池去重一致性:走 add_string(原为裸 push,池漂移源)。
                 let idx = self.vm.add_string(s.as_bytes().to_vec());
-                task.ram.push_str_idx(idx as u32);
+                self.vm.rc_push_str_idx(&mut task, idx as usize);
             } else {
                 push_value(&mut task.ram, a);
             }

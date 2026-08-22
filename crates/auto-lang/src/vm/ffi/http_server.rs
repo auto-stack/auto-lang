@@ -2419,7 +2419,7 @@ fn build_handler_args(
                         strings.push(param_val.as_bytes().to_vec());
                         i
                     };
-                    task.ram.push_nv(auto_val::encode_string(idx as u32));
+                    vm.rc_push_str_idx(&mut task, idx as usize);
                 }
                 n_args += 1;
             }
@@ -2436,7 +2436,7 @@ fn build_handler_args(
                     strings.push(json_str.into_bytes());
                     i
                 };
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(&mut task, idx as usize);
                 n_args += 1;
             }
 
@@ -2450,7 +2450,7 @@ fn build_handler_args(
                     strings.push(mp.as_bytes().to_vec());
                     i
                 };
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(&mut task, idx as usize);
                 n_args += 1;
             } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
@@ -2470,7 +2470,7 @@ fn build_handler_args(
                     strings.push(body_to_push.into_bytes());
                     i
                 };
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(&mut task, idx as usize);
                 n_args += 1;
             }
 
@@ -2512,7 +2512,7 @@ fn build_handler_args(
                     strings.push(meta_json.into_bytes());
                     i
                 };
-                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                vm.rc_push_str_idx(&mut task, idx as usize);
                 n_args += 1;
             }
         }
