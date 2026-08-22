@@ -16,7 +16,7 @@ widget CodeEditorPage {
     view {
         col {
             h1 "CodeEditor"
-            text "Native code editor with syntax highlighting (syntect/two-face), line numbers, current-line highlight, soft wrap, undo/redo, vi mode and IME input. Cross-platform (Windows/Linux) on the iced backend; the vue backend ships the CodeMirror shell (search/vi/tab-width props flow through; oncursor/oncontextmenu events remain a known gap)."
+            text "Native code editor with syntax highlighting (syntect/two-face), line numbers, current-line highlight, soft wrap, undo/redo, vi mode and IME input. Cross-platform (Windows/Linux) on the iced backend; the vue backend ships the CodeMirror shell — search/tab-width/font-size props and oncursor/oncontextmenu events flow through (Plan 421), vi mode is iced-only (vue ignores :vi)."
 
             h2 "Editable"
             preview-card (id: "code-editor-basic") {
@@ -100,7 +100,7 @@ widget CodeEditorPage {
                         td "boolean"
                         td "false"
                         td "true, false"
-                        td "Vi mode (ViEditor passthrough off)"
+                        td "Vi mode (iced only; the vue CodeMirror shell ignores :vi)"
                     }
                     tr {
                         td "search"

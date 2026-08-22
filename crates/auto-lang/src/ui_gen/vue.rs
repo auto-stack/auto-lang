@@ -961,6 +961,13 @@ pub struct VueGenerator {
     /// value and the binding must pass `$event`, not the loop var.
     msg_payload_arities: HashMap<String, usize>,
 
+    /// Plan 421: current widget's on-block handler params (verbatim pattern →
+    /// param names, e.g. ".CursorMoved(line, col)" → ["line", "col"]).
+    /// Populated in generate_sfc before template generation so the shadcn
+    /// event loop can forward the code_editor scaffold's cursor/contextmenu
+    /// payload to handlers that declare parameters.
+    handler_params: HashMap<String, Vec<String>>,
+
     /// Whether to generate handleChildDelete function (auto-wired when sub-widget emits Delete)
     needs_child_delete_handler: bool,
 
@@ -1151,6 +1158,7 @@ impl VueGenerator {
             widget_key_counter: 0,
             loop_param_handlers: HashMap::new(),
             msg_payload_arities: HashMap::new(),
+            handler_params: HashMap::new(),
             needs_child_delete_handler: false,
             explicit_api_imports: false,
             global_listeners: Vec::new(),
@@ -1340,6 +1348,7 @@ impl VueGenerator {
         self.current_loop_var_is_index = false;
         self.widget_key_counter = 0;
         self.loop_param_handlers.clear();
+        self.handler_params.clear();
         self.needs_child_delete_handler = false;
         // NOTE: explicit_api_imports is NOT reset — it's a config-level setting from with_project_api_functions()
         self.shadcn_components_used.clear();
@@ -1654,6 +1663,12 @@ impl VueGenerator {
                 self.msg_payload_arities.insert(handler_name, variant.payload.len());
             }
         }
+
+        // Plan 421: index the on-block handler params (pattern → param names)
+        // before template generation so the event loop can forward the
+        // code_editor scaffold's cursor/contextmenu payloads to handlers that
+        // declare parameters.
+        self.handler_params = widget.handler_params.clone();
 
         // Detect dark mode: check widget state vars, view tree, or handler names
         self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark" || s.name == "dark_mode");
@@ -10731,12 +10746,22 @@ impl VueGenerator {
                 continue;
             }
             let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            // Plan 421: code_editor oncursor/oncontextmenu — forward the
+            // scaffold shell's emit payload ({line, column} / {x, y}) when
+            // the on-block handler declares params and the binding passes none.
+            let payload_forwarded = match self.code_editor_event_payload_call(tag, event, aura_event) {
+                Some(call) => {
+                    handler_fn = call;
+                    true
+                }
+                None => false,
+            };
             // Track used handler (without params for matching)
             let handler_name = self.handler_to_function_call(&aura_event.handler);
             // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
             // Only append if handler doesn't already have params from aura_event
             if let Some(ref loop_var) = self.current_loop_var {
-                if aura_event.params.is_empty() {
+                if aura_event.params.is_empty() && !payload_forwarded {
                     handler_fn = format!("{}({})", handler_fn, loop_var);
                     self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                 }
@@ -11245,8 +11270,11 @@ impl VueGenerator {
             "onmouseout" => "mouseout",
             // Wheel / context menu / scroll
             "onwheel" => "wheel",
-            "oncontextmenu" => "contextmenu",
+            "oncontextmenu" | "on_context_menu" => "contextmenu",
             "onscroll" => "scroll",
+            // Plan 421: code_editor shell emits `cursor` with a
+            // `{ line, column }` payload (iced-side on_cursor equivalent).
+            "oncursor" | "on_cursor" => "cursor",
             // Pointer Events
             "onpointerdown" => "pointerdown",
             "onpointerup" => "pointerup",
@@ -11858,6 +11886,55 @@ impl VueGenerator {
                 .collect();
             format!("{}({})", func_name, safe_params.join(", "))
         }
+    }
+
+    /// Plan 421: build the handler call for a code_editor `oncursor` /
+    /// `oncontextmenu` binding, forwarding the scaffold shell's emit payload.
+    ///
+    /// The scaffolded CodeEditor.vue emits `cursor` with `{ line, column }`
+    /// (1-based — the iced-side getters are 0-based, handlers ported from
+    /// iced must not `+1` again) and `contextmenu` with `{ x, y }`. When the
+    /// on-block handler declares parameters and the view binding passes none,
+    /// the payload is threaded through (mirrors the sub-widget `$event`
+    /// forwarding pattern): one declared param receives the whole payload
+    /// object, two or more receive the destructured position args.
+    ///
+    /// Returns None when the binding is not a code_editor position event, the
+    /// DSL already passes explicit args (they win), or the handler declares
+    /// no params (nothing to forward — plain `@cursor="Handler"`).
+    fn code_editor_event_payload_call(
+        &self,
+        tag: &str,
+        event: &str,
+        aura_event: &AuraEvent,
+    ) -> Option<String> {
+        if !matches!(tag, "code_editor" | "codeEditor") {
+            return None;
+        }
+        let (base_key, _mods) = Self::split_event_key(event);
+        let dom = Self::base_event_to_dom(base_key);
+        if !matches!(dom.as_str(), "cursor" | "contextmenu") {
+            return None;
+        }
+        // Explicit DSL args at the binding site win over the emit payload.
+        if !aura_event.params.is_empty() {
+            return None;
+        }
+        // Inside a for-loop the loop-var forwarding below stays authoritative.
+        if self.current_loop_var.is_some() {
+            return None;
+        }
+        let bare = Self::base_pattern(&aura_event.handler);
+        let name = bare.split("::").last().unwrap_or(bare);
+        let key = format!(".{}", name.trim_start_matches('.'));
+        let declared = Self::get_handler_params(&self.handler_params, &key)?;
+        let args = match (declared.len(), dom.as_str()) {
+            (0, _) => return None,
+            (1, _) => "$event".to_string(),
+            (_, "cursor") => "$event.line, $event.column".to_string(),
+            _ => "$event.x, $event.y".to_string(),
+        };
+        Some(format!("{}({})", self.handler_to_function_call(&aura_event.handler), args))
     }
 
     /// Adapt one event-arg param string for the Vue template.
@@ -13563,6 +13640,104 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    /// Plan 421: code_editor oncursor/oncontextmenu — the scaffold emits
+    /// `cursor` with `{line, column}` (1-based) and `contextmenu` with
+    /// `{x, y}`. Handlers that declare params get the payload threaded
+    /// through (`$event.line, $event.column` / `$event.x, $event.y`); a
+    /// single declared param receives the whole `$event`; a param-less
+    /// handler stays a plain reference.
+    #[test]
+    fn test_code_editor_events_payload_threading() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget EditorDemo {
+    model {
+        var source str = "fn main() {}"
+    }
+    view {
+        col {
+            code_editor (key: "ed", lang: "auto") {
+                content: .source
+                oncursor: .CursorMoved
+                oncontextmenu: .CtxMenu
+            }
+            code_editor (key: "one") {
+                content: .source
+                oncursor: .CursorPos
+            }
+        }
+    }
+    on {
+        .CursorMoved(line, col) -> { }
+        .CtxMenu(x, y) -> { }
+        .CursorPos(pos) -> { }
+    }
+}
+"##);
+
+        // Two declared params → destructured position args, and the script
+        // side declares the matching `(line: any, col: any)` signature.
+        assert!(
+            sfc.contains("@cursor=\"CursorMoved($event.line, $event.column)\""),
+            "cursor payload args:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function CursorMoved(line: any, col: any)"),
+            "cursor handler signature:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@contextmenu=\"CtxMenu($event.x, $event.y)\""),
+            "contextmenu payload args:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function CtxMenu(x: any, y: any)"),
+            "contextmenu handler signature:\n{}",
+            sfc
+        );
+        // One declared param → the whole payload object.
+        assert!(
+            sfc.contains("@cursor=\"CursorPos($event)\""),
+            "single-param payload forwarding:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 421: a param-less oncursor handler keeps the plain reference —
+    /// no payload is forced onto a handler that takes none.
+    #[test]
+    fn test_code_editor_events_no_params_plain_binding() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget EditorDemo {
+    model {
+        var source str = "fn main() {}"
+    }
+    view {
+        col {
+            code_editor (key: "ed") {
+                content: .source
+                oncursor: .CursorMoved
+            }
+        }
+    }
+    on {
+        .CursorMoved -> { }
+    }
+}
+"##);
+        assert!(
+            sfc.contains("@cursor=\"CursorMoved\""),
+            "param-less handler stays plain:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("@cursor=\"CursorMoved("),
+            "no payload call for param-less handler:\n{}",
+            sfc
+        );
+    }
+
     /// Plan musk-022 Phase 3: golden-test helper for the a2vue codegen.
     fn test_a2vue(case: &str) -> Result<(), Box<dyn std::error::Error>> {
         test_a2vue_with(case, false)
@@ -13813,13 +13988,13 @@ widget Plain {
         assert!(!sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
     }
 
-    /// Plan 354 Phase C: AutoDownEditor renders as a Vue component with
-    /// camelCase prop bindings, @autodown/editor named import, and events
-    /// mapped to @update / @save / @cancel.
-    #[test]
-    /// Plan 413: code_editor renders the scaffolded CodeMirror shell with
-    /// the full prop contract (model value, lang, wrap, search) and the
+    /// Plan 413/421: code_editor renders the scaffolded CodeMirror shell with
+    /// the full prop contract (model value, lang, wrap, search, line numbers,
+    /// highlight current line, tab width, font size, vi) and the
     /// default-style component import.
+    /// (Pre-existing quirk fixed in 421: a stray stacked `#[test]` made this
+    /// fn run TWICE while the Plan 354 AutoDownEditor test below it lost its
+    /// attribute and never ran.)
     #[test]
     fn test_code_editor_rendering() {
         let sfc = gen_sfc_from_widget_src_shadcn(r##"
@@ -13838,6 +14013,9 @@ widget EditorDemo {
             code_editor (key: "searchable", lang: "auto") {
                 content: .source
                 search: .query
+            }
+            code_editor (key: "full", lang: "auto", line_numbers: false, highlight_current_line: false, tab_width: 2, font_size: 16, vi: true) {
+                content: .source
             }
         }
     }
@@ -13864,6 +14042,21 @@ widget EditorDemo {
         );
         assert!(sfc.contains(":search=\"query\""), "search binding:
 {}", sfc);
+        // Plan 421: the five props all flow through the shell contract.
+        assert!(sfc.contains(":line-numbers=\"false\""), "line-numbers off:
+{}", sfc);
+        assert!(sfc.contains(":highlight-current-line=\"false\""), "highlight-current-line off:
+{}", sfc);
+        assert!(sfc.contains(":tab-width=\"2\""), "tab-width:
+{}", sfc);
+        assert!(sfc.contains(":font-size=\"16\""), "font-size:
+{}", sfc);
+        // vi binding flows (the vue shell accepts-but-ignores it; iced consumes).
+        assert!(sfc.contains(":vi=\"true\""), "vi binding:
+{}", sfc);
+        // Defaults for the bool props stay explicit bindings.
+        assert!(sfc.contains(":line-numbers=\"true\""), "line-numbers default:
+{}", sfc);
         assert!(
             sfc.contains("@update:modelValue"),
             "oninput event mapping:
@@ -13872,6 +14065,10 @@ widget EditorDemo {
         );
     }
 
+    /// Plan 354 Phase C: AutoDownEditor renders as a Vue component with
+    /// camelCase prop bindings, @autodown/editor named import, and events
+    /// mapped to @update / @save / @cancel.
+    #[test]
     fn test_autodown_editor_rendering() {
         // Real parse path (plan 012 batch C): the previous version hand-built
         // `Expr::Ident(".body")` — a shape the real parser never produces
