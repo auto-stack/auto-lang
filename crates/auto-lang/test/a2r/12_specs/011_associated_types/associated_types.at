@@ -18,8 +18,11 @@ type IntBox as Container<Item=int> {
         return self.data[i]
     }
 
-    fn first() int {
-        return self.data[0]
+    // Plan 417-E2 followup (F1): the implementer may keep the assoc name in
+    // its own signature and body — both render as the binding in Rust.
+    fn first() Item {
+        var x Item = self.data[0]
+        return x
     }
 }
 

@@ -18,7 +18,8 @@ impl Container for IntBox {
         return self.data[(i) as usize].clone();
     }
     fn first(&self) -> i64 {
-        return self.data[0].clone();
+        let mut x: i64 = self.data[0].clone();
+        return x;
     }
 }
 

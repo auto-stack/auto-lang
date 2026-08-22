@@ -40,6 +40,13 @@ Gotchas hit while writing this library (worth recording):
 - **`tag` is a reserved token** (`TokenKind::Tag`, from the `tag Shape { ... }`
   declaration). It cannot be used as a method name; the parser fails with
   "Expected identifier ... after dot, got Tag".
+- **Sub-scenario B wrapper locals are named `data` on purpose.** a2r's
+  `fix_vec_i32_index` text post-pass rewrites `x.get(i)` into bracket
+  indexing for any receiver name not on its hash-map allowlist — including
+  user types with a `get` method. Renaming the local to anything off the
+  allowlist (e.g. `bx`) silently miscompiles the call (E0608 at build time).
+  Root fix is type-awareness in that post-pass; see the debt entry
+  (`KNOWN-DEBT-AND-RISKS.md`, Plan 417-E2).
 - **Doc-comment scanning misreads code-like punctuation.** Backticks and
   braced/parenthesised code fragments inside `///` or `//` comments confuse
   Auto's comment handling and surface as spurious parse errors elsewhere in

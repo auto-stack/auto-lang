@@ -245,6 +245,12 @@ pub struct RustTrans {
     /// is in this set renders as the bare param name — never `impl T` (the
     /// PascalCase trait heuristic) and never a concrete-struct lookup.
     current_fn_type_params: std::collections::HashSet<AutoStr>,
+    // Plan 417-E2 followup (F1): associated-type bindings of the TypeDecl
+    // currently being emitted (`as Container<Item=int>` → Item → int). Rust is
+    // static, so any reference to the assoc name inside the impl — method
+    // signature, local `var x Item` annotation, field type — must render as
+    // the bound type. Set around the type_decl() call site; empty elsewhere.
+    current_assoc_bindings: HashMap<AutoStr, Type>,
 
     /// Plan 417-E4 调查: while emitting an if that IS the fn-body tail value,
     /// branch tail expressions omit the statement-context `;` (if_stmt's
@@ -412,6 +418,7 @@ impl RustTrans {
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
+            current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
@@ -492,6 +499,7 @@ impl RustTrans {
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
+            current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
@@ -1354,6 +1362,13 @@ impl RustTrans {
                     // Plan 417-E3: generic type parameter of the current fn —
                     // bare param name, no Box<dyn>/qualification treatment.
                     name
+                } else if let Some(bound_ty) = self.current_assoc_bindings.get(usr.name.as_str()) {
+                    // Plan 417-E2 followup (F1): associated-type reference
+                    // inside the TypeDecl being emitted — render the
+                    // implementer's binding (Rust is static; the bare assoc
+                    // name would not resolve). Covers method signatures, local
+                    // var annotations and field types.
+                    self.rust_type_name(bound_ty)
                 } else if self.spec_decls.contains_key(name.as_str()) {
                     format!("Box<dyn {}>", name)
                 } else {
@@ -1733,6 +1748,13 @@ impl RustTrans {
                 // `impl T` (illegal in Rust and wrong for bounds dispatch).
                 if self.current_fn_type_params.contains(usr.name.as_str()) {
                     return name;
+                }
+                // Plan 417-E2 followup (F1): an associated-type reference in
+                // return position renders as the implementer's binding — never
+                // as `impl Item` (the PascalCase heuristic below would
+                // misfire on the bare assoc name).
+                if let Some(bound_ty) = self.current_assoc_bindings.get(usr.name.as_str()) {
+                    return self.rust_type_name(bound_ty);
                 }
                 if self.spec_decls.contains_key(name.as_str()) {
                     return format!("impl {}", name);
@@ -9264,7 +9286,21 @@ impl RustTrans {
             }
 
             Stmt::TypeDecl(type_decl) => {
-                self.type_decl(type_decl, sink)?;
+                // Plan 417-E2 followup (F1): install this type's associated-
+                // type bindings for the whole emission — method signatures,
+                // bodies and field types referencing the assoc name render as
+                // the bound type. Saved/restored around the call so an early
+                // return inside type_decl() can't leak the table.
+                let saved_bindings = std::mem::take(&mut self.current_assoc_bindings);
+                for spec_impl in &type_decl.spec_impls {
+                    for (assoc_name, bound_ty) in &spec_impl.assoc_bindings {
+                        self.current_assoc_bindings
+                            .insert(assoc_name.as_str().into(), bound_ty.clone());
+                    }
+                }
+                let result = self.type_decl(type_decl, sink);
+                self.current_assoc_bindings = saved_bindings;
+                result?;
                 Ok(true)
             }
 

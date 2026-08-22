@@ -483,6 +483,7 @@ ext Store {
 #[test] fn test_12_specs_009_arc_fn_spec_param() { test_a2r("12_specs/009_arc_fn_spec_param").unwrap(); }
 #[test] fn test_12_specs_010_spec_supertrait() { test_a2r("12_specs/010_spec_supertrait").unwrap(); }
 #[test] fn test_12_specs_011_associated_types() { test_a2r("12_specs/011_associated_types").unwrap(); }
+#[test] fn test_12_specs_012_generic_spec_assoc() { test_a2r("12_specs/012_generic_spec_assoc").unwrap(); }
 
 // === 13_delegation ===
 #[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }
