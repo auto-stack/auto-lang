@@ -6609,8 +6609,9 @@ fn compare_pngs(
         // Plan 059 → 2026-08-22 结果底栏版:复制按钮 VM 桥 —— navigator 是
         // 浏览器全局,VM 运行时不存在(.at handler 在 guard 静默中止),由
         // arboard 写系统剪贴板。CopyCommand → 命令文本;CopyOutput → Text
-        // 原文 / Table TSV(直贴表格软件);ExportCsv → Table CSV(引号转义,
-        // 与 .at 侧 Vue 实现同语义)。
+        // 原文 / Code 全文(streamed_text,apply 时写入)/ Table TSV(直贴
+        // 表格软件);ExportCsv → Table CSV(引号转义,与 .at 侧 Vue 实现
+        // 同语义)。
         if widget_name == "BlockItem"
             && (event_name.starts_with("CopyCommand")
                 || event_name.starts_with("CopyOutput")
@@ -6637,6 +6638,15 @@ fn compare_pngs(
                                     } else {
                                         table_to_tsv(&tbl)
                                     };
+                                } else if out.get("Code").is_some() {
+                                    // 2026-08-22(show 底栏):Code → 复制全文
+                                    // (streamed_text,update_block_in_state 在
+                                    // apply Code 结果时写入;空串防御)。
+                                    if let Some(auto_val::Value::Str(s)) = obj.get("streamed_text") {
+                                        if !s.as_str().is_empty() {
+                                            text = Some(s.as_str().to_string());
+                                        }
+                                    }
                                 }
                             }
                             break;
@@ -7253,7 +7263,18 @@ fn compare_pngs(
             subs.push(shell_event_subscription());
             // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
             // app while an agent is connected. Only ticks when MCP is active.
-            if _state.mcp_shared.is_some() {
+            // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——
+            // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
+            // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
+            // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
+            let mcp_recent = _state
+                .mcp_shared
+                .as_ref()
+                .map(|s| s.lock().unwrap().mcp_active_recently(30))
+                .unwrap_or(false);
+            if mcp_recent
+                && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
+            {
                 subs.push(mcp_heartbeat_subscription());
             }
             // Window resize + mouse move/release events for DevTools panel drag
