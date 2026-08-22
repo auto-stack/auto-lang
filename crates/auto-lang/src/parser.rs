@@ -8808,10 +8808,25 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
 
         let mut methods = Vec::new();
+        // Plan 417-E2 (DIV-TRAIT-LANG-1): `type Item` members declare the
+        // spec's associated types. Collected in declaration order; each name
+        // is pushed into current_type_params so later method signatures
+        // resolve `Item` to a bare Type::User reference (the form every
+        // downstream consumer substitutes on).
+        let mut associated_types: Vec<crate::ast::AssociatedType> = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             if self.is_kind(TokenKind::Fn) {
                 let method = self.spec_method()?;
                 methods.push(method);
+                self.expect_eos(false)?;
+            } else if self.is_kind(TokenKind::Type) {
+                self.next(); // skip `type`
+                let name = self.parse_name()?;
+                associated_types.push(crate::ast::AssociatedType {
+                    name: name.clone(),
+                    bound: None, // bound syntax (`type Item has T`) not accepted yet
+                });
+                self.current_type_params.push(name);
                 self.expect_eos(false)?;
             } else {
                 return Err(SyntaxError::Generic {
@@ -8825,13 +8840,16 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RBrace)?;
 
-        // Plan 057: Clear type parameters after parsing spec body
+        // Plan 057 / 417-E2: Clear type parameters after parsing spec body
         for param in &generic_params {
             if let GenericParam::Type(_tp) = param {
                 self.current_type_params.pop();
             } else if let GenericParam::Const(cp) = param {
                 self.current_const_params.remove(&cp.name);
             }
+        }
+        for _ in &associated_types {
+            self.current_type_params.pop();
         }
 
         // Plan 057: Use SpecDecl::with_generic_params if we have generic params
@@ -8842,6 +8860,8 @@ impl<'a> Parser<'a> {
         };
         // Plan 397: attach supertrait bounds (parsed above)
         spec_decl.bounds = bounds;
+        // Plan 417-E2: attach associated types (parsed above)
+        spec_decl.associated_types = associated_types;
 
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
@@ -9184,13 +9204,49 @@ impl<'a> Parser<'a> {
                 let spec_name = self.parse_name()?;
 
                 // Plan 057: Check for type arguments: as Storage<T>
+                // Plan 417-E2: `Item=int` inside the brackets is a NAMED
+                // associated-type binding (collected separately); a bare type
+                // is a positional argument binding the spec's generic params.
+                let mut assoc_bindings: Vec<(crate::ast::Name, Type)> = Vec::new();
                 let type_args = if self.is_kind(TokenKind::Lt) {
                     self.next(); // skip `<`
                     let mut args = Vec::new();
                     loop {
                         self.skip_empty_lines();
-                        args.push(self.parse_type()?);
+                        let ty = self.parse_type()?;
                         self.skip_empty_lines();
+
+                        if self.is_kind(TokenKind::Asn) {
+                            // Named binding: `Item=int`. The left side must be
+                            // a bare name (assoc types parse as Type::User
+                            // with an empty decl).
+                            let assoc_name = match &ty {
+                                Type::User(u) if u.members.is_empty()
+                                    && u.methods.is_empty()
+                                    && u.generic_params.is_empty() =>
+                                {
+                                    u.name.clone()
+                                }
+                                _ => {
+                                    return Err(SyntaxError::Generic {
+                                        message: format!(
+                                            "Expected associated type name before '=' in spec binding for '{}', got {}",
+                                            spec_name,
+                                            ty.unique_name()
+                                        ),
+                                        span: pos_to_span(self.cur.pos),
+                                    }
+                                    .into());
+                                }
+                            };
+                            self.next(); // skip '='
+                            self.skip_empty_lines();
+                            let bound_ty = self.parse_type()?;
+                            assoc_bindings.push((assoc_name, bound_ty));
+                            self.skip_empty_lines();
+                        } else {
+                            args.push(ty);
+                        }
 
                         if self.is_kind(TokenKind::Gt) {
                             self.next(); // skip `>`
@@ -9217,11 +9273,13 @@ impl<'a> Parser<'a> {
                 // Add to backwards-compatible specs list
                 specs.push(spec_name.clone());
 
-                // Plan 057: Add to spec_impls if we have type arguments
-                if !type_args.is_empty() {
+                // Plan 057/417-E2: record the impl if it carries positional
+                // type arguments OR named associated-type bindings
+                if !type_args.is_empty() || !assoc_bindings.is_empty() {
                     spec_impls.push(crate::ast::SpecImpl {
                         spec_name,
                         type_args,
+                        assoc_bindings,
                     });
                 }
             }

@@ -10,6 +10,30 @@ use std::{fmt, io as stdio};
 pub struct SpecImpl {
     pub spec_name: Name,
     pub type_args: Vec<Type>,
+    /// Plan 417-E2 (DIV-TRAIT-LANG-1): named associated-type bindings from
+    /// `type Stack as Container<Item=int>` — Item → int. Named bindings are
+    /// the assoc-type syntax; positional `type_args` keep binding the spec's
+    /// generic parameters only.
+    pub assoc_bindings: Vec<(Name, Type)>,
+}
+
+impl SpecImpl {
+    pub fn new(spec_name: Name, type_args: Vec<Type>) -> Self {
+        Self { spec_name, type_args, assoc_bindings: Vec::new() }
+    }
+}
+
+/// Plan 417-E2 (DIV-TRAIT-LANG-1): associated type declared inside a spec
+/// body, `spec Container { type Item }`. References in method signatures
+/// parse as bare `Type::User(name)`; implementers bind them at the impl
+/// clause (`as Container<Item=int>`) and each consumer (trait checker, VM
+/// codegen, a2r) substitutes via `Type::substitute` before use.
+#[derive(Debug, Clone)]
+pub struct AssociatedType {
+    pub name: Name,
+    /// Reserved for a future `type Item has Bound` extension. Always None
+    /// today; the parser does not accept a bound yet.
+    pub bound: Option<Type>,
 }
 
 /// Trait 声明 - 定义类型可以实现契约
@@ -23,6 +47,9 @@ pub struct SpecDecl {
     /// Stored as opaque identifier strings (verbatim output); `Send`/`Sync` etc. are
     /// not Auto types, so no marker-trait concept is introduced.
     pub bounds: Vec<String>,
+    /// Plan 417-E2: associated types declared in the spec body
+    /// (`type Item` members), in declaration order.
+    pub associated_types: Vec<AssociatedType>,
 }
 
 impl SpecDecl {
@@ -33,6 +60,7 @@ impl SpecDecl {
             methods,
             is_pub: false,
             bounds: Vec::new(),
+            associated_types: Vec::new(),
         }
     }
 
@@ -43,6 +71,7 @@ impl SpecDecl {
             methods,
             is_pub: false,
             bounds: Vec::new(),
+            associated_types: Vec::new(),
         }
     }
 
@@ -52,6 +81,11 @@ impl SpecDecl {
 
     pub fn get_method(&self, name: &Name) -> Option<&SpecMethod> {
         self.methods.iter().find(|m| m.name == *name)
+    }
+
+    /// Plan 417-E2: does the spec declare an associated type with this name?
+    pub fn has_associated_type(&self, name: &str) -> bool {
+        self.associated_types.iter().any(|at| at.name.as_str() == name)
     }
 }
 
@@ -102,6 +136,12 @@ impl fmt::Display for SpecDecl {
             }
         }
         write!(f, " {{")?;
+        for at in &self.associated_types {
+            write!(f, "\n    type {}", at.name)?;
+            if let Some(ref bound) = at.bound {
+                write!(f, " has {}", bound)?;
+            }
+        }
         for method in &self.methods {
             write!(f, "\n    {}", method)?;
         }
@@ -152,6 +192,13 @@ impl AtomWriter for SpecDecl {
                 }
             }
         }
+        write!(f, "]), assoc_types([")?;
+        for (i, at) in self.associated_types.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "assoc_type(name(\"{}\")))", at.name)?;
+        }
         write!(f, "]), methods([")?;
         for (i, method) in self.methods.iter().enumerate() {
             if i > 0 {
@@ -196,6 +243,12 @@ impl ToNode for SpecDecl {
                 });
             }
             node.add_kid(params_node);
+        }
+
+        for at in &self.associated_types {
+            let mut at_node = AutoNode::new("associated_type");
+            at_node.set_prop("name", Value::str(at.name.as_str()));
+            node.add_kid(at_node);
         }
 
         for method in &self.methods {
