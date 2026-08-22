@@ -360,6 +360,9 @@ pub enum StyleClass {
     /// Whitespace: whitespace-nowrap
     WhitespaceNowrap,
 
+    /// Truncate: truncate(单行 + 溢出裁剪,对齐 Vue/CSS 语义)
+    Truncate,
+
     /// Word break: break-words
     BreakWords,
 
@@ -820,6 +823,9 @@ impl StyleClass {
         // ========== Whitespace & Text Control ==========
         if class == "whitespace-nowrap" {
             return Ok(StyleClass::WhitespaceNowrap);
+        }
+        if class == "truncate" {
+            return Ok(StyleClass::Truncate);
         }
         if class == "break-words" {
             return Ok(StyleClass::BreakWords);

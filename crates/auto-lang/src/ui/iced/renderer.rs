@@ -2271,7 +2271,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                let el: iced::Element<'static, M> = text_widget.into();
+                // 2026-08-22(侧栏描述换行治理):truncate/whitespace-nowrap →
+                // 单行(Wrapping::None)+ clip 容器裁横向溢出,对齐 CSS truncate。
+                let wrap_none = style.as_ref()
+                    .map(|s| IcedStyle::from_style(s).wrap_none)
+                    .unwrap_or(false);
+                if wrap_none {
+                    text_widget = text_widget
+                        .wrapping(iced::widget::text::Wrapping::None)
+                        .width(iced::Length::Fill);
+                }
+                let el: iced::Element<'static, M> = if wrap_none {
+                    iced::widget::container(text_widget)
+                        .width(iced::Length::Fill)
+                        .clip(true)
+                        .into()
+                } else {
+                    text_widget.into()
+                };
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
                     wrap_with_margin_top(el, &iced_style)
