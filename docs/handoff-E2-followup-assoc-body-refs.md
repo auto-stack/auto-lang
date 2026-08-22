@@ -1,12 +1,10 @@
 # 交接:Plan 417-E2 追随批 —— a2r 关联类型体内引用 + 组合盲区
 
-> **给后续会话**:本文自包含。E2 主体(spec 关联类型四层 + parity 14/14)已合并
-> master(`df810f7d`)+ 审查批 atom 修复(`7b7ced31`)。本文登记审查发现的余项,
-> 基准 master `7b7ced31`(2026-08-22)。
-> **前置条件**:E3 有界泛型的合并(主 worktree 曾处 UU 冲突现场)落地后再开工,
-> 本文 F1 与 E3 在 `trans/rust.rs` 的 `rust_type_name` User 臂同区域作业。
+> **状态(2026-08-22 追随批完成)**:F1 ✅ F3 ✅ F4 ✅ 已全部落地(分支
+> plan-fix/417e2-followup);F2 保持设计边界登记;F5 已由并行会话补齐。
+> 下文保留原始调查记录供溯源,勿重做。
 
-## F1. a2r:实现者方法体内/签名里的关联类型引用不替换(真缺口)
+## F1. ✅ 已修:a2r 实现者方法体内/签名里的关联类型引用替换
 
 VM 侧动态类型天然宽容(实测体内 `var x Item`、E4 合成默认方法体内调用链均
 正确,探针输出 8/7/7);**a2r 侧静态类型必坏**:
@@ -43,7 +41,7 @@ type IntBox as Container<Item=int> {
 AutoVM 正常(动态);a2r 的 `impl Trait for X` 缺 `type Item = ...;` 时 Rust
 编不过。处置:文档化为已知限制;若未来需要,给 has 子句扩展命名绑定语法。
 
-## F3. 混合"泛型 spec + 关联类型"无测试覆盖(盲区,非缺陷)
+## F3. ✅ 已补:混合"泛型 spec + 关联类型" golden 012
 
 `spec Store<T> { type Item ... }` + `type S as Store<int, Item=str>`:
 四层代码路径均支持(位置式 int→type_args、Item=str→assoc_bindings 分流,
@@ -51,7 +49,7 @@ trait_checker 分别校验,a2r 分别发射 `impl Store<int>` + `type Item =
 str;`),但 golden/单测/parity 全部只测了纯关联类型场景。追随批可加一个
 混合用例锁定。(注:spec 签名里 T 本身的替换是既有 TODO,E3 领域,勿混。)
 
-## F4. parity trait_advanced:wrapper 变量名 `data` 是规避,源码无注释
+## F4. ✅ 已补:parity trait_advanced wrapper 变量名 `data` 规避原因已入注
 
 KNOWN-DEBT-AND-RISKS 已登记根因(a2r `fix_vec_i32_index` Pattern 2 对任意
 `xxx.get(i)` 盲重写),但 lib 源文件里 wrapper 局部变量叫 `data` 的原因
@@ -59,7 +57,7 @@ KNOWN-DEBT-AND-RISKS 已登记根因(a2r `fix_vec_i32_index` Pattern 2 对任意
 lib 注释与 README gotchas 段补一句(prose-only,README 有注释规范)。
 根治方向:该正则启发式感知 receiver 类型(local_var_types)。
 
-## F5. master 预存 E0583:tests_string_pool 文件缺失(并行会话欠账)
+## F5. ✅ 已消:master 预存 E0583(tests_string_pool 已由并行会话补齐)
 
 `e8672fdd`(字符串池批)在 `vm.rs:19` 声明 `#[cfg(test)] mod
 tests_string_pool;` 但**文件未进提交**(提交信息称已新增回归锁)。
