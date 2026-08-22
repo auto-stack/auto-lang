@@ -216,6 +216,12 @@ fn robot_label(id int) str {
 // Sub-scenario B, L1 baseline: associated-type binding on Container.
 // Item is bound to int, so the spec signatures get and first returning Item
 // check against the int-returning implementer methods.
+//
+// The wrapper locals are deliberately named data: the a2r text post-pass
+// rewrites receiver dot get with an index-like name into bracket indexing
+// for any receiver whose name is not on its map-name allowlist, which would
+// miscompile the user-type method call. The allowlisted name keeps the call
+// shape. See the debt entry for the a2r index post-pass.
 fn container_get(a int, b int, c int, i int) int {
     let data = IntBox { data: [a, b, c] }
     data.get(i)
