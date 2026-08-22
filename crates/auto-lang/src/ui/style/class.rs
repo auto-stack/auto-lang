@@ -1350,6 +1350,9 @@ fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     match input {
         "full" | "screen" => Ok(SizeValue::Full),
         "auto" => Ok(SizeValue::Auto),
+        // Tailwind *-px = 1px(2026-08-22:w-px/h-px 此前静默丢弃 —— sep 的
+        // w-px 宽度丢失、041 横向发丝线 h-px 高度丢失,均源于此)。
+        "px" => Ok(SizeValue::Pixels(1.0)),
         "1/2" => Ok(SizeValue::Half),
         "1/3" => Ok(SizeValue::Third),
         "2/3" => Ok(SizeValue::TwoThirds),

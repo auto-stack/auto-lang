@@ -127,3 +127,19 @@ aura_view_builder（sep）/ core/render（gutter_total）/ iced/gutter（右对�
 
 ### 7.3 Action Phase A（R3 §6.1）实施 ✓
 041 落地 13 个语义 action handler（.ActNew/.ActSave/.../.ActConsole/.ActSwitchTab），三源绑定：menu item / toolbar icon / `onkeydown.ctrl.{n,o,s,j}` 全局键（Plan 275 管道，编辑器不拦截的 Ctrl 组合穿透）。真实动作：toggle console / switch tab / 新建=code_editor_set_text 清空活动 tab；其余 dummy 日志。
+
+
+---
+
+## 8. 第五轮：Row 右对齐中间层修复（2026-08-22）
+
+### 8.1 调查结论（重要更正 §7.2）
+- **Button 臂本就调用 `wrap_with_margin_top`**（renderer.rs Button arm 末尾）——ml-auto 的 Fill+alignRight 包装器对 button 同样生效；§7.2 的"容器类子元素全炸"矩阵受热重载中间态污染，需重新标定
+- 实测复现过的可靠事实：**嵌套 Row 里的 icon-button 会消失**（与 ml-auto 无关，V3 对照：嵌套行内 TB1 文本按钮存活、file-plus 图标按钮消失）；扁平直接子元素的 icon-button 正常
+- `Space::width(Fill)` 注入方案（本轮流试）在这些行内不扩张，已完整回退
+- vue 端 `ml-auto` 为原生 CSS 语义，天然支持（017-chat 先例），无需改动
+
+### 8.2 本轮交付
+- 041 app.at：工具栏扁平化 + 首个工具栏按钮 `style: "... ml-auto"`（Tailwind 常规右对齐声明），走 Button 臂既有 wrap_with_margin_top 路径
+- 渲染器净变更≈0（注入实验完整回退，Row/Container 臂恢复原状，测试 21+14 全绿）
+- **未决**：实机视觉验证因截图捕获不稳定（窗口闪断/帧内容漂移）未能闭环 —— 需人工开 041 确认工具栏位置；若未右推，剩余疑点=嵌套行 icon 消失的同源布局 bug，建议离线布局测试台（iced 无 iced::test，需自建 render_dynamic_view→layout 的 headless 断言）单独立项

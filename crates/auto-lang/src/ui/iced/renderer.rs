@@ -1646,7 +1646,8 @@ fn build_row<M: Clone + Debug + 'static>(
     }
     let (lead, between, trail) = row_justify_spacers(justify);
     let spacer = |portion: u16| {
-        iced::widget::Space::new().width(iced::Length::FillPortion(portion))
+        iced::widget::Space::new()
+                            .width(iced::Length::FillPortion(portion))
     };
     let mut row_widget = row([]).spacing(eff_spacing);
     if let Some(p) = lead {
@@ -1698,7 +1699,8 @@ fn build_column<M: Clone + Debug + 'static>(
     );
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
     let spacer = |portion: u16| {
-        iced::widget::Space::new().height(iced::Length::FillPortion(portion))
+        iced::widget::Space::new()
+                            .height(iced::Length::FillPortion(portion))
     };
     let mut col_widget = column([]).spacing(eff_spacing);
     let mut first = true;
