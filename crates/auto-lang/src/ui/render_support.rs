@@ -102,9 +102,51 @@ pub fn get_support(tag: &str) -> TagSupport {
             "decomposed into a Column of Rows of `cols` cells (iced has no native grid); rows/rowspan/colspan ignored",
         ),
         "grid-item" => TagSupport::full(),
-        "scroll" => TagSupport::fallback(
-            &["direction", "style"],
-            "scroll container not implemented — renders as Column",
+        // G4 (411 P2-B): the table below mirrors what the view_builder
+        // ACTUALLY converts today — the old "not implemented" rows here
+        // produced the 60 false-positive `unknown tag` errors in
+        // autoui_check (scroll/aside/header/icon/badge/table/nav-link are
+        // all real conversions now; see aura_view_builder tag dispatch).
+        "scroll" | "scrollable" => TagSupport::partial(
+            &["direction"],
+            "renders a scrollable column; direction prop ignored",
+        ),
+        "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
+            TagSupport::full()
+        }
+        "nav-link" | "nav_link" => TagSupport::partial(
+            &["exact", "disabled"],
+            "renders as a link-styled button (label + optional icon); router props like exact ignored",
+        ),
+        "badge" | "chip" => TagSupport::partial(
+            &["class"],
+            "shadcn-style badge with variant colors; custom class limited",
+        ),
+        "table" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" => TagSupport::partial(
+            &["style", "align", "colspan", "rowspan"],
+            "renders a real table; header/divider/padding details not pixel-aligned (411 P2-A④)",
+        ),
+        "code-block" | "codeblock" | "code_block" | "code" | "code-pane" => TagSupport::partial(
+            &["language"],
+            "renders code text with a language label; Prism palette not aligned (411 P2-A①)",
+        ),
+        "code_editor" | "codeEditor" | "codeeditor" => TagSupport::full(),
+        "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+            TagSupport::partial(
+                &[],
+                "degrades to a plain textarea (D-GAP-3)",
+            )
+        }
+        "square" => TagSupport::full(),
+        "preview-card" | "previewcard" | "preview_card"
+        | "component-card" | "componentcard" | "component_card"
+        | "category-section" | "category_section" => TagSupport::partial(
+            &["style"],
+            "widgets-gallery demo component; custom style limited",
+        ),
+        "toast-provider" | "toast_provider" | "toaster" => TagSupport::partial(
+            &[],
+            "toast overlay host; toast styling simplified",
         ),
         "list" | "list-item" => TagSupport::fallback(
             &["style"],
@@ -130,10 +172,6 @@ pub fn get_support(tag: &str) -> TagSupport {
             &["style"],
             "card not implemented — renders as Column",
         ),
-        "badge" | "chip" | "tag" => TagSupport::fallback(
-            &["style", "color", "variant"],
-            "badge/chip not implemented",
-        ),
         "alert" | "toast" | "notification" => TagSupport::fallback(
             &["variant", "title", "message", "style"],
             "alert/toast not implemented",
@@ -141,10 +179,6 @@ pub fn get_support(tag: &str) -> TagSupport {
         "tabs" | "tab" | "tabs-list" | "tabs-trigger" | "tabs-content" => TagSupport::fallback(
             &["style", "active", "value"],
             "tabs component not implemented — renders as Column",
-        ),
-        "table" | "thead" | "tbody" | "tr" | "td" | "th" => TagSupport::fallback(
-            &["style", "align", "colspan", "rowspan"],
-            "table component not implemented — renders as Column",
         ),
         "accordion" | "accordion-item" | "accordion-trigger" | "accordion-content" => {
             TagSupport::fallback(
@@ -160,7 +194,7 @@ pub fn get_support(tag: &str) -> TagSupport {
             &["open", "style", "placement"],
             "modal/dialog not implemented — renders as Column",
         ),
-        "sidebar" | "nav" | "navigation" | "breadcrumb" => TagSupport::fallback(
+        "sidebar" | "navigation" | "breadcrumb" => TagSupport::fallback(
             &["style", "items"],
             "navigation component not implemented — renders as Column",
         ),
