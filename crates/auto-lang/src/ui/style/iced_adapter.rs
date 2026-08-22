@@ -222,6 +222,9 @@ pub struct IcedStyle {
     pub font_weight: Option<IcedFontWeight>,
     pub font_family: Option<String>, // "serif" | "sans" | "mono"
     pub text_align: Option<IcedTextAlign>,
+    /// truncate / whitespace-nowrap:单行渲染(iced Wrapping::None),
+    /// renderer 侧配合 clip 容器实现 CSS truncate 语义。
+    pub wrap_none: bool,
 
     // Effects (L3)
     pub shadow: bool,
@@ -406,6 +409,7 @@ impl IcedStyle {
             font_weight: None,
             font_family: None,
             text_align: None,
+            wrap_none: false,
             // L3
             shadow: false,
             shadow_size: None,
@@ -943,8 +947,14 @@ impl IcedStyle {
             }
 
             // ========== Text Control ==========
-            StyleClass::WhitespaceNowrap | StyleClass::BreakWords => {
-                // Iced text doesn't directly support these, but no error
+            StyleClass::Truncate | StyleClass::WhitespaceNowrap => {
+                // 2026-08-22(侧栏描述换行治理):CSS truncate/whitespace-nowrap →
+                // iced text Wrapping::None(renderer Text 臂消费 wrap_none,
+                // 并套 clip 容器裁掉横向溢出)。
+                self.wrap_none = true;
+            }
+            StyleClass::BreakWords => {
+                // iced 无词级断行控制,保持默认 Word 换行
             }
 
             // ========== Interaction ==========

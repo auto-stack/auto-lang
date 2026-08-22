@@ -1,0 +1,26 @@
+---
+source: crates/auto-lang/tests/ui_snapshots.rs
+assertion_line: 76
+expression: out
+---
+File: D:\autostack\auto-lang\.worktrees\auto-shell\crates\auto-lang\..\..\examples/ui/015-notes/src/front/sidebar.at
+Widget count: 1
+Widget: NavTree | props: 4 | state: 0 | handlers: 9 | messages: 1
+  prop: active_folder (StrSlice)
+  prop: active_id (Int)
+  prop: active_tag (StrSlice)
+  prop: search (StrSlice)
+  handler: .NewNote
+  handler: .NewNoteInFolder(f)
+  handler: .SelectAll
+  handler: .SelectNote(i)
+  handler: .SelectPinned
+  handler: .SelectRecent
+  handler: .SelectTag(t)
+  handler: .SetAccent(name)
+  handler: .ToggleDarkMode
+API imports: []
+Store deps: ["NotesStore"]
+Store composables: 0
+Validation warnings: 1
+SFC 'NavTree': 15527 bytes, has template: true, has script: true, has style: true
