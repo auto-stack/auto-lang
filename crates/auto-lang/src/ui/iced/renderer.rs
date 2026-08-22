@@ -3303,6 +3303,17 @@ pub fn startup_window_size() -> iced::Size {
     iced::Size::new(1280.0, 800.0)
 }
 
+/// VM window title. Sources, in priority order:
+/// 1. pac.at `title: "..."` — injected by `auto run` as AUTO_VM_TITLE
+/// 2. fallback — "Auto - {root widget name}"
+/// Blank env values fall back rather than producing an empty title.
+pub fn window_title(fallback: String) -> String {
+    match std::env::var("AUTO_VM_TITLE") {
+        Ok(t) if !t.trim().is_empty() => t,
+        _ => fallback,
+    }
+}
+
 /// Convert IcedFontSize to f32 pixel value
 fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) -> f32 {
     use crate::ui::style::iced_adapter::IcedFontSize;
@@ -7167,7 +7178,7 @@ fn compare_pngs(
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
-        format!("Auto - {}", widget_name)
+        window_title(format!("Auto - {}", widget_name))
     };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。

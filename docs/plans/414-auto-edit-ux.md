@@ -143,3 +143,16 @@ aura_view_builder（sep）/ core/render（gutter_total）/ iced/gutter（右对�
 - 041 app.at：工具栏扁平化 + 首个工具栏按钮 `style: "... ml-auto"`（Tailwind 常规右对齐声明），走 Button 臂既有 wrap_with_margin_top 路径
 - 渲染器净变更≈0（注入实验完整回退，Row/Container 臂恢复原状，测试 21+14 全绿）
 - **未决**：实机视觉验证因截图捕获不稳定（窗口闪断/帧内容漂移）未能闭环 —— 需人工开 041 确认工具栏位置；若未右推，剩余疑点=嵌套行 icon 消失的同源布局 bug，建议离线布局测试台（iced 无 iced::test，需自建 render_dynamic_view→layout 的 headless 断言）单独立项
+
+---
+
+## 9. VM 窗口标题 pac.at 化（2026-08-22）
+
+### 9.1 问题与方案
+- 用户反馈：041 窗口标题是默认 "Auto - App"，应为 **AutoEdit**
+- 根因：renderer.rs `title_fn` 硬编码 `format!("Auto - {}", 根组件名)`（041 根组件名 = App）
+- 方案：复用 Plan 411 `window: "WxH"` 的同一管线新增 `title:` 字段——pac.at 解析（pac.rs）→ `pac_window_title()`（automan.rs）→ `auto run` 注入 `AUTO_VM_TITLE`（与 AUTO_VM_WINDOW 同路径，VM 渲染器同进程读取）→ renderer.rs 新增 `window_title(fallback)` 优先读 env
+
+### 9.2 交付
+- 041 pac.at 加 `title: "AutoEdit"`；未声明/空白的 pac.at 回退原 "Auto - {widget}"，其他示例零影响
+- 验证：`cargo check -p auto-man -p auto -p auto-lang` 通过；`cargo test -p auto-lang --lib --features ui-iced iced` 38/38 绿；041 实机 `auto run` 启动日志确认 `VM window title: AutoEdit (from pac.at)`

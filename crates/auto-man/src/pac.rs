@@ -96,6 +96,10 @@ pub struct Pac {
     /// iced multiplies by the OS scale factor for the physical surface.
     pub window: Option<(f32, f32)>,
 
+    /// VM native window title, declared as `title: "My App"` in pac.at.
+    /// None = renderer default ("Auto - {root widget name}").
+    pub title: Option<AutoStr>,
+
     /// shadcn-vue widget mapping toggle (Plan 013), declared as
     /// `shadcn: off` in pac.at. Default true = current behavior (widgets map
     /// to shadcn-vue components, `@/components/ui/*` imports). false = native
@@ -221,6 +225,12 @@ impl Pac {
                     .then_some((w, h))
             });
 
+        // VM window title, e.g. `title: "AutoEdit"`. Absent/blank → None
+        // (renderer falls back to "Auto - {root widget name}").
+        let title = config.root.get_prop("title").to_astr();
+        let title_trimmed = title.trim().to_string();
+        let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
+
         // Plan 013: shadcn-vue mapping toggle, `shadcn: off` in pac.at.
         // Accepts Bool (off/on/false/true), quoted "off"/"false"/"no"/"0".
         // Absent or unrecognized → true (current shadcn default).
@@ -339,6 +349,7 @@ impl Pac {
             front_port,
             back_port,
             window,
+            title,
             shadcn,
             default_classes,
             is_update: false,
