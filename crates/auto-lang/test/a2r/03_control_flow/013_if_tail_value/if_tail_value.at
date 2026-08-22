@@ -1,0 +1,22 @@
+// Value-position tail if: branch tail expressions carry the fn's return
+// value (Plan 417-E4 调查 fix — arms previously got statement-context `;`,
+// making the fn return unit, E0308).
+
+fn max(a int, b int) int {
+    if a >= b { a } else { b }
+}
+
+fn grade(n int) str {
+    if n >= 90 {
+        "A"
+    } else if n >= 60 {
+        "B"
+    } else {
+        "C"
+    }
+}
+
+pub fn main() {
+    print(max(3, 5))
+    print(grade(95))
+}

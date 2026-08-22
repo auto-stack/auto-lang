@@ -240,6 +240,11 @@ pub struct RustTrans {
     // Track current function's return type for string coercion
     current_fn_ret_type: Option<Type>,
 
+    /// Plan 417-E4 调查: while emitting an if that IS the fn-body tail value,
+    /// branch tail expressions omit the statement-context `;` (if_stmt's
+    /// Plan 393 E3 rule). Nested non-last ifs restore statement mode.
+    value_if_tail: bool,
+
     // Track local variable types for string concat detection in Op::Add
     local_var_types: HashMap<AutoStr, Type>,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
@@ -400,6 +405,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
+            value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
@@ -478,6 +484,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
+            value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
@@ -11601,6 +11608,14 @@ impl RustTrans {
         // If there's no else branch, the if block can't be used as an expression,
         // so all Call tail expressions need semicolons to avoid type mismatches.
         let has_else = if_.else_.is_some();
+
+        // Plan 417-E4 调查: `value_ctx` = this if IS the fn-body tail value
+        // (set by body()'s Stmt::If tail arm). In that case branch tail
+        // expressions omit the `;` below (they carry the fn's return value);
+        // nested ifs start in statement mode and are re-flagged only when
+        // they are themselves an arm's last statement.
+        let value_ctx = self.value_if_tail;
+        self.value_if_tail = false;
         for (i, branch) in if_.branches.iter().enumerate() {
             if i == 0 {
                 sink.body.write(b"if ")?;
@@ -11636,6 +11651,10 @@ impl RustTrans {
                         }
                         if !is_last {
                             sink.body.write(b";\n")?;
+                        } else if is_last && value_ctx && has_else {
+                            // Plan 417-E4 调查: 值位尾 if 的分支尾表达式是
+                            // 函数返回值——不加 `;`(加了则 fn 返回 unit,E0308)。
+                            sink.body.write(b"\n")?;
                         } else {
                             // Plan 393 E3: 语句上下文 if 的分支尾表达式也需要 `;`
                             // (值被丢弃)。原逻辑仅在 !has_else && Call 时补 `;`,
@@ -11645,8 +11664,13 @@ impl RustTrans {
                         }
                     }
                     Stmt::If(inner_if) => {
-                        // Nested if statement - handle recursively
+                        // Nested if statement - handle recursively. When the
+                        // nested if is this arm's LAST statement in a value
+                        // context, it carries the arm's value — re-flag it.
+                        let saved = self.value_if_tail;
+                        self.value_if_tail = value_ctx && has_else && is_last;
                         self.if_stmt(inner_if, sink)?;
+                        self.value_if_tail = saved;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
@@ -11700,11 +11724,21 @@ impl RustTrans {
                             sink.body.write(b".to_string()")?;
                         }
                         // Plan 393 E3: else 分支尾表达式也一律 `;` (语句上下文)
-                        sink.body.write(b";\n")?;
+                        // Plan 417-E4 调查: 值位尾 if 的 else 分支尾表达式是
+                        // 函数返回值——不加 `;`。
+                        if is_last && value_ctx && has_else {
+                            sink.body.write(b"\n")?;
+                        } else {
+                            sink.body.write(b";\n")?;
+                        }
                     }
                     Stmt::If(inner_if) => {
-                        // Nested if statement in else
+                        // Nested if statement in else — re-flag when it is the
+                        // else tail in a value context (carries the value).
+                        let saved = self.value_if_tail;
+                        self.value_if_tail = value_ctx && has_else && is_last;
                         self.if_stmt(inner_if, sink)?;
+                        self.value_if_tail = saved;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
@@ -14447,6 +14481,17 @@ impl RustTrans {
                         self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
                         sink.body.write(b"\n")?;
                     }
+                    Stmt::If(inner_if) => {
+                        // Plan 417-E4 investigation: a tail if WITH else in a non-void
+                        // fn is a VALUE expression — branch tail exprs must NOT get
+                        // the statement-context `;` (if_stmt's Plan 393 E3 rule).
+                        let saved = self.value_if_tail;
+                        self.value_if_tail = true;
+                        self.if_stmt(inner_if, sink)?;
+                        self.value_if_tail = saved;
+                        sink.body.write(b"
+")?;
+                    }
                     Stmt::Is(is_stmt) => {
                         // `is` (match) as tail expression — emit WITHOUT the
                         // trailing semicolon that statement-position `is` adds
@@ -14566,6 +14611,9 @@ impl RustTrans {
             Stmt::Node(_) => true,
             // Is (match expression) is returnable
             Stmt::Is(_) => true,
+            // Plan 417-E4 调查: a tail if WITH an else carries the fn's value
+            // (`if c { a } else { b }` as implicit return) — returnable.
+            Stmt::If(if_) => if_.else_.is_some(),
             // Return statement already provides a value — no tail expression needed
             Stmt::Return(_) => true,
             _ => false,

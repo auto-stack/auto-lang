@@ -360,6 +360,7 @@ ext Store {
 #[test] fn test_03_control_flow_008_is_match() { test_a2r("03_control_flow/008_is_match").unwrap(); }
 #[test] fn test_03_control_flow_009_is_multi_stmt() { test_a2r("03_control_flow/009_is_multi_stmt").unwrap(); }
 #[test] fn test_03_control_flow_010_is_non_exhaustive() { test_a2r("03_control_flow/010_is_non_exhaustive").unwrap(); }
+#[test] fn test_03_control_flow_013_if_tail_value() { test_a2r("03_control_flow/013_if_tail_value").unwrap(); }
 
 // === 04_strings ===
 #[test] fn test_04_strings_001_fstring() { test_a2r("04_strings/001_fstring").unwrap(); }
