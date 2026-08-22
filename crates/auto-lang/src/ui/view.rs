@@ -470,6 +470,46 @@ pub enum View<M: Clone + Debug> {
         content: Box<View<M>>,
         position: OverlayPosition,
     },
+
+    /// Plan 422: 锚定弹层原语 —— iced overlay 机制的真弹层(toast 是点击
+    /// 穿透的常驻 Stack 槽,互补不冲突)。anchor 为触发按钮(Wrapper 模式:
+    /// renderer 把按钮包进 Popover widget,overlay 按其 layout bounds 定位,
+    /// iced Tooltip 同型)或坐标锚(contextmenu 的动态落点);content 为面板
+    /// (自带 chrome: bg/border/shadow 走既有 visual wrap)。open 由应用态
+    /// 驱动(menubar 的 MENUBAR_OPEN 同源);on_dismiss 在点击面板外/点锚/
+    /// Esc/窗口失焦时发出(如 __menubar_close),取代 2000px 隐形 catch。
+    Popover {
+        anchor: PopoverAnchor<M>,
+        content: Box<View<M>>,
+        placement: PopoverPlacement,
+        open: bool,
+        on_dismiss: Option<M>,
+    },
+}
+
+/// Plan 422: 弹层锚定方式。
+#[derive(Debug, Clone)]
+pub enum PopoverAnchor<M: Clone + Debug> {
+    /// 锚为子 widget(触发按钮)—— Popover 包装它,面板按其 bounds 定位。
+    Widget(Box<View<M>>),
+    /// 坐标锚(视口坐标)—— contextmenu 的动态落点,面板左上角对齐该点
+    /// (placement 固定按 BottomStart 语义处理)。
+    Point { x: f32, y: f32 },
+}
+
+/// Plan 422: 面板相对锚的落位。Start/End 后缀指水平对齐(面板左/右缘对
+/// 齐锚的左/右缘);menubar 下拉用 BottomStart(左缘对齐触发按钮)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PopoverPlacement {
+    #[default]
+    Bottom,
+    BottomStart,
+    BottomEnd,
+    Top,
+    TopStart,
+    TopEnd,
+    Left,
+    Right,
 }
 
 /// Plan 409 §10 续 5: Overlay 浮层的窗口相对定位(从 style 的 absolute +
@@ -1294,6 +1334,22 @@ impl<M: Clone + Debug> View<M> {
                 content: Box::new(content.map_msg_with_arc(f)),
                 position,
             },
+            // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。
+            View::Popover { anchor, content, placement, open, on_dismiss } => {
+                let anchor = match anchor {
+                    PopoverAnchor::Widget(w) => {
+                        PopoverAnchor::Widget(Box::new(w.map_msg_with_arc(f)))
+                    }
+                    PopoverAnchor::Point { x, y } => PopoverAnchor::Point { x, y },
+                };
+                View::Popover {
+                    anchor,
+                    content: Box::new(content.map_msg_with_arc(f)),
+                    placement,
+                    open,
+                    on_dismiss: on_dismiss.map(|m| f(m)),
+                }
+            }
             View::Text { content, style } => View::Text { content, style },
             View::Button { label, content, onclick, style, on_right_click } => View::Button {
                 label,

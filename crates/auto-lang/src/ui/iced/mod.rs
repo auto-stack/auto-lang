@@ -4,6 +4,8 @@
 // into Iced's Element for rendering, with full style support via IcedStyle.
 
 mod layout_collector;
+// Plan 422: 锚定弹层原语(iced overlay wrapper,Tooltip 同型)。
+pub mod popover;
 pub mod renderer;
 
 // Plan 414 §8.2: headless layout testbench — `iced_test`-based bounds

@@ -2048,6 +2048,17 @@ fn find_view_by_path<'a>(
             View::Grid { cells, .. } => cells.iter().collect(),
             View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
             View::List { items, .. } => items.iter().collect(),
+            // Plan 422: 弹层子序与 extract_children/vtree 同步 —— widget 锚
+            // 为子 0(触发按钮),content 为子 1(面板项)。缺此臂时 menubar
+            // 触发按钮的 MCP 点击分派会静默失败(walk 在 Popover 处断掉)。
+            View::Popover { anchor, content, .. } => {
+                let mut out: Vec<&View<DynamicMessage>> = Vec::new();
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    out.push(w.as_ref());
+                }
+                out.push(content.as_ref());
+                out
+            }
             _ => return None,
         };
         current = children.get(idx as usize)?;
