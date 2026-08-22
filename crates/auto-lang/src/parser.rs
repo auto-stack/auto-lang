@@ -13071,31 +13071,152 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse view fragment declaration body (after 'view' has been consumed).
+    /// Plan 425: `view fn` only — `component fn` parses to a WidgetDecl via
+    /// parse_component_fn_decl.
     fn parse_view_fragment_decl_body(&mut self) -> AutoResult<Stmt> {
         self.expect_ident("fn")?;
-        self.parse_fragment_decl_body_tail(false)
+        self.parse_fragment_decl_body_tail()
     }
 
     /// Plan 408: Parse `component fn Name(...) { ... }` — an independent
-    /// component declaration synthesized to its own Vue SFC. Cursor is at
-    /// `component` on entry. Body parsing is shared with `view fn`.
+    /// component declaration synthesized to its own Vue SFC.
     ///
-    /// Plan 425: `component fn` is now SYNTACTIC SUGAR — the fragment parse
-    /// result is converted to a `WidgetDecl` (body wrapped into a `view`
-    /// block, params → props via the fragment hint mapping), identical to
-    /// `widget Name(...) { blocks... view { body } }`. The double track
-    /// (ViewFragmentDecl + extract_widget_from_fragment) retires; `view fn`
-    /// (inline) keeps the fragment path.
+    /// Plan 425: `component fn` is SYNTACTIC SUGAR over `widget` — this
+    /// parser directly produces a `WidgetDecl` identical to
+    /// `widget Name(...) { blocks... view { body } }` (body elements wrapped
+    /// into a view block, params → props via the fragment hint mapping).
+    /// Block order (params → use → computed → msg → model → watch → on →
+    /// style → body) is unchanged from the Plan 408 grammar; the fragment
+    /// double track (ViewFragmentDecl + extract_widget_from_fragment) is
+    /// retired — `view fn` (inline) keeps the fragment path.
     pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
         self.expect_ident("component")?;
         self.expect_ident("fn")?;
-        let stmt = self.parse_fragment_decl_body_tail(true)?;
-        match stmt {
-            Stmt::ViewFragmentDecl(frag) => Ok(Stmt::WidgetDecl(
-                Self::component_fragment_to_widget_decl(frag),
-            )),
-            other => Ok(other),
+        let name = self.cur.text.clone();
+        self.next();
+        // Params: `Name[: type][, ...]` — colon optional (Plan 408 grammar),
+        // type captured as a raw token string and mapped via the fragment
+        // hint mapping so sugared output stays byte-identical.
+        let mut params: Vec<(crate::ast::Name, String)> = Vec::new();
+        if self.cur.text.as_str() == "(" {
+            self.next();
+            while self.cur.text.as_str() != ")" {
+                self.skip_empty_lines();
+                let pname = self.cur.text.clone();
+                self.next();
+                let mut type_hint = String::new();
+                if self.cur.text.as_str() == ":" {
+                    self.next();
+                    let mut ty_parts = Vec::new();
+                    while !matches!(self.cur.text.as_str(), "," | ")") {
+                        ty_parts.push(self.cur.text.as_str().to_string());
+                        self.next();
+                    }
+                    type_hint = ty_parts.join(" ");
+                }
+                params.push((pname, type_hint));
+                if self.cur.text.as_str() == "," { self.next(); }
+            }
+            self.next();
         }
+        self.skip_empty_lines();
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        // Plan 408 P5: optional `use { }` blocks (fn/composable/component
+        // escape-hatch imports) — imports before use.
+        let mut ext_imports: Vec<ExtImport> = Vec::new();
+        while self.cur.text.as_str() == "use" {
+            ext_imports.extend(self.parse_widget_use_block_inner()?);
+            self.skip_empty_lines();
+        }
+        // Plan 408 P3: optional `computed { }` (after use, before view body).
+        let computed = if self.cur.text.as_str() == "computed" {
+            Some(self.parse_computed_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
+        // Plan 408 P4: optional `msg { }` (multiple) / `model { }` blocks.
+        let mut messages: Vec<MsgDecl> = Vec::new();
+        while self.cur.text.as_str() == "msg" {
+            messages.push(self.parse_msg_decl_inner()?);
+            self.skip_empty_lines();
+        }
+        let model = if self.cur.text.as_str() == "model" {
+            Some(self.parse_model_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
+        // Plan 367 P2-3 fix: register params in a fresh scope so the body and
+        // handlers can reference them (see parse_fragment_decl_body_tail).
+        self.enter_scope();
+        for (pname, _) in &params {
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(pname.as_str()),
+                crate::ast::Type::Unknown,
+            );
+        }
+        // Plan 408 P4: model fields join the scope so on-handlers / view body
+        // can reference them (`.collapsed = !.collapsed`).
+        if let Some(ref model_block) = model {
+            for field in &model_block.fields {
+                self.infer_ctx.bind_var(
+                    crate::ast::Name::from(field.name.as_str()),
+                    crate::ast::Type::Unknown,
+                );
+            }
+        }
+        // Plan 408 P12 §10.2: optional `watch { }` (after model, before on).
+        let watch: Vec<WatchDecl> = if self.cur.text.as_str() == "watch" {
+            self.parse_watch_block_inner()?
+        } else {
+            Vec::new()
+        };
+        self.skip_empty_lines();
+        // Plan 408 P4: optional `on { }` (after model/watch, before body —
+        // handler bodies can reference params + model fields).
+        let on = if self.cur.text.as_str() == "on" {
+            Some(self.parse_on_block()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
+        // PLAN-026 缺陷②: optional `style { }` (mirrors widget).
+        let style: Option<String> = if self.cur.text.as_str() == "style" {
+            Some(self.parse_style_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
+        // The single body node is the view root — sugar wraps it in a view
+        // block (body 即视图,与 view 可选化语义一致).
+        let body = self.parse_view_node()?;
+        self.exit_scope();
+        self.skip_empty_lines();
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::WidgetDecl(WidgetDecl {
+            name,
+            messages,
+            model,
+            computed,
+            view: Some(ViewBlock { root: body }),
+            on,
+            bind: None,
+            props: params.into_iter()
+                .map(|(pname, hint)| PropDecl {
+                    name: pname,
+                    ty: Self::fragment_param_hint_to_type(&hint),
+                    default: None,
+                })
+                .collect(),
+            routes: None,
+            lifecycle: Vec::new(),
+            style,
+            ext_imports,
+            watch,
+            expose: Vec::new(),
+        }))
     }
 
     /// Plan 425: fragment param type hint (raw token string) → `Type`.
@@ -13113,42 +13234,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Plan 425: sugar conversion `component fn` fragment → WidgetDecl.
-    /// Fragment-only surfaces map to their widget equivalents: params →
-    /// PropDecl (no defaults), single body node → `view` block root; the
-    /// widget-only surfaces (routes/bind/lifecycle/expose) stay empty — the
-    /// fragment grammar never parsed them.
-    fn component_fragment_to_widget_decl(
-        frag: crate::ast::ui::ViewFragmentDecl,
-    ) -> crate::ast::ui::WidgetDecl {
-        crate::ast::ui::WidgetDecl {
-            name: frag.name,
-            messages: frag.messages,
-            model: frag.model,
-            computed: frag.computed,
-            view: Some(crate::ast::ui::ViewBlock { root: frag.body }),
-            on: frag.on,
-            bind: None,
-            props: frag.params.into_iter()
-                .map(|(pname, hint)| crate::ast::ui::PropDecl {
-                    name: pname,
-                    ty: Self::fragment_param_hint_to_type(&hint),
-                    default: None,
-                })
-                .collect(),
-            routes: None,
-            lifecycle: Vec::new(),
-            style: frag.style,
-            ext_imports: frag.ext_imports,
-            watch: frag.watch,
-            expose: Vec::new(),
-        }
-    }
-
-    /// Parse the param list + body of a fragment decl, after `fn` has been
-    /// consumed. Shared by `view fn` (is_component=false, inline) and
-    /// `component fn` (is_component=true, independent SFC). Plan 408.
-    fn parse_fragment_decl_body_tail(&mut self, is_component: bool) -> AutoResult<Stmt> {
+    /// Parse the param list + body of a `view fn` declaration (inline
+    /// fragment, Plan 367 P2-3), after `fn` has been consumed.
+    /// Plan 425: component fn left this shared path — only the inline view-fn
+    /// form remains (params + single body node, no blocks).
+    fn parse_fragment_decl_body_tail(&mut self) -> AutoResult<Stmt> {
         let name = self.cur.text.clone();
         self.next();
         let mut params = Vec::new();
@@ -13176,43 +13266,6 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
-        // Plan 408 P5: component fn 支持可选 `use { }` 块（fn/composable/component
-        // 逃生舱引入），位于 params 之后、其他块之前——引入声明先于使用。view fn 不
-        // 支持（恒空——内联展开后 fn 引用由宿主 widget 的 use 块承载）。复用 widget
-        // 的 parse_widget_use_block_inner（自消费 `use` 关键字），支持多个 use 块。
-        let mut ext_imports: Vec<ExtImport> = Vec::new();
-        if is_component {
-            while self.cur.text.as_str() == "use" {
-                ext_imports.extend(self.parse_widget_use_block_inner()?);
-                self.skip_empty_lines();
-            }
-        }
-        // Plan 408 P3: component fn 支持可选 `computed { }` 块（位于 use 之后、
-        // view body 之前）。view fn 不支持 computed（内联展开后无独立组件宿主）。
-        // parse_computed_block_inner 会自消费 `computed` 关键字与外层大括号。
-        let computed = if is_component && self.cur.text.as_str() == "computed" {
-            Some(self.parse_computed_block_inner()?)
-        } else {
-            None
-        };
-        self.skip_empty_lines();
-        // Plan 408 P4: component fn 支持可选 `msg { }` / `model { }` 块（位于
-        // computed 之后、on/view 之前，对齐 widget 的 msg→model→computed→view→on
-        // 约定中能放在 view 前的部分）。view fn 不支持（恒空/None）。两个解析器都
-        // 自消费关键字与外层大括号。
-        let mut messages: Vec<MsgDecl> = Vec::new();
-        if is_component {
-            while self.cur.text.as_str() == "msg" {
-                messages.push(self.parse_msg_decl_inner()?);
-                self.skip_empty_lines();
-            }
-        }
-        let model = if is_component && self.cur.text.as_str() == "model" {
-            Some(self.parse_model_block_inner()?)
-        } else {
-            None
-        };
-        self.skip_empty_lines();
         // Plan 367 P2-3 fix: register params in a fresh scope so the body can
         // reference them. Without this, `check_symbol` flags a parameter used
         // as a bare `if` condition (e.g. `style: if active {..}`) as an
@@ -13225,48 +13278,11 @@ impl<'a> Parser<'a> {
                 crate::ast::Type::Unknown,
             );
         }
-        // Plan 408 P4: register model fields in the scope too, so the on-handler
-        // body (parsed next) and the view body can reference them (e.g.
-        // `.collapsed = !.collapsed`). Mirrors how widget on-handlers reference
-        // model state. Model fields are bound as Unknown — name resolution is
-        // finalized in the code generator.
-        if let Some(ref model_block) = model {
-            for field in &model_block.fields {
-                self.infer_ctx.bind_var(
-                    crate::ast::Name::from(field.name.as_str()),
-                    crate::ast::Type::Unknown,
-                );
-            }
-        }
-        // Plan 408 P12 §10.2: component fn 支持可选 `watch { }` 块（位于 model
-        // 之后、on 之前）。复用 widget 的 parse_watch_block_inner。view fn 不支持。
-        let watch: Vec<WatchDecl> = if is_component && self.cur.text.as_str() == "watch" {
-            self.parse_watch_block_inner()?
-        } else {
-            Vec::new()
-        };
-        self.skip_empty_lines();
-        // Plan 408 P4: component fn 支持可选 `on { }` 块（位于 model 之后、view
-        // body 之前，让 handler body 能引用 params + model 字段）。view fn 不支持。
-        let on = if is_component && self.cur.text.as_str() == "on" {
-            Some(self.parse_on_block()?)
-        } else {
-            None
-        };
-        self.skip_empty_lines();
-        // PLAN-026 缺陷②: component fn 支持可选 `style { }` 块（镜像 widget 的
-        // parse_style_block_inner）。view fn 不支持（恒 None）。
-        let style: Option<String> = if is_component && self.cur.text.as_str() == "style" {
-            Some(self.parse_style_block_inner()?)
-        } else {
-            None
-        };
-        self.skip_empty_lines();
         let body = self.parse_view_node()?;
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body, computed, messages, model, on, ext_imports, watch, style, is_component }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
     }
 
     /// Parse view block, returning the ViewBlock directly

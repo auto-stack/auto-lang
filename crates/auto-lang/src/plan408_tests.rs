@@ -76,8 +76,10 @@ mod plan408_tests {
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("view fn must still parse");
         // Exactly one view fn (inline) + one widget — no `component fn`.
+        // Plan 425: ViewFragmentDecl is view-fn-only now (component fn
+        // sugars to WidgetDecl), so every fragment counts as inline.
         let view_fns = ast.stmts.iter().filter(|s| matches!(
-            s, crate::ast::Stmt::ViewFragmentDecl(f) if !f.is_component
+            s, crate::ast::Stmt::ViewFragmentDecl(_)
         )).count();
         assert_eq!(view_fns, 1, "expected exactly one inline view fn");
     }

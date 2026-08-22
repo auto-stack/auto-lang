@@ -440,24 +440,11 @@ pub fn generate_component_from_file(
         }
     }
 
-    // Plan 408: collect `component fn` declarations as independent components.
-    // Each is synthesized to its own SFC (like a widget) and its name is
-    // registered as a sub-widget so same-file references render as
-    // `<Name :prop/>` + import instead of inline expansion.
-    // Plan 425: `component fn` sugars to WidgetDecl at parse time, so this
-    // loop is now vestigial (kept for one release as a no-op safety net for
-    // external AST producers; fragments with is_component no longer parse).
-    let mut component_fn_names: Vec<String> = Vec::new();
-    for stmt in &ast.stmts {
-        if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            if frag.is_component {
-                let aura_widget = crate::aura::extract::extract_widget_from_fragment(frag)
-                    .map_err(|e| e.to_string())?;
-                component_fn_names.push(frag.name.as_str().to_string());
-                widgets.push(aura_widget);
-            }
-        }
-    }
+    // Plan 408 collected `component fn` declarations here (fragment → SFC
+    // synthesis + sub-widget registration). Plan 425: `component fn` sugars
+    // to a WidgetDecl at parse time, so the main WidgetDecl loop above
+    // already extracts them and the same-file merge below registers their
+    // names — this second track is deleted.
 
     // PLAN-037 T6: file-level `use.web` statements attach their entries to
     // EVERY widget declared in the file (the import lands in each generated
@@ -488,11 +475,6 @@ pub fn generate_component_from_file(
     for w in &widgets {
         if !all_sub_widgets.contains(&w.name) {
             all_sub_widgets.push(w.name.clone());
-        }
-    }
-    for name in &component_fn_names {
-        if !all_sub_widgets.contains(name) {
-            all_sub_widgets.push(name.clone());
         }
     }
 

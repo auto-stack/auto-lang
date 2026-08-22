@@ -723,133 +723,6 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
 )
 }
 
-/// Plan 408: Map a `component fn`/`view fn` param type hint (raw string from
-/// the parser) to an Auto `Type` for `defineProps` synthesis.
-///
-/// Only primitive hints get a typed mapping; everything else (custom types,
-/// composite forms like `[]Note`, empty hints) falls back to `Type::Unknown`,
-/// which `prop_to_ts_type` renders as `any` (per Plan 408 §3 risk table:
-/// "参数一律 any" degradation). This keeps synthesis conservative and avoids
-/// a full string→Type parser.
-fn fragment_param_type(type_hint: &str) -> Type {
-    match type_hint.trim() {
-        "str" => Type::StrSlice,
-        "int" | "i64" | "uint" | "usize" => Type::Int,
-        "float" | "double" => Type::Float,
-        "bool" => Type::Bool,
-        _ => Type::Unknown,
-    }
-}
-
-/// Plan 408: Extract an `AuraWidget` (for independent SFC synthesis) from a
-/// `component fn` declaration. Mirrors `extract_widget_from_decl` but a
-/// fragment has only params (→ props) + a view body — no model/msg/on/
-/// computed/routes/lifecycle/bind/watch/expose/style/ext_imports.
-pub fn extract_widget_from_fragment(
-    frag: &crate::ast::ui::ViewFragmentDecl,
-) -> ExtractResult<AuraWidget> {
-    // Fragment params → AuraProp (defineProps source).
-    let props: Vec<AuraProp> = frag.params.iter()
-        .map(|(pname, type_hint)| AuraProp {
-            name: pname.as_str().to_string(),
-            type_info: fragment_param_type(type_hint),
-            default: None,
-        })
-        .collect();
-
-    // Plan 408 P3: component fn computed block → AuraComputed (mirrors
-    // extract_widget_from_decl's computed handling). view fn has computed=None.
-    let computed: Vec<AuraComputed> = if let Some(ref computed_block) = frag.computed {
-        computed_block.properties.iter()
-            .map(|p| AuraComputed {
-                name: p.name.as_str().to_string(),
-                expr: p.expr.clone(),
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    // Plan 408 P4: component fn model → state_vars (mirrors
-    // extract_widget_from_decl's model handling). view fn has model=None.
-    let mut state_vars = if let Some(ref model) = frag.model {
-        extract_model_fields(model)?
-    } else {
-        Vec::new()
-    };
-
-    // Plan 408 P4: component fn messages → AuraMessage (mirrors widget). view fn 恒空。
-    let messages: Vec<AuraMessage> = frag.messages.iter()
-        .map(|m| extract_msg_decl(m))
-        .collect();
-
-    // Plan 408 P4: component fn on block → handlers + handler_params (mirrors
-    // extract_widget_from_decl's on handling). Includes the .Tick interval
-    // extraction and .Init/.Destroy lifecycle lift-out, so a component fn with
-    // a timer or lifecycle hooks behaves like a widget. view fn has on=None.
-    let (mut handlers, handler_params) = if let Some(ref on) = frag.on {
-        extract_on_block(on)?
-    } else {
-        (HashMap::new(), HashMap::new())
-    };
-    let tick_interval = if handlers.keys().any(|k| k == ".Tick") {
-        let interval_val = state_vars.iter()
-            .find(|v| v.name == "interval")
-            .and_then(|v| {
-                if let Expr::Int(n) = &v.initial { Some(*n as u32) } else { None }
-            })
-            .or(Some(1000));
-        state_vars.retain(|v| v.name != "interval");
-        interval_val
-    } else {
-        None
-    };
-    let lifecycle_names = [
-        crate::aura::types::lifecycle::INIT,
-        crate::aura::types::lifecycle::DESTROY,
-    ];
-    let lifecycle_events: Vec<crate::aura::types::AuraLifecycle> = lifecycle_names.iter()
-        .filter_map(|name| {
-            handlers.remove(*name).map(|payload| {
-                crate::aura::types::AuraLifecycle::new(&name[1..], payload)
-            })
-        })
-        .collect();
-
-    // Fragment body is a single root ViewNode (parse_view_fragment_decl_body_tail
-    // parses exactly one). Extract it the same way a view block root is.
-    let mut view_tree = extract_view_node(&frag.body)?;
-    let span_map = assign_node_ids(&mut view_tree);
-
-    Ok(AuraWidget {
-        name: frag.name.as_str().to_string(),
-        state_vars,
-        computed,
-        messages,
-        view_tree,
-        handlers,
-        handler_params,
-        props,
-        routes: None,
-        lifecycle: lifecycle_events,
-        tick_interval,
-        span_map,
-        key_bindings: HashMap::new(),
-        api_imports: Vec::new(),
-        style_css: frag.style.clone(), // PLAN-026 缺陷②: component fn 的 style 块
-        ext_imports: frag.ext_imports.clone(),
-        watchers: frag.watch.iter()
-            .map(|w| crate::aura::types::AuraWatch {
-                sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
-                immediate: w.immediate,
-                deep: w.deep,
-                payload: LogicPayload::AstStmts(w.body.stmts.clone()),
-            })
-            .collect(),
-        exposes: Vec::new(),
-    })
-}
-
 /// Extract key bindings from bind block (Plan 275)
 fn extract_key_bindings(bind: &Option<BindBlock>) -> HashMap<String, String> {
     match bind {
@@ -898,39 +771,6 @@ fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
     extract_view_node(&view.root)
 }
 
-/// Plan 408: Convert a `component fn` call site into an `AuraNode::Component`
-/// reference (instead of inline-expanding it). `props` are the call-site view
-/// props (already filtered to Expr values); `events` are the call-site events.
-/// `name` is the component/tag name. The result references the independently
-/// synthesized SFC via the existing `known_sub_widgets` mechanism.
-fn fragment_to_component_node(
-    name: &str,
-    props: &[ViewProp],
-    events: &[ViewEvent],
-    children: Vec<AuraNode>,
-    span: Option<(usize, usize)>,
-) -> AuraNode {
-    let aura_props: Vec<(String, Expr)> = props.iter()
-        .filter_map(|p| match &p.value {
-            ViewPropValue::Expr(expr) => Some((p.name.clone(), expr.clone())),
-            ViewPropValue::StyleBinding(_) => None,
-        })
-        .collect();
-    let aura_events: HashMap<String, AuraEvent> = events.iter()
-        .map(|e| {
-            (e.name.clone(), AuraEvent { handler: e.handler.clone(), params: e.params.clone() })
-        })
-        .collect();
-    AuraNode::Component {
-        name: name.to_string(),
-        props: aura_props,
-        events: aura_events,
-        children,
-        span,
-        debug_id: None,
-    }
-}
-
 /// Extract view node from parsed ViewNode
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
@@ -943,17 +783,10 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             if is_pascal {
                 let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(tag.as_str()).cloned());
                 if let Some(frag) = fragment {
-                    // Plan 408: `component fn` → independent SFC, emit a
-                    // component reference instead of inline-expanding.
-                    if frag.is_component {
-                        // Plan 408 P11: extract slot children (the call site's
-                        // body) so the parent can inject <template #x> content.
-                        let aura_children: Vec<AuraNode> = children.iter()
-                            .map(|c| extract_view_node(c))
-                            .collect::<ExtractResult<_>>()?;
-                        return Ok(fragment_to_component_node(tag, props, events, aura_children, *span));
-                    }
                     // `view fn` → inline-expand (Plan 367 P2-3, unchanged).
+                    // Plan 425: `component fn` no longer registers here — it
+                    // sugars to a WidgetDecl at parse time and same-file
+                    // references render via the known_sub_widgets path.
                     // Build substitution map: param_name → call expression
                     let mut subs: HashMap<String, Expr> = HashMap::new();
                     for (pname, _type_hint) in &frag.params {
@@ -1092,11 +925,9 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             // If so, inline-expand the fragment body with parameter substitution.
             let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(name.as_str()).cloned());
             if let Some(frag) = fragment {
-                // Plan 408: `component fn` → independent SFC reference.
-                if frag.is_component {
-                    return Ok(fragment_to_component_node(name, props, events, Vec::new(), *span));
-                }
                 // `view fn` → inline-expand (Plan 367 P2-3, unchanged).
+                // Plan 425: component fn no longer registers here (sugars to
+                // WidgetDecl at parse time).
                 // Build parameter substitution map: arg0 → call_expr, arg1 → ...
                 let mut substitutions: HashMap<String, Expr> = HashMap::new();
                 for (i, param) in frag.params.iter().enumerate() {
