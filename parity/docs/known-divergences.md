@@ -32,7 +32,7 @@ Open gaps (each detailed in its own section below, fix plans in
 |----|------|--------|--------|
 | DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | open (L3) | trait_advanced sub-scenario |
 | DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | ✅ fixed (2026-08-22, Plan 417-E4) | trait_vm_tests ×2 |
-| DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
+| DIV-TRAIT-LANG-1 | language: spec associated types | ✅ fixed (2026-08-22, Plan 417-E2) | trait_advanced 三方 14/14 |
 | DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | ✅ fixed (verified 2026-08-22, Plan 417-E5) | http_client_sync 三方 5/5 |
 | DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | ✅ fixed (2026-08-22, Plan 417-E1) | golden 007_char_at_infer |
 
@@ -288,8 +288,17 @@ current status of each:
   a2r 侧本就正确(spec→Rust trait 默认方法,天然继承)。库内 workaround
   重声明保留(等价于显式覆盖)。状态: ✅ fixed。
 
-- **DIV-TRAIT-LANG-1 — associated types not supported (open, language).**
-  Auto's spec grammar has no `type Item;` construct. 状态: open (L3).
+- **DIV-TRAIT-LANG-1 — associated types not supported (✅ fixed 2026-08-22,
+  Plan 417-E2).** 四层落地:①parser/AST——SpecDecl.associated_types(`type
+  Item` 成员,名字入 current_type_params 使签名引用解析为裸 Type::User)+
+  SpecImpl.assoc_bindings(实现处命名式绑定 `as Container<Item=int>`,peek
+  `=` 与位置式 type_args 区分);②trait_checker——check_conformance 按绑定
+  Type::substitute 替换签名后再比对,未绑定/未知绑定名显式报错;③VM——
+  关联类型无运行时实体,TypeDecl 编译臂对声明方法与 E4 合成的默认方法
+  均做编译期替换;④a2r——trait 发射 `type Item;`+签名引用重写 `Self::Item`
+  (嵌套位置同覆盖),impl 块首发射 `type Item = i64;`,rust_return_type_name
+  豁免 Self:: 前缀的 impl-trait 误加。golden 12_specs/011_associated_types
+  (产物独立编译输出 8/7),trait_advanced sub-scenario B L3→L1(三方 14/14)。
 
 ## http_client_sync (Plan 359 D3) — ✅ UNBLOCKED (2026-08-22, Plan 417-E5)
 
