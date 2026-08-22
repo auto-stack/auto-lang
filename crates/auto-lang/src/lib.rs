@@ -186,7 +186,13 @@ pub fn set_vm_debug(enabled: bool) {
 
 /// Check if VM debug logging is enabled
 pub fn is_vm_debug() -> bool {
+    // Plan 420: AUTO_VM_DEBUG=1 env as a process-wide opt-in (no CLI flag
+    // existed; useful for diagnosing handler aborts in VM-mode UI apps).
+    static ENV_DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     VM_DEBUG.load(Ordering::SeqCst)
+        || *ENV_DEBUG.get_or_init(|| {
+            std::env::var("AUTO_VM_DEBUG").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+        })
 }
 
 /// Debug logging macro - only prints when VM debug mode is enabled

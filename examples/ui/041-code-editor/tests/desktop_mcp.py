@@ -136,6 +136,54 @@ def find_button_by_icon(snapshot_text, icon):
     return m.group(1) if m else None
 
 
+def find_button_by_onclick(snapshot_text, handler):
+    """Element id of the first button whose onclick references `handler`.
+
+    DSL `button { icon (name: "x") }` renders with an EMPTY label + [Image]
+    child (no PUA marker), so find_button_by_icon can't see it — find the
+    `onclick: .<handler>` line, then walk back to the nearest enclosing
+    `button #id` line (Plan 420 tab-strip x/+ buttons)."""
+    target = f"onclick: .{handler}"
+    current_id = None
+    for line in snapshot_text.splitlines():
+        m = re.search(r'button #(\w+)', line)
+        if m:
+            current_id = m.group(1)
+        if target in line and current_id is not None:
+            return current_id
+    return None
+
+
+def find_tab_close_buttons(snapshot_text):
+    """Ids of the tab-strip close (x) buttons.
+
+    The x buttons render as `button #id "" { text "[Image]" }` — empty label,
+    icon child, and (Plan 420 known gap) NO onclick attribute in the snapshot
+    because probe paths for for+if children don't align with vtree paths.
+    Distinguish from the `+` button (same shape) by the + having an onclick
+    attribute. Returns ids in document order."""
+    ids = []
+    lines = snapshot_text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = re.search(r'button #(\w+) ""', lines[i])
+        if m:
+            block = []
+            depth = lines[i].count("{") - lines[i].count("}")
+            j = i + 1
+            while j < len(lines) and depth > 0:
+                depth += lines[j].count("{") - lines[j].count("}")
+                block.append(lines[j])
+                j += 1
+            joined = "\n".join(block)
+            if "[Image]" in joined and "onclick:" not in joined:
+                ids.append(m.group(1))
+            i = j
+        else:
+            i += 1
+    return ids
+
+
 def open_menu(mcp, snap_cache, label):
     """Click the menubar button `label` (文件/编辑/视图/帮助), refresh snapshot.
 
@@ -258,9 +306,9 @@ def run_tests(mcp_url, proc):
     if item:
         mcp.click(item)
         time.sleep(0.3)
-        st = mcp.state("title_main", "path_main")
-        result.check("title_main reset to untitled", state_str(st, "title_main") == "untitled.at", st)
-        result.check("path_main cleared", state_str(st, "path_main") == "", st)
+        st = mcp.state("title_active", "path_active")
+        result.check("title_active reset to untitled", state_str(st, "title_active") == "untitled.at", st)
+        result.check("path_active cleared", state_str(st, "path_active") == "", st)
         result.check("new logged", "new: cleared" in (state_str(mcp.state("console"), "console") or ""), "")
     else:
         result.check("new menu item found", False, "no .ActNew in file menu snapshot")
@@ -286,11 +334,13 @@ def run_tests(mcp_url, proc):
     # hold under MCP dispatch (no real iced events to flush the widget's
     # external-dirty publish).
     print("\nT6: Editor actions (toolbar icons + edit-menu, text-verified)")
-    tab = state_int(mcp.state("tab"), "tab")
-    if tab == 1:
-        src_field, marker = "src_util", "工具模块"
+    # Plan 420: 正文断言走派生标量 src_active(激活 tab 的镜像,undo/cut/
+    # paste 等 handler 写回 —— 与旧 src_main/src_util 同步点一致)。
+    title_now = state_str(mcp.state("title_active"), "title_active") or ""
+    if "util" in title_now:
+        src_field, marker = "src_active", "工具模块"
     else:
-        src_field, marker = "src_main", "你好世界"
+        src_field, marker = "src_active", "你好世界"
 
     def src_now():
         return state_str(mcp.state(src_field), src_field) or ""
@@ -375,6 +425,134 @@ def run_tests(mcp_url, proc):
         result.check("tab flipped via config Ctrl+D", False, f"keyboard tool error: {e}")
 
     # T8: ActQuit via File menu — process exits
+    # T9: Plan 420 — tab close / + open (AUTO_OPEN_PATH bypass) / dirty-confirm
+    # / AUTO_SAVE_PATH roundtrip. Runs on a FRESH app process (earlier groups
+    # dirty tabs / mutate active state; a clean instance keeps 9.1-9.4
+    # deterministic). Requires AUTO_OPEN_PATH/AUTO_SAVE_PATH (see main()).
+    print("\nT9: Plan 420 tab workspace (close/+ open/dirty/save)")
+    if os.environ.get("AUTO_OPEN_PATH") and os.environ.get("AUTO_SAVE_PATH"):
+        t9_port = pick_free_port()
+        _mcp_orig, _snap_orig = mcp, snap_cache
+        t9_proc = subprocess.Popen(
+            [AUTO_BIN, "run", "-r", "vm"],
+            cwd=PROJECT,
+            env={**os.environ, "AUTOUI_MCP_PORT": str(t9_port)},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        t9_url = f"http://127.0.0.1:{t9_port}/mcp"
+        if wait_for_server(t9_url, 30):
+            mcp = McpClient(t9_url)
+            snap_cache = [""]
+            for _ in range(15):
+                snap_cache[0] = mcp.snapshot()
+                if "(rendered)" in snap_cache[0]:
+                    break
+                time.sleep(1)
+        roundtrip_path = os.environ["AUTO_OPEN_PATH"]
+        marker_before = open(roundtrip_path, encoding="utf-8").read()
+        # 9.1 close both starter tabs (x icon buttons in the tab strip; a
+        # tab dirtied by T6 opens the confirm popover — force-close through it)
+        for _ in range(3):
+            snap_cache[0] = mcp.snapshot()
+            if state_int(mcp.state("tab_count"), "tab_count") == 0:
+                break
+            if state_str(mcp.state("confirm_open"), "confirm_open") == "true":
+                snap_cache[0] = mcp.snapshot()
+                force = find_button_by_text(snap_cache[0], "直接关闭")
+                if force:
+                    mcp.click(force)
+                    time.sleep(0.5)
+                continue
+            xs = find_tab_close_buttons(snap_cache[0])
+            if not xs:
+                break
+            mcp.click(xs[0])
+            time.sleep(0.5)
+        result.check("all tabs closed", state_int(mcp.state("tab_count"), "tab_count") == 0,
+                     mcp.state("tab_count"))
+        snap_cache[0] = mcp.snapshot()
+        result.check("empty state visible", "没有打开的文件" in snap_cache[0], "empty-state text missing")
+
+        # 9.2 + opens the AUTO_OPEN_PATH file into a new tab
+        snap_cache[0] = mcp.snapshot()
+        plus = find_button_by_onclick(snap_cache[0], "ActOpen")
+        ok_plus = plus is not None
+        result.check("+ button found", ok_plus, "plus icon button missing")
+        if ok_plus:
+            mcp.click(plus)
+            time.sleep(0.8)
+            st = mcp.state("tab_count", "title_active", "src_active")
+            result.check("tab opened from AUTO_OPEN_PATH",
+                         state_int(st, "tab_count") == 1
+                         and state_str(st, "title_active") == os.path.basename(roundtrip_path),
+                         st)
+            result.check("opened content matches file",
+                         marker_before.splitlines()[0] in (state_str(st, "src_active") or ""),
+                         st)
+
+        # 9.3 dirty-confirm: ActCut unconditionally dirties the active tab
+        # (autoui_type passes the TEXT as first handler arg -- the generic
+        # input-tool convention -- which displaces the loop-index payload of
+        # `oninput: .SrcChanged(i)`; real-window events keep the payload).
+        snap_cache[0] = mcp.snapshot()
+        cut_btn = find_button_by_icon(snap_cache[0], "scissors")
+        ok_cut = cut_btn is not None
+        result.check("cut toolbar button found", ok_cut, "scissors icon missing")
+        if ok_cut:
+            mcp.click(cut_btn)
+            time.sleep(0.5)
+            result.check("cut logged", "cut" in (state_str(mcp.state("console"), "console") or ""),
+                         "no cut console line")
+            snap_cache[0] = mcp.snapshot()
+            xs9 = find_tab_close_buttons(snap_cache[0])
+            if xs9:
+                mcp.click(xs9[0])
+                time.sleep(0.6)
+                result.check("dirty confirm popover opens",
+                             "confirm_open: true" in mcp.state("confirm_open"),
+                             mcp.state("confirm_open"))
+                snap_cache[0] = mcp.snapshot()
+                force = find_button_by_text(snap_cache[0], "\u76f4\u63a5\u5173\u95ed")
+                result.check("confirm force-close item found", force is not None, "not in snapshot")
+                if force:
+                    mcp.click(force)
+                    time.sleep(0.5)
+                    result.check("dirty tab closed",
+                                 state_int(mcp.state("tab_count"), "tab_count") == 0,
+                                 mcp.state("tab_count"))
+
+        # 9.4 save roundtrip: reopen, type, save via toolbar icon → file rewritten
+        snap_cache[0] = mcp.snapshot()
+        plus = find_button_by_onclick(snap_cache[0], "ActOpen")
+        if plus:
+            mcp.click(plus)
+            time.sleep(0.8)
+            # dirty via cut, then save via toolbar icon -> file rewritten
+            snap_cache[0] = mcp.snapshot()
+            cut_btn = find_button_by_icon(snap_cache[0], "scissors")
+            if cut_btn:
+                mcp.click(cut_btn)
+                time.sleep(0.4)
+            snap_cache[0] = mcp.snapshot()
+            save_btn = find_button_by_icon(snap_cache[0], "save")
+            if save_btn:
+                mcp.click(save_btn)
+                time.sleep(0.8)
+                written = open(os.environ["AUTO_SAVE_PATH"], encoding="utf-8").read()
+                result.check("saved file round-trips content",
+                             marker_before.splitlines()[0] in written, written[-80:])
+            else:
+                result.check("save toolbar button found", False, "save icon missing")
+        # restore the main app client (T8 quits the ORIGINAL process) and
+        # retire the T9 instance.
+        mcp, snap_cache = _mcp_orig, _snap_orig
+        t9_proc.terminate()
+        try:
+            t9_proc.wait(5)
+        except Exception:
+            t9_proc.kill()
+    else:
+        print("  NOTE  AUTO_OPEN_PATH/AUTO_SAVE_PATH not set; skipping T9 (see runner env)")
+
     print("\nT8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
     item = find_button_by_text(snap_cache[0], "退出")
@@ -419,10 +597,23 @@ def main():
     app_log = tempfile.NamedTemporaryFile(
         prefix="auto041_mcp_", suffix=".log", delete=False, mode="w",
         encoding="utf-8", errors="replace")
+    # Plan 420 T9: file open/save automation bypass — with these set, ActOpen/
+    # ActSave skip the blocking rfd dialogs (test-build semantics only).
+    roundtrip_file = tempfile.NamedTemporaryFile(
+        prefix="auto041_t9_", suffix=".at", delete=False, mode="w", encoding="utf-8")
+    roundtrip_file.write("// t9 roundtrip file\nfn t9() int { 42 }\n")
+    roundtrip_file.flush()
+    roundtrip_file.close()
+    os.environ["AUTO_OPEN_PATH"] = roundtrip_file.name
+    os.environ["AUTO_SAVE_PATH"] = roundtrip_file.name
+    t9_env = {
+        **os.environ,
+        "AUTOUI_MCP_PORT": str(mcp_port),
+    }
     proc = subprocess.Popen(
         [AUTO_BIN, "run", "-r", "vm"],
         cwd=PROJECT,
-        env={**os.environ, "AUTOUI_MCP_PORT": str(mcp_port)},
+        env=t9_env,
         stdout=app_log,
         stderr=subprocess.STDOUT,
     )

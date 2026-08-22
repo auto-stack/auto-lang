@@ -4995,6 +4995,26 @@ let tabs_inner = View::Row {
             value_to_display_string(val)
         } else if let Some(val) = self.resolve_binding_path(rhs, bindings) {
             value_to_display_string(&val)
+        } else if rhs.starts_with('.') {
+            // Plan 420: RHS 的 state 引用解析 —— 与 LHS 对称(此前 RHS 从不
+            // 查 state,`i == .n` / `t.key == .active` 退化成与字面量
+            // ".n"/".active" 比较,for 循环体内一切对 state 的等值判断恒假)。
+            let name = &rhs[1..];
+            if name.contains('.') {
+                if let Some(expr) = Self::parse_dot_path_to_expr(rhs) {
+                    match self.resolve_expr_to_value(&expr, bindings) {
+                        Some(v) => value_to_display_string(&v),
+                        None => return false,
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                match self.read_state(name) {
+                    Ok(v) => value_to_display_string(&v),
+                    Err(_) => return false,
+                }
+            }
         } else {
             rhs.trim_matches('"').to_string()
         };
