@@ -3020,10 +3020,13 @@ let tabs_inner = View::Row {
         let line = ViewBuilder::col()
             .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
             .build();
+        // `onclick` is a plain DynamicMessage (not Option): dispatch an
+        // empty event name — no handler matches it, so a stray click on
+        // the separator is a harmless no-op.
         View::Button {
             label: String::new(),
             content: Some(Box::new(line)),
-            onclick: None,
+            onclick: DynamicMessage::String(String::new()),
             style,
             on_right_click: None,
         }
