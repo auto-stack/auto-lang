@@ -1,0 +1,43 @@
+/// generators — yield-iterator parity coverage (Plan 359 D2 / Plan 417-D2).
+///
+/// Sub-scenarios:
+///   * A plain multi-yield generator (`three_yields`) — the minimal lazy
+///     sequence, consumed by for-in.
+///   * B bounded loop generator (`counter`) — yields from a while loop with
+///     loop-carried state, including the empty edge (count = 0).
+///   * C conditional-yield generator (`evens_up_to`) — yields only on a
+///     filtering condition inside the loop.
+///
+/// Honesty notes (README has the full story):
+///   * Auto's `~Iter<T>` and `~Stream<T>` lower to the SAME Rust shape in a2r
+///     (`impl futures::Stream` via async_stream) — the impl-Iterator spelling
+///     never compiled before Plan 417-D2 fixed the lowering.
+///   * Lazy CHAINS (range → map → filter → take over generators) are not
+///     covered: Auto has no generator-chain syntax over ~Iter yet. That is a
+///     language roadmap item, recorded in the README, not worked around.
+///   * All yields are ints — numeric TAP checks keep the focus on generator
+///     semantics (creation, laziness, termination, consumption).
+
+fn three_yields() ~Iter<int> {
+    yield 10
+    yield 20
+    yield 30
+}
+
+fn counter(start int, count int) ~Iter<int> {
+    var i int = 0
+    while i < count {
+        yield start + i
+        i = i + 1
+    }
+}
+
+fn evens_up_to(limit int) ~Iter<int> {
+    var n int = 0
+    while n < limit {
+        if n % 2 == 0 {
+            yield n
+        }
+        n = n + 1
+    }
+}

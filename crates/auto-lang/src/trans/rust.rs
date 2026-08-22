@@ -8185,8 +8185,14 @@ impl RustTrans {
         if let Expr::Call(call) = range {
             if let Expr::Ident(fname) = call.name.as_ref() {
                 if let Some(ret) = self.fn_ret_types.get(fname.as_str()) {
+                    // Plan 417-D2: ~Iter<T> generator calls ride the same
+                    // stream consumption path — the generator body is wrapped
+                    // in async_stream::stream! (a Stream, not an Iterator), so
+                    // for-in must become the `while let ... .await` form and
+                    // main must go async, exactly like ~Stream.
                     return matches!(ret,
-                        Type::GenericInstance(inst) if inst.base_name == "Stream");
+                        Type::GenericInstance(inst)
+                            if matches!(inst.base_name.as_str(), "Stream" | "Iter"));
                 }
             }
         }
@@ -11173,7 +11179,14 @@ impl RustTrans {
         } else if is_generator_fn {
             // Plan 321: Generator functions return impl Iterator/Stream
             let inner = generator_inner_type.as_deref().unwrap_or("String");
-            let stream_or_iter = if matches!(&fn_decl.ret, Type::GenericInstance(inst) if inst.base_name == "Stream") {
+            // Plan 417-D2: BOTH ~Stream and ~Iter emit `impl futures::Stream`.
+            // The generator body is wrapped in async_stream::stream! which
+            // yields a Stream — declaring `impl Iterator` (the old ~Iter
+            // spelling) never compiled (001_simple_yield was left
+            // unregistered for exactly this reason). ~Iter maps onto the
+            // same lazy-sequence lowering; Auto-side semantics are identical.
+            let stream_or_iter = if matches!(&fn_decl.ret, Type::GenericInstance(inst)
+                if matches!(inst.base_name.as_str(), "Stream" | "Iter")) {
                 "impl futures::Stream<Item = "
             } else {
                 "impl Iterator<Item = "
@@ -12075,7 +12088,75 @@ impl RustTrans {
     }
 
     // Use statement
+    /// Plan 417-D2: single-file transpiles have no project module discovery,
+    /// so `use auto.<mod>: f, g` leaves the imported fns' signatures unknown —
+    /// for-in generator rewrites (`iterable_is_stream`) and the String→&str
+    /// call-site coercion both key off `fn_ret_types`/`fn_str_param_indices`
+    /// and missed imported names (the parity string_utils / generators a2r
+    /// builds failed on exactly this). When the module source is locatable
+    /// relative to the working directory (`./auto/<mod>.at` — the parity lib
+    /// layout — or `./<mod>.at`), parse it and register the imported items'
+    /// fn signatures. Best-effort: missing files leave behavior unchanged.
+    fn register_import_signatures(&mut self, use_stmt: &Use) {
+        // Only structured `use auto.<mod>: ...` / bare `<mod>` imports.
+        let mod_name: String = if use_stmt.paths.first().map(|s| s.as_str()) == Some("auto") {
+            match use_stmt.paths.get(1) {
+                Some(m) => m.as_str().to_string(),
+                None => return,
+            }
+        } else if use_stmt.paths.len() == 1 && !use_stmt.is_wildcard {
+            use_stmt.paths[0].as_str().to_string()
+        } else {
+            return;
+        };
+        if mod_name.is_empty() || mod_name.contains("::") {
+            return;
+        }
+        let cwd = match std::env::current_dir() {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let candidates = [
+            cwd.join("auto").join(format!("{}.at", mod_name)),
+            cwd.join(format!("{}.at", mod_name)),
+        ];
+        let source = candidates
+            .iter()
+            .find_map(|p| std::fs::read_to_string(p).ok());
+        let source = match source {
+            Some(s) => s,
+            None => return,
+        };
+        let mut parser = crate::parser::Parser::new(&source);
+        let code = match parser.parse() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        for stmt in code.stmts {
+            if let crate::ast::Stmt::Fn(fn_decl) = stmt {
+                let wanted = use_stmt.is_wildcard
+                    || use_stmt.items.iter().any(|i| i.as_str() == fn_decl.name.as_str());
+                if !wanted {
+                    continue;
+                }
+                let str_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| matches!(p.ty,
+                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                    .collect();
+                if str_flags.iter().any(|f| *f) {
+                    self.fn_str_param_indices.insert(fn_decl.name.clone(), str_flags);
+                }
+                self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+            }
+        }
+    }
+
     fn use_stmt(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 417-D2: register imported fn signatures (single-file
+        // mode has no project discovery — see the helper).
+        self.register_import_signatures(use_stmt);
         // Plan 376U: crate-root files (lib.at, */mod.at) use top-level `use X: sym`
         // as public re-exports, so render `pub use` even when the source has no
         // explicit `pub` prefix. (Mirrors Rust's `pub use` in lib.rs / mod.rs.)

@@ -1065,6 +1065,9 @@ fn test_312_codegen_collects_api_routes() {
 
 // === 21_generators ===
 // Plan 364 W6: first compile-test of ~Stream<T> generator transpilation.
+
+#[test] fn test_21_generators_001_simple_yield() { test_a2r("21_generators/001_simple_yield").unwrap(); }
+// Plan 417-D2: ~Iter generator rides the Stream lowering (impl futures::Stream).
 #[test] fn test_21_generators_002_stream_yield() { test_a2r("21_generators/002_stream_yield").unwrap(); }
 
 // === 22_actors (Plan 387) ===

@@ -329,8 +329,8 @@ bug is worked around in-source:
     `04_strings/007_char_at_infer`），string_utils 的四处 `var c int`
     workaround 注解已移除。
   - 状态: ✅ fixed (Plan 417-E1; 推断修复由 golden 007_char_at_infer 验证)。
-    三方重跑暂被无关的预存断裂阻塞(导入函数实参 String→&str 缺口,
-    KNOWN-DEBT 417-E1 调查条 + 417 计划 E1b)。
+    三方重跑已恢复:string_utils 22/22 全绿(2026-08-22,417-D2 的
+    register_import_signatures 根治了导入函数签名盲区——见 KNOWN-DEBT)。
 
 ## Python Parity Divergences
 
