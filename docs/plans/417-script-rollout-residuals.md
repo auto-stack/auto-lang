@@ -1,6 +1,6 @@
 # Plan 417: "Auto 作 Rust 脚本层"发布收尾（359 residuals:Phase E + D2/D3 + A1/A2）
 
-> **状态**: 📋 已立项待实施（2026-08-22,源自审计 §5.2 B8 拆粒度;暂缓原因"依赖语言特性(Phase E 各 DIV)"——本计划按 DIV 依赖排序,可分批推进）
+> **状态**: 🔧 部分完成（2026-08-22）——Phase E 五项全关（E1-E5）+ D2 generators + D3 http_client_sync 均已落地；**剩余**：§4 A1/A2 落地页、D2.3/D3.3 双 demo（并入 A1/A2 批次）、§5 359 的 165 checkbox 回填。全部完成后归档。
 > **来源**: Plan 359 真实遗留(2026-08-20 复核):D2 generators 用例、D3 http_client_sync(blocked by DIV-HTTP-LANG-1)、Phase E 五项 open、A1/A2 落地页
 
 ---

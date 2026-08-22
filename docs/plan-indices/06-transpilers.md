@@ -8,6 +8,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | Plan | Title | Status | Summary |
 |------|-------|--------|---------|
 | 007 | Implement a2r Transpiler | 🔧 | Auto-to-Rust transpiler following a2c architecture patterns; basic phase 1 complete |
+| 417 | “Auto 作 Rust 脚本层”发布收尾（359 residuals） | 🔧 | Phase E 五项全关(E1-E5)+D2 generators+D3 http_client_sync 均落地(2026-08-22);剩 A1/A2 落地页、D2.3/D3.3 双 demo、359 的 165 checkbox 回填未竟 |
 | 415 | a2r 剩余大件拆粒度（242 收尾批） | 📋 | HashMap::from 发射/SQLite→Redis stdlib/GPUI spike/自举/dep cc+memmap2 五子项;2026-08-22 立项 |
 | 022 | Python Transpiler (a2p) | ✅ | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
 | 023 | JavaScript Transpiler (a2j) | ✅ | Complete 11-phase implementation: all JS features in single phase, 9/9 tests passing |
@@ -52,7 +53,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 397 | Spec Supertrait + Arc<Fn> Spec-Param | ✅ | `pub spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> spec-param golden 确认 |
 
 ## Status Summary
-- Completed: 27 | Partial: 3 | Planned: 9 | Deprecated: 0
+- Completed: 27 | Partial: 4 | Planned: 9 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)

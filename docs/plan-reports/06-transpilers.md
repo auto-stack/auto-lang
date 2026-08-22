@@ -9,6 +9,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 | Plan | Title | Status | Summary |
 |------|-------|--------|---------|
 | 007 | Implement a2r Transpiler | Partial | Auto-to-Rust transpiler; Phase 1 core infrastructure complete, Phases 2-6 pending |
+| 417 | “Auto 作 Rust 脚本层”发布收尾（359 residuals） | Partial | Phase E 五项全关(E1-E5)+D2 generators+D3 http_client_sync 落地;剩 A1/A2 落地页、D2.3/D3.3 双 demo、359 的 165 checkbox 回填未竟 |
 | 022 | Python Transpiler (a2p) | Done | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
 | 023 | JavaScript Transpiler (a2j) | Done | Complete 11-phase implementation: all JS features in single phase, 9/9 tests passing |
 | 062 | C Transpiler Generics | Done | Monomorphization for a2c: type specialization, array tests, miette error messages (127 tests) |
@@ -120,7 +121,7 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 396, 397.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 396, 397, 417.
 
 - [204-a2r-transpiler-completeness.md](../plans/archive/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
