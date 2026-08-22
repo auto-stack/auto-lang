@@ -97,11 +97,11 @@ Gotchas hit while writing this library (worth recording):
     on the runtime type (CALL_SPEC on the heap tag). The reversed-compare
     implementer `ScoreDesc` proves the dispatch follows each receiver's own
     type. Covered by `bounded_generics.at` (4 cases).
-- **L3 (documented):**
-  - **Generic spec with a concrete type argument** (`type T as Comparable<int>`)
-    makes a2r drop the type argument, emitting `impl Comparable for T`
-    (missing generics, `error[E0107]`). The generic spec *declaration* parses
-    and transpiles, but the impl does not. See **DIV-TRAIT-A2R-2**.
+- **L3 (documented):** none remain — the last item, generic spec with a
+  concrete type argument (`type T as Comparable<int>`), was fixed across the
+  a2r impl emission (Plan 359), the VM trait checker's signature comparison,
+  and the a2r trait-declaration emission (Plan 417-followup). See
+  **DIV-TRAIT-A2R-2** for the full history.
 
 ## API
 
@@ -134,7 +134,7 @@ DIV-URL-VM-1) and never trip a2r struct-ownership codegen (E0507/E0382).
 
 See `parity/docs/known-divergences.md` §"trait_advanced (D2)" for:
 - **DIV-TRAIT-A2R-1** — value-returning default method miscompiled by a2r (open).
-- **DIV-TRAIT-A2R-2** — generic spec impl drops the concrete type argument (open).
+- **DIV-TRAIT-A2R-2** — generic spec impl drops the concrete type argument (fixed: Plan 359 a2r impl emission + 417-followup checker/trait-declaration halves).
 - **DIV-TRAIT-LANG-1** — associated types: fixed 2026-08-22 (Plan 417-E2); sub-scenario B now runs live at L1.
 
 ## How to run

@@ -259,7 +259,16 @@ current status of each:
   impls (`as Storage<T>`). Verified by `12_specs/005_generic_impl` (rustc
   clean) and zero regression on 13 golden tests (incl. 002_list_storage,
   the boundary case).
-  - 状态: fixed.
+  - 2026-08-22 收尾补全 (Plan 417-followup): a2r 修复时留下两半缺口——
+    ①VM trait_checker 不把位置式 type_args 替换进 spec 签名比对 (实现者
+    `compare(other int) int` 对 spec `compare(other T) T` 误报返回类型不
+    符);②a2r 的 trait 声明发射里方法返回位引用 spec 泛型参数时仍中
+    PascalCase trait 启发式误发 `-> impl T` (E0404)。修复:checker 的替换
+    表并入位置式 type_args (独立于关联类型名校验门);rust.rs 发射 spec
+    trait 方法签名时以 spec 自身泛型参数充当 current_fn_type_params。
+    新增 golden `12_specs/013_generic_spec_typed_impl` (T 同时出现在参数
+    与返回位,VM 与 a2r 独立编译均输出 6)。
+  - 状态: fixed (全量)。
 
 - **DIV-TRAIT-A2R-3 — (not a bug; retracted).** An earlier draft recorded a
   "spec method bodies miss `self.` prefix" gap, but investigation showed

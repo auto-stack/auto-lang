@@ -8326,13 +8326,18 @@ impl<'a> Parser<'a> {
         // (a2r `<T: Bound>` emission, VM generic-receiver dispatch).
         if !generic_params.is_empty() {
             let mut type_params: Vec<crate::ast::TypeParam> = Vec::new();
+            let mut const_params: Vec<crate::ast::ConstParam> = Vec::new();
             for gp in &generic_params {
-                if let crate::ast::GenericParam::Type(tp) = gp {
-                    type_params.push(tp.clone());
+                match gp {
+                    crate::ast::GenericParam::Type(tp) => type_params.push(tp.clone()),
+                    crate::ast::GenericParam::Const(cp) => const_params.push(cp.clone()),
                 }
             }
             if !type_params.is_empty() {
                 fn_expr.type_params = type_params;
+            }
+            if !const_params.is_empty() {
+                fn_expr.const_params = const_params;
             }
         }
 
@@ -8565,6 +8570,20 @@ impl<'a> Parser<'a> {
 
         // Plan 061: Set type_params from #[with(...)] and <T>
         fn_expr.type_params = type_params;
+        // Plan 052-followup (417 项④): surface const generic params (<N u32>)
+        let const_params: Vec<crate::ast::ConstParam> = generic_params
+            .iter()
+            .filter_map(|gp| {
+                if let crate::ast::GenericParam::Const(cp) = gp {
+                    Some(cp.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !const_params.is_empty() {
+            fn_expr.const_params = const_params;
+        }
 
         // Set is_static flag
         fn_expr.is_static = is_static;

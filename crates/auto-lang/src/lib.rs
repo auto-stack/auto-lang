@@ -793,15 +793,32 @@ async fn execute_autovm_with_path(
 /// hashes. The walker below decodes instruction lengths precisely.
 fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
     use crate::vm::opcode::OpCode;
-    // Helper to read a u16 operand at `pos`.
-    let apply = |code: &mut [u8], pos: usize| {
-        if pos + 1 < code.len() {
-            let old = u16::from_le_bytes([code[pos], code[pos + 1]]) as usize;
+    // Rewrite a u32 string-pool index operand at `pos`. Plan 417-followup:
+    // the compile-time pool was u32-ified (8482021e) — every pool-index
+    // operand is now 4 bytes wide, so the old u16 read/write patched the low
+    // half of the wrong operand and desynced the walk by 2 bytes per op.
+    // (The remap TABLE itself stays u16 — pools large enough to overflow it
+    // would need the same u32-ification here; see KNOWN-DEBT.)
+    let apply_u32 = |code: &mut [u8], pos: usize| {
+        if pos + 3 < code.len() {
+            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]) as usize;
             if old < remap.len() {
-                let new = remap[old];
+                let new = remap[old] as u32;
                 let bytes = new.to_le_bytes();
                 code[pos] = bytes[0];
                 code[pos + 1] = bytes[1];
+                code[pos + 2] = bytes[2];
+                code[pos + 3] = bytes[3];
+            }
+        }
+    };
+    // Like apply_u32 but leaves the 0xFFFF "no id" sentinel untouched
+    // (PUSH_ACCUM / CREATE_NODE carry an optional id string idx).
+    let apply_u32_opt = |code: &mut [u8], pos: usize| {
+        if pos + 3 < code.len() {
+            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]);
+            if old != 0xFFFF {
+                apply_u32(code, pos);
             }
         }
     };
@@ -821,14 +838,15 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
         }
         let op = OpCode::from(op_byte);
         let operand_pos = i + 1;
-        // Compute the operand size and whether this op carries a u16 string idx.
+        // Compute the operand size and whether this op carries a u32 string idx.
         let (operand_len, is_string_idx): (usize, bool) = match op {
-            // Opcodes whose single u16 operand is a STRING POOL index (remap it).
+            // Opcodes whose single u32 operand is a STRING POOL index (remap it).
             // NOTE: CALL_NAT is intentionally excluded — its u16 is a native ID,
             // not a string index; remapping it corrupts native dispatch.
             OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
             | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED => (2, true),
+            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED
+            | OpCode::ACCUM_PAIR => (4, true),
             // CALL_NAT: u16 native ID (must skip but NOT remap).
             OpCode::CALL_NAT => (2, false),
             // Other fixed-size operands (must skip correctly even though not remapped).
@@ -839,7 +857,11 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
             | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
             | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
             | OpCode::GET_TUPLE_FIELD => (1, false),
-            OpCode::FN_PROLOG | OpCode::CREATE_OBJ => (2, false),
+            OpCode::FN_PROLOG => (2, false),
+            // Plan 417-followup: CREATE_OBJ = u32 key_index + u8 field_count
+            // (5 operand bytes). The obj walker (remap_obj_indices) rewrites
+            // the key index; here we only need the correct skip length.
+            OpCode::CREATE_OBJ => (5, false),
             // 4-byte operands
             OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
             | OpCode::CALL | OpCode::CREATE_FUTURE | OpCode::LOAD_REF | OpCode::STORE_REF
@@ -858,19 +880,45 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
             OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
             OpCode::SLEEP => (4, false),
             OpCode::JOIN | OpCode::SEND => (4, false),
-            // Plan 417-E3: CALL_SPEC carries u16 method-name STRING idx + u8
-            // arg count (3 operand bytes; see codegen emission and the engine
-            // decode). Two fixes vs the old `(4, false)` skip: the length now
-            // matches the real encoding (4 desynced the walk by one byte per
-            // CALL_SPEC), and the u16 IS a string-pool index so it must be
-            // rebased — a dep module's CALL_SPEC otherwise dispatched a wrong
-            // method name after the string-pool merge.
+            // Plan 417-followup: CALL_SPEC carries a u32 method-name STRING idx
+            // + u8 arg count (5 operand bytes). The method idx must be rebased
+            // — a dep module's CALL_SPEC otherwise dispatches a wrong method
+            // name after the string-pool merge (Plan 417-E3; widened u16→u32
+            // after the compile-time pool u32-ification, 8482021e).
             OpCode::CALL_SPEC => {
-                apply(code, operand_pos);
-                (3, false)
+                apply_u32(code, operand_pos);
+                (5, false)
             }
-            OpCode::CREATE_NODE => (5, false),
-            OpCode::CLOSURE => (4, false),
+            // Plan 417-followup: PUSH_ACCUM = u32 name idx + u32 id idx
+            // (0xFFFF sentinel = no id). CREATE_NODE = u32 name idx + u8
+            // arg_count + u32 id idx (same sentinel).
+            OpCode::PUSH_ACCUM => {
+                apply_u32(code, operand_pos);
+                apply_u32_opt(code, operand_pos + 4);
+                (8, false)
+            }
+            OpCode::CREATE_NODE => {
+                apply_u32(code, operand_pos);
+                apply_u32_opt(code, operand_pos + 5);
+                (9, false)
+            }
+            // Plan 417-followup: CLOSURE = u32 func_addr (reloc, not a string)
+            // + u8 capture_count + u8 n_args + captures × (u32 name idx +
+            // u16 slot offset) — variable length 6 + n×6; each capture name
+            // idx is a pool index.
+            OpCode::CLOSURE => {
+                if operand_pos + 5 < code.len() {
+                    let cc = code[operand_pos + 4] as usize;
+                    let mut p = operand_pos + 6;
+                    for _ in 0..cc {
+                        apply_u32(code, p);
+                        p += 6;
+                    }
+                    (6 + cc * 6, false)
+                } else {
+                    (6, false)
+                }
+            }
             OpCode::SOURCE_LINE => (2, false),
             // 2-byte jump offsets
             OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
@@ -900,7 +948,7 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
         };
 
         if is_string_idx {
-            apply(code, operand_pos);
+            apply_u32(code, operand_pos);
         }
         i += 1 + operand_len;
     }
@@ -921,15 +969,19 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
     if obj_remap.is_empty() {
         return;
     }
-    // Rewrite the u16 CREATE_OBJ key_index at `pos` if it is in range.
+    // Rewrite the u32 CREATE_OBJ key_index at `pos` if it is in range.
+    // Plan 417-followup: CREATE_OBJ's key_index went u16->u32 with the
+    // compile-time pool u32-ification (8482021e).
     let apply = |code: &mut [u8], pos: usize| {
-        if pos + 1 < code.len() {
-            let old = u16::from_le_bytes([code[pos], code[pos + 1]]) as usize;
+        if pos + 3 < code.len() {
+            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]) as usize;
             if old < obj_remap.len() {
-                let new = obj_remap[old];
+                let new = obj_remap[old] as u32;
                 let bytes = new.to_le_bytes();
                 code[pos] = bytes[0];
                 code[pos + 1] = bytes[1];
+                code[pos + 2] = bytes[2];
+                code[pos + 3] = bytes[3];
             }
         }
     };
@@ -946,15 +998,19 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
         }
         let op = OpCode::from(op_byte);
         let operand_pos = i + 1;
-        // Only CREATE_OBJ carries a u16 key_index into the object_keys pool.
+        // Only CREATE_OBJ carries a key_index into the object_keys pool.
         // All other operand sizes must still be skipped correctly so operand
-        // bytes are never misread as opcodes.
+        // bytes are never misread as opcodes. Pool-index operands are u32
+        // since the compile-time pool u32-ification (Plan 417-followup).
         let (operand_len, is_obj_idx): (usize, bool) = match op {
-            OpCode::CREATE_OBJ => (2, true),
-            // u16 string-pool / native-id operands (skip, do not remap).
+            // u32 key_index + u8 field_count.
+            OpCode::CREATE_OBJ => (5, true),
+            // u32 string-pool operands (skip, do not remap).
             OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
             | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::CALL_NAT => (2, false),
+            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED
+            | OpCode::ACCUM_PAIR => (4, false),
+            OpCode::CALL_NAT => (2, false),
             // 1-byte fixed operands.
             OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
             | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
@@ -982,12 +1038,21 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
             OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
             OpCode::SLEEP => (4, false),
             OpCode::JOIN | OpCode::SEND => (4, false),
-            // Plan 417-E3: CALL_SPEC = u16 method string idx + u8 arg count
-            // (3 operand bytes; the old 4-byte skip desynced this walk by one
-            // byte per CALL_SPEC). No obj-pool operand here — length fix only.
-            OpCode::CALL_SPEC => (3, false),
-            OpCode::CREATE_NODE => (5, false),
-            OpCode::CLOSURE => (4, false),
+            // Plan 417-followup: CALL_SPEC = u32 method string idx + u8
+            // arg count (5 bytes). PUSH_ACCUM: 2×u32. CREATE_NODE: u32+u8+u32.
+            // CLOSURE: u32 + u8 + u8 + n×(u32+u16). No obj-pool operands —
+            // lengths only.
+            OpCode::CALL_SPEC => (5, false),
+            OpCode::PUSH_ACCUM => (8, false),
+            OpCode::CREATE_NODE => (9, false),
+            OpCode::CLOSURE => {
+                if operand_pos + 5 < code.len() {
+                    let cc = code[operand_pos + 4] as usize;
+                    (6 + cc * 6, false)
+                } else {
+                    (6, false)
+                }
+            }
             OpCode::SOURCE_LINE => (2, false),
             OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
             OpCode::BUILD_FSTR => {
