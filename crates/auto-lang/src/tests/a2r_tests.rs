@@ -454,6 +454,7 @@ ext Store {
 #[test] fn test_10_collections_003_map_func() { test_a2r("10_collections/003_map_func").unwrap(); }
 #[test] fn test_10_collections_004_list_as_cast() { test_a2r("10_collections/004_list_as_cast").unwrap(); }
 #[test] fn test_10_collections_005_method_chain() { test_a2r("10_collections/005_method_chain").unwrap(); }
+#[test] fn test_10_collections_006_map_literal() { test_a2r("10_collections/006_map_literal").unwrap(); }
 
 // === 11_methods ===
 #[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }

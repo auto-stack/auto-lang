@@ -1,0 +1,12 @@
+// Map literal initializers with declared Map types emit HashMap::from
+// (Plan 415-A / 242 #2): str keys/values wrap in String::from; int keys and
+// non-literal values pass through; `var` keeps `let mut`.
+
+fn main() {
+    var counts Map<str, int> = { "a": 1, "b": 2 }
+    counts.insert("c", 3)
+    let labels Map<int, str> = { 1: "one", 2: "two" }
+    let name str = "k"
+    let dyn_key Map<str, int> = { "seed": counts.len() }
+    print(counts.len() + labels.len() + dyn_key.len())
+}

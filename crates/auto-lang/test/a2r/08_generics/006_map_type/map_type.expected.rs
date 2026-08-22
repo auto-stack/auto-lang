@@ -7,7 +7,7 @@ struct Config {
 }
 
 fn main() {
-    let headers: std::collections::HashMap<String, String> = {Authorization: "Bearer xxx", Content-Type: "application/json"};
-    let counts: std::collections::HashMap<String, i64> = {hello: 3, world: 5};
+    let headers: std::collections::HashMap<String, String> = std::collections::HashMap::from([(String::from("Authorization"), String::from("Bearer xxx")), (String::from("Content-Type"), String::from("application/json"))]);
+    let counts: std::collections::HashMap<String, i64> = std::collections::HashMap::from([(String::from("hello"), 3), (String::from("world"), 5)]);
     let x: i64 = 42;
 }

@@ -1,6 +1,6 @@
 # Plan 242: a2r Feature Gap Tracker
 
-> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。确认未做：#2 HashMap::from / #10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
+> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。#2 ✅ 已修（2026-08-22 Plan 415-A：Map 类型+对象字面量 → HashMap::from，golden 006_map_literal）；确认未做：#10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
 
 ## Background
 

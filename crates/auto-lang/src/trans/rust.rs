@@ -10170,7 +10170,7 @@ impl RustTrans {
         } else {
             store.ty.clone()
         };
-        self.local_var_types.insert(store.name.clone(), effective_ty);
+        self.local_var_types.insert(store.name.clone(), effective_ty.clone());
 
         // Plan 387 follow-up: record `let h = Task.spawn("Counter", cap)` so
         // `h.send(Variant)` can resolve the message enum from the receiver's
@@ -10218,6 +10218,73 @@ impl RustTrans {
                 return Ok(());
             }
             _ => {}
+        }
+
+        // Plan 415-A (242 #2): `var/let m Map<K,V> = {k: v, ...}` — an object
+        // literal with a declared map type emits `HashMap::from([(K, V), ...])`.
+        // The generic object path writes struct-literal syntax (`{k: v}`),
+        // which is invalid Rust for maps (003_map_func emitted non-compiling
+        // `{Accept: ...}`). Local Var/Let only — shared/const/global wrappers
+        // keep their initializers unhandled (no known source combines them
+        // with map literals today). Str keys/values wrap in `String::from`
+        // (the mapped `HashMap<String, _>` needs owned); other key/value
+        // expressions pass through the normal emitter.
+        let map_kv_types: Option<(Type, Type)> = match &effective_ty {
+            Type::Map(k, v) => Some(((**k).clone(), (**v).clone())),
+            Type::GenericInstance(inst)
+                if matches!(inst.base_name.as_str(), "Map" | "HashMap" | "BTreeMap")
+                    && inst.args.len() >= 2 =>
+            {
+                Some((inst.args[0].clone(), inst.args[1].clone()))
+            }
+            _ => None,
+        };
+        if matches!(store.kind, StoreKind::Var | StoreKind::Let)
+            && matches!(&store.expr, Expr::Object(pairs) if !pairs.is_empty())
+        {
+            if let Some((k_ty, v_ty)) = map_kv_types {
+                let k_is_str = matches!(k_ty,
+                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit);
+                let v_is_str = matches!(v_ty,
+                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit);
+                let mut_kw = if matches!(store.kind, StoreKind::Var)
+                    || (matches!(store.kind, StoreKind::Let)
+                        && self.mutated_let_bindings.contains(store.name.as_ref()))
+                {
+                    "mut "
+                } else {
+                    ""
+                };
+                let ty_name = self.rust_type_name(&store.ty);
+                write!(out, "let {}{}: {} = std::collections::HashMap::from([",
+                    mut_kw, Self::rust_ident(store.name.as_str()), ty_name)?;
+                if let Expr::Object(pairs) = &store.expr {
+                    for (i, pair) in pairs.iter().enumerate() {
+                        if i > 0 { write!(out, ", ")?; }
+                        write!(out, "(")?;
+                        match (&pair.key, k_is_str) {
+                            (crate::ast::Key::StrKey(s), true) => {
+                                write!(out, "String::from(\"{}\")", escape_str(s.as_str()))?;
+                            }
+                            _ => {
+                                self.expr(&Expr::from(pair.key.clone()), out)?;
+                            }
+                        }
+                        write!(out, ", ")?;
+                        match (pair.value.as_ref(), v_is_str) {
+                            (Expr::Str(s), true) => {
+                                write!(out, "String::from(\"{}\")", escape_str(s.as_str()))?;
+                            }
+                            _ => {
+                                self.expr(&pair.value, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                    }
+                }
+                write!(out, "])")?;
+                return Ok(());
+            }
         }
 
         // Plan 6B-4.19: shared var → static NAME: Lazy<Mutex<T>> = Lazy::new(|| Mutex::new(...));
