@@ -1,9 +1,20 @@
 name: Auto LSP CI
 
-# NOTE: This workflow is disabled from automatic triggers (it was failing on
-# push). Re-enable push/pull_request triggers below once the job passes
-# reliably. Run manually via the Actions tab ("Run workflow") in the meantime.
+# Plan 416 6-A (2026-08-22): push triggers RESTORED, scoped to the LSP
+# crates via `paths` (the old always-red state came from the fmt job checking
+# the ENTIRE workspace — 9000+ files are not rustfmt-clean and mass-reformat
+# is a separate decision; the job now checks `cargo fmt -p auto-lsp` only).
+# Local gate before re-enabling: cargo check/test/fmt -p auto-lsp all green.
 on:
+  push:
+    branches: [master]
+    paths:
+      - "crates/auto-lsp/**"
+      - ".github/workflows/auto-lsp-ci.yml"
+  pull_request:
+    paths:
+      - "crates/auto-lsp/**"
+      - ".github/workflows/auto-lsp-ci.yml"
   workflow_dispatch:
 
 env:
@@ -62,5 +73,5 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - name: Check formatting (auto-lsp only)
+        run: cargo fmt -p auto-lsp -- --check

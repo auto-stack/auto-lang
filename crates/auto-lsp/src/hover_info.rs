@@ -9,7 +9,8 @@ pub fn hover_workspace(
 ) -> Option<Hover> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         hover_workspace_impl(content, position, uri, ws_state)
-    })).unwrap_or_else(|_| None)
+    }))
+    .unwrap_or_else(|_| None)
 }
 
 fn hover_workspace_impl(
@@ -20,7 +21,10 @@ fn hover_workspace_impl(
 ) -> Option<Hover> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
+    let word = get_word_at_position(
+        line,
+        crate::position::utf16_to_byte_offset(line, position.character),
+    )?;
 
     // Try workspace TypeStore first (includes imported symbols)
     if let Ok(store) = ws_state.type_store.read() {
@@ -40,10 +44,7 @@ fn hover_workspace_impl(
 }
 
 /// Get documentation from TypeStore directly (for workspace-level lookups)
-fn get_typestore_docs_direct(
-    store: &auto_lang::types::TypeStore,
-    name: &str,
-) -> Option<String> {
+fn get_typestore_docs_direct(store: &auto_lang::types::TypeStore, name: &str) -> Option<String> {
     if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
         let sig = format_function_signature(fn_decl);
         return Some(format!("**Function**\n\n```auto\n{}\n```", sig));
@@ -71,8 +72,17 @@ fn get_typestore_docs_direct(
         if !spec_decl.methods.is_empty() {
             docs.push_str("**Methods:**\n\n");
             for method in &spec_decl.methods {
-                let params: Vec<String> = method.params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
-                docs.push_str(&format!("- `fn {}({}) {}`\n", method.name, params.join(", "), method.ret));
+                let params: Vec<String> = method
+                    .params
+                    .iter()
+                    .map(|p| format!("{} {}", p.name, p.ty))
+                    .collect();
+                docs.push_str(&format!(
+                    "- `fn {}({}) {}`\n",
+                    method.name,
+                    params.join(", "),
+                    method.ret
+                ));
             }
         }
         return Some(docs);
@@ -84,9 +94,7 @@ fn get_typestore_docs_direct(
 /// Provide hover information at a given position
 pub fn hover(content: &str, position: Position, uri: &str) -> Option<Hover> {
     // Catch panics to prevent LSP from crashing
-    std::panic::catch_unwind(|| {
-        hover_impl(content, position, uri)
-    }).unwrap_or_else(|_| None)
+    std::panic::catch_unwind(|| hover_impl(content, position, uri)).unwrap_or_else(|_| None)
 }
 
 /// Implementation of hover
@@ -96,7 +104,10 @@ fn hover_impl(content: &str, position: Position, _uri: &str) -> Option<Hover> {
     let line = lines.get(position.line as usize)?;
 
     // Get the word at the cursor position
-    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
+    let word = get_word_at_position(
+        line,
+        crate::position::utf16_to_byte_offset(line, position.character),
+    )?;
 
     // First, check if it's a user-defined type or function in the current file
     if let Some(docs) = get_user_defined_docs(content, &word) {
@@ -110,7 +121,10 @@ fn hover_impl(content: &str, position: Position, _uri: &str) -> Option<Hover> {
     }
 
     // Check if it's a method or field access (e.g., p.x or p.square())
-    if let Some(var_name) = get_variable_before_dot(line, crate::position::utf16_to_byte_offset(line, position.character)) {
+    if let Some(var_name) = get_variable_before_dot(
+        line,
+        crate::position::utf16_to_byte_offset(line, position.character),
+    ) {
         // Try to infer the type of the variable using the parser's type information
         let type_name = infer_variable_type_from_parser_with_scope(content, position, &var_name)
             .or_else(|| infer_variable_type_heuristic(content, &var_name));
@@ -225,7 +239,11 @@ fn get_variable_before_dot(line: &str, cursor: usize) -> Option<String> {
 
 /// Infer the type of a variable using the parser's type information with proper scope navigation
 /// This is a wrapper that parses the code and infers type from the correct scope
-fn infer_variable_type_from_parser_with_scope(content: &str, _position: Position, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser_with_scope(
+    content: &str,
+    _position: Position,
+    var_name: &str,
+) -> Option<String> {
     use auto_lang::scope::Meta;
 
     let mut parser = auto_lang::Parser::from(content);
@@ -244,8 +262,6 @@ fn infer_variable_type_from_parser_with_scope(content: &str, _position: Position
 
     None
 }
-
-
 
 /// Fallback: Infer the type of a variable by looking at its declaration (text-based heuristic)
 fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String> {
@@ -271,7 +287,10 @@ fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String
                 let before_eq = trimmed[..eq_pos].trim();
                 let parts: Vec<&str> = before_eq.split_whitespace().collect();
 
-                if (parts[0] == "let" || parts[0] == "mut") && parts.len() == 2 && parts[1] == var_name {
+                if (parts[0] == "let" || parts[0] == "mut")
+                    && parts.len() == 2
+                    && parts[1] == var_name
+                {
                     let after_eq = trimmed[eq_pos + 1..].trim();
                     if let Some(brace_pos) = after_eq.find('{') {
                         let type_name = after_eq[..brace_pos].trim();
@@ -364,8 +383,17 @@ fn get_typestore_docs(
         if !spec_decl.methods.is_empty() {
             docs.push_str("**Methods:**\n\n");
             for method in &spec_decl.methods {
-                let params: Vec<String> = method.params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
-                docs.push_str(&format!("- `fn {}({}) {}`\n", method.name, params.join(", "), method.ret));
+                let params: Vec<String> = method
+                    .params
+                    .iter()
+                    .map(|p| format!("{} {}", p.name, p.ty))
+                    .collect();
+                docs.push_str(&format!(
+                    "- `fn {}({}) {}`\n",
+                    method.name,
+                    params.join(", "),
+                    method.ret
+                ));
             }
         }
         return Some(docs);
@@ -387,7 +415,10 @@ fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
                     auto_lang::ast::StoreKind::Var => "var",
                     _ => "variable",
                 };
-                return Some(format!("**{}** `{}`\n\n**Type:** `{}`", kind_str, name, ty_str));
+                return Some(format!(
+                    "**{}** `{}`\n\n**Type:** `{}`",
+                    kind_str, name, ty_str
+                ));
             }
         }
 
@@ -425,8 +456,6 @@ fn get_ast_docs(ast: &auto_lang::ast::Code, name: &str) -> Option<String> {
 
     None
 }
-
-
 
 /// Format a function signature
 fn format_function_signature(fn_decl: &auto_lang::ast::Fn) -> String {

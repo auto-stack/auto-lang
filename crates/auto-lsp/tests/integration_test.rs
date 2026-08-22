@@ -22,7 +22,10 @@ fn main() {
 
     let mut parser = auto_lang::Parser::from(code);
     let result = parser.parse();
-    assert!(result.is_ok(), "Basic Auto code should parse without errors");
+    assert!(
+        result.is_ok(),
+        "Basic Auto code should parse without errors"
+    );
     assert!(parser.errors.is_empty(), "There should be no parse errors");
 }
 

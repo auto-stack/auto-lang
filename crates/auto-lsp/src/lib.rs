@@ -1,12 +1,11 @@
-
 pub mod backend;
 pub mod completion;
 pub mod diagnostics;
-pub mod hover_info;
 pub mod goto_def;
-pub mod workspace;
-pub mod signature_help;
+pub mod hover_info;
 pub mod inlay_hints;
 pub mod position;
+pub mod signature_help;
+pub mod workspace;
 
 pub use backend::Backend;

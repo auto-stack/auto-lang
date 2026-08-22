@@ -1,6 +1,6 @@
 # Auto LSP & VSCode Plugin Modernization Plan
 
-> **Status（2026-08-20 实测）**: 🟡 Phase 1–4 ✅（references/rename/code_action/signature_help/inlay_hint 均真实实现，backend.rs:415/604/663/358/731 + 独立模块 inlay_hints.rs/signature_help.rs/workspace.rs，commit 71acecc4）；Phase 5 部分——grammar 已更新（auto.tmLanguage.json 覆盖 await/widget/comptime 等），但 TS 迁移（仍是 extension.js 单文件）与 semantic tokens 未做；Phase 6 CI 存在但仅 `workflow_dispatch`（push 触发因常红被禁用）、集成测试仍 70 行低覆盖。
+> **Status（2026-08-20 实测）**: 🟡 Phase 1–4 ✅（references/rename/code_action/signature_help/inlay_hint 均真实实现，backend.rs:415/604/663/358/731 + 独立模块 inlay_hints.rs/signature_help.rs/workspace.rs，commit 71acecc4）；Phase 5 部分——grammar 已更新（auto.tmLanguage.json 覆盖 await/widget/comptime 等）；**TS 迁移 ✅ 2026-08-22（Plan 416 5-A，auto-vscode fc4cb9d：src/extension.ts + esbuild）**，semantic tokens 未做（416 5-B）；**Phase 6 CI push 触发已恢复 ✅（Plan 416 6-A：auto-lsp-ci.yml paths 过滤 + fmt 收缩包级）**、集成测试仍 70 行低覆盖（416 6-B）。
 
 ## Executive Summary
 

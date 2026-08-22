@@ -52,12 +52,19 @@ fn build_signature_help(fn_decl: &auto_lang::ast::Fn, active_param: u32) -> Opti
         });
     }
 
-    let param_labels: Vec<String> = fn_decl.params.iter()
+    let param_labels: Vec<String> = fn_decl
+        .params
+        .iter()
         .map(|p| format!("{} {}", p.name, p.ty))
         .collect();
 
     let sig = SignatureInformation {
-        label: format!("fn {}({}) {}", fn_decl.name, param_labels.join(", "), fn_decl.ret),
+        label: format!(
+            "fn {}({}) {}",
+            fn_decl.name,
+            param_labels.join(", "),
+            fn_decl.ret
+        ),
         documentation: None,
         parameters: Some(params),
         active_parameter: None,

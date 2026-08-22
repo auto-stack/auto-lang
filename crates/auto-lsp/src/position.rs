@@ -63,8 +63,8 @@ mod tests {
     fn test_emoji() {
         // 😂 是 surrogate pair (2 UTF-16 code units)
         let line = "a😂b";
-        assert_eq!(utf16_to_byte_offset(line, 1), 1);  // 'a' 后
-        assert_eq!(utf16_to_byte_offset(line, 3), 5);  // emoji 后（'b' 的字节起始）
+        assert_eq!(utf16_to_byte_offset(line, 1), 1); // 'a' 后
+        assert_eq!(utf16_to_byte_offset(line, 3), 5); // emoji 后（'b' 的字节起始）
         assert_eq!(slice_line_at_char(line, 3), "b");
     }
 
