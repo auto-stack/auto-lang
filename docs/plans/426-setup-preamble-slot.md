@@ -25,6 +25,10 @@
   条目降普通导入仍指 composables 端口)。**产物对拍:import + 绑定位置
   不变即等价**(let/const 关键字与 handler 顺序为既有非确定差异);
   auto build + vue-tsc EXIT=0 + cargo test + vitest(2 存量基线)全绿。
+- **复审补强(合并 master 后)**:①绑定发射改为 **`const`**(§1.2 文字
+  要求;此前复用 transpile 的 `let` 偏离计划文字,`var` 绑定保持 let);
+  ②setup 语句引用 model 变量/computed/prop 增加编译期拒绝(发射顺序上必
+  TDZ,单测锁定);③refs 块级声明维持(设计定稿选项)。
 - **T4 文档 + 收口**:三相位语义表(setup/.Init/.Destroy)写入
   scenario-dialect spec + docs/syntax.md UI 节;composable kind 标注
   "糖,推荐 setup 块";k2/k3/k4 canary + auto-lang 3093 + auto-man 6

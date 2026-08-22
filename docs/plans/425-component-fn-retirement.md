@@ -15,9 +15,14 @@
   `parse_widget_decl` 体即视图自动包裹(单测
   `test_plan425_widget_view_optional`);api.rs 同文件 widget 名入
   all_sub_widgets(糖化引用走组件路径,同名 WidgetDecl 天然入列——§4 风险
-  表对策兑现)。plan408 测试改 widget 回调契约(`on_<snake>` + Pascal 事件)
-  与 App 前置(根=源序首个 widget);007 golden 补 `:key`(Plan 360 静态键
-  进入单轨渲染,属性级差异按 §2.2 更新并记录)。
+  表对策兑现)。plan408 测试仅改 App 前置(**根=源序首个 widget**——旧轨
+  component fn 追加在 widgets 后,App 声明在后仍是根;糖化后按源序,测试
+  源需 App 前置);007 golden 补 `:key`(Plan 360 静态键进入单轨渲染,属
+  性级差异按 §2.2 更新并记录)。
+  **复审修正(收口时)**:曾误判 `on<event>`(无下划线)回调拼写糖化后失效
+  ——实测该拼写解析为 on 前缀 ViewEvent,经 sub_widget_event_to_vue 产出
+  `@togglecollapse`,与旧 Component 节点轨道**完全一致**;plan408 测试已
+  恢复旧拼写并新增 test_plan425_legacy_on_event_spelling 锁定兼容。
 - **T2 删除双轨**(880247ae,净删 199 行):`extract_widget_from_fragment`/
   `fragment_param_type`/`fragment_to_component_node` 与 extract 两处
   `is_component` 分支删除;ViewFragmentDecl 瘦身为 view-fn 专用

@@ -27,6 +27,10 @@
   re-export 原样转发,PLAN-037 时「拆分得不偿失」的存量障碍消除)。
   34 处调用面改引 `*.at`;**调用面 use.web 非 .at 目标零命中,白名单
   8 域全清**(剩余非 .at 引用仅存在于 ports/*.web.at 内部,即设计目标形态)。
+- **复审补强(合并 master 后)**:fn-kind 的 import 行改为**仅发射 wrapper
+  体实际引用的符号**(先转译 wrapper 体再决定 import)——纯转发端口(零
+  wrapper)不再产生 unused import,产物对 `noUnusedLocals: true` 的工程同
+  样成立(此前依赖 noUnusedLocals: false 基线)。
 - **T4 收口**:auto-lang 3087 单测 + auto-man 6 单测 + k2/k3/k4 canary +
   musk 三测(auto build / cargo test / vitest 2 存量失败基线)全绿。
   附带清理环境残留 `D:\nonexistent`(测试污染空目录)致 test_exists 误红。
