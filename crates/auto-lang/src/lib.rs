@@ -791,164 +791,156 @@ async fn execute_autovm_with_path(
 /// The corruption manifested in the sha2 library (large dep module with ~150
 /// globals): random instructions got their bytes rewritten, producing wrong
 /// hashes. The walker below decodes instruction lengths precisely.
-fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
-    use crate::vm::opcode::OpCode;
-    // Rewrite a u32 string-pool index operand at `pos`. Plan 417-followup:
-    // the compile-time pool was u32-ified (8482021e) — every pool-index
-    // operand is now 4 bytes wide, so the old u16 read/write patched the low
-    // half of the wrong operand and desynced the walk by 2 bytes per op.
-    // (The remap TABLE itself stays u16 — pools large enough to overflow it
-    // would need the same u32-ification here; see KNOWN-DEBT.)
-    let apply_u32 = |code: &mut [u8], pos: usize| {
-        if pos + 3 < code.len() {
-            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]) as usize;
-            if old < remap.len() {
-                let new = remap[old] as u32;
-                let bytes = new.to_le_bytes();
-                code[pos] = bytes[0];
-                code[pos + 1] = bytes[1];
-                code[pos + 2] = bytes[2];
-                code[pos + 3] = bytes[3];
-            }
-        }
-    };
-    // Like apply_u32 but leaves the 0xFFFF "no id" sentinel untouched
-    // (PUSH_ACCUM / CREATE_NODE carry an optional id string idx).
-    let apply_u32_opt = |code: &mut [u8], pos: usize| {
-        if pos + 3 < code.len() {
-            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]);
-            if old != 0xFFFF {
-                apply_u32(code, pos);
-            }
-        }
-    };
+/// 池索引空间:字符串池 vs object_keys 池(两份重映射各自的关注点)。
+#[derive(Clone, Copy, PartialEq)]
+enum IdxSpace {
+    Str,
+    Obj,
+}
 
-    let mut i = 0;
-    // Track the last CONST_I32 value (NEW_INSTANCE reads name_len from the
-    // preceding CONST_I32 push, mirroring the disassembler).
+/// 链接器重映射共用的操作数跨度模型(2026-08-22 池 u32 化重写)。
+/// 返回 (操作数字节长度, [(池索引偏移, 索引空间)])。
+/// 两份重映射 walker(字符串池 / object_keys 池)共用本表,消灭此前
+/// 双拷贝各自漂移的病灶(历史上 CALL_SPEC/CREATE_OBJ 宽度就漂过)。
+/// 变长操作数(CLOSURE/CREATE_FUTURE/BUILD_FSTR/IS_VARIANT/NEW_INSTANCE)
+/// 在此统一解析。
+fn operand_span_with_pool_indices(
+    op: crate::vm::opcode::OpCode,
+    code: &[u8],
+    pos: usize,
+    last_const_i32: i32,
+) -> (usize, Vec<(usize, IdxSpace)>) {
+    use crate::vm::opcode::OpCode;
+    let none: Vec<(usize, IdxSpace)> = Vec::new();
+    match op {
+        // 单枚 u32 字符串池索引
+        OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+        | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
+        | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::ACCUM_PAIR => {
+            (4, vec![(0, IdxSpace::Str)])
+        }
+        // 两枚 u32 字符串池索引(name, id;id 可为 0xFFFF 哨兵)
+        OpCode::PUSH_ACCUM => (8, vec![(0, IdxSpace::Str), (4, IdxSpace::Str)]),
+        // u32 method_name + u8 argc
+        OpCode::CALL_SPEC => (5, vec![(0, IdxSpace::Str)]),
+        // u32 name_idx + u8 argc + u32 id_idx(两枚池索引)
+        OpCode::CREATE_NODE => (9, vec![(0, IdxSpace::Str), (5, IdxSpace::Str)]),
+        // u32 key_index(object_keys 池)+ u8 field_count
+        OpCode::CREATE_OBJ => (5, vec![(0, IdxSpace::Obj)]),
+        // CALL_NAT: u16 native id —— 池合并后 native id 不变,只跳过
+        OpCode::CALL_NAT => (2, none),
+        // 1 字节定长
+        OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
+        | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
+        | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+        | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
+        | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
+        | OpCode::GET_TUPLE_FIELD => (1, none),
+        OpCode::FN_PROLOG => (2, none),
+        // 4 字节定长
+        OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
+        | OpCode::CALL | OpCode::LOAD_REF | OpCode::STORE_REF
+        | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => (4, none),
+        OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, none),
+        OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, none),
+        OpCode::SLEEP | OpCode::JOIN | OpCode::SEND => (4, none),
+        OpCode::SOURCE_LINE => (2, none),
+        OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, none),
+        // CLOSURE: u32 body_addr + u8 capture_count + u8 n_args
+        //          + capture_count × (u32 名索引 + u16 slot)
+        OpCode::CLOSURE => {
+            let mut idxs = Vec::new();
+            if pos + 5 < code.len() {
+                let count = code[pos + 4] as usize;
+                for k in 0..count {
+                    idxs.push((6 + k * 6, IdxSpace::Str));
+                }
+                (6 + count * 6, idxs)
+            } else {
+                (6, idxs)
+            }
+        }
+        // CREATE_FUTURE: u32 body_offset + u8 capture_count + count × u32 名索引
+        OpCode::CREATE_FUTURE => {
+            let mut idxs = Vec::new();
+            if pos + 4 < code.len() {
+                let count = code[pos + 4] as usize;
+                for k in 0..count {
+                    idxs.push((5 + k * 4, IdxSpace::Str));
+                }
+                (5 + count * 4, idxs)
+            } else {
+                (5, idxs)
+            }
+        }
+        // 变长:count 字节 + count 个 tag
+        OpCode::BUILD_FSTR => {
+            let parts = if pos < code.len() { code[pos] as usize } else { 0 };
+            (1 + parts, none)
+        }
+        // u16 len + len 字节
+        OpCode::IS_VARIANT => {
+            let len = if pos + 2 <= code.len() {
+                u16::from_le_bytes([code[pos], code[pos + 1]]) as usize
+            } else {
+                0
+            };
+            (2 + len, none)
+        }
+        // name_len 来自前一条 CONST_I32
+        OpCode::NEW_INSTANCE => (last_const_i32.max(0) as usize, none),
+        // 无操作数
+        _ => (0, none),
+    }
+}
+
+/// Plan 355: dep 模块字符串池并入主池后,重写字节码中的池索引。
+/// remap 为 u32(池 u32 化);跨度模型与 remap_obj_indices 共享。
+fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
+    use crate::vm::opcode::OpCode;
     let mut last_const_i32: i32 = 0;
+    let mut i = 0;
     while i < code.len() {
         let op_byte = code[i];
-        // Bail out of precise walking if we hit an unknown opcode byte;
-        // fall back to byte-by-byte (the pre-Plan-355 behaviour). This keeps
-        // the walker safe against future opcodes / data regions.
         if !OpCode::is_valid(op_byte) {
             i += 1;
             continue;
         }
         let op = OpCode::from(op_byte);
         let operand_pos = i + 1;
-        // Compute the operand size and whether this op carries a u32 string idx.
-        let (operand_len, is_string_idx): (usize, bool) = match op {
-            // Opcodes whose single u32 operand is a STRING POOL index (remap it).
-            // NOTE: CALL_NAT is intentionally excluded — its u16 is a native ID,
-            // not a string index; remapping it corrupts native dispatch.
-            OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-            | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED
-            | OpCode::ACCUM_PAIR => (4, true),
-            // CALL_NAT: u16 native ID (must skip but NOT remap).
-            OpCode::CALL_NAT => (2, false),
-            // Other fixed-size operands (must skip correctly even though not remapped).
-            OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
-            | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
-            | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-            | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
-            | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
-            | OpCode::GET_TUPLE_FIELD => (1, false),
-            OpCode::FN_PROLOG => (2, false),
-            // Plan 417-followup: CREATE_OBJ = u32 key_index + u8 field_count
-            // (5 operand bytes). The obj walker (remap_obj_indices) rewrites
-            // the key index; here we only need the correct skip length.
-            OpCode::CREATE_OBJ => (5, false),
-            // 4-byte operands
-            OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
-            | OpCode::CALL | OpCode::CREATE_FUTURE | OpCode::LOAD_REF | OpCode::STORE_REF
-            | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
-                if let OpCode::CONST_I32 = op {
-                    if operand_pos + 4 <= code.len() {
-                        last_const_i32 = i32::from_le_bytes([
-                            code[operand_pos], code[operand_pos + 1],
-                            code[operand_pos + 2], code[operand_pos + 3],
-                        ]);
+        if let OpCode::CONST_I32 = op {
+            if operand_pos + 4 <= code.len() {
+                last_const_i32 = i32::from_le_bytes([
+                    code[operand_pos], code[operand_pos + 1],
+                    code[operand_pos + 2], code[operand_pos + 3],
+                ]);
+            }
+        }
+        let (operand_len, idxs) =
+            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
+        for (off, space) in idxs {
+            if space == IdxSpace::Str {
+                let pos = operand_pos + off;
+                if pos + 4 <= code.len() {
+                    let raw = u32::from_le_bytes([
+                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                    ]);
+                    // 0xFFFF "无 id" 哨兵不重映射(PUSH_ACCUM/CREATE_NODE
+                    // 的可选 id 位;吸收自 417-followup 的 apply_u32_opt)。
+                    if raw == 0xFFFF {
+                        continue;
+                    }
+                    let old = raw as usize;
+                    if old < remap.len() {
+                        let bytes = remap[old].to_le_bytes();
+                        code[pos] = bytes[0];
+                        code[pos + 1] = bytes[1];
+                        code[pos + 2] = bytes[2];
+                        code[pos + 3] = bytes[3];
                     }
                 }
-                (4, false)
             }
-            OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, false),
-            OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
-            OpCode::SLEEP => (4, false),
-            OpCode::JOIN | OpCode::SEND => (4, false),
-            // Plan 417-followup: CALL_SPEC carries a u32 method-name STRING idx
-            // + u8 arg count (5 operand bytes). The method idx must be rebased
-            // — a dep module's CALL_SPEC otherwise dispatches a wrong method
-            // name after the string-pool merge (Plan 417-E3; widened u16→u32
-            // after the compile-time pool u32-ification, 8482021e).
-            OpCode::CALL_SPEC => {
-                apply_u32(code, operand_pos);
-                (5, false)
-            }
-            // Plan 417-followup: PUSH_ACCUM = u32 name idx + u32 id idx
-            // (0xFFFF sentinel = no id). CREATE_NODE = u32 name idx + u8
-            // arg_count + u32 id idx (same sentinel).
-            OpCode::PUSH_ACCUM => {
-                apply_u32(code, operand_pos);
-                apply_u32_opt(code, operand_pos + 4);
-                (8, false)
-            }
-            OpCode::CREATE_NODE => {
-                apply_u32(code, operand_pos);
-                apply_u32_opt(code, operand_pos + 5);
-                (9, false)
-            }
-            // Plan 417-followup: CLOSURE = u32 func_addr (reloc, not a string)
-            // + u8 capture_count + u8 n_args + captures × (u32 name idx +
-            // u16 slot offset) — variable length 6 + n×6; each capture name
-            // idx is a pool index.
-            OpCode::CLOSURE => {
-                if operand_pos + 5 < code.len() {
-                    let cc = code[operand_pos + 4] as usize;
-                    let mut p = operand_pos + 6;
-                    for _ in 0..cc {
-                        apply_u32(code, p);
-                        p += 6;
-                    }
-                    (6 + cc * 6, false)
-                } else {
-                    (6, false)
-                }
-            }
-            OpCode::SOURCE_LINE => (2, false),
-            // 2-byte jump offsets
-            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
-            // Variable-length: read count byte to skip the trailing bytes.
-            OpCode::BUILD_FSTR => {
-                if operand_pos < code.len() {
-                    let parts = code[operand_pos] as usize;
-                    (1 + parts, false)
-                } else {
-                    (1, false)
-                }
-            }
-            OpCode::IS_VARIANT => {
-                if operand_pos + 2 <= code.len() {
-                    let len = u16::from_le_bytes([code[operand_pos], code[operand_pos + 1]]) as usize;
-                    (2 + len, false)
-                } else {
-                    (2, false)
-                }
-            }
-            OpCode::NEW_INSTANCE => {
-                // name_len came from the preceding CONST_I32 (tracked above).
-                (last_const_i32.max(0) as usize, false)
-            }
-            // No-operand opcodes (arithmetic, stack, type casts, etc.)
-            _ => (0, false),
-        };
-
-        if is_string_idx {
-            apply_u32(code, operand_pos);
         }
         i += 1 + operand_len;
     }
@@ -964,30 +956,11 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
 /// mismatches that overflow at runtime). This walker decodes instruction
 /// lengths precisely (mirroring `remap_string_indices`) and rewrites the u16
 /// operand of each CREATE_OBJ using `obj_remap` (old_index → new_index).
-fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
+fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
     use crate::vm::opcode::OpCode;
     if obj_remap.is_empty() {
         return;
     }
-    // Rewrite the u32 CREATE_OBJ key_index at `pos` if it is in range.
-    // Plan 417-followup: CREATE_OBJ's key_index went u16->u32 with the
-    // compile-time pool u32-ification (8482021e).
-    let apply = |code: &mut [u8], pos: usize| {
-        if pos + 3 < code.len() {
-            let old = u32::from_le_bytes([code[pos], code[pos + 1], code[pos + 2], code[pos + 3]]) as usize;
-            if old < obj_remap.len() {
-                let new = obj_remap[old] as u32;
-                let bytes = new.to_le_bytes();
-                code[pos] = bytes[0];
-                code[pos + 1] = bytes[1];
-                code[pos + 2] = bytes[2];
-                code[pos + 3] = bytes[3];
-            }
-        }
-    };
-
-    // Track the last CONST_I32 value (NEW_INSTANCE reads name_len from the
-    // preceding CONST_I32 push — same convention as remap_string_indices).
     let mut last_const_i32: i32 = 0;
     let mut i = 0;
     while i < code.len() {
@@ -998,87 +971,32 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
         }
         let op = OpCode::from(op_byte);
         let operand_pos = i + 1;
-        // Only CREATE_OBJ carries a key_index into the object_keys pool.
-        // All other operand sizes must still be skipped correctly so operand
-        // bytes are never misread as opcodes. Pool-index operands are u32
-        // since the compile-time pool u32-ification (Plan 417-followup).
-        let (operand_len, is_obj_idx): (usize, bool) = match op {
-            // u32 key_index + u8 field_count.
-            OpCode::CREATE_OBJ => (5, true),
-            // u32 string-pool operands (skip, do not remap).
-            OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-            | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-            | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED
-            | OpCode::ACCUM_PAIR => (4, false),
-            OpCode::CALL_NAT => (2, false),
-            // 1-byte fixed operands.
-            OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
-            | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
-            | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-            | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
-            | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
-            | OpCode::GET_TUPLE_FIELD => (1, false),
-            OpCode::FN_PROLOG => (2, false),
-            // 4-byte operands.
-            OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
-            | OpCode::CALL | OpCode::CREATE_FUTURE | OpCode::LOAD_REF | OpCode::STORE_REF
-            | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => {
-                if let OpCode::CONST_I32 = op {
-                    if operand_pos + 4 <= code.len() {
-                        last_const_i32 = i32::from_le_bytes([
-                            code[operand_pos], code[operand_pos + 1],
-                            code[operand_pos + 2], code[operand_pos + 3],
-                        ]);
+        if let OpCode::CONST_I32 = op {
+            if operand_pos + 4 <= code.len() {
+                last_const_i32 = i32::from_le_bytes([
+                    code[operand_pos], code[operand_pos + 1],
+                    code[operand_pos + 2], code[operand_pos + 3],
+                ]);
+            }
+        }
+        let (operand_len, idxs) =
+            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
+        for (off, space) in idxs {
+            if space == IdxSpace::Obj {
+                let pos = operand_pos + off;
+                if pos + 4 <= code.len() {
+                    let old = u32::from_le_bytes([
+                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                    ]) as usize;
+                    if old < obj_remap.len() {
+                        let bytes = obj_remap[old].to_le_bytes();
+                        code[pos] = bytes[0];
+                        code[pos + 1] = bytes[1];
+                        code[pos + 2] = bytes[2];
+                        code[pos + 3] = bytes[3];
                     }
                 }
-                (4, false)
             }
-            OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, false),
-            OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
-            OpCode::SLEEP => (4, false),
-            OpCode::JOIN | OpCode::SEND => (4, false),
-            // Plan 417-followup: CALL_SPEC = u32 method string idx + u8
-            // arg count (5 bytes). PUSH_ACCUM: 2×u32. CREATE_NODE: u32+u8+u32.
-            // CLOSURE: u32 + u8 + u8 + n×(u32+u16). No obj-pool operands —
-            // lengths only.
-            OpCode::CALL_SPEC => (5, false),
-            OpCode::PUSH_ACCUM => (8, false),
-            OpCode::CREATE_NODE => (9, false),
-            OpCode::CLOSURE => {
-                if operand_pos + 5 < code.len() {
-                    let cc = code[operand_pos + 4] as usize;
-                    (6 + cc * 6, false)
-                } else {
-                    (6, false)
-                }
-            }
-            OpCode::SOURCE_LINE => (2, false),
-            OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, false),
-            OpCode::BUILD_FSTR => {
-                if operand_pos < code.len() {
-                    let parts = code[operand_pos] as usize;
-                    (1 + parts, false)
-                } else {
-                    (1, false)
-                }
-            }
-            OpCode::IS_VARIANT => {
-                if operand_pos + 2 <= code.len() {
-                    let len = u16::from_le_bytes([code[operand_pos], code[operand_pos + 1]]) as usize;
-                    (2 + len, false)
-                } else {
-                    (2, false)
-                }
-            }
-            OpCode::NEW_INSTANCE => {
-                (last_const_i32.max(0) as usize, false)
-            }
-            _ => (0, false),
-        };
-
-        if is_obj_idx {
-            apply(code, operand_pos);
         }
         i += 1 + operand_len;
     }
@@ -1093,21 +1011,28 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
     // can append to them. Initialized from the main module's codegen.
     let mut object_keys = codegen.object_keys.clone();
     let mut object_types = codegen.object_types.clone();
+    // 主池内容索引(去重 O(1);2026-08-22 池 u32 化 + O(n×m) 线性 position
+    // 去重换 HashMap —— 大模块并池曾达秒级)。
+    let mut main_pool_idx: std::collections::HashMap<Vec<u8>, u32> = strings
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.clone(), i as u32))
+        .collect();
     for module in dep_modules.iter_mut() {
         // Plan 355: remap string-pool indices. Done even if the module also has
         // object pools; the two remaps are independent.
         if !module.strings.is_empty() {
-            // Build remap table: old index → new index.
-            // Plan 355: indices are u16 (modules can have >256 string-pool entries).
-            let mut remap = vec![0u16; module.strings.len()];
+            // Build remap table: old index → new index(u32 —— 池 u32 化;
+            // 此前 u16 在主池越 65535 后回绕)。
+            let mut remap = vec![0u32; module.strings.len()];
             for (old_idx, s) in module.strings.iter().enumerate() {
-                // Check if string already exists in main pool (dedup).
-                if let Some(existing) = strings.iter().position(|e| e == s) {
-                    remap[old_idx] = existing as u16;
+                if let Some(&existing) = main_pool_idx.get(s) {
+                    remap[old_idx] = existing;
                 } else {
-                    let new_idx = strings.len();
+                    let new_idx = strings.len() as u32;
                     strings.push(s.clone());
-                    remap[old_idx] = new_idx as u16;
+                    main_pool_idx.insert(s.clone(), new_idx);
+                    remap[old_idx] = new_idx;
                 }
             }
             // Remap string indices in bytecode. We scan for opcodes that embed
@@ -1132,7 +1057,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
         // to work because most object creation goes through NEW_INSTANCE (typed
         // `Point { ... }`), which bypasses the object_keys pool entirely.
         if !module.object_keys.is_empty() {
-            let obj_base = object_keys.len() as u16;
+            let obj_base = object_keys.len() as u32;
             let obj_count = module.object_keys.len();
             for (i, keys) in module.object_keys.iter().enumerate() {
                 object_keys.push(keys.clone());
@@ -1146,8 +1071,8 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
                 }
             }
             // Base-offset remap: dep index i → obj_base + i.
-            let obj_remap: Vec<u16> = (0..obj_count)
-                .map(|i| obj_base.saturating_add(i as u16))
+            let obj_remap: Vec<u32> = (0..obj_count)
+                .map(|i| obj_base.saturating_add(i as u32))
                 .collect();
             remap_obj_indices(&mut module.code, &obj_remap);
         }

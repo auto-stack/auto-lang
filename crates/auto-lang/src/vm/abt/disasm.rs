@@ -266,7 +266,10 @@ fn operand_size(flash: &VirtualFlash, op: OpCode, ip: usize, offset: usize) -> u
         // Plan 364: PUSH_ACCUM(池 u32 化后 8 字节)
         OpCode::PUSH_ACCUM => 8,
 
-        OpCode::JMP_L | OpCode::JMP_FAR | OpCode::CALL_SPEC => 4,
+        OpCode::JMP_L | OpCode::JMP_FAR => 4,
+
+        // CALL_SPEC:u32 method_name + u8 argc(与 engine 对齐)
+        OpCode::CALL_SPEC => 5,
 
         OpCode::SPAWN => 5,
 
@@ -491,10 +494,11 @@ fn decode_operands(
             (vec![label(v)], 5) // 4 bytes addr + 1 byte n_args
         }
 
+        // 2026-08-22(形态债清偿):与 engine 对齐 —— u32 method_name + u8 argc。
         OpCode::CALL_SPEC => {
-            let spec = flash.read_u16(ip);
-            let method = flash.read_u16(ip + 2);
-            (vec![AbtOperand::StringIdx(spec as usize), AbtOperand::StringIdx(method as usize)], 4)
+            let method = flash.read_u32(ip);
+            let argc = flash.read_u8(ip + 4);
+            (vec![AbtOperand::StringIdx(method as usize), AbtOperand::ImmU8(argc)], 5)
         }
 
         OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE => {
