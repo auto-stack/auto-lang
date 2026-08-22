@@ -670,6 +670,136 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
     Ok(())
 }
 
+// ── Plan 418: editor action natives (menu/toolbar handlers) ────────────
+// Same semantics as the editor's internal Ctrl+Z/Y/A/C/X/V handling, but
+// triggered programmatically from `.at` handlers (auto-edit menus).
+
+/// `code_editor_undo(key) -> Bool` — true when an editor exists.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_undo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_undo(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_redo(key) -> Bool`
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_redo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_redo(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_select_all(key) -> Bool`
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_select_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_select_all(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_cut(key) -> Bool` — selection → OS clipboard, then delete.
+#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
+pub fn shim_code_editor_cut(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_clipboard_op(
+        &key,
+        crate::ui::code_editor::ClipboardOp::Cut,
+    );
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_copy(key) -> Bool` — selection → OS clipboard.
+#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
+pub fn shim_code_editor_copy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_clipboard_op(
+        &key,
+        crate::ui::code_editor::ClipboardOp::Copy,
+    );
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_paste(key) -> Bool` — OS clipboard → insert at cursor.
+#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
+pub fn shim_code_editor_paste(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, _vm);
+    let ok = crate::ui::code_editor::code_editor_clipboard_op(
+        &key,
+        crate::ui::code_editor::ClipboardOp::Paste,
+    );
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ── Plan 418: OS clipboard natives (arboard) ───────────────────────────
+
+/// `clipboard_text() -> String` (empty when the clipboard is unavailable).
+#[cfg(feature = "ui-clipboard")]
+pub fn shim_clipboard_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text = crate::ui::clipboard::clipboard_get().unwrap_or_default();
+    let idx = vm.add_string(text.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
+/// `clipboard_set_text(text) -> Bool`
+#[cfg(feature = "ui-clipboard")]
+pub fn shim_clipboard_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let text = pop_string_arg(task, _vm);
+    let ok = crate::ui::clipboard::clipboard_set(&text);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
+// Both return "" on cancel/unavailable (headless CI included).
+
+/// `dialog_open(filter) -> String` — filter is a `,. ;`-separated extension
+/// list (".at, .au"); empty disables filtering.
+#[cfg(feature = "ui-dialog")]
+pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let filter = pop_string_arg(task, vm);
+    let exts: Vec<String> = filter
+        .split([',', ';', ' ', '\t'])
+        .map(|s| s.trim().trim_start_matches('.').to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut dialog = rfd::FileDialog::new();
+    if !exts.is_empty() {
+        dialog = dialog.add_filter("Files", &exts);
+    }
+    let path = dialog
+        .pick_file()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let idx = vm.add_string(path.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
+/// `dialog_save(default_name) -> String` — "" on cancel.
+#[cfg(feature = "ui-dialog")]
+pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default_name = pop_string_arg(task, vm);
+    let mut dialog = rfd::FileDialog::new();
+    if !default_name.is_empty() {
+        dialog = dialog.set_file_name(default_name);
+    }
+    let path = dialog
+        .save_file()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let idx = vm.add_string(path.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
 // Feature-off stubs: same signatures, clear runtime error.
 #[cfg(not(feature = "code-editor"))]
 pub fn shim_code_editor_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
@@ -705,6 +835,66 @@ pub fn shim_code_editor_find(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
 pub fn shim_code_editor_set_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_set_text: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_undo(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_undo: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_redo(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_redo: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_select_all(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_select_all: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
+pub fn shim_code_editor_cut(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
+    ))
+}
+#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
+pub fn shim_code_editor_copy(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
+    ))
+}
+#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
+pub fn shim_code_editor_paste(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
+    ))
+}
+#[cfg(not(feature = "ui-clipboard"))]
+pub fn shim_clipboard_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "clipboard_text: the `ui-clipboard` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "ui-clipboard"))]
+pub fn shim_clipboard_set_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "clipboard_set_text: the `ui-clipboard` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "ui-dialog"))]
+pub fn shim_dialog_open(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "dialog_open: the `ui-dialog` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "ui-dialog"))]
+pub fn shim_dialog_save(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "dialog_save: the `ui-dialog` feature is disabled".into(),
     ))
 }
 

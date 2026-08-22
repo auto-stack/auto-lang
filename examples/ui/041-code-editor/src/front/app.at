@@ -4,6 +4,10 @@ widget App {
         var menu_open str = ""
         var src_main str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
         var src_util str = "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"
+        var path_main str = ""
+        var path_util str = ""
+        var title_main str = "main.at"
+        var title_util str = "util.at"
         var edits int = 0
         var line int = 1
         var col int = 1
@@ -67,7 +71,7 @@ widget App {
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
                 if .tab == 0 {
                     row (style: "items-center bg-[#1C1D24]") {
-                        button (text: "main.at", variant: "text") {
+                        button (text: .title_main, variant: "text") {
                             onclick: .TabMain
                             style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
                         }
@@ -79,14 +83,14 @@ widget App {
                     }
                 }
                 if .tab != 0 {
-                    button (text: "main.at", variant: "text") {
+                    button (text: .title_main, variant: "text") {
                         onclick: .TabMain
                         style: "h-8 px-3 text-[12px] text-zinc-500"
                     }
                 }
                 if .tab == 1 {
                     row (style: "items-center bg-[#1C1D24]") {
-                        button (text: "util.at", variant: "text") {
+                        button (text: .title_util, variant: "text") {
                             onclick: .TabUtil
                             style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
                         }
@@ -98,7 +102,7 @@ widget App {
                     }
                 }
                 if .tab != 1 {
-                    button (text: "util.at", variant: "text") {
+                    button (text: .title_util, variant: "text") {
                         onclick: .TabUtil
                         style: "h-8 px-3 text-[12px] text-zinc-500"
                     }
@@ -348,12 +352,12 @@ widget App {
         }
         .SrcMainChanged -> {
             .edits = .edits + 1
-            console_log("main.at edit #" + .edits.str())
+            console_log(.title_main + " edit #" + .edits.str())
             .console = console_lines()
         }
         .SrcUtilChanged -> {
             .edits = .edits + 1
-            console_log("util.at edit #" + .edits.str())
+            console_log(.title_util + " edit #" + .edits.str())
             .console = console_lines()
         }
         .CursorMain -> {
@@ -368,13 +372,177 @@ widget App {
             .sel = code_editor_selection_len("tab-util")
             .console = console_lines()
         }
-        .ConsoleToggle -> {
-            .console_open = !.console_open
-            .console = console_lines()
-        }
         .ConsoleClear -> {
             console_clear()
             .console = ""
+        }
+
+        // ---- Plan 418: semantic actions (menu / toolbar / shortcut 3-source) ----
+        .ActNew -> {
+            .menu_open = ""
+            if .tab == 0 {
+                .path_main = ""
+                .title_main = "untitled.at"
+                code_editor_set_text("tab-main", "")
+            }
+            if .tab == 1 {
+                .path_util = ""
+                .title_util = "untitled.at"
+                code_editor_set_text("tab-util", "")
+            }
+            console_log("new: cleared active tab")
+            .console = console_lines()
+        }
+        .ActOpen -> {
+            .menu_open = ""
+            let p = dialog_open(".at, .au, .rs, .txt")
+            if p != "" {
+                let s = File.read_text(p)
+                if .tab == 0 {
+                    .path_main = p
+                    .title_main = p
+                    code_editor_set_text("tab-main", s)
+                }
+                if .tab == 1 {
+                    .path_util = p
+                    .title_util = p
+                    code_editor_set_text("tab-util", s)
+                }
+                console_log("open: " + p)
+            } else {
+                console_log("open: cancelled")
+            }
+            .console = console_lines()
+        }
+        .ActSave -> {
+            .menu_open = ""
+            if .tab == 0 {
+                if .path_main == "" {
+                    let p = dialog_save("untitled.at")
+                    if p != "" {
+                        .path_main = p
+                        .title_main = p
+                    }
+                }
+                if .path_main != "" {
+                    let n = File.write_text(.path_main, code_editor_text("tab-main"))
+                    console_log("saved: " + .path_main + " (" + n.str() + " bytes)")
+                } else {
+                    console_log("save: cancelled")
+                }
+            }
+            if .tab == 1 {
+                if .path_util == "" {
+                    let p = dialog_save("untitled.at")
+                    if p != "" {
+                        .path_util = p
+                        .title_util = p
+                    }
+                }
+                if .path_util != "" {
+                    let n = File.write_text(.path_util, code_editor_text("tab-util"))
+                    console_log("saved: " + .path_util + " (" + n.str() + " bytes)")
+                } else {
+                    console_log("save: cancelled")
+                }
+            }
+            .console = console_lines()
+        }
+        .ActQuit -> {
+            .menu_open = ""
+            console_log("quit")
+            Process.exit(0)
+        }
+        .ActUndo -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_undo("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_undo("tab-util")
+            }
+            console_log("undo")
+            .console = console_lines()
+        }
+        .ActRedo -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_redo("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_redo("tab-util")
+            }
+            console_log("redo")
+            .console = console_lines()
+        }
+        .ActSelectAll -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_select_all("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_select_all("tab-util")
+            }
+            console_log("select all")
+            .console = console_lines()
+        }
+        .ActCut -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_cut("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_cut("tab-util")
+            }
+            console_log("cut")
+            .console = console_lines()
+        }
+        .ActCopy -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_copy("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_copy("tab-util")
+            }
+            console_log("copy")
+            .console = console_lines()
+        }
+        .ActPaste -> {
+            .menu_open = ""
+            if .tab == 0 {
+                code_editor_paste("tab-main")
+            }
+            if .tab == 1 {
+                code_editor_paste("tab-util")
+            }
+            console_log("paste")
+            .console = console_lines()
+        }
+        .ActConsole -> {
+            .menu_open = ""
+            .console_open = !.console_open
+            .console = console_lines()
+        }
+        .ActSwitchTab -> {
+            .menu_open = ""
+            if .tab == 0 {
+                .tab = 1
+                .line = code_editor_cursor_line("tab-util") + 1
+                .col = code_editor_cursor_col("tab-util") + 1
+                .sel = code_editor_selection_len("tab-util")
+            } else {
+                .tab = 0
+                .line = code_editor_cursor_line("tab-main") + 1
+                .col = code_editor_cursor_col("tab-main") + 1
+                .sel = code_editor_selection_len("tab-main")
+            }
+            .console = console_lines()
+        }
+        .ActAbout -> {
+            .menu_open = ""
+            console_log("auto-edit 0.1 — AutoUI playground (plans 413/414/418)")
+            .console = console_lines()
         }
     }
 }

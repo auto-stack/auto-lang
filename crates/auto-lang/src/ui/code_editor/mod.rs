@@ -18,12 +18,15 @@ pub mod iced;
 
 pub use core::{
     code_editor, code_editor_count, code_editor_cursor, code_editor_dispose, code_editor_find,
-    code_editor_set_text, code_editor_text, code_editor_with, set_font_system_call, storage_key,
-    with_font_system,
+    code_editor_redo, code_editor_select_all, code_editor_set_text, code_editor_text,
+    code_editor_undo, code_editor_with, set_font_system_call, storage_key, with_font_system,
     CodeEditorConfig,
     CodeEditorCore, CoreOutput, EditorButton, EditorClipboard, EditorInput, EditorKey,
     EditorModifiers, NullClipboard,
 };
+// Plan 418: menu-driven clipboard ops (requires the arboard bridge).
+#[cfg(feature = "ui-clipboard")]
+pub use core::{code_editor_clipboard_op, ClipboardOp};
 pub use draw::EditorDrawList;
 pub use theme::{current_theme, set_theme_source, CodeEditorTheme, Rgba};
 

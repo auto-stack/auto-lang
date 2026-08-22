@@ -42,11 +42,15 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard", "code-editor"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
 code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
+# Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
+# Both mount under ui-iced; each can also be enabled standalone.
+ui-clipboard = ["dep:arboard"]
+ui-dialog = ["dep:rfd"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -123,6 +127,8 @@ iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "c
 iced_widget = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
+# Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.
+rfd = { version = "0.15", optional = true }
 image = { version = "0.25", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
 # iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
