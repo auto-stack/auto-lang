@@ -793,6 +793,12 @@ pub struct VueGenerator {
     /// State variable name → TS type (for computed expression type inference)
     state_types: HashMap<String, String>,
 
+    /// Plan 014: state/prop names declared int-typed at the Auto level
+    /// (`Int`/`i64`/...; TS collapses int and float to `number`, so this is
+    /// tracked separately). Feeds ts_adapter division lowering — `Math.trunc`
+    /// only when both operands are proven int.
+    int_names: std::collections::HashSet<String>,
+
     /// Store dependencies from `use store:` (Plan 351)
     store_deps: Vec<String>,
 
@@ -1080,6 +1086,7 @@ impl VueGenerator {
             prop_names: Vec::new(),
             prop_types: HashMap::new(),
             state_types: HashMap::new(),
+            int_names: std::collections::HashSet::new(),
             store_deps: Vec::new(),
             uses_autodown: false,
             last_validation_warnings: Vec::new(),
@@ -1299,6 +1306,7 @@ impl VueGenerator {
         self.prop_names.clear();
         self.prop_types.clear();
         self.state_types.clear();
+        self.int_names.clear();
         self.handlers.clear();
         self.emit_events.clear();
         self.quoted_events.clear();
@@ -1642,6 +1650,9 @@ impl VueGenerator {
         for state in &widget.state_vars {
             self.state_names.push(state.name.clone());
             self.state_types.insert(state.name.clone(), Self::auto_type_to_ts_type(&state.type_info));
+            if Self::is_int_auto_type(&state.type_info) {
+                self.int_names.insert(state.name.clone());
+            }
         }
 
         // Plan 012 Batch A (gap 44): register computed names so script-side
@@ -1655,6 +1666,9 @@ impl VueGenerator {
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
             self.prop_types.insert(prop.name.clone(), Self::auto_type_to_ts_type(&prop.type_info));
+            if Self::is_int_auto_type(&prop.type_info) {
+                self.int_names.insert(prop.name.clone());
+            }
         }
 
         // Plan 351: 'store' is a local const (from `const store = reactive(useXxxStore())`).
@@ -2983,6 +2997,7 @@ impl VueGenerator {
         // the .remove/.contains method-mapping gate.
         let (arrays, strings) = self.typed_collection_names();
         ctx.with_typed_collections(arrays, strings)
+            .with_typed_ints(self.int_names.iter().cloned().collect())
             .with_facade_names(self.facade_local_names())
             .with_facade_ref_fields(self.facade_ref_fields_map())
     }
@@ -3044,6 +3059,21 @@ impl VueGenerator {
             }
         }
         (arrays, strings)
+    }
+
+    /// Plan 014: is this Auto type int-ish? TS type maps collapse int and
+    /// float to `number`, so division lowering needs the original `ast::Type`.
+    /// Only proven-int operands get `Math.trunc` on `/` and `%`.
+    fn is_int_auto_type(ty: &crate::ast::Type) -> bool {
+        use crate::ast::Type;
+        matches!(
+            ty,
+            Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize
+        ) || matches!(
+            ty,
+            Type::User(decl)
+                if matches!(decl.name.as_str(), "int" | "i64" | "uint" | "u64" | "usize" | "i32" | "u32")
+        )
     }
 
     /// Plan 012 Batch A: forward ts_adapter passthrough notes into the
@@ -6422,6 +6452,7 @@ impl VueGenerator {
                 }
                 let (arrays, strings) = self.typed_collection_names();
                 ctx = ctx.with_typed_collections(arrays, strings)
+                    .with_typed_ints(self.int_names.iter().cloned().collect())
                     .with_facade_names(self.facade_local_names())
                     .with_facade_ref_fields(self.facade_ref_fields_map());
                 let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
@@ -6470,6 +6501,7 @@ impl VueGenerator {
                 }
                 let (arrays, strings) = self.typed_collection_names();
                 ctx = ctx.with_typed_collections(arrays, strings)
+                    .with_typed_ints(self.int_names.iter().cloned().collect())
                     .with_facade_names(self.facade_local_names())
                     .with_facade_ref_fields(self.facade_ref_fields_map());
                 let mut out = String::from("(() => { ");
@@ -12124,6 +12156,7 @@ export function cn(...inputs: ClassValue[]) {
         // .remove/.contains method-mapping gate.
         let mut typed_arrays: std::collections::HashSet<String> = Default::default();
         let mut typed_strings: std::collections::HashSet<String> = Default::default();
+        let mut typed_ints: std::collections::HashSet<String> = Default::default();
         for sv in &store.state_vars {
             let ty = Self::auto_type_to_ts_type(&sv.type_info);
             if ty.ends_with("[]") {
@@ -12132,12 +12165,16 @@ export function cn(...inputs: ClassValue[]) {
             if ty == "string" {
                 typed_strings.insert(sv.name.clone());
             }
+            if Self::is_int_auto_type(&sv.type_info) {
+                typed_ints.insert(sv.name.clone());
+            }
         }
         // Pass API imports so ts_adapter adds `await` to API calls.
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
-            .with_typed_collections(typed_arrays, typed_strings);
+            .with_typed_collections(typed_arrays, typed_strings)
+            .with_typed_ints(typed_ints);
 
         // Plan 012 Batch G (gap 12): store-level `watch { ... }` block →
         // module-level Vue watch() calls. The store refs are module-level

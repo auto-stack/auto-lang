@@ -1424,3 +1424,83 @@ fn cap_default_classes_off_skips_defaults_but_keeps_layout() {
         "default_classes off: button must not get doc-theme defaults:\n{sfc}"
     );
 }
+
+/// Plan 014: division/mod lowering — `/` and `%` lower to `Math.trunc(a/b)`
+/// ONLY when both operands are proven int (int literals or int-typed
+/// state/props). f64-typed and unknown-type operands keep native JS float
+/// semantics. Regression lock: c2f57577 truncated f64 operands
+/// (`Math.trunc(scrollTop / scrollHeight)`), silently zeroing ratio math in
+/// the demo CustomScrollbar thumb (height/top computed as 0 → drag dead).
+#[test]
+fn cap_div_mod_trunc_only_for_proven_int() {
+    let sfc = gen_sfc(
+        r#"
+widget P(ratio: f64, count: int) {
+    model {
+        var scroll_top f64 = 0
+        var total f64 = 100
+        var n int = 7
+        var m int = 2
+        var r f64 = 0
+    }
+    view {
+        col {
+            button "go" { onclick: .Go }
+        }
+    }
+    on {
+        .Go -> {
+            .r = .scroll_top / .total
+            .n = .n / .m
+            .n = 7 / 2
+            .n = .n % .m
+            .r = .scroll_top / 2
+            .r = .n / .ratio
+        }
+    }
+}
+"#,
+    );
+    // int state / int state → trunc
+    assert!(
+        sfc.contains("Math.trunc(n.value / m.value)"),
+        "int / int lowers to Math.trunc:\n{sfc}"
+    );
+    // int literals → trunc
+    assert!(
+        sfc.contains("Math.trunc(7 / 2)"),
+        "int literal / int literal lowers to Math.trunc:\n{sfc}"
+    );
+    // int % int → trunc (emitter quirk: js_op for Mod is " %" — no trailing space)
+    assert!(
+        sfc.contains("Math.trunc(n.value %m.value)"),
+        "int % int lowers to Math.trunc:\n{sfc}"
+    );
+    // f64 state / f64 state → native float division, NO trunc
+    assert!(
+        sfc.contains("scroll_top.value / total.value"),
+        "f64 / f64 keeps float division:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("Math.trunc(scroll_top.value / total.value)"),
+        "f64 / f64 must not be truncated:\n{sfc}"
+    );
+    // f64 / int literal → float (one operand not proven int)
+    assert!(
+        sfc.contains("scroll_top.value / 2"),
+        "f64 / int literal keeps float division:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("Math.trunc(scroll_top.value / 2)"),
+        "f64 / int literal must not be truncated:\n{sfc}"
+    );
+    // int / f64 prop → float
+    assert!(
+        sfc.contains("n.value / props.ratio") || sfc.contains("n.value / ratio"),
+        "int / f64 prop keeps float division:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("Math.trunc(n.value / props.ratio)"),
+        "int / f64 prop must not be truncated:\n{sfc}"
+    );
+}
