@@ -1,0 +1,30 @@
+// Test spec associated types (Plan 417-E2, DIV-TRAIT-LANG-1).
+//
+// `spec Container { type Item; fn get(i int) Item }` — the spec declares an
+// associated type; the implementer binds it at the impl clause with named
+// syntax `as Container<Item=int>`. a2r emits the trait with `type Item;` and
+// `Self::Item` in method signatures, and the impl block with `type Item = i32;`.
+
+spec Container {
+    type Item
+    fn get(i int) Item
+    fn first() Item
+}
+
+type IntBox as Container<Item=int> {
+    data List<int>
+
+    fn get(i int) int {
+        return self.data[i]
+    }
+
+    fn first() int {
+        return self.data[0]
+    }
+}
+
+pub fn main() {
+    var b = IntBox { data: [7, 8, 9] }
+    print(b.get(1))
+    print(b.first())
+}

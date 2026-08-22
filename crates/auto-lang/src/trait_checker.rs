@@ -31,7 +31,67 @@ impl TraitChecker {
     ) -> Result<(), Vec<AutoError>> {
         let mut errors = Vec::new();
 
+        // Plan 417-E2 (DIV-TRAIT-LANG-1): collect the associated-type
+        // bindings the implementer declared for THIS spec
+        // (`type Stack as Container<Item=int>`), then substitute them into
+        // the spec method signature before comparison, so `fn get(i int) Item`
+        // checks against the concrete binding. References parse as bare
+        // `Type::User(name)`, exactly what Type::substitute replaces.
+        let (assoc_names, assoc_types): (Vec<crate::ast::Name>, Vec<Type>) = {
+            let mut names = Vec::new();
+            let mut types = Vec::new();
+            for spec_impl in &type_decl.spec_impls {
+                if spec_impl.spec_name == spec_decl.name {
+                    for (n, t) in &spec_impl.assoc_bindings {
+                        names.push(n.clone());
+                        types.push(t.clone());
+                    }
+                }
+            }
+            (names, types)
+        };
+        if !spec_decl.associated_types.is_empty() || !assoc_names.is_empty() {
+            // Every declared associated type must be bound (Rust semantics),
+            // and every binding must name a declared associated type —
+            // mismatches are reported explicitly, never silently ignored.
+            // The unknown-name check runs first: a typo'd binding name is the
+            // more actionable diagnostic.
+            for n in &assoc_names {
+                if !spec_decl.has_associated_type(n.as_str()) {
+                    errors.push(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' binds '{}' on spec '{}' but the spec declares no such associated type",
+                                type_decl.name, n, spec_decl.name
+                            ),
+                            span: Self::empty_span(),
+                        }
+                        .into(),
+                    );
+                }
+            }
+            for at in &spec_decl.associated_types {
+                if !assoc_names.contains(&at.name) {
+                    errors.push(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' implements spec '{}' but does not bind associated type '{}' (expected 'as {}<{}=...>')",
+                                type_decl.name,
+                                spec_decl.name,
+                                at.name,
+                                spec_decl.name,
+                                at.name
+                            ),
+                            span: Self::empty_span(),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
+
         for spec_method in &spec_decl.methods {
+            let spec_ret = spec_method.ret.substitute(&assoc_names, &assoc_types);
             let implemented = type_decl.methods.iter().find(|m| m.name == spec_method.name);
 
             match implemented {
@@ -57,8 +117,11 @@ impl TraitChecker {
                     // For now, we just check if return types match exactly
                     // TODO: Add more sophisticated type compatibility checking
                     // Plan 057: Unknown (generic params) is compatible with any concrete type
+                    // Plan 417-E2: spec_ret is the spec signature after
+                    // associated-type substitution (identical when the spec
+                    // declares none).
                     let is_compatible = matches!(
-                        (&method.ret, &spec_method.ret),
+                        (&method.ret, &spec_ret),
                             // Exact match for same types
                             (Type::Void, Type::Void)
                             | (Type::Int, Type::Int)
@@ -94,7 +157,7 @@ impl TraitChecker {
                         // types compare as unequal. Use unique_name() string comparison as
                         // a universal fallback: two Future<str> both produce "Future<str>",
                         // two Value both produce "Value", etc.
-                        method.ret.unique_name() == spec_method.ret.unique_name()
+                        method.ret.unique_name() == spec_ret.unique_name()
                     };
 
                     if !is_compatible {
@@ -102,7 +165,7 @@ impl TraitChecker {
                             SyntaxError::Generic {
                                 message: format!(
                                     "Method '{}' has return type {:?} but spec '{}' requires {:?}",
-                                    method.name, method.ret, spec_decl.name, spec_method.ret
+                                    method.name, method.ret, spec_decl.name, spec_ret
                                 ),
                                 span: Self::empty_span(),
                             }
@@ -272,6 +335,7 @@ mod tests {
             methods,
             is_pub: false,
             bounds: Vec::new(), // Plan 397
+            associated_types: Vec::new(), // Plan 417-E2
         }
     }
 
@@ -444,6 +508,7 @@ mod tests {
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
             bounds: Vec::new(), // Plan 397
+            associated_types: Vec::new(), // Plan 417-E2
         };
 
         // Create a type that implements the spec with correct type args
@@ -457,6 +522,7 @@ mod tests {
             spec_impls: vec![SpecImpl {
                 spec_name: Name::from("Storage"),
                 type_args: vec![Type::Int], // Correct: 1 type arg for 1 param
+                assoc_bindings: Vec::new(), // Plan 417-E2
             }],
             generic_params: Vec::new(),
             members: Vec::new(),
@@ -508,6 +574,7 @@ mod tests {
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
             bounds: Vec::new(), // Plan 397
+            associated_types: Vec::new(), // Plan 417-E2
         };
 
         // Create a type that implements the spec with wrong number of type args
@@ -521,6 +588,7 @@ mod tests {
             spec_impls: vec![SpecImpl {
                 spec_name: Name::from("Map"),
                 type_args: vec![Type::Int], // Wrong: 1 type arg for 2 params
+                assoc_bindings: Vec::new(), // Plan 417-E2
             }],
             generic_params: Vec::new(),
             members: Vec::new(),
@@ -567,6 +635,7 @@ mod tests {
             ],
             is_pub: false,
             bounds: Vec::new(), // Plan 397
+            associated_types: Vec::new(), // Plan 417-E2
         };
 
         // Create a type that implements the spec but is missing a method
@@ -580,6 +649,7 @@ mod tests {
             spec_impls: vec![SpecImpl {
                 spec_name: Name::from("Storage"),
                 type_args: vec![Type::Int],
+                assoc_bindings: Vec::new(), // Plan 417-E2
             }],
             generic_params: Vec::new(),
             members: Vec::new(),
@@ -622,6 +692,7 @@ mod tests {
             spec_impls: vec![SpecImpl {
                 spec_name: Name::from("NonExistentSpec"),
                 type_args: vec![Type::Int],
+                assoc_bindings: Vec::new(), // Plan 417-E2
             }],
             generic_params: Vec::new(),
             members: Vec::new(),
@@ -640,5 +711,163 @@ mod tests {
         assert!(result.is_err());
         let errors = result.unwrap_err();
         assert!(errors[0].to_string().contains("but spec is not defined"));
+    }
+
+    // Plan 417-E2 (DIV-TRAIT-LANG-1): associated types
+
+    /// `spec Container { type Item; fn get(i int) Item }` with the implementer
+    /// binding `as Container<Item=int>` and declaring `fn get(i int) int`.
+    fn create_assoc_spec() -> SpecDecl {
+        let mut spec = create_test_spec(
+            "Container",
+            vec![create_spec_method(
+                "get",
+                vec![Param {
+                    name: Name::from("i"),
+                    ty: Type::Int,
+                    default: None,
+                    mode: Default::default(),
+                    destructure: None,
+                }],
+                // `Item` parses as a bare Type::User(name) reference
+                Type::User(create_test_type("Item", vec![], vec![])),
+            )],
+        );
+        spec.associated_types = vec![crate::ast::AssociatedType {
+            name: Name::from("Item"),
+            bound: None,
+        }];
+        spec
+    }
+
+    #[test]
+    fn test_associated_type_bound_signature_matches() {
+        use crate::ast::SpecImpl;
+
+        let spec = create_assoc_spec();
+        let mut ty = create_test_type(
+            "IntBox",
+            vec![create_fn(
+                "get",
+                vec![Param {
+                    name: Name::from("i"),
+                    ty: Type::Int,
+                    default: None,
+                    mode: Default::default(),
+                    destructure: None,
+                }],
+                Type::Int,
+            )],
+            vec!["Container".into()],
+        );
+        ty.spec_impls = vec![SpecImpl {
+            spec_name: Name::from("Container"),
+            type_args: Vec::new(),
+            assoc_bindings: vec![(Name::from("Item"), Type::Int)],
+        }];
+
+        let result = TraitChecker::check_conformance(&ty, &spec);
+        if let Err(errors) = &result {
+            for e in errors {
+                eprintln!("  {}", e);
+            }
+        }
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_associated_type_return_mismatch_after_substitution() {
+        use crate::ast::SpecImpl;
+
+        let spec = create_assoc_spec();
+        let mut ty = create_test_type(
+            "StrBox",
+            vec![create_fn(
+                "get",
+                vec![Param {
+                    name: Name::from("i"),
+                    ty: Type::Int,
+                    default: None,
+                    mode: Default::default(),
+                    destructure: None,
+                }],
+                // str does not match the Item=int binding
+                Type::StrSlice,
+            )],
+            vec!["Container".into()],
+        );
+        ty.spec_impls = vec![SpecImpl {
+            spec_name: Name::from("Container"),
+            type_args: Vec::new(),
+            assoc_bindings: vec![(Name::from("Item"), Type::Int)],
+        }];
+
+        let result = TraitChecker::check_conformance(&ty, &spec);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors[0].to_string().contains("has return type"));
+    }
+
+    #[test]
+    fn test_associated_type_unbound_reports_error() {
+        let spec = create_assoc_spec();
+        // Implementer declares the method but never binds Item
+        let ty = create_test_type(
+            "IntBox",
+            vec![create_fn(
+                "get",
+                vec![Param {
+                    name: Name::from("i"),
+                    ty: Type::Int,
+                    default: None,
+                    mode: Default::default(),
+                    destructure: None,
+                }],
+                Type::Int,
+            )],
+            vec!["Container".into()],
+        );
+
+        let result = TraitChecker::check_conformance(&ty, &spec);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors[0]
+            .to_string()
+            .contains("does not bind associated type 'Item'"));
+    }
+
+    #[test]
+    fn test_associated_type_unknown_binding_name_reports_error() {
+        use crate::ast::SpecImpl;
+
+        let spec = create_assoc_spec();
+        let mut ty = create_test_type(
+            "IntBox",
+            vec![create_fn(
+                "get",
+                vec![Param {
+                    name: Name::from("i"),
+                    ty: Type::Int,
+                    default: None,
+                    mode: Default::default(),
+                    destructure: None,
+                }],
+                Type::Int,
+            )],
+            vec!["Container".into()],
+        );
+        ty.spec_impls = vec![SpecImpl {
+            spec_name: Name::from("Container"),
+            type_args: Vec::new(),
+            // Container declares Item, not Elem
+            assoc_bindings: vec![(Name::from("Elem"), Type::Int)],
+        }];
+
+        let result = TraitChecker::check_conformance(&ty, &spec);
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors[0]
+            .to_string()
+            .contains("declares no such associated type"));
     }
 }

@@ -15,8 +15,10 @@
 ///   requires the implementer to re-declare every default-bodied method, and
 ///   a2r wraps the default body so it returns unit. Sub-scenario A is an L3
 ///   probe; see DIV-TRAIT-A2R-1.
-/// - Associated types are not supported by Auto at all: the syntax is a parse
-///   error. Sub-scenario B is a language roadmap item; see DIV-TRAIT-LANG-1.
+/// - Associated types are supported since Plan 417-E2: a spec declares them
+///   with a type member and the implementer binds them by name at the impl
+///   clause. Sub-scenario B now runs live and agrees three-way; the original
+///   language gap was flipped, see DIV-TRAIT-LANG-1.
 /// - Generic spec declarations parse, but implementing a generic spec with a
 ///   concrete type argument makes a2r drop the type argument; and the AutoVM
 ///   cannot dispatch a spec method through a generic type parameter. The L1
@@ -104,12 +106,31 @@ type Robot as Announcer {
 // =============================================================================
 // Sub-scenario B: associated types.
 //
-// NOT SUPPORTED by Auto. The associated-type syntax in a spec is a parse
-// error. The feature is a language roadmap item. See README Sub-scenario B
-// and DIV-TRAIT-LANG-1. No code is emitted here.
+// L1 baseline since Plan 417-E2. The spec declares an associated type with a
+// type member, references it in method signatures, and the implementer binds
+// it by name at the impl clause. All three backends agree; the original
+// language gap is closed, see DIV-TRAIT-LANG-1.
 // =============================================================================
 
-// intentionally empty, see note above
+spec Container {
+    type Item
+
+    fn get(i int) Item
+
+    fn first() Item
+}
+
+type IntBox as Container<Item=int> {
+    data List<int>
+
+    fn get(i int) int {
+        self.data[i]
+    }
+
+    fn first() int {
+        self.data[0]
+    }
+}
 
 
 // =============================================================================
@@ -167,6 +188,19 @@ fn announce_robot(id int) str {
 fn robot_label(id int) str {
     let r = Robot { id: id }
     r.label()
+}
+
+// Sub-scenario B, L1 baseline: associated-type binding on Container.
+// Item is bound to int, so the spec signatures get and first returning Item
+// check against the int-returning implementer methods.
+fn container_get(a int, b int, c int, i int) int {
+    let data = IntBox { data: [a, b, c] }
+    data.get(i)
+}
+
+fn container_first(a int, b int, c int) int {
+    let data = IntBox { data: [a, b, c] }
+    data.first()
 }
 
 // Sub-scenario C, L1 baseline: Comparable spec dispatch on ScoreCmp.

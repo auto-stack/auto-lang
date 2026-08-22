@@ -4,7 +4,7 @@
 **Scope:** Auto `spec` (trait) advanced features — default methods, associated
 types, bounded/generic specs — compared three-way across AutoVM, a2r
 (transpiled Rust), and a native Rust oracle.
-**Parity status:** 10/10 consistent (100%) across all three backends.
+**Parity status:** 14/14 consistent (100%) across all three backends.
 
 This is an **honest-boundary** library. Its goal is to surface where Auto's
 spec system and the a2r transpiler do and do not support Rust-trait-style
@@ -62,11 +62,14 @@ Gotchas hit while writing this library (worth recording):
 
 ### B. associated types
 
-- **L3 (language gap):** NOT supported by Auto. `spec Container { type Item; fn get(i int) Item }`
-  is a parse error ("Expected term, got RBrace"). There is no Auto syntax for
-  an associated type in a spec. No code is emitted. Rust supports associated
-  types natively, so the Rust oracle has no corresponding test either. See
-  **DIV-TRAIT-LANG-1**.
+- **L1 (live, 3-way consistent, since Plan 417-E2 2026-08-22):** a spec
+  declares an associated type with a `type Item` member and references it in
+  method signatures; the implementer binds it by name at the impl clause
+  (`type IntBox as Container<Item=int>`). The binding substitutes through the
+  trait checker (signature conformance), the AutoVM method compilation, and
+  the a2r emission (`type Item;` + `Self::Item` in the trait, `type Item =
+  i64;` in the impl). Covered by `assoc_types.at` (4 cases). See
+  **DIV-TRAIT-LANG-1** (flipped ✅).
 
 ### C. bounded / generic specs
 
@@ -117,7 +120,7 @@ DIV-URL-VM-1) and never trip a2r struct-ownership codegen (E0507/E0382).
 See `parity/docs/known-divergences.md` §"trait_advanced (D2)" for:
 - **DIV-TRAIT-A2R-1** — value-returning default method miscompiled by a2r (open).
 - **DIV-TRAIT-A2R-2** — generic spec impl drops the concrete type argument (open).
-- **DIV-TRAIT-LANG-1** — associated types not supported by the Auto language (open).
+- **DIV-TRAIT-LANG-1** — associated types: fixed 2026-08-22 (Plan 417-E2); sub-scenario B now runs live at L1.
 - **DIV-TRAIT-VM-1** — AutoVM cannot dispatch a spec method on a generic type parameter (open).
 
 ## How to run
