@@ -192,6 +192,9 @@ def run_tests(mcp_url, proc):
         print("  NOTE  editor node not yet in snapshot (render timing); skipping")
     result.check("menubar buttons present", find_button_by_text(snap, "文件") is not None
                  and find_button_by_text(snap, "帮助") is not None, "menu buttons not found")
+    # Plan 418 7.3-3: event args render readably (was invisible  encoding)
+    result.check("snapshot renders event args", 'onclick: .MenuToggle("file")' in snap,
+                 "MenuToggle binding args not visible in snapshot")
 
     # T2: ActConsole via View menu — console_open flips, menu auto-closes
     print("\nT2: ActConsole (menu item)")

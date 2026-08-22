@@ -400,12 +400,12 @@ widget App {
                 let s = File.read_text(p)
                 if .tab == 0 {
                     .path_main = p
-                    .title_main = p
+                    .title_main = file_basename(p)
                     code_editor_set_text("tab-main", s)
                 }
                 if .tab == 1 {
                     .path_util = p
-                    .title_util = p
+                    .title_util = file_basename(p)
                     code_editor_set_text("tab-util", s)
                 }
                 console_log("open: " + p)
@@ -421,12 +421,12 @@ widget App {
                     let p = dialog_save("untitled.at")
                     if p != "" {
                         .path_main = p
-                        .title_main = p
+                        .title_main = file_basename(p)
                     }
                 }
                 if .path_main != "" {
-                    let n = File.write_text(.path_main, code_editor_text("tab-main"))
-                    console_log("saved: " + .path_main + " (" + n.str() + " bytes)")
+                    File.write_text(.path_main, code_editor_text("tab-main"))
+                    console_log("saved: " + .path_main)
                 } else {
                     console_log("save: cancelled")
                 }
@@ -436,12 +436,12 @@ widget App {
                     let p = dialog_save("untitled.at")
                     if p != "" {
                         .path_util = p
-                        .title_util = p
+                        .title_util = file_basename(p)
                     }
                 }
                 if .path_util != "" {
-                    let n = File.write_text(.path_util, code_editor_text("tab-util"))
-                    console_log("saved: " + .path_util + " (" + n.str() + " bytes)")
+                    File.write_text(.path_util, code_editor_text("tab-util"))
+                    console_log("saved: " + .path_util)
                 } else {
                     console_log("save: cancelled")
                 }

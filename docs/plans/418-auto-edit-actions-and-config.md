@@ -210,3 +210,10 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - `File.write_text` 返回值 `n.str()` 在 handler 里显示为类型区间("0-2147483647")而非字节数——int 推断/显示小坑,仅影响 ActSave 日志文案
 - ActOpen 后 tab 标题用完整路径(无 basename native);Windows 反斜杠路径的 split 提取留 Phase 2
 - MCP snapshot 不渲染事件参数(`onclick: .MenuToggle` 无 `"file"` 实参)——测试按按钮文本定位;snapshot 格式改进列 Phase 2 P2-7 可选项
+
+### 7.4 待办清理（2026-08-22 第二轮，分支同步 master 后）
+- **§7.3-1 修复**：新增 `file_basename(path) -> Str` native(2929,纯 std 无 feature 门,/与\双分隔符 rsplit);ActOpen/ActSave 的 tab 标题改用文件名(path 仍存完整路径供保存)
+- **§7.3-2 修复**：ActSave 日志去掉 byte 计数(`File.write_text` 返回值在 handler let 绑定后 `.str()` 显示类型区间的推断坑,改语句调用丢弃返回值;VM 推断问题本身另立债务)
+- **§7.3-3 修复**：snapshot 事件参数根因=`AuraEvent{handler,params}` 分离,`record_event` 只记了裸 handler——记录点拼 `handler(params)`;另 mcp_server `display_handler` 解码 iced 层 \u{1F} 编码(双保险,无编码时原样返回)
+- **验证**:041 MCP 矩阵 **29/29**(+snapshot 参数断言);iced 44/44、mcp_server 6/6、code_editor 21/21;013-todo MCP **22/22**(snapshot 格式变化跨应用无回归)
+- 同步:分支合并 master 新历史(417-D2 generators/416-6A LSP CI/auto-down 015 批次 A)

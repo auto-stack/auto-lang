@@ -44,6 +44,7 @@ macro_rules! for_each_native {
             (2926, NATIVE_CLIPBOARD_SET_TEXT, shim_clipboard_set_text, "auto.clipboard.set_text"),
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
+            (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),
             (6, NATIVE_ASSERT_NE, shim_assert_ne, "auto.assert_ne"),
@@ -648,6 +649,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.clipboard.set_text", 2926, Bool),
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
+            ("auto.file.basename", 2929, String),
 
             ("auto.list.new", 100, Void),
             ("auto.list.push", 101, Void),
