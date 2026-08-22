@@ -11371,6 +11371,10 @@ impl VueGenerator {
                     // loosely typed — emit `any` (jade treats `x: map` as an
                     // untyped object), never a broken `import type { map }`.
                     "map" => "any".to_string(),
+                    // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin —
+                    // emit `any`, never the identifier itself (TS2304) and
+                    // never an api.ts import (TS2305).
+                    "Value" => "any".to_string(),
                     // Custom types (e.g. Note) — use the type name directly.
                     // The interface should be imported from api.ts.
                     other => other.to_string(),
@@ -11622,6 +11626,10 @@ impl VueGenerator {
         matches!(name,
             "msg" | "str" | "int" | "i64" | "uint" | "u64" | "usize" | "byte" | "char"
             | "float" | "double" | "bool"
+            // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin (dynamic
+            // any) — mapping it as a custom api.ts type produced
+            // `import type { Value } from '@/lib/api'` (TS2305).
+            | "Value"
             // Plan 012 P2 (gap 43): lowercase `map` is the DSL map-literal
             // type — built-in, not an api.ts interface.
             | "map"
