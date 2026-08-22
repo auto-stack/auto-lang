@@ -13,7 +13,7 @@
 3. **§8.4① probe 路径对齐**(dfdb6154):根因双重——tracked 转换器里**重复 menubar/toolbar 匹配臂致带 probe 的新臂不可达**+计数器不计 sep/面板嵌套;修复后 snapshot onclick 4→16(`.ActNew`/`__menubar_toggle("file")`/`.ActConsole`/`__menubar_close` 全出),agent 可直接读合成控件处理器。
 
 ## 后续(editor 残留已立项,见 418 §8.10)
-- **Plan 419** 折叠 Phase B(core 自绘)/ **420** 多 tab 工作区 / **421** vue 契约 / **422** 弹层原语(menubar/contextmenu)/ **423** 配置层 Phase3;IME/DPI/Linux 人工验收挂 413 尾(需实机)。
+- **Plan 428** 折叠 Phase B(原拟 419,撞号改序)(core 自绘)/ **420** 多 tab 工作区 / **421** vue 契约 / **422** 弹层原语(menubar/contextmenu)/ **423** 配置层 Phase3;IME/DPI/Linux 人工验收挂 413 尾(需实机)。
 - worktree 已重建:`.worktrees/auto-edit-ux`,分支 `plan-editor-followups`(基于 master 5d34b0c2,target 缓存保留;原 plan-418 分支已被并行会话合并后清理)。
 
 ## 剩余事项

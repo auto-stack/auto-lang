@@ -1,6 +1,8 @@
-# Plan 419: 代码折叠 Phase B — core 渲染管线改造(逐 run 自绘)
+# Plan 428: 代码折叠 Phase B — core 渲染管线改造(逐 run 自绘)
 
-> **状态**: 📋 已立项待实施(2026-08-22,源自 414 §3"点击折叠为 Phase B,需按行隐藏渲染,fill_raw 整缓冲绘制做不到——待单独立项")
+> **状态**: 📋 已立项待实施(编号 428;2026-08-22 初拟为 419,因与并行会话的 vm-lifecycle 计划撞号改序)
+> **改号说明**: 原 419-code-folding-phase-b.md → 428(2026-08-23;419 由 vm-lifecycle-three-tiers 占用)
+> **原始**: 源自 414 §3"点击折叠为 Phase B,需按行隐藏渲染,fill_raw 整缓冲绘制做不到——待单独立项")
 > **来源**: Plan 414 §3(fold Phase A 只交付视觉 chevron)/ Plan 413(fill_raw 架构与 26s/1MB shaping 教训)
 > **关联**: 413(code_editor core)/ 414(auto-edit UX)/ 418(editor 后续批 §8.8-8.9 的测试基座)
 
