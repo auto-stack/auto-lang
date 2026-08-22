@@ -7204,7 +7204,7 @@ pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             task.ram.push_str_idx(idx as u32);
             Ok(())
         }
-        Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name))),
+        Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name, e))),
     }
 }
 
