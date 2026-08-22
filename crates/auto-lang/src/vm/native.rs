@@ -800,6 +800,17 @@ pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// `file_basename(path) -> String` — final path segment, treating both `/`
+/// and `\` as separators (Plan 418: tab titles after Open/Save show the
+/// file name, not the full OS path). No feature gate — pure string logic.
+pub fn shim_file_basename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string_arg(task, vm);
+    let base = path.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+    let idx = vm.add_string(base.into_bytes());
+    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    Ok(())
+}
+
 // Feature-off stubs: same signatures, clear runtime error.
 #[cfg(not(feature = "code-editor"))]
 pub fn shim_code_editor_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {

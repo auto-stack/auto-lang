@@ -835,7 +835,16 @@ impl<'a> AuraViewBuilder<'a> {
         if !events.is_empty() {
             let ev_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
             for (event_name, ev) in events.iter() {
-                probe.record_event(&ev_path, event_name, &ev.handler);
+                // Plan 418 7.3-3: record the handler WITH its params — the
+                // bare name made arg-differentiated bindings (e.g. the four
+                // .MenuToggle("file"/"edit"/"view"/"help") menubar buttons)
+                // indistinguishable in snapshots/inspector.
+                let handler_with_params = if ev.params.is_empty() {
+                    ev.handler.clone()
+                } else {
+                    format!("{}({})", ev.handler, ev.params.join(", "))
+                };
+                probe.record_event(&ev_path, event_name, &handler_with_params);
             }
         }
 

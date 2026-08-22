@@ -1015,7 +1015,7 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
                     if !events.is_empty() {
                         out.push_str("  events:\n");
                         for (event_name, aura_event) in events {
-                            out.push_str(&format!("    {} -> {}\n", event_name, aura_event.handler));
+                            out.push_str(&format!("    {} -> {}\n", event_name, display_handler(&aura_event.handler)));
                         }
                     }
 
@@ -2516,6 +2516,25 @@ fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
 /// Format mirrors AuraSnapshotBuilder's output (tag #id @rect [for] { props
 /// events children }) so AI agents see a familiar structure, but every node
 /// comes from the live render.
+/// Decode a `\u{1F}`-encoded handler string into a human-readable form:
+/// `.MenuToggle<US>s<US>file` renders as `.MenuToggle("file")` (Plan 418
+/// 7.3: snapshots carried invisible control chars, so arg-differentiated
+/// bindings were indistinguishable to humans and tests alike).
+fn display_handler(handler: &str) -> String {
+    let (name, args) = crate::ui::dynamic::decode_payload(handler);
+    if args.is_empty() {
+        return name;
+    }
+    let rendered: Vec<String> = args
+        .iter()
+        .map(|a| match a {
+            auto_val::Value::Str(sv) => format!("\"{}\"", sv),
+            other => format!("{}", other),
+        })
+        .collect();
+    format!("{}({})", name, rendered.join(", "))
+}
+
 fn build_aura_from_styled_vtree(
     snap: &StyledNodeSnapshot,
     include_status: bool,
@@ -2635,7 +2654,7 @@ fn aura_vtree_node(
     let mut ev_sorted: Vec<&(String, String)> = events.iter().collect();
     ev_sorted.sort_by(|a, b| a.0.cmp(&b.0));
     for (ev, handler) in ev_sorted {
-        out.push_str(&format!("{}{}: {}\n", "  ".repeat(indent + 1), ev, handler));
+        out.push_str(&format!("{}{}: {}\n", "  ".repeat(indent + 1), ev, display_handler(handler)));
     }
 
     // children
