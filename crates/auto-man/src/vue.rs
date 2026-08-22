@@ -2042,7 +2042,8 @@ export default router
         }
         // PLAN-037 Phase 5: the module's own `use.web` statements become ES
         // imports in the generated TS (port files bind web symbols and expose
-        // wrapper fns). Non-Fn kinds are ignored by the generator.
+        // wrapper fns). Plan 424: component/composable kinds are re-exported
+        // by the generator (ports symbol forwarding).
         let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast.stmts.iter()
             .filter_map(|s| match s {
                 auto_lang::ast::Stmt::UseWeb(entries) => Some(entries.clone()),

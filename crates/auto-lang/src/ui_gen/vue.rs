@@ -12267,8 +12267,10 @@ export function cn(...inputs: ClassValue[]) {
     /// PLAN-037 Phase 5: fn module + its own `use.web` imports. Port files
     /// (ports/<域>.at) declare web bindings and expose wrapper fns; the
     /// generated TS must import the bound symbols before the wrappers use
-    /// them. Only plain (fn) entries are emitted — composable/component
-    /// kinds are caller-side machinery with no meaning in a fn module.
+    /// them. Plan 424: component/composable entries are forwarded via ES
+    /// re-export (`export { X } from '...'`) — callers import them from the
+    /// port module while the tag registry / auto-call machinery on the
+    /// caller side stays identical to a direct reference.
     pub fn generate_fn_module_full(
         fns: &[crate::aura::AuraModuleFn],
         ext_imports: &[crate::ast::ui::ExtImport],
@@ -12277,19 +12279,31 @@ export function cn(...inputs: ClassValue[]) {
         code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
 ");
         for imp in ext_imports {
-            if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Fn) {
-                continue;
-            }
             let names: Vec<&str> = imp.symbols.iter().map(|s| s.as_str()).collect();
             if names.is_empty() {
                 continue;
             }
-            code.push_str(&format!(
-                "import {{ {} }} from '{}'
+            let specifier = Self::ext_import_specifier(imp.path.as_str());
+            match imp.kind {
+                crate::ast::ui::ExtImportKind::Fn => {
+                    code.push_str(&format!(
+                        "import {{ {} }} from '{}'
 ",
-                names.join(", "),
-                Self::ext_import_specifier(imp.path.as_str())
-            ));
+                        names.join(", "),
+                        specifier
+                    ));
+                }
+                // Plan 424: ports 符号转发——component/composable 经端口再导出。
+                crate::ast::ui::ExtImportKind::Component
+                | crate::ast::ui::ExtImportKind::Composable => {
+                    code.push_str(&format!(
+                        "export {{ {} }} from '{}'
+",
+                        names.join(", "),
+                        specifier
+                    ));
+                }
+            }
         }
         if !ext_imports.is_empty() {
             code.push('\n');
@@ -13715,6 +13729,124 @@ fn fetch_things() []Value {
             code
         );
         assert!(!code.contains("fetch_things(): "), "async fn drops ret anno:\n{}", code);
+    }
+
+    /// Plan 424 T1: ports 符号转发——fn 模块混写三种 `use.web` kind 时,
+    /// fn 走 import(现有 wrapper 路径),component/composable 走 ES
+    /// re-export(specifier 复用 ext_import_specifier:npm 原样、
+    /// platform: → `@/platform/x.vue`、本地 → `@/ext/...`)。
+    #[test]
+    fn test_fn_module_reexport_component_composable() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+use.web format_rel from "./time_fmt.ts"
+use.web component MessageSquare, ListTodo from "lucide-vue-next"
+use.web component Markdown from "platform:markdown"
+use.web composable useT from "./i18n.ts"
+
+fn rel_time(ts int) str {
+    return format_rel(ts)
+}
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("port module must parse");
+        let fns: Vec<crate::aura::AuraModuleFn> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Fn(f) => crate::aura::extract_module_fn(f),
+                _ => None,
+            })
+            .collect();
+        let web_imports: Vec<crate::ast::ui::ExtImport> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let code = VueGenerator::generate_fn_module_full(&fns, &web_imports);
+        // fn kind: import (wrapper 路径不变)
+        assert!(
+            code.contains("import { format_rel } from '@/ext/time_fmt'"),
+            "fn kind still imports:
+{}",
+            code
+        );
+        // component kind: npm specifier 原样 re-export
+        assert!(
+            code.contains("export { MessageSquare, ListTodo } from 'lucide-vue-next'"),
+            "npm component re-export:
+{}",
+            code
+        );
+        // component kind: platform: → @/platform/x.vue
+        assert!(
+            code.contains("export { Markdown } from '@/platform/markdown.vue'"),
+            "platform component re-export:
+{}",
+            code
+        );
+        // composable kind: 本地 → @/ext/...
+        assert!(
+            code.contains("export { useT } from '@/ext/i18n'"),
+            "composable re-export:
+{}",
+            code
+        );
+        // wrapper fn 照常导出
+        assert!(
+            code.contains("export function rel_time(ts: any)"),
+            "wrapper fn still exported:
+{}",
+            code
+        );
+    }
+
+    /// Plan 424 MVP-4: 调用方门控——`use.web component/composable X from
+    /// "<port>.at"` 与直接引用同路径:named import 指向端口模块
+    /// (`@/ext/<port>`),tag 注册与 composable 自动调用机制不变。
+    /// 零 parser 改动,此测试锁定该不变式。(widget use 块与文件级
+    /// use.web 最终都汇入 widget.ext_imports,走同一 register_ext_imports。)
+    #[test]
+    fn test_port_referenced_component_composable_caller_side() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Toolbar {
+    use {
+        component: MessageSquare from "ports/icons.web.at"
+        composable: useT from "ports/i18n.web.at"
+    }
+    view {
+        col {
+            MessageSquare {
+                class: "w-4 h-4"
+            }
+            text (text: t("greeting"))
+        }
+    }
+}
+"#,
+        );
+        // component: named import 指向端口模块(.at 扩展名剥掉)
+        assert!(
+            sfc.contains("import { MessageSquare } from '@/ext/ports/icons.web'"),
+            "component via port:
+{}",
+            sfc
+        );
+        // composable: 同 specifier 规则 + 自动调用 const 绑定
+        assert!(
+            sfc.contains("import { useT } from '@/ext/ports/i18n.web'"),
+            "composable via port:
+{}",
+            sfc
+        );
+        assert!(sfc.contains("const t = useT()"), "auto-call kept:\n{}", sfc);
+        // tag 注册不变:模板内实例化成功
+        assert!(sfc.contains("<MessageSquare"), "tag registered:\n{}", sfc);
     }
 
     /// Plan 029 T17: dom 内建模块转译（主题/快捷键/剪贴板/外链最小 DOM 面）。
