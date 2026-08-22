@@ -2342,34 +2342,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_))
                     )
                 );
-                {
-                    use std::sync::atomic::{AtomicU64, Ordering};
-                    static DBG_N: AtomicU64 = AtomicU64::new(0);
-                    let is_img = matches!(content.as_deref(), Some(AbstractView::Image { .. }));
-                    if is_img && DBG_N.fetch_add(1, Ordering::Relaxed) < 8 {
-                        let ck = match &content {
-                            Some(v) => match &**v {
-                                AbstractView::Image { src, .. } => format!("Image({})", src),
-                                AbstractView::Column { children, .. } => format!("Col({})", children.len()),
-                                AbstractView::Text { content, .. } => format!("Text({:?})", content),
-                                _ => "other".into(),
-                            },
-                            None => "None".into(),
-                        };
-                        eprintln!(
-                            "[DBG-BTN] label={:?} content={} fixed_both={} w={:?} h={:?} pad={:?}/{:?}/{:?} classes={:?}",
-                            label,
-                            ck,
-                            fixed_both,
-                            iced_style.as_ref().and_then(|is| is.width.map(|w| match w { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
-                            iced_style.as_ref().and_then(|is| is.height.map(|h| match h { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
-                            iced_style.as_ref().and_then(|is| is.padding),
-                            iced_style.as_ref().and_then(|is| is.padding_x),
-                            iced_style.as_ref().and_then(|is| is.padding_y),
-                            style.as_ref().map(|s| s.classes.iter().map(|c| match c { StyleClass::PaddingX(_)=>"px".to_string(), StyleClass::PaddingY(_)=>"py".to_string(), StyleClass::Padding(_)=>"p".to_string(), _=>".".to_string() }).collect::<String>())
-                        );
-                    }
-                }
                 let button_content: iced::Element<'static, M> = if let Some(mut content_view) = content {
                     if let Some(color) = inherit_color {
                         inherit_text_color(&mut content_view, color);
