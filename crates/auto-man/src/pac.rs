@@ -100,6 +100,12 @@ pub struct Pac {
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
 
+    /// Plan 418: UI action/binding config file, declared as
+    /// `ui_config: "auto-edit.at"` in pac.at. Resolved relative to the
+    /// project dir by `auto run`; the renderer loads actions/menubar/
+    /// toolbar/shortcuts from it (Action declaration layer).
+    pub ui_config: Option<AutoStr>,
+
     /// shadcn-vue widget mapping toggle (Plan 013), declared as
     /// `shadcn: off` in pac.at. Default true = current behavior (widgets map
     /// to shadcn-vue components, `@/components/ui/*` imports). false = native
@@ -231,6 +237,11 @@ impl Pac {
         let title_trimmed = title.trim().to_string();
         let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
 
+        // Plan 418: UI action config file, e.g. `ui_config: "auto-edit.at"`.
+        let ui_config = config.root.get_prop("ui_config").to_astr();
+        let ui_config_trimmed = ui_config.trim().to_string();
+        let ui_config = (!ui_config_trimmed.is_empty()).then(|| AutoStr::from(ui_config_trimmed));
+
         // Plan 013: shadcn-vue mapping toggle, `shadcn: off` in pac.at.
         // Accepts Bool (off/on/false/true), quoted "off"/"false"/"no"/"0".
         // Absent or unrecognized → true (current shadcn default).
@@ -350,6 +361,7 @@ impl Pac {
             back_port,
             window,
             title,
+            ui_config,
             shadcn,
             default_classes,
             is_update: false,

@@ -19,6 +19,8 @@ pub mod code_editor;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;
+// Plan 418 Phase 2: declarative action/binding config (auto-atom).
+pub mod action_config;
 pub mod view;
 pub mod vnode;
 pub mod vnode_converter;

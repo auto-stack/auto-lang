@@ -217,3 +217,23 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **§7.3-3 修复**：snapshot 事件参数根因=`AuraEvent{handler,params}` 分离,`record_event` 只记了裸 handler——记录点拼 `handler(params)`;另 mcp_server `display_handler` 解码 iced 层 \u{1F} 编码(双保险,无编码时原样返回)
 - **验证**:041 MCP 矩阵 **29/29**(+snapshot 参数断言);iced 44/44、mcp_server 6/6、code_editor 21/21;013-todo MCP **22/22**(snapshot 格式变化跨应用无回归)
 - 同步:分支合并 master 新历史(417-D2 generators/416-6A LSP CI/auto-down 015 批次 A)
+
+---
+
+## 8. Phase 2 第一批实施记录（2026-08-22，P2-1/P2-2/P2-4）
+
+### 8.1 交付
+- **P2-1 配置管线**:pac.at `ui_config: "auto-edit.at"` 字段(pac.rs/automan.rs/main.rs,沿 title: 先例)→ `auto run` 解析为绝对路径注入 `AUTO_VM_ACTION_CONFIG`(文件缺失则警告跳过)
+- **P2-2 ACTION_CONFIG 模块**(`ui/action_config.rs`,无 iced 依赖):auto-atom 解析(action/menubar/toolbar 三段,同名块=列表)+ 校验(id 唯一/handler 必填/引用存在/快捷键冲突)+ `normalize_shortcut`(Ctrl+N→Ctrl+n 对齐 iced 查表形态,命名键保留大小写)+ OnceLock 全局懒加载(坏文件 eprintln+None 优雅降级);单测 3 项锁定
+- **P2-4 快捷键回退层**:iced 键盘监听查表(renderer.rs)与 MCP `autoui_keyboard` 双侧在 DSL 绑定之下加配置回退——自动化与真实按键行为一致
+- **041 落地**:`auto-edit.at`(13 action + 4 menu + toolbar 全量声明,menubar/toolbar 段暂为声明性数据)+ pac.at `ui_config:`;`view.switch-tab` 的 **Ctrl+D 仅存在于配置层**,作为回退层生效的验证锚点
+
+### 8.2 验证
+- 041 MCP 矩阵 **30/30**(+T7b:配置独有快捷键 Ctrl+D 翻转 tab)
+- 回归:iced 44/44、action_config 3/3、mcp_server 6/6
+- 启动日志:`VM action config: auto-edit.at (from pac.at)` + `[ACTION-CONFIG] loaded: 13 actions, 4 menus, 10 toolbar items`
+
+### 8.3 P2-3 剩余(menubar/toolbar 渲染迁移)设计备忘
+- 路线 A 细化:渲染器侧 `MENUBAR_OPEN: Mutex<Option<String>>` 静态态 + `__menubar_toggle` 内部消息(toast/__preview_copy 同模式,update 拦截改态促重绘);item 点击发配置 handler 事件,update 对已配置 handler 先清菜单态再走 VM 派发
+- 面板锚定:合成 absolute overlay(复用 Plan 409 hoist),左偏移按 `8 + Σ(标题字符×12 + 24 padding + 4 mr-1)` 估算(2 字按钮 52px,与现手写 8/60/112/164 间距一致)
+- **关键缺口**:合成按钮不经 DSL events map → probe.record_event 不记录 → MCP snapshot 不可见——需为合成子树补 probe 记录(路径需与 vtree 节点对齐)或 vtree 侧从 View 闭包提取事件,否则 MCP 测试将失去菜单项覆盖

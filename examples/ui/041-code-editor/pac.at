@@ -5,3 +5,4 @@ scene: "ui"
 render: "vm"
 front_port: 4041
 title: "AutoEdit"
+ui_config: "auto-edit.at"
