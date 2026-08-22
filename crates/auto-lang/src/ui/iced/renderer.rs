@@ -1131,84 +1131,21 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 /// Plan 409 §10 续 20: 简单代码语法高亮(auto/vue/bash 通用)→ 着色 Span 列表。
 /// tokenizer:comment / string / number+boolean / keyword / function / operator / punct / ident。
 ///
-/// Plan 411 P2-A①: 色板对齐 vue 侧实际加载的 Prism 主题
-/// `prismjs/themes/prism-tomorrow.min.css`(main.ts 引入),替换此前近似
-/// one-dark 的自选色;并补齐缺失类别——function(标识符后随 `(`)、operator
-/// (与 punctuation 分色)、boolean(true/false 归 number 橙,同 Prism
-/// `.token.boolean` 与 `.token.function` 共用 #f08d49)。
+/// 2026-08-22(show 下沉):扫描逻辑与色板移至 vm::shell_bridge::highlight_rgb
+/// —— auto.shell.emit_show 的 Code payload 与本处 font-mono 自动高亮共用一份
+/// 实现,避免两份漂移。None = 默认前景色(color_maybe)。
 fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
     use iced::widget::text::Span;
-    // 与 vue 生成器(cmd_vue.rs)自定义 'auto' 语言的 keyword 正则同源。
-    // null/nil 在该正则中属 keyword;true/false 走 boolean(橙)。
-    const KW: &[&str] = &["widget", "fn", "let", "mut", "const", "var", "if", "else", "for",
-        "in", "loop", "while", "break", "continue", "return", "use", "import", "export",
-        "type", "struct", "enum", "impl", "trait", "pub", "private", "static", "async",
-        "await", "try", "catch", "throw", "new", "null", "nil", "self", "super"];
-    const BOOL: &[&str] = &["true", "false"];
-    // bash 代码块(npm install …)中这些命令词在 prism-bash 里着 function 橙;
-    // 手写 lexer 不做语言区分,按词表近似同一色相。
-    const CMD: &[&str] = &["npx", "npm", "yarn", "pnpm", "cd", "bun", "git", "cargo",
-        "pip", "python", "node", "deno"];
-    // prism-tomorrow:keyword/builtin #cc99cd,string #7ec699,comment #999,
-    // number/boolean/function #f08d49,punctuation 基色 #ccc,operator #67cdcc。
-    const C_KW: iced::Color = iced::Color::from_rgb8(0xcc, 0x99, 0xcd);
-    const C_STR: iced::Color = iced::Color::from_rgb8(0x7e, 0xc6, 0x99);
-    const C_COM: iced::Color = iced::Color::from_rgb8(0x99, 0x99, 0x99);
-    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf0, 0x8d, 0x49);
-    const C_PUN: iced::Color = iced::Color::from_rgb8(0xcc, 0xcc, 0xcc);
-    const C_OP:  iced::Color = iced::Color::from_rgb8(0x67, 0xcd, 0xcc);
-    let push = |spans: &mut Vec<Span<'static, ()>>, text: String, color: Option<iced::Color>| {
-        if !text.is_empty() { spans.push(Span::new(text).color_maybe(color)); }
-    };
-    let bytes = code.as_bytes();
-    let n = bytes.len();
-    let mut i = 0;
-    let mut spans: Vec<Span<'static, ()>> = Vec::new();
-    while i < n {
-        let b = bytes[i];
-        if (b == b'/' && i + 1 < n && bytes[i + 1] == b'/') || b == b'#' {
-            let s = i; while i < n && bytes[i] != b'\n' { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_COM));
-        } else if b == b'"' || b == b'\'' || b == b'`' {
-            let q = b; let s = i; i += 1;
-            while i < n && bytes[i] != q { if bytes[i] == b'\\' && i + 1 < n { i += 1; } i += 1; }
-            if i < n { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_STR));
-        } else if b.is_ascii_digit() {
-            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_NUM));
-        } else if b.is_ascii_alphabetic() || b == b'_' {
-            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') { i += 1; }
-            let t = &code[s..i];
-            // Prism 'auto' 语言 function 正则:`ident(?=\s*\()` — 标识符后
-            // (允许空白)紧跟左括号即 function(橙)。
-            let mut j = i;
-            while j < n && matches!(bytes[j], b' ' | b'\t') { j += 1; }
-            let is_call = j < n && bytes[j] == b'(';
-            let color = if KW.contains(&t) { Some(C_KW) }
-                else if BOOL.contains(&t) || is_call || CMD.contains(&t) { Some(C_NUM) }
-                else { None };
-            push(&mut spans, t.to_string(), color);
-        } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
-            let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
-            push(&mut spans, code[s..i].to_string(), None);
-        } else if matches!(b, b'+' | b'-' | b'*' | b'/' | b'%' | b'=' | b'<' | b'>'
-            | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') {
-            let s = i;
-            // 连续运算符字符并成一档(如 =>、==、&&)。
-            while i < n && matches!(bytes[i], b'+' | b'-' | b'*' | b'/' | b'%' | b'='
-                | b'<' | b'>' | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_OP));
-        } else {
-            // G3 (038-minesweeper live crash): the byte-wise code[i..i+1]
-            // panicked on multi-byte labels ("⏱ 0s" — end byte 1 is inside the
-            // 3-byte emoji). Advance by the full UTF-8 char length.
-            let ch_len = code[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
-            push(&mut spans, code[i..i + ch_len].to_string(), Some(C_PUN));
-            i += ch_len;
-        }
-    }
-    spans
+    crate::vm::shell_bridge::highlight_rgb(code)
+        .into_iter()
+        .map(|(text, rgb)| {
+            let mut sp = Span::new(text);
+            if let Some((r, g, b)) = rgb {
+                sp = sp.color(iced::Color::from_rgb8(r, g, b));
+            }
+            sp
+        })
+        .collect()
 }
 
 /// Plan 411 P2-A④: 表头单元格样式——font-medium + text-muted-foreground
@@ -4393,7 +4330,11 @@ fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
 /// Gated on MCP being active — see the subscription closure — so a non-MCP run
 /// stays fully idle.
 fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(200)).map(|_| IcedMessage {
+    // 2026-08-22:200ms → 2s。心跳消息会触发一次完整 update→view 重建
+    // (ash-gui 基线视图 ~80ms/次,大 Code 块时 >200ms)—— 200ms 节拍令
+    // 消息队列常态积压,事件饿死(命令提交丢失、CPU 满转;实测空闲就
+    // ~40% CPU)。快照 2s 内新鲜即可,真实交互路径本就会触发重建。
+    iced::time::every(std::time::Duration::from_millis(2000)).map(|_| IcedMessage {
         widget: String::new(),
         event: "__mcp_heartbeat".to_string(),
         input_value: None,
@@ -5017,7 +4958,28 @@ fn update_block_in_state(
                 status.set("message", auto_val::Value::str(&message));
                 obj.set("status", auto_val::Value::Obj(status));
                 obj.set("output", output_obj);
-                obj.set("streamed_text", auto_val::Value::str(""));
+                // 2026-08-22(show 渲染成本):Code 变体把拼好的全文写入
+                // streamed_text(复用 Block 已有 str 字段,renderer↔.at 的
+                // VM-only 契约)——block_item.at 用单个 font-mono text 渲染
+                // 整块(本文件 highlight_code 一次扫描),免去 .at 逐行逐
+                // span 拼接。此前 660 行代码一次 view 重建 >200ms,MCP 心跳
+                // (默认开启,200ms 一拍)令消息队列积压 → 事件饿死。
+                let code_plain = payload.get("output").and_then(|o| o.get("Code"))
+                    .and_then(|c| c.get("lines"))
+                    .and_then(|l| l.as_array())
+                    .map(|lines| {
+                        lines.iter().map(|line| {
+                            line.as_array().map(|spans| {
+                                spans.iter()
+                                    .map(|s| s.get("text").and_then(|t| t.as_str()).unwrap_or(""))
+                                    .collect::<String>()
+                            }).unwrap_or_default()
+                        }).collect::<Vec<_>>().join("\n")
+                    });
+                match code_plain {
+                    Some(s) => obj.set("streamed_text", auto_val::Value::str(&s)),
+                    None => obj.set("streamed_text", auto_val::Value::str("")),
+                }
                 obj.set("duration_ms", auto_val::Value::Int(dur));
                 // Plan 053 后续:补 exit_code,否则 exit_label computed 读不到字段
                 // → "${exit_label}" 字面量。Plan 057:优先用后端透传的真实退出码

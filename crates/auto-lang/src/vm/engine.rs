@@ -257,6 +257,10 @@ pub struct AutoVM {
     pub native_interface: Arc<NativeInterface>,
     /// String constant pool (Plan 073: Made mutable for runtime string field access)
     pub strings: Arc<RwLock<Vec<Vec<u8>>>>,
+    /// 运行时字符串池去重索引(2026-08-22,见 add_string 注释):
+    /// 内容 → 池索引。池索引在 natives 侧以 u16 截断,只增不减的池
+    /// 溢出后会回绕串写;去重令重复内容复用索引,池稳定在低位。
+    pub string_dedup: std::sync::Mutex<std::collections::HashMap<Vec<u8>, usize>>,
 
     pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
     pub id_gen: AtomicU64,
@@ -418,6 +422,7 @@ impl AutoVM {
             flash: Arc::new(flash),
             native_interface: Arc::new(native_interface),
             strings: Arc::new(RwLock::new(Vec::new())),
+            string_dedup: std::sync::Mutex::new(std::collections::HashMap::new()),
             tasks: DashMap::new(),
             id_gen: AtomicU64::new(0),
             channels: DashMap::new(),
@@ -513,6 +518,13 @@ impl AutoVM {
 
     /// Load strings from a module's string constant pool
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
+        // 2026-08-22:池整体替换时同步重建去重索引(见 add_string 注释),
+        // 否则旧映射会指向失效索引。
+        let mut dedup = self.string_dedup.lock().unwrap();
+        dedup.clear();
+        for (idx, s) in strings.iter().enumerate() {
+            dedup.insert(s.clone(), idx);
+        }
         self.strings = Arc::new(RwLock::new(strings));
     }
 
@@ -696,11 +708,29 @@ impl AutoVM {
     }
 
     /// Plan 118 Phase 4: Add a new string to the string pool
-    /// Returns the index of the newly added string
+    /// Returns the index of the newly added string.
+    ///
+    /// 2026-08-22(字符串池去重):池索引在 natives 侧以 u16 截断
+    /// (get_string(u16),上限 65535),而运行时拼接会为每个中间串新增
+    /// 池条目 —— ash-gui show 的 `line = line + ch` 式逐字符拼装一次就
+    /// 塞 ~1.8 万条,池溢出后 u16 回绕令既有字符串互相串写(实测:会话
+    /// cwd 变成单字符 "r"、payload 丢失、进程静默退出)。池只增不减,
+    /// 这里按内容去重:重复内容(样式串/标签/空串等运行时高频churn)
+    /// 复用既有索引,池规模稳定在低位。根治(索引 u32 化/池 GC)记
+    /// 引擎债,见 docs/plans/060。
     pub fn add_string(&self, bytes: Vec<u8>) -> usize {
+        {
+            let dedup = self.string_dedup.lock().unwrap();
+            if let Some(&idx) = dedup.get(&bytes) {
+                // 池只增不减,索引恒有效。
+                return idx;
+            }
+        }
         let mut strings = self.strings.write().unwrap();
         let idx = strings.len();
-        strings.push(bytes);
+        strings.push(bytes.clone());
+        drop(strings);
+        self.string_dedup.lock().unwrap().insert(bytes, idx);
         idx
     }
 

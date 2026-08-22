@@ -7156,6 +7156,27 @@ pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     Ok(())
 }
 
+/// 2026-08-22(show 下沉):读文件 + 逐行高亮 + Code payload 全在 Rust 侧完成。
+/// 动机:.at 侧 `js = js + ...` 拼 ~100KB payload 巨串会触发 VM 字符串堆损坏
+/// (实测:会话 cwd 被写成单字符、payload 丢失、块永挂 Running、进程退出)。
+/// shell.at 只做路径归一后调本 native。Stack: int(block_id), str_idx(path),
+/// str_idx(cwd) ->
+pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cwd_idx = task.ram.pop_str_idx() as u16;
+    let path_idx = task.ram.pop_str_idx() as u16;
+    let block_id = task.ram.pop_i32() as i64;
+    let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Result,
+        block_id,
+        cmd: String::new(),
+        cwd: String::new(),
+        result_json: crate::vm::shell_bridge::show_result_json(block_id, &cwd, &path),
+    });
+    Ok(())
+}
+
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
