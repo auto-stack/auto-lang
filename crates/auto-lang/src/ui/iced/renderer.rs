@@ -4395,6 +4395,34 @@ static SHELL_EVENT_RX: std::sync::OnceLock<
     std::sync::Mutex<Option<std::sync::mpsc::Receiver<ShellStreamEvent>>>,
 > = std::sync::OnceLock::new();
 
+/// Plan 060 M3:事件注入 sender(全局)。ash-runner(auto-shell 仓)把进程内
+/// ash_server 的 ShellEvent 广播转成 SSE 同格式 JSON 后,经
+/// `inject_shell_event` 推入本通道 —— 与 merged_exec_loop / http_sse_loop
+/// 的回流同源,前端事件泵与 blocks 回写零改动。
+static SHELL_EVENT_TX: std::sync::OnceLock<
+    std::sync::Mutex<Option<std::sync::mpsc::Sender<ShellStreamEvent>>>,
+> = std::sync::OnceLock::new();
+
+/// Plan 060 M3:向 shell 事件泵注入一条事件(pub,供 ash-runner 调用)。
+/// `payload_json` 为 ash-server ShellEvent 的完整 JSON(与 http_sse_loop
+/// 转发格式一致,含 event 判别键)。返回是否成功入队。
+pub fn inject_shell_event(event: &str, payload_json: &str) -> bool {
+    let guard = SHELL_EVENT_TX.get_or_init(|| std::sync::Mutex::new(None));
+    let mut lock = match guard.lock() {
+        Ok(l) => l,
+        Err(_) => return false,
+    };
+    match lock.as_ref() {
+        Some(tx) => tx
+            .send(ShellStreamEvent {
+                event: event.to_string(),
+                payload_json: payload_json.to_string(),
+            })
+            .is_ok(),
+        None => false,
+    }
+}
+
 /// 执行器线程的共享句柄(全局,update 闭包提交命令 / 标记取消)。仿 MCP_ACTION_RX。
 static SHELL_EXEC_HANDLE: std::sync::OnceLock<
     std::sync::Arc<std::sync::Mutex<ShellExecutorHandle>>,
@@ -4424,6 +4452,11 @@ fn start_shell_executor() -> std::sync::mpsc::Receiver<ShellStreamEvent> {
     {
         let guard = SHELL_EXEC_HANDLE.get_or_init(|| handle.clone());
         let _ = guard; // 已初始化则保留旧值(启动只调一次,正常路径是新初始化)
+    }
+    // Plan 060 M3:事件 sender 存全局,ash-runner 经 inject_shell_event 注入。
+    {
+        let guard = SHELL_EVENT_TX.get_or_init(|| std::sync::Mutex::new(None));
+        *guard.lock().unwrap() = Some(tx.clone());
     }
 
     let exec_handle = handle.clone();

@@ -389,6 +389,9 @@ macro_rules! for_each_native {
             // 2026-08-22 show 下沉:读文件+高亮+payload 全在 Rust(.at 拼巨串
             // 损坏 VM 堆;参数 int,str,path;str,cwd;返回 void)。
             (2869, NATIVE_SHELL_EMIT_SHOW, shim_shell_emit_show, "auto.shell.emit_show"),
+            // Plan 060 M3:通用宿主桥(merged 进程内直调;实现由 ash-runner 注册)。
+            (2870, NATIVE_HOST_CALL, shim_host_call, "auto.host.call"),
+            (2871, NATIVE_HOST_CALL_VALUE, shim_host_call_value, "auto.host.call_value"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -869,6 +872,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.shell.exec_submit", 2867, Void),
             ("auto.shell.emit_result", 2868, Void),
             ("auto.shell.emit_show", 2869, Void),
+            ("auto.host.call", 2870, String),
+            ("auto.host.call_value", 2871, Void),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2181,6 +2186,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.shell.exec_submit", 2867),
     ("auto.shell.emit_result", 2868),
     ("auto.shell.emit_show", 2869),
+    ("auto.host.call", 2870),
+    ("auto.host.call_value", 2871),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),

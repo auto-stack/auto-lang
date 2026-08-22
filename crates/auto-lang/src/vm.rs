@@ -43,6 +43,7 @@ pub mod pattern_matcher;
 pub mod native_catalog;
 pub mod native;
 pub mod shell_bridge;
+pub mod host_bridge;
 pub mod native_registry;
 pub mod opcode;
 // Plan 203 Phase 1: Qualified name type for canonical native function identification

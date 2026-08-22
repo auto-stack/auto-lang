@@ -2072,7 +2072,7 @@ pub fn shim_toml_from_str(s: String) -> String {
 ///
 /// Returns `Some(obj_id)` for compound values (the caller pushes the encoded
 /// ref), or `None` for scalars (already pushed by this function).
-fn json_to_vm_value(
+pub(crate) fn json_to_vm_value(
     task: &mut AutoTask,
     vm: &AutoVM,
     value: &serde_json::Value,
