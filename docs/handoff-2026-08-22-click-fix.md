@@ -12,6 +12,10 @@
 2. **§8.4③ checked 勾选态**(8fc0cf30):菜单项 16px 勾选槽 + lucide:check;MCP E2E 验证。
 3. **§8.4① probe 路径对齐**(dfdb6154):根因双重——tracked 转换器里**重复 menubar/toolbar 匹配臂致带 probe 的新臂不可达**+计数器不计 sep/面板嵌套;修复后 snapshot onclick 4→16(`.ActNew`/`__menubar_toggle("file")`/`.ActConsole`/`__menubar_close` 全出),agent 可直接读合成控件处理器。
 
+## 后续(editor 残留已立项,见 418 §8.10)
+- **Plan 419** 折叠 Phase B(core 自绘)/ **420** 多 tab 工作区 / **421** vue 契约 / **422** 弹层原语(menubar/contextmenu)/ **423** 配置层 Phase3;IME/DPI/Linux 人工验收挂 413 尾(需实机)。
+- worktree 已重建:`.worktrees/auto-edit-ux`,分支 `plan-editor-followups`(基于 master 5d34b0c2,target 缓存保留;原 plan-418 分支已被并行会话合并后清理)。
+
 ## 剩余事项
 - §8.4②:MCP 高负载偶发应用静默退出(无 panic,复跑即过)——环境项,需隔离环境排查;真机负载低时未见
 - 图标偶发近黑:最终构建 3 实例采样不复现(疑锁屏 DWM 降级帧),复现再查
