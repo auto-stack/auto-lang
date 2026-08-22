@@ -14,19 +14,20 @@
   (tsc --noEmit)零错;宿主外 require 冒烟——新旧 bundle 在同一 vscode-stub
   桩点以同一方式失败(等价性证据);真实扩展宿主 F5 联调归 5-B 批次。
 
-### 5-B semantic tokens(预估 3 天,需 LSP 侧配合)
+### 5-B semantic tokens ✅ 2026-08-22 服务端完成(着色核验留待实机 F5)
 
-- **现状**: 只有 TextMate grammar(auto.tmLanguage.json,已覆盖 await/widget
-  等);无 semantic token provider——变量/函数/类型同色。
-- **拆解**:
-  1. LSP server(`crates/auto-lsp`)实现 `textDocument/semanticTokens/full`:
-     从现有符号表(Phase 1-4 的 workspace.rs 已有 references 数据源)分派
-     tokenType(variable/function/type/keyword/enumMember)
-  2. extension 侧注册 legend + SemanticTokensProviderStub
-  3. **VSCode 联调点**(本计划唯一的实机环节):装扩展 → .at 文件验证
-     着色正确、增量编辑不闪烁;最低配置 = 本机 VSCode + F5,无需发布
-- **验收**: 对 `examples/ui/013-todo/src/front/*.at` 截图对比 TextMate-only
-  前后差异;LSP 侧单测锁 token 序列。
+- `semantic_tokens.rs`:词法扫描(注释/字符串/数字,关键字用 5-C 的
+  `Token::all_keywords` 权威表)+ AST 符号分类(fn/参数/局部/type/enum/
+  spec)+ 未分类启发式(`ident(`→调用、大写→类型);相对增量编码
+  (UTF-16 列,多行字符串分段);8 类型 legend 顺序锁定。
+- backend:能力声明(semanticTokensProvider)+ `semanticTokens/full`
+  handler;extension 侧零改动(vscode-languageclient 在服务端声明能力后
+  自动注册 feature)。
+- 测试 ×4:token 序列锁定(关键字/fn/类型/参数/局部/数字/注释)、字符串
+  +调用启发式、legend 顺序、协议级 round-trip(能力声明含 legend、
+  线上扁平 5 元组形状)。
+- **剩余**:VSCode 实机 F5 着色/闪烁核验(计划原定唯一实机点,待有桌面
+  VSCode 会话时执行——服务端逻辑已由单测+协议测试锁定)。
 
 ### 5-C 生成关键字/类型/函数列表 + lsp-api-contract.md ✅ 2026-08-22 完成
 
@@ -61,6 +62,6 @@
 
 ## 3. 执行顺序与联调安排
 
-5-A ✅ → 6-A ✅ → 5-C ✅ → 6-B ✅ → 5-B(唯一需 VSCode 实机,剩余)→(6-C
-全仓 rustfmt 决策项)。5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
+5-A ✅ → 6-A ✅ → 5-C ✅ → 6-B ✅ → 5-B ✅(服务端;VSCode F5 着色核验
+待实机)→(6-C 全仓 rustfmt 决策项)。**416 至此仅剩两个手动/决策项。**5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
 gitee);6-A 落在 auto-lang(auto-lsp-ci.yml)。

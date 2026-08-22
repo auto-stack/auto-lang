@@ -175,6 +175,11 @@ impl LanguageServer for Backend {
                     work_done_progress_options: Default::default(),
                 }),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                // Plan 416 5-B: semantic tokens (full-document, legend locked
+                // in semantic_tokens::TOKEN_TYPES).
+                semantic_tokens_provider: Some(
+                    crate::semantic_tokens::semantic_tokens_options().into(),
+                ),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -757,6 +762,30 @@ impl LanguageServer for Backend {
             Ok(None)
         } else {
             Ok(Some(hints))
+        }
+    }
+
+    /// Plan 416 5-B: full-document semantic tokens.
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri.to_string();
+        let content = match self.get_document(&uri).await {
+            Some(content) => content,
+            None => return Ok(None),
+        };
+        let data = crate::semantic_tokens::semantic_tokens_full(&content);
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(
+                SemanticTokens {
+                    result_id: None,
+                    data,
+                }
+                .into(),
+            ))
         }
     }
 }
