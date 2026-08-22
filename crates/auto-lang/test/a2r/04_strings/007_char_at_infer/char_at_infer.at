@@ -1,0 +1,15 @@
+// char_at results infer as int without an explicit annotation (Plan 417-E1 /
+// DIV-A2R-CHAR-AT-1): the code point + int literal must emit integer add,
+// not string concatenation.
+
+fn shift(ch str) int {
+    var c = ch.char_at(0)
+    if c >= 65 && c <= 90 { c = c + 32 }
+    return c
+}
+
+fn main() {
+    let a = "Q".char_at(0)
+    let shifted = shift("Q")
+    print(a + shifted)
+}

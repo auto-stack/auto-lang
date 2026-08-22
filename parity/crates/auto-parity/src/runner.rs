@@ -337,7 +337,10 @@ tokio = {{ version = "1", features = ["rt", "macros"] }}
 # Plan 364 W6: ~Stream<T> generators transpile to
 # `impl futures::Stream<Item=T> {{ async_stream::stream! {{ ... }} }}`, so any
 # a2r test crate exercising streams needs these two crates available.
-async_stream = "0.3"
+# (Plan 417-E1: hyphenated name — the aliyun sparse-index mirror fails to
+# resolve the underscore spelling `async_stream` locally; crates.io accepts
+# both, and the crate identifier stays `async_stream` either way.)
+async-stream = "0.3"
 futures = "0.3"
 
 [[bin]]

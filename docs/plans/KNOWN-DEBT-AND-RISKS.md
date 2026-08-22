@@ -42,6 +42,7 @@
 | 391 | trait impl 语法 | Auto 不支持 `impl Trait for Type` 语法（D6 仅提供清晰错误："Auto does not support trait impl syntax... Use a static fn/ext method"）。是语言设计决议，非缺陷——用 `ext Type for Spec` 表达外部 trait 实现。 | `parser.rs:4578-4585` |
 | 346/317 | e2e 端口竞态 | test-http-e2e 串行套件：先行的 detached server 线程可能迟到 auto-start，读到进程级 AUTO_HTTP_PORT（彼时已属于后续测试）并用陈旧路由表抢占其端口（偶发 404/10048，受害者随负载轮转，e2e 单测均过）。缓解：受影响测试命名排序靠前 + CI --retries；根治需 per-server 传端口而非进程级 env。 | `vm/ffi/http_server.rs` http_e2e::start_server + AUTO_HTTP_PORT |
 | 317 | serve_async 生命周期 | `serve_async` 无受控 shutdown（tokio::spawn_local 泄漏），高负载下 3 个 SSE e2e 测试偶发 flaky，靠 nextest `--retries 2` 缓解。已明确留作独立 follow-up（候选：serve_async 生命周期管理计划）。 | `vm/ffi/http_server.rs:1152 serve_async` |
+| 417-E1 调查 | parity 断裂 | parity string_utils 的 a2r 构建在 master 上已断(早于 417-E1,隔离实证):(a) **导入函数实参缺 String→&str 强制转换**——`check_str(1, ..., reverse("abc"), ...)` 中 `reverse` 来自 `use auto.string_utils:`,其签名不在 fn_ret_types,Plan 380 的 as_str() 白名单(ident/拼接)不含调用实参 → E0308(10 处);(b) aliyun 镜像不解析下划线包名 `async_stream`(runner 模板已改连字符);a2r-std StringBuilder i32 签名漂移已修(i64)。三方重跑阻塞于 (a),登记为 417 后续 E1b。 | `parity/libs/string_utils/build_a2r/basic/src/main.rs:199` + `trans/rust.rs` 8046 as_str 白名单 |
 | 410 | Expr::Dot 不查符号 | `x = a.b` 中 `a` 未定义今天仍通过（Expr::Dot 不经 check_symbol；Bina(Op::Dot) 分支源码不可达）。Phase 2 立项时须一并纳入。 | `parser.rs check_symbol` |
 | 381 | v1 限制 | Node::deserialize 只处理 props（标量字段），不含 kids（命名子块）。嵌套块反序列化留给 v2（需 field-level resolver）。覆盖 role_config 等全部用例（字段全是标量/数组）。 | `auto-val/src/de.rs:79` |
 

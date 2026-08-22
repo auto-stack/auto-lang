@@ -34,7 +34,7 @@ Open gaps (each detailed in its own section below, fix plans in
 | DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | open (L3) | — |
 | DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
 | DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | open (L3) | **http_client_sync** (skeleton only) |
-| DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | open (L3) | — (worked around in string_utils) |
+| DIV-A2R-CHAR-AT-1 | a2r: `char_at` result inferred as string | ✅ fixed (2026-08-22, Plan 417-E1) | golden 007_char_at_infer |
 
 The entries below are library/tooling limitations that shaped the
 implementations but are **not** test-case divergences — every included case
@@ -323,10 +323,14 @@ bug is worked around in-source:
   - a2r: without the annotation, emits `format!` concatenation (compile fail);
     with `var c int`, emits correct integer add.
   - Rust: native integer arithmetic.
-  - 偏差类型: 待修复 (a2r type inference for `char_at` results should default
-    to i32, mirroring the VM).
-  - 状态: open (L3, Plan 359 Phase E Task E5). Fix plan in
-    `docs/plans/359-auto-as-rust-script-rollout.md` §"Task E5".
+  - 偏差类型: 已修复 (2026-08-22, Plan 417-E1): `infer_type_from_expr` 把
+    `char_at` 从 String 返回方法表移到 Int 臂——未标注的
+    `c = s.char_at(i); c = c + 32` 现在发射整数加法（golden
+    `04_strings/007_char_at_infer`），string_utils 的四处 `var c int`
+    workaround 注解已移除。
+  - 状态: ✅ fixed (Plan 417-E1; 推断修复由 golden 007_char_at_infer 验证)。
+    三方重跑暂被无关的预存断裂阻塞(导入函数实参 String→&str 缺口,
+    KNOWN-DEBT 417-E1 调查条 + 417 计划 E1b)。
 
 ## Python Parity Divergences
 
