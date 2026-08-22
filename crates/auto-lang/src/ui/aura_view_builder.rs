@@ -2997,13 +2997,14 @@ let tabs_inner = View::Row {
             return b.build();
         }
         // Vertical: rendered as a box-drawing glyph TEXT node. Text is the
-        // one row-child kind with WORKING symmetric margins (mx-*) in this
-        // renderer, and it survives the nested-row bug that eats plain
-        // column children - with a bare w-px line the measured gaps came
-        // out 28px left vs 12px right (mx on columns is ignored, so the
-        // line sat lopsided). The DSL surface stays a dedicated `sep`
-        // widget; user classes append after the base (later wins).
-        let base = "text-zinc-500 text-[14px] mx-2";
+        // one row-child kind with WORKING margins in this renderer (via
+        // wrap_with_margin_top) — BUT only the per-side ml-*/mr-* classes
+        // reach it: mx-* lands in the never-read `margin_x` field and is
+        // silently dropped. leading-none tightens the line box so the
+        // glyph doesn't ride low on its baseline (it sat ~2px low without
+        // it). The DSL surface stays a dedicated `sep` widget; user
+        // classes append after the base (later wins).
+        let base = "text-zinc-500 text-[14px] leading-none ml-2 mr-2";
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
             style = match style {
