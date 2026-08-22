@@ -8,6 +8,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | Plan | Title | Status | Summary |
 |------|-------|--------|---------|
 | 007 | Implement a2r Transpiler | 🔧 | Auto-to-Rust transpiler following a2c architecture patterns; basic phase 1 complete |
+| 415 | a2r 剩余大件拆粒度（242 收尾批） | 📋 | HashMap::from 发射/SQLite→Redis stdlib/GPUI spike/自举/dep cc+memmap2 五子项;2026-08-22 立项 |
 | 022 | Python Transpiler (a2p) | ✅ | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
 | 023 | JavaScript Transpiler (a2j) | ✅ | Complete 11-phase implementation: all JS features in single phase, 9/9 tests passing |
 | 062 | C Transpiler Generics | ✅ | Monomorphization for a2c: type specialization, array tests, miette error messages (127 tests) |

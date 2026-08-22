@@ -25,7 +25,8 @@ AutoLang's build infrastructure evolved from a file-based full-compilation archi
 | 216 | C FFI Build Pipeline Integration | ✅ | CLI integration for C FFI bindgen into build pipeline (Phase 4 of Plan 216) |
 | 219 | Playground Source Map | ✅ | Source mapping for transpiler output to enable clickable error locations |
 | 225 | Playground Interactive Debugger | ✅ | Browser-based VM debugger with breakpoints, step controls, stack/locals panels via WebSocket |
-| 243 | LSP & VSCode Modernization | 🔧 | Rewrite auto-lsp over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
+| 243 | LSP & VSCode Modernization | 🔧 | Phase 1-4 ✅ (references/rename/code_action/signature_help/inlay_hint 真实实现 71acecc4); Phase 5-6 移交 Plan 416 |
+| 416 | LSP/VSCode Phase 5-6 收尾 | 📋 | TS 迁移 + semantic tokens(唯一 VSCode 实机点) + CI 解红 + 集成测试扩容;2026-08-22 拆粒度立项 |
 | 267 | FFI Complex Patterns | ✅ | WalkDir iterator, same_file real impl, TarGzip/tar+flate2 composition shims |
 | 362 | Fast Feedback — auto watch + Cache + Snapshots | ✅ | notify-based incremental SFC regeneration (<1s), content-hash cache, insta snapshot tests, backend transpile-on-change |
 
