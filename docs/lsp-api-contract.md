@@ -19,7 +19,7 @@
 | textDocument/inlayHint | ✅ | `inlay_hints.rs` | Plan 243 Phase 4(类型/参数提示) |
 | textDocument/documentSymbol | ✅ | `backend.rs` | 大纲视图 |
 | workspace/symbol | ✅ | `backend.rs` | |
-| **semanticTokens** | ❌ | — | Plan 416 5-B(未实现) |
+| **semanticTokens/full** | ✅ | `semantic_tokens.rs` | Plan 416 5-B(legend 见 §2;VSCode 着色核验待实机 F5) |
 
 ## 2. 补全数据源(Plan 416 5-C)
 
@@ -30,6 +30,13 @@
 | 函数名上下文(`fn ` 之后) | 内置函数模板 |
 | 变量上下文 | 作用域内局部变量/参数 |
 | 默认/关键字上下文 | 精选关键字(带 snippet)+ **lexer 权威关键字表补全**(`Token::all_keywords`,单一事实源) |
+
+### 2.1 semantic tokens 图例(顺序即线上编码索引)
+
+`keyword, type, function, variable, parameter, string, number, comment` ——
+词法扫描(注释/字符串/数字/关键字)+ AST 符号分类(fn→function、参数→
+parameter、局部→variable、type/enum/spec→type);未分类标识符回退启发式
+(`ident(` → 调用、大写开头 → 类型)。modifiers v1 恒 0。
 
 stdlib 索引(`stdlib_index.rs`)在首次使用时惰性解析 `stdlib/auto/<mod>.at`
 (经 `auto_lang::util::find_std_lib()` 定位;只索引单扩展名的声明源文件,

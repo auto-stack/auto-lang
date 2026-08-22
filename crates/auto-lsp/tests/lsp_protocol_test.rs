@@ -257,3 +257,54 @@ async fn signature_help_and_inlay_hints() {
     .await;
     assert!(resp.is_ok(), "inlayHint ok");
 }
+
+#[tokio::test]
+async fn semantic_tokens_full_round_trip() {
+    let mut service = spawn_service();
+    initialize(&mut service).await;
+
+    // initialize result must advertise the semantic tokens legend.
+    // (Re-initialize is not allowed; assert via a fresh service instead.)
+    {
+        let mut svc = spawn_service();
+        let resp = request(&mut svc, 1, "initialize", json!({ "capabilities": {} })).await;
+        let result = ok_result(resp);
+        let legend = &result["capabilities"]["semanticTokensProvider"]["legend"];
+        let types: Vec<&str> = legend["tokenTypes"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            types.first(),
+            Some(&"keyword"),
+            "legend order locked: {types:?}"
+        );
+    }
+
+    let uri = "file:///work/tokens.at";
+    open(&mut service, uri, DOC_A, 1).await;
+
+    let resp = request(
+        &mut service,
+        50,
+        "textDocument/semanticTokens/full",
+        json!({ "textDocument": { "uri": uri } }),
+    )
+    .await;
+    let result = ok_result(resp);
+    // The wire shape is a FLAT array of u32 (5 per token: deltaLine,
+    // deltaStart, length, tokenType, modifiers — lsp-types' custom serde).
+    let flat: Vec<u64> = result["data"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_u64()).collect())
+        .unwrap_or_default();
+    assert!(!flat.is_empty(), "tokens produced for a real document");
+    assert_eq!(flat.len() % 5, 0, "five ints per token: {flat:?}");
+    // Legend order = token type index: assert some token uses a known index
+    // (e.g. keyword=0 or function=2 appears for DOC_A).
+    let types_used: Vec<u64> = flat.chunks(5).map(|c| c[3]).collect();
+    assert!(
+        types_used.iter().any(|t| *t <= 4),
+        "classified tokens present: {types_used:?}"
+    );
+}

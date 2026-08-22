@@ -5,6 +5,7 @@ pub mod goto_def;
 pub mod hover_info;
 pub mod inlay_hints;
 pub mod position;
+pub mod semantic_tokens;
 pub mod signature_help;
 pub mod stdlib_index;
 pub mod workspace;
