@@ -52,10 +52,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 408 | view fn → Vue 组件合成 | Complete | P1–P12 全落地 + auto-musk 试点完成；P5-2 由 audit-A1 修复；P5-4 延期 |
 | 402 | 038 扫雷示例 | Complete | vue 完整 + VM 全流程;实机目视确认由 G3 闭环(desktop_mcp 21/0);rust 后端归 407 |
 | 411 | VM 视觉对齐 vue(Home/Button) | Complete | P0/P1/P2 全数落地(响应式/MCP 四项强化/Inter 字体/Prism 色板/表格);§8.5 gap 分支保留登记债务簿 |
+| 418 | auto-edit 动作真实化与 Action 配置化绑定 | Complete | Phase1 natives×11+13 handler;Phase2 配置管线+声明式 menubar/toolbar+快捷键回退+probe 对齐;enabled-if/Phase3 分派 423;041 实机 40/40 |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411 (26 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418 (27 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -172,3 +173,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [411-vm-visual-parity-home-button.md](../plans/archive/411-vm-visual-parity-home-button.md)
 - [403-calculator-mcp-grid-modes.md](../plans/archive/403-calculator-mcp-grid-modes.md)
 - [408-view-fn-vue-component-synthesis.md](../plans/archive/408-view-fn-vue-component-synthesis.md)
+- [418-auto-edit-actions-and-config.md](../plans/archive/418-auto-edit-actions-and-config.md)
