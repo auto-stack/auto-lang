@@ -1,6 +1,6 @@
 # Plan 418: auto-edit 动作真实化与 Action 配置化绑定
 
-> **状态**: 📋 已立项待实施（2026-08-22,用户需求:完善 auto-edit 菜单/工具栏全部真实功能 + 绑定配置化）
+> **状态**: ✅ 实施完成并复验（2026-08-23 finish-plan 复审归档）——Phase 1 全部落地（natives ×11 catalog 2919-2929 + 13 handler + 实机矩阵）；Phase 2 P2-1/2/3/4/6/7 全落地（P2-7 可选项经 §8.7 snapshot 直读超预期兑现），**P2-5 checked ✓ / enabled-if 声明性推迟 → Plan 423**；Phase 3 按计划原文"本轮不实施"整体拆至 423（§8.10）。残留全面分派（420-423/428）。复审矩阵全绿：iced 44 + action_config 3 + code_editor 23 + mcp 6 + layout 13 + **041 实机 40/40**（HEAD `f12bfb51` 独立 worktree 构建）。
 > **来源**: ① 414 §6.1 Phase B(action 声明式)重定向为配置驱动路线;② 414 §3 后续项"menu/toolbar 真实功能";③ 本计划盘点发现:041 三源绑定已就绪但 handler 全缺(§1)
 > **关联**: Plan 413(code_editor FFI)/ 414(auto-edit UX)/ 275(键绑定管道,archive)/ 409(overlay hoist);auto-os-config `docs/designs/config-plugin-architecture.md` + `designs/unified-harness-scoping.md`
 
@@ -291,3 +291,29 @@ editor 残留盘点(§8.8-8.9 后)经分析分派为 **5 份新计划 + 1 项不
 - **Plan 423**:Action 配置层 Phase 3(热重载 ArcSwap 化/OS 用户层 keymap/表达式引擎复用 resolve_expr_to_value/enabled-if 渲染+按钮 disabled 态,顺消 Plan 402 autoui_check 常驻警告)。
 - **不立项**:IME/150% DPI/Linux 人工验收——属 413 既有人工验收尾巴(413 头部"待人工验证"),需实机窗口执行,非开发计划;413 归档前完成。
 依赖关系:428/420/421 相互独立可并行(428 原拟 419,撞号改序);422 建议先行(420 的关闭确认弹层、421 无关);423 独立,注意与 032 系(键绑定)并行会话的改动面协调。
+
+## 9. finish-plan 复审记录（2026-08-23，代码级核验后归档）
+
+逐项对照 master `f12bfb51` 实况重验证（不信任勾选；主工作区当时为 423 批并行编辑现场，
+验证在独立 detached worktree 构建 HEAD 完成）：
+
+- **P1-1/P1-2 natives**:pass——native_catalog.rs 2919-2929 全注册（编辑器动作 ×6 +
+  剪贴板 ×2 + 对话框 ×2 + file_basename），ui/clipboard.rs 存在，feature 门与 stub 按设计。
+- **P1-3/P1-4**:pass——app.at 13 Act handler 齐备（孤儿 .ConsoleToggle 已并 .ActConsole），
+  实机矩阵 **40/40**（含 §8.8 真文本断言 T6；较 §8.7 的 31 项递增来自 420 批扩容）。
+- **P2-1/P2-2/P2-4**:pass——pac.at `ui_config:`(:8) → AUTO_VM_ACTION_CONFIG 注入；
+  ui/action_config.rs + 校验单测 3/3；快捷键配置回退层（Ctrl+D 锚点）。
+- **P2-3**:pass——app.at `menubar {}`+`toolbar (style: "ml-auto") {}` 两行声明，手写
+  菜单样板/onkeydown/menu_open **零残留**（完成判据达成）；§8.6 真实点击结案 +
+  §8.7 probe 路径对齐（snapshot onclick 4→16，P2-7 可选项超预期兑现）。
+- **P2-5**:partial（声明性）——checked-if ✓（§8.6 E2E 勾选态）；**enabled-if 零消费 →
+  Plan 423 承接**（§8.10 明示）。
+- **P2-6**:pass——041 迁移完成（530→338 行，样板清零）。
+- **Phase 3**:不在本轮范围（计划原文），整体拆至 423。
+- **§6 验证矩阵重跑**:iced 44/44、action_config 3/3、code_editor 23 过+2 忽略、
+  mcp_server 6/6、layout_tests 13/13（超 §8.8 记录的 5，后续批扩容）、041 实机 40/40。
+- **债务补登**:§7.4 曾声称"File.write_text 返回值推断显示区间问题另立债务"但
+  KNOWN-DEBT 无此条——本次补登（见 KNOWN-DEBT-AND-RISKS.md 418 条）。
+
+**分类:A（范围内完成）**——enabled-if/Phase 3 属计划内明文分派（423），非裸剩余。
+归档。
