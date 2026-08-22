@@ -6666,7 +6666,7 @@ impl Codegen {
                                     // an instance (load the global) rather than a
                                     // static type reference.
                                     || self.import_scope.contains_key(obj_name.as_ref());
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage");
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host");
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -7560,7 +7560,7 @@ impl Codegen {
                                     false
                                 } else {
                                     let lower = obj_name.as_ref();
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex")
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
                                 }

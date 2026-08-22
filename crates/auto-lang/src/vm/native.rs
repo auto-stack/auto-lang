@@ -7188,6 +7188,41 @@ pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// Plan 060 M3(2026-08-22):通用宿主桥 —— merged 模式"进程内直调"。
+/// ash-runner(auto-shell 仓,链接 ash_server)把 api.at 契约端点注册进
+/// host_bridge;本 native 查表直调,返回 JSON 串。参数/返回编码与 HTTP
+/// 模式同构(json body / json 响应),前端桩可复用 json.to_value。
+/// Stack: str_idx(name), str_idx(args_json) -> str_idx(response_json)
+pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let args_idx = task.ram.pop_str_idx() as u16;
+    let name_idx = task.ram.pop_str_idx() as u16;
+    let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let args_json = vm.get_string(args_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    match crate::vm::host_bridge::call_host(&name, &args_json) {
+        Ok(resp) => {
+            let idx = vm.add_string(resp.into_bytes());
+            task.ram.push_str_idx(idx as u32);
+            Ok(())
+        }
+        Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name, e))),
+    }
+}
+
+/// Plan 060 M3:同 shim_host_call,但把 JSON 响应直接转换为 VM 值入栈
+/// (复用 json.to_value 的转换管线)—— 前端桩免一层 json.to_value 调用。
+/// Stack: str_idx(name), str_idx(args_json) -> value
+pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let args_idx = task.ram.pop_str_idx() as u16;
+    let name_idx = task.ram.pop_str_idx() as u16;
+    let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let args_json = vm.get_string(args_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    let resp = crate::vm::host_bridge::call_host(&name, &args_json)
+        .map_err(|e| VMError::RuntimeError(format!("host.call_value {}: {}", name, e)))?;
+    let parsed: serde_json::Value = serde_json::from_str(&resp)
+        .map_err(|e| VMError::RuntimeError(format!("host.call_value {}: response parse error: {}", name, e)))?;
+    crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0)
+}
+
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
