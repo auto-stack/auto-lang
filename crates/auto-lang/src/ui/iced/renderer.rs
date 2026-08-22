@@ -12112,9 +12112,11 @@ mod tests {
             // Plan 060:提交走 vm::shell_bridge(与 shell.at 的
             // auto.shell.exec_submit native 同一队列)。
             crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+                kind: crate::vm::shell_bridge::ShellExecKind::Process,
                 block_id: 42,
                 cmd: "echo hello_m1_bridge".to_string(),
                 cwd: ".".to_string(),
+                result_json: String::new(),
             });
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
@@ -12145,9 +12147,11 @@ mod tests {
         // ── 失败路径:nonexistent command ──
         {
             crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+                kind: crate::vm::shell_bridge::ShellExecKind::Process,
                 block_id: 7,
                 cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
                 cwd: ".".to_string(),
+                result_json: String::new(),
             });
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);

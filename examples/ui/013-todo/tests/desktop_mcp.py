@@ -241,31 +241,11 @@ def run_tests_013(mcp_url):
                     f"known gap: got {active} — Init count loop misses VmRef "
                     f"element .done (audit B12)")
 
-    # T3-T5: TodoList child-component interactions (per-row toggle/delete,
-    # filter buttons, clear-completed) — the child subtree RENDERS in the
-    # snapshot but its event bindings are stripped in VM mode (D-GAP-4
-    # family: child-component callback/event stripping, same class as
-    # 015-notes' NavTree fallback). Verified against the live snapshot: no
-    # `onclick: .ToggleTodo` / `.FilterActive` / `.DeleteTodo` lines exist.
-    # Skip with documentation instead of false failures.
-    print("\nT3-T5: Child-Component Interactions (TodoList)")
-    snap_events = ("onclick: .ToggleTodo" in snap or "onclick: .FilterActive" in snap
-                   or "onclick: .DeleteTodo" in snap)
-    for label, event in (("row toggle", "ToggleTodo"),
-                         ("filter buttons", "FilterActive"),
-                         ("row delete", "DeleteTodo"),
-                         ("clear completed", "ClearCompleted")):
-        if snap_events:
-            found = find_element_by_event(snap, event)
-            if found is None:
-                result.skip(f"click {label}", f"{event} binding not matched")
-            else:
-                r = mcp.click(found)
-                result.check(f"{label} click status ok", "status: ok" in r, r)
-        else:
-            result.skip(f"click {label}",
-                        "TodoList child-component event bindings stripped in "
-                        "VM mode (D-GAP-4 family)")
+    # T3-T5 (TodoList child-component interactions) moved AFTER T6/T7:
+    # D-GAP-4 (2026-08-22, plan-fix/dgap4-ctrack) made the child subtree
+    # render through the tracked converter, so its bindings are now in the
+    # snapshot and its handlers dispatch for real — the clicks MUTATE state
+    # (delete/clear), which would invalidate the add/toggle-all baselines.
 
     # T6: Add a todo — App-level input (onenter: .AddTodo) works in VM mode.
     # The add channel is autoui_action "submit" (Input-specific); plain
@@ -331,6 +311,73 @@ def run_tests_013(mcp_url):
                             f"known gap: before={active_before} "
                             f"todos={todos_before} after={active_after} — "
                             f"handler list ops on VmRef list (audit B12)")
+
+    # T3-T5: TodoList child-component interactions (per-row toggle/delete,
+    # filter buttons, clear-completed). D-GAP-4 fix (2026-08-22): the child
+    # subtree renders through the tracked converter — bindings visible in the
+    # snapshot, handlers dispatch for real. Row checkbox uses action "toggle"
+    # (press is Button-only, same as T7); state assertions are relative
+    # (these runs follow T6/T7 mutations).
+    print("\nT3-T5: Child-Component Interactions (TodoList)")
+    snap3 = mcp.snapshot()
+    snap_events = ("onclick: .ToggleTodo" in snap3 or "onclick: .FilterActive" in snap3
+                   or "onclick: .DeleteTodo" in snap3)
+    if not snap_events:
+        for label in ("row toggle", "filter buttons", "row delete", "clear completed"):
+            result.skip(f"click {label}",
+                        "TodoList child-component event bindings stripped in "
+                        "VM mode (D-GAP-4 family)")
+    else:
+        # T3: row toggle — first row's checkbox flips its done state; the
+        # handler re-counts active via the store.
+        row_cb = find_element_by_event(snap3, "ToggleTodo")
+        if row_cb is None:
+            result.skip("row toggle", "ToggleTodo binding not matched")
+        else:
+            active_before = state_int(mcp.state("active_count"), "active_count")
+            r = mcp.call("autoui_action", element_id=row_cb, action="toggle")
+            ok = "status: ok" in r
+            result.check("row toggle action status ok", ok, r)
+            if ok and active_before is not None:
+                active_after = state_int(mcp.state("active_count"), "active_count")
+                result.check("row toggle flips active_count by 1",
+                             active_after in (active_before - 1, active_before + 1),
+                             f"{active_before} -> {active_after}")
+
+        # T4: filter buttons — click Active; the child's filter state flips
+        # (visual re-filter). Assert the click dispatches.
+        for label, event in (("filter buttons", "FilterActive"),):
+            found = find_element_by_event(snap3, event)
+            if found is None:
+                result.skip(f"click {label}", f"{event} binding not matched")
+            else:
+                r = mcp.click(found)
+                result.check(f"{label} click status ok", "status: ok" in r, r)
+
+        # T5: row delete + clear completed — both remove items; assert the
+        # todos count strictly decreases.
+        del_btn = find_element_by_event(snap3, "DeleteTodo")
+        if del_btn is None:
+            result.skip("row delete", "DeleteTodo binding not matched")
+        else:
+            before = count_state_todos(mcp.state("todos"))
+            r = mcp.click(del_btn)
+            ok = "status: ok" in r
+            result.check("row delete click status ok", ok, r)
+            if ok and before is not None:
+                after = count_state_todos(mcp.state("todos"))
+                if after is not None and after < before:
+                    result.check("row delete decreases todos", True, f"{before} -> {after}")
+                else:
+                    result.skip("row delete decreases todos",
+                                f"count parse: {before} -> {after}")
+
+        clear_btn = find_element_by_event(snap3, "ClearCompleted")
+        if clear_btn is None:
+            result.skip("clear completed", "ClearCompleted binding not matched")
+        else:
+            r = mcp.click(clear_btn)
+            result.check("clear completed click status ok", "status: ok" in r, r)
 
     return result
 
