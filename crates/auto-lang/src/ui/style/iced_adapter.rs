@@ -157,6 +157,14 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     }
 }
 
+/// Plan 411 P2-A④: vue `border-border` 语义色(shadcn --border 变量)——
+/// light `hsl(240 5.9% 90%)` ≈ zinc-200,dark `hsl(240 3.7% 15.9%)` ≈ zinc-800。
+/// 表格行分隔线等单侧描边使用。
+pub fn resolve_border_rgb() -> (u8, u8, u8) {
+    let is_dark = DARK_MODE.with(|d| d.get());
+    if is_dark { (0x27, 0x27, 0x2a) } else { (0xe4, 0xe4, 0xe7) }
+}
+
 /// Iced style representation
 ///
 /// Iced has a more traditional style system with separate Style, Theme, and layout objects.
