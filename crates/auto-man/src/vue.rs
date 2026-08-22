@@ -1281,6 +1281,31 @@ fn collect_ext_import_files(widgets: &[AuraWidget], out: &mut std::collections::
 /// PLAN-037 Phase 5: `.at` fn modules in the ext set (port files) declare
 /// their own `use.web` imports; their local targets must be copied to ext
 /// too. Iterates to a fixpoint (a port may reference another port).
+/// PLAN-037 Phase 6: target-scoped adapter selection for `.at` ext modules.
+/// `X.at` (the stable port name callers reference) may be implemented per
+/// render target by a sibling `X.<target>.at` — e.g. `platform.web.at` for
+/// the vue build. The adapter WINS over a plain `X.at` on its target; a
+/// missing source (neither `X.at` nor `X.<target>.at`) is an explicit error.
+fn resolve_at_adapter(path: &Path, target: &str) -> AutoResult<PathBuf> {
+    let s = path.to_string_lossy();
+    if let Some(stem) = s.strip_suffix(".at") {
+        let adapter = PathBuf::from(format!("{}.{}.at", stem, target));
+        if adapter.exists() {
+            return Ok(adapter);
+        }
+    }
+    if path.exists() {
+        return Ok(path.to_path_buf());
+    }
+    Err(format!(
+        "no source for ext module {} on target `{}`: neither the file nor a {}.at adapter for this target exists",
+        path.display(),
+        target,
+        s.trim_end_matches(".at")
+    )
+    .into())
+}
+
 fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections::BTreeSet<String>) {
     let mut queue: Vec<String> = ext_set.iter().cloned().collect();
     let mut visited: std::collections::BTreeSet<String> = Default::default();
@@ -1289,7 +1314,8 @@ fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections:
             continue;
         }
         let path = root_dir.join(&rel);
-        let Ok(source) = fs::read_to_string(&path) else { continue };
+        let Ok(resolved) = resolve_at_adapter(&path, "web") else { continue };
+        let Ok(source) = fs::read_to_string(&resolved) else { continue };
         let session = auto_lang::session::CompilerSession::ui();
         let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
         let Ok(ast) = parser.parse() else { continue };
@@ -2058,7 +2084,10 @@ export default router
             // top-level `fn` declarations to a TS module (same path, .at →
             // .ts) instead of copying the Auto source verbatim.
             if normalized.extension().and_then(|e| e.to_str()) == Some("at") {
-                let ts_code = Self::transpile_at_fn_module(&src)?;
+                // PLAN-037 Phase 6: `X.at` ports resolve to their target
+                // adapter sibling (`X.web.at` on the vue build).
+                let src_resolved = resolve_at_adapter(&src, "web")?;
+                let ts_code = Self::transpile_at_fn_module(&src_resolved)?;
                 let dst_ts = dst.with_extension("ts");
                 if let Some(parent) = dst_ts.parent() {
                     fs::create_dir_all(parent)
@@ -3767,6 +3796,31 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     }
 
     #[test]
+    /// PLAN-037 Phase 6: `X.at` port resolves to its target adapter sibling;
+    /// adapter wins over the plain file; neither exists -> explicit error.
+    #[test]
+    fn test_resolve_at_adapter() {
+        let dir = std::env::temp_dir().join("p037_adapter_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // adapter wins
+        let port = dir.join("platform.at");
+        let web = dir.join("platform.web.at");
+        std::fs::write(&port, "fn a() {}").unwrap();
+        std::fs::write(&web, "fn a() {}").unwrap();
+        assert_eq!(resolve_at_adapter(&port, "web").unwrap(), web);
+        assert_eq!(resolve_at_adapter(&port, "rs").unwrap(), port); // no .rs.at -> plain
+
+        // only adapter exists for another target -> error on web
+        let only_port_name = dir.join("solo.at");
+        std::fs::write(dir.join("solo.rs.at"), "fn b() {}").unwrap();
+        let err = resolve_at_adapter(&only_port_name, "web").unwrap_err();
+        assert!(err.to_string().contains("no source for ext module"), "{}", err);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn test_is_local_ext_path() {
         // Project-local files (copied into src/ext/)
         assert!(is_local_ext_path("src/front/utils/greet.ts"));
