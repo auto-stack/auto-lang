@@ -137,7 +137,7 @@
 | G1 | 412 §6.2/§6.3 | Layout gallery 全页双端截图 ≤1px + scroll/Overlay 交互抽验（§9.2/§9.3 验收） |
 | G2 | 413 | IME 实机输入、150% DPI、Linux 复验、TESTING.md 交互清单 |
 | G3 | 402 §13.8 | **✅ 2026-08-22 已关闭**（`plan-fix/g3-mines` e8eb3624）：实机探针首跑即崩——renderer highlight_code 的 `code[i..i+1]` 按字节切多字节标签（"⏱ 0s"）→ char boundary panic，038 VM 模式从未能启动；修复后 desktop_mcp 21 过/0 败：洪水填充（29 揭开>1 判别）/16 数字格显示/踩雷→lost+全雷 💣/Reset 复位；LCG 确定性布局两运行逐位一致（Python 复刻第 6 雷处分叉留档）；附带实证 App 自有 for 循环的 81 参数化事件全存活（D-GAP-4 仅子组件） |
-| G4 | 411 | P1-C Inter 字体内嵌、P2-A① Prism 色板、P2-A④ 表格细节、P2-B MCP 四项（含 Button.content vtree 序列化） |
+| G4 | 411 | **P2-B Button.content vtree ✅ 2026-08-22 已修**（`plan-fix/g4-vtree` f7658c45）：extract_children/_ref 补 Button content 臂（两变体子序锁定），R3 "卡片丢 desc" 误判根源关闭；测试：4 节点子树序列化断言。剩余：P1-C Inter 字体内嵌、P2-A① Prism 色板、P2-A④ 表格细节、P2-B 其余三项（vtree layout 回填/autoui_check 对齐/快照过滤 Empty） |
 
 ---
 
