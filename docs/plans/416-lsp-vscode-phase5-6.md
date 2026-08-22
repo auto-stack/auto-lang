@@ -62,6 +62,25 @@
 
 ## 3. 执行顺序与联调安排
 
-5-A ✅ → 6-A ✅ → 5-C ✅ → 6-B ✅ → 5-B ✅(服务端;VSCode F5 着色核验
-待实机)→(6-C 全仓 rustfmt 决策项)。**416 至此仅剩两个手动/决策项。**5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
+5-A ✅ → 6-A ✅ → 5-C ✅ → 6-B ✅ → 5-B ✅ → 6-C ✅(决策:包级增量 fmt 清零
+政策,见 §6-C)。**416 全部条目完成;唯一剩余为 VSCode 实机 F5 着色核验
+(手动,约 10 分钟,步骤见 §5-B 尾注;完成后可归档)。**5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
 gitee);6-A 落在 auto-lang(auto-lsp-ci.yml)。
+
+
+## 4. 6-C 决议:全仓 rustfmt → 包级增量清零政策(2026-08-22)
+
+全仓 9071 文件一次性 reformat 会制造巨大 diff、冲击所有并行分支——不做。
+政策改为:**fmt-clean 集合随触碰增量扩大**——包被实质性修改的批次顺手
+`cargo fmt -p <pkg>`,CI 的 fmt 作业覆盖当前已清零集合(auto-lsp +
+a2r-std[本批清零,9 文件 97+/38-],后者顺带纳入 paths 过滤)。其余包
+保持现状,不设全仓倒计时。a2r-std 全部测试(8/0)与 a2r golden(343/343)
+在格式化后保持绿。
+
+## 5. F5 手动核验步骤(交接给有桌面 VSCode 会话的人,约 10 分钟)
+
+1. `auto-vscode/vscode-extension` 下 `npm run compile`(esbuild 打包)
+2. VSCode 打开该目录 → F5(扩展开发宿主)→ 打开任一 `.at` 文件
+3. 核对:① 变量/函数/类型与关键字出现语义着色差异(非单一 TextMate 色);
+   ② `json.` 后触发补全列出 decode/parse 族;③ 输入 `yiel` 补全出 yield
+4. 编辑着色不闪烁、增量稳定 → 通过后在 KNOWN-DEBT 翻转 243 F5 条目

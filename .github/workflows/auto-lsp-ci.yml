@@ -10,10 +10,12 @@ on:
     branches: [master]
     paths:
       - "crates/auto-lsp/**"
+      - "crates/a2r-std/**"
       - ".github/workflows/auto-lsp-ci.yml"
   pull_request:
     paths:
       - "crates/auto-lsp/**"
+      - "crates/a2r-std/**"
       - ".github/workflows/auto-lsp-ci.yml"
   workflow_dispatch:
 
@@ -73,5 +75,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check formatting (auto-lsp only)
-        run: cargo fmt -p auto-lsp -- --check
+      - name: Check formatting (fmt-clean packages: auto-lsp, a2r-std)
+        run: |
+          cargo fmt -p auto-lsp -- --check
+          cargo fmt -p a2r-std -- --check

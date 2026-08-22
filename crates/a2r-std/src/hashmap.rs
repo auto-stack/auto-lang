@@ -3,7 +3,6 @@
 ///
 /// AutoLang's Map<K,V> maps directly to std::collections::HashMap.
 /// This module provides the factory function and re-exports.
-
 use std::collections::HashMap;
 use std::hash::Hash;
 

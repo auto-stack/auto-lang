@@ -1,6 +1,5 @@
 /// JSON module - JSON encoding, decoding, and querying
 /// Transpiled from auto-lang/stdlib/auto/json.at + json.rs.at
-
 use serde_json::Value;
 
 // ═══════════════════════════════════════════════════════════
@@ -148,7 +147,10 @@ pub fn to_string(val: &Value) -> String {
 /// Get a string value directly from a JSON object key.
 /// Returns empty string if not found (transpiler doesn't handle Option)
 pub fn get_str(val: &Value, key: &str) -> String {
-    val.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+    val.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 // ═══════════════════════════════════════════════════════════

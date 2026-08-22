@@ -1,11 +1,10 @@
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// List module - Dynamic array (Vec wrapper)
 /// Transpiled from auto-lang/stdlib/auto/list.at + list.rs.at
 ///
 /// Provides AutoLang-compatible List<T> backed by Rust's Vec<T>.
-
 use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
-use serde::{Serialize, Deserialize, Deserializer, Serializer};
 
 /// AutoLang's List<T> - dynamic array with interior mutability
 #[derive(Debug, Clone)]
@@ -22,7 +21,9 @@ impl<T: Serialize> Serialize for List<T> {
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for List<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let vec = Vec::<T>::deserialize(deserializer)?;
-        Ok(List { inner: RefCell::new(vec) })
+        Ok(List {
+            inner: RefCell::new(vec),
+        })
     }
 }
 

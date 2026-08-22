@@ -5,23 +5,23 @@
 //!
 //! Generated from: auto-lang/stdlib/auto/*.at + *.rs.at
 
-pub mod math;
-pub mod str;
-pub mod time;
 pub mod env;
-pub mod json;
 pub mod fs;
-pub mod list;
 pub mod hashmap;
 pub mod http;
-pub mod string_builder;
+pub mod json;
+pub mod list;
+pub mod math;
 pub mod process;
+pub mod str;
+pub mod string_builder;
 pub mod task;
+pub mod time;
 
 // Re-export commonly used types
 pub use list::List;
-pub use string_builder::StringBuilder;
 pub use str::str_contains;
+pub use string_builder::StringBuilder;
 
 /// May<T> - AutoLang's optional type (alias for Option<T>)
 pub type May<T> = Option<T>;
@@ -63,20 +63,23 @@ pub fn value_len(val: &serde_json::Value) -> usize {
 }
 
 // Re-export string functions at crate root for transpiler compatibility
+pub use str::str_ends_with;
 pub use str::str_find;
 pub use str::str_find_from;
-pub use str::str_substr;
-pub use str::str_ends_with;
-pub use str::str_starts_with;
 pub use str::str_split;
-pub use str::str_trim;
+pub use str::str_starts_with;
+pub use str::str_substr;
 pub use str::str_to_lower;
 pub use str::str_to_upper;
+pub use str::str_trim;
 
 /// Generate a UUID string
 pub fn uuid() -> String {
-    format!("{:x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos())
+    format!(
+        "{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    )
 }

@@ -342,7 +342,11 @@ mod tests {
         // NOTE: no drop(h) — the whole point of §16 RAII. drain_all must still
         // wait until all 3 sent messages are processed.
         drain_all().await;
-        assert_eq!(*sum.lock().unwrap(), 3, "all 3 in-flight messages must process without explicit drop");
+        assert_eq!(
+            *sum.lock().unwrap(),
+            3,
+            "all 3 in-flight messages must process without explicit drop"
+        );
     }
 
     #[tokio::test]
@@ -396,7 +400,11 @@ mod tests {
             handles.push(h);
         }
         drain_all().await;
-        assert_eq!(*total.lock().unwrap(), 20, "all 20 actors must process their message");
+        assert_eq!(
+            *total.lock().unwrap(),
+            20,
+            "all 20 actors must process their message"
+        );
     }
 
     #[tokio::test]
@@ -423,6 +431,10 @@ mod tests {
         }
         spawn_and_send(received_c).await;
         drain_all().await;
-        assert_eq!(*received.lock().unwrap(), vec![42], "helper-fn spawn + RAII drop must work");
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![42],
+            "helper-fn spawn + RAII drop must work"
+        );
     }
 }
