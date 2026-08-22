@@ -1,11 +1,35 @@
 # Plan 424: ports 符号转发——component/composable 经端口再导出
 
-> **状态**: 🟢 立项待执行(draft)
+> **状态**: ✅ 执行完成(2026-08-23,worktree auto-musk;T1-T4 全落地,回归全绿——见 §6 执行记录)
 > **前置**: Plan 408(已归档,component fn 合成机制);auto-musk PLAN-037(已合并,ports/ports 门控机制为本次基座)。
 > **仓库**: **auto-lang**(`crates/auto-lang/src/ui_gen/vue.rs` 生成侧 + `crates/auto-man/src/vue.rs` ext 链);auto-musk 为迁移验证方。
 > **目标**: ports `.at` 端口可转发 **component 与 composable 符号**——调用方经端口引用图标/逃生舱组件/组合式函数,不再在调用点直连 npm/`.vue`/`.ts`。消灭 auto-musk PLAN-037 待澄清 1(composables 域)与 icons 域的 KNOWN-DEBT,web 耦合面 100% 收拢进 `ports/*.web.at`。
 
 ---
+
+## 6. 执行记录(2026-08-23)
+
+- **T1 生成侧**(auto-lang 9d6b999a):`generate_fn_module_full` 对
+  Component/Composable 条目发 ES re-export;`.vue`/`platform:` 源是 default
+  export → `export { default as X }`,npm/.ts 源命名转发。调用方门控零
+  parser 改动(named import 指向 `@/ext/<port>`,tag 注册/composable 自动
+  调用不变),单测 ×2 锁定。
+- **T2 canary k4-ports-forwarding**(GREEN):端口三 kind 混写,调用方经
+  稳定名 `symbols.at` 引用(adapter 选择 `.web.at`);auto build + vue-tsc
+  端到端绿。capability-tests README 登记。default-export 语义(.vue/
+  platform: 源)为 §4 风险表之外的实发现,T2 阶段修正(`default as` 别名)。
+- **T3 musk 迁移**(比 §2 草案多一格):fn-kind 同步支持转发(import 供
+  wrapper 体内引用 + re-export 纯转发两行共存;`export-from` 不引入局部
+  绑定,合法 ES)+ auto-man 放宽「零 fn 的 use 模块报错」为纯转发端口合法。
+  musk 落地 **四端口**:icons(lucide ×38)/ renderer(markstream +
+  platform:markdown + deck.vue)/ composables(useT + useI18n + gate_router
+  + settings 伴生 fn)/ upload(raw_upload 的 fn+ref 常量混居——fn
+  re-export 原样转发,PLAN-037 时「拆分得不偿失」的存量障碍消除)。
+  34 处调用面改引 `*.at`;**调用面 use.web 非 .at 目标零命中,白名单
+  8 域全清**(剩余非 .at 引用仅存在于 ports/*.web.at 内部,即设计目标形态)。
+- **T4 收口**:auto-lang 3087 单测 + auto-man 6 单测 + k2/k3/k4 canary +
+  musk 三测(auto build / cargo test / vitest 2 存量失败基线)全绿。
+  附带清理环境残留 `D:\nonexistent`(测试污染空目录)致 test_exists 误红。
 
 ## 0. 背景与现状(PLAN-037 终态)
 
