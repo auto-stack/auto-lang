@@ -9,6 +9,7 @@ members = [
     "016-calendar",
     "ash-gui-auto-back",
     "auto-musk-back",
+    "auto-musk-p037-back",
     "auto-musk-wt029-back",
     "contact-form",
     "converter",
