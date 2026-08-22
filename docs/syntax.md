@@ -1364,6 +1364,32 @@ widget Counter {
 }
 ```
 
+#### Widget lifecycle phases (Plan 426)
+
+A widget has three per-instance lifecycle phases (see
+`docs/specs/auto-lang/ui/design/scenario-dialect.md` for the full table):
+
+| Phase | Syntax | Runs | Maps to (Vue) |
+|---|---|---|---|
+| setup | `setup { ... }` block | synchronously, before first render | `<script setup>` top level |
+| .Init | `on { .Init -> {...} }` | after mount | `onMounted` |
+| .Destroy | `on { .Destroy -> {...} }` | on unmount | `onUnmounted` |
+
+```auto
+widget Greet {
+    setup {
+        // Per-instance setup preamble: composables, sync initialization.
+        let t = useT()
+        refs t: [locale]   // ref fields gain .value in script access
+    }
+    view { col { text t("hello") } }
+}
+```
+
+`await` is not allowed in a setup block yet (async setup needs a Suspense
+boundary); a setup binding colliding with a model var or prop is a compile
+error.
+
 ### Nodes in Configuration
 
 Node syntax is also very suitable for describing XML-type configuration files:

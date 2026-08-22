@@ -1,9 +1,35 @@
 # Plan 426: setup 前导槽——per-instance setup 相位 + 生命周期语义定版
 
-> **状态**: 🔵 执行中(T1 设计定稿 + T2 parser/codegen/单测已落地 2026-08-23;T3 canary/musk 迁移、T4 文档收口进行中——见 §7 执行记录)
+> **状态**: ✅ 执行完成(2026-08-23,worktree auto-musk;T1-T4 全落地,回归全绿——见 §1.5 设计定稿与 §7 执行记录)
 > **前置**: Plan 408(已归档,composable kind 机制);auto-musk PLAN-037(use.web composable 现状与局限的一手实测)。
 > **仓库**: **auto-lang**(parser / ui_gen/vue / ts_adapter);auto-musk composables 域为迁移验证方。
 > **目标**: widget 获得通用的 **setup 相位语句槽**——每实例同步执行、先于首渲染,支持任意 setup 逻辑(不止无参 composable 调用)。`.Init`(onMounted,首渲染后)与 setup(同步,首渲染前)两相位语义文档定版;`use.web composable` kind 降级为糖(保留兼容)。
+
+---
+
+## 7. 执行记录(2026-08-23)
+
+- **T1 设计定稿**(fb4597eb):§1.5——块关键字 `setup{}`(方案 A);refs
+  采用**块级声明**(`refs <binding>: [f...]`;let 后缀方案与表达式语法
+  冲突,实测改道,即 §1.2 第二选项);await MVP 拒绝;命名冲突编译错误。
+- **T2 parser + codegen + 单测**(ee08af02):AST SetupBlock
+  (WidgetDecl.setup/AuraWidget.setup,widget 与 component fn 兼容拼写均
+  支持);parser 块级 refs 声明 + await 拒绝(表达式语句与 let 初始化器
+  双检查);vue.rs 语句置于 script setup 顶层 state/computed 之前,绑定
+  注册 facade locals(script/handler 访问无 .value、模板顶层 const 天然
+  可见),refs 字段访问注入 .value(复用 facade_ref_fields);绑定与
+  model/prop 冲突报错。单测 ×4(位置/refs/await 拒绝/冲突)全绿,
+  3093+6 全量绿。
+- **T3 musk 迁移对拍**(musk efee0e0):9 文件 composables 域迁 setup 块
+  (useT→t ×5、useI18n→i18n+refs ×4、useGateRouter→gateRouter;use.web
+  条目降普通导入仍指 composables 端口)。**产物对拍:import + 绑定位置
+  不变即等价**(let/const 关键字与 handler 顺序为既有非确定差异);
+  auto build + vue-tsc EXIT=0 + cargo test + vitest(2 存量基线)全绿。
+- **T4 文档 + 收口**:三相位语义表(setup/.Init/.Destroy)写入
+  scenario-dialect spec + docs/syntax.md UI 节;composable kind 标注
+  "糖,推荐 setup 块";k2/k3/k4 canary + auto-lang 3093 + auto-man 6
+  回归绿。后续登记:解释器侧每实例执行约定(auto-ui interpreter 联动)、
+  async setup Suspense 支持。
 
 ---
 

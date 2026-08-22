@@ -17,6 +17,17 @@
 - `view fn` 前缀为 view fragment（plan-367 P2-3）——内联展开，调用点无独立组件。
 - `component fn`（plan-408）自 Plan 425 起为 **`widget` 的语法糖**：解析期直接产出 WidgetDecl（body 自动包 `view` 块、params→props），fragment 双轨已删除。**新代码请用 `widget`**；`component fn` 仅作兼容拼写保留。同文件 widget 引用自动走组件路径（`<Name/>` + `@/components/Name.vue`）。
 - `widget` 体支持 **view 可选化**（Plan 425）：体以视图元素开头（无 `view` 块）时体即视图，自动包裹——`widget X { col {...} }` ≡ `widget X { view { col {...} } }`。
+- `setup { ... }` 前导槽（Plan 426）：每实例同步执行、先于首渲染的通用 setup 语句槽（`let`/表达式;`await` MVP 拒绝）。`refs <binding>: [f...]` 块级声明标注 ref 字段（script 侧访问注入 `.value`）。**`use.web composable` kind 降级为糖**——自动调用 + refs 标注可由 `setup { let x = useX() }` + `refs x: [...]` 完整表达,新代码推荐 setup 块。
+
+## 生命周期三相位语义表（Plan 426 定版）
+
+| 相位 | 语法 | 执行时机 | a2vue 映射 | 适用 |
+|---|---|---|---|---|
+| **setup** | `setup { ... }` 块 | 每实例同步,先于首渲染,state/computed 定义之前 | `<script setup>` 顶层语句 | composable 调用（保 inject 语境/内部 onMounted 注册）、任意同步初始化 |
+| **.Init** | `on { .Init -> {...} }` | 每实例挂载后,首渲染之后 | `onMounted(() => {...})` | DOM 测量、需要已挂载节点的初始化 |
+| **.Destroy** | `on { .Destroy -> {...} }` | 每实例卸载时 | `onUnmounted(() => {...})` | 清理（订阅/定时器/监听） |
+
+约束:setup 中 `await` 明确报错（async setup 需 Suspense 边界,另立任务）;setup 绑定与 model 变量/prop 同名为编译错误;setup 绑定 = script-setup 顶层局部绑定（≠ model 变量,不进 defineModel/不可被父绑定;需要双向时用 model 声明 + setup 内初始化组合表达）。解释器侧（AutoUI 继承 AutoVM）的每实例执行约定登记后续（auto-ui interpreter 联动）。
 
 ## 不变量
 
