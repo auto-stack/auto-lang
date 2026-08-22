@@ -8,7 +8,8 @@ use tower_lsp_server::ls_types::*;
 pub fn get_inlay_hints(content: &str, range: &Range) -> Vec<InlayHint> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         get_inlay_hints_impl(content, range)
-    })).unwrap_or_else(|_| Vec::new())
+    }))
+    .unwrap_or_else(|_| Vec::new())
 }
 
 fn get_inlay_hints_impl(content: &str, range: &Range) -> Vec<InlayHint> {
@@ -45,7 +46,10 @@ fn get_inlay_hints_impl(content: &str, range: &Range) -> Vec<InlayHint> {
 
         // Match patterns: "let name =" or "var name ="
         // But skip lines that already have explicit type annotations like "let name int ="
-        if let Some(rest) = trimmed.strip_prefix("let ").or_else(|| trimmed.strip_prefix("var ")) {
+        if let Some(rest) = trimmed
+            .strip_prefix("let ")
+            .or_else(|| trimmed.strip_prefix("var "))
+        {
             // Extract the variable name
             let name_part = if let Some(eq_pos) = rest.find('=') {
                 rest[..eq_pos].trim()
@@ -63,7 +67,9 @@ fn get_inlay_hints_impl(content: &str, range: &Range) -> Vec<InlayHint> {
             let var_name = parts[0];
 
             // Only hint for valid identifiers
-            if !var_name.chars().all(|c| c.is_alphanumeric() || c == '_') || var_name.chars().next().map_or(true, |c| c.is_numeric()) {
+            if !var_name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                || var_name.chars().next().map_or(true, |c| c.is_numeric())
+            {
                 continue;
             }
 

@@ -8,14 +8,13 @@ pub fn complete(
     trigger_character: Option<char>,
 ) -> Vec<CompletionItem> {
     // Catch panics to prevent LSP from crashing
-    std::panic::catch_unwind(|| {
-        complete_impl(content, position, uri, trigger_character)
-    }).unwrap_or_else(|_| {
-        eprintln!("=== LSP COMPLETION PANIC ===");
-        eprintln!("Completion panicked for: {}", uri);
-        eprintln!("=== END PANIC ===");
-        Vec::new()
-    })
+    std::panic::catch_unwind(|| complete_impl(content, position, uri, trigger_character))
+        .unwrap_or_else(|_| {
+            eprintln!("=== LSP COMPLETION PANIC ===");
+            eprintln!("Completion panicked for: {}", uri);
+            eprintln!("=== END PANIC ===");
+            Vec::new()
+        })
 }
 
 /// Implementation of code completion
@@ -120,7 +119,11 @@ fn determine_completion_context(
     }
 
     // Check if we're in an expression (default to variable completion)
-    if trimmed.chars().last().map_or(false, |c| c.is_alphanumeric() || c == '_') {
+    if trimmed
+        .chars()
+        .last()
+        .map_or(false, |c| c.is_alphanumeric() || c == '_')
+    {
         return CompletionContext::Variable;
     }
 
@@ -132,53 +135,233 @@ fn determine_completion_context(
 fn keyword_completions() -> Vec<CompletionItem> {
     vec![
         // Declaration keywords
-        completion_item("fn", "Define a function", CompletionItemKind::FUNCTION, "fn ${1:name}() {\n    \n}"),
-        completion_item("let", "Declare immutable variable", CompletionItemKind::KEYWORD, "let ${1:name} = ${2:value};"),
-        completion_item("var", "Declare mutable variable", CompletionItemKind::KEYWORD, "var ${1:name} = ${2:value};"),
-        completion_item("const", "Declare constant", CompletionItemKind::CONSTANT, "const ${1:name} = ${2:value};"),
-        completion_item("mut", "Mutable modifier (mut fn, mut var)", CompletionItemKind::KEYWORD, "mut ${1:name} = ${2:value};"),
-        completion_item("pub", "Public visibility", CompletionItemKind::KEYWORD, "pub "),
+        completion_item(
+            "fn",
+            "Define a function",
+            CompletionItemKind::FUNCTION,
+            "fn ${1:name}() {\n    \n}",
+        ),
+        completion_item(
+            "let",
+            "Declare immutable variable",
+            CompletionItemKind::KEYWORD,
+            "let ${1:name} = ${2:value};",
+        ),
+        completion_item(
+            "var",
+            "Declare mutable variable",
+            CompletionItemKind::KEYWORD,
+            "var ${1:name} = ${2:value};",
+        ),
+        completion_item(
+            "const",
+            "Declare constant",
+            CompletionItemKind::CONSTANT,
+            "const ${1:name} = ${2:value};",
+        ),
+        completion_item(
+            "mut",
+            "Mutable modifier (mut fn, mut var)",
+            CompletionItemKind::KEYWORD,
+            "mut ${1:name} = ${2:value};",
+        ),
+        completion_item(
+            "pub",
+            "Public visibility",
+            CompletionItemKind::KEYWORD,
+            "pub ",
+        ),
         // Type definition keywords
-        completion_item("type", "Define a type", CompletionItemKind::KEYWORD, "type ${1:Name} {\n    \n}"),
-        completion_item("enum", "Define enum", CompletionItemKind::ENUM, "enum ${1:Name} {\n    ${2:Variant}\n}"),
-        completion_item("struct", "Define struct", CompletionItemKind::STRUCT, "struct ${1:Name} {\n    ${2:field} ${3:Type}\n}"),
-        completion_item("spec", "Define specification (interface)", CompletionItemKind::INTERFACE, "spec ${1:Name} {\n    \n}"),
-        completion_item("ext", "Extend a type", CompletionItemKind::KEYWORD, "ext ${1:Type} {\n    \n}"),
-        completion_item("impl", "Implement methods", CompletionItemKind::KEYWORD, "impl ${1:Type} {\n    \n}"),
-        completion_item("alias", "Define type alias", CompletionItemKind::KEYWORD, "alias ${1:Name} = ${2:Type};"),
+        completion_item(
+            "type",
+            "Define a type",
+            CompletionItemKind::KEYWORD,
+            "type ${1:Name} {\n    \n}",
+        ),
+        completion_item(
+            "enum",
+            "Define enum",
+            CompletionItemKind::ENUM,
+            "enum ${1:Name} {\n    ${2:Variant}\n}",
+        ),
+        completion_item(
+            "struct",
+            "Define struct",
+            CompletionItemKind::STRUCT,
+            "struct ${1:Name} {\n    ${2:field} ${3:Type}\n}",
+        ),
+        completion_item(
+            "spec",
+            "Define specification (interface)",
+            CompletionItemKind::INTERFACE,
+            "spec ${1:Name} {\n    \n}",
+        ),
+        completion_item(
+            "ext",
+            "Extend a type",
+            CompletionItemKind::KEYWORD,
+            "ext ${1:Type} {\n    \n}",
+        ),
+        completion_item(
+            "impl",
+            "Implement methods",
+            CompletionItemKind::KEYWORD,
+            "impl ${1:Type} {\n    \n}",
+        ),
+        completion_item(
+            "alias",
+            "Define type alias",
+            CompletionItemKind::KEYWORD,
+            "alias ${1:Name} = ${2:Type};",
+        ),
         // Control flow
-        completion_item("if", "If statement", CompletionItemKind::KEYWORD, "if ${1:condition} {\n    \n}"),
-        completion_item("else", "Else statement", CompletionItemKind::KEYWORD, "else {\n    \n}"),
-        completion_item("elif", "Else if statement", CompletionItemKind::KEYWORD, "elif ${1:condition} {\n    \n}"),
-        completion_item("for", "For loop (for x in start..end)", CompletionItemKind::KEYWORD, "for ${1:item} in ${2:start}..${3:end} {\n    \n}"),
-        completion_item("is", "Pattern matching (is expr { pat -> ... })", CompletionItemKind::KEYWORD, "is ${1:value} {\n    ${2:pattern} -> ${3:result}\n}"),
-        completion_item("loop", "Infinite loop", CompletionItemKind::KEYWORD, "loop {\n    \n}"),
-        completion_item("break", "Break from loop", CompletionItemKind::KEYWORD, "break;"),
-        completion_item("continue", "Continue to next iteration", CompletionItemKind::KEYWORD, "continue;"),
-        completion_item("return", "Return from function", CompletionItemKind::KEYWORD, "return ${1:value};"),
+        completion_item(
+            "if",
+            "If statement",
+            CompletionItemKind::KEYWORD,
+            "if ${1:condition} {\n    \n}",
+        ),
+        completion_item(
+            "else",
+            "Else statement",
+            CompletionItemKind::KEYWORD,
+            "else {\n    \n}",
+        ),
+        completion_item(
+            "elif",
+            "Else if statement",
+            CompletionItemKind::KEYWORD,
+            "elif ${1:condition} {\n    \n}",
+        ),
+        completion_item(
+            "for",
+            "For loop (for x in start..end)",
+            CompletionItemKind::KEYWORD,
+            "for ${1:item} in ${2:start}..${3:end} {\n    \n}",
+        ),
+        completion_item(
+            "is",
+            "Pattern matching (is expr { pat -> ... })",
+            CompletionItemKind::KEYWORD,
+            "is ${1:value} {\n    ${2:pattern} -> ${3:result}\n}",
+        ),
+        completion_item(
+            "loop",
+            "Infinite loop",
+            CompletionItemKind::KEYWORD,
+            "loop {\n    \n}",
+        ),
+        completion_item(
+            "break",
+            "Break from loop",
+            CompletionItemKind::KEYWORD,
+            "break;",
+        ),
+        completion_item(
+            "continue",
+            "Continue to next iteration",
+            CompletionItemKind::KEYWORD,
+            "continue;",
+        ),
+        completion_item(
+            "return",
+            "Return from function",
+            CompletionItemKind::KEYWORD,
+            "return ${1:value};",
+        ),
         // Imports
-        completion_item("use", "Import module", CompletionItemKind::KEYWORD, "use ${1:module};"),
-        completion_item("pac", "Package root prefix", CompletionItemKind::KEYWORD, "pac.${1:module}"),
-        completion_item("super", "Parent directory import", CompletionItemKind::KEYWORD, "super.${1:module}"),
+        completion_item(
+            "use",
+            "Import module",
+            CompletionItemKind::KEYWORD,
+            "use ${1:module};",
+        ),
+        completion_item(
+            "pac",
+            "Package root prefix",
+            CompletionItemKind::KEYWORD,
+            "pac.${1:module}",
+        ),
+        completion_item(
+            "super",
+            "Parent directory import",
+            CompletionItemKind::KEYWORD,
+            "super.${1:module}",
+        ),
         // Literals
         completion_item("true", "Boolean true", CompletionItemKind::KEYWORD, "true"),
-        completion_item("false", "Boolean false", CompletionItemKind::KEYWORD, "false"),
+        completion_item(
+            "false",
+            "Boolean false",
+            CompletionItemKind::KEYWORD,
+            "false",
+        ),
         completion_item("nil", "Nil value", CompletionItemKind::KEYWORD, "nil"),
         // Option/Result constructors
-        completion_item("Some", "Option.Some constructor", CompletionItemKind::ENUM_MEMBER, "Some(${1:value})"),
-        completion_item("None", "Option.None", CompletionItemKind::ENUM_MEMBER, "None"),
-        completion_item("Ok", "Result.Ok constructor", CompletionItemKind::ENUM_MEMBER, "Ok(${1:value})"),
-        completion_item("Err", "Result.Err constructor", CompletionItemKind::ENUM_MEMBER, "Err(${1:value})"),
+        completion_item(
+            "Some",
+            "Option.Some constructor",
+            CompletionItemKind::ENUM_MEMBER,
+            "Some(${1:value})",
+        ),
+        completion_item(
+            "None",
+            "Option.None",
+            CompletionItemKind::ENUM_MEMBER,
+            "None",
+        ),
+        completion_item(
+            "Ok",
+            "Result.Ok constructor",
+            CompletionItemKind::ENUM_MEMBER,
+            "Ok(${1:value})",
+        ),
+        completion_item(
+            "Err",
+            "Result.Err constructor",
+            CompletionItemKind::ENUM_MEMBER,
+            "Err(${1:value})",
+        ),
         // Concurrency
-        completion_item("task", "Define async task", CompletionItemKind::KEYWORD, "task ${1:name}() {\n    \n}"),
-        completion_item("spawn", "Spawn concurrent task", CompletionItemKind::KEYWORD, "spawn ${1:task}()"),
-        completion_item("await", "Await async result", CompletionItemKind::KEYWORD, "await ${1:expr}"),
-        completion_item("go", "Launch goroutine-style task", CompletionItemKind::KEYWORD, "go ${1:expr}"),
+        completion_item(
+            "task",
+            "Define async task",
+            CompletionItemKind::KEYWORD,
+            "task ${1:name}() {\n    \n}",
+        ),
+        completion_item(
+            "spawn",
+            "Spawn concurrent task",
+            CompletionItemKind::KEYWORD,
+            "spawn ${1:task}()",
+        ),
+        completion_item(
+            "await",
+            "Await async result",
+            CompletionItemKind::KEYWORD,
+            "await ${1:expr}",
+        ),
+        completion_item(
+            "go",
+            "Launch goroutine-style task",
+            CompletionItemKind::KEYWORD,
+            "go ${1:expr}",
+        ),
         // Ownership / misc
         completion_item("view", "View borrow", CompletionItemKind::KEYWORD, "view "),
-        completion_item("move", "Move ownership", CompletionItemKind::KEYWORD, "move "),
+        completion_item(
+            "move",
+            "Move ownership",
+            CompletionItemKind::KEYWORD,
+            "move ",
+        ),
         completion_item("copy", "Copy value", CompletionItemKind::KEYWORD, "copy "),
-        completion_item("take", "Take ownership", CompletionItemKind::KEYWORD, "take "),
+        completion_item(
+            "take",
+            "Take ownership",
+            CompletionItemKind::KEYWORD,
+            "take ",
+        ),
     ]
 }
 
@@ -186,23 +369,93 @@ fn keyword_completions() -> Vec<CompletionItem> {
 fn type_completions(content: &str) -> Vec<CompletionItem> {
     let mut items = vec![
         // Auto primitive types
-        completion_item("int", "Signed integer", CompletionItemKind::TYPE_PARAMETER, "int"),
-        completion_item("uint", "Unsigned integer", CompletionItemKind::TYPE_PARAMETER, "uint"),
-        completion_item("byte", "Byte (8-bit unsigned)", CompletionItemKind::TYPE_PARAMETER, "byte"),
-        completion_item("float", "Floating point number", CompletionItemKind::TYPE_PARAMETER, "float"),
-        completion_item("double", "Double precision float", CompletionItemKind::TYPE_PARAMETER, "double"),
-        completion_item("bool", "Boolean value", CompletionItemKind::TYPE_PARAMETER, "bool"),
+        completion_item(
+            "int",
+            "Signed integer",
+            CompletionItemKind::TYPE_PARAMETER,
+            "int",
+        ),
+        completion_item(
+            "uint",
+            "Unsigned integer",
+            CompletionItemKind::TYPE_PARAMETER,
+            "uint",
+        ),
+        completion_item(
+            "byte",
+            "Byte (8-bit unsigned)",
+            CompletionItemKind::TYPE_PARAMETER,
+            "byte",
+        ),
+        completion_item(
+            "float",
+            "Floating point number",
+            CompletionItemKind::TYPE_PARAMETER,
+            "float",
+        ),
+        completion_item(
+            "double",
+            "Double precision float",
+            CompletionItemKind::TYPE_PARAMETER,
+            "double",
+        ),
+        completion_item(
+            "bool",
+            "Boolean value",
+            CompletionItemKind::TYPE_PARAMETER,
+            "bool",
+        ),
         completion_item("str", "String", CompletionItemKind::TYPE_PARAMETER, "str"),
-        completion_item("char", "Character", CompletionItemKind::TYPE_PARAMETER, "char"),
-        completion_item("void", "No return value", CompletionItemKind::TYPE_PARAMETER, "void"),
+        completion_item(
+            "char",
+            "Character",
+            CompletionItemKind::TYPE_PARAMETER,
+            "char",
+        ),
+        completion_item(
+            "void",
+            "No return value",
+            CompletionItemKind::TYPE_PARAMETER,
+            "void",
+        ),
         // Collection types
-        completion_item("List", "Dynamic list type", CompletionItemKind::CLASS, "List"),
-        completion_item("Map", "Key-value map type", CompletionItemKind::CLASS, "Map"),
-        completion_item("Option", "Optional value (Some/None)", CompletionItemKind::CLASS, "Option"),
-        completion_item("Result", "Result type (Ok/Err)", CompletionItemKind::CLASS, "Result"),
+        completion_item(
+            "List",
+            "Dynamic list type",
+            CompletionItemKind::CLASS,
+            "List",
+        ),
+        completion_item(
+            "Map",
+            "Key-value map type",
+            CompletionItemKind::CLASS,
+            "Map",
+        ),
+        completion_item(
+            "Option",
+            "Optional value (Some/None)",
+            CompletionItemKind::CLASS,
+            "Option",
+        ),
+        completion_item(
+            "Result",
+            "Result type (Ok/Err)",
+            CompletionItemKind::CLASS,
+            "Result",
+        ),
         // Array types
-        completion_item("[]T", "Slice type", CompletionItemKind::TYPE_PARAMETER, "[]${1:T}"),
-        completion_item("[N]T", "Static array type", CompletionItemKind::TYPE_PARAMETER, "[${1:N}]${2:T}"),
+        completion_item(
+            "[]T",
+            "Slice type",
+            CompletionItemKind::TYPE_PARAMETER,
+            "[]${1:T}",
+        ),
+        completion_item(
+            "[N]T",
+            "Static array type",
+            CompletionItemKind::TYPE_PARAMETER,
+            "[${1:N}]${2:T}",
+        ),
     ];
 
     // Add user-defined types from AST
@@ -213,9 +466,12 @@ fn type_completions(content: &str) -> Vec<CompletionItem> {
 
 /// Get function name completions
 fn function_name_completions(content: &str) -> Vec<CompletionItem> {
-    let mut items = vec![
-        completion_item("main", "Main entry point", CompletionItemKind::FUNCTION, "fn main() {\n    \n}"),
-    ];
+    let mut items = vec![completion_item(
+        "main",
+        "Main entry point",
+        CompletionItemKind::FUNCTION,
+        "fn main() {\n    \n}",
+    )];
 
     // Add standard library functions
     items.extend(stdlib_function_completions());
@@ -248,10 +504,30 @@ fn field_completions() -> Vec<CompletionItem> {
 fn generic_field_completions() -> Vec<CompletionItem> {
     vec![
         completion_item("len", "Get length", CompletionItemKind::METHOD, "len"),
-        completion_item("push", "Add element", CompletionItemKind::METHOD, "push(${1:value})"),
-        completion_item("pop", "Remove last element", CompletionItemKind::METHOD, "pop()"),
-        completion_item("get", "Get element at index", CompletionItemKind::METHOD, "get(${1:index})"),
-        completion_item("set", "Set element at index", CompletionItemKind::METHOD, "set(${1:index}, ${2:value})"),
+        completion_item(
+            "push",
+            "Add element",
+            CompletionItemKind::METHOD,
+            "push(${1:value})",
+        ),
+        completion_item(
+            "pop",
+            "Remove last element",
+            CompletionItemKind::METHOD,
+            "pop()",
+        ),
+        completion_item(
+            "get",
+            "Get element at index",
+            CompletionItemKind::METHOD,
+            "get(${1:index})",
+        ),
+        completion_item(
+            "set",
+            "Set element at index",
+            CompletionItemKind::METHOD,
+            "set(${1:index}, ${2:value})",
+        ),
     ]
 }
 
@@ -312,7 +588,6 @@ fn member_completions(content: &str, var_name: &str) -> Vec<CompletionItem> {
             for stmt in ast.stmts.iter() {
                 if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
                     if type_decl.name.as_str() == type_name {
-
                         // Add fields
                         for member in &type_decl.members {
                             items.push(completion_item(
@@ -374,7 +649,10 @@ fn infer_variable_type_from_parser_with_scope(content: &str, var_name: &str) -> 
 /// Infer the type of a variable using the parser's type information
 /// This tries to use the parser's metadata, with a fallback to text-based heuristics
 #[allow(dead_code)]
-fn infer_variable_type_from_parser(infer_ctx: &auto_lang::infer::InferenceContext, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser(
+    infer_ctx: &auto_lang::infer::InferenceContext,
+    var_name: &str,
+) -> Option<String> {
     use auto_lang::scope::Meta;
 
     // Try to use the parser's type information first
@@ -415,7 +693,10 @@ fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String
                 let before_eq = trimmed[..eq_pos].trim();
                 let parts: Vec<&str> = before_eq.split_whitespace().collect();
 
-                if (parts[0] == "let" || parts[0] == "mut") && parts.len() == 2 && parts[1] == var_name {
+                if (parts[0] == "let" || parts[0] == "mut")
+                    && parts.len() == 2
+                    && parts[1] == var_name
+                {
                     let after_eq = trimmed[eq_pos + 1..].trim();
                     if let Some(brace_pos) = after_eq.find('{') {
                         let type_name = after_eq[..brace_pos].trim();
@@ -453,37 +734,162 @@ fn format_function_signature_for_completion(fn_decl: &auto_lang::ast::Fn) -> Str
 fn stdlib_function_completions() -> Vec<CompletionItem> {
     vec![
         // I/O functions
-        completion_item("print", "Print to stdout", CompletionItemKind::FUNCTION, "print(${1:value})"),
-        completion_item("println", "Print with newline", CompletionItemKind::FUNCTION, "println(${1:value})"),
-        completion_item("input", "Read from stdin", CompletionItemKind::FUNCTION, "input()"),
-        completion_item("read_file", "Read file contents", CompletionItemKind::FUNCTION, "read_file(${1:path})"),
-        completion_item("write_file", "Write to file", CompletionItemKind::FUNCTION, "write_file(${1:path}, ${2:content})"),
+        completion_item(
+            "print",
+            "Print to stdout",
+            CompletionItemKind::FUNCTION,
+            "print(${1:value})",
+        ),
+        completion_item(
+            "println",
+            "Print with newline",
+            CompletionItemKind::FUNCTION,
+            "println(${1:value})",
+        ),
+        completion_item(
+            "input",
+            "Read from stdin",
+            CompletionItemKind::FUNCTION,
+            "input()",
+        ),
+        completion_item(
+            "read_file",
+            "Read file contents",
+            CompletionItemKind::FUNCTION,
+            "read_file(${1:path})",
+        ),
+        completion_item(
+            "write_file",
+            "Write to file",
+            CompletionItemKind::FUNCTION,
+            "write_file(${1:path}, ${2:content})",
+        ),
         // String functions
-        completion_item("str_len", "Get string length", CompletionItemKind::FUNCTION, "str_len(${1:s})"),
-        completion_item("str_substr", "Get substring", CompletionItemKind::FUNCTION, "str_substr(${1:s}, ${2:start}, ${3:length})"),
-        completion_item("str_split", "Split string", CompletionItemKind::FUNCTION, "str_split(${1:s}, ${2:delimiter})"),
-        completion_item("str_trim", "Trim whitespace", CompletionItemKind::FUNCTION, "str_trim(${1:s})"),
-        completion_item("str_upper", "Convert to uppercase", CompletionItemKind::FUNCTION, "str_upper(${1:s})"),
-        completion_item("str_lower", "Convert to lowercase", CompletionItemKind::FUNCTION, "str_lower(${1:s})"),
+        completion_item(
+            "str_len",
+            "Get string length",
+            CompletionItemKind::FUNCTION,
+            "str_len(${1:s})",
+        ),
+        completion_item(
+            "str_substr",
+            "Get substring",
+            CompletionItemKind::FUNCTION,
+            "str_substr(${1:s}, ${2:start}, ${3:length})",
+        ),
+        completion_item(
+            "str_split",
+            "Split string",
+            CompletionItemKind::FUNCTION,
+            "str_split(${1:s}, ${2:delimiter})",
+        ),
+        completion_item(
+            "str_trim",
+            "Trim whitespace",
+            CompletionItemKind::FUNCTION,
+            "str_trim(${1:s})",
+        ),
+        completion_item(
+            "str_upper",
+            "Convert to uppercase",
+            CompletionItemKind::FUNCTION,
+            "str_upper(${1:s})",
+        ),
+        completion_item(
+            "str_lower",
+            "Convert to lowercase",
+            CompletionItemKind::FUNCTION,
+            "str_lower(${1:s})",
+        ),
         // Math functions
-        completion_item("abs", "Absolute value", CompletionItemKind::FUNCTION, "abs(${1:n})"),
-        completion_item("min", "Minimum of two values", CompletionItemKind::FUNCTION, "min(${1:a}, ${2:b})"),
-        completion_item("max", "Maximum of two values", CompletionItemKind::FUNCTION, "max(${1:a}, ${2:b})"),
-        completion_item("pow", "Power function", CompletionItemKind::FUNCTION, "pow(${1:base}, ${2:exp})"),
-        completion_item("sqrt", "Square root", CompletionItemKind::FUNCTION, "sqrt(${1:n})"),
+        completion_item(
+            "abs",
+            "Absolute value",
+            CompletionItemKind::FUNCTION,
+            "abs(${1:n})",
+        ),
+        completion_item(
+            "min",
+            "Minimum of two values",
+            CompletionItemKind::FUNCTION,
+            "min(${1:a}, ${2:b})",
+        ),
+        completion_item(
+            "max",
+            "Maximum of two values",
+            CompletionItemKind::FUNCTION,
+            "max(${1:a}, ${2:b})",
+        ),
+        completion_item(
+            "pow",
+            "Power function",
+            CompletionItemKind::FUNCTION,
+            "pow(${1:base}, ${2:exp})",
+        ),
+        completion_item(
+            "sqrt",
+            "Square root",
+            CompletionItemKind::FUNCTION,
+            "sqrt(${1:n})",
+        ),
         completion_item("sin", "Sine", CompletionItemKind::FUNCTION, "sin(${1:x})"),
         completion_item("cos", "Cosine", CompletionItemKind::FUNCTION, "cos(${1:x})"),
-        completion_item("tan", "Tangent", CompletionItemKind::FUNCTION, "tan(${1:x})"),
+        completion_item(
+            "tan",
+            "Tangent",
+            CompletionItemKind::FUNCTION,
+            "tan(${1:x})",
+        ),
         // Array functions
-        completion_item("array_new", "Create new array", CompletionItemKind::FUNCTION, "array_new()"),
-        completion_item("array_push", "Push to array", CompletionItemKind::FUNCTION, "array_push(${1:arr}, ${2:value})"),
-        completion_item("array_pop", "Pop from array", CompletionItemKind::FUNCTION, "array_pop(${1:arr})"),
-        completion_item("array_len", "Get array length", CompletionItemKind::FUNCTION, "array_len(${1:arr})"),
+        completion_item(
+            "array_new",
+            "Create new array",
+            CompletionItemKind::FUNCTION,
+            "array_new()",
+        ),
+        completion_item(
+            "array_push",
+            "Push to array",
+            CompletionItemKind::FUNCTION,
+            "array_push(${1:arr}, ${2:value})",
+        ),
+        completion_item(
+            "array_pop",
+            "Pop from array",
+            CompletionItemKind::FUNCTION,
+            "array_pop(${1:arr})",
+        ),
+        completion_item(
+            "array_len",
+            "Get array length",
+            CompletionItemKind::FUNCTION,
+            "array_len(${1:arr})",
+        ),
         // Conversion functions
-        completion_item("int", "Convert to integer", CompletionItemKind::FUNCTION, "int(${1:value})"),
-        completion_item("float", "Convert to float", CompletionItemKind::FUNCTION, "float(${1:value})"),
-        completion_item("str", "Convert to string", CompletionItemKind::FUNCTION, "str(${1:value})"),
-        completion_item("bool", "Convert to boolean", CompletionItemKind::FUNCTION, "bool(${1:value})"),
+        completion_item(
+            "int",
+            "Convert to integer",
+            CompletionItemKind::FUNCTION,
+            "int(${1:value})",
+        ),
+        completion_item(
+            "float",
+            "Convert to float",
+            CompletionItemKind::FUNCTION,
+            "float(${1:value})",
+        ),
+        completion_item(
+            "str",
+            "Convert to string",
+            CompletionItemKind::FUNCTION,
+            "str(${1:value})",
+        ),
+        completion_item(
+            "bool",
+            "Convert to boolean",
+            CompletionItemKind::FUNCTION,
+            "bool(${1:value})",
+        ),
     ]
 }
 
@@ -644,7 +1050,8 @@ pub fn complete_workspace(
     let mut items = complete(content, position, uri, trigger_character);
 
     // Add workspace-level symbols that aren't already in the list
-    let existing_names: std::collections::HashSet<String> = items.iter().map(|i| i.label.clone()).collect();
+    let existing_names: std::collections::HashSet<String> =
+        items.iter().map(|i| i.label.clone()).collect();
 
     // Add functions from workspace TypeStore
     if let Ok(store) = ws_state.type_store.read() {

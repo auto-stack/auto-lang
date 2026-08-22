@@ -1,16 +1,10 @@
-use tower_lsp_server::ls_types::*;
 use auto_lang::error::AutoError;
+use tower_lsp_server::ls_types::*;
 
 /// Parse AutoLang code and convert errors to LSP diagnostics
-pub fn parse_diagnostics(
-    uri: &str,
-    content: &str,
-    _version: i32,
-) -> Vec<Diagnostic> {
+pub fn parse_diagnostics(uri: &str, content: &str, _version: i32) -> Vec<Diagnostic> {
     // Catch panics to prevent LSP from crashing
-    std::panic::catch_unwind(|| {
-        parse_diagnostics_impl(uri, content)
-    }).unwrap_or_else(|_| {
+    std::panic::catch_unwind(|| parse_diagnostics_impl(uri, content)).unwrap_or_else(|_| {
         eprintln!("=== LSP DIAGNOSTICS PANIC ===");
         eprintln!("Parser panicked while parsing: {}", uri);
         eprintln!("=== END PANIC ===");
@@ -28,7 +22,11 @@ fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
 
     // Convert parser errors to diagnostics
     for error in &parser.errors {
-        diagnostics.push(auto_error_to_diagnostic(error, content, DiagnosticSeverity::ERROR));
+        diagnostics.push(auto_error_to_diagnostic(
+            error,
+            content,
+            DiagnosticSeverity::ERROR,
+        ));
     }
 
     // Convert parser warnings to diagnostics
@@ -42,7 +40,11 @@ fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
         if let Err(e) = auto_lang::parse_preserve_error(content) {
             let errors = extract_errors_from_auto_error(e);
             for error in errors.iter() {
-                diagnostics.push(auto_error_to_diagnostic(error, content, DiagnosticSeverity::ERROR));
+                diagnostics.push(auto_error_to_diagnostic(
+                    error,
+                    content,
+                    DiagnosticSeverity::ERROR,
+                ));
             }
         }
     }
@@ -51,7 +53,11 @@ fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
 }
 
 /// Convert an AutoError to an LSP Diagnostic
-fn auto_error_to_diagnostic(error: &AutoError, content: &str, severity: DiagnosticSeverity) -> Diagnostic {
+fn auto_error_to_diagnostic(
+    error: &AutoError,
+    content: &str,
+    severity: DiagnosticSeverity,
+) -> Diagnostic {
     let error_msg = format!("{}", error);
     let range = extract_location_from_error(error, content);
 
@@ -73,8 +79,14 @@ fn warning_to_diagnostic(warning: &auto_lang::error::Warning, _content: &str) ->
     let message = format!("{}", warning);
     // Warnings may not have precise spans; default to start of file
     let range = Range {
-        start: Position { line: 0, character: 0 },
-        end: Position { line: 0, character: 0 },
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 0,
+        },
     };
 
     Diagnostic {
@@ -93,9 +105,7 @@ fn warning_to_diagnostic(warning: &auto_lang::error::Warning, _content: &str) ->
 /// Extract individual errors from an AutoError, unwrapping MultipleErrors
 fn extract_errors_from_auto_error(error: AutoError) -> Vec<AutoError> {
     match &error {
-        AutoError::MultipleErrors { errors, .. } => {
-            errors.clone()
-        }
+        AutoError::MultipleErrors { errors, .. } => errors.clone(),
         _ => {
             vec![error]
         }
@@ -108,8 +118,14 @@ fn extract_location_from_error(error: &AutoError, content: &str) -> Range {
 
     // Default to start of file
     let mut range = Range {
-        start: Position { line: 0, character: 0 },
-        end: Position { line: 0, character: 0 },
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 0,
+        },
     };
 
     // Try to get labels from the miette Diagnostic
@@ -125,10 +141,19 @@ fn extract_location_from_error(error: &AutoError, content: &str) -> Range {
         if let Some(line) = extract_line_number(&error_msg) {
             let line_idx = line.saturating_sub(1) as u32;
             let lines: Vec<&str> = content.lines().collect();
-            let end_char = lines.get(line_idx as usize).map(|l| l.len().max(1) as u32).unwrap_or(1);
+            let end_char = lines
+                .get(line_idx as usize)
+                .map(|l| l.len().max(1) as u32)
+                .unwrap_or(1);
             range = Range {
-                start: Position { line: line_idx, character: 0 },
-                end: Position { line: line_idx, character: end_char },
+                start: Position {
+                    line: line_idx,
+                    character: 0,
+                },
+                end: Position {
+                    line: line_idx,
+                    character: end_char,
+                },
             };
         }
     }

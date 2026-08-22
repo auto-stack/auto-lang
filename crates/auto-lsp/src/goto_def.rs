@@ -1,15 +1,22 @@
 use tower_lsp_server::ls_types::*;
 
 /// Find the definition location for a symbol at a given position
-pub fn find_definition(content: &str, position: Position, uri: &str) -> Option<GotoDefinitionResponse> {
+pub fn find_definition(
+    content: &str,
+    position: Position,
+    uri: &str,
+) -> Option<GotoDefinitionResponse> {
     // Catch panics to prevent LSP from crashing
-    std::panic::catch_unwind(|| {
-        find_definition_impl(content, position, uri)
-    }).unwrap_or_else(|_| None)
+    std::panic::catch_unwind(|| find_definition_impl(content, position, uri))
+        .unwrap_or_else(|_| None)
 }
 
 /// Implementation of definition finding
-fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<GotoDefinitionResponse> {
+fn find_definition_impl(
+    content: &str,
+    position: Position,
+    uri: &str,
+) -> Option<GotoDefinitionResponse> {
     // Get the line at the cursor position
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
@@ -28,10 +35,13 @@ fn find_definition_impl(content: &str, position: Position, uri: &str) -> Option<
     }
 
     // If not found, check if this is a member/field access (e.g., p.x or p.square())
-    if let Some(var_name) = get_variable_before_dot(line, crate::position::utf16_to_byte_offset(line, position.character)) {
+    if let Some(var_name) = get_variable_before_dot(
+        line,
+        crate::position::utf16_to_byte_offset(line, position.character),
+    ) {
         // Try to infer the type of the variable using the parser's type information
-        let type_name = infer_variable_type_from_parser(&parser.infer_ctx, &var_name)
-            .or_else(|| {
+        let type_name =
+            infer_variable_type_from_parser(&parser.infer_ctx, &var_name).or_else(|| {
                 // Fallback to heuristic text-based parsing
                 infer_variable_type_heuristic(content, &var_name)
             });
@@ -117,7 +127,8 @@ fn find_definition_in_ast(content: &str, name: &str) -> Option<auto_lang::Symbol
             // Find the definition line by matching declaration patterns
             for (line_num, line_str) in content.lines().enumerate() {
                 let trimmed = line_str.trim();
-                let matches = (trimmed.starts_with("fn ") && trimmed.contains(&format!("{}(", name)))
+                let matches = (trimmed.starts_with("fn ")
+                    && trimmed.contains(&format!("{}(", name)))
                     || (trimmed.starts_with("type ") && trimmed.contains(name))
                     || (trimmed.starts_with("enum ") && trimmed.contains(name))
                     || (trimmed.starts_with("spec ") && trimmed.contains(name))
@@ -141,7 +152,10 @@ pub fn find_definition_workspace(
 ) -> Option<GotoDefinitionResponse> {
     let lines: Vec<&str> = content.lines().collect();
     let line = lines.get(position.line as usize)?;
-    let word = get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character))?;
+    let word = get_word_at_position(
+        line,
+        crate::position::utf16_to_byte_offset(line, position.character),
+    )?;
 
     let db = &ws_state.db;
 
@@ -172,7 +186,8 @@ pub fn find_definition_workspace(
         if let Some(meta) = db.get_fragment_meta(&frag_id) {
             if meta.name.as_str() == word {
                 // Get the file path for this fragment
-                let file_path = db.get_file_path(meta.file_id)
+                let file_path = db
+                    .get_file_path(meta.file_id)
                     .map(|p| p.to_string())
                     .unwrap_or_else(|| uri.to_string());
 
@@ -287,7 +302,10 @@ fn get_variable_before_dot(line: &str, cursor: usize) -> Option<String> {
 
 /// Infer the type of a variable using the parser's type information
 /// This tries to use the parser's metadata, with a fallback to text-based heuristics
-fn infer_variable_type_from_parser(infer_ctx: &auto_lang::infer::InferenceContext, var_name: &str) -> Option<String> {
+fn infer_variable_type_from_parser(
+    infer_ctx: &auto_lang::infer::InferenceContext,
+    var_name: &str,
+) -> Option<String> {
     use auto_lang::scope::Meta;
 
     // Try to use the parser's type information first
@@ -339,7 +357,10 @@ fn infer_variable_type_heuristic(content: &str, var_name: &str) -> Option<String
                 let parts: Vec<&str> = before_eq.split_whitespace().collect();
 
                 // Check if it's "let p" or "mut p" without explicit type
-                if (parts[0] == "let" || parts[0] == "mut") && parts.len() == 2 && parts[1] == var_name {
+                if (parts[0] == "let" || parts[0] == "mut")
+                    && parts.len() == 2
+                    && parts[1] == var_name
+                {
                     let after_eq = trimmed[eq_pos + 1..].trim();
                     // Look for type name before '{'
                     if let Some(brace_pos) = after_eq.find('{') {

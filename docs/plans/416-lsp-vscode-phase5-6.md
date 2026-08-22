@@ -7,16 +7,12 @@
 
 ## 1. Phase 5 剩余(编辑器现代化)
 
-### 5-A extension.js → TypeScript 迁移(预估 2 天)
+### 5-A extension.js → TypeScript 迁移 ✅ 2026-08-22 完成(auto-vscode `fc4cb9d`)
 
-- **现状**: `editors/vscode/extension.js` 单文件 ~309 行纯 JS,无类型。
-- **拆解**:
-  1. `src/extension.ts` + tsconfig(esbuild 打包回 dist/)——保持行为零变化
-     的纯迁移,先不上新功能
-  2. 语言客户端类型化(`vscode-languageclient` 官方类型)
-  3. package.json main 指向 dist,vsce 打包验证
-- **验收**: F5 扩展宿主里原有全部命令/激活行为不变;`npm run compile`
-  (tsc --noEmit)零错。
+- `src/extension.ts` 全量类型化移植(309 行 JS → strict TS;languageclient
+  v9 走 /node 子入口);webpack → esbuild 构建链;`npm run typecheck`
+  (tsc --noEmit)零错;宿主外 require 冒烟——新旧 bundle 在同一 vscode-stub
+  桩点以同一方式失败(等价性证据);真实扩展宿主 F5 联调归 5-B 批次。
 
 ### 5-B semantic tokens(预估 3 天,需 LSP 侧配合)
 
@@ -39,11 +35,12 @@
 
 ## 2. Phase 6 剩余(持续维护基建)
 
-### 6-A CI push 触发恢复(预估 0.5 天)
+### 6-A CI push 触发恢复 ✅ 2026-08-22 完成
 
-- **现状**: `.github/workflows/lsp-ci.yml` 仅 `workflow_dispatch`(push
-  常红被禁)。恢复 push 触发前先修红:本地 `cargo test -p auto-lsp` +
-  集成测试全绿为门槛;CI 加 `paths` 过滤(crontab 只盯 lsp 目录)。
+- 常红根因定位:fmt 作业检查**全仓**(9000+ 文件非 rustfmt-clean)。
+  修复:auto-lsp 包 `cargo fmt -p` 清零(测试 8/0 保持);fmt 作业收缩为
+  包级;push/pull_request 触发恢复并加 `paths: crates/auto-lsp/**` 过滤。
+  全仓 fmt 属独立决策(登记 Plan 416 后续 6-C)。
 
 ### 6-B 集成测试扩容(预估 2 天)
 
@@ -54,6 +51,6 @@
 
 ## 3. 执行顺序与联调安排
 
-5-A(纯迁移,无联调)→ 6-A(CI 解红)→ 5-B(唯一需 VSCode 实机)→
-5-C → 6-B。全部可在无 GUI CI 环境推进,仅 5-B 最后一步需要桌面 VSCode
-会话(约半天)。分支:`plan-fix/416-<id>`。
+5-A ✅ → 6-A ✅ → 5-B(唯一需 VSCode 实机)→ 5-C → 6-B →(新增 6-C
+全仓 rustfmt 决策项)。5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
+gitee);6-A 落在 auto-lang(auto-lsp-ci.yml)。

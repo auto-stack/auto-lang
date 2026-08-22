@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use auto_lang::ast::ModulePath;
-use auto_lang::resolver::ModuleResolver;
 use auto_lang::database::Database;
 use auto_lang::indexer::Indexer;
 use auto_lang::parser::Parser;
 use auto_lang::resolver::FilesystemResolver;
+use auto_lang::resolver::ModuleResolver;
 use auto_lang::types::TypeStore;
 use auto_lang::use_scanner::scan_use_statements;
 use auto_val::AutoStr;
@@ -56,7 +56,8 @@ pub fn build_workspace_state(
             if let Some(module_file_path) = resolved {
                 if let Ok(module_source) = std::fs::read_to_string(&module_file_path) {
                     let module_path_str = module_file_path.to_string_lossy().to_string();
-                    let module_file_id = workspace_db.insert_source(&module_path_str, AutoStr::from(&module_source));
+                    let module_file_id =
+                        workspace_db.insert_source(&module_path_str, AutoStr::from(&module_source));
 
                     let mut module_parser = Parser::from(module_source.as_str());
                     if let Ok(module_ast) = module_parser.parse() {
@@ -106,20 +107,26 @@ fn resolve_use_statement(
     if let Some(rest) = module.strip_prefix("pac.") {
         let segments: Vec<AutoStr> = rest.split('.').map(AutoStr::from).collect();
         let module_path = ModulePath::pac(segments);
-        return resolver.resolve_with_prefix(&module_path, current_file.to_path_buf()).ok();
+        return resolver
+            .resolve_with_prefix(&module_path, current_file.to_path_buf())
+            .ok();
     }
 
     // Handle super.* imports
     if let Some(rest) = module.strip_prefix("super.") {
         let segments: Vec<AutoStr> = rest.split('.').map(AutoStr::from).collect();
         let module_path = ModulePath::super_path(segments);
-        return resolver.resolve_with_prefix(&module_path, current_file.to_path_buf()).ok();
+        return resolver
+            .resolve_with_prefix(&module_path, current_file.to_path_buf())
+            .ok();
     }
 
     // Handle local imports (no prefix)
     let segments: Vec<AutoStr> = module.split('.').map(AutoStr::from).collect();
     let module_path = ModulePath::local(segments);
-    resolver.resolve_with_prefix(&module_path, current_file.to_path_buf()).ok()
+    resolver
+        .resolve_with_prefix(&module_path, current_file.to_path_buf())
+        .ok()
 }
 
 /// Workspace state containing merged symbols from all resolved modules

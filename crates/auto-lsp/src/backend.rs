@@ -9,10 +9,10 @@ use tower_lsp_server::{Client, LanguageServer};
 
 use crate::completion;
 use crate::diagnostics;
-use crate::hover_info;
 use crate::goto_def;
-use crate::workspace;
+use crate::hover_info;
 use crate::signature_help;
+use crate::workspace;
 
 /// Document state stored by the LSP
 #[derive(Debug, Clone)]
@@ -69,13 +69,7 @@ impl Backend {
     /// Update document content
     async fn update_document(&self, uri: String, content: String, version: i32) {
         let mut docs = self.documents.write().await;
-        docs.insert(
-            uri,
-            DocumentState {
-                content,
-                version,
-            },
-        );
+        docs.insert(uri, DocumentState { content, version });
     }
 
     /// Remove document from cache
@@ -92,10 +86,18 @@ impl Backend {
     }
 
     /// Build workspace state for a document, resolving its imports
-    async fn build_workspace_state(&self, uri: &str, content: &str) -> Option<workspace::WorkspaceState> {
+    async fn build_workspace_state(
+        &self,
+        uri: &str,
+        content: &str,
+    ) -> Option<workspace::WorkspaceState> {
         let resolver = self.resolver.read().await.clone()?;
         let document_path = std::path::PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri));
-        Some(workspace::build_workspace_state(content, &document_path, &resolver))
+        Some(workspace::build_workspace_state(
+            content,
+            &document_path,
+            &resolver,
+        ))
     }
 }
 
@@ -151,7 +153,11 @@ impl LanguageServer for Backend {
                 )),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),
-                    trigger_characters: Some(vec![":".to_string(), ".".to_string(), "(".to_string()]),
+                    trigger_characters: Some(vec![
+                        ":".to_string(),
+                        ".".to_string(),
+                        "(".to_string(),
+                    ]),
                     work_done_progress_options: Default::default(),
                     all_commit_characters: None,
                     completion_item: None,
@@ -206,10 +212,7 @@ impl LanguageServer for Backend {
         let version = params.text_document.version;
 
         self.client
-            .log_message(
-                MessageType::INFO,
-                format!("Opened document: {}", uri),
-            )
+            .log_message(MessageType::INFO, format!("Opened document: {}", uri))
             .await;
 
         self.update_document(uri.clone(), content, version).await;
@@ -248,7 +251,8 @@ impl LanguageServer for Backend {
             current_content
         };
 
-        self.update_document(uri.clone(), new_content.clone(), version).await;
+        self.update_document(uri.clone(), new_content.clone(), version)
+            .await;
 
         // **Debouncing**: Cancel any existing parse task for this URI
         {
@@ -285,10 +289,7 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri.to_string();
 
         self.client
-            .log_message(
-                MessageType::INFO,
-                format!("Closed document: {}", uri),
-            )
+            .log_message(MessageType::INFO, format!("Closed document: {}", uri))
             .await;
 
         self.close_document(uri).await;
@@ -296,11 +297,7 @@ impl LanguageServer for Backend {
 
     /// Provide code completion
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let uri = params
-            .text_document_position
-            .text_document
-            .uri
-            .to_string();
+        let uri = params.text_document_position.text_document.uri.to_string();
 
         let position = params.text_document_position.position;
 
@@ -308,13 +305,19 @@ impl LanguageServer for Backend {
         if let Some(content) = self.get_document(&uri).await {
             // Extract trigger character if available
             let trigger_char = params.context.as_ref().and_then(|ctx| {
-                ctx.trigger_character.as_ref().and_then(|s| s.chars().next())
+                ctx.trigger_character
+                    .as_ref()
+                    .and_then(|s| s.chars().next())
             });
 
             // Try workspace-aware completion first (includes cross-file symbols)
             if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
                 let items = completion::complete_workspace(
-                    &content, position, &uri, trigger_char, &ws_state,
+                    &content,
+                    position,
+                    &uri,
+                    trigger_char,
+                    &ws_state,
                 );
                 return Ok(Some(CompletionResponse::Array(items)));
             }
@@ -355,10 +358,7 @@ impl LanguageServer for Backend {
     }
 
     /// Provide signature help
-    async fn signature_help(
-        &self,
-        params: SignatureHelpParams,
-    ) -> Result<Option<SignatureHelp>> {
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
         let uri = params
             .text_document_position_params
             .text_document
@@ -373,7 +373,9 @@ impl LanguageServer for Backend {
 
         // Try workspace-aware signature help first
         if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
-            if let Some(result) = signature_help::get_signature_help_workspace(&content, position, &ws_state) {
+            if let Some(result) =
+                signature_help::get_signature_help_workspace(&content, position, &ws_state)
+            {
                 return Ok(Some(result));
             }
         }
@@ -402,7 +404,9 @@ impl LanguageServer for Backend {
 
         // Try workspace-aware goto-definition first
         if let Some(ws_state) = self.build_workspace_state(&uri, &content).await {
-            if let Some(result) = goto_def::find_definition_workspace(&content, position, &uri, &ws_state) {
+            if let Some(result) =
+                goto_def::find_definition_workspace(&content, position, &uri, &ws_state)
+            {
                 return Ok(Some(result));
             }
         }
@@ -413,11 +417,7 @@ impl LanguageServer for Backend {
 
     /// Find references
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        let uri = params
-            .text_document_position
-            .text_document
-            .uri
-            .to_string();
+        let uri = params.text_document_position.text_document.uri.to_string();
         let position = params.text_document_position.position;
 
         let content = match self.get_document(&uri).await {
@@ -431,7 +431,10 @@ impl LanguageServer for Backend {
             Some(l) => l,
             None => return Ok(None),
         };
-        let word = match get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character)) {
+        let word = match get_word_at_position(
+            line,
+            crate::position::utf16_to_byte_offset(line, position.character),
+        ) {
             Some(w) => w,
             None => return Ok(None),
         };
@@ -444,14 +447,17 @@ impl LanguageServer for Backend {
             for frag_id in db.all_fragment_ids() {
                 if let Some(meta) = db.get_fragment_meta(&frag_id) {
                     if meta.name.as_str() == word {
-                        let file_path = db.get_file_path(meta.file_id)
+                        let file_path = db
+                            .get_file_path(meta.file_id)
                             .map(|p| p.to_string())
                             .unwrap_or_else(|| uri.clone());
 
                         let target_uri: Uri = if file_path.starts_with("file://") {
                             file_path.parse().unwrap_or_else(|_| uri.parse().unwrap())
                         } else {
-                            format!("file://{}", file_path).parse().unwrap_or_else(|_| uri.parse().unwrap())
+                            format!("file://{}", file_path)
+                                .parse()
+                                .unwrap_or_else(|_| uri.parse().unwrap())
                         };
 
                         locations.push(Location {
@@ -527,7 +533,10 @@ impl LanguageServer for Backend {
     }
 
     /// Workspace symbols (search across project)
-    async fn symbol(&self, params: WorkspaceSymbolParams) -> Result<Option<WorkspaceSymbolResponse>> {
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
         self.client
             .log_message(
                 MessageType::LOG,
@@ -556,14 +565,17 @@ impl LanguageServer for Backend {
                                 auto_lang::database::FragKind::Impl => SymbolKind::METHOD,
                             };
 
-                            let file_path = db.get_file_path(meta.file_id)
+                            let file_path = db
+                                .get_file_path(meta.file_id)
                                 .map(|p| p.to_string())
                                 .unwrap_or_else(|| uri.clone());
 
                             let target_uri = if file_path.starts_with("file://") {
                                 file_path.parse().unwrap_or_else(|_| uri.parse().unwrap())
                             } else {
-                                format!("file://{}", file_path).parse().unwrap_or_else(|_| uri.parse().unwrap())
+                                format!("file://{}", file_path)
+                                    .parse()
+                                    .unwrap_or_else(|_| uri.parse().unwrap())
                             };
 
                             symbols.push(WorkspaceSymbol {
@@ -602,11 +614,7 @@ impl LanguageServer for Backend {
 
     /// Rename symbol
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
-        let uri = params
-            .text_document_position
-            .text_document
-            .uri
-            .to_string();
+        let uri = params.text_document_position.text_document.uri.to_string();
         let position = params.text_document_position.position;
         let new_name = params.new_name;
 
@@ -621,7 +629,10 @@ impl LanguageServer for Backend {
             Some(l) => l,
             None => return Ok(None),
         };
-        let word = match get_word_at_position(line, crate::position::utf16_to_byte_offset(line, position.character)) {
+        let word = match get_word_at_position(
+            line,
+            crate::position::utf16_to_byte_offset(line, position.character),
+        ) {
             Some(w) => w,
             None => return Ok(None),
         };
@@ -660,10 +671,7 @@ impl LanguageServer for Backend {
     }
 
     /// Code actions (quick fixes)
-    async fn code_action(
-        &self,
-        params: CodeActionParams,
-    ) -> Result<Option<CodeActionResponse>> {
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = params.text_document.uri.to_string();
         let range = params.range;
 
@@ -698,8 +706,14 @@ impl LanguageServer for Backend {
                                             uri.parse().unwrap(),
                                             vec![TextEdit {
                                                 range: Range {
-                                                    start: Position { line: 0, character: 0 },
-                                                    end: Position { line: 0, character: 0 },
+                                                    start: Position {
+                                                        line: 0,
+                                                        character: 0,
+                                                    },
+                                                    end: Position {
+                                                        line: 0,
+                                                        character: 0,
+                                                    },
                                                 },
                                                 new_text: format!("use {}\n", word),
                                             }],
@@ -767,8 +781,9 @@ impl Backend {
                 tokio::time::Duration::from_secs(5),
                 tokio::task::spawn_blocking(move || {
                     diagnostics::parse_diagnostics(&uri_clone, &content_clone, 0)
-                })
-            ).await;
+                }),
+            )
+            .await;
 
             match diagnostics {
                 Ok(Ok(diagnostics)) => {
@@ -782,11 +797,7 @@ impl Backend {
 
                     if let Ok(uri_parsed) = uri.parse::<Uri>() {
                         self.client
-                            .publish_diagnostics(
-                                uri_parsed,
-                                diagnostics,
-                                None,
-                            )
+                            .publish_diagnostics(uri_parsed, diagnostics, None)
                             .await;
                     } else {
                         self.client
@@ -875,7 +886,10 @@ fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
 
             // Find the line content to determine range
             let lines: Vec<&str> = content.lines().collect();
-            let line_len = lines.get(line as usize).map(|l| l.len() as u32).unwrap_or(0);
+            let line_len = lines
+                .get(line as usize)
+                .map(|l| l.len() as u32)
+                .unwrap_or(0);
 
             symbols.push(DocumentSymbol {
                 name: meta.name.to_string(),
@@ -886,11 +900,20 @@ fn extract_document_symbols(content: &str) -> Vec<DocumentSymbol> {
                 deprecated: None,
                 range: Range {
                     start: Position { line, character: 0 },
-                    end: Position { line, character: line_len },
+                    end: Position {
+                        line,
+                        character: line_len,
+                    },
                 },
                 selection_range: Range {
-                    start: Position { line, character: col },
-                    end: Position { line, character: col + meta.name.len() as u32 },
+                    start: Position {
+                        line,
+                        character: col,
+                    },
+                    end: Position {
+                        line,
+                        character: col + meta.name.len() as u32,
+                    },
                 },
                 children: None,
             });

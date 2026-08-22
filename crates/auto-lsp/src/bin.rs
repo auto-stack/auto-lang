@@ -9,11 +9,9 @@ async fn main() {
     #[cfg(target_os = "windows")]
     {
         use std::fs::OpenOptions;
-        
 
         // Open NUL device for discarding output
         if let Ok(nul) = OpenOptions::new().write(true).open("NUL") {
-            
             use std::mem;
 
             // NOTE: This doesn't actually redirect stdout/stderr at the OS level.
@@ -28,7 +26,5 @@ async fn main() {
 
     // Create and run the LSP server
     let (service, socket) = LspService::new(|client| Backend::new(client));
-    Server::new(stdin, stdout, socket)
-        .serve(service)
-        .await;
+    Server::new(stdin, stdout, socket).serve(service).await;
 }
