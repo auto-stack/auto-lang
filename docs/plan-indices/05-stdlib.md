@@ -25,8 +25,10 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 211 | Stdlib Test Coverage 80%+ | ✅ | VM + a2r tests for all stdlib modules (~60 new tests) |
 | 250 | Auto Stdlib Enhancement | ✅ | 11 new stdlib modules (cmp, clone, default, fmt, result, sort, random, datetime, encoding, fs, hash) |
 
+| 346 | Web Framework 差距(调研→实施) | ✅ | 全部实施项落地:query/表单/中间件/500/日志/通配符 + session/SSR/OpenAPI(352)+ 3c 重定向(A5)+ multipart/RateLimit/Request-ID 三件套(B6);调研型计划清零归档 |
+
 ## Status Summary
-- Completed: 9 | Partial: 2 | Planned: 5 | Deprecated: 0
+- Completed: 10 | Partial: 2 | Planned: 5 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform ext architecture enabling .at (interface) / .vm.at (VM impl) / .c.at (C impl) separation

@@ -26,13 +26,13 @@ AutoLang's build infrastructure spans two major domains: the compiler-internal A
 | 212a | LSP + VSCode Extension Modernization | Complete | TextMate grammar rewrite, LSP completion sync, Document Symbols, code snippets |
 | 219 | Playground Source Map | Complete | Source map generation for playground editor with AST-to-output position mapping |
 | 225 | Playground Interactive Debugger | Complete | Browser-based VM debugger with breakpoints, step controls, stack/locals panels via WebSocket |
-| 243 | LSP & VSCode Modernization | Partial | Rewrite auto-lsp as compiler-native wrapper over Database+QueryEngine; Phase 1 (compiles), Phase 2-6 pending |
+| 243 | LSP & VSCode Modernization | Complete | Phase 1-6 全数完成(1-4 @ 71acecc4;5/6 由 Plan 416 补完:TS 迁移/semantic tokens/补全数据源/契约文档/CI 恢复/集成测试);F5 着色核验与 rename 边界登记债务簿 |
 | 267 | FFI Complex Patterns | Complete | WalkDir iterator, same_file real impl, TarGzip/tar+flate2 composition shims |
 
 ## Status
 
-**Implemented**: 063 (partial), 064, 065, 066, 092, 146, 202, 212a, 212b, 214, 216, 219, 225, 267
-**Partial**: 063 (MCU phases deferred), 243 (Phase 1 only)
+**Implemented**: 063 (partial), 064, 065, 066, 092, 146, 202, 212a, 212b, 214, 216, 219, 225, 243, 267
+**Partial**: 063 (MCU phases deferred)
 **Planned**: 093, 111, 112, 151, 186
 
 ## Design
@@ -120,5 +120,5 @@ Plan 186 replaces npm with bun across all Vue/web project tooling in auto-man. B
 - [212-lsp-vscode-modernization.md](../plans/212-lsp-vscode-modernization.md)
 - [219-playground-source-map.md](../plans/219-playground-source-map.md)
 - [225-playground-interactive-debugger.md](../plans/archive/225-playground-interactive-debugger.md)
-- [243-lsp-vscode-modernization.md](../plans/243-lsp-vscode-modernization.md)
+- [243-lsp-vscode-modernization.md](../plans/archive/243-lsp-vscode-modernization.md)
 - [267-ffi-complex-patterns.md](../plans/archive/267-ffi-complex-patterns.md)
