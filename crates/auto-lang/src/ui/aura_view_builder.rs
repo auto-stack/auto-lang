@@ -916,14 +916,11 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
-            // Plan 418 P2-3: same synthesis, no probe recording (untracked
-            // path has no stable node paths).
-            "menubar" => self.convert_menubar(props, bindings, None),
-            "toolbar" => self.convert_toolbar(props, bindings, None),
             "avatar" => self.convert_avatar(props),
             // Plan 418 P2-3: config-driven menubar/toolbar (auto-edit.at).
             // path/probe pass through so synthesized buttons land in the
-            // snapshot's event index (MCP clickability).
+            // snapshot's event index (MCP clickability). §8.4①: probe off
+            // (capture_debug=false)时 record_event 早退,零开销。
             "menubar" => {
                 let p = path.clone();
                 self.convert_menubar(props, bindings, Some((&p, probe)))
@@ -3139,12 +3136,13 @@ let tabs_inner = View::Row {
 
         let open = menubar_open();
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
-        let mut child_idx = 0usize;
         let mut left = 8.0f32;
         for menu in &cfg.menus {
             let is_open = open.as_deref() == Some(menu.id.as_str());
-            record!(child_idx, &format!("__menubar_toggle(\"{}\")", menu.id));
-            child_idx += 1;
+            // Plan 418 §8.4①: probe 路径按真实子位置记录(children.len()),
+            // 不再用独立计数器 —— 面板列/捕层作为兄弟节点占位,历史计数器
+            // 会把面板项误记为行级子节点并令后续按钮索引漂移。
+            record!(children.len(), &format!("__menubar_toggle(\"{}\")", menu.id));
             children.push(View::Button {
                 label: menu.title.clone(),
                 onclick: DynamicMessage::Typed {
@@ -3165,8 +3163,7 @@ let tabs_inner = View::Row {
                 // Click-outside catcher + dropdown panel (mirrors the
                 // hand-written 414 structure: catcher under the panel, both
                 // hoisted via absolute positioning).
-                record!(child_idx, "__menubar_close");
-                child_idx += 1;
+                record!(children.len(), "__menubar_close");
                 children.push(View::Button {
                     label: String::new(),
                     onclick: DynamicMessage::Typed {
@@ -3179,6 +3176,10 @@ let tabs_inner = View::Row {
                     content: None,
                 });
 
+                // 面板列在 catcher 之后作为单个子节点压入 —— 项的真实路径是
+                // [base, panel_idx, item_idx](§8.4①:嵌套两段;sep 占位由
+                // items.len() 自然计数,Action 项记录时机在 push 之前)。
+                let panel_idx = children.len();
                 let mut items: Vec<View<DynamicMessage>> = Vec::new();
                 for item in &menu.items {
                     match item {
@@ -3188,8 +3189,13 @@ let tabs_inner = View::Row {
                         MenuItem::Action(id) => {
                             let Some(a) = cfg.action_by_id(id) else { continue };
                             let handler = a.handler.trim_start_matches('.').to_string();
-                            record!(child_idx, &a.handler);
-                            child_idx += 1;
+                            if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
+                                let mut child = base.clone();
+                                child.push(panel_idx);
+                                child.push(items.len());
+                                let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
+                                probe.record_event(&p, "onclick", &a.handler);
+                            }
                             // Plan 418 §8.4③: checked-if 渲染 —— 简单 `.field`
                             // 布尔状态直接读 state;非标识符形态保持未勾选
                             // (解析层仅约定标识符引用)。每项固定 16px 勾选槽,
@@ -3255,7 +3261,6 @@ let tabs_inner = View::Row {
                     ))
                     .ok(),
                 });
-                child_idx += 1;
             }
             left += menu.title.chars().count() as f32 * 12.0 + 28.0;
         }
@@ -3296,20 +3301,20 @@ let tabs_inner = View::Row {
         let Some(cfg) = action_config() else { return empty() };
 
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
-        let mut child_idx = 0usize;
         for item in &cfg.toolbar {
             match item {
                 MenuItem::Separator => children.push(self.convert_sep(&HashMap::new(), bindings)),
                 MenuItem::Action(id) => {
                     let Some(a) = cfg.action_by_id(id) else { continue };
                     let handler = a.handler.trim_start_matches('.').to_string();
+                    // §8.4①: 按真实子位置记录(children.len() —— sep 也占
+                    // 位;独立计数器会令 sep 之后的按钮索引全部前移错位)。
                     if let Some((base, probe)) = &mut path {
                         let mut child = base.to_vec();
-                        child.push(child_idx);
+                        child.push(children.len());
                         let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
                         probe.record_event(&p, "onclick", &a.handler);
                     }
-                    child_idx += 1;
                     let icon = a.icon.clone().unwrap_or_default();
                     let label = if icon.is_empty() {
                         a.title.clone()
