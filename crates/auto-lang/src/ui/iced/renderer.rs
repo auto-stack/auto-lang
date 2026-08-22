@@ -2238,6 +2238,48 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         _ => None,
                     })
                 });
+                // Plan 057 (ash-gui VM 修复): icon-button 形态 —— style 同时带固定
+                // 宽和高(如 block 头部 `h-6 w-6` 的 chevron/copy 按钮)。这类按钮的
+                // variant/size preset 会前置 `px-4`(16px),用户 class 只有 w/h 时
+                // 16px×2 的水平内边距超过按钮宽度,iced 的内容区收敛到 ≤0,icon/文字
+                // 一律不绘制(块头操作按钮全空白的根因)。CSS 侧这些按钮靠
+                // `flex items-center justify-center` 居中,iced 无 flex——此处对
+                // 双固定尺寸按钮:内边距清零 + 内容在盒内双向居中,复现 CSS 语义。
+                let fixed_both = matches!(
+                    (iced_style.as_ref().and_then(|is| is.width), iced_style.as_ref().and_then(|is| is.height)),
+                    (
+                        Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_)),
+                        Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_))
+                    )
+                );
+                {
+                    use std::sync::atomic::{AtomicU64, Ordering};
+                    static DBG_N: AtomicU64 = AtomicU64::new(0);
+                    let is_img = matches!(content.as_deref(), Some(AbstractView::Image { .. }));
+                    if is_img && DBG_N.fetch_add(1, Ordering::Relaxed) < 8 {
+                        let ck = match &content {
+                            Some(v) => match &**v {
+                                AbstractView::Image { src, .. } => format!("Image({})", src),
+                                AbstractView::Column { children, .. } => format!("Col({})", children.len()),
+                                AbstractView::Text { content, .. } => format!("Text({:?})", content),
+                                _ => "other".into(),
+                            },
+                            None => "None".into(),
+                        };
+                        eprintln!(
+                            "[DBG-BTN] label={:?} content={} fixed_both={} w={:?} h={:?} pad={:?}/{:?}/{:?} classes={:?}",
+                            label,
+                            ck,
+                            fixed_both,
+                            iced_style.as_ref().and_then(|is| is.width.map(|w| match w { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
+                            iced_style.as_ref().and_then(|is| is.height.map(|h| match h { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
+                            iced_style.as_ref().and_then(|is| is.padding),
+                            iced_style.as_ref().and_then(|is| is.padding_x),
+                            iced_style.as_ref().and_then(|is| is.padding_y),
+                            style.as_ref().map(|s| s.classes.iter().map(|c| match c { StyleClass::PaddingX(_)=>"px".to_string(), StyleClass::PaddingY(_)=>"py".to_string(), StyleClass::Padding(_)=>"p".to_string(), _=>".".to_string() }).collect::<String>())
+                        );
+                    }
+                }
                 let button_content: iced::Element<'static, M> = if let Some(mut content_view) = content {
                     if let Some(color) = inherit_color {
                         inherit_text_color(&mut content_view, color);
@@ -2249,34 +2291,41 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
                     if let Some(svg_str) = lucide_svg(icon_name) {
                         // Plan 409 §10 续: PUA icon(button label 内嵌的 nav-link
-                        // 图标)用 button 的 text_color 染色,与文字同色。iced SVG
-                        // 无 CSS currentColor 上下文,需把具体颜色注入 stroke;key
-                        // 与 View::Image 的 lucide 染色一致,共享 SVG cache。
-                        // Plan 409 §10 续: nav-link 等 style=None 的 button,iced_style
-                        // 为 None → 用 OnBackground 默认色(与 chromeless button 的
-                        // text_color 一致, renderer §3.4),避免 icon 用 SVG 默认深色。
+                        // 图标)与文字同色 —— button 的 text_color,无则 OnBackground
+                        // (renderer §3.4,避免 resvg 把 currentColor 画成黑色)。
+                        // 2026-08-21 方案 A:改画时着色(svg::Style.color);悬停色取
+                        // 按钮自身 hover:text-*(浏览器里 button:hover 的 color 经
+                        // 继承级联到内联 SVG,此处以 svg 自身 Hovered 状态近似 ——
+                        // 命中区为图标盒而非整个按钮,图标贴文本时差异可忽略)。
                         let text_color = iced_style.as_ref().and_then(|is| is.text_color)
                             .or_else(|| {
                                 crate::ui::style::iced_adapter::resolve_semantic_rgb(
                                     &crate::ui::style::Color::OnBackground,
                                 ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                             });
-                        let (handle_key, svg_bytes) = match text_color {
-                            Some(tc) => {
-                                let (r, g, b) = (
-                                    (tc.r * 255.0) as u8,
-                                    (tc.g * 255.0) as u8,
-                                    (tc.b * 255.0) as u8,
-                                );
-                                let rgba = format!("rgba({},{},{},{})", r, g, b, tc.a);
-                                let colored = svg_str.replace("currentColor", &rgba);
-                                let key = format!("lucide:{}#{:02x}{:02x}{:02x}", icon_name, r, g, b);
-                                (key, colored.into_bytes())
-                            }
-                            None => (format!("lucide:{}", icon_name), svg_str.as_bytes().to_vec()),
-                        };
-                        let handle = get_or_create_svg_handle(&handle_key, svg_bytes);
+                        let hover_color = style.as_ref().and_then(|s| {
+                            s.hover_classes.iter().find_map(|c| match c {
+                                StyleClass::TextColor(color) => {
+                                    Some(crate::ui::style::iced_adapter::convert_color(color))
+                                }
+                                _ => None,
+                            })
+                        });
+                        let base = text_color.unwrap_or(iced::Color::BLACK);
+                        let handle = get_or_create_svg_handle(
+                            &format!("lucide:{}", icon_name),
+                            svg_str.as_bytes().to_vec(),
+                        );
                         let icon_el = iced::widget::svg(handle)
+                            .style(move |_, status| {
+                                let color = match status {
+                                    iced::widget::svg::Status::Hovered => {
+                                        hover_color.unwrap_or(base)
+                                    }
+                                    _ => base,
+                                };
+                                iced::widget::svg::Style { color: Some(color) }
+                            })
                             .width(iced::Length::Fixed(14.0))
                             .height(iced::Length::Fixed(14.0));
                         let mut tw = text(text_label.to_string());
@@ -2360,7 +2409,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // Plan 409 §10 续 21: Fixed-height button 的 content 垂直居中
                 // (iced button padded 默认 content 顶部对齐,h-9/h-10/h-11 会偏上)。
                 // 包一层 Fill+center_y 容器让文字纵向居中。
-                let button_content: iced::Element<'static, M> = if iced_style.as_ref().map_or(false, |is| is.height.is_some()) {
+                // Plan 057 (ash-gui VM 修复): 双固定尺寸 icon-button 走双向居中
+                // (见上方 fixed_both 注释),复现 `flex items-center justify-center`。
+                let button_content: iced::Element<'static, M> = if fixed_both {
+                    iced::widget::container(button_content)
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .center_x(iced::Length::Fill)
+                        .center_y(iced::Length::Fill)
+                        .into()
+                } else if iced_style.as_ref().map_or(false, |is| is.height.is_some()) {
                     iced::widget::container(button_content)
                         .height(iced::Length::Fill)
                         .align_y(iced::alignment::Vertical::Center)
@@ -2381,8 +2439,39 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // default Primary (blue).
                 if let Some(ref is) = iced_style {
                     let bs = build_button_style(is);
-                    btn = btn.style(move |_, _| bs);
-                    if let Some(px) = is.padding {
+                    // `hover:` utilities: build a hovered variant with the
+                    // hover classes applied on top of the base classes
+                    // (later application wins, so hover:bg-* overrides the
+                    // base background). iced re-invokes this closure on
+                    // status changes — native hover feedback without a view
+                    // rebuild (e.g. block header icon buttons light up via
+                    // hover:bg-white/10). hover:text-* here only reaches the
+                    // button's own label/text_color — icons recolor through
+                    // their own svg Status styling (see Image lucide arm /
+                    // PUA icon arm, 2026-08-21 方案 A), other pre-built child
+                    // content is unaffected.
+                    let bs_hover = match style.as_ref() {
+                        Some(s) if !s.hover_classes.is_empty() => {
+                            let mut merged = s.classes.clone();
+                            merged.extend(s.hover_classes.iter().cloned());
+                            build_button_style(&IcedStyle::from_style(&Style {
+                                classes: merged,
+                                hover_classes: Vec::new(),
+                            }))
+                        }
+                        _ => bs,
+                    };
+                    btn = btn.style(move |_, status| match status {
+                        iced::widget::button::Status::Hovered
+                        | iced::widget::button::Status::Pressed => bs_hover,
+                        _ => bs,
+                    });
+                    if fixed_both {
+                        // Plan 057 (ash-gui VM 修复): 双固定尺寸按钮内边距清零
+                        // (preset 的 px-4=16px×2 会把 w-6=24px 的内容区压到 ≤0,
+                        // icon 不绘制);内容居中由上方 wrapper 负责。
+                        btn = btn.padding(0.0);
+                    } else if let Some(px) = is.padding {
                         btn = btn.padding(px);
                     } else if is.padding_x.is_some() || is.padding_y.is_some() {
                         let px_x = is.padding_x.unwrap_or(8.0);
@@ -2945,27 +3034,52 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
                     if let Some(svg_str) = lucide_svg(icon_name) {
-                        // Plan 409 §10 组 C: tint the glyph with the style's text_color
-                        // (e.g. logo `icon (style:"...text-primary")`). iced's svg
-                        // renderer has no CSS currentColor context, so we substitute
-                        // the concrete color into the SVG stroke and cache per color.
-                        let (handle_key, svg_bytes) =
-                            match is.as_ref().and_then(|is| is.text_color) {
-                                Some(tc) => {
-                                    let (r, g, b) = (
-                                        (tc.r * 255.0) as u8,
-                                        (tc.g * 255.0) as u8,
-                                        (tc.b * 255.0) as u8,
-                                    );
-                                    let rgba = format!("rgba({},{},{},{})", r, g, b, tc.a);
-                                    let colored = svg_str.replace("currentColor", &rgba);
-                                    let key = format!("{}#{:02x}{:02x}{:02x}", src, r, g, b);
-                                    (key, colored.into_bytes())
+                        // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
+                        // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
+                        // 像素的 RGB 整体替换(按 (handle,size,color) 缓存,引擎
+                        // 级 currentColor),取代旧的"颜色烘焙进 SVG 字节"(view
+                        // 构建时定死,悬停无法变化)。基础色:自身 text-*(按钮内
+                        // 经 inherit_text_color 已继承按钮色),回落 OnBackground
+                        // (resvg 会把 currentColor 画成黑色)。悬停色:图标自己的
+                        // hover:text-* —— svg::Status::Hovered 命中区即图标包围
+                        // 盒,与 CSS 元素级 :hover 语义一致(hover:text 写在 icon
+                        // 上,浏览器里也只在图标盒内触发,而非整个按钮)。
+                        // 注:wgpu tint 只替换 RGB、忽略 Color.a —— 颜色自带透明
+                        // 度(如 text-red-400/80)经 .opacity() 补偿;悬停色 alpha
+                        // 忽略(opacity 构建期恒定)。
+                        let base_color = is
+                            .as_ref()
+                            .and_then(|is| is.text_color)
+                            .or_else(|| {
+                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::OnBackground,
+                                )
+                                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            })
+                            .unwrap_or(iced::Color::BLACK);
+                        let hover_color = style.as_ref().and_then(|s| {
+                            s.hover_classes.iter().find_map(|c| match c {
+                                StyleClass::TextColor(color) => {
+                                    Some(crate::ui::style::iced_adapter::convert_color(color))
                                 }
-                                None => (src.to_string(), svg_str.as_bytes().to_vec()),
-                            };
-                        let handle = get_or_create_svg_handle(&handle_key, svg_bytes);
-                        let mut svg_widget = iced::widget::svg(handle);
+                                _ => None,
+                            })
+                        });
+                        let handle =
+                            get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
+                        let mut svg_widget =
+                            iced::widget::svg(handle).style(move |_, status| {
+                                let color = match status {
+                                    iced::widget::svg::Status::Hovered => {
+                                        hover_color.unwrap_or(base_color)
+                                    }
+                                    _ => base_color,
+                                };
+                                iced::widget::svg::Style { color: Some(color) }
+                            });
+                        if base_color.a < 1.0 {
+                            svg_widget = svg_widget.opacity(base_color.a);
+                        }
                         svg_widget = svg_widget.width(w.unwrap_or(iced::Length::Fixed(16.0)));
                         svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));
                         return container(svg_widget).into();
@@ -4491,6 +4605,81 @@ async fn merged_exec_loop(
             continue;
         }
 
+        // 2026-08-21:cd/pwd 是 ash 内置会话命令 —— 子进程里的 cd 影响不了
+        // 会话状态,与 show/ls 同理在 renderer 侧拦截。cd 解析目标目录
+        // (支持 ~ / ~/x / 相对 / 绝对路径,".." 走相对 join 即可),canonicalize
+        // 后把新 cwd 放进 command_result —— command_result 处理器会回写
+        // state.cwd 并触发 RefreshContext(见上方 cwd 回写),标题栏与后续
+        // 命令的执行目录随之更新:merge 模式的"会话 cwd"就靠这条回写链。
+        // pwd 输出跟踪的 cwd(与标题栏同源),不再依赖 PATH 里的 pwd.exe
+        // (Git 的 pwd.exe 输出 MSYS 风格 /d/... 路径,与标题栏不一致)。
+        if cmd_name == "cd" {
+            let arg = cmd.split_whitespace().nth(1).unwrap_or("").trim_matches('"');
+            let home = std::env::var("USERPROFILE")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(|| std::env::var("HOME").ok().filter(|s| !s.is_empty()));
+            let target: std::path::PathBuf = if let Some(rest) = arg.strip_prefix('~') {
+                let base = home.clone().map(std::path::PathBuf::from).unwrap_or_default();
+                // "~/x"(或空 "~")→ home + rest;rest 以 / 或 \ 开头时剥掉。
+                base.join(rest.trim_start_matches(['/', '\\']))
+            } else {
+                let p = std::path::Path::new(arg);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    std::path::Path::new(if cwd.is_empty() { "." } else { &cwd }).join(arg)
+                }
+            };
+            let (status_val, new_cwd) = match std::fs::canonicalize(&target) {
+                Ok(real) if real.is_dir() => (
+                    serde_json::Value::String("Success".to_string()),
+                    real.to_string_lossy()
+                        .trim_start_matches(r"\\?\")
+                        .to_string(),
+                ),
+                _ => (
+                    serde_json::json!({"Failed": format!("cd: no such directory: {}", arg)}),
+                    cwd.clone(),
+                ),
+            };
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": new_cwd,
+                    "status": status_val,
+                    "output": null,
+                    "duration_ms": 0,
+                })
+                .to_string(),
+            });
+            continue;
+        }
+        if cmd_name == "pwd" {
+            let shown = if cwd.is_empty() || cwd == "." {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .trim_start_matches(r"\\?\")
+                    .to_string()
+            } else {
+                cwd.clone()
+            };
+            let _ = tx.send(ShellStreamEvent {
+                event: "command_result".to_string(),
+                payload_json: serde_json::json!({
+                    "block_id": block_id,
+                    "cwd": cwd,
+                    "status": "Success",
+                    "output": {"Text": shown},
+                    "duration_ms": 0,
+                })
+                .to_string(),
+            });
+            continue;
+        }
+
         // 跨平台:Windows 用 cmd /C,Unix 用 sh -c。对齐 ash-server 的执行语义
         // (外部命令经 shell 解析,支持管道/重定向)。
         let (program, args) = if cfg!(windows) {
@@ -4739,6 +4928,26 @@ fn csv_escape(t: &str) -> String {
     } else {
         t.to_string()
     }
+}
+
+/// 2026-08-22:结果底栏 copy(Table)→ TSV(制表符直连,不做转义 —— 直贴
+/// Excel/Sheets 自动分列)。CSV 导出归 ExportCsv(table 图标)。
+fn table_to_tsv(tbl: &auto_val::Obj) -> Option<String> {
+    let cols: Vec<String> = match tbl.get("columns") {
+        Some(auto_val::Value::Array(a)) => a.values.iter().map(|v| table_cell_text(v)).collect(),
+        _ => return None,
+    };
+    let mut out = cols.join("\t");
+    if let Some(auto_val::Value::Array(rows)) = tbl.get("rows") {
+        for r in rows.values.iter() {
+            if let auto_val::Value::Array(cells) = r {
+                let line: Vec<String> = cells.values.iter().map(|c| table_cell_text(c)).collect();
+                out.push('\n');
+                out.push_str(&line.join("\t"));
+            }
+        }
+    }
+    Some(out)
 }
 
 /// 数字前缀解析:返回 (值, 是否有效)。单位 K/M/G 缩放(B=1)。
@@ -6521,12 +6730,15 @@ fn compare_pngs(
                 }
             }
         }
-        // Plan 059:复制按钮 VM 桥 —— navigator 是浏览器全局,VM 运行时
-        // 不存在(.at handler 在 guard 静默中止),由 arboard 写系统剪贴板。
-        // CopyCommand → 命令文本;CopyOutput → Text 原文 / Table 导出
-        // CSV(与 .at 侧 Vue 实现同语义:引号加倍、含分隔符/换行加引号)。
+        // Plan 059 → 2026-08-22 结果底栏版:复制按钮 VM 桥 —— navigator 是
+        // 浏览器全局,VM 运行时不存在(.at handler 在 guard 静默中止),由
+        // arboard 写系统剪贴板。CopyCommand → 命令文本;CopyOutput → Text
+        // 原文 / Table TSV(直贴表格软件);ExportCsv → Table CSV(引号转义,
+        // 与 .at 侧 Vue 实现同语义)。
         if widget_name == "BlockItem"
-            && (event_name.starts_with("CopyCommand") || event_name.starts_with("CopyOutput"))
+            && (event_name.starts_with("CopyCommand")
+                || event_name.starts_with("CopyOutput")
+                || event_name.starts_with("ExportCsv"))
         {
             let (_, cargs) = crate::ui::dynamic::decode_payload(&msg.event);
             let cid = cargs.first().map(|v| v.as_int() as i64).unwrap_or(-1);
@@ -6544,7 +6756,11 @@ fn compare_pngs(
                                 if let Some(auto_val::Value::Str(t)) = out.get("Text") {
                                     text = Some(t.as_str().to_string());
                                 } else if let Some(auto_val::Value::Obj(tbl)) = out.get("Table") {
-                                    text = table_to_csv(&tbl);
+                                    text = if event_name.starts_with("ExportCsv") {
+                                        table_to_csv(&tbl)
+                                    } else {
+                                        table_to_tsv(&tbl)
+                                    };
                                 }
                             }
                             break;

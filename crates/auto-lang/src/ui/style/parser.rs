@@ -31,7 +31,9 @@ impl StyleParser {
     /// Parse and create a Style object directly
     pub fn parse_style(&self, input: &str) -> Result<Style, String> {
         let classes = self.parse(input)?;
-        Ok(Style { classes })
+        // hover: tokens are dropped by parse(); Style::parse is the entry
+        // point that collects them into hover_classes.
+        Ok(Style { classes, hover_classes: Vec::new() })
     }
 }
 

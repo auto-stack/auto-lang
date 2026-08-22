@@ -3219,6 +3219,9 @@ let tabs_inner = View::Row {
                         })
                         .cloned()
                         .collect(),
+                    // hover: utilities only feed button hover styling; a text
+                    // child view never consumes them.
+                    hover_classes: Vec::new(),
                 });
                 views.push(View::Text {
                     content: label.clone(),
