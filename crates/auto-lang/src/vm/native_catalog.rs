@@ -104,8 +104,8 @@ macro_rules! for_each_native {
             (1291, NATIVE_HASHMAP_GET_OR, shim_hashmap_get_or, "auto.hashmap.get_or"),
             (1292, NATIVE_HASHMAP_KEYS, shim_hashmap_keys, "auto.hashmap.keys"),
 
-            // === HashSet (129-135) ===
-            (129, NATIVE_HASHSET_NEW, shim_hashset_new, "auto.hashset.new"),
+            // === HashSet (129-135;new=1293 —— 129 原与 hashmap.drop 撞号,2026-08-22 移出) ===
+            (1293, NATIVE_HASHSET_NEW, shim_hashset_new, "auto.hashset.new"),
             (130, NATIVE_HASHSET_INSERT, shim_hashset_insert, "auto.hashset.insert"),
             (131, NATIVE_HASHSET_CONTAINS, shim_hashset_contains, "auto.hashset.contains"),
             (132, NATIVE_HASHSET_REMOVE, shim_hashset_remove, "auto.hashset.remove"),
@@ -391,8 +391,12 @@ macro_rules! for_each_native {
             // 损坏 VM 堆;参数 int,str,path;str,cwd;返回 void)。
             (2869, NATIVE_SHELL_EMIT_SHOW, shim_shell_emit_show, "auto.shell.emit_show"),
             // Plan 060 M3:通用宿主桥(merged 进程内直调;实现由 ash-runner 注册)。
-            (2870, NATIVE_HOST_CALL, shim_host_call, "auto.host.call"),
-            (2871, NATIVE_HOST_CALL_VALUE, shim_host_call_value, "auto.host.call_value"),
+            // 2026-08-22(注册秩序根因修复):原 2870/2871 与下方 Random 段
+            // (2870-2874)撞号 —— bind_shims 后注册覆盖先注册,native_interface
+            // 表派发错位(M3 当时靠引擎直调特例绕过)。挪到空闲段 2930-2931,
+            // 特例已回收,恢复正常表派发。
+            (2930, NATIVE_HOST_CALL, shim_host_call, "auto.host.call"),
+            (2931, NATIVE_HOST_CALL_VALUE, shim_host_call_value, "auto.host.call_value"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -710,7 +714,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.hashmap.keys", 1292, List),        // Plan 036 workaround-5: returns list of keys
 
             // === HashSet (129-135) ===
-            ("auto.hashset.new", 129, Void),
+            ("auto.hashset.new", 1293, Void),
             ("auto.hashset.insert", 130, Void),
             ("auto.hashset.contains", 131, Void),
             ("auto.hashset.remove", 132, Void),
@@ -770,7 +774,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.free.array", 192, Void),
 
             // === String operations (170-186, 1500-1520) ===
-            ("auto.str.len", 1500, Int),
+            ("auto.str.len", 170, Int),
             ("auto.str.is_empty", 1501, Bool),
             ("auto.str.char_at", 1502, Int),
             ("auto.str.substr", 1503, String),
@@ -787,7 +791,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.str.to_lower", 1512, String),
             // Plan 368 W8: bare upper/lower map to the same natives as
             // to_upper/to_lower (id 1511/1512) and return String — were Void.
-            ("auto.str.upper", 1511, String),
+            ("auto.str.upper", 175, String),
             ("auto.str.lower", 1512, String),
             ("auto.str.reverse", 1513, String),
             ("auto.str.find", 1514, Int),
@@ -795,7 +799,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.str.parse_int", 1516, Int),
             ("auto.str.to_int", 1516, Void),
             ("auto.str.parse_float", 1517, Float),
-            ("auto.str.new", 177, Void),
+            ("auto.str.new", 172, Void),
             ("auto.str.push", 178, Void),
             ("auto.str.pop", 179, Void),
             ("auto.str.get", 180, Void),
@@ -874,8 +878,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.shell.exec_submit", 2867, Void),
             ("auto.shell.emit_result", 2868, Void),
             ("auto.shell.emit_show", 2869, Void),
-            ("auto.host.call", 2870, String),
-            ("auto.host.call_value", 2871, Void),
+            ("auto.host.call", 2930, String),
+            ("auto.host.call_value", 2931, Void),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -1418,7 +1422,7 @@ macro_rules! for_each_bigvm_native {
             // === Runtime aliases (CALL_SPEC lowercase type) — Plan 368 W8:
             // same correction as Str.* above. Added the missing lower/upper/
             // reverse/char_at/substr/repeat/split_once/match_count entries.
-            ("str.len", 1500, Int),
+            ("str.len", 170, Int),
             ("str.is_empty", 1501, Bool),
             ("str.char_at", 1502, Int),
             ("str.substr", 1503, String),
@@ -1431,7 +1435,7 @@ macro_rules! for_each_bigvm_native {
             ("str.replace", 1510, String),
             ("str.to_upper", 1511, String),
             ("str.to_lower", 1512, String),
-            ("str.upper", 1511, String),
+            ("str.upper", 175, String),
             ("str.lower", 1512, String),
             ("str.reverse", 1513, String),
             ("str.find", 1514, Int),
@@ -1591,7 +1595,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.hashmap.insert", 121),
     ("auto.hashmap.get", 123),
     ("auto.hashmap.keys", 1292),
-    ("auto.hashset.new", 129),
+    ("auto.hashset.new", 1293),
     ("auto.hashset.insert", 130),
     ("auto.hashset.contains", 131),
     ("auto.hashset.remove", 132),
@@ -1639,7 +1643,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.alloc.array", 190),
     ("auto.realloc.array", 191),
     ("auto.free.array", 192),
-    ("auto.str.len", 1500),
+    ("auto.str.len", 170),
     ("auto.str.is_empty", 1501),
     ("auto.str.char_at", 1502),
     ("auto.str.substr", 1503),
@@ -1662,7 +1666,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.str.parse_int", 1516),
     ("auto.str.to_int", 1516),
     ("auto.str.parse_float", 1517),
-    ("auto.str.new", 177),
+    ("auto.str.new", 172),
     ("auto.str.push", 178),
     ("auto.str.pop", 179),
     ("auto.str.get", 180),
@@ -2188,8 +2192,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.shell.exec_submit", 2867),
     ("auto.shell.emit_result", 2868),
     ("auto.shell.emit_show", 2869),
-    ("auto.host.call", 2870),
-    ("auto.host.call_value", 2871),
+    ("auto.host.call", 2930),
+    ("auto.host.call_value", 2931),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
@@ -2212,3 +2216,88 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // === DateTime cmp (2794) ===
     ("auto.datetime.cmp", 2794),
 ];
+
+// ============================================================================
+// 2026-08-22(注册秩序根因修复)catalog 完整性锁。
+// 事故:host.call 复用了 Random 段已占的 2870/2871 —— bind_shims 后注册
+// 覆盖先注册,native_interface 表派发错位,引擎被迫加直调特例绕过。
+// 此处锁死:两宏内 ID/名字唯一 + NATIVE_ID_ENTRIES 与 catalog 一致。
+// ============================================================================
+#[cfg(test)]
+mod catalog_integrity_tests {
+    macro_rules! collect_native_ids {
+        ($( ($id:expr, $const:ident, $shim:expr, $name:expr) ),* $(,)?) => {
+            vec![$(($id, $name)),*]
+        };
+    }
+    macro_rules! collect_bigvm_ids {
+        ($( ($name:expr, $id:expr, $ret:expr) ),* $(,)?) => {
+            vec![$(($name, $id)),*]
+        };
+    }
+
+    #[test]
+    fn native_catalog_ids_and_names_unique() {
+        let entries: Vec<(u16, &str)> = crate::for_each_native!(collect_native_ids);
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut seen_names = std::collections::HashSet::new();
+        for (id, name) in &entries {
+            assert!(
+                seen_ids.insert(*id),
+                "catalog ID 撞号: {} ({} 与既有条目重复 —— bind_shims 后注册覆盖先注册,native_interface 表派发将错位)",
+                id, name
+            );
+            assert!(
+                seen_names.insert(*name),
+                "catalog 名字重复登记: {}",
+                name
+            );
+        }
+        // bigvm 表:同名字下 ID 必须与 catalog 一致。
+        let bigvm: Vec<(&str, u16)> = crate::for_each_bigvm_native!(collect_bigvm_ids);
+        let mut bigvm_seen = std::collections::HashSet::new();
+        let catalog_map: std::collections::HashMap<&str, u16> =
+            entries.iter().map(|(i, n)| (*n, *i)).collect();
+        // bigvm 表限定名 + 短名别名成对是有意设计;同名必须同 ID(异 ID
+        // 才是真错位,如 str.len 曾同时挂 170/1500)。
+        let mut bigvm_name_ids: std::collections::HashMap<&str, u16> =
+            std::collections::HashMap::new();
+        for (name, id) in &bigvm {
+            if let Some(prev) = bigvm_name_ids.get(name) {
+                assert_eq!(
+                    prev, id,
+                    "for_each_bigvm_native 同名异 ID: {} ({} vs {})",
+                    name, prev, id
+                );
+            } else {
+                bigvm_name_ids.insert(name, *id);
+            }
+        }
+        for (name, id) in &bigvm {
+            let _ = bigvm_seen.insert(*name);
+            if let Some(&cat_id) = catalog_map.get(name) {
+                assert_eq!(
+                    cat_id, *id,
+                    "bigvm 表与 catalog ID 不一致: {} (catalog={}, bigvm={})",
+                    name, cat_id, id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_id_entries_consistent_with_catalog() {
+        let entries: Vec<(u16, &str)> = crate::for_each_native!(collect_native_ids);
+        let catalog_map: std::collections::HashMap<&str, u16> =
+            entries.iter().map(|(i, n)| (*n, *i)).collect();
+        for (name, id) in crate::vm::native_catalog::NATIVE_ID_ENTRIES {
+            if let Some(&cat_id) = catalog_map.get(name) {
+                assert_eq!(
+                    cat_id, *id,
+                    "NATIVE_ID_ENTRIES 与 catalog 不一致: {} (catalog={}, entries={})",
+                    name, cat_id, id
+                );
+            }
+        }
+    }
+}

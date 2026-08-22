@@ -6170,16 +6170,6 @@ impl AutoVM {
                     } else if native_id == 2301 {
                         // Plan 317 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
                         crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
-                    } else if native_id == 2870 || native_id == 2871 {
-                        // Plan 060 M3:宿主桥 native 直调(仿上方 112/2300 的
-                        // 特例先例)。经 native_interface 表派发会被其他注册
-                        // 覆盖/错位(实测表内 2870 非 shim_host_call,直调
-                        // 正常 —— 根因待引擎侧统一注册秩序后回收本特例)。
-                        if native_id == 2870 {
-                            crate::vm::native::shim_host_call(task, self)?;
-                        } else {
-                            crate::vm::native::shim_host_call_value(task, self)?;
-                        }
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         let pre_call_ip = task.ip;
                         shim(task, self)?;
