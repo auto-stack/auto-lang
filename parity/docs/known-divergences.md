@@ -289,8 +289,7 @@ current status of each:
   trait_vm_tests +3(单实现者/多实现者/裸 `<T>`);a2r golden
   08_generics/008_bounded_generic_fn 新增(345/345);parity trait_advanced
   升级 sub-scenario C(bounded_generics.at 4 例,含反向 compare 第二实现者
-  证明按接收者类型分派)三方 14/14。遗留:调用点界校验
-  (实参类型未实现 bound 时拒绝)未实施——登记 KNOWN-DEBT(417-E3-P4)。
+  证明按接收者类型分派)三方 14/14。调用点界校验已于同日补齐(417-E3-P4:保守式编译期拒绝,参 KNOWN-DEBT 翻转条)。
   状态: ❤✅ fixed。
 
 - **DIV-TRAIT-VM-2 — VM trait checker requires re-declaration of default

@@ -44,14 +44,17 @@ build/
 *.o
 *.exe
 
-# Temporary test files
+# Temporary test files (root-anchored: the un-anchored `test*.rs` silently
+# skipped crates/auto-lang/src/vm/tests_string_pool.rs at `git add`, leaving
+# master with a mod declaration but no file (Plan 417-E3 merge incident);
+# subdir test files are all tracked, so anchoring surfaces no new noise)
 tmp/
-test*.at
-test*.c
-test*.h
-test*.rs
-test*.sh
-test*.pdb
+/test*.at
+/test*.c
+/test*.h
+/test*.rs
+/test*.sh
+/test*.pdb
 # Temp files with encoding issues
 tmp/*.at
 

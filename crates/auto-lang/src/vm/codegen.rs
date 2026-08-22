@@ -281,6 +281,12 @@ pub struct Codegen {
     /// runtime heap tag) — the static `T.method` symbol doesn't exist.
     pub current_fn_type_params: Vec<String>,
 
+    /// Plan 417-E3-P4: bounded type params per fn (callee name → params with
+    /// their constraint lists), e.g. max_of → [(T, [Comparable])]. Populated
+    /// at Stmt::Fn; consulted at call sites to reject arguments whose static
+    /// type demonstrably does not implement the bound.
+    pub fn_type_param_bounds: HashMap<String, Vec<(crate::ast::Name, Vec<Type>)>>,
+
     /// Plan 087 Phase 3: Type inference context for .type property support
     /// Uses the infer module's comprehensive type inference system
     pub infer_ctx: InferenceContext,
@@ -508,6 +514,7 @@ impl Codegen {
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
@@ -843,6 +850,7 @@ impl Codegen {
             current_fn_n_args: 0,
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
@@ -1296,6 +1304,20 @@ impl Codegen {
                     .iter()
                     .map(|tp| tp.name.to_string())
                     .collect();
+
+                // Plan 417-E3-P4: publish this fn's bounds for call-site
+                // checking (see check_generic_call_bounds). Overwrite on
+                // recompile so the table always matches the latest decl.
+                if !fn_decl.type_params.is_empty() {
+                    self.fn_type_param_bounds.insert(
+                        fn_decl.name.to_string(),
+                        fn_decl
+                            .type_params
+                            .iter()
+                            .map(|tp| (tp.name.clone(), tp.constraint.clone()))
+                            .collect(),
+                    );
+                }
 
                 // Plan 087 Phase 3: Record starting index for function scope
                 // This is needed because outer scope variables affect parameter indices
@@ -8260,6 +8282,16 @@ impl Codegen {
                     }
                 }
 
+                // Plan 417-E3-P4: call-site bound checking. For a call to a
+                // bounded generic fn (`max_of(x, y)` where max_of is
+                // `fn max_of<T has Comparable>(a T, b T) T`), reject
+                // arguments whose static type demonstrably does not implement
+                // the bound. Deliberately conservative — see
+                // check_generic_call_bounds for what is skipped.
+                if let Some(callee) = func_name.as_deref() {
+                    self.check_generic_call_bounds(callee, &call.args.args)?;
+                }
+
                 if !call.args.is_empty() {
                     let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                     // Plan 230: Get field types for f32→f64 promotion
@@ -11209,6 +11241,114 @@ impl Codegen {
         // TODO: Track spans in AST nodes during parsing
         // For now, use a zero-length span at offset 0
         SourceSpan::new(0_usize.into(), 0_usize.into())
+    }
+
+    /// Plan 417-E3-P4: call-site bound checking for generic functions.
+    ///
+    /// For each positional argument whose corresponding parameter is declared
+    /// as a BOUNDED type param of the callee (`fn max_of<T has Comparable>(a
+    /// T, ...)`), verify the argument's static type implements the bound.
+    ///
+    /// Conservative by design — an error is raised ONLY when all of the
+    /// following hold; everything else passes (deferred to the runtime
+    /// CALL_SPEC dispatch or left unchecked):
+    /// - the argument is a plain identifier with a known static type;
+    /// - that type is a concrete user type, not itself a type param of the
+    ///   caller (pass-through generics stay dynamic);
+    /// - the bound names a spec known to the TypeStore;
+    /// - the argument's TypeDecl is resolvable and lists neither the spec
+    ///   (`type X as Spec`) nor a generic spec impl for it.
+    fn check_generic_call_bounds(
+        &self,
+        callee: &str,
+        args: &[crate::ast::Arg],
+    ) -> AutoResult<()> {
+        let Some(bounds) = self.fn_type_param_bounds.get(callee) else {
+            return Ok(());
+        };
+        if bounds.iter().all(|(_, c)| c.is_empty()) {
+            return Ok(());
+        }
+        let Some(params) = self.fn_params.get(callee) else {
+            return Ok(());
+        };
+        for (i, arg) in args.iter().enumerate() {
+            let crate::ast::Arg::Pos(Expr::Ident(var_name)) = arg else {
+                continue;
+            };
+            // Parameter i's declared type names a bounded type param?
+            let Some(param) = params.get(i) else { continue };
+            let Type::User(ptd) = &param.ty else {
+                continue;
+            };
+            let Some((_, constraints)) = bounds
+                .iter()
+                .find(|(n, _)| n.as_str() == ptd.name.as_str())
+            else {
+                continue;
+            };
+            if constraints.is_empty() {
+                continue;
+            }
+            // Argument's static type must be a concrete user type. Typed
+            // locals register as GenericInstance{base_name: T, args: []} when
+            // constructed (`var s Score = Score {...}`) — treat the base name
+            // as the concrete type.
+            let arg_ty_name = match self.var_types.get(var_name.as_ref()) {
+                Some(Type::User(atd)) => atd.name.to_string(),
+                Some(Type::GenericInstance(inst)) if inst.args.is_empty() => {
+                    inst.base_name.to_string()
+                }
+                _ => {
+                    continue;
+                }
+            };
+            if self.current_fn_type_params.contains(&arg_ty_name) {
+                continue; // pass-through generic — stays dynamic
+            }
+            for constraint in constraints {
+                // A bound parses as Type::Spec when the spec is declared
+                // before the fn (`T has Comparable`), Type::User otherwise
+                // (forward reference placeholder) — accept both.
+                let spec_name = match constraint {
+                    Type::Spec(s) => s.borrow().name.to_string(),
+                    Type::User(u) => u.name.to_string(),
+                    _ => continue,
+                };
+                let (spec_known, arg_decl) = {
+                    let ts = self.type_store.read().unwrap();
+                    (
+                        ts.lookup_spec_decl_str(&spec_name).is_some(),
+                        ts.lookup_type_decl_str(&arg_ty_name),
+                    )
+                };
+                if !spec_known {
+                    continue; // not a spec bound (builtin/unknown) — unchecked
+                }
+                let Some(arg_decl) = arg_decl else {
+                    continue; // type unresolvable here (cross-module) — unchecked
+                };
+                let implements = arg_decl
+                    .specs
+                    .iter()
+                    .any(|s| s.as_str() == spec_name.as_str())
+                    || arg_decl
+                        .spec_impls
+                        .iter()
+                        .any(|si| si.spec_name.as_str() == spec_name.as_str());
+                if !implements {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Type '{}' does not implement spec '{}' required by the bound of generic function '{}' (argument {})",
+                            arg_ty_name, spec_name, callee, i + 1
+                        ),
+                        span: SourceSpan::new(0_usize.into(), 0_usize.into()),
+                    }
+                    .into());
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Check if a variable is captured with unsafe borrowing (.view or .mut)
