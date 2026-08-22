@@ -1129,20 +1129,34 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 
 /// Build an Iced button::Style from IcedStyle.
 /// Plan 409 §10 续 20: 简单代码语法高亮(auto/vue/bash 通用)→ 着色 Span 列表。
-/// tokenizer:comment / string / number / keyword / punct / ident。
+/// tokenizer:comment / string / number+boolean / keyword / function / operator / punct / ident。
+///
+/// Plan 411 P2-A①: 色板对齐 vue 侧实际加载的 Prism 主题
+/// `prismjs/themes/prism-tomorrow.min.css`(main.ts 引入),替换此前近似
+/// one-dark 的自选色;并补齐缺失类别——function(标识符后随 `(`)、operator
+/// (与 punctuation 分色)、boolean(true/false 归 number 橙,同 Prism
+/// `.token.boolean` 与 `.token.function` 共用 #f08d49)。
 fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
     use iced::widget::text::Span;
-    const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
-        "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
-        "textarea", "code_editor", "scroll", "grid", "link", "if", "else", "return", "true", "false",
-        "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
-        "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
-        "primary", "secondary", "destructive", "default"];
-    const C_KW: iced::Color = iced::Color::from_rgb8(0xc7, 0x92, 0xea);  // 紫
-    const C_STR: iced::Color = iced::Color::from_rgb8(0xc3, 0xe8, 0x8d);  // 绿
-    const C_COM: iced::Color = iced::Color::from_rgb8(0x6b, 0x72, 0x80);  // 灰
-    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf7, 0x8c, 0x6c);  // 橙
-    const C_PUN: iced::Color = iced::Color::from_rgb8(0x89, 0xdd, 0xff);  // 青
+    // 与 vue 生成器(cmd_vue.rs)自定义 'auto' 语言的 keyword 正则同源。
+    // null/nil 在该正则中属 keyword;true/false 走 boolean(橙)。
+    const KW: &[&str] = &["widget", "fn", "let", "mut", "const", "var", "if", "else", "for",
+        "in", "loop", "while", "break", "continue", "return", "use", "import", "export",
+        "type", "struct", "enum", "impl", "trait", "pub", "private", "static", "async",
+        "await", "try", "catch", "throw", "new", "null", "nil", "self", "super"];
+    const BOOL: &[&str] = &["true", "false"];
+    // bash 代码块(npm install …)中这些命令词在 prism-bash 里着 function 橙;
+    // 手写 lexer 不做语言区分,按词表近似同一色相。
+    const CMD: &[&str] = &["npx", "npm", "yarn", "pnpm", "cd", "bun", "git", "cargo",
+        "pip", "python", "node", "deno"];
+    // prism-tomorrow:keyword/builtin #cc99cd,string #7ec699,comment #999,
+    // number/boolean/function #f08d49,punctuation 基色 #ccc,operator #67cdcc。
+    const C_KW: iced::Color = iced::Color::from_rgb8(0xcc, 0x99, 0xcd);
+    const C_STR: iced::Color = iced::Color::from_rgb8(0x7e, 0xc6, 0x99);
+    const C_COM: iced::Color = iced::Color::from_rgb8(0x99, 0x99, 0x99);
+    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf0, 0x8d, 0x49);
+    const C_PUN: iced::Color = iced::Color::from_rgb8(0xcc, 0xcc, 0xcc);
+    const C_OP:  iced::Color = iced::Color::from_rgb8(0x67, 0xcd, 0xcc);
     let push = |spans: &mut Vec<Span<'static, ()>>, text: String, color: Option<iced::Color>| {
         if !text.is_empty() { spans.push(Span::new(text).color_maybe(color)); }
     };
@@ -1166,20 +1180,87 @@ fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
         } else if b.is_ascii_alphabetic() || b == b'_' {
             let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') { i += 1; }
             let t = &code[s..i];
-            push(&mut spans, t.to_string(), if KW.contains(&t) { Some(C_KW) } else { None });
+            // Prism 'auto' 语言 function 正则:`ident(?=\s*\()` — 标识符后
+            // (允许空白)紧跟左括号即 function(橙)。
+            let mut j = i;
+            while j < n && matches!(bytes[j], b' ' | b'\t') { j += 1; }
+            let is_call = j < n && bytes[j] == b'(';
+            let color = if KW.contains(&t) { Some(C_KW) }
+                else if BOOL.contains(&t) || is_call || CMD.contains(&t) { Some(C_NUM) }
+                else { None };
+            push(&mut spans, t.to_string(), color);
         } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
             let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
             push(&mut spans, code[s..i].to_string(), None);
+        } else if matches!(b, b'+' | b'-' | b'*' | b'/' | b'%' | b'=' | b'<' | b'>'
+            | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') {
+            let s = i;
+            // 连续运算符字符并成一档(如 =>、==、&&)。
+            while i < n && matches!(bytes[i], b'+' | b'-' | b'*' | b'/' | b'%' | b'='
+                | b'<' | b'>' | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') { i += 1; }
+            push(&mut spans, code[s..i].to_string(), Some(C_OP));
         } else {
             // G3 (038-minesweeper live crash): the byte-wise code[i..i+1]
-            // panicked on multi-byte labels ("⏱ 0s" — end byte 1 is inside
-            // the 3-byte emoji). Advance by the full UTF-8 char length.
+            // panicked on multi-byte labels ("⏱ 0s" — end byte 1 is inside the
+            // 3-byte emoji). Advance by the full UTF-8 char length.
             let ch_len = code[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
             push(&mut spans, code[i..i + ch_len].to_string(), Some(C_PUN));
             i += ch_len;
         }
     }
     spans
+}
+
+/// Plan 411 P2-A④: 表头单元格样式——font-medium + text-muted-foreground
+/// (vue 侧 `<th class="font-medium text-muted-foreground">`)。递归下钻到
+/// Text 视图追加 class;表头可能是 Row/Container 包裹的复合内容。
+fn apply_table_header_style<M: Clone + Debug>(v: &mut AbstractView<M>) {
+    match v {
+        AbstractView::Text { style, .. } => {
+            let st = style.get_or_insert_with(Default::default);
+            st.classes.push(StyleClass::FontMedium);
+            st.classes.push(StyleClass::TextColor(Color::OnSurface));
+        }
+        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
+            for c in children {
+                apply_table_header_style(c);
+            }
+        }
+        AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
+            apply_table_header_style(child);
+        }
+        _ => {}
+    }
+}
+
+/// Plan 411 P2-A④: 单元格 px-4/py-3 padding(vue `<td class="px-4 py-3">`)。
+fn table_cell_container<'a, M: 'static>(el: iced::Element<'a, M>) -> iced::Element<'a, M> {
+    iced::widget::container(el)
+        .padding(iced::Padding {
+            top: 12.0,
+            bottom: 12.0,
+            left: 16.0,
+            right: 16.0,
+        })
+        .into()
+}
+
+/// Plan 411 P2-A④: 行 border-b——iced 容器边框是四边整圈,单侧下边线用
+/// 1px 填充分隔条子元素模拟(vue `border-b border-border`)。
+fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
+    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    iced::widget::container(
+        iced::widget::Space::new()
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Fixed(0.0),
+        ))
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(1.0))
+        .style(move |_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+            ..Default::default()
+        })
+        .into()
 }
 
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
@@ -2838,27 +2919,35 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Table {
                 headers,
                 rows,
-                spacing,
+                spacing: _,
                 col_spacing,
                 style: _,
             } => {
+                // Plan 411 P2-A④: vue 表格细节——表头 font-medium +
+                // text-muted-foreground、行 border-b、单元格 px-4/py-3。
+                // 行距改由 py-3 padding 提供(规则线与行贴合才是 border-b 语义),
+                // 原 spacing 参数被 padding 取代。
                 let mut table_widget = column([]);
-                table_widget = table_widget.spacing(spacing as f32);
+                table_widget = table_widget.spacing(0.0);
 
                 let mut header_row_widget = row([]);
                 header_row_widget = header_row_widget.spacing(col_spacing as f32);
                 for header in headers {
-                    header_row_widget = header_row_widget.push(header.into_iced());
+                    let mut h = header;
+                    apply_table_header_style(&mut h);
+                    header_row_widget = header_row_widget.push(table_cell_container(h.into_iced()));
                 }
                 table_widget = table_widget.push(header_row_widget);
+                table_widget = table_widget.push(table_row_rule());
 
                 for row_data in rows {
                     let mut row_widget = row([]);
                     row_widget = row_widget.spacing(col_spacing as f32);
                     for cell in row_data {
-                        row_widget = row_widget.push(cell.into_iced());
+                        row_widget = row_widget.push(table_cell_container(cell.into_iced()));
                     }
                     table_widget = table_widget.push(row_widget);
+                    table_widget = table_widget.push(table_row_rule());
                 }
 
                 table_widget.into()
@@ -11939,6 +12028,77 @@ mod tests {
     fn test_text_conversion() {
         let view: AbstractView<TestMessage> = AbstractView::text("Hello".to_string());
         let _element = view.into_iced();
+    }
+
+    // ========== Plan 411 P2-A① — Prism tomorrow 色板 ==========
+
+    #[test]
+    fn test_highlight_prism_palette() {
+        let spans = highlight_code("fn install() // done\nlet ok = \"hi\" && true");
+        let color_of = |t: &str| -> Option<iced::Color> {
+            spans.iter()
+                .find(|s| s.text.as_ref() == t)
+                .unwrap_or_else(|| panic!("span {:?} not found", t))
+                .color
+        };
+        // keyword #cc99cd(紫)
+        assert_eq!(color_of("fn"), Some(iced::Color::from_rgb8(0xcc, 0x99, 0xcd)));
+        // function(ident 后随 `(`)与 boolean/number 同为 #f08d49(橙)
+        assert_eq!(color_of("install"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
+        assert_eq!(color_of("true"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
+        // 字符串 #7ec699(绿)
+        assert_eq!(color_of("\"hi\""), Some(iced::Color::from_rgb8(0x7e, 0xc6, 0x99)));
+        // 括号 punctuation #ccc、运算符 #67cdcc(青)
+        assert_eq!(color_of("("), Some(iced::Color::from_rgb8(0xcc, 0xcc, 0xcc)));
+        assert_eq!(color_of("&&"), Some(iced::Color::from_rgb8(0x67, 0xcd, 0xcc)));
+        // 普通标识符不着色(基色)
+        assert_eq!(color_of("ok"), None);
+    }
+
+    #[test]
+    fn test_highlight_bash_cmd_and_comment() {
+        let spans = highlight_code("npx degit hi # vite");
+        let color_of = |t: &str| -> Option<iced::Color> {
+            spans.iter().find(|s| s.text.as_ref() == t).unwrap().color
+        };
+        // prism-bash 的 function 橙近似
+        assert_eq!(color_of("npx"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
+        // 注释灰 #999
+        assert_eq!(color_of("# vite"), Some(iced::Color::from_rgb8(0x99, 0x99, 0x99)));
+    }
+
+    // ========== Plan 411 P2-A④ — 表头样式注入 ==========
+
+    #[test]
+    fn test_table_header_style_recursive() {
+        let mut v: AbstractView<TestMessage> = AbstractView::Row {
+            children: vec![
+                AbstractView::Text { content: "Prop".to_string(), style: None },
+                AbstractView::Text {
+                    content: "Type".to_string(),
+                    style: Some(Style { classes: vec![], hover_classes: vec![] }),
+                },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: None,
+        };
+        apply_table_header_style(&mut v);
+        match v {
+            AbstractView::Row { children, .. } => {
+                for c in &children {
+                    if let AbstractView::Text { style, .. } = c {
+                        let s = style.as_ref().expect("style created");
+                        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::FontMedium)));
+                        assert!(s.classes.iter().any(|c|
+                            matches!(c, StyleClass::TextColor(Color::OnSurface))));
+                    } else {
+                        panic!("expected text");
+                    }
+                }
+            }
+            _ => panic!("expected row"),
+        }
     }
 
     // ========== Plan 412 F2 — grid auto-placement ==========
