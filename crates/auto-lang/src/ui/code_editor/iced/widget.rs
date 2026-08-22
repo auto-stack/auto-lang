@@ -245,6 +245,20 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         let (dark, accent) = theme::theme_source();
         self.core.sync_syntax_theme(dark, &accent);
 
+        // Native-driven edits (menu/toolbar handlers calling
+        // code_editor_undo/cut/...) mutate the buffer outside the widget
+        // event flow — republish on_change/on_cursor here so model bindings
+        // (.src_main etc.) resync. Without this, a menu Cut followed by a
+        // Save persists the pre-cut text (041 reads .src_main on save).
+        if self.core.take_external_dirty() {
+            if let Some(f) = &self.on_change {
+                shell.publish(f());
+            }
+            if let Some(f) = &self.on_cursor {
+                shell.publish(f());
+            }
+        }
+
         let local = |p: Point| (p.x - bounds.x, p.y - bounds.y);
         // Plan 418 修复:所有鼠标输入必须先过 is_over(bounds) 门控 —— 此前
         // ButtonPressed/Released/CursorMoved 不检查边界,窗口内任何点击都进
@@ -405,6 +419,14 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         }
         if let Some((rect, color)) = list.current_line {
             fill_quad(renderer, to_rect(bounds, rect), to_color(color));
+        }
+        // Regex search highlights (Plan 413 ① 补齐): painted under the
+        // selection so a match the caret sits on still shows selection color
+        // on top. The data has been produced by core render since 413; the
+        // iced draw pass never consumed it — only find_next's selection
+        // highlight was actually visible.
+        for (rect, color) in &list.search_matches {
+            fill_quad(renderer, to_rect(bounds, *rect), to_color(*color));
         }
         for (rect, color) in &list.selection {
             fill_quad(renderer, to_rect(bounds, *rect), to_color(*color));

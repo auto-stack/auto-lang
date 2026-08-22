@@ -51,6 +51,9 @@ code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
 # Both mount under ui-iced; each can also be enabled standalone.
 ui-clipboard = ["dep:arboard"]
 ui-dialog = ["dep:rfd"]
+# Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
+# offline bounds assertions for the VM Row/layout bug matrix.
+iced-layout-tests = ["ui-iced", "dep:iced_test"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -125,6 +128,9 @@ iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "c
 # Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
 # 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
 iced_widget = { version = "0.14", optional = true }
+# Plan 414 §8.2: headless layout testbench — normal optional dep (Cargo
+# forbids optional dev-deps); only linked when `iced-layout-tests` is on.
+iced_test = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 # Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.

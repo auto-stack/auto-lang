@@ -282,6 +282,12 @@ pub struct CodeEditorCore {
     /// Monotonic revision — bumped on every text change; adapters key
     /// raster caches on it.
     revision: AtomicU64,
+    /// Set by native-driven edits (menu/toolbar handlers: undo/redo/cut/
+    /// paste) — they mutate the buffer outside the widget event flow, so
+    /// the widget consumes this flag on its next `update` and republishes
+    /// on_change/on_cursor. Without it, model bindings (e.g. 041's
+    /// `.src_main`) go stale and a subsequent Save persists pre-edit text.
+    external_dirty: std::sync::atomic::AtomicBool,
     /// LRU stamp for registry sweeping (§5.4 auto-dispose).
     last_used: AtomicU64,
     /// Cached gutter width for `digits` columns.
@@ -452,6 +458,7 @@ impl CodeEditorCore {
             applied_theme: Mutex::new(None),
             search: Mutex::new(SearchState::default()),
             revision: AtomicU64::new(0),
+            external_dirty: std::sync::atomic::AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
         };
@@ -572,6 +579,19 @@ impl CodeEditorCore {
         });
         editor.set_cursor(cursor);
         self.revision.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Mark that a native-driven edit (undo/redo/cut/paste from a menu or
+    /// toolbar handler) changed the buffer outside the widget event flow.
+    /// The iced widget consumes this on its next `update` and republishes
+    /// on_change/on_cursor so model bindings resync.
+    pub fn mark_external_dirty(&self) {
+        self.external_dirty.store(true, Ordering::Release);
+    }
+
+    /// Consume the external-dirty flag (see `mark_external_dirty`).
+    pub fn take_external_dirty(&self) -> bool {
+        self.external_dirty.swap(false, Ordering::AcqRel)
     }
 
     /// (line_0based, char_col, selection_bytes)
@@ -1457,14 +1477,14 @@ pub fn code_editor_find(key: &str) -> bool {
 pub fn code_editor_undo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| core.do_undo()).is_some()
+    map.get(&key).map(|core| { core.do_undo(); core.mark_external_dirty(); }).is_some()
 }
 
 /// Plan 418: programmatic redo (mirrors the Ctrl+Y arm of handle_key).
 pub fn code_editor_redo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| core.do_redo()).is_some()
+    map.get(&key).map(|core| { core.do_redo(); core.mark_external_dirty(); }).is_some()
 }
 
 /// Plan 418: select all text (mirrors the Ctrl+A arm of handle_key).
@@ -1483,9 +1503,14 @@ pub fn code_editor_clipboard_op(key: &str, op: ClipboardOp) -> bool {
     let map = CODE_EDITORS.lock().unwrap();
     if let Some(core) = map.get(&key) {
         match op {
+            // Cut/Paste change the text → resync model bindings via the
+            // external-dirty flag; Copy only touches the OS clipboard.
             ClipboardOp::Cut => with_font_system(|fs| core.do_cut(fs)),
             ClipboardOp::Copy => core.do_copy(),
             ClipboardOp::Paste => core.do_paste(),
+        }
+        if !matches!(op, ClipboardOp::Copy) {
+            core.mark_external_dirty();
         }
         true
     } else {
@@ -1602,7 +1627,6 @@ mod tests {
         assert_eq!(list.background.map(|(_, c)| c), Some(super::super::theme::CodeEditorTheme::dark("indigo").background));
     }
 
-    #[test]
     /// Plan 414 §4: the line-number gutter keeps at least two digit columns
     /// even for single-digit line counts.
     #[test]
@@ -1652,6 +1676,36 @@ only
         assert!(list2.gutter.expect("gutter").folds.is_empty());
     }
 
+    /// External-dirty handshake: natives mark, the widget consumes once.
+    #[test]
+    fn core_external_dirty_roundtrip() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-ext-dirty");
+        code_editor_dispose(&key);
+        let core = code_editor(&key, &CodeEditorConfig::default());
+        assert!(!core.take_external_dirty(), "fresh core is clean");
+
+        // Text-mutating natives mark the flag.
+        code_editor_undo(&key);
+        assert!(core.take_external_dirty());
+        assert!(!core.take_external_dirty(), "consume-once semantics");
+
+        // Copy must NOT mark (clipboard-only op); cut/paste mark even when
+        // the buffer ends up unchanged — the widget republishes
+        // unconditionally, which is harmless (model reads current text).
+        code_editor_clipboard_op(&key, ClipboardOp::Copy);
+        assert!(!core.take_external_dirty(), "copy is not a text change");
+        code_editor_clipboard_op(&key, ClipboardOp::Cut);
+        assert!(core.take_external_dirty(), "cut marks");
+        code_editor_dispose(&key);
+    }
+
+    /// Config diffs: wrap toggling flips the horizontal scrollbar, and vi
+    /// mode on top of wrap keeps the cursor anchored (line 0). This test sat
+    /// dead (no `#[test]`) after an editing accident — reactivated with the
+    /// 413 search-highlight fix batch.
+    #[test]
     fn core_config_diff_toggles_wrap_and_vi() {
         let mut fs = FontSystem::new();
         let core = CodeEditorCore::new(

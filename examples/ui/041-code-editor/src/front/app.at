@@ -255,9 +255,11 @@ widget App {
         .ActUndo -> {
             if .tab == 0 {
                 code_editor_undo("tab-main")
+                .src_main = code_editor_text("tab-main")
             }
             if .tab == 1 {
                 code_editor_undo("tab-util")
+                .src_util = code_editor_text("tab-util")
             }
             console_log("undo")
             .console = console_lines()
@@ -265,9 +267,11 @@ widget App {
         .ActRedo -> {
             if .tab == 0 {
                 code_editor_redo("tab-main")
+                .src_main = code_editor_text("tab-main")
             }
             if .tab == 1 {
                 code_editor_redo("tab-util")
+                .src_util = code_editor_text("tab-util")
             }
             console_log("redo")
             .console = console_lines()
@@ -275,9 +279,15 @@ widget App {
         .ActSelectAll -> {
             if .tab == 0 {
                 code_editor_select_all("tab-main")
+                .line = code_editor_cursor_line("tab-main") + 1
+                .col = code_editor_cursor_col("tab-main") + 1
+                .sel = code_editor_selection_len("tab-main")
             }
             if .tab == 1 {
                 code_editor_select_all("tab-util")
+                .line = code_editor_cursor_line("tab-util") + 1
+                .col = code_editor_cursor_col("tab-util") + 1
+                .sel = code_editor_selection_len("tab-util")
             }
             console_log("select all")
             .console = console_lines()
@@ -285,9 +295,11 @@ widget App {
         .ActCut -> {
             if .tab == 0 {
                 code_editor_cut("tab-main")
+                .src_main = code_editor_text("tab-main")
             }
             if .tab == 1 {
                 code_editor_cut("tab-util")
+                .src_util = code_editor_text("tab-util")
             }
             console_log("cut")
             .console = console_lines()
@@ -305,9 +317,11 @@ widget App {
         .ActPaste -> {
             if .tab == 0 {
                 code_editor_paste("tab-main")
+                .src_main = code_editor_text("tab-main")
             }
             if .tab == 1 {
                 code_editor_paste("tab-util")
+                .src_util = code_editor_text("tab-util")
             }
             console_log("paste")
             .console = console_lines()
