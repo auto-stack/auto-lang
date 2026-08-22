@@ -7083,7 +7083,10 @@ impl Codegen {
                     if let Some(name) = func_name.as_ref() {
                         if matches!(call.name.as_ref(), Expr::Ident(_)) {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
+                                eprintln!("[DBG-HOST] rewrite {} -> host.call", name);
                                 return self.emit_api_host_call(&api, call);
+                            } else {
+                                eprintln!("[DBG-HOST] bare '{}' NOT in api_funcs (keys sample: {:?})", name, self.api_funcs.keys().take(5).collect::<Vec<_>>());
                             }
                         }
                     }
