@@ -12294,6 +12294,23 @@ export function cn(...inputs: ClassValue[]) {
                     ));
                 }
                 // Plan 424: ports 符号转发——component/composable 经端口再导出。
+                // `.vue`/`platform:` 源是 default export(调用方直连时也是
+                // default import),re-export 需 `default as X` 别名;npm/.ts
+                // 源是命名导出,原样转发。
+                crate::ast::ui::ExtImportKind::Component
+                    if imp.path.starts_with("platform:") || imp.path.ends_with(".vue") =>
+                {
+                    let aliased: Vec<String> = names
+                        .iter()
+                        .map(|n| format!("default as {}", n))
+                        .collect();
+                    code.push_str(&format!(
+                        "export {{ {} }} from '{}'
+",
+                        aliased.join(", "),
+                        specifier
+                    ));
+                }
                 crate::ast::ui::ExtImportKind::Component
                 | crate::ast::ui::ExtImportKind::Composable => {
                     code.push_str(&format!(
@@ -13742,6 +13759,7 @@ fn fetch_things() []Value {
 use.web format_rel from "./time_fmt.ts"
 use.web component MessageSquare, ListTodo from "lucide-vue-next"
 use.web component Markdown from "platform:markdown"
+use.web component Deck from "src/platform/deck.vue"
 use.web composable useT from "./i18n.ts"
 
 fn rel_time(ts int) str {
@@ -13782,10 +13800,17 @@ fn rel_time(ts int) str {
 {}",
             code
         );
-        // component kind: platform: → @/platform/x.vue
+        // component kind: platform: → @/platform/x.vue(default export → default as)
         assert!(
-            code.contains("export { Markdown } from '@/platform/markdown.vue'"),
+            code.contains("export { default as Markdown } from '@/platform/markdown.vue'"),
             "platform component re-export:
+{}",
+            code
+        );
+        // component kind: 本地 .vue 同为 default export(.vue 扩展名保留)
+        assert!(
+            code.contains("export { default as Deck } from '@/ext/src/platform/deck.vue'"),
+            "local .vue component re-export:
 {}",
             code
         );

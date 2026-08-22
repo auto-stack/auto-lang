@@ -1,0 +1,36 @@
+// app.at — k4 page-level widget App. Plan 424 canary: every web symbol the
+// view touches (component Badge / composable useTick / fn portLabel) comes
+// from the port module "src/front/ports/symbols.at" — zero direct references
+// to .vue/.ts/npm sources at the call site.
+//
+// Expected generated App.vue (.at 源是命名导出模块,调用方一律 named import):
+//   import { portLabel, Badge, useTick } from '@/ext/src/front/ports/symbols.web'
+//   const tick = useTick()
+//   <Badge :text="..." @select="Picked"/>
+//   {{ tick.label() }} / {{ portLabel(3) }}
+
+use.web component Badge from "src/front/ports/symbols.at"
+use.web composable useTick from "src/front/ports/symbols.at"
+use.web portLabel from "src/front/ports/symbols.at"
+
+widget App {
+    msg Msg { Picked(str) }
+    model {
+        var last str = "(none)"
+    }
+    view {
+        col {
+            style: "p-4 gap-2"
+            Badge {
+                text: "forward me",
+                onselect: .Picked
+            }
+            text tick.label()
+            text portLabel(3)
+            text .last
+        }
+    }
+    on {
+        .Picked(p) -> { .last = p }
+    }
+}

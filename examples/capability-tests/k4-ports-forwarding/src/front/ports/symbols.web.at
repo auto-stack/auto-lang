@@ -1,0 +1,17 @@
+// ports/symbols.web.at — Plan 424 T2 canary: component/composable 经端口
+// re-export。三种 kind 混写:fn 走 wrapper(现有 PLAN-037 Phase 5 路径),
+// component/composable 走 ES re-export。调用方只引用本文件(.at 路径)。
+//
+// 生成产物预期(src/ext/src/front/ports/symbols.web.ts):
+//   import { relLabel } from '@/ext/src/front/label_fmt'
+//   export { default as Badge } from '@/ext/src/front/badge.vue'
+//   export { useTick } from '@/ext/src/front/composables/useTick'
+//   export function portLabel(n) { return relLabel(n) }
+
+use.web relLabel from "src/front/label_fmt.ts"
+use.web component Badge from "src/front/badge.vue"
+use.web composable useTick from "src/front/composables/useTick.ts"
+
+fn portLabel(n int) str {
+    return relLabel(n)
+}

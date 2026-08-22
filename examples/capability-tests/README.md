@@ -8,6 +8,8 @@ Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 | Canary | Gap | Status | What it pins |
 | `k1-shared-store-routing/` | K1/Rung-4 | 🟢 GREEN | shared store (cross-route state) |
 |---|---|---|---|
+| `k3-widget-composition/` | K3 | 🟢 GREEN | widget vs component-fn composition parity (PLAN-037) |
+| `k4-ports-forwarding/` | K4/Plan 424 | 🟢 GREEN | ports re-export component/composable (`export {default as X}`) |
 | `n1-contains-includes/` | N1 | 🟢 GREEN | `.contains` → JS `.includes` (str + list) |
 | `k2-child-handler-binding/` | K2/N4 | 🟢 GREEN | parent↔child handler wiring (callback prop) |
 | `n2-routing-codegen-paths/` | N2 | 🟢 GREEN | route page-module paths exist |
