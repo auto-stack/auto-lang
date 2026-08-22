@@ -1,6 +1,5 @@
 /// File system operations
 /// Transpiled from auto-lang/stdlib/auto/file.at + file.rs.at
-
 use std::io::Write as IoWrite;
 use std::path::Path;
 
@@ -34,7 +33,11 @@ pub fn write(path: &str, content: &str) -> bool {
 
 /// Write text content to a file (alias), returns 0 on success, -1 on failure
 pub fn write_text(path: &str, content: &str) -> i32 {
-    if std::fs::write(path, content).is_ok() { 0 } else { -1 }
+    if std::fs::write(path, content).is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Read file contents as bytes
@@ -44,7 +47,11 @@ pub fn read_bytes(path: &str) -> Vec<u8> {
 
 /// Write bytes to a file, returns 0 on success, -1 on failure
 pub fn write_bytes(path: &str, bytes: &[u8]) -> i32 {
-    if std::fs::write(path, bytes).is_ok() { 0 } else { -1 }
+    if std::fs::write(path, bytes).is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -56,15 +63,25 @@ pub fn exists(path: &str) -> bool {
 }
 
 pub fn delete(path: &str) -> i32 {
-    if std::fs::remove_file(path).is_ok() { 0 } else { -1 }
+    if std::fs::remove_file(path).is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 pub fn copy(src: &str, dst: &str) -> i32 {
-    if std::fs::copy(src, dst).is_ok() { 0 } else { -1 }
+    if std::fs::copy(src, dst).is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 pub fn size(path: &str) -> i64 {
-    std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(-1)
+    std::fs::metadata(path)
+        .map(|m| m.len() as i64)
+        .unwrap_or(-1)
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -72,7 +89,11 @@ pub fn size(path: &str) -> i64 {
 // ═══════════════════════════════════════════════════════════
 
 pub fn create_dir(path: &str) -> i32 {
-    if std::fs::create_dir_all(path).is_ok() { 0 } else { -1 }
+    if std::fs::create_dir_all(path).is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 pub fn is_dir(path: &str) -> bool {
@@ -86,7 +107,11 @@ pub fn append_text(path: &str, content: &str) -> i32 {
         .open(path)
     {
         Ok(mut f) => {
-            if f.write_all(content.as_bytes()).is_ok() { 0 } else { -1 }
+            if f.write_all(content.as_bytes()).is_ok() {
+                0
+            } else {
+                -1
+            }
         }
         Err(_) => -1,
     }

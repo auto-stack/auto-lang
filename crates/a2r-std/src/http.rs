@@ -174,7 +174,10 @@ fn send_request_blocking(
         }
         Err(_e) => {
             set_last_status(0);
-            Response { status: 0, body: Vec::new() }
+            Response {
+                status: 0,
+                body: Vec::new(),
+            }
         }
     }
 }
@@ -206,7 +209,13 @@ impl RequestBuilder {
     /// For use from synchronous (non-async) call sites. Async call sites should
     /// use `send_async` instead to avoid blocking the tokio executor.
     pub fn send(self) -> Response {
-        send_request_blocking(self.method, self.url, self.headers, self.body, self.timeout_ms)
+        send_request_blocking(
+            self.method,
+            self.url,
+            self.headers,
+            self.body,
+            self.timeout_ms,
+        )
     }
 
     /// Async send: runs the same ureq call via `tokio::task::spawn_blocking`,
@@ -223,7 +232,10 @@ impl RequestBuilder {
             send_request_blocking(method, url, headers, body, timeout_ms)
         })
         .await
-        .unwrap_or_else(|_| Response { status: 0, body: Vec::new() })
+        .unwrap_or_else(|_| Response {
+            status: 0,
+            body: Vec::new(),
+        })
     }
 }
 

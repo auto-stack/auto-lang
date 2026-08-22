@@ -32,7 +32,10 @@ pub fn replace_first(s: &str, from: &str, to: &str) -> String {
 /// Accepts `String` or `&str` for both args (the transpiled call site may pass
 /// an owned `String` field, e.g. `self.buf`).
 pub fn str_find<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P) -> i32 {
-    s.as_ref().find(pattern.as_ref()).map(|p| p as i32).unwrap_or(-1)
+    s.as_ref()
+        .find(pattern.as_ref())
+        .map(|p| p as i32)
+        .unwrap_or(-1)
 }
 
 /// Find the index of a substring starting from position, returns -1 if not found
@@ -42,7 +45,10 @@ pub fn str_find_from<S: AsRef<str>, P: AsRef<str>>(s: S, pattern: P, start: i32)
     if start >= s.len() {
         return -1;
     }
-    s[start..].find(pattern.as_ref()).map(|p| (start + p) as i32).unwrap_or(-1)
+    s[start..]
+        .find(pattern.as_ref())
+        .map(|p| (start + p) as i32)
+        .unwrap_or(-1)
 }
 
 /// Extract a substring from start index with given length

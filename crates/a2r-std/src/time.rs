@@ -1,6 +1,5 @@
 /// Time module - Time-related operations
 /// Transpiled from auto-lang/stdlib/auto/time.at + time.rs.at
-
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Get current time in milliseconds since Unix epoch
