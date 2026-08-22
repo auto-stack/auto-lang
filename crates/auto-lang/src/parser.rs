@@ -11940,10 +11940,20 @@ impl<'a> Parser<'a> {
                     expose.extend(self.parse_expose_block_inner()?);
                 }
                 _ => {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', 'expose', or 'routes' in widget, got '{}'", ident),
-                        span: pos_to_span(self.cur.pos),
-                    }.into());
+                    // Plan 425: view 可选化——widget 体以元素开头(无 view 块)
+                    // 时体即视图:首个非块关键字标识符按视图元素解析并自动
+                    // 包裹为 view。已有 view 块则报错(单视图)。
+                    if view.is_none() {
+                        view = Some(ViewBlock { root: self.parse_view_node()? });
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Expected 'msg', 'model', 'computed', 'view', 'on', 'style', 'use', 'watch', 'expose', 'routes', or a view element in widget, got '{}'",
+                                ident
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
                 }
             }
             self.skip_empty_lines();
@@ -13069,10 +13079,70 @@ impl<'a> Parser<'a> {
     /// Plan 408: Parse `component fn Name(...) { ... }` — an independent
     /// component declaration synthesized to its own Vue SFC. Cursor is at
     /// `component` on entry. Body parsing is shared with `view fn`.
+    ///
+    /// Plan 425: `component fn` is now SYNTACTIC SUGAR — the fragment parse
+    /// result is converted to a `WidgetDecl` (body wrapped into a `view`
+    /// block, params → props via the fragment hint mapping), identical to
+    /// `widget Name(...) { blocks... view { body } }`. The double track
+    /// (ViewFragmentDecl + extract_widget_from_fragment) retires; `view fn`
+    /// (inline) keeps the fragment path.
     pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
         self.expect_ident("component")?;
         self.expect_ident("fn")?;
-        self.parse_fragment_decl_body_tail(true)
+        let stmt = self.parse_fragment_decl_body_tail(true)?;
+        match stmt {
+            Stmt::ViewFragmentDecl(frag) => Ok(Stmt::WidgetDecl(
+                Self::component_fragment_to_widget_decl(frag),
+            )),
+            other => Ok(other),
+        }
+    }
+
+    /// Plan 425: fragment param type hint (raw token string) → `Type`.
+    /// Mirrors the Plan 408 `fragment_param_type` mapping (extract.rs) so the
+    /// sugared `component fn` produces byte-identical props: primitive hints
+    /// map to primitives, everything else (custom types, composites, empty)
+    /// erases to `Type::Unknown` → `any`.
+    fn fragment_param_hint_to_type(type_hint: &str) -> Type {
+        match type_hint.trim() {
+            "str" => Type::StrSlice,
+            "int" | "i64" | "uint" | "usize" => Type::Int,
+            "float" | "double" => Type::Float,
+            "bool" => Type::Bool,
+            _ => Type::Unknown,
+        }
+    }
+
+    /// Plan 425: sugar conversion `component fn` fragment → WidgetDecl.
+    /// Fragment-only surfaces map to their widget equivalents: params →
+    /// PropDecl (no defaults), single body node → `view` block root; the
+    /// widget-only surfaces (routes/bind/lifecycle/expose) stay empty — the
+    /// fragment grammar never parsed them.
+    fn component_fragment_to_widget_decl(
+        frag: crate::ast::ui::ViewFragmentDecl,
+    ) -> crate::ast::ui::WidgetDecl {
+        crate::ast::ui::WidgetDecl {
+            name: frag.name,
+            messages: frag.messages,
+            model: frag.model,
+            computed: frag.computed,
+            view: Some(crate::ast::ui::ViewBlock { root: frag.body }),
+            on: frag.on,
+            bind: None,
+            props: frag.params.into_iter()
+                .map(|(pname, hint)| crate::ast::ui::PropDecl {
+                    name: pname,
+                    ty: Self::fragment_param_hint_to_type(&hint),
+                    default: None,
+                })
+                .collect(),
+            routes: None,
+            lifecycle: Vec::new(),
+            style: frag.style,
+            ext_imports: frag.ext_imports,
+            watch: frag.watch,
+            expose: Vec::new(),
+        }
     }
 
     /// Parse the param list + body of a fragment decl, after `fn` has been

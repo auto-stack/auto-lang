@@ -444,6 +444,9 @@ pub fn generate_component_from_file(
     // Each is synthesized to its own SFC (like a widget) and its name is
     // registered as a sub-widget so same-file references render as
     // `<Name :prop/>` + import instead of inline expansion.
+    // Plan 425: `component fn` sugars to WidgetDecl at parse time, so this
+    // loop is now vestigial (kept for one release as a no-op safety net for
+    // external AST producers; fragments with is_component no longer parse).
     let mut component_fn_names: Vec<String> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::ViewFragmentDecl(frag) = stmt {
@@ -477,7 +480,16 @@ pub fn generate_component_from_file(
 
     // Plan 408: merge synthesized component fn names into sub_widgets so every
     // widget/component sees them as referenceable components.
+    // Plan 425: same-file WidgetDecl names enter the list too — `component fn`
+    // now sugars to WidgetDecl, and same-file widget references take the same
+    // component path (`<Name/>` + `@/components/Name.vue` import) the fragment
+    // track used to provide.
     let mut all_sub_widgets: Vec<String> = sub_widgets.clone();
+    for w in &widgets {
+        if !all_sub_widgets.contains(&w.name) {
+            all_sub_widgets.push(w.name.clone());
+        }
+    }
     for name in &component_fn_names {
         if !all_sub_widgets.contains(name) {
             all_sub_widgets.push(name.clone());

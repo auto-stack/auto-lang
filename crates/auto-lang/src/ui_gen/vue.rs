@@ -15551,6 +15551,129 @@ widget Icon(language: str) {
     }
 
     // ====================================================================
+    // Plan 425: component fn 糖化(widget 单轨)+ view 可选化。
+    // ====================================================================
+
+    /// Plan 425 T1 等价性核心断言:同一组件两种写法——`component fn Card
+    /// { body }`(糖化 → WidgetDecl)vs `widget Card { blocks... view { body } }`
+    /// ——产物逐字节相同(App 的引用与 Card 的 SFC 均)。
+    #[test]
+    fn test_plan425_component_fn_widget_equivalence() {
+        let tmp_sugar = std::env::temp_dir().join("plan425_equiv_sugar");
+        let tmp_plain = std::env::temp_dir().join("plan425_equiv_plain");
+        let _ = std::fs::remove_dir_all(&tmp_sugar);
+        let _ = std::fs::remove_dir_all(&tmp_plain);
+        std::fs::create_dir_all(&tmp_sugar).unwrap();
+        std::fs::create_dir_all(&tmp_plain).unwrap();
+
+        let sugar_src = concat!(
+            "widget App {\n",
+            "    model { var heading str = \"demo\" }\n",
+            "    view { Card(title: .heading) }\n",
+            "}\n",
+            "\n",
+            "component fn Card(title: str) {\n",
+            "    msg Msg { Picked(str) }\n",
+            "    model { var clicks int = 0 }\n",
+            "    on { .Picked(t) -> { .clicks = .clicks + 1 } }\n",
+            "    col {\n",
+            "        style: \"p-2\"\n",
+            "        text .title\n",
+            "        onclick: .Picked(.title)\n",
+            "    }\n",
+            "}\n",
+        );
+        let plain_src = concat!(
+            "widget App {\n",
+            "    model { var heading str = \"demo\" }\n",
+            "    view { Card(title: .heading) }\n",
+            "}\n",
+            "\n",
+            "widget Card(title: str) {\n",
+            "    msg Msg { Picked(str) }\n",
+            "    model { var clicks int = 0 }\n",
+            "    view {\n",
+            "        col {\n",
+            "            style: \"p-2\"\n",
+            "            text .title\n",
+            "            onclick: .Picked(.title)\n",
+            "        }\n",
+            "    }\n",
+            "    on { .Picked(t) -> { .clicks = .clicks + 1 } }\n",
+            "}\n",
+        );
+        let p1 = tmp_sugar.join("app.at");
+        std::fs::write(&p1, sugar_src).unwrap();
+        let p2 = tmp_plain.join("app.at");
+        std::fs::write(&p2, plain_src).unwrap();
+
+        let r1 = crate::ui_gen::generate_component_from_file(
+            &p1, crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("sugar spelling must compile");
+        let r2 = crate::ui_gen::generate_component_from_file(
+            &p2, crate::ui_gen::ComponentGenOptions::default(),
+        ).expect("widget spelling must compile");
+
+        let card1 = r1.all_widget_codes.iter().find(|(n, _)| n == "Card").map(|(_, c)| c).unwrap();
+        let card2 = r2.all_widget_codes.iter().find(|(n, _)| n == "Card").map(|(_, c)| c).unwrap();
+        assert_eq!(normalize_vue_output(card1), normalize_vue_output(card2),
+            "Card SFC must be byte-identical:\n--- component fn ---\n{}\n--- widget ---\n{}",
+            card1, card2);
+        assert_eq!(normalize_vue_output(&r1.vue_code), normalize_vue_output(&r2.vue_code),
+            "App SFC must be byte-identical:\n--- component fn ---\n{}\n--- widget ---\n{}",
+            r1.vue_code, r2.vue_code);
+        // The sugared declaration is a true WidgetDecl (single track).
+        assert!(r1.widgets.iter().any(|w| w.name == "Card"), "Card in widgets list");
+        // App references it via the component path.
+        assert!(r1.vue_code.contains("<Card"), "App renders <Card>:\n{}", r1.vue_code);
+
+        let _ = std::fs::remove_dir_all(&tmp_sugar);
+        let _ = std::fs::remove_dir_all(&tmp_plain);
+    }
+
+    /// Plan 425 T1 view 可选化:`widget X { col {...} }`(体即视图,无 view
+    /// 块)与 `widget X { view { col {...} } }` 产物逐字节相同;混合块顺序
+    /// (model 后跟裸元素)同样合法。
+    #[test]
+    fn test_plan425_widget_view_optional() {
+        let with_view = gen_sfc_from_widget_src(r#"
+widget Counter {
+    model { var count int = 0 }
+    view {
+        col {
+            text .count
+        }
+    }
+}
+"#);
+        let body_as_view = gen_sfc_from_widget_src(r#"
+widget Counter {
+    model { var count int = 0 }
+    col {
+        text .count
+    }
+}
+"#);
+        assert_eq!(
+            normalize_vue_output(&with_view),
+            normalize_vue_output(&body_as_view),
+            "view 可选化:体即视图产物必须与显式 view 块逐字节相同"
+        );
+        // 解析层断言:无 view 块的 widget 得到 Some(ViewBlock{..})。
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(
+            "widget W {\n    model { var x int = 0 }\n    button { text \"go\" }\n}\n",
+        ).with_session(session);
+        let ast = parser.parse().expect("mixed order must parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        assert!(decl.view.is_some(), "body-as-view wraps into a view block");
+        assert!(decl.model.is_some(), "model block still parsed before the body");
+    }
+
+    // ====================================================================
     // Generic DOM events: keyboard/mouse/wheel events, event modifiers,
     // the $event object, and window/document-level listeners.
     // ====================================================================

@@ -26,14 +26,16 @@ mod plan408_tests {
         std::fs::create_dir_all(&tmp).unwrap();
 
         let at_path = tmp.join("app.at");
+        // Plan 425: `component fn` sugars to a widget — the FIRST widget in
+        // source order is the root (vue_code), so App is declared first.
         std::fs::write(&at_path, concat!(
-            "component fn Card(title: str) {\n",
-            "    col { text .title }\n",
-            "}\n",
-            "\n",
             "widget App {\n",
             "    view { Card(title: .greeting) }\n",
             "    model { var greeting str = \"hi\" }\n",
+            "}\n",
+            "\n",
+            "component fn Card(title: str) {\n",
+            "    col { text .title }\n",
             "}\n",
         )).unwrap();
 
@@ -205,8 +207,18 @@ mod plan408_tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
         // CollapseBtn toggles its own `collapsed` state AND emits ToggleCollapse
-        // upward so the parent can react. App subscribes via ontoggle.
+        // upward so the parent can react. App subscribes via the widget callback
+        // contract (Plan 425 单轨): `on_<snake>` prop + matching msg variant.
+        // Plan 425: App first (root = first widget in source order).
         std::fs::write(&at_path, concat!(
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    view {\n",
+            "        CollapseBtn(label: \"go\", on_toggle_collapse: .Bump)\n",
+            "    }\n",
+            "    on { .Bump -> { .count = .count + 1 } }\n",
+            "}\n",
+            "\n",
             "component fn CollapseBtn(label: str) {\n",
             "    msg Msg { ToggleCollapse }\n",
             "    model { var collapsed bool = false }\n",
@@ -215,14 +227,6 @@ mod plan408_tests {
             "        text .label\n",
             "        onclick: .ToggleCollapse\n",
             "    }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    model { var count int = 0 }\n",
-            "    view {\n",
-            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)\n",
-            "    }\n",
-            "    on { .Bump -> { .count = .count + 1 } }\n",
             "}\n",
         )).unwrap();
 
@@ -266,11 +270,11 @@ mod plan408_tests {
             btn_code
         );
 
-        // App subscribes to the event. The event name is lowercased by
-        // sub_widget_event_to_vue (ontogglecollapse → @togglecollapse), so the
-        // parent binds `@togglecollapse="Bump"`.
+        // App subscribes to the event. Plan 425 单轨: the sub-widget callback
+        // contract delivers `on_toggle_collapse` as the PascalCase msg event
+        // `@ToggleCollapse` (dropped from defineProps).
         assert!(
-            app_code.contains("@togglecollapse"),
+            app_code.contains("@ToggleCollapse"),
             "App must bind the toggle event on CollapseBtn: {}",
             app_code
         );
@@ -298,11 +302,8 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
+        // Plan 425: App first (root = first widget in source order).
         std::fs::write(&at_path, concat!(
-            "component fn Card(title: str, active: bool) {\n",
-            "    col { text .title }\n",
-            "}\n",
-            "\n",
             "widget App {\n",
             "    model { var heading str = \"hi\" }\n",
             "    view {\n",
@@ -311,6 +312,10 @@ mod plan408_tests {
             "            Card(title: \"second\", active: false)\n",
             "        }\n",
             "    }\n",
+            "}\n",
+            "\n",
+            "component fn Card(title: str, active: bool) {\n",
+            "    col { text .title }\n",
             "}\n",
         )).unwrap();
 
@@ -450,13 +455,8 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
+        // Plan 425: App first (root = first widget in source order).
         std::fs::write(&at_path, concat!(
-            "component fn Card(title: str) {\n",
-            "    col {\n",
-            "        slot(name: \"header\") { text .title }\n",
-            "    }\n",
-            "}\n",
-            "\n",
             "widget App {\n",
             "    model { var heading str = \"hi\" }\n",
             "    view {\n",
@@ -465,6 +465,12 @@ mod plan408_tests {
             "                text \"custom header\"\n",
             "            }\n",
             "        }\n",
+            "    }\n",
+            "}\n",
+            "\n",
+            "component fn Card(title: str) {\n",
+            "    col {\n",
+            "        slot(name: \"header\") { text .title }\n",
             "    }\n",
             "}\n",
         )).unwrap();

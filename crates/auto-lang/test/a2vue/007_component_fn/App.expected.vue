@@ -10,7 +10,7 @@ const heading = defineModel<string>("heading", { default: 'demo' })
 </script>
 
 <template>
-    <Card :title="heading" />
+    <Card :title="heading" :key="'Card-1'" />
 
 </template>
 
