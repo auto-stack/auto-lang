@@ -2120,6 +2120,7 @@ pub(crate) fn json_to_vm_value(
                 list.push(v);
             }
             let id = vm.insert_heap_object(list);
+            eprintln!("[DBG-TOVAL] array len={} heap_id={}", arr.len(), id);
             task.ram.push_nv(auto_val::encode_object(id as u32));
         }
         serde_json::Value::Object(obj) => {
