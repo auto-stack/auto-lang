@@ -187,10 +187,15 @@ def run_tests(mcp_url, proc):
     result = TestResult()
 
     # T1: structure — menubar, toolbar icons, editor (retry until rendered)
+    # Sentinel: "(rendered)" — the post-render VTree snapshot. The pre-render
+    # fallback (raw view_template) still names the editor `code_editor` and has
+    # NO synthesized menubar/toolbar buttons, so polling on "code_editor" can
+    # break the loop during the ~1.5s first-render window and every synthesis
+    # check below fails. In rendered snapshots the editor is `textarea`.
     print("\nT1: Snapshot structure")
     snap_cache = [mcp.snapshot()]
     for _ in range(10):
-        if "code_editor" in snap_cache[0]:
+        if "(rendered)" in snap_cache[0]:
             break
         time.sleep(1)
         snap_cache[0] = mcp.snapshot()

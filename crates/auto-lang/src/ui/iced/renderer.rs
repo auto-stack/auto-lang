@@ -2299,6 +2299,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Button { label, content, onclick, style, on_right_click } => {
+                // Plan 418 P2-3 续: EE03 PUA marker carries an icon-button
+                // tooltip (synthesized toolbar buttons embed the action title
+                // there — the label itself stays icon-only so the resting
+                // render is a bare svg). Stripped here; wrapped around the
+                // final element at the arm's end.
+                let (label, pua_tooltip): (String, Option<String>) =
+                    match label.find('\u{EE03}') {
+                        Some(i) => (
+                            label[..i].to_string(),
+                            Some(label[i + '\u{EE03}'.len_utf8()..].to_string()),
+                        ),
+                        None => (label, None),
+                    };
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 // Plan 409 §6: if the button carries a content subtree (a `link`
@@ -2329,34 +2342,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_))
                     )
                 );
-                {
-                    use std::sync::atomic::{AtomicU64, Ordering};
-                    static DBG_N: AtomicU64 = AtomicU64::new(0);
-                    let is_img = matches!(content.as_deref(), Some(AbstractView::Image { .. }));
-                    if is_img && DBG_N.fetch_add(1, Ordering::Relaxed) < 8 {
-                        let ck = match &content {
-                            Some(v) => match &**v {
-                                AbstractView::Image { src, .. } => format!("Image({})", src),
-                                AbstractView::Column { children, .. } => format!("Col({})", children.len()),
-                                AbstractView::Text { content, .. } => format!("Text({:?})", content),
-                                _ => "other".into(),
-                            },
-                            None => "None".into(),
-                        };
-                        eprintln!(
-                            "[DBG-BTN] label={:?} content={} fixed_both={} w={:?} h={:?} pad={:?}/{:?}/{:?} classes={:?}",
-                            label,
-                            ck,
-                            fixed_both,
-                            iced_style.as_ref().and_then(|is| is.width.map(|w| match w { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
-                            iced_style.as_ref().and_then(|is| is.height.map(|h| match h { crate::ui::style::iced_adapter::IcedSize::Fixed(v) => format!("F{}", v), _ => "o".into() })),
-                            iced_style.as_ref().and_then(|is| is.padding),
-                            iced_style.as_ref().and_then(|is| is.padding_x),
-                            iced_style.as_ref().and_then(|is| is.padding_y),
-                            style.as_ref().map(|s| s.classes.iter().map(|c| match c { StyleClass::PaddingX(_)=>"px".to_string(), StyleClass::PaddingY(_)=>"py".to_string(), StyleClass::Padding(_)=>"p".to_string(), _=>".".to_string() }).collect::<String>())
-                        );
-                    }
-                }
                 let button_content: iced::Element<'static, M> = if let Some(mut content_view) = content {
                     if let Some(color) = inherit_color {
                         inherit_text_color(&mut content_view, color);
@@ -2628,8 +2613,39 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     el
                 };
                 // Wrap in container if margin_top (from mt-*) needs to be applied
-                if let Some(ref is) = iced_style {
+                let el: iced::Element<'static, M> = if let Some(ref is) = iced_style {
                     wrap_with_margin_top(el, is)
+                } else {
+                    el
+                };
+                // Plan 418 P2-3 续: EE03 tooltip — icon-only toolbar buttons
+                // show their action title in a small dark rounded bubble
+                // below the icon while hovered (menu-panel palette).
+                if let Some(tip) = pua_tooltip {
+                    iced::widget::tooltip(
+                        el,
+                        iced::widget::text(tip).size(12.0),
+                        iced::widget::tooltip::Position::Bottom,
+                    )
+                    .gap(6.0)
+                    // 300ms delay: iced Tooltip opens with invalidate_layout
+                    // at delay=ZERO — a hover instantly rebuilds the tree and
+                    // kills any in-flight button press (toolbar icons became
+                    // unclickable). Resting hover still shows the bubble.
+                    .delay(std::time::Duration::from_millis(300))
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgb8(
+                            0x16, 0x17, 0x1B,
+                        ))),
+                        border: iced::Border {
+                            color: iced::Color::from_rgb8(0x3F, 0x3F, 0x46),
+                            width: 1.0,
+                            radius: 6.0.into(),
+                        },
+                        text_color: Some(iced::Color::from_rgb8(0xE4, 0xE4, 0xE7)),
+                        ..Default::default()
+                    })
+                    .into()
                 } else {
                     el
                 }
@@ -5721,6 +5737,9 @@ fn compare_pngs(
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
+            eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
+        }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
         // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
         // 触发,每次都是新 toast)。必须在所有事件分支**之前**:按钮点击等

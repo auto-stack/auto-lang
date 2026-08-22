@@ -243,3 +243,19 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **041 迁移**:app.at 530→338 行——删 4 菜单×手写样板/8 工具栏按钮/4 个 onkeydown DSL 属性/menu_open 态与 3 个菜单 handler,换 `menubar {}` + `toolbar (style: "ml-auto") {}` 两行;**快捷键全部经配置层**(Ctrl+D 仅配置,回退层锚点)
 - **验证**:041 MCP 矩阵 **29/29**(菜单项按标签定位/工具栏按 PUA 图标定位/开关菜单经 __menubar 内部消息/选择后自动关闭/quit 进程退出);回归 iced 44/44 + action_config 3/3 + mcp_server 6/6
 - **已知缺口**(后续):①合成子树的 probe 路径与 vtree 嵌套层级不对齐(面板列引入额外层),snapshot 无合成按钮 onclick 属性——测试以标签/图标定位替代,修法=按真实嵌套路径记录;②MCP 自动化在高负载下偶发应用静默退出(无 panic,疑似资源压力,复跑即过)——需隔离环境排查;③菜单项 checked 勾选态未渲染(checked-if 已解析)
+
+### 8.5 真实鼠标点击排查（2026-08-22 第四批,部分修复,未完全闭环）
+- **用户反馈**:右下角 console 图标真实点击无反应(应切换 Console)
+- **已确认事实**(SendInput 真实鼠标 + DPI 感知几何 + 每实例实测窗口矩形):menubar 文件/编辑按钮可点(菜单开合);**工具栏图标/菜单项/状态栏 console 图标点击后 update 零消息**;MCP 派发(旁路)一切正常
+- **已落地的防御性修复**:①code_editor iced widget 的 update 对 ButtonPressed/Released/CursorMoved 增加 `cursor.is_over(bounds)` 门控(此前窗口内任何点击都进编辑器核心并被 capture_event 吞掉——插桩实测 CursorMain 洪流为证);②layout 由无条件 `Node::new(limits.max())` 改 `limits.resolve(Fill,Fill,max)`;③EE03 tooltip 加 300ms delay(iced Tooltip delay=0 时 hover 即 invalidate_layout,会打断进行中的按钮点击)
+- **未解**:上述修复后工具栏/console 图标真实点击仍零消息;剩余疑点=状态栏/工具栏区域的 ml-auto Fill 包装容器或 overlay hoist 层的事件遮蔽,需下一轮以 iced 层级 dump/DevTools 实测定位
+- **回归**:MCP 矩阵 29/29 全绿(自动化路径无回归)
+
+### 8.6 真实点击排查收官（2026-08-22 第五批,合并 master 后复测结案）
+- **前置**:worktree 合并 master(cfcee3c6,renderer.rs 整文件冲突实为行尾噪音——仓库 blob 历来 CRLF,分支侧已归一 LF;三版本归一后 git merge-file 零冲突)。合并带入 master 的**心跳 200ms→2s + 30s 活联门控**(29c3f93e)——这正是第四批"零消息"的第一根因:200ms 心跳令消息队列积压、事件饿死,press/release 配对被打断(同提交注释自证)。
+- **插桩实证**(RAW-MOUSE 订阅探针 + EE01 按钮臂探针):①按钮臂收到的 label/EE01/EE02/EE03/svg 全部正确,合成无误;②press/release 事件能到达 iced 且落点在按钮 bounds 内;③**工作站锁定会令 LockScreenBackstopFrame(explorer)接管全部输入**——第五批中段所有"点击零事件"皆此环境陷阱(WindowFromPoint 返回 explorer/LockApp、SetCursorPos 被弹回 (0,0) 即为锁屏特征);④解锁时段内真实点击**实际成功**:ActNew、ActUndo 均经真实 SendInput 触发,menubar 菜单开合正常——**当前构建(2s 心跳)的真实点击路径是通的**。
+- **第四批方法学缺陷**:坐标换算"逻辑×2+窗口 origin"漏了标题栏偏移(GetWindowRect 含标题栏,iced 逻辑原点在客户区),系统性上偏 ~30 物理像素——工具栏图标(h-7≈56 物理高)整枚打偏。正确换算:物理 = 窗口 origin + 标题栏高 + 逻辑×2。
+- **MCP 矩阵 4 项失败修复**:T1 哨兵 `code_editor` 只在首渲染前的模板快照(~1.5s 窗口)出现,渲染后快照编辑器为 `textarea`;轮询恰在模板窗命中即提前退出→按钮全找不到。改哨兵为 `"(rendered)"`(tests/desktop_mcp.py)→ **29/29 全绿**。
+- **清理**:移除第四批遗留 [DBG-BTN] 探针(renderer.rs 按钮臂)。
+- **遗留(低优)**:①工具栏图标偶发近黑(svg::Style.color 的 base 在元素构建时捕获,主题解析竞态,纯视觉);②合成子树 probe 路径对齐(§8.4①)未变;③菜单项 checked 勾选态(§8.4③)未变。
+- **结论**:P2-3 真实点击问题**结案**——根因=旧心跳事件饿死(已修)+排查方法学两处偏差(坐标偏移、锁屏干扰),非 iced 事件路由/遮蔽缺陷;ml-auto 容器与 overlay hoist 均已实测排除。
