@@ -1339,7 +1339,7 @@ fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<C
         // `bg-background/95` 被画成白色。故语义色优先 resolve_semantic_rgb
         // 取主题正确 RGB 再乘 alpha;resolve_semantic_rgb 对非语义色返回
         // None,自然落到下面的 to_rgb8() 路径(Tailwind 色板/hex/rgb)。
-        if let Some((r, g, b)) = super::iced_adapter::resolve_semantic_rgb(&color) {
+        if let Some((r, g, b)) = super::theme::resolve_semantic_rgb(&color) {
             let a = (alpha as u32 * 255 / 100).min(255) as u8;
             return Ok(Color::Rgba { r, g, b, a });
         }

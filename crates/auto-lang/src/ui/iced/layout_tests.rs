@@ -137,3 +137,93 @@ fn nested_row_button_keeps_bounds() {
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "NESTEDBTN");
     assert!(bw > 0.0 && bh > 0.0, "nested button must have bounds: {bw}x{bh}");
 }
+
+// ── Plan 414 §8.1: nested-row icon-button disappearance ─────────────────
+// The 414 record: an EE01 (PUA icon) button inside a NESTED row vanished
+// while a text button in the same row survived; flat icons were fine. The
+// text selector cannot see svg buttons, so collect ALL focusable bounds
+// via a custom selector — every button must keep a non-zero rectangle.
+use iced_test::selector::{Candidate, Selector};
+
+/// Collects every container/focusable bounds (kind, w, h). Buttons surface
+/// as plain containers in iced 0.14 (Button::operate calls only
+/// `container`), and fixed-size buttons additionally get a centering
+/// wrapper — hence two same-size entries per icon button. `select` never
+/// "matches" (returns None), so the simulator traverses the WHOLE tree
+/// before reporting SelectorNotFound — by then the store holds everything.
+/// Verified outcome: the nested-row icon button keeps its full 28×28 —
+/// 414 §8.1 does NOT reproduce through the current into_iced pipeline
+/// (same verdict as §7.2); this test locks that good behavior.
+#[derive(Clone)]
+struct FocusableCollector(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32)>>>);
+impl Selector for FocusableCollector {
+    type Output = ();
+    fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+        match candidate {
+            Candidate::Focusable { bounds, .. } | Candidate::Container { bounds, .. } => {
+                let kind = match candidate {
+                    Candidate::Focusable { .. } => 0u8,
+                    _ => 1u8,
+                };
+                self.0.lock().unwrap().push((kind as f32, bounds.width, bounds.height));
+            }
+            _ => {}
+        }
+        None
+    }
+    fn description(&self) -> String {
+        "focusable-collector".into()
+    }
+}
+
+fn all_button_bounds(view: View<()>) -> Vec<(f32, f32, f32)> {
+    let mut ui = simulator(view.into_iced());
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32)>>> = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    // SelectorNotFound is the expected terminal state (see struct doc).
+    let _ = ui.find(FocusableCollector(store.clone()));
+    let out = store.lock().unwrap().clone();
+    assert!(!out.is_empty(), "no focusables collected at all");
+    out
+}
+
+/// 414 §8.1 exact repro shape: nested row containing an EE01 icon button
+/// AND a text button, plus a flat icon control — all three must keep
+/// non-zero bounds.
+#[test]
+fn nested_row_icon_button_keeps_bounds() {
+    let icon_btn = |label: &str| View::<()>::Button {
+        label: label.to_string(),
+        onclick: (),
+        style: crate::ui::style::Style::parse("h-7 w-7 px-0 py-0").ok(),
+        on_right_click: None,
+        content: None,
+    };
+    let inner = View::Row {
+        children: vec![
+            icon_btn("\u{EE01}file-plus\u{EE02}"),
+            View::Button {
+                label: "TB1".to_string(),
+                onclick: (),
+                style: None,
+                on_right_click: None,
+                content: None,
+            },
+        ],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    };
+    let view = View::Row {
+        children: vec![inner, icon_btn("\u{EE01}save\u{EE02}")],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    };
+    let sizes = all_button_bounds(view);
+    assert!(sizes.len() >= 5, "expected rows+3 buttons in the tree: {sizes:?}");
+    let buttons: Vec<_> = sizes.iter().filter(|(k, w, _)| *k == 1.0 && *w <= 60.0).collect();
+    assert!(buttons.len() >= 3, "three button-sized containers expected: {sizes:?}");
+    for (i, (_, w, h)) in buttons.iter().enumerate() {
+        assert!(*w > 0.0 && *h > 0.0, "button {i} collapsed to {w}x{h} (414 §8.1 regression)");
+    }
+}

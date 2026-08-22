@@ -17,6 +17,11 @@ pub use parser::StyleParser;
 #[cfg(feature = "ui-gpui")]
 pub mod gpui_adapter;
 
+/// Backend-neutral theme state + semantic color resolution (Plan 413/418
+/// follow-up: extracted from iced_adapter so `code-editor`-only builds
+/// compile — iced_adapter re-exports it).
+pub mod theme;
+
 #[cfg(feature = "ui-gpui")]
 pub use gpui_adapter::GpuiStyle; // Re-export for backend adapters
 
