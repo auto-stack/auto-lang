@@ -346,6 +346,22 @@ impl fmt::Display for Pos {
 }
 
 impl Token {
+    /// Plan 416 5-C: every string the lexer's `keyword` path recognises
+    /// (`keyword_kind` returns Some). Single source of truth for tooling
+    /// (LSP completion / syntax docs). A unit test asserts the round trip.
+    pub fn all_keywords() -> &'static [&'static str] {
+        &[
+            "alias", "as", "await", "break", "catch", "const", "continue", "copy",
+            "dep", "else", "enum", "ext", "false", "fn", "for", "go",
+            "has", "hold", "if", "impl", "in", "is", "let",
+            "link", "loop", "mod", "move", "mut", "nil", "null", "outlet",
+            "pac", "reply", "return", "routes", "shared", "spawn", "spec",
+            "static", "super", "super2", "super3", "super4", "tag", "take", "task",
+            "to", "true", "try", "type", "union", "use", "var", "view",
+            "while", "yield",
+        ]
+    }
+
     pub fn keyword_kind(text: &str) -> Option<TokenKind> {
         match text {
             "true" => Some(TokenKind::True),
@@ -480,5 +496,21 @@ mod tests {
     fn test_loop_keyword() {
         // Plan 200 Task 1.1: loop keyword
         assert_eq!(Token::keyword_kind("loop"), Some(TokenKind::Loop));
+    }
+}
+
+#[cfg(test)]
+mod all_keywords_tests {
+    /// Plan 416 5-C: every advertised keyword must be recognised by the
+    /// lexer's keyword_kind (the advertised list is the tooling surface).
+    #[test]
+    fn test_all_keywords_round_trip() {
+        for kw in super::Token::all_keywords() {
+            assert!(
+                super::Token::keyword_kind(kw).is_some(),
+                "advertised keyword {:?} not recognised by keyword_kind",
+                kw
+            );
+        }
     }
 }
