@@ -421,6 +421,11 @@ where
         // Grid cells are the VTree children (Plan 319). MUST be explicit —
         // the `_` arm below would silently drop them.
         View::Grid { cells, .. } => cells.clone(),
+        // G4 (411 P2-B / Plan 409 §6): a Button's optional content subtree
+        // (`link (to:) { … }`) serializes into the vtree as its child —
+        // previously the `..` dropped it, so autoui_vtree/inspect never saw
+        // the card/link inner nodes (the R3 misjudge root).
+        View::Button { content: Some(c), .. } => vec![(**c).clone()],
         View::Container { child, .. } => vec![*child.clone()],
         View::Scrollable { child, .. } => vec![*child.clone()],
         View::List { items, .. } => items.clone(),
@@ -453,6 +458,9 @@ where
             children.iter().collect()
         }
         View::Grid { cells, .. } => cells.iter().collect(),
+        // G4: keep the borrow variant in lockstep with extract_children —
+        // paths derived from VNodes must resolve to the same nodes here.
+        View::Button { content: Some(c), .. } => vec![c.as_ref()],
         View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
         View::List { items, .. } => items.iter().collect(),
         View::Table { headers, rows, .. } => {
@@ -527,6 +535,44 @@ mod tests {
         } else {
             panic!("Expected Button props");
         }
+    }
+
+    /// G4 (411 P2-B): a Button's content subtree (`link (to:) { … }`) must
+    /// serialize into the vtree as the button's child — before the fix the
+    /// converter dropped it, so autoui_vtree/inspect never saw card/link
+    /// inner nodes (the R3 misjudge root).
+    #[test]
+    fn test_button_content_subtree_serializes() {
+        let view: View<TestMsg> = View::Button {
+            label: "card".to_string(),
+            onclick: TestMsg::Click,
+            style: None,
+            on_right_click: None,
+            content: Some(Box::new(View::Column {
+                children: vec![
+                    View::Text { content: "Title".to_string(), style: None },
+                    View::Text { content: "desc line".to_string(), style: None },
+                ],
+                spacing: 2,
+                padding: 0,
+                style: None,
+            })),
+        };
+
+        let tree = view_to_vtree(view);
+        // Button + content Column + 2 Text.
+        assert_eq!(tree.node_count(), 4, "content subtree must enter the vtree");
+        let root = tree.root().unwrap();
+        assert_eq!(root.kind, VNodeKind::Button);
+        assert_eq!(root.children.len(), 1, "button has the content child");
+        let col = tree.get(root.children[0]).unwrap();
+        assert_eq!(col.kind, VNodeKind::Column);
+        assert_eq!(col.children.len(), 2);
+        let t1 = tree.get(col.children[0]).unwrap();
+        assert!(
+            matches!(&t1.props, VNodeProps::Text { content } if content == "Title"),
+            "inner text nodes reachable"
+        );
     }
 
     #[test]
