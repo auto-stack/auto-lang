@@ -1278,6 +1278,37 @@ fn collect_ext_import_files(widgets: &[AuraWidget], out: &mut std::collections::
     }
 }
 
+/// PLAN-037 Phase 5: `.at` fn modules in the ext set (port files) declare
+/// their own `use.web` imports; their local targets must be copied to ext
+/// too. Iterates to a fixpoint (a port may reference another port).
+fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections::BTreeSet<String>) {
+    let mut queue: Vec<String> = ext_set.iter().cloned().collect();
+    let mut visited: std::collections::BTreeSet<String> = Default::default();
+    while let Some(rel) = queue.pop() {
+        if !rel.ends_with(".at") || !visited.insert(rel.clone()) {
+            continue;
+        }
+        let path = root_dir.join(&rel);
+        let Ok(source) = fs::read_to_string(&path) else { continue };
+        let session = auto_lang::session::CompilerSession::ui();
+        let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
+        let Ok(ast) = parser.parse() else { continue };
+        for stmt in &ast.stmts {
+            if let auto_lang::ast::Stmt::UseWeb(entries) = stmt {
+                for imp in entries {
+                    let path = imp.path.as_str();
+                    if is_local_ext_path(path) {
+                        let normalized = path.trim_start_matches("./").trim_start_matches('/').to_string();
+                        if ext_set.insert(normalized.clone()) {
+                            queue.push(normalized);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Split a dep spec into (package_name, version_spec).
 ///
 /// Supports three formats:
@@ -1825,6 +1856,8 @@ export default router
             .map(|(_, _, code, _)| code.clone())
             .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
 
+        // PLAN-037 Phase 5: pull port-file (.at fn module) web targets in.
+        expand_at_module_web_imports(root_dir, &mut ext_file_set);
         Ok(Self {
             root_dir: root_dir.to_path_buf(),
             output_dir,
@@ -1981,7 +2014,17 @@ export default router
             )
             .into());
         }
-        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module(&fns))
+        // PLAN-037 Phase 5: the module's own `use.web` statements become ES
+        // imports in the generated TS (port files bind web symbols and expose
+        // wrapper fns). Non-Fn kinds are ignored by the generator.
+        let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast.stmts.iter()
+            .filter_map(|s| match s {
+                auto_lang::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module_full(&fns, &web_imports))
     }
 
     fn copy_ext_files(&self) -> AutoResult<Vec<String>> {

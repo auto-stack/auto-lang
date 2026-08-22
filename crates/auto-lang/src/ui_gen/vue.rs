@@ -11499,6 +11499,11 @@ impl VueGenerator {
                     // emit `any`, never the identifier itself (TS2304) and
                     // never an api.ts import (TS2305).
                     "Value" => "any".to_string(),
+                    // PLAN-037 Phase 4: bare `obj`/`list` are dynamic builtins
+                    // in widget props (component fn extraction had erased them
+                    // to any; the widget path maps types directly).
+                    "obj" => "any".to_string(),
+                    "list" => "any[]".to_string(),
                     // Custom types (e.g. Note) — use the type name directly.
                     // The interface should be imported from api.ts.
                     other => other.to_string(),
@@ -11753,7 +11758,8 @@ impl VueGenerator {
             // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin (dynamic
             // any) — mapping it as a custom api.ts type produced
             // `import type { Value } from '@/lib/api'` (TS2305).
-            | "Value"
+            // PLAN-037 Phase 4: bare `obj`/`list` likewise.
+            | "Value" | "obj" | "list"
             // Plan 012 P2 (gap 43): lowercase `map` is the DSL map-literal
             // type — built-in, not an api.ts interface.
             | "map"
@@ -12254,9 +12260,40 @@ export function cn(...inputs: ClassValue[]) {
     /// file's top-level `fn` declarations (e.g. forge_helpers.at). Each fn
     /// becomes an exported TS function — the single source for pure helpers
     /// shared by widgets (`use { fn: … from "src/front/x.at" }`).
-    pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+        pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+        Self::generate_fn_module_full(fns, &[])
+    }
+
+    /// PLAN-037 Phase 5: fn module + its own `use.web` imports. Port files
+    /// (ports/<域>.at) declare web bindings and expose wrapper fns; the
+    /// generated TS must import the bound symbols before the wrappers use
+    /// them. Only plain (fn) entries are emitted — composable/component
+    /// kinds are caller-side machinery with no meaning in a fn module.
+    pub fn generate_fn_module_full(
+        fns: &[crate::aura::AuraModuleFn],
+        ext_imports: &[crate::ast::ui::ExtImport],
+    ) -> String {
         let mut code = String::new();
-        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).\n");
+        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
+");
+        for imp in ext_imports {
+            if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Fn) {
+                continue;
+            }
+            let names: Vec<&str> = imp.symbols.iter().map(|s| s.as_str()).collect();
+            if names.is_empty() {
+                continue;
+            }
+            code.push_str(&format!(
+                "import {{ {} }} from '{}'
+",
+                names.join(", "),
+                Self::ext_import_specifier(imp.path.as_str())
+            ));
+        }
+        if !ext_imports.is_empty() {
+            code.push('\n');
+        }
         let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
         for mfn in fns {
             let param_list = mfn.params.iter()
