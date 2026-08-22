@@ -1820,6 +1820,18 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     let mut s = scrollable(child);
     if let Some(ref st) = style {
         let is = IcedStyle::from_style(st);
+        // 2026-08-22(max-h 封顶修复):cap 判定从 is.height 的 None 分支
+        // 提出,与 height 推断解耦 —— from_style 对 `w-full + overflow-y`
+        // 会推断 height=Fill("竖向填充意图"),旧逻辑只在没有 height 时才
+        // 封顶,于是 max-h-[400px] 的代码块长到内容高(实测 3058px)、内部
+        // 滚动永不出现。CSS max-height 语义:有 cap 一律 Shrink +
+        // Container::max_height 封顶(短内容收缩、长内容滚动),显式
+        // h-*/Fill 让位。
+        if let Some(mh) = is.max_height {
+            if mh > 0.0 {
+                cap = Some(mh);
+            }
+        }
         if let Some(ref ws) = is.width {
             match ws {
                 IcedSize::Fixed(f) => s = s.width(iced::Length::Fixed(*f as f32)),
@@ -1830,21 +1842,20 @@ fn build_scrollable<M: Clone + Debug + 'static>(
             if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
         }
         match is.height {
-            Some(IcedSize::Fixed(f)) => { s = s.height(iced::Length::Fixed(f as f32)); }
-            Some(IcedSize::Full) => { s = s.height(iced::Length::Fill); }
-            Some(IcedSize::FillPortion(n)) => { s = s.height(iced::Length::FillPortion(n)); }
+            Some(IcedSize::Fixed(f)) => {
+                if cap.is_none() { s = s.height(iced::Length::Fixed(f as f32)); }
+            }
+            Some(IcedSize::Full) => {
+                if cap.is_none() { s = s.height(iced::Length::Fill); }
+            }
+            Some(IcedSize::FillPortion(n)) => {
+                if cap.is_none() { s = s.height(iced::Length::FillPortion(n)); }
+            }
             None => {
-                // Plan 053 后续(ash-gui VM):`max-h-[Npx] overflow-y-auto` 的 col 被
-                // view builder 转成 Scrollable,但 iced 无 max-height。
-                // Plan 057 续(块高度修复):旧兜底 Fixed(N) 让短内容也占满 N
-                // (空 block 半页空白)。改为记录封顶值,末尾以 Shrink 滚动区 +
-                // Container::max_height 封顶 —— Shrink 在被 max 封顶的 limits 内
-                // 解析为 min(内容高, N),短内容收缩、长内容滚动(CSS max-height
-                // 语义;vue 端不受影响)。
-                if let Some(max_h) = is.max_height {
-                    if max_h > 0.0 { cap = Some(max_h); }
-                } else if let Some(h) = height {
-                    if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); }
+                if cap.is_none() {
+                    if let Some(h) = height {
+                        if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); }
+                    }
                 }
             }
         }
