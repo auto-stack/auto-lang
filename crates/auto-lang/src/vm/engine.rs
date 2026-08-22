@@ -6157,13 +6157,14 @@ impl AutoVM {
                         // Plan 317 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
                         crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
                     } else if native_id == 2870 || native_id == 2871 {
-                        eprintln!("[DBG-2870] CALL_NAT {} reached dispatch, has_shim={}", native_id, self.native_interface.get(native_id).is_some());
-                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
-                            shim(task, self)?;
+                        eprintln!("[DBG-2870] CALL_NAT {} direct-calling shim_host_call", native_id);
+                        let r = if native_id == 2870 {
+                            crate::vm::native::shim_host_call(task, self)
                         } else {
-                            eprintln!("[DBG-CALLNAT] missing native_id={} at engine", native_id);
-                            return Err(VMError::MissingNative(native_id));
-                        }
+                            crate::vm::native::shim_host_call_value(task, self)
+                        };
+                        eprintln!("[DBG-2870] shim returned {:?}", r.is_ok());
+                        r?;
                     } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         let pre_call_ip = task.ip;
                         shim(task, self)?;
