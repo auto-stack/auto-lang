@@ -697,6 +697,7 @@ pub fn synthesize_widget_module(
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
                     codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
+                        fn_name: f.name.to_string(),
                         method: api.method.clone(),
                         path: api.path.clone(),
                         params,
@@ -1231,6 +1232,7 @@ pub fn synthesize_from_decl(
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
                     codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
+                        fn_name: f.name.to_string(),
                         method: api.method.clone(),
                         path: api.path.clone(),
                         params,
