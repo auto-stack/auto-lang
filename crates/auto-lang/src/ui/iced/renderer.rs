@@ -5826,6 +5826,41 @@ fn compare_pngs(
             }
         }
 
+        // Plan 418 P2-3: synthesized menubar (config-driven via auto-edit.at)
+        // local UI state — same internal-message pattern as preview-card
+        // states. Open state lives in action_config; any non-internal message
+        // closes the menu (internal ticks/heartbeats excluded so MCP runs
+        // don't auto-close menus).
+        if msg.event.starts_with("__menubar") {
+            let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            match name.as_str() {
+                "__menubar_toggle" => {
+                    if let Some(auto_val::Value::Str(id)) = args.get(0) {
+                        let next =
+                            if crate::ui::action_config::menubar_open().as_deref() == Some(id.as_str()) {
+                                None
+                            } else {
+                                Some(id.to_string())
+                            };
+                        crate::ui::action_config::set_menubar_open(next);
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                    return iced::Task::none();
+                }
+                "__menubar_close" => {
+                    crate::ui::action_config::set_menubar_open(None);
+                    *state.view_dirty.borrow_mut() = true;
+                    return iced::Task::none();
+                }
+                _ => {}
+            }
+        } else if crate::ui::action_config::menubar_open().is_some()
+            && !msg.event.starts_with("__")
+        {
+            crate::ui::action_config::set_menubar_open(None);
+            *state.view_dirty.borrow_mut() = true;
+        }
+
         // Pick up pending screenshot request from MCP thread at every update (Plan 285).
         if state.screenshot_request.borrow().is_none() {
             if let Some(ref mcp_handle) = state.mcp_shared {

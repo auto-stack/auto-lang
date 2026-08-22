@@ -916,7 +916,22 @@ impl<'a> AuraViewBuilder<'a> {
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
             "sep" | "separator" => self.convert_sep(props, bindings),
+            // Plan 418 P2-3: same synthesis, no probe recording (untracked
+            // path has no stable node paths).
+            "menubar" => self.convert_menubar(props, bindings, None),
+            "toolbar" => self.convert_toolbar(props, bindings, None),
             "avatar" => self.convert_avatar(props),
+            // Plan 418 P2-3: config-driven menubar/toolbar (auto-edit.at).
+            // path/probe pass through so synthesized buttons land in the
+            // snapshot's event index (MCP clickability).
+            "menubar" => {
+                let p = path.clone();
+                self.convert_menubar(props, bindings, Some((&p, probe)))
+            }
+            "toolbar" => {
+                let p = path.clone();
+                self.convert_toolbar(props, bindings, Some((&p, probe)))
+            }
 
             // Child widget lookup or fallback.
             _ => {
@@ -3078,6 +3093,238 @@ let tabs_inner = View::Row {
     /// Plan 414 §6: `sep` — inline separator widget (toolbar/menu group
     /// gaps). Orientation-aware, theme-aware 1px hairline; user classes
     /// append after the base (later classes win).
+    /// Plan 418 P2-3: synthesize the menubar from the action config
+    /// (`menubar {}` DSL tag). Open state lives in action_config::MENUBAR_OPEN
+    /// (renderer-side local UI state, preview-card pattern); toggle buttons
+    /// emit `__menubar_toggle(id)` internal messages handled in iced update.
+    /// Panels reuse the Plan 409 overlay hoist; left offsets are estimated
+    /// (chars x 12 + 28 padding/margin — a 2-char button = 52px, matching the
+    /// hand-written 8/60/112/164 cadence this replaces).
+    fn convert_menubar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+        path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        use crate::ui::action_config::{action_config, menubar_open, MenuItem};
+
+        // Split the optional (path, probe) once: matching through a shared
+        // reference would downgrade the &mut binding, so we own the pieces.
+        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) =
+            match path {
+                Some((b, p)) => (Some(b.to_vec()), Some(p)),
+                None => (None, None),
+            };
+        macro_rules! record {
+            ($idx:expr, $handler:expr) => {
+                if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
+                    let mut child = base.clone();
+                    child.push($idx);
+                    let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
+                    probe.record_event(&p, "onclick", $handler);
+                }
+            };
+        }
+
+        let empty = || View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: None,
+        };
+        let Some(cfg) = action_config() else { return empty() };
+        if cfg.menus.is_empty() {
+            return empty();
+        }
+
+        let open = menubar_open();
+        let mut children: Vec<View<DynamicMessage>> = Vec::new();
+        let mut child_idx = 0usize;
+        let mut left = 8.0f32;
+        for menu in &cfg.menus {
+            let is_open = open.as_deref() == Some(menu.id.as_str());
+            record!(child_idx, &format!("__menubar_toggle(\"{}\")", menu.id));
+            child_idx += 1;
+            children.push(View::Button {
+                label: menu.title.clone(),
+                onclick: DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_toggle".to_string(),
+                    args: vec![Value::str(menu.id.as_str())],
+                },
+                style: Style::parse(&format!(
+                    "h-7 px-3 text-[12px] {}",
+                    if is_open { "text-zinc-100" } else { "mr-1 text-zinc-300" }
+                ))
+                .ok(),
+                on_right_click: None,
+                content: None,
+            });
+
+            if is_open {
+                // Click-outside catcher + dropdown panel (mirrors the
+                // hand-written 414 structure: catcher under the panel, both
+                // hoisted via absolute positioning).
+                record!(child_idx, "__menubar_close");
+                child_idx += 1;
+                children.push(View::Button {
+                    label: String::new(),
+                    onclick: DynamicMessage::Typed {
+                        widget_name: self.widget_name.clone(),
+                        event_name: "__menubar_close".to_string(),
+                        args: vec![],
+                    },
+                    style: Style::parse("w-[2000px] h-[2000px] mt-[33px] px-0 py-0").ok(),
+                    on_right_click: None,
+                    content: None,
+                });
+
+                let mut items: Vec<View<DynamicMessage>> = Vec::new();
+                for item in &menu.items {
+                    match item {
+                        MenuItem::Separator => {
+                            items.push(self.convert_sep(&HashMap::new(), bindings));
+                        }
+                        MenuItem::Action(id) => {
+                            let Some(a) = cfg.action_by_id(id) else { continue };
+                            let handler = a.handler.trim_start_matches('.').to_string();
+                            record!(child_idx, &a.handler);
+                            child_idx += 1;
+                            let content = View::Row {
+                                children: vec![
+                                    View::Text {
+                                        content: a.title.clone(),
+                                        style: Style::parse("text-[12px] text-zinc-200").ok(),
+                                    },
+                                    View::Text {
+                                        content: a.shortcut.clone().unwrap_or_default(),
+                                        style: Style::parse(
+                                            "text-[11px] text-zinc-500 ml-auto w-14",
+                                        )
+                                        .ok(),
+                                    },
+                                ],
+                                spacing: 0,
+                                padding: 0,
+                                style: Style::parse("w-full justify-between items-center px-3")
+                                    .ok(),
+                            };
+                            items.push(View::Button {
+                                label: a.title.clone(),
+                                onclick: DynamicMessage::Typed {
+                                    widget_name: self.widget_name.clone(),
+                                    event_name: handler,
+                                    args: vec![],
+                                },
+                                style: Style::parse("h-7 w-full px-0 py-0").ok(),
+                                on_right_click: None,
+                                content: Some(Box::new(content)),
+                            });
+                        }
+                    }
+                }
+                children.push(View::Column {
+                    children: items,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse(&format!(
+                        "absolute z-50 top-[33px] left-[{:.0}px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1",
+                        left
+                    ))
+                    .ok(),
+                });
+                child_idx += 1;
+            }
+            left += menu.title.chars().count() as f32 * 12.0 + 28.0;
+        }
+
+        let user = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .unwrap_or_default();
+        View::Row {
+            children,
+            spacing: 0,
+            padding: 0,
+            style: if user.is_empty() {
+                None
+            } else {
+                Style::parse(&user).ok()
+            },
+        }
+    }
+
+    /// Plan 418 P2-3: synthesize the toolbar from the action config
+    /// (`toolbar {}` DSL tag) — icon buttons (PUA label scheme, same as
+    /// convert_button's icon path) + separators; style from the tag merges on.
+    fn convert_toolbar(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+        mut path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        use crate::ui::action_config::{action_config, MenuItem};
+
+        let empty = || View::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: None,
+        };
+        let Some(cfg) = action_config() else { return empty() };
+
+        let mut children: Vec<View<DynamicMessage>> = Vec::new();
+        let mut child_idx = 0usize;
+        for item in &cfg.toolbar {
+            match item {
+                MenuItem::Separator => children.push(self.convert_sep(&HashMap::new(), bindings)),
+                MenuItem::Action(id) => {
+                    let Some(a) = cfg.action_by_id(id) else { continue };
+                    let handler = a.handler.trim_start_matches('.').to_string();
+                    if let Some((base, probe)) = &mut path {
+                        let mut child = base.to_vec();
+                        child.push(child_idx);
+                        let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
+                        probe.record_event(&p, "onclick", &a.handler);
+                    }
+                    child_idx += 1;
+                    let icon = a.icon.clone().unwrap_or_default();
+                    let label = if icon.is_empty() {
+                        a.title.clone()
+                    } else {
+                        format!("\u{EE01}{}\u{EE02}{}", icon, a.title)
+                    };
+                    children.push(View::Button {
+                        label,
+                        onclick: DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: handler,
+                            args: vec![],
+                        },
+                        style: Style::parse("h-7 w-7 px-0 py-0").ok(),
+                        on_right_click: None,
+                        content: None,
+                    });
+                }
+            }
+        }
+
+        let user = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .unwrap_or_default();
+        View::Row {
+            children,
+            spacing: 0,
+            padding: 0,
+            style: if user.is_empty() {
+                None
+            } else {
+                Style::parse(&user).ok()
+            },
+        }
+    }
+
     fn convert_sep(
         &self,
         props: &HashMap<String, AuraPropValue>,

@@ -237,3 +237,9 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - 路线 A 细化:渲染器侧 `MENUBAR_OPEN: Mutex<Option<String>>` 静态态 + `__menubar_toggle` 内部消息(toast/__preview_copy 同模式,update 拦截改态促重绘);item 点击发配置 handler 事件,update 对已配置 handler 先清菜单态再走 VM 派发
 - 面板锚定:合成 absolute overlay(复用 Plan 409 hoist),左偏移按 `8 + Σ(标题字符×12 + 24 padding + 4 mr-1)` 估算(2 字按钮 52px,与现手写 8/60/112/164 间距一致)
 - **关键缺口**:合成按钮不经 DSL events map → probe.record_event 不记录 → MCP snapshot 不可见——需为合成子树补 probe 记录(路径需与 vtree 节点对齐)或 vtree 侧从 View 闭包提取事件,否则 MCP 测试将失去菜单项覆盖
+
+### 8.4 P2-3 实施记录（2026-08-22 第三批,menubar/toolbar 配置驱动渲染）
+- **交付**:builder 合成 `menubar {}`/`toolbar {}` 标签(读 ACTION_CONFIG;面板复用 Plan 409 overlay hoist,左偏移估算 8+Σ(字符×12+28),2 字按钮 52px 与手写间距一致);渲染器 update 拦截 `__menubar_toggle(id)`/`__menubar_close`(preview-card 内部消息同模式,open 态存 action_config::MENUBAR_OPEN);**任意非 `__` 前缀消息自动关菜单**(心跳/tick 排除);toolbar 图标按钮走 PUA label + variant:icon 同路径
+- **041 迁移**:app.at 530→338 行——删 4 菜单×手写样板/8 工具栏按钮/4 个 onkeydown DSL 属性/menu_open 态与 3 个菜单 handler,换 `menubar {}` + `toolbar (style: "ml-auto") {}` 两行;**快捷键全部经配置层**(Ctrl+D 仅配置,回退层锚点)
+- **验证**:041 MCP 矩阵 **29/29**(菜单项按标签定位/工具栏按 PUA 图标定位/开关菜单经 __menubar 内部消息/选择后自动关闭/quit 进程退出);回归 iced 44/44 + action_config 3/3 + mcp_server 6/6
+- **已知缺口**(后续):①合成子树的 probe 路径与 vtree 嵌套层级不对齐(面板列引入额外层),snapshot 无合成按钮 onclick 属性——测试以标签/图标定位替代,修法=按真实嵌套路径记录;②MCP 自动化在高负载下偶发应用静默退出(无 panic,疑似资源压力,复跑即过)——需隔离环境排查;③菜单项 checked 勾选态未渲染(checked-if 已解析)
