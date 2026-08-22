@@ -14,7 +14,7 @@
 
 ## 后续(editor 残留已立项,见 418 §8.10)
 - **Plan 428** 折叠 Phase B(原拟 419,撞号改序)(core 自绘)/ **420** 多 tab 工作区 / **421** vue 契约 / **422** 弹层原语(menubar/contextmenu)/ **423** 配置层 Phase3;IME/DPI/Linux 人工验收挂 413 尾(需实机)。
-- worktree 已重建:`.worktrees/auto-edit-ux`,分支 `plan-editor-followups`(基于 master 5d34b0c2,target 缓存保留;原 plan-418 分支已被并行会话合并后清理)。
+- worktree 约定:每计划专用(如 422 用 `.worktrees/422-popover`);本交接曾指向的 `.worktrees/auto-edit-ux`/`plan-editor-followups` 已清理(2026-08-23,分支与 master 无差异)。
 
 ## 剩余事项
 - §8.4②:MCP 高负载偶发应用静默退出(无 panic,复跑即过)——环境项,需隔离环境排查;真机负载低时未见
