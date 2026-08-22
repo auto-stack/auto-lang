@@ -269,9 +269,15 @@ current status of each:
   original report used bare `score` in the test source, which is not valid
   Auto for self-field access. No fix needed.
 
-- **DIV-TRAIT-VM-1 — bounded-generic functions (open, VM side).** AutoVM
-  cannot dispatch a spec method on a generic type parameter, and the
-  `<T has Spec>` bound syntax is unsupported. 状态: open (L3).
+- **DIV-TRAIT-VM-1 — bounded-generic functions (open, VM side; 2026-08-22
+  精确定位).** 两个独立断点(探针实证):①语法——`fn f<T has Spec>(...)`
+  在泛型参数表被拒("Expected '>' or ',', got has",parser 的 generic
+  param list 分支不识别 `has` 界约束);②分派——即便去掉 bound 用裸
+  `<T>`,方法调用 `a.compare(0)` 按类型名静态解析 → 链接错
+  "Undefined symbol: T.compare"(codegen 无单态化也无 spec 动态分派)。
+  修复需:parser 界约束语法 + codegen 调用点单态化(按实参具体类型实例
+  化)或经 spec 注册表动态分派 + a2r 侧 `<T: Spec>` 发射——多天级语言
+  特性,Plan 417-E3 立项实施。状态: open (L3, Plan 417-E3)。
 
 - **DIV-TRAIT-VM-2 — VM trait checker requires re-declaration of default
   methods (✅ fixed 2026-08-22, Plan 417-E4).** 双端修复:①trait_checker 的

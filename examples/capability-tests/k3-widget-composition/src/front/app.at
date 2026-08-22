@@ -1,0 +1,29 @@
+// app.at — k3 page-level widget App.
+//
+// Phase 2: child defined as widget (item_w.at), same loop + per-instance
+// props + upward callback as Phase 1.
+
+use row: ItemRow
+
+widget App {
+    msg Msg { ItemSelected(str) }
+    model {
+        var items List<str> = ["alpha", "beta", "gamma"]
+        var last_selected str = "(none)"
+    }
+    view {
+        col {
+            style: "p-4 gap-2 max-w-md"
+            for item in .items {
+                ItemRow(label: item, on_select: .ItemSelected(item))
+            }
+            row {
+                style: "pt-2 text-sm text-gray-600"
+                text .last_selected { }
+            }
+        }
+    }
+    on {
+        .ItemSelected(name) -> { .last_selected = name }
+    }
+}

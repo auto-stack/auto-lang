@@ -7,6 +7,7 @@ members = [
     "015-notes",
     "015-notes-back",
     "016-calendar",
+    "ash-gui-auto-back",
     "auto-musk-back",
     "auto-musk-wt029-back",
     "contact-form",
