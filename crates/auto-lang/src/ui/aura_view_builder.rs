@@ -2976,9 +2976,8 @@ let tabs_inner = View::Row {
             .unwrap_or_else(|| "vertical".to_owned());
         if orientation == "horizontal" {
             // Horizontal: full-width 1px line (zinc-500 for dark-theme
-            // visibility; bg-border was indistinguishable from the bg).
-            // Built as a styled empty Column; FIXED sizes only - h-full
-            // (Fill) on a Row child breaks every following sibling.
+            // visibility). FIXED sizes only - h-full (Fill) on a Row child
+            // breaks every following sibling in the VM renderer.
             let base = "w-full h-px bg-zinc-500";
             let mut style = Style::parse(base).ok();
             if let Some(user) = self.extract_style_with(props, bindings) {
@@ -2996,17 +2995,13 @@ let tabs_inner = View::Row {
             }
             return b.build();
         }
-        // Vertical: a chromeless BUTTON wrapping a 1px bg-filled column.
-        // Construction-centered, no font metrics to fight: the Button arm's
-        // fixed-height wrapper does align_y(Center) on the content (the
-        // text-glyph variant sat 2px low on its baseline and its ink
-        // landed ~8px right of center inside its own advance box); the ink
-        // IS the block here, and ml-*/mr-* margins reach the button
-        // through the same proven wrap path (mx-* is silently dropped by
-        // the adapter). The DSL surface stays a dedicated `sep` widget;
-        // user classes append after the base (later wins) and restyle the
-        // line.
-        let base = "px-0 py-0 ml-2 mr-2 h-7";
+        // Vertical (Plan 414 user spec): a w-8 box matching the icon
+        // buttons, with the 1px line centered via a Container's center_x/
+        // center_y (construction-centered, no font metrics). Spacing is
+        // governed purely by the parent row's gap so every item reads
+        // evenly pitched. User classes land on the box (e.g. debug
+        // borders); the line keeps its fixed 1x16 shape.
+        let base = "w-8 h-7 px-0 py-0";
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
             style = match style {
@@ -3020,12 +3015,21 @@ let tabs_inner = View::Row {
         let line = ViewBuilder::col()
             .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
             .build();
+        let centered = View::Container {
+            child: Box::new(line),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: true,
+            center_y: true,
+            style: Some(Style::parse("w-full h-full").unwrap()),
+        };
         // `onclick` is a plain DynamicMessage (not Option): dispatch an
-        // empty event name — no handler matches it, so a stray click on
+        // empty event name - no handler matches it, so a stray click on
         // the separator is a harmless no-op.
         View::Button {
             label: String::new(),
-            content: Some(Box::new(line)),
+            content: Some(Box::new(centered)),
             onclick: DynamicMessage::String(String::new()),
             style,
             on_right_click: None,

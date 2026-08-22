@@ -39,44 +39,44 @@ widget App {
                 button (variant: "text") {
                     icon (name: "file-plus", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActNew
-                    style: "h-7 w-8 px-0 py-0 ml-auto"
+                    style: "h-7 w-8 px-0 py-0 ml-auto border border-zinc-500"
                 }
                 button (variant: "text") {
                     icon (name: "folder-open", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActOpen
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
                 button (variant: "text") {
                     icon (name: "save", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActSave
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
-                sep {}
+                sep (style: "border border-zinc-500")
                 button (variant: "text") {
                     icon (name: "undo-2", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActUndo
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
                 button (variant: "text") {
                     icon (name: "redo-2", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActRedo
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
-                sep {}
+                sep (style: "border border-zinc-500")
                 button (variant: "text") {
                     icon (name: "scissors", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActCut
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
                 button (variant: "text") {
                     icon (name: "copy", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActCopy
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
                 button (variant: "text") {
                     icon (name: "clipboard", style: "h-4 w-4 text-zinc-400") {}
                     onclick: .ActPaste
-                    style: "h-7 w-8 px-0 py-0"
+                    style: "h-7 w-8 px-0 py-0 border border-zinc-500"
                 }
             }
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
@@ -116,6 +116,142 @@ widget App {
                     button (text: "util.at", variant: "text") {
                         onclick: .TabUtil
                         style: "h-8 px-3 text-[12px] text-zinc-500"
+                    }
+                }
+                if .menu_open == "file" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[8px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "新建" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+N" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActNew
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "打开…" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+O" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActOpen
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "保存" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+S" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActSave
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "退出" { style: "text-[12px] text-zinc-200" }
+                                text "Alt+F4" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActQuit
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "edit" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[60px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "撤销" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+Z" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActUndo
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "重做" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+Y" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActRedo
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "剪切" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+X" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActCut
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "复制" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+C" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActCopy
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "全选" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+A" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActSelectAll
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "view" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[112px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "切换 Console" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+J" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActConsole
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "切换 Tab" { style: "text-[12px] text-zinc-200" }
+                                text "" { style: "w-8" }
+                            }
+                            onclick: .ActSwitchTab
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "help" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[164px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "关于 auto-edit" { style: "text-[12px] text-zinc-200" }
+                                text "" { style: "w-8" }
+                            }
+                            onclick: .ActAbout
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
                     }
                 }
             }
@@ -188,122 +324,13 @@ widget App {
                     }
                 }
             }
-            if .menu_open == "file" {
-                col (style: "absolute z-50 top-[33px] left-[8px] w-48 bg-card border border-zinc-600 rounded-sm shadow-md py-1") {
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "新建" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+N" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActNew
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "打开…" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+O" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActOpen
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "保存" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+S" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActSave
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "退出" { style: "text-[12px] text-zinc-200" }
-                            text "Alt+F4" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActQuit
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                }
-            }
-            if .menu_open == "edit" {
-                col (style: "absolute z-50 top-[33px] left-[60px] w-48 bg-card border border-zinc-600 rounded-sm shadow-md py-1") {
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "撤销" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+Z" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActUndo
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "重做" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+Y" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActRedo
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "剪切" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+X" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActCut
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "复制" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+C" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActCopy
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "全选" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+A" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActSelectAll
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                }
-            }
-            if .menu_open == "view" {
-                col (style: "absolute z-50 top-[33px] left-[112px] w-48 bg-card border border-zinc-600 rounded-sm shadow-md py-1") {
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "切换 Console" { style: "text-[12px] text-zinc-200" }
-                            text "Ctrl+J" { style: "text-[11px] text-zinc-500" }
-                        }
-                        onclick: .ActConsole
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "切换 Tab" { style: "text-[12px] text-zinc-200" }
-                            text "" { style: "w-8" }
-                        }
-                        onclick: .ActSwitchTab
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                }
-            }
-            if .menu_open == "help" {
-                col (style: "absolute z-50 top-[33px] left-[164px] w-48 bg-card border border-zinc-600 rounded-sm shadow-md py-1") {
-                    button (variant: "text") {
-                        row (style: "w-full justify-between items-center px-3") {
-                            text "关于 auto-edit" { style: "text-[12px] text-zinc-200" }
-                            text "" { style: "w-8" }
-                        }
-                        onclick: .ActAbout
-                        style: "h-7 w-full px-0 py-0"
-                    }
-                }
-            }
         }
     }
 
     on {
+        .MenuClose -> {
+            .menu_open = ""
+        }
         .MenuToggle(m) -> {
             if .menu_open == m {
                 .menu_open = ""
