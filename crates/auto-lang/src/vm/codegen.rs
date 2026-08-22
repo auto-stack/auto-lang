@@ -100,6 +100,7 @@ pub struct ParamInfo {
 /// to an HTTP request in VM+VM split mode.
 #[derive(Clone)]
 pub struct ApiCallInfo {
+    pub fn_name: String,  // 契约函数名(Plan 060 M3:宿主桥按此名注册)
     pub method: String,   // "GET" | "POST" | "PUT" | "DELETE"
     pub path: String,     // "/api/notes", "/api/notes/:id"
     pub params: Vec<String>, // parameter names in declaration order
@@ -4098,6 +4099,52 @@ impl Codegen {
     /// Path params (`:id`) are spliced from the matching positional argument
     /// (stringified via str concatenation). Remaining args form the JSON body
     /// via `json.from_value`.
+    /// Plan 060 M3:裸 #[api] 调用 → auto.host.call(name, args_json) 直调
+    /// 宿主桥(ash-runner 注册),响应 JSON 经 auto.json.to_value 落栈。
+    /// 参数序列化与 HTTP body 同构;返回类型映射与 HTTP 版一致。
+    fn emit_api_host_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
+        let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
+
+        // 1. 桥函数名(= api.at 契约函数名;ash-runner 按端点名注册)。
+        self.emit_str_const_push(&api.fn_name);
+
+        // 2. 参数 JSON 对象:{"p1":<v1>,...}(json.from_value 逐个序列化)。
+        self.emit_str_const_push("{");
+        for (i, expr) in arg_exprs.iter().enumerate() {
+            if i > 0 {
+                self.emit_str_const_push(",");
+                self.emit(OpCode::STR_CAT);
+            }
+            let pname = api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i));
+            self.emit_str_const_push(&format!("\"{}\":", pname));
+            self.emit(OpCode::STR_CAT);
+            self.compile_expr(expr)?;
+            self.emit_call_nat_by_name("auto.json.from_value", 1)?;
+            self.emit(OpCode::STR_CAT);
+        }
+        self.emit_str_const_push("}");
+        self.emit(OpCode::STR_CAT);
+
+        // 3. 直调宿主桥:name, args_json → 响应 JSON 串。
+        self.emit_call_nat_by_name("auto.host.call", 2)?;
+        // 4. json.to_value(响应) → VM 值(调用点直接消费,不过 .at fn return)。
+        self.emit_call_nat_by_name("auto.json.to_value", 1)?;
+
+        // 5. 返回类型映射(与 HTTP 版同表)。
+        self.last_expr_type = match &api.ret_type {
+            crate::ast::Type::Array(_) | crate::ast::Type::List(_) => ObjectType::NestedObject,
+            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned
+            | crate::ast::Type::CStrLit | crate::ast::Type::StrSlice => ObjectType::String,
+            crate::ast::Type::Int | crate::ast::Type::I64 => ObjectType::Int,
+            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Int,
+            crate::ast::Type::Bool => ObjectType::Bool,
+            crate::ast::Type::Float => ObjectType::Float,
+            crate::ast::Type::Double => ObjectType::Double,
+            _ => ObjectType::NestedObject,
+        };
+        Ok(())
+    }
+
     fn emit_api_http_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
         // Collect positional arg expressions in order.
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
@@ -7022,6 +7069,21 @@ impl Codegen {
                         if matches!(call.name.as_ref(), Expr::Ident(_)) {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
                                 return self.emit_api_http_call(&api, call);
+                            }
+                        }
+                    }
+                }
+                // Plan 060 M3:host 分派 —— merged 模式下宿主桥已注册
+                // (ash-runner 进程内起 ash_server worker)时,裸 #[api] 调用
+                // 改写为 auto.host.call 直调桥函数(与 HTTP 改写同构:调用点
+                // 发射,值经 json.to_value 落栈 —— 规避 .at fn return 无法
+                // 携带复合值的 VM 边界限制)。api.at 实现体(调 shell.X 桩)
+                // 与 HTTP 模式同样被旁路。
+                else if crate::vm::host_bridge::has_host_calls() {
+                    if let Some(name) = func_name.as_ref() {
+                        if matches!(call.name.as_ref(), Expr::Ident(_)) {
+                            if let Some(api) = self.api_funcs.get(name).cloned() {
+                                return self.emit_api_host_call(&api, call);
                             }
                         }
                     }
