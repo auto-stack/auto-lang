@@ -96,6 +96,11 @@ impl TraitChecker {
 
             match implemented {
                 Some(method) => {
+                    // Plan 417-E2 followup (F1): the implementer may write the
+                    // assoc name in its own signature (`fn first() Item`) —
+                    // substitute both sides before comparing so it checks
+                    // against the binding, not the bare name.
+                    let impl_ret = method.ret.substitute(&assoc_names, &assoc_types);
                     // Check parameter count
                     if method.params.len() != spec_method.params.len() {
                         errors.push(
@@ -121,7 +126,7 @@ impl TraitChecker {
                     // associated-type substitution (identical when the spec
                     // declares none).
                     let is_compatible = matches!(
-                        (&method.ret, &spec_ret),
+                        (&impl_ret, &spec_ret),
                             // Exact match for same types
                             (Type::Void, Type::Void)
                             | (Type::Int, Type::Int)
@@ -157,7 +162,7 @@ impl TraitChecker {
                         // types compare as unequal. Use unique_name() string comparison as
                         // a universal fallback: two Future<str> both produce "Future<str>",
                         // two Value both produce "Value", etc.
-                        method.ret.unique_name() == spec_ret.unique_name()
+                        impl_ret.unique_name() == spec_ret.unique_name()
                     };
 
                     if !is_compatible {
@@ -165,7 +170,7 @@ impl TraitChecker {
                             SyntaxError::Generic {
                                 message: format!(
                                     "Method '{}' has return type {:?} but spec '{}' requires {:?}",
-                                    method.name, method.ret, spec_decl.name, spec_ret
+                                    method.name, impl_ret, spec_decl.name, spec_ret
                                 ),
                                 span: Self::empty_span(),
                             }
