@@ -42,3 +42,145 @@ pub fn submit(req: ShellExecRequest) {
 pub fn pop() -> Option<ShellExecRequest> {
     QUEUE.lock().unwrap().pop_front()
 }
+
+// ── show 下沉(2026-08-22)────────────────────────────────────────────
+// 根因:shell.at 在 VM 里用 `js = js + ...` 拼 show 的 Code payload
+// (~100KB 巨串,types.at ~30KB、block_item.at ~100KB),大文件时触发 VM
+// 字符串堆损坏 —— 实测会话 cwd 被写成单字符 "r"、payload 丢失、块永挂
+// Running、进程满转后静默退出。语义(读文件+逐行高亮+payload JSON)整体
+// 下沉 Rust,经 auto.shell.emit_show native 触发;renderer 的 font-mono
+// Text 自动高亮也复用同一实现,避免两份色板漂移。
+
+/// 单行语法高亮 → (文本, 颜色 rgb) 序列;None = 默认前景色。
+/// 自 ui/iced/renderer.rs 的 highlight_code 移植(色板 = Prism tomorrow)。
+/// renderer 侧改为把本函数结果转 iced Span,保持行为一致。
+pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
+    const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
+        "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
+        "textarea", "code_editor", "scroll", "grid", "link", "if", "else", "return", "true", "false",
+        "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
+        "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
+        "primary", "secondary", "destructive", "default"];
+    const C_KW: (u8, u8, u8) = (0xc7, 0x92, 0xea); // 紫
+    const C_STR: (u8, u8, u8) = (0xc3, 0xe8, 0x8d); // 绿
+    const C_COM: (u8, u8, u8) = (0x6b, 0x72, 0x80); // 灰
+    const C_NUM: (u8, u8, u8) = (0xf7, 0x8c, 0x6c); // 橙
+    const C_PUN: (u8, u8, u8) = (0x89, 0xdd, 0xff); // 青
+
+    let bytes = code.as_bytes();
+    let n = bytes.len();
+    let mut i = 0;
+    let mut out: Vec<(String, Option<(u8, u8, u8)>)> = Vec::new();
+    let push = |out: &mut Vec<_>, text: String, color: Option<(u8, u8, u8)>| {
+        if !text.is_empty() {
+            out.push((text, color));
+        }
+    };
+    while i < n {
+        let b = bytes[i];
+        if (b == b'/' && i + 1 < n && bytes[i + 1] == b'/') || b == b'#' {
+            let s = i;
+            while i < n && bytes[i] != b'\n' {
+                i += 1;
+            }
+            push(&mut out, code[s..i].to_string(), Some(C_COM));
+        } else if b == b'"' || b == b'\'' || b == b'`' {
+            let q = b;
+            let s = i;
+            i += 1;
+            while i < n && bytes[i] != q {
+                if bytes[i] == b'\\' && i + 1 < n {
+                    i += 1;
+                }
+                i += 1;
+            }
+            if i < n {
+                i += 1;
+            }
+            push(&mut out, code[s..i].to_string(), Some(C_STR));
+        } else if b.is_ascii_digit() {
+            let s = i;
+            while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') {
+                i += 1;
+            }
+            push(&mut out, code[s..i].to_string(), Some(C_NUM));
+        } else if b.is_ascii_alphabetic() || b == b'_' {
+            let s = i;
+            while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') {
+                i += 1;
+            }
+            let t = &code[s..i];
+            push(&mut out, t.to_string(), if KW.contains(&t) { Some(C_KW) } else { None });
+        } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
+            let s = i;
+            while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') {
+                i += 1;
+            }
+            push(&mut out, code[s..i].to_string(), None);
+        } else {
+            // 多字节字符按完整 UTF-8 长度推进(G3:按字节切片会 panic)。
+            let ch_len = code[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+            push(&mut out, code[i..i + ch_len].to_string(), Some(C_PUN));
+            i += ch_len;
+        }
+    }
+    out
+}
+
+/// show 命令的 command_result payload(读文件 → 逐行高亮 → Code 变体;
+/// 文件缺失 → Failed)。JSON 在 Rust 侧拼装(见模块头注释)。
+/// 行语义对齐旧 .at 实现:按 '\n' 切、剥尾 '\r'、末尾无内容的行不发;
+/// span 显式带 r/g/b(默认前景 = 229,231,235,bold/italic 恒 false)。
+pub fn show_result_json(block_id: i64, cwd: &str, path: &str) -> String {
+    let display = std::path::Path::new(path)
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+    let content = match std::fs::read(path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+        Err(_) => {
+            return serde_json::json!({
+                "block_id": block_id,
+                "cwd": cwd,
+                "status": {"Failed": format!("show: {}: no such file", display)},
+                "output": serde_json::Value::Null,
+                "duration_ms": 0,
+                "exit_code": 1,
+            })
+            .to_string();
+        }
+    };
+    // 扩展名:最后一个 '.' 之后(无则空)。
+    let lang = std::path::Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let mut parts: Vec<&str> = content.split('\n').collect();
+    // 对齐 .at 侧行为:结尾的空段不发(show 的行扫描只发射有内容的尾段)。
+    if parts.last() == Some(&"") {
+        parts.pop();
+    }
+    let mut lines_json: Vec<serde_json::Value> = Vec::new();
+    for line in parts {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let mut spans_json: Vec<serde_json::Value> = Vec::new();
+        for (text, color) in highlight_rgb(line) {
+            let (r, g, b) = color.unwrap_or((229, 231, 235));
+            spans_json.push(serde_json::json!({
+                "text": text, "r": r, "g": g, "b": b, "bold": false, "italic": false,
+            }));
+        }
+        lines_json.push(serde_json::Value::Array(spans_json));
+    }
+
+    serde_json::json!({
+        "block_id": block_id,
+        "cwd": cwd,
+        "status": "Success",
+        "output": {"Code": {"lines": lines_json, "language": lang}},
+        "duration_ms": 0,
+        "exit_code": 0,
+    })
+    .to_string()
+}

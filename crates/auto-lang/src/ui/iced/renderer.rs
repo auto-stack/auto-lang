@@ -1130,56 +1130,21 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 /// Build an Iced button::Style from IcedStyle.
 /// Plan 409 §10 续 20: 简单代码语法高亮(auto/vue/bash 通用)→ 着色 Span 列表。
 /// tokenizer:comment / string / number / keyword / punct / ident。
+/// 2026-08-22(show 下沉):扫描逻辑与色板移至 vm::shell_bridge::highlight_rgb
+/// —— auto.shell.emit_show 的 Code payload 与本处 font-mono 自动高亮共用一份
+/// 实现,避免两份漂移。None = 默认前景色(color_maybe)。
 fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
     use iced::widget::text::Span;
-    const KW: &[&str] = &["widget", "view", "model", "msg", "on", "def", "class", "style",
-        "variant", "size", "text", "button", "row", "col", "column", "icon", "input",
-        "textarea", "code_editor", "scroll", "grid", "link", "if", "else", "return", "true", "false",
-        "fn", "let", "const", "npx", "npm", "yarn", "pnpm", "cd", "export", "import", "from",
-        "badge", "codeblock", "table", "div", "span", "img", "image", "outline", "ghost",
-        "primary", "secondary", "destructive", "default"];
-    const C_KW: iced::Color = iced::Color::from_rgb8(0xc7, 0x92, 0xea);  // 紫
-    const C_STR: iced::Color = iced::Color::from_rgb8(0xc3, 0xe8, 0x8d);  // 绿
-    const C_COM: iced::Color = iced::Color::from_rgb8(0x6b, 0x72, 0x80);  // 灰
-    const C_NUM: iced::Color = iced::Color::from_rgb8(0xf7, 0x8c, 0x6c);  // 橙
-    const C_PUN: iced::Color = iced::Color::from_rgb8(0x89, 0xdd, 0xff);  // 青
-    let push = |spans: &mut Vec<Span<'static, ()>>, text: String, color: Option<iced::Color>| {
-        if !text.is_empty() { spans.push(Span::new(text).color_maybe(color)); }
-    };
-    let bytes = code.as_bytes();
-    let n = bytes.len();
-    let mut i = 0;
-    let mut spans: Vec<Span<'static, ()>> = Vec::new();
-    while i < n {
-        let b = bytes[i];
-        if (b == b'/' && i + 1 < n && bytes[i + 1] == b'/') || b == b'#' {
-            let s = i; while i < n && bytes[i] != b'\n' { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_COM));
-        } else if b == b'"' || b == b'\'' || b == b'`' {
-            let q = b; let s = i; i += 1;
-            while i < n && bytes[i] != q { if bytes[i] == b'\\' && i + 1 < n { i += 1; } i += 1; }
-            if i < n { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_STR));
-        } else if b.is_ascii_digit() {
-            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'.') { i += 1; }
-            push(&mut spans, code[s..i].to_string(), Some(C_NUM));
-        } else if b.is_ascii_alphabetic() || b == b'_' {
-            let s = i; while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') { i += 1; }
-            let t = &code[s..i];
-            push(&mut spans, t.to_string(), if KW.contains(&t) { Some(C_KW) } else { None });
-        } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
-            let s = i; while i < n && matches!(bytes[i], b' ' | b'\n' | b'\t' | b'\r') { i += 1; }
-            push(&mut spans, code[s..i].to_string(), None);
-        } else {
-            // G3 (038-minesweeper live crash): the byte-wise code[i..i+1]
-            // panicked on multi-byte labels ("⏱ 0s" — end byte 1 is inside
-            // the 3-byte emoji). Advance by the full UTF-8 char length.
-            let ch_len = code[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
-            push(&mut spans, code[i..i + ch_len].to_string(), Some(C_PUN));
-            i += ch_len;
-        }
-    }
-    spans
+    crate::vm::shell_bridge::highlight_rgb(code)
+        .into_iter()
+        .map(|(text, rgb)| {
+            let mut sp = Span::new(text);
+            if let Some((r, g, b)) = rgb {
+                sp = sp.color(iced::Color::from_rgb8(r, g, b));
+            }
+            sp
+        })
+        .collect()
 }
 
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
@@ -4241,7 +4206,11 @@ fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
 /// Gated on MCP being active — see the subscription closure — so a non-MCP run
 /// stays fully idle.
 fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(200)).map(|_| IcedMessage {
+    // 2026-08-22:200ms → 2s。心跳消息会触发一次完整 update→view 重建
+    // (ash-gui 基线视图 ~80ms/次,大 Code 块时 >200ms)—— 200ms 节拍令
+    // 消息队列常态积压,事件饿死(命令提交丢失、CPU 满转;实测空闲就
+    // ~40% CPU)。快照 2s 内新鲜即可,真实交互路径本就会触发重建。
+    iced::time::every(std::time::Duration::from_millis(2000)).map(|_| IcedMessage {
         widget: String::new(),
         event: "__mcp_heartbeat".to_string(),
         input_value: None,
@@ -4865,7 +4834,28 @@ fn update_block_in_state(
                 status.set("message", auto_val::Value::str(&message));
                 obj.set("status", auto_val::Value::Obj(status));
                 obj.set("output", output_obj);
-                obj.set("streamed_text", auto_val::Value::str(""));
+                // 2026-08-22(show 渲染成本):Code 变体把拼好的全文写入
+                // streamed_text(复用 Block 已有 str 字段,renderer↔.at 的
+                // VM-only 契约)——block_item.at 用单个 font-mono text 渲染
+                // 整块(本文件 highlight_code 一次扫描),免去 .at 逐行逐
+                // span 拼接。此前 660 行代码一次 view 重建 >200ms,MCP 心跳
+                // (默认开启,200ms 一拍)令消息队列积压 → 事件饿死。
+                let code_plain = payload.get("output").and_then(|o| o.get("Code"))
+                    .and_then(|c| c.get("lines"))
+                    .and_then(|l| l.as_array())
+                    .map(|lines| {
+                        lines.iter().map(|line| {
+                            line.as_array().map(|spans| {
+                                spans.iter()
+                                    .map(|s| s.get("text").and_then(|t| t.as_str()).unwrap_or(""))
+                                    .collect::<String>()
+                            }).unwrap_or_default()
+                        }).collect::<Vec<_>>().join("\n")
+                    });
+                match code_plain {
+                    Some(s) => obj.set("streamed_text", auto_val::Value::str(&s)),
+                    None => obj.set("streamed_text", auto_val::Value::str("")),
+                }
                 obj.set("duration_ms", auto_val::Value::Int(dur));
                 // Plan 053 后续:补 exit_code,否则 exit_label computed 读不到字段
                 // → "${exit_label}" 字面量。Plan 057:优先用后端透传的真实退出码

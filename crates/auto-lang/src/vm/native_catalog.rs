@@ -375,6 +375,9 @@ macro_rules! for_each_native {
             (2867, NATIVE_SHELL_EXEC_SUBMIT, shim_shell_exec_submit, "auto.shell.exec_submit"),
             // Plan 060 M2:builtin 直发(语义在 .at 提交侧算好)。
             (2868, NATIVE_SHELL_EMIT_RESULT, shim_shell_emit_result, "auto.shell.emit_result"),
+            // 2026-08-22 show 下沉:读文件+高亮+payload 全在 Rust(.at 拼巨串
+            // 损坏 VM 堆;参数 int,str,path;str,cwd;返回 void)。
+            (2869, NATIVE_SHELL_EMIT_SHOW, shim_shell_emit_show, "auto.shell.emit_show"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -843,6 +846,7 @@ macro_rules! for_each_bigvm_native {
             // Plan 060:merged 模式 shell 执行提交(参数 int,str,str;返回 void)。
             ("auto.shell.exec_submit", 2867, Void),
             ("auto.shell.emit_result", 2868, Void),
+            ("auto.shell.emit_show", 2869, Void),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2154,6 +2158,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.fs.read_dir", 2866),
     ("auto.shell.exec_submit", 2867),
     ("auto.shell.emit_result", 2868),
+    ("auto.shell.emit_show", 2869),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
