@@ -784,7 +784,12 @@ impl<'a> AuraViewBuilder<'a> {
                         let prop_values: HashMap<String, AuraPropValue> = props.iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                             .collect();
-                        return self.render_child_widget(child_widget, &prop_values, events, bindings);
+                        // D-GAP-4: tracked variant so the child subtree's
+                        // style/event bindings reach the BuildProbe (snapshot).
+                        return self.render_child_widget_tracked(
+                            child_widget, &prop_values, events, bindings,
+                            path, id_map, probe,
+                        );
                     }
                 }
                 View::Text {
@@ -925,7 +930,12 @@ impl<'a> AuraViewBuilder<'a> {
                 }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
-                        return self.render_child_widget(child_widget, props, events, bindings);
+                        // D-GAP-4: tracked variant so the child subtree's
+                        // style/event bindings reach the BuildProbe (snapshot).
+                        return self.render_child_widget_tracked(
+                            child_widget, props, events, bindings,
+                            path, id_map, probe,
+                        );
                     }
                 }
                 // Plan 409 §10 续 22: 其余 tag(category-section/component-card/
@@ -954,18 +964,23 @@ impl<'a> AuraViewBuilder<'a> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .enumerate()
-            .map(|(i, n)| {
-                path.push(i);
-                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                path.pop();
-                v
-            })
-            // Plan 370 (Issue 1): drop visually-empty spacers (see convert_column).
-            .filter(|v| !is_visually_empty(v))
-            .collect();
+        // D-GAP-4: number children by RESULTING slot — visually-empty views
+        // are dropped from the built column, shifting later siblings left;
+        // recording at the post-filter position keeps probe/VTree paths
+        // identical by construction (mirrors convert_row_tracked_ctx).
+        let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
+        let mut slot: usize = 0;
+        for n in children {
+            path.push(slot);
+            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+            path.pop();
+            if is_visually_empty(&v) {
+                // Plan 370 (Issue 1): drop visually-empty spacers (see convert_column).
+                continue;
+            }
+            child_views.push(v);
+            slot += 1;
+        }
 
         // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
         // 布局语义被类覆盖(元素语义为默认,显式类优先)。
@@ -1229,31 +1244,63 @@ impl<'a> AuraViewBuilder<'a> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
+        // D-GAP-4: children are recorded at their RESULTING slot (flattened
+        // position), not the source child index. Two flattening steps diverge
+        // from source indices: (a) an if/else body spliced into the row (a
+        // 3-node body previously recorded all 3 nodes at the SAME [i] path,
+        // merging their probe entries — the 013 todo rows showed one checkbox
+        // carrying Toggle+StartEdit+Delete events and the wrong class);
+        // (b) visually-empty views dropped from the built row shift later
+        // siblings left. Numbering by surviving-slot keeps probe/VTree paths
+        // identical by construction.
         let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
-        for (i, n) in children.iter().enumerate() {
+        let mut slot: usize = 0;
+        for n in children {
             match n {
                 AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                    // Flatten Conditional children: in a row, multiple condition
+                    // children spread horizontally, not wrapped in a Column
+                    // (mirrors untracked convert_row). Each spliced child converts
+                    // at the CURRENT slot and advances it on survival — a 3-node
+                    // body previously recorded all 3 at one path, merging their
+                    // probe entries (013 todo rows: one checkbox carrying three
+                    // events and the wrong class).
                     let is_true = self.eval_condition_with(condition, bindings);
                     let empty = Vec::new();
                     let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
                     for child_node in body {
-                        path.push(i);
+                        path.push(slot);
                         let v = self.convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
                         path.pop();
+                        if is_visually_empty(&v) {
+                            continue;
+                        }
                         child_views.push(v);
+                        slot += 1;
                     }
                 }
                 AuraNode::ForLoop { var, index, iterable, body, .. } => {
                     // Plan 047:flatten ForLoop into row(同 untracked convert_row)。
                     // 用 for_loop_iterations(放弃 row 内 ForLoop 的 probe 追踪,
-                    // inspector 调试信息不影响渲染正确性)。
-                    child_views.extend(self.for_loop_iterations(var, index, iterable, body, bindings));
+                    // inspector 调试信息不影响渲染正确性)。Count survivors so
+                    // later siblings' slots stay aligned.
+                    for v in self.for_loop_iterations(var, index, iterable, body, bindings) {
+                        if is_visually_empty(&v) {
+                            continue;
+                        }
+                        child_views.push(v);
+                        slot += 1;
+                    }
                 }
                 _ => {
-                    path.push(i);
+                    path.push(slot);
                     let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
                     path.pop();
+                    if is_visually_empty(&v) {
+                        continue;
+                    }
                     child_views.push(v);
+                    slot += 1;
                 }
             }
         }
@@ -2261,21 +2308,17 @@ let tabs_inner = View::Row {
         }
     }
 
-    /// Render a child widget by looking it up in the registry.
-    ///
-    /// This resolves props from parent state, injects them as state fields,
-    /// creates a child VmBridge, and recursively renders the child's view tree.
-    /// Plan 320: render a child widget WITHOUT creating a new VM.
-    /// Uses the same VmBridge (same VM), creates/updates the child's state
-    /// object on the heap, and renders the child's view tree with an
-    /// override_state_obj_id so read_state reads from the child's state.
-    fn render_child_widget(
+    /// Steps shared by the tracked/untracked child-widget render paths:
+    /// resolve props from parent state (1), collect child state field names
+    /// (2), sync matching parent state → child (3), seed model-var defaults
+    /// (4), and ensure the child state object exists on the VM heap (5).
+    /// Returns the child's heap state-object id for `override_state_obj_id`.
+    fn prepare_child_render_state(
         &self,
         child_widget: &crate::aura::AuraWidget,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
-    ) -> View<DynamicMessage> {
+    ) -> u64 {
         // 1. Resolve prop values from parent state.
         let mut resolved_props: HashMap<String, Value> = HashMap::new();
         for (prop_name, prop_value) in props {
@@ -2324,14 +2367,32 @@ let tabs_inner = View::Row {
         }
 
         // 5. Ensure child state object exists on the VM heap + write props.
-        let child_state_id = self.bridge.ensure_child_state(
+        self.bridge.ensure_child_state(
             &child_widget.name,
             &child_field_names,
             &resolved_props,
-        );
+        )
+    }
 
-        // 5. Build a child view builder using the SAME bridge but with
-        //    override_state_obj_id pointing to the child's state object.
+    /// Render a child widget by looking it up in the registry.
+    ///
+    /// This resolves props from parent state, injects them as state fields,
+    /// creates a child VmBridge, and recursively renders the child's view tree.
+    /// Plan 320: render a child widget WITHOUT creating a new VM.
+    /// Uses the same VmBridge (same VM), creates/updates the child's state
+    /// object on the heap, and renders the child's view tree with an
+    /// override_state_obj_id so read_state reads from the child's state.
+    fn render_child_widget(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+
+        // Build a child view builder using the SAME bridge but with
+        // override_state_obj_id pointing to the child's state object.
         let child_builder = AuraViewBuilder {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
@@ -2344,6 +2405,48 @@ let tabs_inner = View::Row {
         };
 
         child_builder.build(&child_widget.view_tree)
+    }
+
+    /// D-GAP-4 (013-todo audit B12(iii)): tracked counterpart of
+    /// [`render_child_widget`]. The plain variant builds the child via the
+    /// UNTRACKED converter, so the BuildProbe never records the child
+    /// subtree — its style/event bindings vanish from the MCP snapshot
+    /// (the subtree renders and handlers DO dispatch — live-verified
+    /// `.TodoList.StartEdit` with `editing_id: -1 → 0` — but agents see no
+    /// `onclick:` lines and cannot locate/click them). Continue the SAME
+    /// path/id_map/probe into the child: its nodes occupy the flattened
+    /// View positions under the component call, so probe entries land on
+    /// exactly the VNodeIds the vtree snapshot assigns.
+    fn render_child_widget_tracked(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+    ) -> View<DynamicMessage> {
+        let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+
+        let child_builder = AuraViewBuilder {
+            bridge: self.bridge,
+            widget_name: child_widget.name.clone(),
+            widget_registry: self.widget_registry,
+            import_stmts: self.import_stmts,
+            override_state_obj_id: Some(child_state_id),
+            routes: None,
+            computed: Some(&child_widget.computed),
+            preview_states: self.preview_states,
+        };
+
+        child_builder.convert_node_tracked_ctx(
+            &child_widget.view_tree,
+            path,
+            id_map,
+            probe,
+            bindings,
+        )
     }
 
     // ========================================================================
@@ -3804,6 +3907,22 @@ let tabs_inner = View::Row {
                     None => String::new(),
                 }
             }
+            // D-GAP-4 (013-todo footer): `text f"${.store.active_count} items
+            // left"` parses the f-string as the text ELEMENT'S PRIMARY PROP
+            // (Expr::FStr), unlike a bare child f-string which becomes
+            // AuraTextContent::Interpolated. No FStr arm here → empty string →
+            // the text node dropped as visually-empty → later siblings SHIFT
+            // one slot left, misaligning every probe/VTree path after it
+            // (footer buttons lost their style/event records). Evaluate each
+            // part (literals are Expr::Str; interpolations recurse through
+            // the Ident/Dot arms, so `.store.X` flattening applies too).
+            // Same drop reproduced App-level (031 `text f"selected: …"`).
+            Expr::FStr(fstr) => fstr
+                .parts
+                .iter()
+                .map(|part| self.resolve_expr_to_string_with(part, bindings))
+                .collect::<Vec<_>>()
+                .join(""),
             _ => String::new(),
         }
     }
@@ -4086,6 +4205,18 @@ let tabs_inner = View::Row {
                     }
                 }
                 None
+            }
+            // D-GAP-4: f-string in a value position (non-primary-prop props,
+            // style_obj values, …) — evaluate to the joined display string
+            // (mirrors the resolve_expr_to_string_with FStr arm).
+            Expr::FStr(fstr) => {
+                let s = fstr
+                    .parts
+                    .iter()
+                    .map(|part| self.resolve_expr_to_string_with(part, bindings))
+                    .collect::<Vec<_>>()
+                    .join("");
+                Some(Value::Str(s.into()))
             }
             _ => None,
         }
@@ -4885,6 +5016,97 @@ mod tests {
             }
             _ => panic!("Expected View::Text"),
         }
+    }
+
+    /// D-GAP-4: an if/else body spliced into a row records each spliced node
+    /// at its own RESULTING slot — not all at the conditional's index (which
+    /// merged their probe entries: the 013 todo rows showed one checkbox
+    /// carrying Toggle+StartEdit+Delete events and the × button's class).
+    #[test]
+    fn test_tracked_row_conditional_splice_probe_slots() {
+        use crate::ui::debug_id_map::DebugIdMap;
+        use crate::ui::debug::BuildProbe;
+
+        fn event_node(tag: &str, handler: &str, label: &str) -> AuraNode {
+            let mut events = HashMap::new();
+            events.insert(
+                "onclick".to_string(),
+                AuraEvent {
+                    handler: handler.to_string(),
+                    params: vec![],
+                },
+            );
+            let mut props = HashMap::new();
+            if !label.is_empty() {
+                props.insert(
+                    "text".to_string(),
+                    AuraPropValue::Expr(Expr::Str(label.into())),
+                );
+            }
+            let mut class_props = HashMap::new();
+            class_props.insert("class".to_string(), AuraPropValue::Expr(Expr::Str(format!("cls-{}", handler).into())));
+            AuraNode::Element {
+                tag: tag.to_string(),
+                props: if tag == "button" {
+                    let mut p = props.clone(); p.extend(class_props); p
+                } else { class_props },
+                events,
+                children: Vec::new(),
+                span: None,
+                debug_id: None,
+            }
+        }
+
+        // row { if .x { checkbox(ToggleTodo) text(StartEdit) button(DeleteTodo) } }
+        let cond = AuraNode::Conditional {
+            // Condition reads a missing state field -> evaluates false -> else
+            // body taken (the evaluator has no literal-true arm).
+            condition: ".definitely_missing_field_xyz".to_string(),
+            then_body: vec![],
+            else_body: Some(vec![
+                event_node("checkbox", "ToggleTodo", ""),
+                event_node("text", "StartEdit", "todo text"),
+                event_node("button", "DeleteTodo", "×"),
+            ]),
+            span: None,
+            debug_id: None,
+        };
+        let row = AuraNode::Element {
+            tag: "row".to_string(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: vec![cond],
+            span: None,
+            debug_id: None,
+        };
+
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let mut id_map = DebugIdMap::default();
+        let mut probe = BuildProbe::new();
+        let mut path = Vec::new();
+        let _ = builder.convert_node_tracked_ctx(&row, &mut path, &mut id_map, &mut probe, &Bindings::new());
+
+        let snap = probe.snapshot().clone();
+        let by_path: Vec<(Vec<u16>, usize)> = snap
+            .iter()
+            .filter(|(_, e)| !e.events.is_empty())
+            .map(|(p, e)| (p.clone(), e.events.len()))
+            .collect();
+        // Three events must land on THREE distinct paths (row children 0/1/2),
+        // one event each — not all merged onto a single path.
+        assert_eq!(by_path.len(), 3, "distinct event paths: {:?}", by_path);
+        let mut slots: Vec<u16> = by_path
+            .iter()
+            .map(|(p, n)| {
+                assert_eq!(*n, 1, "one event per path, got {} at {:?}", n, p);
+                assert_eq!(p.len(), 1, "one-level slot under the row: {:?}", p);
+                p[0]
+            })
+            .collect();
+        slots.sort();
+        assert_eq!(slots, vec![0u16, 1, 2], "slots 0/1/2 under the row: {:?}", by_path);
     }
 
     /// REGRESSION: a button whose label comes from inner `text` children
