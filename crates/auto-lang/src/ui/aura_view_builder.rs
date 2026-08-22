@@ -3190,8 +3190,30 @@ let tabs_inner = View::Row {
                             let handler = a.handler.trim_start_matches('.').to_string();
                             record!(child_idx, &a.handler);
                             child_idx += 1;
+                            // Plan 418 §8.4③: checked-if 渲染 —— 简单 `.field`
+                            // 布尔状态直接读 state;非标识符形态保持未勾选
+                            // (解析层仅约定标识符引用)。每项固定 16px 勾选槽,
+                            // 已勾选时渲染 lucide check 图标(对齐 VSCode 菜单)。
+                            let checked = a.checked_if.as_deref()
+                                .and_then(|cond| cond.strip_prefix('.'))
+                                .filter(|f| !f.is_empty() && !f.contains(' '))
+                                .and_then(|f| self.read_state(f).ok())
+                                .map(|v| matches!(v, auto_val::Value::Bool(true)))
+                                .unwrap_or(false);
+                            let check_slot: View<DynamicMessage> = if checked {
+                                View::Image {
+                                    src: "lucide:check".to_string(),
+                                    style: Style::parse("h-3 w-3 text-zinc-200 shrink-0").ok(),
+                                }
+                            } else {
+                                View::Text {
+                                    content: String::new(),
+                                    style: Style::parse("w-4 h-3 shrink-0").ok(),
+                                }
+                            };
                             let content = View::Row {
                                 children: vec![
+                                    check_slot,
                                     View::Text {
                                         content: a.title.clone(),
                                         style: Style::parse("text-[12px] text-zinc-200").ok(),
@@ -3206,7 +3228,7 @@ let tabs_inner = View::Row {
                                 ],
                                 spacing: 0,
                                 padding: 0,
-                                style: Style::parse("w-full justify-between items-center px-3")
+                                style: Style::parse("w-full justify-between items-center gap-2 px-2")
                                     .ok(),
                             };
                             items.push(View::Button {
