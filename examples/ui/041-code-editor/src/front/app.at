@@ -19,18 +19,18 @@ widget App {
             onkeydown.ctrl.s: .ActSave
             onkeydown.ctrl.j: .ActConsole
 
-            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-1 px-2") {
+            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0 px-2") {
                 button (text: "文件", variant: "text") {
                     onclick: .MenuToggle("file")
-                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
                 }
                 button (text: "编辑", variant: "text") {
                     onclick: .MenuToggle("edit")
-                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
                 }
                 button (text: "视图", variant: "text") {
                     onclick: .MenuToggle("view")
-                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
                 }
                 button (text: "帮助", variant: "text") {
                     onclick: .MenuToggle("help")
@@ -38,37 +38,30 @@ widget App {
                 }
                 button (variant: "icon", icon: "file-plus") {
                     onclick: .ActNew
-                    style: "ml-auto border border-zinc-500"
+                    style: "ml-auto"
                 }
                 button (variant: "icon", icon: "folder-open") {
                     onclick: .ActOpen
-                    style: "border border-zinc-500"
                 }
                 button (variant: "icon", icon: "save") {
                     onclick: .ActSave
-                    style: "border border-zinc-500"
                 }
-                sep (style: "border border-zinc-500")
+                sep {}
                 button (variant: "icon", icon: "undo-2") {
                     onclick: .ActUndo
-                    style: "border border-zinc-500"
                 }
                 button (variant: "icon", icon: "redo-2") {
                     onclick: .ActRedo
-                    style: "border border-zinc-500"
                 }
-                sep (style: "border border-zinc-500")
+                sep {}
                 button (variant: "icon", icon: "scissors") {
                     onclick: .ActCut
-                    style: "border border-zinc-500"
                 }
                 button (variant: "icon", icon: "copy") {
                     onclick: .ActCopy
-                    style: "border border-zinc-500"
                 }
                 button (variant: "icon", icon: "clipboard") {
                     onclick: .ActPaste
-                    style: "border border-zinc-500"
                 }
             }
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
