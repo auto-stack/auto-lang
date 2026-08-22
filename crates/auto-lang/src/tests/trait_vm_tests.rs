@@ -163,3 +163,111 @@ fn main() {
         "unbounded generic fn dispatches on runtime type: {out}"
     );
 }
+
+/// Plan 417-E3-P4: call-site bound checking — a call whose argument's static
+/// type demonstrably does not implement the bound is rejected at compile time.
+#[test]
+fn test_call_site_bound_violation_rejected() {
+    let code = r#"
+spec Comparable {
+    fn compare(other int) int
+}
+
+spec Labeler {
+    fn label() str
+}
+
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
+type Score as Comparable {
+    val int
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+type Widget as Labeler {
+    id int
+    fn label() str { return "w" }
+}
+
+fn main() {
+    var s Score = Score { val: 3 }
+    var w Widget = Widget { id: 1 }
+    print(max_of(s, w).val)
+}
+"#;
+    let result = crate::run_with_capture(code);
+    assert!(result.is_err(), "non-implementer argument must be rejected");
+    let msg = format!("{:?}", result.err().unwrap());
+    assert!(
+        msg.contains("does not implement spec 'Comparable'"),
+        "error names the unimplemented bound: {msg}"
+    );
+}
+
+/// The happy path still compiles: both args implement the bound.
+#[test]
+fn test_call_site_bound_satisfied_passes() {
+    let code = r#"
+spec Comparable {
+    fn compare(other int) int
+}
+
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
+type Score as Comparable {
+    val int
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+fn main() {
+    var x Score = Score { val: 3 }
+    var y Score = Score { val: 9 }
+    print(max_of(x, y).val)
+}
+"#;
+    let (_result, out) = crate::run_with_capture(code).unwrap();
+    assert!(out.trim().contains("9"), "valid implementers pass: {out}");
+}
+
+/// Pass-through generics stay dynamic: a generic wrapper fn calling the
+/// bounded fn with its OWN type param must NOT be rejected (the wrapper's
+/// param type is not a concrete implementer — dispatch stays runtime).
+#[test]
+fn test_call_site_bound_pass_through_generic_allowed() {
+    let code = r#"
+spec Comparable {
+    fn compare(other int) int
+}
+
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
+fn wrapper<T has Comparable>(a T, b T) T {
+    return max_of(a, b)
+}
+
+type Score as Comparable {
+    val int
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+fn main() {
+    var x Score = Score { val: 4 }
+    var y Score = Score { val: 7 }
+    print(wrapper(x, y).val)
+}
+"#;
+    let (_result, out) = crate::run_with_capture(code).unwrap();
+    assert!(out.trim().contains("7"), "pass-through generic dispatches: {out}");
+}
