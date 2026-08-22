@@ -142,6 +142,13 @@ impl InspectorCache {
 
     /// Resolve `iced widget id -> VNodeId`.
     pub fn iced_to_vnode(&self, iced_id: &str) -> Option<VNodeId> {
+        // G4e (411 P2-B #1): `vnode_<hash>` ids parse directly (same hash the
+        // VTree uses) — no registration map needed.
+        if let Some(rest) = iced_id.strip_prefix("vnode_") {
+            if let Ok(n) = rest.parse::<u64>() {
+                return Some(VNodeId::new(n));
+            }
+        }
         self.iced_to_id.get(iced_id).copied()
     }
 
@@ -299,6 +306,16 @@ mod tests {
     // -----------------------------------------------------------------
 
     #[test]
+    /// G4e (411 P2-B #1): `vnode_<hash>` iced ids parse directly to the
+    /// matching VNodeId — no registration map needed.
+    #[test]
+    fn iced_to_vnode_parses_vnode_hash_ids() {
+        let cache = InspectorCache::default();
+        assert_eq!(cache.iced_to_vnode("vnode_12345"), Some(VNodeId::new(12345)));
+        assert_eq!(cache.iced_to_vnode("vnode_notanumber"), None);
+        assert_eq!(cache.iced_to_vnode("aura_3"), None); // unregistered aura id
+    }
+
     fn backfill_bounds_sets_bounds_and_box_model() {
         let mut cache = InspectorCache::new();
         let id = VNodeId::new(7);

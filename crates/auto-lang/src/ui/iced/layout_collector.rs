@@ -33,11 +33,17 @@ impl LayoutCollector {
     /// Debug format: `Id(Custom("aura_0"))`
     fn aura_id_str(id: &Id) -> Option<String> {
         let debug = format!("{:?}", id);
-        // Extract "aura_N" from Debug output like Id(Custom("aura_0"))
-        let start = debug.find("aura_")?;
-        let rest = &debug[start..];
-        let end = rest.find('"').unwrap_or(rest.len());
-        Some(rest[..end].to_string())
+        // G4e (411 P2-B #1): recognize both id conventions — `aura_N` (F12
+        // wrap_debug) and `vnode_<hash>` (the deterministic path hash the
+        // VTree uses; bounds backfill parses it without a registration map).
+        for prefix in ["vnode_", "aura_"] {
+            if let Some(start) = debug.find(prefix) {
+                let rest = &debug[start..];
+                let end = rest.find('"').unwrap_or(rest.len());
+                return Some(rest[..end].to_string());
+            }
+        }
+        None
     }
 
     fn try_record(&mut self, id: Option<&Id>, bounds: Rectangle) {

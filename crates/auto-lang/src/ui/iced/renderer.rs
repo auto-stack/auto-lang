@@ -1390,6 +1390,12 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
+    } else if let Some(id) = widget_id {
+        // G4e (411 P2-B #1): plain (unstyled) columns dropped the widget
+        // id, so the layout collector never saw them. Wrap in a
+        // layout-transparent container carrying the id (container()
+        // with no modifiers is a pass-through in iced layout).
+        container(col.padding(pd)).id(id).into()
     } else {
         col.padding(pd).into()
     };
@@ -1502,6 +1508,9 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
+    } else if let Some(id) = widget_id {
+        // G4e: same as apply_column_style — keep the id on plain rows.
+        container(r.padding(pd)).id(id).into()
     } else {
         r.padding(pd).into()
     };
@@ -10361,7 +10370,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let base = build_column(els, spacing, padding, style.as_ref(), widget_id);
             let el = if absolute.is_empty() {
                 base
@@ -10411,7 +10420,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 els.push(render_dynamic_view(child, debug_ctx, path));
                 path.pop();
             }
-            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let base = build_row(els, spacing, padding, style.as_ref(), widget_id);
             let el = if absolute.is_empty() {
                 base
@@ -10443,7 +10452,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
         }
@@ -10456,7 +10465,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
             // iced widget ID for layout bounds collection (Plan 282)
-            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             // Plan 057 续(自动滚动):auto_scroll 标记的主列表必须用固定 Id
             // (snap_to_end 目标)。debug 路径原本只挂 aura_N,导致
             // snap_to_end("blocklist_scroll") 找不到 widget 静默失效。
@@ -10488,7 +10497,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 els.push((render_dynamic_view(cell, debug_ctx, path), spec));
                 path.pop();
             }
-            let widget_id = debug_ctx.and_then(|ctx| ctx.debug_id_map.get(path).map(|id| format!("aura_{}", id.0)));
+            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let el = build_grid(cols, gap, els, style.as_ref(), widget_id);
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
         }
