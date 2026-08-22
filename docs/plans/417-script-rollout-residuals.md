@@ -11,7 +11,7 @@
 
 | DIV | 一句话 | 语言侧入口 | 预估 |
 |---|---|---|---|
-| E1 CHAR-AT-1 | ✅ 2026-08-22 完成:infer_type_from_expr 把 char_at 移入 Int 臂(golden 007_char_at_infer,string_utils 四处 workaround 注解移除,DIV 翻 fixed);**衍生 E1b**:导入函数调用实参在 str 参数位缺 String→&str 转换(预存 master 断裂,阻塞 string_utils 三方重跑)——需给 `use auto.X:` 导入登记签名或按导入来源默认借用,独立小项 | trans/rust.rs 推断表 + 8046 as_str 白名单 | 1 天(E1b) |
+| E1 CHAR-AT-1 | ✅ 2026-08-22 完成:infer_type_from_expr 把 char_at 移入 Int 臂(golden 007_char_at_infer,string_utils 四处 workaround 注解移除,DIV 翻 fixed);**衍生 E1b ✅ 同日由 D2 根治**:register_import_signatures 在 use_stmt 处理时解析可发现模块源登记导入函数签名(string_utils 三方 22/22 恢复全绿) | trans/rust.rs register_import_signatures | — |
 | E2 LANG-1 | 语言级语法/语义分歧点 | 按 known-divergences 条目定位 | 1-2 天 |
 | E3 TRAIT-VM-1 | trait 默认方法 VM 分歧 | vm/codegen.rs trait 分发臂 | 2-3 天 |
 | E4 TRAIT-VM-2 | trait 关联类型/泛型 impl VM 分歧 | 同上,依赖 E3 | 2-3 天 |
@@ -20,7 +20,7 @@
 **顺序**: E1(最小)→ E2 → E3 → E4 → E5。每项落地后 known-divergences.md
 对应条目 status → fixed,并跑 `parity/crates/auto-parity` 三向验证。
 
-## 2. D2 generators 用例(不依赖 Phase E)
+## 2. D2 generators 用例 ✅ 2026-08-22 完成(Plan 417-D2,三方 6/6 一致;VM 带参生成器搬参根治 + a2r ~Iter→Stream 统一降级 + 导入签名登记,E1b 连带根治)
 
 - `parity/libs/generators/` 三向目录(README/auto/tests)——覆盖 `yield`
   迭代器、惰性序列(359 Task D2.2 已有设计:§639 起);

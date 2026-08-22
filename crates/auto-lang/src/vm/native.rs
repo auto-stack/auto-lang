@@ -2552,6 +2552,16 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
                     if let Some(gen_task_arc) = vm.tasks.get(&tid) {
                         if let Ok(mut gt) = gen_task_arc.try_lock() {
+                            // Plan 417-D2: seed the CALL-transferred args
+                            // BELOW the frame markers, mirroring the CALL
+                            // convention [args..., ret_addr, old_bp] so the
+                            // generator's FN_PROLOG and RET see a well-formed
+                            // frame (previously parameterized generators read
+                            // garbage params and underflowed at RET).
+                            let seed = std::mem::take(&mut gen_state.stack_snapshot);
+                            for nv in seed {
+                                gt.ram.push_nv(nv);
+                            }
                             gt.ram.push_i32(0); // return address (unused)
                             gt.ram.push_i32(0); // old BP
                             let new_bp = gt.ram.sp - 1;

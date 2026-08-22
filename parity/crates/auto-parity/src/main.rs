@@ -337,7 +337,7 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         ("p4", &["reqwest", "tokio", "tokio_stream"]),
         // Plan 358 additions:
         ("d1", &["cli_app"]),
-        ("d2", &["trait_advanced"]),
+        ("d2", &["trait_advanced", "generators"]),
         ("d4", &["string_utils"]),
         // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
         // `auto.<module>` stdlib and is compared three-way with a native Rust

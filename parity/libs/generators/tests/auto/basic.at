@@ -1,0 +1,57 @@
+/// generators / basic — yield iterator semantics (TAP output).
+//
+// Test names EXACTLY mirror the Rust oracle in tests/rust/tests/generators.rs.
+use auto.generators: three_yields, counter, evens_up_to
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    var s = 0
+    for n in three_yields() {
+        s = s + n
+    }
+    check_int(1, "sum_three_yields", s, 60)
+
+    var c = 0
+    for n in counter(10, 3) {
+        c = c + n
+    }
+    check_int(2, "sum_counter_10_3", c, 33)
+
+    var e = 0
+    for n in counter(5, 0) {
+        e = e + 1
+    }
+    check_int(3, "empty_counter_zero_items", e, 0)
+
+    var v = 0
+    for n in evens_up_to(9) {
+        v = v + n
+    }
+    check_int(4, "sum_evens_up_to_9", v, 20)
+
+    var first = -1
+    var taken = 0
+    for n in counter(100, 5) {
+        if taken == 0 {
+            first = n
+        }
+        taken = taken + 1
+    }
+    check_int(5, "counter_first_value", first, 100)
+    check_int(6, "counter_item_count", taken, 5)
+}

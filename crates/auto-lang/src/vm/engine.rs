@@ -1371,6 +1371,14 @@ impl AutoVM {
         // work when called via call_fn_by_name (HTTP handler dispatch).
         let is_generator = self.is_generator_fn(addr as usize);
         if is_generator {
+            // Plan 417-D2: mirror the CALL-opcode short-circuit — the caller
+            // pre-pushed the n_args args onto task.ram; move them into the
+            // generator state so the first next() seeds the generator frame.
+            let mut arg_nvs = Vec::with_capacity(n_args);
+            for _ in 0..n_args {
+                arg_nvs.push(task.ram.pop_nv());
+            }
+            arg_nvs.reverse();
             let gen_state = GeneratorState {
                 task_id: None,
                 func_addr: addr as u32,
@@ -1380,7 +1388,7 @@ impl AutoVM {
                 resume_ip: 0,
                 resume_bp: 0,
                 resume_sp: 0,
-                stack_snapshot: Vec::new(),
+                stack_snapshot: arg_nvs,
             };
             let iter_id = {
                 let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -4945,18 +4953,33 @@ impl AutoVM {
                     // work the same as inline yield, so SSE detection fires on
                     // the returned iter_id. The generator body runs lazily on
                     // the first next() (shim_iterator_next).
-                    let n_args_for_gen = task.current_fn_n_args; // best-effort; FN_PROLOG would set this
                     if self.is_generator_fn(target) {
+                        // Plan 417-D2: parameterized generators. The callee's
+                        // real arg count is in its FN_PROLOG header (byte at
+                        // target+1); n_args used to come from the CALLER's
+                        // current_fn_n_args (best-effort, wrong for any call
+                        // with args) and the CALL-pushed args stayed on the
+                        // caller stack, never reaching the generator task —
+                        // parameterized generators crashed at RET (bp-n_args
+                        // underflow) and read garbage params. Pop the args
+                        // into stack_snapshot (declaration order); the first
+                        // next() seeds them below the generator frame.
+                        let real_n_args = self.flash.read_u8(target + 1) as usize;
+                        let mut arg_nvs = Vec::with_capacity(real_n_args);
+                        for _ in 0..real_n_args {
+                            arg_nvs.push(task.ram.pop_nv());
+                        }
+                        arg_nvs.reverse();
                         let gen_state = GeneratorState {
                             task_id: None,
                             func_addr: target as u32,
-                            n_args: n_args_for_gen as u8,
+                            n_args: real_n_args as u8,
                             started: false,
                             done: false,
                             resume_ip: 0,
                             resume_bp: 0,
                             resume_sp: 0,
-                            stack_snapshot: Vec::new(),
+                            stack_snapshot: arg_nvs,
                         };
                         let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.iterators.insert(next_id, Iterator::Generator(gen_state));
@@ -6456,6 +6479,17 @@ impl AutoVM {
                     let n_args = self.flash.read_u8(task.ip);
                     task.ip += 1;
 
+                    // Plan 417-D2: the codegen pushed the generator call's
+                    // args onto the caller stack right before this opcode.
+                    // Pop them into the state (declaration order) so the
+                    // first next() seeds the generator frame — previously
+                    // they stayed on the caller stack and parameterized
+                    // generators underflowed at RET with garbage params.
+                    let mut arg_nvs = Vec::with_capacity(n_args as usize);
+                    for _ in 0..n_args as usize {
+                        arg_nvs.push(task.ram.pop_nv());
+                    }
+                    arg_nvs.reverse();
                     let gen_state = GeneratorState {
                         task_id: None,
                         func_addr,
@@ -6465,7 +6499,7 @@ impl AutoVM {
                         resume_ip: 0,
                         resume_bp: 0,
                         resume_sp: 0,
-                        stack_snapshot: Vec::new(),
+                        stack_snapshot: arg_nvs,
                     };
                     let iter_id = {
                         let next_id = self.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
