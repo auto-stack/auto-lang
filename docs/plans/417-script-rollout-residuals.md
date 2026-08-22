@@ -52,3 +52,23 @@
   auto-ai 三转译零错 + 全量 lib;
 - parity 用例:`auto-parity` 三向 runner + 仪表盘重生成;
 - 文档:known-divergences.md 状态翻转与 359 回填一致性检查。
+
+## 7. finish-plan 复审记录(2026-08-22)
+
+逐项代码级复验(finish-plan 纪律:不信任勾选,重跑验证):
+
+- **Phase E 五项**:全部 pass。known-divergences 五条 DIV 状态翻转一致
+  (E1/E2/E3/E4/E5);a2r golden **348/348**、全量 lib **3080/1**(唯一败=
+  已知环境项 route::discovery test_exists)、trait_vm_tests **8/8**、
+  parity 四库 **22/6/5/18** 全绿、auto-ai 三转译(agent/client/ai-config)
+  **error count 0**、仪表盘已重生成。
+- **§2 D2**:partial——parity 6/6 过,但 **D2.3 双 demo 缺**(正文自述,头部
+  状态行已列)。
+- **§3 D3**:partial——5/5 过,D3.3 双 demo 留待 A1/A2 批次。
+- **§4 A1/A2**:fail——website/index.md **0 处 parity 内容**,无后续计划接手。
+- **§5 165 checkbox 回填**:移交——计划原文自述属 Plan 359 的 finish-plan,
+  勿在本计划重复(回填纪律:代码级核验后方可勾选)。
+
+**分类:C(可行动剩余)**——A1/A2 落地页 + D2.3/D3.3 双 demo(约 0.5-1 天,
+可立即开工);§5 属 359 收尾。**不满足归档条件**(A1/A2 未做且无延期根因),
+待剩余项完成后重新走 finish-plan → archive。
