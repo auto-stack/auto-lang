@@ -210,6 +210,8 @@ fn generate_package_json(
     "codemirror": "^6.0.1",
     "@codemirror/view": "^6.26.3",
     "@codemirror/state": "^6.4.1",
+    "@codemirror/language": "^6.10.1",
+    "@codemirror/search": "^6.5.6",
     "@codemirror/lang-rust": "^6.0.1",
     "@codemirror/lang-python": "^6.1.6",
     "@codemirror/lang-javascript": "^6.2.2",
@@ -231,16 +233,41 @@ fn generate_package_json(
 "#, name, router_dep, i18n_dep, extra_lines)
 }
 
-/// Plan 413: the CodeEditor CodeMirror shell component. Wraps vue-codemirror
-/// with the code_editor widget's prop contract (modelValue / lang /
-/// line-numbers / wrap). Unknown languages degrade to plain text. Default
-/// export — the generator imports it as `import CodeEditor from
-/// '@/components/CodeEditor.vue'`.
+/// Plan 413/421: the CodeEditor CodeMirror shell component. Wraps
+/// vue-codemirror with the code_editor widget's full prop/event contract:
+/// - props: modelValue / lang / line-numbers / wrap /
+///   highlight-current-line / tab-width / font-size / search / vi
+/// - events: update:modelValue / cursor({line, column}) / contextmenu({x, y})
+/// Unknown languages degrade to plain text. Default export — the generator
+/// imports it as `import CodeEditor from '@/components/CodeEditor.vue'`.
+///
+/// Plan 421 notes:
+/// - vue-codemirror always installs CM6 `basicSetup` initially (its
+///   DEFAULT_CONFIG, even without `app.use`). lineNumbers() /
+///   highlightActiveLine() / Mod-F searchKeymap therefore come from the
+///   baseline; our appended extensions only need to turn features OFF
+///   (CSS overrides — appending cannot remove a baseline extension) or ADD
+///   what the baseline lacks (language, wrap, search panel, font size).
+/// - tabSize goes through vue-codemirror's built-in `tab-size` prop, which
+///   reactively dispatches `EditorState.tabSize` + `indentUnit` via its
+///   internal Compartment.
+/// - `vi` is accepted for contract parity but NOT consumed: vue 端不支持
+///   vi 模式(不引入 @replit/codemirror-vim —— 体积/维护成本;iced 端
+///   vi 仍生效)。Declared so the codegen's `:vi` binding doesn't leak onto
+///   the DOM as an attribute.
+/// - cursor payload is 1-based (`{line, column}`, CodeMirror `line.number`)
+///   — the iced-side `code_editor_cursor_line/col` getters are 0-based and
+///   041-style handlers add +1 themselves; vue handlers consuming the
+///   payload directly must NOT +1 again.
 fn generate_code_editor_component() -> String {
     r#"<script setup lang="ts">
-import { computed } from 'vue'
+// Plan 421: props 消费 + oncursor/oncontextmenu 事件契约(vue 端实现)。
+// vi 模式降级:本组件接受 :vi 但不实现(见上方 auto-man 注释),iced 端不受影响。
+import { computed, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { EditorView } from '@codemirror/view'
+import { StreamLanguage } from '@codemirror/language'
+import { SearchQuery, setSearchEffect, search as searchPanel } from '@codemirror/search'
 import type { Extension } from '@codemirror/state'
 import { rust } from '@codemirror/lang-rust'
 import { python } from '@codemirror/lang-python'
@@ -253,9 +280,37 @@ const props = defineProps({
   lang: { type: String, default: 'none' },
   lineNumbers: { type: Boolean, default: true },
   wrap: { type: Boolean, default: false },
+  // Plan 421: contract parity only — vue 端不支持 vi(降级声明)。
+  vi: { type: Boolean, default: false },
+  highlightCurrentLine: { type: Boolean, default: true },
+  tabSize: { type: Number, default: 4 },
+  fontSize: { type: Number, default: 14 },
+  search: { type: String, default: '' },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'cursor', 'contextmenu'])
+
+// Plan 421 P3: lang:"auto"/"at" — AutoLang 简易三色词法(注释/字符串/关键字,
+// 外加数字/运算符),近似 iced 端 syntect AutoLang 高亮。关键字表与模板
+// main.ts 里 Prism 的 `Prism.languages.auto` 定义保持一致。
+const autoLang = StreamLanguage.define({
+  token(stream) {
+    if (stream.eatSpace()) return null
+    // 注释:// 行注释 与 /* 块注释 */
+    if (stream.match('//')) { stream.skipToEnd(); return 'comment' }
+    if (stream.match(/\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//)) return 'comment'
+    // 字符串:f"..."、"..."、'...'(f 前缀吃掉后再匹配引号串)
+    if (stream.match(/f?(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/)) return 'string'
+    // 关键字(与 main.ts Prism auto 定义同表 + var/loop/is/break/match)
+    if (stream.match(/\b(?:widget|view|model|msg|fn|let|var|mut|const|if|else|for|in|loop|is|match|break|return|use|type|spec|import|export|struct|enum|interface|extends|implements|new|true|false|null)\b/)) {
+      return 'keyword'
+    }
+    if (stream.match(/\b\d+\.?\d*\b/)) return 'number'
+    if (stream.match(/[+\-*\/%=<>!&|^~?:]+/)) return 'operator'
+    stream.next()
+    return null
+  },
+})
 
 const extensions = computed(() => {
   const langs: Record<string, () => Extension> = {
@@ -270,6 +325,9 @@ const extensions = computed(() => {
     markdown: markdown,
     md: markdown,
     json: json,
+    // Plan 421 P3: AutoLang 自身高亮映射。
+    auto: () => autoLang,
+    at: () => autoLang,
   }
   const ext: Extension[] = []
   const langFn = langs[props.lang.toLowerCase()]
@@ -279,21 +337,87 @@ const extensions = computed(() => {
   if (props.wrap) {
     ext.push(EditorView.lineWrapping)
   }
+  // Plan 421 P1: line_numbers=false → 隐藏行号槽。basicSetup 基线已带
+  // lineNumbers(),追加无法移除,用 CSS 覆盖关闭。
+  if (!props.lineNumbers) {
+    ext.push(EditorView.theme({ '& .cm-gutters': { display: 'none' } }))
+  }
+  // Plan 421 P1: highlight_current_line=false → 关闭当前行高亮(同理 CSS 覆盖)。
+  if (!props.highlightCurrentLine) {
+    ext.push(EditorView.theme({
+      '& .cm-activeLine': { backgroundColor: 'transparent' },
+      '& .cm-activeLineGutter': { backgroundColor: 'transparent' },
+    }))
+  }
+  // Plan 421 P1: font_size → 主题 facet。
+  if (props.fontSize && props.fontSize > 0) {
+    ext.push(EditorView.theme({ '&': { fontSize: `${props.fontSize}px` } }))
+  }
+  // Plan 421 P1: 搜索面板(basicSetup 只带 searchKeymap,不带面板本体);
+  // Ctrl+F 打开面板,查询词来自 search prop(见下方 watch → setSearchEffect,
+  // 正则、全量 live-highlight,对齐 iced 端 search 语义)。
+  ext.push(searchPanel({ top: true }))
+  // Plan 421 P2: oncursor — updateListener selectionSet 触发,rAF 节流。
+  ext.push(EditorView.updateListener.of((update) => {
+    if (update.selectionSet) emitCursor(update.view)
+  }))
   return ext
 })
+
+// vue-codemirror @ready 载荷:{ view, state, container }。
+const view = shallowRef<EditorView | null>(null)
+
+let cursorRaf = 0
+const emitCursor = (v: EditorView) => {
+  if (cursorRaf) return
+  cursorRaf = requestAnimationFrame(() => {
+    cursorRaf = 0
+    const head = v.state.selection.main.head
+    const line = v.state.doc.lineAt(head)
+    // 1-based line/column(CodeMirror line.number)。
+    emit('cursor', { line: line.number, column: head - line.from + 1 })
+  })
+}
+
+const on_ready = (payload: { view: EditorView }) => {
+  view.value = payload.view
+  // 初始光标位置(状态栏类 UI 直接可用)。
+  emitCursor(payload.view)
+  if (props.search) applySearch(props.search)
+}
+
+// Plan 421 P1: search prop(正则)→ setSearchEffect,全量 live-highlight
+// 所有匹配(iced 端 418 §8.8 的 live-highlight 语义)。
+const applySearch = (pattern: string) => {
+  view.value?.dispatch({
+    effects: setSearchEffect.of(new SearchQuery({ search: pattern, regexp: true })),
+  })
+}
+watch(() => props.search, (p) => applySearch(p || ''))
 
 const on_change = (value: string) => {
   emit('update:modelValue', value)
 }
+
+// Plan 421 P2: oncontextmenu — 原生 contextmenu 透传坐标(1-based client 坐标)。
+// preventDefault 绑定原生事件,供 DSL `oncontextmenu.prevent` 修饰符调用。
+const on_contextmenu = (e: MouseEvent) => {
+  emit('contextmenu', { x: e.clientX, y: e.clientY, preventDefault: () => e.preventDefault() })
+}
 </script>
 
 <template>
-  <div class="code-editor-shell w-full h-full min-h-16 rounded-md border overflow-hidden">
+  <div
+    class="code-editor-shell w-full h-full min-h-16 rounded-md border overflow-hidden"
+    @contextmenu="on_contextmenu"
+  >
     <Codemirror
       :model-value="modelValue"
       :extensions="extensions"
+      :tab-size="tabSize"
       :style="{ height: '100%' }"
       @update:model-value="on_change"
+      @ready="on_ready"
     />
   </div>
 </template>
@@ -3546,19 +3670,38 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
 mod tests {
     use super::*;
 
-    /// Plan 413: the scaffold ships the CodeMirror deps (tree-shaken when
+    /// Plan 413/421: the scaffold ships the CodeMirror deps (tree-shaken when
     /// unused) and the CodeEditor shell component template.
     #[test]
     fn package_json_includes_codemirror_deps() {
         let pkg = generate_package_json("demo", false, false, &[]);
         assert!(pkg.contains("\"vue-codemirror\""), "{pkg}");
         assert!(pkg.contains("\"@codemirror/lang-rust\""), "{pkg}");
+        // Plan 421: the shell's new imports (StreamLanguage + search).
+        assert!(pkg.contains("\"@codemirror/language\""), "{pkg}");
+        assert!(pkg.contains("\"@codemirror/search\""), "{pkg}");
         // The shell component renders vue-codemirror with the prop contract.
         let component = generate_code_editor_component();
         assert!(component.contains("vue-codemirror"), "{component}");
         assert!(component.contains("defineProps"), "{component}");
         assert!(component.contains("lineNumbers"), "{component}");
         assert!(component.contains("EditorView.lineWrapping"), "{component}");
+        // Plan 421: the five props are consumed and the two events emitted.
+        assert!(component.contains("highlightCurrentLine"), "{component}");
+        assert!(component.contains(":tab-size=\"tabSize\""), "{component}");
+        assert!(component.contains("fontSize"), "{component}");
+        assert!(component.contains("setSearchEffect"), "{component}");
+        assert!(component.contains("searchPanel({ top: true })"), "{component}");
+        assert!(component.contains("emit('cursor',"), "{component}");
+        assert!(component.contains("emit('contextmenu',"), "{component}");
+        assert!(component.contains("requestAnimationFrame"), "{component}");
+        // Plan 421 P3: lang:"auto" maps to the AutoLang StreamLanguage lexer.
+        assert!(component.contains("StreamLanguage.define"), "{component}");
+        assert!(component.contains("auto: () => autoLang"), "{component}");
+        assert!(component.contains("at: () => autoLang"), "{component}");
+        // vi 降级声明:prop 声明存在(防 attribute 透传),但无 vim 扩展。
+        assert!(component.contains("vi: { type: Boolean, default: false }"), "{component}");
+        assert!(!component.contains("codemirror-vim"), "{component}");
     }
 
     use super::*;
