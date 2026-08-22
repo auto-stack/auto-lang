@@ -1843,6 +1843,13 @@ impl VueGenerator {
         if needs_ref {
             imports.push("ref");
         }
+        // PLAN-037 T4: model vars compile to defineModel. Unbound it behaves
+        // exactly like a local ref (same .value semantics, same template
+        // unwrap); when the parent binds the channel via call-site model
+        // addressing (v-model:name) it becomes two-way.
+        if !widget.state_vars.is_empty() {
+            imports.push("defineModel");
+        }
         if needs_computed {
             imports.push("computed");
         }
@@ -2112,12 +2119,21 @@ impl VueGenerator {
             }
             let init = self.expr_to_js(&state.initial)?;
 
-            // Plan 100: Add type annotation for TypeScript
+            // PLAN-037 T4: `defineModel<T>('name', { default: init })` —
+            // the model-var-as-channel compilation. Unbound = local ref with
+            // the default (identical to the previous ref<T>(init)); bound via
+            // the parent's `v-model:name` it is the two-way contract.
             if self.use_typescript {
                 let ts_type = self.expr_to_ts_type(&state.initial);
-                script.push_str(&format!("const {} = ref<{}>({})\n", state.name, ts_type, init));
+                script.push_str(&format!(
+                    "const {} = defineModel<{}>(\"{}\", {{ default: {} }})\n",
+                    state.name, ts_type, state.name, init
+                ));
             } else {
-                script.push_str(&format!("const {} = ref({})\n", state.name, init));
+                script.push_str(&format!(
+                    "const {} = defineModel(\"{}\", {{ default: {} }})\n",
+                    state.name, state.name, init
+                ));
             }
         }
 
@@ -13488,8 +13504,8 @@ widget Counter {
 
         // Plan 100: Default is now TypeScript, so check for lang="ts"
         assert!(sfc.contains(r#"<script setup lang="ts">"#));
-        assert!(sfc.contains("import { ref } from 'vue'"));
-        assert!(sfc.contains("const count = ref<number>(0)"));
+        assert!(sfc.contains("import { ref, defineModel } from 'vue'"));
+        assert!(sfc.contains("const count = defineModel<number>(\"count\", { default: 0 })"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
     }
@@ -15431,7 +15447,7 @@ widget SlashMenu {
 }
 "#);
         assert!(
-            sfc.contains("import { ref, computed, watch } from 'vue'"),
+            sfc.contains("import { ref, defineModel, computed, watch } from 'vue'"),
             "watch imported:\n{}",
             sfc
         );
@@ -15567,7 +15583,7 @@ widget Editor {
 }
 "#);
         assert!(
-            sfc.contains("const content = ref"),
+            sfc.contains("const content = defineModel"),
             "state ref exists:\n{}",
             sfc
         );
@@ -19960,7 +19976,7 @@ widget ThemeApp {
             sfc
         );
         assert!(
-            sfc.contains("accent_color = ref"),
+            sfc.contains("accent_color = defineModel"),
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
         );

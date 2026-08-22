@@ -1,10 +1,10 @@
 <!-- DocView component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, defineModel } from 'vue'
 import { MarkdownRender } from 'markstream-vue'
 
 
-const body = ref<string>('')
+const body = defineModel<string>("body", { default: '' })
 
 
 </script>

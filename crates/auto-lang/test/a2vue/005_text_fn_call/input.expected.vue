@@ -1,10 +1,10 @@
 <!-- TextFnCall component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, defineModel } from 'vue'
 import { t } from 'vue-i18n'
 
 
-const count = ref<number>(0)
+const count = defineModel<number>("count", { default: 0 })
 
 
 </script>
