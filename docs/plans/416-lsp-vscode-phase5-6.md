@@ -46,15 +46,21 @@
   包级;push/pull_request 触发恢复并加 `paths: crates/auto-lsp/**` 过滤。
   全仓 fmt 属独立决策(登记 Plan 416 后续 6-C)。
 
-### 6-B 集成测试扩容(预估 2 天)
+### 6-B 集成测试扩容 ✅ 2026-08-22 完成
 
-- **现状**: 集成测试 70 行低覆盖。补:didOpen/didChange 增量、
-  multi-file workspace、rename 边界(跨文件重命名)。
-- **验收**: 覆盖率报告(llvm-cov)显示 lsp crate ≥60% 行覆盖,或明确
-  记录剩余未覆盖模块的理由。
+- 新 `tests/lsp_protocol_test.rs`(协议级,~250 行):直接驱动真实
+  LspService(JSON-RPC Request + ClientSocket 排水任务)——生命周期
+  (initialize→didOpen→completion)、didChange 增量编辑后 hover 不回旧
+  快照、双文档 workspace documentSymbol、rename(实证当前为单文档作用
+  域,虚拟 URI 无 resolver 根,边界如实记录)、signatureHelp/inlayHint。
+- 覆盖率验收(llvm-cov 未装,按计划备选条款记录理由):未覆盖集中在
+  bin.rs(stdio 主循环/传输胶水)、did_change 的 150ms debounce 任务分支
+  (时序型)、resolver 的真实文件系统路径——三者均需进程级或磁盘环境;
+  核心处理器(completion/hover/rename/symbols/signature/inlay)已全部
+  有协议级用例。auto-lsp 13 测试全绿。
 
 ## 3. 执行顺序与联调安排
 
-5-A ✅ → 6-A ✅ → 5-C ✅ → 5-B(唯一需 VSCode 实机)→ 6-B →(6-C
+5-A ✅ → 6-A ✅ → 5-C ✅ → 6-B ✅ → 5-B(唯一需 VSCode 实机,剩余)→(6-C
 全仓 rustfmt 决策项)。5-A 落在 auto-vscode 仓(merge fc4cb9d,已推
 gitee);6-A 落在 auto-lang(auto-lsp-ci.yml)。
