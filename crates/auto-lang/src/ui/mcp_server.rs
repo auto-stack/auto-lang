@@ -2544,6 +2544,16 @@ fn aura_vtree_node(
     out: &mut String,
 ) {
     use crate::ui::vnode::kind_keyword;
+    // G4 (411 P2-B): skip placeholder nodes (View::Empty / Overlay both
+    // convert to Text+Empty props with no children) — they add `text`
+    // noise lines to every snapshot without carrying visual or interaction
+    // information.
+    if node.kind == crate::ui::vnode::VNodeKind::Text
+        && matches!(node.props, VNodeProps::Empty)
+        && node.children.is_empty()
+    {
+        return;
+    }
     let pad = "  ".repeat(indent);
     let tag = kind_keyword(node.kind);
     let id_str = format!(" #vnode_{}", node.id.as_u64());
