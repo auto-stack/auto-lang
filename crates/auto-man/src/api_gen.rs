@@ -856,11 +856,25 @@ pub fn primary_type_name_pub(api_module: &auto_lang::api::ApiModule) -> Option<S
     api_module.types.first().map(|t| t.name.clone())
 }
 
+/// Plan B1(b) (audit B1 follow-up): the `meta str` server-injected param.
+/// The VM http server pushes a request-metadata JSON
+/// (`{"cookies":{…},"auth":"…"}`, http_server.rs `push_meta`) as the trailing
+/// handler arg when declared params exceed path/query/body data. Recognize the
+/// same convention on the rust path so `meta` is threaded from request
+/// headers instead of being misparsed as a query/body field.
+fn is_meta_param(p: &ApiParam) -> bool {
+    p.name == "meta" && {
+        let t = p.ty.trim();
+        t == "str" || t == "String"
+    }
+}
+
 /// Get body params (params that aren't path params and aren't query params)
 fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
     let method = endpoint.method();
     endpoint.params.iter().filter(|p| {
+        if is_meta_param(p) { return false; }
         let is_path = path.contains(&format!(":{}", p.name));
         let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
         !is_path && !is_query
@@ -872,6 +886,7 @@ fn endpoint_query_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
     let path = endpoint.path();
     let method = endpoint.method();
     endpoint.params.iter().filter(|p| {
+        if is_meta_param(p) { return false; }
         let is_path = path.contains(&format!(":{}", p.name));
         !is_path && matches!(method.as_str(), "GET" | "DELETE")
     }).collect()
@@ -1063,6 +1078,11 @@ fn resolve_db_call(
         t == "[]str" || t == "[]String" || t == "&[String]"
     };
     let args: Vec<String> = endpoint.params.iter().map(|p| {
+        if is_meta_param(p) {
+            // Plan B1(b): server-injected metadata — bound from headers in the
+            // handler prologue (see meta_json), never a query/body field.
+            return "&meta".to_string();
+        }
         let is_path = path.contains(&format!(":{}", p.name));
         let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
         let borrow = is_str(&p.ty) || is_slice_str(&p.ty);
@@ -1185,6 +1205,39 @@ fn try_transpile_body(
     trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())
 }
 
+/// Plan B1(b): request-metadata JSON builder emitted into generated api.rs.
+/// Mirrors the VM server's push_meta format byte-for-byte so bearer_token /
+/// cookie readers behave identically on both backends.
+const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) -> String {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = if cookie_header.is_empty() {
+        "{}".to_string()
+    } else {
+        let pairs: Vec<String> = cookie_header
+            .split(';')
+            .filter_map(|pair| {
+                let pair = pair.trim();
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                Some(format!(
+                    "\"{}\":\"{}\"",
+                    k.trim().replace('"', "\\\""),
+                    v.trim().replace('"', "\\\"")
+                ))
+            })
+            .collect();
+        format!("{{{}}}", pairs.join(","))
+    };
+    let auth = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .replace('"', "\\\"");
+    format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
+}"#;
+
 fn generate_api_rs(
     api_module: &auto_lang::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
@@ -1219,6 +1272,14 @@ fn generate_api_rs(
 
     lines.push(format!("pub type Db = Arc<Mutex<Vec<{}>>>;", primary_type));
     lines.push("".to_string());
+
+    // Plan B1(b): meta_json helper — parity with the VM server's trailing
+    // `meta` arg ({"cookies":{…},"auth":"…"}). Emitted only when some
+    // endpoint declares the `meta str` server-injected param.
+    if api_module.endpoints.iter().any(|e| e.params.iter().any(|p| is_meta_param(p))) {
+        lines.push(META_JSON_HELPER.to_string());
+        lines.push("".to_string());
+    }
 
     // Generate CreateInput struct(s) for POST endpoints with body fields.
     // Plan 399 Phase 12: each unique body-param set gets its own struct (was:
@@ -1446,6 +1507,19 @@ fn generate_api_rs(
                 }
             }
         }
+        // Plan B1(b): endpoints declaring the server-injected `meta str` param
+        // get a HeaderMap extractor (FromRequestParts — must precede Json).
+        // Only when the handler will actually consume meta: db delegation or
+        // an eligible a2r body. The CRUD template ignores it, so no extractor
+        // there (unused fn params would only add noise).
+        let has_meta = endpoint.params.iter().any(|p| is_meta_param(p));
+        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY").map(|v| v != "0").unwrap_or(true);
+        let meta_binding_needed = has_meta
+            && (db_delegation.is_some()
+                || (a2r_body_enabled && !is_thin_delegation(endpoint) && endpoint.body.is_some()));
+        if meta_binding_needed {
+            params.push("headers: axum::http::HeaderMap".to_string());
+        }
 
         // Determine return type
         // Strip Option wrapper for endpoints that use Result<_, StatusCode> for 404
@@ -1482,11 +1556,15 @@ fn generate_api_rs(
 
         // Plan 400 Phase 2: a2r body transpilation. Non-thin bodies with real
         // logic get transpiled via a2r instead of CRUD template. Disable: AUTO_A2R_BODY=0.
-        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY").map(|v| v != "0").unwrap_or(true);
         if a2r_body_enabled && !is_thin_delegation(endpoint) {
             if let Some(body) = &endpoint.body {
                 match try_transpile_body(body, endpoint, api_module) {
                     Ok(stmts) => {
+                        // Plan B1(b): bind the server-injected meta JSON before
+                        // the transpiled body (it references `meta` like any param).
+                        if has_meta {
+                            lines.push("    let meta: String = meta_json(&headers);".to_string());
+                        }
                         for s in &stmts {
                             lines.push(s.clone());
                         }
@@ -1510,6 +1588,11 @@ fn generate_api_rs(
         // `json_inner` holds the inner Rust type (e.g. `Vec<Message>`/`Message`)
         // already computed above; reuse it to wrap the db result.
         if let Some(deleg) = &db_delegation {
+            // Plan B1(b): bind the server-injected meta JSON when the db call
+            // consumes it (resolve_db_call maps the meta param to `&meta`).
+            if has_meta {
+                lines.push("    let meta: String = meta_json(&headers);".to_string());
+            }
             let call = format!("crate::db::{}({})", deleg.db_fn, deleg.args.join(", "));
             if is_void {
                 // Plan 399 §6/Phase 12: a void POST that broadcasts (e.g. typing
@@ -2481,6 +2564,69 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         assert!(events.contains("pub fn broadcast("), "broadcast fn");
         let main = generate_main_rs(&module, None, false);
         assert!(main.contains("mod events;"), "mod events");
+    }
+
+    /// Plan B1(b): `meta str` server-injected param — GET current_user(meta) and
+    /// POST create_article(..., meta) must NOT classify meta as a query/body
+    /// field; instead: HeaderMap extractor + meta_json binding + &meta
+    /// delegation arg (VM push_meta parity, http_server.rs).
+    #[test]
+    fn test_meta_param_header_injection() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Article = { id: int, slug: str, title: str }
+
+#[api(method = "GET", path = "/api/user")]
+pub fn current_user(meta str) Article { return db.current_user(meta) }
+
+#[api(method = "POST", path = "/api/articles")]
+pub fn create_article(slug str, title str, meta str) Article { return db.create_article(slug, title, meta) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> = [
+            "current_user".to_string(), "create_article".to_string(),
+        ].into_iter().collect();
+
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+
+        // helper emitted once
+        assert!(
+            api_rs.contains("fn meta_json(headers: &axum::http::HeaderMap) -> String"),
+            "helper: {}", api_rs
+        );
+        // GET: meta is NOT a query struct field
+        assert!(!api_rs.contains("CurrentUserQuery"), "meta not query: {}", api_rs);
+        // extractor + binding present
+        assert!(api_rs.contains("headers: axum::http::HeaderMap"), "extractor: {}", api_rs);
+        assert!(api_rs.contains("let meta: String = meta_json(&headers);"), "binding: {}", api_rs);
+        // delegation args use the binding
+        assert!(api_rs.contains("crate::db::current_user(&meta)"), "get deleg: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::create_article(&input.slug, &input.title, &meta)"),
+            "post deleg: {}", api_rs
+        );
+        // POST: meta excluded from the CreateInput body struct
+        assert!(!api_rs.contains("pub meta: String"), "meta not body field: {}", api_rs);
+        // helper JSON format parity spot-check (VM push_meta format)
+        assert!(api_rs.contains("cookies"), "cookies key: {}", api_rs);
+        assert!(api_rs.contains("auth"), "auth key: {}", api_rs);
+    }
+
+    /// Plan B1(b): module without any meta param must NOT emit the helper.
+    #[test]
+    fn test_no_meta_param_no_helper() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Note = { id: int, text: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> = ["all_notes".to_string()].into_iter().collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns));
+        assert!(!api_rs.contains("meta_json"), "no helper without meta: {}", api_rs);
+        assert!(!api_rs.contains("HeaderMap"), "no extractor without meta: {}", api_rs);
     }
 
     /// Plan 399 第 4-5 步: 017-chat — handlers delegate to db.rs (no State<Db>),
