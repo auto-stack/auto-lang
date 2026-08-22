@@ -13,7 +13,7 @@
 
 use crate::ui::iced::renderer::IntoIcedElement;
 use crate::ui::style::Style;
-use crate::ui::view::View;
+use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
 use iced_test::simulator;
 use iced_test::selector::Bounded;
 
@@ -226,4 +226,226 @@ fn nested_row_icon_button_keeps_bounds() {
     for (i, (_, w, h)) in buttons.iter().enumerate() {
         assert!(*w > 0.0 && *h > 0.0, "button {i} collapsed to {w}x{h} (414 §8.1 regression)");
     }
+}
+
+// ── Plan 422 P1: popover overlay 定位断言 ─────────────────────────────────
+// 弹层面板经 iced overlay 机制渲染;Panel overlay 实现了 operate 转发,
+// 面板内文本对 iced_test 的 selector 可见(UserInterface::operate 会分派
+// 到 overlay —— tooltip 没实现 operate 所以不可见,这里必须可见)。
+
+fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u16) -> View<()> {
+    View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "ANCHORBTN".to_string(),
+                onclick: (),
+                style: Style::parse(anchor_style).ok(),
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(View::Container {
+                child: Box::new(styled_view("PANELTEXT")),
+                padding: 0,
+                width: Some(panel_width),
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: None,
+            }),
+            placement,
+            open: true,
+            on_dismiss: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    }
+}
+
+/// BottomStart:面板左缘对齐锚左缘、顶缘在锚正下方 —— menubar 下拉的
+/// 核心定位(取代 418 的 top-[33px] left-[估] 像素估算)。
+#[test]
+fn popover_bottom_start_aligns_under_anchor() {
+    let view = popover_view(PopoverPlacement::BottomStart, "h-7 px-3", 160);
+    let mut ui = simulator(view.into_iced());
+    let (ax, ay, aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
+    let (px, py, pw, ph) = bounds_of(&mut ui, "PANELTEXT");
+    assert!(aw > 0.0 && ah > 0.0, "anchor button must keep bounds: {aw}x{ah}");
+    assert!(pw > 0.0 && ph > 0.0, "panel must be visible through overlay operate: {pw}x{ph}");
+    assert!(py >= ay + ah, "panel must start below anchor bottom: panel y {py} vs anchor {ay}+{ah}");
+    // 容器给了固定宽 160;文字在其中。BottomStart = 面板左缘对齐锚按钮
+    // 左缘 —— 文字选择器看到的是按钮内文字(px-3 内缩 12px),面板文字
+    // 贴容器左缘,故面板文字 x 应落在 [按钮左缘, 按钮文字] 区间内。
+    assert!(
+        px >= ax - 16.0 && px <= ax,
+        "panel left must align with anchor BUTTON left (text inset by px-3): panel x {px} vs anchor text x {ax}"
+    );
+}
+
+/// 右缘越界 snap:锚贴近视口右缘、面板宽 320,右缘必须收回视口内
+/// (~1024 默认视口;Tooltip 同款 snap_within_viewport 逻辑)。
+#[test]
+fn popover_snaps_within_viewport_right_edge() {
+    // ml-auto 把锚组推到行右缘。
+    let view = View::Row {
+        children: vec![
+            styled_view("LEFT"),
+            popover_view(PopoverPlacement::BottomStart, "h-7 px-3 ml-auto", 320),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Some(Style::parse("w-full").ok().unwrap()),
+    };
+    let mut ui = simulator(view.into_iced());
+    let (ax, _ay, _aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
+    let (px, py, pw, _ph) = bounds_of(&mut ui, "PANELTEXT");
+    assert!(ax > 600.0, "anchor should sit near the right edge, got x {ax}");
+    assert!(py >= ah, "panel below the 28px-tall anchor row: {py} vs {ah}");
+    // snap 后:面板整体在视口内(1024 宽 + 0.5 容差),且左缘被推回
+    // (否则 px ≈ ax > 700 且 px + 320 > 1024)。
+    assert!(px + pw <= 1024.5, "panel right edge must stay in viewport: {px}+{pw}");
+    assert!(px <= 1024.0 - 320.0 + 0.5, "panel must be snapped left: {px}");
+}
+
+/// 坐标锚(contextmenu 变体):面板左上角对齐 (x, y) 落点,不受布局影响。
+#[test]
+fn popover_point_anchor_places_panel_at_coordinate() {
+    let view = View::Popover {
+        anchor: PopoverAnchor::Point { x: 300.0, y: 200.0 },
+        content: Box::new(View::Container {
+            child: Box::new(styled_view("CTXITEM")),
+            padding: 0,
+            width: Some(180),
+            height: None,
+            center_x: false,
+            center_y: false,
+            style: None,
+        }),
+        placement: PopoverPlacement::BottomStart,
+        open: true,
+        on_dismiss: None,
+    };
+    let mut ui = simulator(view.into_iced());
+    let (px, py, pw, _ph) = bounds_of(&mut ui, "CTXITEM");
+    assert!(pw > 0.0, "context panel must be visible: {pw}");
+    assert!((px - 300.0).abs() <= 8.0, "panel left at point x=300 (+text padding), got {px}");
+    assert!((py - 200.0).abs() <= 8.0, "panel top at point y=200, got {py}");
+}
+
+/// 关闭态:面板内容不可见(open=false → overlay 不产出)。
+#[test]
+fn popover_closed_hides_panel() {
+    let view = View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "CLOSEDBTN".to_string(),
+                onclick: (),
+                style: None,
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(styled_view("HIDDENPANEL")),
+            placement: PopoverPlacement::BottomStart,
+            open: false,
+            on_dismiss: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    };
+    let mut ui = simulator(view.into_iced());
+    let (_bx, _by, bw, bh) = bounds_of(&mut ui, "CLOSEDBTN");
+    assert!(bw > 0.0 && bh > 0.0, "anchor button must render when closed: {bw}x{bh}");
+    assert!(ui.find("HIDDENPANEL").is_err(), "panel content must NOT be reachable when closed");
+}
+
+// ── Plan 422 P1/P3: 弹层行为语义(捕获/dismiss)—— 消息级断言 ────────────
+// Simulator 的事件先派发给 overlay(UserInterface::update 语义),据此断言:
+// * 面板内点击 → 项消息发布、无 dismiss;
+// * 面板外点击 → dismiss 发布且放行(此处无基础树按钮,仅 Dismiss);
+// * 锚上点击 → dismiss 发布且【不】透传给锚按钮(点触发器 = 关);
+// * Esc → dismiss 发布并捕获。
+
+#[derive(Clone, Debug, PartialEq)]
+enum PopMsg {
+    Trig,
+    Item,
+    Dismiss,
+}
+
+/// 消息断言用的小视图:锚按钮 TRIGBTN + 开启面板(项按钮 PANELITEM)。
+fn popover_semantics_view() -> View<PopMsg> {
+    let panel_item = |label: &str| View::<PopMsg>::Button {
+        label: label.to_string(),
+        onclick: PopMsg::Item,
+        style: None,
+        on_right_click: None,
+        content: None,
+    };
+    View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Button {
+                label: "TRIGBTN".to_string(),
+                onclick: PopMsg::Trig,
+                style: None,
+                on_right_click: None,
+                content: None,
+            })),
+            content: Box::new(View::Column {
+                children: vec![panel_item("PANELITEM")],
+                spacing: 0,
+                padding: 0,
+                style: None,
+            }),
+            placement: PopoverPlacement::BottomStart,
+            open: true,
+            on_dismiss: Some(PopMsg::Dismiss),
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+    }
+}
+
+#[test]
+fn popover_panel_item_click_publishes_item() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    ui.click("PANELITEM").expect("panel item clickable");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Item), "panel item message must publish: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
+}
+
+#[test]
+fn popover_outside_click_dismisses() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    // 远离面板/锚的空白处点击。
+    ui.point_at(iced::Point::new(900.0, 700.0));
+    let _ = ui.simulate(iced_test::simulator::click());
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "outside click must publish dismiss: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Item), "no item message on outside click: {msgs:?}");
+    assert!(!msgs.contains(&PopMsg::Trig), "no trigger leak on outside click: {msgs:?}");
+}
+
+#[test]
+fn popover_anchor_click_dismisses_without_trigger() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    ui.click("TRIGBTN").expect("anchor button visible");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(
+        msgs.contains(&PopMsg::Dismiss) && !msgs.contains(&PopMsg::Trig),
+        "clicking the anchor while open must dismiss WITHOUT re-triggering: {msgs:?}"
+    );
+}
+
+#[test]
+fn popover_escape_dismisses() {
+    let mut ui = simulator(popover_semantics_view().into_iced());
+    let status = ui.tap_key(iced::keyboard::Key::Named(
+        iced::keyboard::key::Named::Escape,
+    ));
+    assert_eq!(status, iced::event::Status::Captured, "Esc must be captured by the popover");
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(msgs.contains(&PopMsg::Dismiss), "Esc must publish dismiss: {msgs:?}");
 }

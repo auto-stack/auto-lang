@@ -1,18 +1,41 @@
 widget App {
     model {
+        // Plan 420 P1: tabs 数组态 —— 每 tab = {key, title, path, dirty, src}。
+        // key 唯一(code_editor registry 按它保存实例);src 仅作初值/外部
+        // 重置(last_external 相等即 no-op,用户输入不会被 stale 值踩掉)。
+        var tabs list = [
+            {key: "tab-main", title: "main.at", path: "", dirty: false, src: "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"},
+            {key: "tab-util", title: "util.at", path: "", dirty: false, src: "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"},
+        ]
+        var active_key str = "tab-main"
+        // 派生标量(索引镜像/空态判断/状态栏与矩阵断言面;结构变化时由
+        // 各 handler 就地重算,不在模板里调方法)。
         var tab int = 0
-        var src_main str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
-        var src_util str = "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"
-        var path_main str = ""
-        var path_util str = ""
-        var title_main str = "main.at"
-        var title_util str = "util.at"
+        var tab_count int = 2
+        var open_count int = 2
+        var title_active str = "main.at"
+        var path_active str = ""
+        var src_active str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常
+fn add(a int, b int) int {
+    return a + b
+}
+
+// 中文注释:你好世界
+print(add(1, 2))
+"
         var edits int = 0
         var line int = 1
         var col int = 1
         var sel int = 0
         var console_open bool = false
         var console str = ""
+        // Plan 422 P3: 右键菜单(contextmenu popover 的坐标锚状态)
+        var ctx_open bool = false
+        var ctx_x float = 0
+        var ctx_y float = 0
+        // Plan 420 P2: 关闭脏 tab 的确认弹层状态
+        var confirm_open bool = false
+        var confirm_idx int = -1
     }
 
     view {
@@ -23,59 +46,50 @@ widget App {
                 toolbar (style: "ml-auto") {}
             }
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
-                if .tab == 0 {
-                    row (style: "items-center bg-[#1C1D24]") {
-                        button (text: .title_main, variant: "text") {
-                            onclick: .TabMain
-                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
-                        }
-                        button (variant: "text") {
-                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
-                            onclick: .CloseTab("main.at")
-                            style: "h-7 w-6 px-0 py-0 mr-2"
+                for i, t in .tabs {
+                    if i == .tab {
+                        row (style: "items-center bg-[#1C1D24]") {
+                            button (text: t.title, variant: "text") {
+                                onclick: .TabActivate(i)
+                                style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                            }
+                            button (variant: "text") {
+                                icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                                onclick: .CloseTab(i)
+                                style: "h-7 w-6 px-0 py-0 mr-2"
+                            }
                         }
                     }
-                }
-                if .tab != 0 {
-                    button (text: .title_main, variant: "text") {
-                        onclick: .TabMain
-                        style: "h-8 px-3 text-[12px] text-zinc-500"
-                    }
-                }
-                if .tab == 1 {
-                    row (style: "items-center bg-[#1C1D24]") {
-                        button (text: .title_util, variant: "text") {
-                            onclick: .TabUtil
-                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
-                        }
-                        button (variant: "text") {
-                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
-                            onclick: .CloseTab("util.at")
-                            style: "h-7 w-6 px-0 py-0 mr-2"
+                    if i != .tab {
+                        button (text: t.title, variant: "text") {
+                            onclick: .TabActivate(i)
+                            style: "h-8 px-3 text-[12px] text-zinc-500"
                         }
                     }
                 }
-                if .tab != 1 {
-                    button (text: .title_util, variant: "text") {
-                        onclick: .TabUtil
-                        style: "h-8 px-3 text-[12px] text-zinc-500"
-                    }
+                button (variant: "text") {
+                    icon (name: "plus", style: "h-3.5 w-3.5 text-zinc-400") {}
+                    onclick: .ActOpen
+                    style: "h-7 w-7 px-0 py-0 ml-1"
                 }
             }
             col (style: "h-px w-full bg-border shrink-0")
 
-            if .tab == 0 {
-                code_editor (key: "tab-main", lang: "auto", style: "flex-1 w-full") {
-                    content: .src_main
-                    oninput: .SrcMainChanged
-                    oncursor: .CursorMain
+            for i, t in .tabs {
+                if t.key == .active_key {
+                    code_editor (key: t.key, lang: "auto", style: "flex-1 w-full") {
+                        content: t.src
+                        oninput: .SrcChanged(i)
+                        oncursor: .CursorMoved(i)
+                        oncontextmenu: .EditorCtx
+                    }
                 }
             }
-            if .tab != 0 {
-                code_editor (key: "tab-util", lang: "auto", style: "flex-1 w-full") {
-                    content: .src_util
-                    oninput: .SrcUtilChanged
-                    oncursor: .CursorUtil
+            if .tab_count == 0 {
+                col (style: "flex-1 w-full items-center justify-center") {
+                    text "没有打开的文件 — 点击 + 或「文件 → 打开」" {
+                        style: "text-[13px] text-zinc-500"
+                    }
                 }
             }
 
@@ -100,6 +114,41 @@ widget App {
                                 style: "text-xs font-mono text-zinc-300"
                             }
                         }
+                    }
+                }
+            }
+
+            // Plan 422 P3: 坐标锚弹层 —— 右键编辑器时 EditorCtx(x, y) 记录
+            // 落点并置开;面板项处理器负责关闭。ondismiss 覆盖点击外部/Esc。
+            popover (open: .ctx_open, x: .ctx_x, y: .ctx_y, ondismiss: .CtxClose,
+                     class: "w-40 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                button (text: "剪切", variant: "text") {
+                    onclick: .CtxCut
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                }
+                button (text: "复制", variant: "text") {
+                    onclick: .CtxCopy
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                }
+                button (text: "全选", variant: "text") {
+                    onclick: .CtxSelectAll
+                    style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                }
+            }
+
+            // Plan 420 P2: 关闭脏 tab 的确认弹层(固定落点,坐标锚)。
+            popover (open: .confirm_open, x: 420.0, y: 260.0, ondismiss: .ConfirmCancel,
+                     class: "w-64 bg-[#16171B] border border-zinc-700 shadow-md py-2 px-3") {
+                text "有未保存的修改" { style: "text-[13px] text-zinc-100 py-1" }
+                text "关闭前要保存吗?" { style: "text-[12px] text-zinc-400 pb-2" }
+                row (style: "gap-2 justify-end") {
+                    button (text: "直接关闭", variant: "text") {
+                        onclick: .ConfirmClose
+                        style: "h-7 px-2 text-[12px] text-zinc-300"
+                    }
+                    button (text: "取消", variant: "text") {
+                        onclick: .ConfirmCancel
+                        style: "h-7 px-2 text-[12px] text-zinc-400"
                     }
                 }
             }
@@ -135,80 +184,181 @@ widget App {
     }
 
     on {
-        .CloseTab(name) -> {
-            console_log("close tab " + name + " (MVP: dummy)")
+        .TabActivate(i) -> {
+            .tab = i
+            .active_key = .tabs[i].key
+            .title_active = .tabs[i].title
+            .path_active = .tabs[i].path
+            .src_active = .tabs[i].src
+            .line = code_editor_cursor_line(.tabs[i].key) + 1
+            .col = code_editor_cursor_col(.tabs[i].key) + 1
+            .sel = code_editor_selection_len(.tabs[i].key)
             .console = console_lines()
         }
-        .TabMain -> {
-            .tab = 0
-            .line = code_editor_cursor_line("tab-main") + 1
-            .col = code_editor_cursor_col("tab-main") + 1
-            .sel = code_editor_selection_len("tab-main")
-            .console = console_lines()
-        }
-        .TabUtil -> {
-            .tab = 1
-            .line = code_editor_cursor_line("tab-util") + 1
-            .col = code_editor_cursor_col("tab-util") + 1
-            .sel = code_editor_selection_len("tab-util")
-            .console = console_lines()
-        }
-        .SrcMainChanged -> {
+        .SrcChanged(i) -> {
             .edits = .edits + 1
-            console_log(.title_main + " edit #" + .edits.str())
+            .tabs[i].dirty = true
             .console = console_lines()
         }
-        .SrcUtilChanged -> {
-            .edits = .edits + 1
-            console_log(.title_util + " edit #" + .edits.str())
+        .CursorMoved(i) -> {
+            .line = code_editor_cursor_line(.tabs[i].key) + 1
+            .col = code_editor_cursor_col(.tabs[i].key) + 1
+            .sel = code_editor_selection_len(.tabs[i].key)
             .console = console_lines()
         }
-        .CursorMain -> {
-            .line = code_editor_cursor_line("tab-main") + 1
-            .col = code_editor_cursor_col("tab-main") + 1
-            .sel = code_editor_selection_len("tab-main")
+        .CloseTab(i) -> {
+            // Plan 420 P2: 脏 tab 走确认弹层;干净 tab 直接关(VM handler
+            // 之间不能互调,关闭逻辑在此与 ConfirmClose 各持一份)。
+            if .tabs[i].dirty {
+                .confirm_idx = i
+                .confirm_open = true
+            } else {
+                .tabs.remove(i)
+                .tab_count = .tab_count - 1
+                if .tab_count > 0 {
+                    if i == .tab {
+                        if i >= .tab_count {
+                            .tab = .tab_count - 1
+                        }
+                    }
+                    if i < .tab {
+                        .tab = .tab - 1
+                    }
+                    .active_key = .tabs[.tab].key
+                    .title_active = .tabs[.tab].title
+                    .path_active = .tabs[.tab].path
+                    .line = code_editor_cursor_line(.active_key) + 1
+                    .col = code_editor_cursor_col(.active_key) + 1
+                    .sel = code_editor_selection_len(.active_key)
+                } else {
+                    .tab = -1
+                    .active_key = ""
+                    .title_active = ""
+                    .path_active = ""
+                    .line = 1
+                    .col = 1
+                    .sel = 0
+                }
+                console_log("closed tab; open=" + .tab_count.str())
+            }
             .console = console_lines()
         }
-        .CursorUtil -> {
-            .line = code_editor_cursor_line("tab-util") + 1
-            .col = code_editor_cursor_col("tab-util") + 1
-            .sel = code_editor_selection_len("tab-util")
+        .ConfirmClose -> {
+            .confirm_open = false
+            if .confirm_idx >= 0 {
+                .tabs.remove(.confirm_idx)
+                .tab_count = .tab_count - 1
+                if .tab_count > 0 {
+                    if .confirm_idx == .tab {
+                        if .confirm_idx >= .tab_count {
+                            .tab = .tab_count - 1
+                        }
+                    }
+                    if .confirm_idx < .tab {
+                        .tab = .tab - 1
+                    }
+                    .active_key = .tabs[.tab].key
+                    .title_active = .tabs[.tab].title
+                    .path_active = .tabs[.tab].path
+                    .line = 1
+                    .col = 1
+                    .sel = 0
+                } else {
+                    .tab = -1
+                    .active_key = ""
+                    .title_active = ""
+                    .path_active = ""
+                }
+                console_log("closed dirty tab; open=" + .tab_count.str())
+            }
+            .confirm_idx = -1
             .console = console_lines()
+        }
+        .ConfirmCancel -> {
+            .confirm_open = false
+            .confirm_idx = -1
         }
         .ConsoleClear -> {
             console_clear()
             .console = ""
         }
 
+        // ---- Plan 422 P3: contextmenu popover ----
+        // 编辑器右键:坐标为视口系(renderer 侧已加 widget origin)。
+        .EditorCtx(x, y) -> {
+            .ctx_x = x
+            .ctx_y = y
+            .ctx_open = true
+            console_log("ctx menu opened")
+            .console = console_lines()
+        }
+        .CtxClose -> {
+            .ctx_open = false
+        }
+        .CtxCut -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_cut(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
+            }
+            console_log("ctx cut")
+            .console = console_lines()
+        }
+        .CtxCopy -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_copy(.active_key)
+            }
+            console_log("ctx copy")
+            .console = console_lines()
+        }
+        .CtxSelectAll -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_select_all(.active_key)
+                .sel = code_editor_selection_len(.active_key)
+            }
+            console_log("ctx select all")
+            .console = console_lines()
+        }
+
         // ---- Plan 418: semantic actions (menu / toolbar / shortcut 3-source) ----
         .ActNew -> {
-            if .tab == 0 {
-                .path_main = ""
-                .title_main = "untitled.at"
-                code_editor_set_text("tab-main", "")
-            }
-            if .tab == 1 {
-                .path_util = ""
-                .title_util = "untitled.at"
-                code_editor_set_text("tab-util", "")
+            if .tab_count > 0 {
+                .tabs[.tab].path = ""
+                .tabs[.tab].title = "untitled.at"
+                .tabs[.tab].dirty = false
+                .tabs[.tab].src = ""
+                .src_active = ""
+                code_editor_set_text(.active_key, "")
+                .title_active = "untitled.at"
+                .path_active = ""
             }
             console_log("new: cleared active tab")
             .console = console_lines()
         }
         .ActOpen -> {
-            let p = dialog_open(".at, .au, .rs, .txt")
+            // Plan 420 P2: AUTO_OPEN_PATH 环境变量旁路(测试构建语义,prod
+            // 忽略)—— 阻塞式 rfd 对话框无法被 MCP 驱动的盲区由此打通。
+            var p str = Env.get("AUTO_OPEN_PATH")
+            if p == "" {
+                p = dialog_open(".at, .au, .rs, .txt")
+            }
             if p != "" {
                 let s = File.read_text(p)
-                if .tab == 0 {
-                    .path_main = p
-                    .title_main = file_basename(p)
-                    code_editor_set_text("tab-main", s)
-                }
-                if .tab == 1 {
-                    .path_util = p
-                    .title_util = file_basename(p)
-                    code_editor_set_text("tab-util", s)
-                }
+                .open_count = .open_count + 1
+                .tabs.push({key: "tab-" + .open_count.str(), title: file_basename(p), path: p, dirty: false, src: s})
+                .tab = .tab_count
+                .tab_count = .tab_count + 1
+                .active_key = .tabs[.tab].key
+                .title_active = .tabs[.tab].title
+                .path_active = p
+                .src_active = s
+                .line = 1
+                .col = 1
+                .sel = 0
                 console_log("open: " + p)
             } else {
                 console_log("open: cancelled")
@@ -216,32 +366,24 @@ widget App {
             .console = console_lines()
         }
         .ActSave -> {
-            if .tab == 0 {
-                if .path_main == "" {
-                    let p = dialog_save("untitled.at")
+            if .tab_count > 0 {
+                if .path_active == "" {
+                    // Plan 420 P2: AUTO_SAVE_PATH 旁路(与 AUTO_OPEN_PATH 同型)。
+                    var p str = Env.get("AUTO_SAVE_PATH")
+                    if p == "" {
+                        p = dialog_save("untitled.at")
+                    }
                     if p != "" {
-                        .path_main = p
-                        .title_main = file_basename(p)
+                        .path_active = p
+                        .tabs[.tab].path = p
+                        .title_active = file_basename(p)
+                        .tabs[.tab].title = file_basename(p)
                     }
                 }
-                if .path_main != "" {
-                    File.write_text(.path_main, code_editor_text("tab-main"))
-                    console_log("saved: " + .path_main)
-                } else {
-                    console_log("save: cancelled")
-                }
-            }
-            if .tab == 1 {
-                if .path_util == "" {
-                    let p = dialog_save("untitled.at")
-                    if p != "" {
-                        .path_util = p
-                        .title_util = file_basename(p)
-                    }
-                }
-                if .path_util != "" {
-                    File.write_text(.path_util, code_editor_text("tab-util"))
-                    console_log("saved: " + .path_util)
+                if .path_active != "" {
+                    File.write_text(.path_active, code_editor_text(.active_key))
+                    .tabs[.tab].dirty = false
+                    console_log("saved: " + .path_active)
                 } else {
                     console_log("save: cancelled")
                 }
@@ -253,75 +395,56 @@ widget App {
             Process.exit(0)
         }
         .ActUndo -> {
-            if .tab == 0 {
-                code_editor_undo("tab-main")
-                .src_main = code_editor_text("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_undo("tab-util")
-                .src_util = code_editor_text("tab-util")
+            if .tab_count > 0 {
+                code_editor_undo(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
             }
             console_log("undo")
             .console = console_lines()
         }
         .ActRedo -> {
-            if .tab == 0 {
-                code_editor_redo("tab-main")
-                .src_main = code_editor_text("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_redo("tab-util")
-                .src_util = code_editor_text("tab-util")
+            if .tab_count > 0 {
+                code_editor_redo(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
             }
             console_log("redo")
             .console = console_lines()
         }
         .ActSelectAll -> {
-            if .tab == 0 {
-                code_editor_select_all("tab-main")
-                .line = code_editor_cursor_line("tab-main") + 1
-                .col = code_editor_cursor_col("tab-main") + 1
-                .sel = code_editor_selection_len("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_select_all("tab-util")
-                .line = code_editor_cursor_line("tab-util") + 1
-                .col = code_editor_cursor_col("tab-util") + 1
-                .sel = code_editor_selection_len("tab-util")
+            if .tab_count > 0 {
+                code_editor_select_all(.active_key)
+                .line = code_editor_cursor_line(.active_key) + 1
+                .col = code_editor_cursor_col(.active_key) + 1
+                .sel = code_editor_selection_len(.active_key)
             }
             console_log("select all")
             .console = console_lines()
         }
         .ActCut -> {
-            if .tab == 0 {
-                code_editor_cut("tab-main")
-                .src_main = code_editor_text("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_cut("tab-util")
-                .src_util = code_editor_text("tab-util")
+            if .tab_count > 0 {
+                code_editor_cut(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
             }
             console_log("cut")
             .console = console_lines()
         }
         .ActCopy -> {
-            if .tab == 0 {
-                code_editor_copy("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_copy("tab-util")
+            if .tab_count > 0 {
+                code_editor_copy(.active_key)
             }
             console_log("copy")
             .console = console_lines()
         }
         .ActPaste -> {
-            if .tab == 0 {
-                code_editor_paste("tab-main")
-                .src_main = code_editor_text("tab-main")
-            }
-            if .tab == 1 {
-                code_editor_paste("tab-util")
-                .src_util = code_editor_text("tab-util")
+            if .tab_count > 0 {
+                code_editor_paste(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
             }
             console_log("paste")
             .console = console_lines()
@@ -331,21 +454,21 @@ widget App {
             .console = console_lines()
         }
         .ActSwitchTab -> {
-            if .tab == 0 {
-                .tab = 1
-                .line = code_editor_cursor_line("tab-util") + 1
-                .col = code_editor_cursor_col("tab-util") + 1
-                .sel = code_editor_selection_len("tab-util")
-            } else {
-                .tab = 0
-                .line = code_editor_cursor_line("tab-main") + 1
-                .col = code_editor_cursor_col("tab-main") + 1
-                .sel = code_editor_selection_len("tab-main")
+            if .tab_count > 1 {
+                // 两 tab 演示语义保留(Ctrl+D 矩阵断言 0↔1 翻转)。
+                .tab = 1 - .tab
+                .active_key = .tabs[.tab].key
+                .title_active = .tabs[.tab].title
+                .path_active = .tabs[.tab].path
+                .src_active = .tabs[.tab].src
+                .line = code_editor_cursor_line(.active_key) + 1
+                .col = code_editor_cursor_col(.active_key) + 1
+                .sel = code_editor_selection_len(.active_key)
             }
             .console = console_lines()
         }
         .ActAbout -> {
-            console_log("auto-edit 0.1 — AutoUI playground (plans 413/414/418)")
+            console_log("auto-edit 0.1 — AutoUI playground (plans 413/414/418/420)")
             .console = console_lines()
         }
     }

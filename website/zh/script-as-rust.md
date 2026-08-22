@@ -46,7 +46,7 @@ const heroAuto = [
 
 **发布（Ship）** —— `a2r` 把同一份源码转成你本会手写的 Rust：真正的 `trait` / `impl` / `Box<dyn>`、泛型、所有权、`Result` + `?`。链 `a2r-std`，`cargo build --release`，部署。
 
-**桥梁（Bridge）** —— 转译器为"行为一致"负责。AutoVM 输出 == 转译 Rust 输出。这不是口号：[由 141 个三向 parity 测试验证](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)，覆盖七个核心真实库（另有 consumer-mode 用例，见仪表盘）。
+**桥梁（Bridge）** —— 转译器为"行为一致"负责。AutoVM 输出 == 转译 Rust 输出。这不是口号：[由 260 个三向 parity 测试验证](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)，覆盖十个核心真实库（另有 consumer-mode 用例，见仪表盘）。
 
 ## 为什么这胜过"先用 Python，再重写成 Rust"
 
@@ -64,11 +64,14 @@ const heroAuto = [
 
 Auto"VM 与 Rust 行为一致"的声明，由自动化三向 parity 框架支撑：AutoVM 对 a2r 转译的 Rust 对原生 Rust，基于真实库。这是区分可信工具与营销话术的关键。
 
-**L1 —— 当前已三向验证（141 个测试用例）：**
+**L1 —— 当前已三向验证（260 个测试用例）：**
 
 | 库 | 用例数 | 验证点 |
 |---------|-------|-------------------|
+| serde_json | 56/56 | 完整 JSON 解析器：递归下降、转义、错误路径 |
 | regex | 45/45 | 模式匹配、回溯 |
+| url | 30/30 | URL 解析/规范化、scheme 校验 |
+| base64 | 33/33 | 编解码、padding 与字母表边界 |
 | cli_app | 32/32 | 纯 std 文本处理（wc 风格） |
 | string_utils | 22/22 | 跨模块字符串操作 |
 | trait_advanced | 18/18 | spec/trait：默认方法、关联类型、有界泛型 |
@@ -83,7 +86,6 @@ Auto"VM 与 Rust 行为一致"的声明，由自动化三向 parity 框架支撑
 此前列出的全部 trait 分歧均已修复并三向验证（关联类型、返回值的默认方法、泛型 spec 实现、有界泛型函数、http_client_sync 测试框架）。仍开放的项目在 [known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/known-divergences.md) 中公开记录，不隐瞒：
 
 - **sha2 / rusqlite / reqwest parity 库** —— 已规划，尚未验证。
-- **serde_json / url / base64 三向运行** —— 近期回归于 a2r 字符串参数借用（编译阶段）；交付时曾全部通过，正在修复 —— 见 known-divergences。
 - **生成器惰性链**（`~Iter` 上的 range → map → filter）—— Auto 尚无此语法，语言路线图项。
 - **tokio spawn/join 与 mpsc channel** —— 已验证子集覆盖串行 future 组合；并行 spawn 待 VM 支持。
 

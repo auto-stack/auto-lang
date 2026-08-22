@@ -1548,3 +1548,102 @@ widget P(ratio: f64, count: int) {
         "int / f64 prop must not be truncated:\n{sfc}"
     );
 }
+
+// ============================================================================
+// Plan 421: code_editor vue contract — five props + oncursor/oncontextmenu
+// events thread through to the scaffolded CodeEditor shell
+// (auto-man src/components/CodeEditor.vue). Fragment assertions per the file
+// header (SFC emission order is HashMap-unstable); shadcn mode matches the
+// real scaffolded project (`render: "vue"` + shadcn).
+// ============================================================================
+
+/// Same as gen_sfc but in shadcn mode (code_editor arms only run there).
+fn gen_sfc_shadcn(src: &str) -> String {
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("widget source must parse");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+    let widget = extract_widget_from_decl(decl).expect("extract widget");
+    let mut gen = VueGenerator::new_shadcn();
+    gen.generate(&widget).expect("generate SFC")
+}
+
+/// Plan 421: full props+events combination — the generated binding surface
+/// matches what the scaffold component consumes (modelValue/lang/
+/// line-numbers/wrap/vi/highlight-current-line/tab-width/font-size/search +
+/// @cursor/@contextmenu with the position payload threaded into handlers
+/// that declare params).
+#[test]
+fn cap_code_editor_props_and_position_events() {
+    let sfc = gen_sfc_shadcn(
+        r#"
+widget EditorPage {
+    model {
+        var src str = "fn main() {}"
+        var query str = "main"
+    }
+    view {
+        col {
+            code_editor (key: "ed", lang: "auto", tab_width: 2, font_size: 16, search: .query, wrap: true, vi: true) {
+                content: .src
+                oncursor: .CursorMoved
+                oncontextmenu: .CtxMenu
+            }
+        }
+    }
+    on {
+        .CursorMoved(line, col) -> { }
+        .CtxMenu(x, y) -> { }
+    }
+}
+"#,
+    );
+
+    // Component + import.
+    assert!(sfc.contains("<CodeEditor"), "component tag:\n{sfc}");
+    assert!(
+        sfc.contains("import CodeEditor from '@/components/CodeEditor.vue'"),
+        "default-style import:\n{sfc}"
+    );
+    // The five Plan 421 props.
+    assert!(
+        sfc.contains(":line-numbers=\"true\""),
+        "line-numbers default true:\n{sfc}"
+    );
+    assert!(
+        sfc.contains(":highlight-current-line=\"true\""),
+        "highlight-current-line default true:\n{sfc}"
+    );
+    assert!(sfc.contains(":tab-width=\"2\""), "tab-width:\n{sfc}");
+    assert!(sfc.contains(":font-size=\"16\""), "font-size:\n{sfc}");
+    assert!(sfc.contains(":search=\"query\""), "search ref binding:\n{sfc}");
+    // Pre-421 props still flow.
+    assert!(sfc.contains("lang=\"auto\""), "lang:\n{sfc}");
+    assert!(sfc.contains(":wrap=\"true\""), "wrap:\n{sfc}");
+    assert!(sfc.contains(":vi=\"true\""), "vi (vue ignores, iced consumes):\n{sfc}");
+    assert!(sfc.contains("data-editor-key=\"ed\""), "editor key:\n{sfc}");
+    // Position events with payload args + matching script signatures.
+    assert!(
+        sfc.contains("@cursor=\"CursorMoved($event.line, $event.column)\""),
+        "cursor payload args:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("@contextmenu=\"CtxMenu($event.x, $event.y)\""),
+        "contextmenu payload args:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("function CursorMoved(line: any, col: any)"),
+        "cursor handler signature:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("function CtxMenu(x: any, y: any)"),
+        "contextmenu handler signature:\n{sfc}"
+    );
+}

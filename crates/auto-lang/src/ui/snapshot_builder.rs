@@ -86,6 +86,39 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
+            // Plan 422: 弹层完整展开 —— MCP 需要看见面板项才能点击。
+            // 子序与 render_dynamic_view / BuildProbe 对齐:anchor = 0,
+            // content = 1(面板项路径 [.., popover, 1, item])。
+            View::Popover { anchor, content, placement, open, on_dismiss } => {
+                use crate::ui::view::PopoverAnchor;
+                let mut props = vec![
+                    ("placement".to_string(), format!("{:?}", placement).to_lowercase()),
+                    ("open".to_string(), open.to_string()),
+                ];
+                if let Some(msg) = on_dismiss {
+                    props.push(("_ondismiss".to_string(), Self::extract_action("dismiss", msg).handler));
+                }
+                let mut children = Vec::new();
+                match anchor {
+                    PopoverAnchor::Widget(w) => {
+                        let anchor_path = [path, &[0]].concat();
+                        children.push(Self::traverse_view(w, id_map, &anchor_path));
+                    }
+                    PopoverAnchor::Point { x, y } => {
+                        props.push(("anchor".to_string(), format!("({x:.0},{y:.0})")));
+                    }
+                }
+                let content_path = [path, &[1]].concat();
+                children.push(Self::traverse_view(content, id_map, &content_path));
+                UiNode {
+                    id,
+                    kind: "Popover".to_string(),
+                    props,
+                    actions: vec![],
+                    children,
+                }
+            }
+
             View::Text { content, .. } => UiNode {
                 id,
                 kind: "Text".to_string(),

@@ -1,0 +1,45 @@
+// Plan 427 (DIV-A2R-STRPARAM-1): call-site `.as_str()` auto-borrow for
+// `str` params — the serde_json/url/base64 a2r regression golden.
+fn check_str(name str, actual str, expected str) {
+    if actual == expected {
+        print("ok - " + name)
+    } else {
+        print("not ok - " + name + " got " + actual)
+    }
+}
+
+fn greet(who str) str {
+    return "hello " + who
+}
+
+fn relay(label str, got str) {
+    // A caller's &str param passed straight through — must NOT get .as_str().
+    check_str(label, got, "hello relay")
+}
+
+fn main() {
+    // An explicitly `str`-annotated local renders as an owned String in Rust —
+    // passing it to a &str param must auto-borrow with .as_str()
+    // (the serde_json check_parse_ok regression shape).
+    let tagged str = greet("world")
+    check_str("tagged_local", tagged, "hello world")
+
+    // Un-annotated local inferred from a str-returning call — same borrow.
+    let inferred = greet("auto")
+    check_str("inferred_local", inferred, "hello auto")
+
+    // String literal — no borrow appended.
+    check_str("literal", "hello lit", "hello lit")
+
+    // Param relay — no double borrow.
+    relay("param_relay", "hello relay")
+
+    // Plan 396 §2.4 protection shape: a Some(x) is-arm binding off a
+    // &str-returning scrutinee IS already &str — appending .as_str() on it
+    // is E0658 (str_as_str). The binding must pass through untouched.
+    let prefix_source = "admin-panel"
+    is prefix_source.strip_prefix("admin-") {
+        Some(rest) -> { check_str("some_binding", rest, "panel") }
+        None -> { check_str("some_binding", "none_arm", "none_arm") }
+    }
+}
