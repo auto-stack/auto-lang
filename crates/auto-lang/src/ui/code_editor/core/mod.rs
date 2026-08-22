@@ -1252,6 +1252,68 @@ impl CodeEditorCore {
     fn bump_after_edit(&self) {
         self.revision.fetch_add(1, Ordering::Relaxed);
     }
+
+    // ── Plan 418: programmatic actions (menu/toolbar handlers) ──────────
+    // Same semantics as the Ctrl+Z/Y/A/C/X/V arms of handle_key, callable
+    // from VM handler natives via the registry functions below. The OS
+    // clipboard goes through the arboard bridge (`ui::clipboard`) — handler
+    // context has no iced clipboard handle to pass as EditorClipboard.
+
+    fn do_undo(&self) {
+        let mut editor = self.editor_lock();
+        // Clear the selection first: a selection spanning text that undo is
+        // about to remove would panic the engine's delete_range later.
+        editor.set_selection(Selection::None);
+        editor.undo();
+        drop(editor);
+        self.bump_after_edit();
+    }
+
+    fn do_redo(&self) {
+        let mut editor = self.editor_lock();
+        editor.set_selection(Selection::None);
+        editor.redo();
+        drop(editor);
+        self.bump_after_edit();
+    }
+
+    fn do_select_all(&self) {
+        let mut editor = self.editor_lock();
+        let end = editor.with_buffer(|b| {
+            Cursor::new(
+                b.lines.len().saturating_sub(1),
+                b.lines.last().map(|l| l.text().len()).unwrap_or(0),
+            )
+        });
+        editor.set_cursor(Cursor::new(0, 0));
+        editor.set_selection(Selection::Normal(end));
+    }
+
+    #[cfg(feature = "ui-clipboard")]
+    fn do_copy(&self) {
+        if let Some(selection) = self.editor_lock().copy_selection() {
+            crate::ui::clipboard::clipboard_set(&selection);
+        }
+    }
+
+    #[cfg(feature = "ui-clipboard")]
+    fn do_cut(&self, font_system: &mut FontSystem) {
+        let mut editor = self.editor_lock();
+        if let Some(selection) = editor.copy_selection() {
+            crate::ui::clipboard::clipboard_set(&selection);
+            editor.action(font_system, Action::Backspace);
+            drop(editor);
+            self.bump_after_edit();
+        }
+    }
+
+    #[cfg(feature = "ui-clipboard")]
+    fn do_paste(&self) {
+        if let Some(contents) = crate::ui::clipboard::clipboard_get() {
+            self.editor_lock().insert_string(&contents, None);
+            self.bump_after_edit();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,6 +1450,56 @@ pub fn code_editor_find(key: &str) -> bool {
     } else {
         false
     }
+}
+
+/// Plan 418: programmatic undo on the editor under `key`. Returns true when
+/// an editor exists (undo itself no-ops on empty history).
+pub fn code_editor_undo(key: &str) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).map(|core| core.do_undo()).is_some()
+}
+
+/// Plan 418: programmatic redo (mirrors the Ctrl+Y arm of handle_key).
+pub fn code_editor_redo(key: &str) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).map(|core| core.do_redo()).is_some()
+}
+
+/// Plan 418: select all text (mirrors the Ctrl+A arm of handle_key).
+pub fn code_editor_select_all(key: &str) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).map(|core| core.do_select_all()).is_some()
+}
+
+/// Plan 418: menu-driven cut/copy/paste via the OS clipboard (arboard
+/// bridge — handler context has no iced clipboard handle). Cut needs the
+/// font system for the deletion action, same as the Ctrl+X arm.
+#[cfg(feature = "ui-clipboard")]
+pub fn code_editor_clipboard_op(key: &str, op: ClipboardOp) -> bool {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    if let Some(core) = map.get(&key) {
+        match op {
+            ClipboardOp::Cut => with_font_system(|fs| core.do_cut(fs)),
+            ClipboardOp::Copy => core.do_copy(),
+            ClipboardOp::Paste => core.do_paste(),
+        }
+        true
+    } else {
+        false
+    }
+}
+
+/// Which clipboard operation `code_editor_clipboard_op` performs.
+#[cfg(feature = "ui-clipboard")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClipboardOp {
+    Cut,
+    Copy,
+    Paste,
 }
 
 /// Shared lock for tests that touch the global editor registry (the LRU

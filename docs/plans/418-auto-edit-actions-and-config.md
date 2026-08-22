@@ -186,3 +186,27 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **回归**:`cargo test -p auto-lang --lib --features ui-iced iced`(44)+ code_editor 21;
 - **实机 041**:Phase 1 = 13 动作 × 3 源矩阵 + 文件往返 + 跨应用剪贴板;Phase 2 = 改配置里一个 shortcut/增删一个菜单项→重启生效(不改 app.at);
 - **完成判据**:菜单/工具栏/快捷键三源触发同一动作,行为一致;绑定全部来自 auto-edit.at;app.at 中不再出现手写菜单样板与快捷键文案。
+
+---
+
+## 7. Phase 1 实施记录（2026-08-22，分支 plan-418-auto-edit-ux）
+
+### 7.1 交付
+- **natives ×10**（catalog 2919-2928 + BIGVM 表 + codegen intrinsics ×2）：
+  - `code_editor_undo/redo/select_all/cut/copy/paste(key) -> Bool`——core 新增 do_* 方法镜像 handle_key 的 Ctrl+Z/Y/A/C/X/V 臂(选区清除防 delete_range panic/经 with_font_system 调 Action::Backspace),registry 函数经 normalize_payload_key 寻址
+  - `clipboard_text() -> Str` / `clipboard_set_text(s) -> Bool`——新模块 `ui/clipboard.rs`(arboard 直连,handler 上下文无 iced 剪贴板句柄)
+  - `dialog_open(filter) -> Str` / `dialog_save(default_name) -> Str`——rfd 0.15 同步 API,取消/无头返回 "",filter 按 `,;空格` 分割去前导点
+- **新 feature**:`ui-clipboard = ["dep:arboard"]`、`ui-dialog = ["dep:rfd"]`,均挂入 ui-iced;feature 关闭时 stub RuntimeError(沿 code-editor 先例)。已知:`code-editor` 单独启用(不带 ui-iced)本就因 class.rs 引用 iced_adapter 编不过——既有问题,非本轮引入
+- **041 app.at**:13 个 Act handler 全部落地(+ `.menu_open = ""` 菜单自动关闭,修掉 414 遗留的孤儿 `.ConsoleToggle`);model 增 path_main/path_util/title_main/title_util,tab 标签改动态 `text: .title_*`
+- **关键设计决策**:undo/redo/cut/paste 后**不回写** `.src_*`——回写会经 content 绑定 set_text 重设缓冲(可能清 undo 历史);不回写时 diff-guard(last_external == src_*)恰好跳过推送,编辑器状态保留,下一次 oninput 自然同步
+
+### 7.2 验证（全绿）
+- **MCP 动作矩阵 28/28**(`examples/ui/041-code-editor/tests/desktop_mcp.py`,013 惯例):T1 结构 / T2 ActConsole(菜单项+翻转+自动关闭) / T3 ActAbout / T4 ActNew(title/path 重置) / T5 ActSwitchTab / T6 undo/redo/cut/copy/paste(工具栏)+select_all(编辑菜单) / T7 Ctrl+J 全局快捷键 / T8 ActQuit(进程退出——连接被切断即成功信号)
+- **FFI 往返探针**:临时 probe 应用验证 handler 内 `File.write_text`/`File.read_text` 点分调用可用(读回一致)
+- **回归**:iced 44/44、code_editor 21/21、clipboard 单测 1/1;全量 lib 3048 过 1 失败(route::discovery::test_exists,master 上同样失败——磁盘满残留的既有环境问题)
+- **ActOpen/ActSave 的 rfd 对话框**:对话框本体为阻塞式 OS 模态,无法自动化,handler 逻辑(路径空→dialog_save/读回/set_text/标题更新)已经 MCP 矩阵其余动作+FFI 探针覆盖,留人工验收
+
+### 7.3 已知瑕疵（不阻塞,Phase 2 顺手修）
+- `File.write_text` 返回值 `n.str()` 在 handler 里显示为类型区间("0-2147483647")而非字节数——int 推断/显示小坑,仅影响 ActSave 日志文案
+- ActOpen 后 tab 标题用完整路径(无 basename native);Windows 反斜杠路径的 split 提取留 Phase 2
+- MCP snapshot 不渲染事件参数(`onclick: .MenuToggle` 无 `"file"` 实参)——测试按按钮文本定位;snapshot 格式改进列 Phase 2 P2-7 可选项

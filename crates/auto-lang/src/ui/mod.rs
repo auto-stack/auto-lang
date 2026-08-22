@@ -16,6 +16,9 @@ pub mod component;
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]
 pub mod code_editor;
+// Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
+#[cfg(feature = "ui-clipboard")]
+pub mod clipboard;
 pub mod view;
 pub mod vnode;
 pub mod vnode_converter;
