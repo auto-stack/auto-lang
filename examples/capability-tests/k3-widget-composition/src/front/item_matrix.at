@@ -1,0 +1,52 @@
+// item_matrix.at — Phase 4: child WIDGET exercising the full capability
+// matrix that component fn children already use in production (musk):
+//   use{fn} + computed(fn-call & chained) + msg/emit contract + model
+//   (per-instance) + watch + .Init/.Destroy + style + slot outlet,
+//   all while being instantiated from a parent loop with a callback prop.
+//
+// Phase 8 (PLAN-037 T8): the helper import moved from the in-widget use
+// block to the top-level `use.web` statement (same ExtImport payload,
+// same generated import + ext copy).
+
+use.web matrixGreet from "src/front/matrix_helpers.at"
+
+widget MatrixItem(label: str, on_select: msg) {
+    computed {
+        shouted => matrixGreet(.label)
+        upper => .shouted + "!"
+    }
+    msg Msg { Select(str), Bump }
+    model {
+        var clicks int = 0
+        var started bool = false
+    }
+    watch {
+        .clicks -> { .started = .clicks >= 0 }
+    }
+    on {
+        .Init -> { .started = true }
+        .Destroy -> {}
+        .Select(label) -> {}
+        .Bump -> { .clicks = .clicks + 1 }
+    }
+    style {
+.matrix-item { display: flex; align-items: center; gap: 0.5rem; padding: 2px 4px; border-bottom: 1px solid #eee; }
+.matrix-item .count { font-size: 0.75rem; color: #666; min-width: 1.5rem; text-align: center; }
+    }
+    view {
+        row {
+            style: "matrix-item"
+            button {
+                onclick: .Bump
+                text .upper
+            }
+            text .clicks {
+                style: "count"
+            }
+            button "pick" {
+                onclick: .Select(.label)
+            }
+            slot(name: "extra") {}
+        }
+    }
+}

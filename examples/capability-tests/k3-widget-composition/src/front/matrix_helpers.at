@@ -1,0 +1,7 @@
+// matrix_helpers.at — k3 Phase 4 helper fn module.
+// Exercises: use{fn} import FROM a child widget (ext-copy manifest via the
+// child's use block, not the page's).
+
+fn matrixGreet(label str) str {
+    return "[" + label + "]"
+}

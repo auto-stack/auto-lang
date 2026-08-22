@@ -48,6 +48,9 @@ impl<'db> DepScanner<'db> {
     /// Walk a statement to find dependencies
     fn walk_stmt(&self, stmt: &Stmt, deps: &mut HashSet<FragId>) {
         match stmt {
+            // PLAN-037 T6: web ecosystem imports carry no fragment deps.
+            Stmt::UseWeb(_) => {}
+
             // Expression statements - check for calls
             Stmt::Expr(expr) => self.walk_expr(expr, deps),
 

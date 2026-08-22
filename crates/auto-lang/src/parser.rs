@@ -6103,6 +6103,120 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::Use(uses))
     }
+
+    /// Parse `use.web NAME from "path"` (PLAN-037 T6) — the frontend sibling
+    /// of `use.rust` / `use.py`. Forms:
+    ///
+    ///   use.web agentAvatarData from "src/front/forge_helpers.at"
+    ///   use.web component MessageSquare, ListTodo from "lucide-vue-next"
+    ///   use.web composable useT from "src/front/composables/useT.ts"
+    ///   use.web composable useI18n refs: [locale] from "vue-i18n"
+    ///
+    /// Default (no modifier) is the plain import — the imported binding may
+    /// be a function, object, or constant (ES imports don't distinguish).
+    /// `component` additionally registers instantiable view tags;
+    /// `composable` auto-invokes once at setup and binds the result.
+    pub fn use_web_stmt(&mut self) -> AutoResult<Stmt> {
+        // Already consumed: use . web
+
+        let kind = match self.cur.text.as_str() {
+            "component" => {
+                self.next();
+                ExtImportKind::Component
+            }
+            "composable" => {
+                self.next();
+                ExtImportKind::Composable
+            }
+            _ => ExtImportKind::Fn,
+        };
+
+        let mut symbols: Vec<Name> = Vec::new();
+        loop {
+            if !self.is_kind(TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected symbol name in use.web statement, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            symbols.push(self.cur.text.clone().into());
+            self.next();
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+                continue;
+            }
+            break;
+        }
+
+        // Optional composable call args: `useX(.arg) from ...`
+        let mut call_args: Vec<crate::ast::Expr> = Vec::new();
+        if self.is_kind(TokenKind::LParen) {
+            self.next();
+            while !self.is_kind(TokenKind::RParen) {
+                let arg = self.parse_expr()?;
+                call_args.push(arg);
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+        }
+
+        // Optional composable ref-field annotation: `useX(refs: [a, b])`
+        let mut ref_fields: Vec<Name> = Vec::new();
+        if self.cur.text.as_str() == "refs" {
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            self.expect(TokenKind::LSquare)?;
+            while !self.is_kind(TokenKind::RSquare) {
+                ref_fields.push(self.cur.text.clone().into());
+                self.next();
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RSquare)?;
+        }
+
+        let ident = self.expect_ident_str()?;
+        if ident != "from" {
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "Expected 'from' in use.web statement, got '{}'",
+                    ident
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        if !self.is_kind(TokenKind::Str) {
+            return Err(SyntaxError::Generic {
+                message: "Expected module path string after 'from' in use.web statement".into(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let path: AutoStr = self.cur.text.clone().into();
+        self.next();
+
+        // Register imported names so the symbol checker treats bare
+        // references as defined (mirrors use.py item registration).
+        for sym in &symbols {
+            self.define(sym.as_str(), Meta::Use(sym.to_string().into()));
+        }
+
+        Ok(Stmt::UseWeb(vec![ExtImport {
+            kind,
+            symbols,
+            path,
+            call_args,
+            ref_fields,
+        }]))
+    }
     // 1. auto: use std.io: println
     // 2. c: use c <stdio.h>
     // 3. rust: use rust std::fs
@@ -6148,6 +6262,9 @@ impl<'a> Parser<'a> {
                 return self.use_rust_stmt();
             } else if name == "py" {
                 return self.use_py_stmt();
+            } else if name == "web" {
+                // PLAN-037 T6: `use.web` — web (Vue/TS/npm) ecosystem import.
+                return self.use_web_stmt();
             } else {
                 segments.push(name.into());
             }

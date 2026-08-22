@@ -839,6 +839,14 @@ pub struct VueGenerator {
     /// template binding references the handler.
     quoted_events: std::collections::HashSet<String>,
 
+    /// PLAN-037 T3: subset of emit_events that are callback-CONTRACT
+    /// channels — the Pascal name of an `on_xxx: msg` prop with a matching
+    /// msg variant (prop dropped from defineProps, parent binds `@Pascal`).
+    /// Like quoted events they are ALWAYS declared in defineEmits and carry
+    /// the variant payload type, even when no template binding fires them
+    /// (the body may invoke the callback from a handler instead).
+    callback_contract_events: std::collections::HashSet<String>,
+
     /// Whether emit is needed
     has_emit: bool,
 
@@ -920,6 +928,12 @@ pub struct VueGenerator {
     /// Names of known sub-widgets in the same project (e.g. "Sidebar", "EditorPanel")
     /// When a tag matches one of these, skip shadcn component mapping and treat as custom component
     known_sub_widgets: HashSet<String>,
+
+    /// PLAN-037 T5: sub-widget name -> its model var names (the bindable
+    /// channels). A call-site prop whose name hits a channel and whose value
+    /// is a writable state slot compiles to `v-model:name`; any other value
+    /// shape is a hard error (model channels require writable slots).
+    sub_widget_models: std::collections::HashMap<String, Vec<String>>,
 
     /// Current for-loop variable name (e.g., "note") — used to pass loop var as event arg
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
@@ -1096,6 +1110,7 @@ impl VueGenerator {
             debounced_handlers: HashSet::new(),
             emit_events: Vec::new(),
             quoted_events: std::collections::HashSet::new(),
+            callback_contract_events: std::collections::HashSet::new(),
             has_emit: false,
             component_refs: Vec::new(),
             lucide_icons: HashSet::new(),
@@ -1130,6 +1145,7 @@ impl VueGenerator {
             needs_toast_import: false,
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
+            sub_widget_models: std::collections::HashMap::new(),
             current_loop_var: None,
             current_loop_var_is_index: false,
             widget_key_counter: 0,
@@ -1152,6 +1168,12 @@ impl VueGenerator {
     /// Set known sub-widget names (to avoid shadcn name collisions)
     pub fn with_sub_widgets(mut self, names: Vec<String>) -> Self {
         self.known_sub_widgets = names.into_iter().collect();
+        self
+    }
+
+    /// PLAN-037 T5: provide the sub-widget model-var map (name -> channels).
+    pub fn with_sub_widget_models(mut self, models: std::collections::HashMap<String, Vec<String>>) -> Self {
+        self.sub_widget_models = models;
         self
     }
 
@@ -1609,6 +1631,16 @@ impl VueGenerator {
     pub fn generate_sfc(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
         self.reset();
+        // PLAN-037 T5 (D1 rule 3): a prop and a model var of the same name
+        // would compile to conflicting defineProps/defineModel entries.
+        for prop in &widget.props {
+            if widget.state_vars.iter().any(|sv| sv.name == prop.name) {
+                return Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                    "widget `{}` declares both a prop and a model var named `{}`; rename one (model vars are bindable channels via `v-model:{}`)",
+                    widget.name, prop.name, prop.name
+                )));
+            }
+        }
         // Widget `use { ... }` external imports — must be registered before
         // template generation so view tags resolve to external components.
         self.register_ext_imports(widget);
@@ -1668,6 +1700,16 @@ impl VueGenerator {
             self.prop_types.insert(prop.name.clone(), Self::auto_type_to_ts_type(&prop.type_info));
             if Self::is_int_auto_type(&prop.type_info) {
                 self.int_names.insert(prop.name.clone());
+            }
+        }
+
+        // PLAN-037 T3: callback-contract channels (`on_xxx: msg` prop with a
+        // matching Pascal msg variant) always declare their emit.
+        for prop in &widget.props {
+            if Self::prop_is_emitted_callback(prop, widget) {
+                if let Some(snake) = prop.name.strip_prefix("on_") {
+                    self.callback_contract_events.insert(Self::snake_to_pascal(snake));
+                }
             }
         }
 
@@ -1823,6 +1865,13 @@ impl VueGenerator {
         let mut imports = Vec::new();
         if needs_ref {
             imports.push("ref");
+        }
+        // PLAN-037 T4: model vars compile to defineModel. Unbound it behaves
+        // exactly like a local ref (same .value semantics, same template
+        // unwrap); when the parent binds the channel via call-site model
+        // addressing (v-model:name) it becomes two-way.
+        if !widget.state_vars.is_empty() {
+            imports.push("defineModel");
         }
         if needs_computed {
             imports.push("computed");
@@ -2093,12 +2142,21 @@ impl VueGenerator {
             }
             let init = self.expr_to_js(&state.initial)?;
 
-            // Plan 100: Add type annotation for TypeScript
+            // PLAN-037 T4: `defineModel<T>('name', { default: init })` —
+            // the model-var-as-channel compilation. Unbound = local ref with
+            // the default (identical to the previous ref<T>(init)); bound via
+            // the parent's `v-model:name` it is the two-way contract.
             if self.use_typescript {
                 let ts_type = self.expr_to_ts_type(&state.initial);
-                script.push_str(&format!("const {} = ref<{}>({})\n", state.name, ts_type, init));
+                script.push_str(&format!(
+                    "const {} = defineModel<{}>(\"{}\", {{ default: {} }})\n",
+                    state.name, ts_type, state.name, init
+                ));
             } else {
-                script.push_str(&format!("const {} = ref({})\n", state.name, init));
+                script.push_str(&format!(
+                    "const {} = defineModel(\"{}\", {{ default: {} }})\n",
+                    state.name, state.name, init
+                ));
             }
         }
 
@@ -2288,6 +2346,7 @@ impl VueGenerator {
                         // declared payload type is the faithful contract.
                         let pattern_key = format!(".{}", variant.name);
                         if variant.quoted
+                            || self.callback_contract_events.contains(&variant.name)
                             || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
                         {
                             event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
@@ -2329,6 +2388,7 @@ impl VueGenerator {
                 // and undeclared listeners would fall through as native DOM
                 // listeners on the root element.
                 if !self.quoted_events.contains(event)
+                    && !self.callback_contract_events.contains(event)
                     && !self.used_handlers.contains(event)
                     && !self.used_handlers.contains(&Self::sanitize_ident(event))
                 {
@@ -2461,7 +2521,15 @@ impl VueGenerator {
             // calls in the body to `emit('<Pascal>', args)` for real callback
             // props. The parent binds `@Pascal` (never `:on_xxx`), so the raw
             // `props.on_xxx()` would be undefined at runtime.
-            for cb_snake in Self::real_callback_prop_snakes(widget) {
+            // PLAN-037 T3: also rewrite EMITTED-callback props (dropped from
+            // defineProps because a matching msg variant exists) — for those,
+            // `props.on_xxx(` is definitionally dangling and the `Pascal`
+            // emit is definitionally declared (the variant), so the rewrite
+            // closes the gap between the two mechanisms (k2 canary).
+            for cb_snake in Self::real_callback_prop_snakes(widget)
+                .into_iter()
+                .chain(Self::emitted_callback_prop_snakes(widget))
+            {
                 let props_call = format!("props.on_{}(", cb_snake);
                 if body.contains(&props_call) {
                     let pascal = Self::snake_to_pascal(&cb_snake);
@@ -3686,6 +3754,19 @@ impl VueGenerator {
                             }
                             continue;
                         }
+                        // PLAN-037 T5: call-site model addressing — a prop
+                        // name matching the sub-widget's model var is a
+                        // two-way channel (v-model), never a plain :prop.
+                        if is_known_sub_widget {
+                            let slot = match value {
+                                AuraPropValue::Expr(expr) => self.model_channel_slot(expr),
+                                _ => None,
+                            };
+                            if let Some(attr) = self.try_model_channel_attr(tag, key, slot)? {
+                                attrs.push(attr);
+                                continue;
+                            }
+                        }
                         // NOTE: `html:` is deliberately NOT intercepted as
                         // v-html on components (same reason as the dyn path):
                         // it must pass through as a plain `:html` prop so ext
@@ -4124,6 +4205,21 @@ impl VueGenerator {
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
 
+                    // PLAN-037 T5: native input/textarea with a state-slot
+                    // `value:` and NO oninput handler still folds to v-model —
+                    // a bare `input { value: .x }` must be two-way (the DOM
+                    // input event is the writeback), never a one-way :value.
+                    // (The pair-with-handler case was already handled above.)
+                    if (tag == "input" || tag == "textarea")
+                        && value_state_ref.is_some()
+                        && !attrs.iter().any(|a| a.starts_with("v-model="))
+                    {
+                        if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
+                            let model_ref = value_state_ref.as_ref().unwrap().clone();
+                            attrs[pos] = format!("v-model=\"{}\"", model_ref);
+                        }
+                    }
+
                     // v-html overrides inner content in Vue: warn when the
                     // element also carries a `text:` prop or child nodes
                     // (both still emitted; the Vue runtime ignores them).
@@ -4390,6 +4486,15 @@ impl VueGenerator {
                             attrs.push(format!("ref=\"{}\"", ref_name));
                         }
                         continue;
+                    }
+                    // PLAN-037 T5: call-site model addressing for component
+                    // fn children (same contract as the sub-widget path).
+                    {
+                        let slot = self.model_channel_slot(value);
+                        if let Some(attr) = self.try_model_channel_attr(name, key, slot)? {
+                            attrs.push(attr);
+                            continue;
+                        }
                     }
                     // Plan 408 P6 / §7.1 缺陷 1+2: use the binding-mode
                     // translator (expr_to_vue_bound_value) so literal props
@@ -10880,6 +10985,54 @@ impl VueGenerator {
     /// - `Ident(".name")` — legacy dot-prefixed identifier (dot stripped)
     /// - `Dot(Ident("self") | Ident("."), "name")` — what `dot_item` actually
     ///   produces for `.name` in real widget source (parser.rs dot_item).
+    /// PLAN-037 T5: the writable-state-slot target of a model-channel value.
+    /// `.field` (Dot(self, field) or leading-dot Ident) -> Some("field");
+    /// `store.field` where `store` is a store dep -> Some("store.field").
+    /// Anything else (expression, prop, literal) -> None — the caller must
+    /// raise the "model channel requires a writable state slot" error.
+    fn model_channel_slot(&self, expr: &crate::ast::Expr) -> Option<String> {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Dot(obj, field) => {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    if obj_name == "self" {
+                        return Some(field.to_string());
+                    }
+                    if self.store_deps.iter().any(|d| d == obj_name) {
+                        return Some(format!("{}.{}", obj_name, field));
+                    }
+                }
+                None
+            }
+            Expr::Ident(name) if name.starts_with('.') => Some(name[1..].to_string()),
+            _ => None,
+        }
+    }
+
+    /// PLAN-037 T5: try to emit the model-channel binding for a call-site
+    /// prop. Returns Some(attr) when `key` is a model var of `tag` (emitting
+    /// `v-model:key="slot"`), or a hard error when the channel is fed a
+    /// non-writable value. Returns None when `key` is not a channel (normal
+    /// prop path continues).
+    fn try_model_channel_attr(
+        &self,
+        tag: &str,
+        key: &str,
+        slot: Option<String>,
+    ) -> Result<Option<String>, crate::ui_gen::GenError> {
+        match self.sub_widget_models.get(tag) {
+            Some(channels) if channels.iter().any(|v| v == key) => {}
+            _ => return Ok(None),
+        }
+        match slot {
+            Some(slot) => Ok(Some(format!("v-model:{}=\"{}\"", key, slot))),
+            None => Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                "model channel `{}.{}` requires a writable state slot (e.g. `.field` or `store.field`); model channels cannot be fed expressions, props, or literals",
+                tag, key
+            ))),
+        }
+    }
+
     fn extract_state_ref(&self, value: &AuraPropValue) -> Option<String> {
         match value {
             AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
@@ -11342,6 +11495,15 @@ impl VueGenerator {
                     // loosely typed — emit `any` (jade treats `x: map` as an
                     // untyped object), never a broken `import type { map }`.
                     "map" => "any".to_string(),
+                    // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin —
+                    // emit `any`, never the identifier itself (TS2304) and
+                    // never an api.ts import (TS2305).
+                    "Value" => "any".to_string(),
+                    // PLAN-037 Phase 4: bare `obj`/`list` are dynamic builtins
+                    // in widget props (component fn extraction had erased them
+                    // to any; the widget path maps types directly).
+                    "obj" => "any".to_string(),
+                    "list" => "any[]".to_string(),
                     // Custom types (e.g. Note) — use the type name directly.
                     // The interface should be imported from api.ts.
                     other => other.to_string(),
@@ -11520,6 +11682,21 @@ impl VueGenerator {
             .collect()
     }
 
+    /// PLAN-037 T3: the snake_names of `on_xxx` callback props that ARE
+    /// emitted-callbacks (dropped from defineProps because a matching msg
+    /// variant exists). A handler body invoking these as `props.on_xxx(...)`
+    /// must be rewritten to `emit('<Pascal>', ...)` — the prop does not exist
+    /// at runtime, while the Pascal emit is declared via the msg variant.
+    fn emitted_callback_prop_snakes(widget: &AuraWidget) -> Vec<String> {
+        widget.props.iter()
+            .filter_map(|p| {
+                if !p.name.starts_with("on_") { return None; }
+                if !Self::prop_is_emitted_callback(p, widget) { return None; }
+                p.name.strip_prefix("on_").map(|s| s.to_string())
+            })
+            .collect()
+    }
+
     /// Collect api.ts interface names referenced by an Auto type, recursing
     /// into containers (`List<T>`, `[]T`, `[N]T`, `Option<T>`,
     /// `GenericInstance<T, …>`, …). Built-in/pseudo types (`msg`, `str`,
@@ -11578,6 +11755,11 @@ impl VueGenerator {
         matches!(name,
             "msg" | "str" | "int" | "i64" | "uint" | "u64" | "usize" | "byte" | "char"
             | "float" | "double" | "bool"
+            // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin (dynamic
+            // any) — mapping it as a custom api.ts type produced
+            // `import type { Value } from '@/lib/api'` (TS2305).
+            // PLAN-037 Phase 4: bare `obj`/`list` likewise.
+            | "Value" | "obj" | "list"
             // Plan 012 P2 (gap 43): lowercase `map` is the DSL map-literal
             // type — built-in, not an api.ts interface.
             | "map"
@@ -12078,9 +12260,40 @@ export function cn(...inputs: ClassValue[]) {
     /// file's top-level `fn` declarations (e.g. forge_helpers.at). Each fn
     /// becomes an exported TS function — the single source for pure helpers
     /// shared by widgets (`use { fn: … from "src/front/x.at" }`).
-    pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+        pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+        Self::generate_fn_module_full(fns, &[])
+    }
+
+    /// PLAN-037 Phase 5: fn module + its own `use.web` imports. Port files
+    /// (ports/<域>.at) declare web bindings and expose wrapper fns; the
+    /// generated TS must import the bound symbols before the wrappers use
+    /// them. Only plain (fn) entries are emitted — composable/component
+    /// kinds are caller-side machinery with no meaning in a fn module.
+    pub fn generate_fn_module_full(
+        fns: &[crate::aura::AuraModuleFn],
+        ext_imports: &[crate::ast::ui::ExtImport],
+    ) -> String {
         let mut code = String::new();
-        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).\n");
+        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
+");
+        for imp in ext_imports {
+            if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Fn) {
+                continue;
+            }
+            let names: Vec<&str> = imp.symbols.iter().map(|s| s.as_str()).collect();
+            if names.is_empty() {
+                continue;
+            }
+            code.push_str(&format!(
+                "import {{ {} }} from '{}'
+",
+                names.join(", "),
+                Self::ext_import_specifier(imp.path.as_str())
+            ));
+        }
+        if !ext_imports.is_empty() {
+            code.push('\n');
+        }
         let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
         for mfn in fns {
             let param_list = mfn.params.iter()
@@ -13436,8 +13649,8 @@ widget Counter {
 
         // Plan 100: Default is now TypeScript, so check for lang="ts"
         assert!(sfc.contains(r#"<script setup lang="ts">"#));
-        assert!(sfc.contains("import { ref } from 'vue'"));
-        assert!(sfc.contains("const count = ref<number>(0)"));
+        assert!(sfc.contains("import { ref, defineModel } from 'vue'"));
+        assert!(sfc.contains("const count = defineModel<number>(\"count\", { default: 0 })"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
     }
@@ -15379,7 +15592,7 @@ widget SlashMenu {
 }
 "#);
         assert!(
-            sfc.contains("import { ref, computed, watch } from 'vue'"),
+            sfc.contains("import { ref, defineModel, computed, watch } from 'vue'"),
             "watch imported:\n{}",
             sfc
         );
@@ -15515,7 +15728,7 @@ widget Editor {
 }
 "#);
         assert!(
-            sfc.contains("const content = ref"),
+            sfc.contains("const content = defineModel"),
             "state ref exists:\n{}",
             sfc
         );
@@ -16609,6 +16822,91 @@ widget App {
     /// Same as gen_sfc_from_widget_src, but registers sibling sub-widget
     /// names (the production app-build path passes them via
     /// with_sub_widgets; the known-sub-widget auto-:key logic only runs then).
+    /// PLAN-037 T6: `use.web` statement parses all four forms into ExtImport
+    /// entries with the right kind/symbols/path (refs for composable).
+    #[test]
+    fn test_use_web_stmt_four_forms() {
+        use crate::ast::Stmt;
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+use.web agentAvatarData from "src/front/forge_helpers.at"
+use.web component MessageSquare, ListTodo from "lucide-vue-next"
+use.web composable useT from "src/front/composables/useT.ts"
+use.web composable useI18n refs: [locale] from "vue-i18n"
+widget App { view { col { text "x" { } } } }
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let entries: Vec<&crate::ast::ui::ExtImport> = ast.stmts.iter()
+            .filter_map(|s| match s {
+                Stmt::UseWeb(v) => v.first(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(entries.len(), 4, "four use.web entries");
+        assert!(matches!(entries[0].kind, crate::ast::ui::ExtImportKind::Fn));
+        assert_eq!(entries[0].symbols.len(), 1);
+        assert!(entries[0].symbols[0].as_str() == "agentAvatarData");
+        assert!(matches!(entries[1].kind, crate::ast::ui::ExtImportKind::Component));
+        assert_eq!(entries[1].symbols.len(), 2);
+        assert!(matches!(entries[2].kind, crate::ast::ui::ExtImportKind::Composable));
+        assert!(entries[3].ref_fields.len() == 1);
+        assert!(entries[3].ref_fields[0].as_str() == "locale");
+        assert!(entries[3].path.as_str() == "vue-i18n");
+    }
+
+    /// PLAN-037 T5: call-site model addressing — a prop name matching the
+    /// child's model var with a writable state-slot target folds to
+    /// v-model:key; the same channel fed an expression is a hard error.
+    #[test]
+    fn test_model_channel_addressing_vmodel() {
+        let session = crate::session::CompilerSession::ui();
+        let src = r#"
+widget App {
+    model { var draft str = "" }
+    view { col { BindChild(value: .draft) text .draft { } } }
+}
+"#;
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
+        let mut models = std::collections::HashMap::new();
+        models.insert("BindChild".to_string(), vec!["value".to_string()]);
+        let mut gen = VueGenerator::new_shadcn()
+            .with_sub_widgets(vec!["BindChild".to_string()])
+            .with_sub_widget_models(models);
+        let sfc = gen.generate_sfc(&widget).expect("generate");
+        assert!(sfc.contains("v-model:value=\"draft\""), "channel folds to v-model:
+{}", sfc);
+
+        // Non-slot target on the same channel must fail generation.
+        let session2 = crate::session::CompilerSession::ui();
+        let src2 = r#"
+widget App {
+    model { var draft str = "" }
+    view { col { BindChild(value: .draft + "!") text .draft { } } }
+}
+"#;
+        let mut parser2 = crate::parser::Parser::from(src2).with_session(session2);
+        let ast2 = parser2.parse().expect("parse");
+        let decl2 = ast2.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget2 = crate::aura::extract_widget_from_decl(decl2).expect("extract");
+        let mut models2 = std::collections::HashMap::new();
+        models2.insert("BindChild".to_string(), vec!["value".to_string()]);
+        let mut gen2 = VueGenerator::new_shadcn()
+            .with_sub_widgets(vec!["BindChild".to_string()])
+            .with_sub_widget_models(models2);
+        let err = gen2.generate_sfc(&widget2).expect_err("must fail");
+        assert!(format!("{}", err).contains("requires a writable state slot"), "err: {}", err);
+    }
+
     fn gen_sfc_with_sub_widgets(src: &str, subs: &[&str]) -> String {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
@@ -19908,7 +20206,7 @@ widget ThemeApp {
             sfc
         );
         assert!(
-            sfc.contains("accent_color = ref"),
+            sfc.contains("accent_color = defineModel"),
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
         );

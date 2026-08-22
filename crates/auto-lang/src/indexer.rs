@@ -52,6 +52,9 @@ impl<'db> Indexer<'db> {
 
         for stmt in &ast.stmts {
             match stmt {
+                // PLAN-037 T6: web imports are not indexed fragments.
+                Stmt::UseWeb(_) => {}
+
                 // Function declarations
                 Stmt::Fn(fn_decl) => {
                     let frag_id = self.index_function(fn_decl, file_id)?;
