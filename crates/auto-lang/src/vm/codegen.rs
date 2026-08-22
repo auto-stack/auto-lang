@@ -4103,8 +4103,10 @@ impl Codegen {
     fn emit_api_host_call(&mut self, api: &ApiCallInfo, call: &crate::ast::Call) -> AutoResult<()> {
         let arg_exprs: Vec<Expr> = call.args.args.iter().map(|a| a.get_expr()).collect();
 
-        // 1. 桥函数名(= api.at 契约函数名;ash-runner 按端点名注册)。
-        self.emit_str_const_push(&api.fn_name);
+        // 1. 桥函数名(= api.at 契约函数裸名;ash-runner 按端点名注册。
+        //    ApiCallInfo.fn_name 可能带模块限定前缀,取最后一段)。
+        let bare = api.fn_name.rsplit('.').next().unwrap_or(&api.fn_name).to_string();
+        self.emit_str_const_push(&bare);
 
         // 2. 参数 JSON 对象:{"p1":<v1>,...}(json.from_value 逐个序列化)。
         self.emit_str_const_push("{");

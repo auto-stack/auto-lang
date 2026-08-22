@@ -672,7 +672,9 @@ pub fn synthesize_widget_module(
     // (e.g. db.create_note AND api.create_note), a bare call is ambiguous, so
     // we skip the alias (last-write-wins would silently route to the wrong
     // endpoint). This mirrors the import_scope bare_counts guard below.
-    if api_over_http {
+    // Plan 060 M3:host 分派同样需要 api_funcs 元数据(bare 名 → 端点)。
+    let host_mode = crate::vm::host_bridge::has_host_calls();
+    if api_over_http || host_mode {
         // Count how many imported #[api] fns define each bare name.
         let mut bare_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
@@ -1209,7 +1211,8 @@ pub fn synthesize_from_decl(
     // Plan 340: build api_funcs metadata from imported Fn declarations that
     // carry #[api(method,path)] attrs.
     // Plan 340 audit: skip ambiguous bare names (see first synth site above).
-    if api_over_http {
+    // Plan 060 M3:host 分派同样需要(bare 名 → 端点)。
+    if api_over_http || crate::vm::host_bridge::has_host_calls() {
         let mut bare_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for stmt in &import_stmts {
