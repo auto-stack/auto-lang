@@ -279,34 +279,75 @@ def run_tests(mcp_url, proc):
         result.check("switch-tab menu item found", False, "no .ActSwitchTab in view menu")
 
     # T6: toolbar editor actions — undo/redo/cut/copy/paste via toolbar
-    # icons; select-all via the edit menu (no toolbar icon for it).
-    print("\nT6: Editor actions (toolbar icons + edit-menu select-all)")
-    snap_cache[0] = mcp.snapshot()
-    for icon, log in (("undo-2", "undo"), ("redo-2", "redo"),
-                      ("scissors", "cut"), ("copy", "copy"), ("clipboard", "paste")):
+    # icons; the full edit-menu/toolbar cycle with REAL editor-text
+    # assertions (Plan 418 follow-up: previously only alive+console-log were
+    # checked — undo could silently no-op). Model resync relies on the
+    # handlers' code_editor_text() write-back (app.at) so the assertions
+    # hold under MCP dispatch (no real iced events to flush the widget's
+    # external-dirty publish).
+    print("\nT6: Editor actions (toolbar icons + edit-menu, text-verified)")
+    tab = state_int(mcp.state("tab"), "tab")
+    if tab == 1:
+        src_field, marker = "src_util", "工具模块"
+    else:
+        src_field, marker = "src_main", "你好世界"
+
+    def src_now():
+        return state_str(mcp.state(src_field), src_field) or ""
+
+    def toolbar(icon):
+        snap_cache[0] = mcp.snapshot()
         el = find_button_by_icon(snap_cache[0], icon)
         if el is None:
-            result.check(f"toolbar {icon}", False, "element not found")
-            continue
+            result.check(f"toolbar {icon} present", False, "element not found")
+            return False
         mcp.click(el)
-        time.sleep(0.3)
-        alive = proc.poll() is None
-        result.check(f"{log} executed (app alive)", alive, "process died")
-        if alive:
-            result.check(f"{log} logged", log in (state_str(mcp.state("console"), "console") or ""),
-                         "console line missing")
-    if open_menu(mcp, snap_cache, "编辑"):
-        el = find_button_by_text(snap_cache[0], "全选")
-        if el:
+        time.sleep(0.4)
+        return proc.poll() is None
+
+    def menu_item(label):
+        # opens the edit menu and clicks `label`; False when not found
+        for menu_label, item in (("编辑", label),):
+            if not open_menu(mcp, snap_cache, menu_label):
+                return False
+            el = find_button_by_text(snap_cache[0], item)
+            if el is None:
+                return False
             mcp.click(el)
-            time.sleep(0.3)
-            result.check(".ActSelectAll executed (app alive)", proc.poll() is None, "process died")
-            result.check(".ActSelectAll logged", "select all" in (state_str(mcp.state("console"), "console") or ""),
-                         "console line missing")
-        else:
-            result.check("edit menu .ActSelectAll found", False, "not in open-menu snapshot")
-    else:
-        result.check("edit menu opened", False, "编辑 button not found")
+            time.sleep(0.4)
+            return True
+        return False
+
+    # 1) select-all via the edit menu → selection state really set
+    ok = menu_item("全选")
+    sel = state_int(mcp.state("sel"), "sel")
+    result.check("select-all sets .sel", ok and sel > 0, f"sel={sel}")
+
+    # 2) cut empties the editor AND the model binding
+    if toolbar("scissors"):
+        result.check("cut empties editor text", src_now() == "", f"{src_field}={src_now()[:30]!r}")
+        result.check("cut logged", "cut" in (state_str(mcp.state("console"), "console") or ""))
+
+    # 3) undo restores the preloaded text
+    if toolbar("undo-2"):
+        result.check("undo restores text", marker in src_now(), f"{src_field} missing {marker!r}")
+
+    # 4) redo re-applies the cut
+    if toolbar("redo-2"):
+        result.check("redo re-empties text", src_now() == "", f"{src_field}={src_now()[:30]!r}")
+
+    # 5) undo restores again, then copy → cut → paste round-trips the text
+    if toolbar("undo-2"):
+        result.check("undo (2nd) restores text", marker in src_now(), "")
+        ok = menu_item("全选")
+        if toolbar("copy"):
+            result.check("copy logged", "copy" in (state_str(mcp.state("console"), "console") or ""))
+        if toolbar("scissors"):
+            result.check("cut (2nd) empties text", src_now() == "", "")
+        if toolbar("clipboard"):
+            result.check("paste restores text", marker in src_now(),
+                         f"paste did not round-trip clipboard")
+            result.check("paste logged", "paste" in (state_str(mcp.state("console"), "console") or ""))
 
     # T7: global shortcut — Ctrl+J now flows ONLY from auto-edit.at
     # (config fallback layer; the DSL onkeydown attrs were removed in P2-3c).

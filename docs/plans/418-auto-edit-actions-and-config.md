@@ -267,3 +267,11 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **修复**:删重复臂(tracked 臂接管;probe 禁用时 record_event 早退,零开销);menubar/toolbar 一律按 `children.len()` 真实子位置记录;**面板项记嵌套两段路径** `[base, panel_idx, item_idx]`(FNV 哈希与 vtree 实测 id 全对齐,如 [0,0,4,0]=切换 Console 项)。
 - **验证**:snapshot onclick 4→16(工具栏 8+菜单栏 4+面板项+catcher 全出:`onclick: .ActNew`/`__menubar_toggle("file")`/`.ActConsole`/`__menubar_close`);矩阵 T1 新增 2 项锁定检查 → **31/31×2**;回归 iced 44+cfg 3+mcp 6。
 - **意义**:MCP 客户端(agent)现可从 snapshot 直接读出合成控件的处理器绑定,不必依赖标签定位约定。
+
+### 8.8 editor 后续批(2026-08-22 第五批终,①②③④ 全落地)
+- **① search 高亮渲染补齐**:core 早已产出 `search_matches` 数据但 iced draw 从未消费(413 宣称与实现不符)——widget.rs draw 在 current_line 与 selection 之间补画搜索 quad(选区盖于其上)。
+- **① 死测试激活**:`core_config_diff_toggles_wrap_and_vi` 无 `#[test]`(编辑事故),补上后直接通过;顺修相邻重复双 `#[test]`;新增 external-dirty 往返单测——code_editor 22/22。
+- **② 模型同步 bug(本轮发现并修复)**:菜单/工具栏的 undo/cut 等 native 在 widget 事件流之外改 buffer,从不发布 on_change → `.src_main` 陈旧 → **菜单剪切后保存会存旧文本**。修复三层:core 加 `external_dirty` 标记(native 置位/widget update 消费补发,真实事件路径);041 handler 在 native 后显式 `.src = code_editor_text(...)` 回写(MCP 派发无 iced 事件,widget 消费不触发,应用层保底);矩阵 T6 重写为**真文本断言**(全选→cut 清空→undo 恢复→redo 再清→copy→cut→paste 往返恢复,10 项含 sel>0 与 src 字段核验)——undo 不再可能静默 no-op。
+- **③ 离线布局测试台落地(414 §8.2"单独立项"提前完成)**:`iced_test`(headless wgpu)接入,新 feature `iced-layout-tests` + `layout_tests.rs` 四测:冒烟/414 §7.2 Fill 子元素兄弟存活/418 ml-auto 右对齐锁定/§8.1 嵌套行按钮(文本变体;svg 图标 bounds 需 id 插桩,留后续)。4/4 通过(0.83s)。§7.2 "Fill 子元素兄弟消失"经 into_iced 全链路**未复现**(现行路径无此病,回归锁已立)。
+- **④ §8.4② 根因定位(环境,非应用 bug)**:WER 全档仅 2-3 月旧构建 3 例 c0000409/c0000374,近期零原生崩溃记录;"高负载偶发静默退出"实为**并行会话 `taskkill //IM auto.exe` 误杀**(按映像名杀全部实例,本会话亲历两次)。缓解:并行活跃时复制 exe 独立命名跑矩阵(`cp target/debug/auto.exe target/debug/auto-uitest.exe` + `AUTO_BIN=...`);套件已复跑即过。§8.4② 就此关闭(环境项登记)。
+- **回归**:code_editor 22 + iced 44 + cfg 3 + mcp 6 + 矩阵 **29/29**(T6 为真文本断言版)。
