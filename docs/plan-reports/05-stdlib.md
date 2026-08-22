@@ -26,9 +26,11 @@ AutoLang's standard library is built on an AutoLang-first architecture where all
 | 211 | Stdlib Test Coverage 80%+ | Complete | VM + a2r tests for all stdlib modules (~85 new tests across 12 categories) |
 | 250 | Auto Stdlib Enhancement | Complete | 11 new stdlib modules: cmp, clone, default, fmt, result, sort, random, duration, datetime, encoding (base64/hex/csv), fs, test, format, hash |
 
+| 346 | Web Framework 差距(调研→实施) | Complete | 全部实施项落地(query/表单/中间件/500/日志/通配符 + 352 session/SSR/OpenAPI + A5 重定向 + B6 multipart/RateLimit/Request-ID) |
+
 ## Status
 
-**Implemented**: Plan 020, 027, 041, 051, 052, 053, 102, 160, 191, 211, 250 (11 plans fully complete)
+**Implemented**: Plan 020, 027, 041, 051, 052, 053, 102, 160, 191, 211, 250, 346 (12 plans fully complete)
 
 **Partial**: Plan 042 (dstr has core byte-level API but lacks from_str/to_str/iteration), Plan 054 (core infrastructure complete -- storage types, target detection, environment injection -- but config block syntax and startup code generation are not started), Plan 119 (HTTP server/client FFI done for VM; Redis and SQLite are design-only, no Rust implementations yet)
 
@@ -116,3 +118,4 @@ Plan 143 defines the migration of approximately 45 UI components from `examples/
 - [195-http-client-async-unification.md](../plans/195-http-client-async-unification.md)
 - [211-stdlib-test-coverage.md](../plans/211-stdlib-test-coverage.md)
 - [250-auto-stdlib-enhancement.md](../plans/archive/250-auto-stdlib-enhancement.md)
+- [346-web-framework-gap-analysis.md](../plans/archive/346-web-framework-gap-analysis.md)

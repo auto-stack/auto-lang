@@ -1,6 +1,6 @@
 # Plan 411 — VM 端视觉对齐 vue（Home + Button 页深度对比）
 
-> **状态（2026-08-20 核查）**: 🟡 P0-A/P0-B/P1-A/gap 废弃/pac.at 窗口声明 ✅（2026-08-14 四批，`eace0bd7`）；P1-B toast 与 P2-A 部分（preview-card copy icon/折叠钮）已于 08-15 随 `65a5c489`/`dd6e99ea` 落地（§8.4 待刷新）。**未完成**：P1-C Inter 字体内嵌（ui/ 无字体加载代码）、P2-A① codeblock Rich 高亮对齐 Prism 色板、P2-A④ 表格表头/分隔/padding 细节、P2-B MCP 四项强化（`Button.content` 子树仍未序列化进 vtree，vnode.rs:192 仍 `label: String`——R3 误判根源仍在）。§8.5 gap 兼容分支（vue.rs 3 处 + view_builder 8 处）保留未拆、validator 白名单未加。
+> **状态**: ✅ COMPLETE(2026-08-22 归档复核)。P0-A/P0-B/P1-A/P1-B/P1-C/P2-A①②③④/P2-B 四项全部落地:响应式前缀类/窗口宽度/active 高亮/toast overlay(08-14/08-15 批);P2-B Button.content 序列化(`f7658c45`)+ autoui_check 对齐与快照过滤(`6fbcbe40`)+ layout 回填(`30fc2d08`);P1-C Inter 三字重内嵌(`d2748a24`)+ P2-A① prism-tomorrow 色板与 P2-A④ 表格细节(`535b291d`)。遗留两项为显式设计决议,登记债务簿:§8.5 gap 兼容分支保留(vue.rs 3 处 + view_builder 8 处,向后兼容决议)+ validator 白名单未加;Inter 与 vue 并排字形截图人工核对未执行(非阻塞,渲染由实机 038/013 回归覆盖)。
 
 > 2026-08-14。对 `examples/widgets-gallery` 同一份 Auto 源码的两种转译产物做
 > 逐区域对比（vue dev server @3024 vs `auto run -r vm` iced 原生窗口 @1400×1050），
