@@ -2362,10 +2362,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // Plan 409 §10 续 21: Fixed-height button 的 content 垂直居中
                 // (iced button padded 默认 content 顶部对齐,h-9/h-10/h-11 会偏上)。
                 // 包一层 Fill+center_y 容器让文字纵向居中。
-                let button_content: iced::Element<'static, M> = if iced_style.as_ref().map_or(false, |is| is.height.is_some()) {
+                // Plan 414 R12: fixed-size buttons center their content HORIZONTALLY
+                // too - iced button content hugs the left edge, so a fixed-width
+                // button holding a 16px icon (toolbar w-8) sat left-of-center and
+                // the gaps next to a sep read uneven (user-verified via debug
+                // borders). CSS buttons center by default; shrink-width buttons
+                // are unaffected (content width = button width).
+                let button_content: iced::Element<'static, M> = if iced_style
+                    .as_ref()
+                    .map_or(false, |is| is.height.is_some() || is.width.is_some())
+                {
                     iced::widget::container(button_content)
                         .height(iced::Length::Fill)
+                        .width(iced::Length::Fill)
                         .align_y(iced::alignment::Vertical::Center)
+                        .center_x(iced::Length::Fill)
                         .into()
                 } else {
                     button_content
