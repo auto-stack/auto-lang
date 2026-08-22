@@ -8,8 +8,8 @@
 //! the identical API surface so that the transpiled code compiles and runs.
 //!
 //! Auto's `append_char(code)` accepts a Unicode code point expressed as an
-//! `i32` (matching the VM's int-based char representation), so this type stores
-//! a `char` internally but exposes `append_char` with an `i32` argument.
+//! `i64` (a2r maps Auto `int` to i64, Plan 396 §2.6 convention), so this stores
+//! a `char` internally but exposes `append_char` with an `i64` argument.
 
 /// A growable, owned string builder mirroring the Auto VM `StringBuilder` type.
 #[derive(Debug, Clone)]
@@ -20,9 +20,9 @@ pub struct StringBuilder {
 impl StringBuilder {
     /// Create a new, empty `StringBuilder` with the given reserved capacity.
     ///
-    /// Matches Auto's `StringBuilder.new(capacity)`. The capacity is an `i32`
-    /// in Auto; we treat anything non-positive as "use default capacity".
-    pub fn new(capacity: i32) -> Self {
+    /// Matches Auto's `StringBuilder.new(capacity)`. The capacity is Auto `int`
+    /// (a2r i64; Plan 417-E1 aligned this signature — the old i32 broke parity builds), we treat anything non-positive as "use default capacity".
+    pub fn new(capacity: i64) -> Self {
         let cap = if capacity > 0 { capacity as usize } else { 0 };
         StringBuilder {
             buffer: String::with_capacity(cap),
@@ -36,12 +36,12 @@ impl StringBuilder {
         self.buffer.push_str(s);
     }
 
-    /// Append a single character given as a Unicode code point (`i32`).
+    /// Append a single character given as a Unicode code point (`i64`).
     ///
     /// Matches Auto's `sb.append_char(code)`. Non-character code points and
     /// out-of-range values are replaced with U+FFFD REPLACEMENT CHARACTER,
     /// mirroring the VM's defensive behaviour for invalid codes.
-    pub fn append_char(&mut self, code: i32) {
+    pub fn append_char(&mut self, code: i64) {
         let c = char::from_u32(code as u32).unwrap_or('\u{FFFD}');
         self.buffer.push(c);
     }
@@ -61,8 +61,8 @@ impl StringBuilder {
     /// Return the current length of the buffer in bytes.
     ///
     /// Matches Auto's `sb.len()`.
-    pub fn len(&self) -> i32 {
-        self.buffer.len() as i32
+    pub fn len(&self) -> i64 {
+        self.buffer.len() as i64
     }
 
     /// Return whether the buffer is empty.

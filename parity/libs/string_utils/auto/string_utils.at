@@ -8,6 +8,8 @@
 ///
 /// VM quirks used (same family as base64 / cli_app):
 ///   * `str.char_at(i)` returns the code point as `int` (not a one-char str).
+///     (a2r infers the same since Plan 417-E1 — the explicit `int`
+///     annotations from the DIV-A2R-CHAR-AT-1 workaround were removed.)
 ///   * `str.len()` returns byte length (ASCII tests only).
 ///   * Result strings are built with `StringBuilder.append_char(code)` +
 ///     `.build()`, because int->single-char-str is not direct.
@@ -30,7 +32,7 @@ fn to_lower(s str) str {
     var sb StringBuilder = StringBuilder.new(n)
     var i = 0
     for i < n {
-        var c int = s.char_at(i)
+        var c = s.char_at(i)
         if c >= 65 && c <= 90 { c = c + 32 }
         sb.append_char(c)
         i = i + 1
@@ -44,7 +46,7 @@ fn to_upper(s str) str {
     var sb StringBuilder = StringBuilder.new(n)
     var i = 0
     for i < n {
-        var c int = s.char_at(i)
+        var c = s.char_at(i)
         if c >= 97 && c <= 122 { c = c - 32 }
         sb.append_char(c)
         i = i + 1
@@ -58,11 +60,11 @@ fn trim(s str) str {
     var start = 0
     var end = n
     for start < end {
-        var c int = s.char_at(start)
+        var c = s.char_at(start)
         if c == 32 || c == 9 || c == 10 || c == 13 { start = start + 1 } else { break }
     }
     for end > start {
-        var c int = s.char_at(end - 1)
+        var c = s.char_at(end - 1)
         if c == 32 || c == 9 || c == 10 || c == 13 { end = end - 1 } else { break }
     }
     var sb StringBuilder = StringBuilder.new(end - start)

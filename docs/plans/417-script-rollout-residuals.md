@@ -11,7 +11,7 @@
 
 | DIV | 一句话 | 语言侧入口 | 预估 |
 |---|---|---|---|
-| E1 CHAR-AT-1 | char_at 语义差异(字节 vs 字符) | stdlib/auto/str.rs.at + a2r_std 对齐 | 1 天 |
+| E1 CHAR-AT-1 | ✅ 2026-08-22 完成:infer_type_from_expr 把 char_at 移入 Int 臂(golden 007_char_at_infer,string_utils 四处 workaround 注解移除,DIV 翻 fixed);**衍生 E1b**:导入函数调用实参在 str 参数位缺 String→&str 转换(预存 master 断裂,阻塞 string_utils 三方重跑)——需给 `use auto.X:` 导入登记签名或按导入来源默认借用,独立小项 | trans/rust.rs 推断表 + 8046 as_str 白名单 | 1 天(E1b) |
 | E2 LANG-1 | 语言级语法/语义分歧点 | 按 known-divergences 条目定位 | 1-2 天 |
 | E3 TRAIT-VM-1 | trait 默认方法 VM 分歧 | vm/codegen.rs trait 分发臂 | 2-3 天 |
 | E4 TRAIT-VM-2 | trait 关联类型/泛型 impl VM 分歧 | 同上,依赖 E3 | 2-3 天 |

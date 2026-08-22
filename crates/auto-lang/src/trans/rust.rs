@@ -8043,8 +8043,27 @@ impl RustTrans {
             let arg_is_concat = if let Arg::Pos(expr) = arg {
                 self.expr_contains_string(expr)
             } else { false };
+            // Plan 417-E1 rider: a plain call to a user fn whose DECLARED
+            // return is `str` renders as an owned String — borrowing it for
+            // a &str param needs the same `.as_str()` as ident args. Plan
+            // 380's restriction to idents/concats skipped call args, so
+            // parity string_utils' `check_str(1, ..., reverse("abc"), ...)`
+            // failed E0308 (String vs &str). Only Ident-named calls with a
+            // known str return type qualify (method chains are already &str
+            // and stay excluded).
+            let arg_is_str_returning_call = if let Arg::Pos(Expr::Call(c)) = arg {
+                if let Expr::Ident(fname) = c.name.as_ref() {
+                    self.fn_ret_types.get(fname)
+                        .map(|ty| matches!(ty,
+                            Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
+                            | Type::StrSlice))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
-                && (arg_is_ident || arg_is_concat) {
+                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call) {
                 write!(out, ".as_str()")?;
             }
 
@@ -8433,8 +8452,19 @@ impl RustTrans {
                         // Methods that return String
                         "substr" | "sub" | "slice" | "to_lower" | "to_upper"
                         | "trim" | "trim_left" | "trim_right" | "to_string"
-                        | "replace" | "replace_first" | "repeat" | "char_at" => {
+                        | "replace" | "replace_first" | "repeat" => {
                             return Type::StrOwned;
+                        }
+                        // Plan 417-E1 (DIV-A2R-CHAR-AT-1): `char_at` returns the
+                        // code point as an int (the emitter writes `... as i32`;
+                        // the VM types it as int natively). It was wrongly listed
+                        // with the String-returning methods, so
+                        // `c = s.char_at(i); c = c + 32` bound c as a String and
+                        // the add emitted `format!` concatenation (E0308). The
+                        // parity string_utils lib worked around it with explicit
+                        // `var c int` annotations.
+                        "char_at" => {
+                            return Type::Int;
                         }
                         // stdlib module functions that return String
                         _ => {
