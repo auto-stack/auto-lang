@@ -397,6 +397,9 @@ macro_rules! for_each_native {
             // 特例已回收,恢复正常表派发。
             (2930, NATIVE_HOST_CALL, shim_host_call, "auto.host.call"),
             (2931, NATIVE_HOST_CALL_VALUE, shim_host_call_value, "auto.host.call_value"),
+            // === Plan 419: 引用计数诊断 natives ===
+            (2940, NATIVE_RC_LIVE, shim_rc_live, "auto.rc.live"),
+            (2941, NATIVE_RC_COUNT, shim_rc_count, "auto.rc.count"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -880,6 +883,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.shell.emit_show", 2869, Void),
             ("auto.host.call", 2930, String),
             ("auto.host.call_value", 2931, Void),
+            ("auto.rc.live", 2940, Int),
+            ("auto.rc.count", 2941, Int),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2194,6 +2199,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.shell.emit_show", 2869),
     ("auto.host.call", 2930),
     ("auto.host.call_value", 2931),
+    ("auto.rc.live", 2940),
+    ("auto.rc.count", 2941),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),

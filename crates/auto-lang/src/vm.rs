@@ -20,6 +20,9 @@ mod tests_string_pool;
 // 2026-08-22 已知 VM 限制复现(方法链 / fn 返回复合值)。
 #[cfg(test)]
 mod tests_known_limits;
+// Plan 419 Phase 1:引用计数生命周期里程碑测试(§2.2)。
+#[cfg(test)]
+mod tests_rc_lifecycle;
 // 2026-08-22 tag 软关键字的标识符用法回归。
 #[cfg(test)]
 mod tests_tag;
@@ -39,6 +42,8 @@ pub mod list_storage;
 // Plan 077 Phase 1: HeapObject trait for unified object registry
 pub mod heap;
 pub mod heap_object;
+// Plan 419 Phase 1: 引用计数协议核心(copy-on-load 所有权协议)
+pub mod rc;
 pub mod io;
 // Plan 088 Phase 5: Reference types for parameter passing modes
 pub mod list;

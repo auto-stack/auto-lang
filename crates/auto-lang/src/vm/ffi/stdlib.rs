@@ -684,7 +684,7 @@ pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `io.chunks(path: String, chunk_size: int) -> iterator_id`
 /// Stream fixed-size chunks from a binary file. Non-blocking.
 pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let chunk_size: i32 = task.ram.pop_i32();
+    let chunk_size: i32 = crate::vm::native::pop_arg_i32(task);
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let chunk_size = chunk_size.max(1) as usize;
@@ -750,8 +750,8 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// `eprint(text: String)` — Write to stderr (no newline).
-pub fn shim_eprint(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_eprint(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     use std::io::Write;
     let _ = std::io::stderr().write_all(text.as_bytes());
@@ -759,8 +759,8 @@ pub fn shim_eprint(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// `eprintln(text: String)` — Write to stderr with newline.
-pub fn shim_eprintln(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_eprintln(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     eprintln!("{}", text);
     Ok(())
@@ -848,7 +848,7 @@ pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         std::sync::Mutex::new(writer),
     );
     let handle = vm.insert_heap_object(obj) as u32;
-    task.ram.push_nv(auto_val::encode_object(handle));
+    vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
 }
 
@@ -866,7 +866,7 @@ pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         std::sync::Mutex::new(reader),
     );
     let handle = vm.insert_heap_object(obj) as u32;
-    task.ram.push_nv(auto_val::encode_object(handle));
+    vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
 }
 
@@ -875,7 +875,7 @@ pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_bufwriter_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let text: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     use std::io::Write;
     if let Some(obj) = vm.get_heap_object(handle as u64) {
@@ -894,7 +894,7 @@ pub fn shim_bufwriter_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 
 /// `BufWriter.flush(handle: i32) -> handle`
 pub fn shim_bufwriter_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     use std::io::Write;
     if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
@@ -913,7 +913,7 @@ pub fn shim_bufwriter_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// `BufReader.read_line(handle: i32) -> String`
 /// Read one line from a buffered reader. Returns "" at EOF.
 pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     use std::io::BufRead;
     let line = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
@@ -947,15 +947,15 @@ pub fn shim_io_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         std::sync::Mutex::new(file),
     );
     let handle = vm.insert_heap_object(obj) as u32;
-    task.ram.push_nv(auto_val::encode_object(handle));
+    vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
 }
 
 /// `File.seek(handle: i32, offset: i64) -> i64`
 /// Seek to absolute offset. Returns new position.
 pub fn shim_file_seek(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let offset: i64 = task.ram.pop_i32() as i64;
-    let handle: i32 = task.ram.pop_i32();
+    let offset: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     use std::io::{Seek, SeekFrom};
     let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
@@ -974,8 +974,8 @@ pub fn shim_file_seek(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `File.read(handle: i32, count: int) -> String`
 /// Read `count` bytes from file at current position.
 pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let count: i32 = task.ram.pop_i32();
-    let handle: i32 = task.ram.pop_i32();
+    let count: i32 = crate::vm::native::pop_arg_i32(task);
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     use std::io::Read;
     let data = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
@@ -997,7 +997,7 @@ pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `File.position(handle: i32) -> i64`
 /// Get current file position.
 pub fn shim_file_position(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     use std::io::Seek;
     let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
@@ -1023,7 +1023,7 @@ pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         std::sync::Mutex::new(path),
     );
     let handle = vm.insert_heap_object(obj) as u32;
-    task.ram.push_nv(auto_val::encode_object(handle));
+    vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
 }
 
@@ -1032,7 +1032,7 @@ pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let other: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let new_path = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
@@ -1047,13 +1047,13 @@ pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         "Path", std::sync::Mutex::new(new_path),
     );
     let new_handle = vm.insert_heap_object(obj) as u32;
-    task.ram.push_nv(auto_val::encode_object(new_handle));
+    vm.rc_push(task, auto_val::encode_object(new_handle));
     Ok(())
 }
 
 /// `Path.exists(handle: i32) -> bool`
 pub fn shim_path_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let exists = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
@@ -1070,7 +1070,7 @@ pub fn shim_path_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 
 /// `Path.to_string(handle: i32) -> String`
 pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle: i32 = task.ram.pop_i32();
+    let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let path_str = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
@@ -1163,7 +1163,7 @@ pub(crate) enum AsyncResult {
 
 /// `io.read_text_async(path: String) -> String`
 /// Async read file to string. Non-blocking (yield pattern from Plan 349 step7).
-pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args. The engine retries this CALL_NAT
     // after a yield (rewinds IP), so on re-entry the `path` arg was already
     // popped on the first call. Popping again would eat the wrong stack value
@@ -1175,7 +1175,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
         if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
             let idx = {
-                let mut strings = _vm.strings.write().unwrap();
+                let mut strings = vm.strings.write().unwrap();
                 let i = strings.len();
                 strings.push(content.into_bytes());
                 i
@@ -1186,7 +1186,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
         if let Some(Err(e)) = result {
             task.waiting_http_request_id = None;
             let idx = {
-                let mut strings = _vm.strings.write().unwrap();
+                let mut strings = vm.strings.write().unwrap();
                 let i = strings.len();
                 strings.push(e.into_bytes());
                 i
@@ -1200,7 +1200,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
     }
 
     // First call — pop the path, spawn the read and yield.
-    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     let path_for_thread = path.clone();
@@ -1222,7 +1222,7 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 
 /// `io.write_text_async(path: String, content: String) -> bool`
 /// Async write string to file. Non-blocking.
-pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_io_write_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Re-entry check BEFORE popping args (see shim_io_read_text_async / Plan 340
     // HTTP shims for rationale: the engine rewinds IP on yield, so args were
     // already popped on the first call).
@@ -1240,9 +1240,9 @@ pub fn shim_io_write_text_async(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         return Ok(());
     }
 
-    let content: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let content: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     let path_t = path.clone();
@@ -1287,10 +1287,10 @@ pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
 /// that doesn't map cleanly to a single primitive type.
 pub fn shim_process_spawn_with_output(
     task: &mut AutoTask,
-    _vm: &AutoVM,
+    vm: &AutoVM,
 ) -> Result<(), VMError> {
     // Pop args as JSON array string: ["cmd", "arg1", "arg2"]
-    let args_json: String = VMConvertible::pop_from_stack(task, _vm)
+    let args_json: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let args: Vec<String> = serde_json::from_str(&args_json)
@@ -1330,17 +1330,17 @@ pub fn shim_process_spawn_with_output(
     let result_str = serde_json::to_string(&result_json)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    result_str.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    result_str.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Execute a shell command string, capture stdout+stderr, truncate at 64KB.
 /// Takes: cmd (String), timeout_ms (i32) — timeout currently unused.
 /// Returns: JSON string {"exit_code": N, "stdout": "...", "stderr": "..."}
-pub fn shim_sys_exec(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_sys_exec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop timeout as i32 (Auto int = i32, not i64, to avoid slot mismatch)
-    let timeout_ms: i32 = task.ram.pop_i32();
-    let cmd: String = VMConvertible::pop_from_stack(task, _vm)
+    let timeout_ms: i32 = crate::vm::native::pop_arg_i32(task);
+    let cmd: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let shell = if cfg!(windows) { "cmd" } else { "sh" };
@@ -1371,7 +1371,7 @@ pub fn shim_sys_exec(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let result_str = serde_json::to_string(&result_json)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    result_str.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    result_str.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let _ = timeout_ms;
     Ok(())
 }
@@ -1612,7 +1612,7 @@ pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm
     let start_pos: i64 = {
         let top = task.ram.read_nv(task.ram.sp - 1);
         if auto_val::is_i32(top) {
-            task.ram.pop_nv(); // consume start_pos
+            crate::vm::native::pop_arg_nv(task); // consume start_pos
             auto_val::decode_i32(top) as i64
         } else {
             0i64 // no start_pos, default to 0
@@ -1785,11 +1785,14 @@ pub fn shim_char_to_str(codepoint: i32) -> String {
 /// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
 pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop default value
-    let default_val = { let nv = task.ram.pop_nv(); auto_val::decode_i32(nv) };
+    let default_val = { let nv = crate::vm::native::pop_arg_nv(task);
+ let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv); auto_val::decode_i32(nv) };
 
     // Pop option value — check for None (null or -1 sentinel)
     {
-        let opt_nv = task.ram.pop_nv();
+        let opt_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_opt_nv = crate::vm::native::StakeGuard::nv(vm, opt_nv);
         // None is represented as encode_null() (TAG_NULL) or encode_i32(-1)
         if auto_val::is_null(opt_nv) {
             task.ram.push_i32(default_val);
@@ -2101,7 +2104,7 @@ pub(crate) fn json_to_vm_value(
                 list.push(v);
             }
             let id = vm.insert_heap_object(list);
-            task.ram.push_nv(auto_val::encode_object(id as u32));
+            vm.rc_push(task, auto_val::encode_object(id as u32));
         }
         serde_json::Value::Object(obj) => {
             use crate::vm::generic_registry::GenericInstanceData;
@@ -2117,7 +2120,7 @@ pub(crate) fn json_to_vm_value(
                 field_names,
             );
             let id = vm.insert_heap_object(inst);
-            task.ram.push_nv(auto_val::encode_object(id as u32));
+            vm.rc_push(task, auto_val::encode_object(id as u32));
         }
     }
     Ok(())
@@ -2155,7 +2158,10 @@ fn json_to_vm_value_inner(
             use crate::vm::types::ListData;
             let mut list: ListData<Value> = ListData::new();
             for elem in arr {
-                list.push(json_to_vm_value_inner(vm, elem, depth + 1)?);
+                let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
+                // Plan 419: 子 VmRef 的持有随父容器建立(插入即 retain)。
+                if let Value::VmRef(r) = &v { vm.rc_retain_id(r.id as u64); }
+                list.push(v);
             }
             let id = vm.insert_heap_object(list);
             Ok(Value::VmRef(auto_val::VmRef { id: id as usize }))
@@ -2166,7 +2172,10 @@ fn json_to_vm_value_inner(
             let mut fields = Vec::with_capacity(obj.len());
             for (k, v) in obj {
                 field_names.push(k.clone());
-                fields.push(json_to_vm_value_inner(vm, v, depth + 1)?);
+                let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
+                // Plan 419: 同上。
+                if let Value::VmRef(r) = &fv { vm.rc_retain_id(r.id as u64); }
+                fields.push(fv);
             }
             let inst = GenericInstanceData::new_with_names(
                 "__json_object".to_string(),
@@ -2265,7 +2274,9 @@ fn vm_value_to_json(
 /// Serialize a VM value (incl. heap objects) into a JSON string.
 pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop the raw stack value and decode it.
-    let nv = task.ram.pop_nv();
+    let nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
     let value = if auto_val::is_object(nv) {
         auto_val::Value::VmRef(auto_val::VmRef {
             id: auto_val::decode_object(nv) as usize,
@@ -2677,8 +2688,8 @@ thread_local! {
 
 /// Bind to address and create TCP listener
 /// Returns handle (positive) on success, 0 on failure
-pub fn shim_net_tcp_bind(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let addr: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_net_tcp_bind(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let addr: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let listener = match StdTcpListener::bind(&addr) {
@@ -2702,8 +2713,8 @@ pub fn shim_net_tcp_bind(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
 
 /// Accept a new connection from listener
 /// Returns stream handle (positive) on success, 0 on failure
-pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let listener_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_listener_accept(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let listener_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     let stream = TCP_LISTENERS.with(|listeners| {
         let mut listeners = listeners.borrow_mut();
@@ -2741,8 +2752,8 @@ pub fn shim_net_tcp_listener_local_addr(listener_handle: i32) -> String {
 }
 
 /// Close listener
-pub fn shim_net_tcp_listener_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let listener_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_listener_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let listener_handle: i32 = crate::vm::native::pop_arg_i32(task);
     TCP_LISTENERS.with(|listeners| {
         listeners.borrow_mut().remove(&(listener_handle as u64));
     });
@@ -2751,8 +2762,8 @@ pub fn shim_net_tcp_listener_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<
 
 /// Connect to remote TCP server
 /// Returns stream handle (positive) on success, 0 on failure
-pub fn shim_net_tcp_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let addr: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_net_tcp_connect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let addr: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let stream = match StdTcpStream::connect(&addr) {
@@ -2774,9 +2785,9 @@ pub fn shim_net_tcp_connect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
 /// Read data from stream
 /// Returns number of bytes read, or -1 on error
-pub fn shim_net_tcp_stream_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let buf_size: i32 = task.ram.pop_i32();
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let buf_size: i32 = crate::vm::native::pop_arg_i32(task);
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -2798,17 +2809,17 @@ pub fn shim_net_tcp_stream_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
     task.ram.push_i32(result.0);
     // Push bytes as Vec<i32>
     let bytes: Vec<i32> = result.1.into_iter().map(|b| b as i32).collect();
-    super::convert::VMConvertible::push_to_stack(&bytes, task, _vm)
+    super::convert::VMConvertible::push_to_stack(&bytes, task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Write data to stream
 /// Returns number of bytes written, or -1 on error
-pub fn shim_net_tcp_stream_write(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_net_tcp_stream_write(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let stream_handle: i32 = task.ram.pop_i32();
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     let bytes: Vec<u8> = data.into_iter().map(|b| b as u8).collect();
 
@@ -2825,8 +2836,8 @@ pub fn shim_net_tcp_stream_write(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 }
 
 /// Read all data until EOF
-pub fn shim_net_tcp_stream_read_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_read_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     let bytes = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -2841,7 +2852,7 @@ pub fn shim_net_tcp_stream_read_all(task: &mut AutoTask, _vm: &AutoVM) -> Result
     });
 
     let result: Vec<i32> = bytes.into_iter().map(|b| b as i32).collect();
-    super::convert::VMConvertible::push_to_stack(&result, task, _vm)
+    super::convert::VMConvertible::push_to_stack(&result, task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
@@ -2865,10 +2876,10 @@ pub fn shim_net_tcp_stream_read_line(stream_handle: i32) -> String {
 
 /// Write string to stream
 /// Returns number of bytes written, or -1 on error
-pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let s: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let stream_handle: i32 = task.ram.pop_i32();
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -2883,8 +2894,8 @@ pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, _vm: &AutoVM) -> Resul
 }
 
 /// Close stream
-pub fn shim_net_tcp_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
     TCP_STREAMS.with(|streams| {
         streams.borrow_mut().remove(&(stream_handle as u64));
     });
@@ -2904,9 +2915,9 @@ pub fn shim_net_tcp_stream_peer_addr(stream_handle: i32) -> String {
 }
 
 /// Set read timeout
-pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let ms: i32 = task.ram.pop_i32();
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms: i32 = crate::vm::native::pop_arg_i32(task);
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -2923,9 +2934,9 @@ pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, _vm: &AutoVM) -
 }
 
 /// Set write timeout
-pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let ms: i32 = task.ram.pop_i32();
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms: i32 = crate::vm::native::pop_arg_i32(task);
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
@@ -2945,8 +2956,8 @@ pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, _vm: &AutoVM) 
 /// Note: TcpStream::flush() is a no-op for raw sockets (no user-space buffer),
 /// but this provides API completeness and will be effective if BufWriter is
 /// added later. For real SSE latency improvement, use set_nodelay(true).
-pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
     TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
         if let Some(stream) = streams.get_mut(&(stream_handle as u64)) {
@@ -2961,9 +2972,9 @@ pub fn shim_net_tcp_stream_flush(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 /// Plan 313: Set TCP_NODELAY on a stream (disables Nagle's algorithm).
 /// Critical for SSE: without this, small data packets (like `data: ...\n\n`)
 /// are buffered up to ~40ms before sending. Returns 0 on success, -1 on error.
-pub fn shim_net_tcp_stream_set_nodelay(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let enabled: i32 = task.ram.pop_i32();
-    let stream_handle: i32 = task.ram.pop_i32();
+pub fn shim_net_tcp_stream_set_nodelay(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let enabled: i32 = crate::vm::native::pop_arg_i32(task);
+    let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
         match streams.get_mut(&(stream_handle as u64)) {
@@ -3189,7 +3200,7 @@ impl HttpStreamData {
 }
 
 /// Create a new HTTP server (placeholder - returns handle)
-pub fn shim_http_server(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // For now, return a placeholder handle
     // Full implementation would store route handlers
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -3198,10 +3209,10 @@ pub fn shim_http_server(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 }
 
 /// Add GET route (placeholder)
-pub fn shim_http_server_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_server_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop handler and path (we'll ignore them for now)
     let _handler: i64 = task.ram.pop_i64();
-    let _path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let server: i64 = task.ram.pop_i64();
 
@@ -3211,9 +3222,9 @@ pub fn shim_http_server_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 }
 
 /// Add POST route (placeholder)
-pub fn shim_http_server_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_server_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _handler: i64 = task.ram.pop_i64();
-    let _path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let server: i64 = task.ram.pop_i64();
     task.ram.push_i64(server);
@@ -3221,9 +3232,9 @@ pub fn shim_http_server_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 }
 
 /// Add PUT route (placeholder)
-pub fn shim_http_server_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_server_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _handler: i64 = task.ram.pop_i64();
-    let _path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let server: i64 = task.ram.pop_i64();
     task.ram.push_i64(server);
@@ -3231,9 +3242,9 @@ pub fn shim_http_server_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 }
 
 /// Add DELETE route (placeholder)
-pub fn shim_http_server_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_server_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _handler: i64 = task.ram.pop_i64();
-    let _path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let _path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let server: i64 = task.ram.pop_i64();
     task.ram.push_i64(server);
@@ -3241,10 +3252,10 @@ pub fn shim_http_server_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 }
 
 /// Add static file route (placeholder)
-pub fn shim_http_server_static(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _dir: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_server_static(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _dir: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let _prefix: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let _prefix: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let server: i64 = task.ram.pop_i64();
     task.ram.push_i64(server);
@@ -3571,7 +3582,7 @@ fn find_route(
 }
 
 /// Create a new HTTP response
-pub fn shim_http_response(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData::default();
 
@@ -3584,8 +3595,8 @@ pub fn shim_http_response(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 }
 
 /// Set response status
-pub fn shim_http_response_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let code: i32 = task.ram.pop_i32();
+pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let code: i32 = crate::vm::native::pop_arg_i32(task);
     let res_handle: i64 = task.ram.pop_i64();
 
     HTTP_RESPONSES.with(|responses| {
@@ -3599,10 +3610,10 @@ pub fn shim_http_response_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 }
 
 /// Set response header
-pub fn shim_http_response_header(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let value: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_response_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = task.ram.pop_i64();
 
@@ -3617,8 +3628,8 @@ pub fn shim_http_response_header(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 }
 
 /// Set response text body
-pub fn shim_http_response_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = task.ram.pop_i64();
 
@@ -3637,8 +3648,8 @@ pub fn shim_http_response_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 }
 
 /// Set response HTML body
-pub fn shim_http_response_html(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = task.ram.pop_i64();
 
@@ -3657,9 +3668,9 @@ pub fn shim_http_response_html(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), 
 
 /// Plan 346: `http.response.redirect(url: String, status: int) -> response_handle`
 /// Create a redirect response (302 or 301).
-pub fn shim_http_response_redirect(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let status: i32 = task.ram.pop_i32();
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_response_redirect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let status: i32 = crate::vm::native::pop_arg_i32(task);
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -3691,9 +3702,9 @@ pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, 
 /// per-client-IP fixed-window rate limiter on the async HTTP server.
 /// Requests beyond `max_requests` within `window_ms` get 429 + Retry-After.
 /// `max_requests = 0` disables limiting again.
-pub fn shim_http_rate_limit(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let window_ms: i32 = task.ram.pop_i32();
-    let max_requests: i32 = task.ram.pop_i32();
+pub fn shim_http_rate_limit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let window_ms: i32 = crate::vm::native::pop_arg_i32(task);
+    let max_requests: i32 = crate::vm::native::pop_arg_i32(task);
     super::http_server::set_rate_limit(max_requests.max(0) as u32, window_ms.max(0) as u64);
     task.ram.push_i32(0);
     Ok(())
@@ -3705,8 +3716,8 @@ pub fn shim_http_rate_limit(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
 /// `session.create(data_json: String) -> String`
 /// Create a new session with the given JSON data. Returns a random session ID.
-pub fn shim_session_create(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     // Generate a simple session ID (timestamp + counter).
@@ -3717,7 +3728,7 @@ pub fn shim_session_create(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
     }
 
     let idx = {
-        let mut strings = _vm.strings.write().unwrap();
+        let mut strings = vm.strings.write().unwrap();
         let i = strings.len();
         strings.push(session_id.into_bytes());
         i
@@ -3728,8 +3739,8 @@ pub fn shim_session_create(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 
 /// `session.get(id: String) -> String`
 /// Get session data by ID. Returns the JSON data string, or "null" if not found.
-pub fn shim_session_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let data = SESSIONS.lock()
@@ -3738,7 +3749,7 @@ pub fn shim_session_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
         .unwrap_or_else(|| "null".to_string());
 
     let idx = {
-        let mut strings = _vm.strings.write().unwrap();
+        let mut strings = vm.strings.write().unwrap();
         let i = strings.len();
         strings.push(data.into_bytes());
         i
@@ -3749,10 +3760,10 @@ pub fn shim_session_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
 /// `session.set(id: String, data_json: String) -> bool`
 /// Update session data. Returns true if session existed.
-pub fn shim_session_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_session_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let exists = SESSIONS.lock()
@@ -3773,8 +3784,8 @@ pub fn shim_session_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
 /// `session.destroy(id: String) -> bool`
 /// Destroy a session. Returns true if session existed.
-pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let id: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_session_destroy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let existed = SESSIONS.lock()
@@ -3792,7 +3803,7 @@ pub fn shim_session_destroy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
 /// Plan 352: `openapi.generate() -> String`
 /// Generate OpenAPI 3.0 JSON spec from registered #[api] routes.
-pub fn shim_openapi_generate(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_openapi_generate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let routes = get_http_routes();
     let mut paths = serde_json::Map::new();
 
@@ -3850,7 +3861,7 @@ pub fn shim_openapi_generate(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
     let json_str = serde_json::to_string_pretty(&spec).unwrap_or_default();
     let idx = {
-        let mut strings = _vm.strings.write().unwrap();
+        let mut strings = vm.strings.write().unwrap();
         let i = strings.len();
         strings.push(json_str.into_bytes());
         i
@@ -3891,10 +3902,10 @@ fn convert_path_to_openapi(path: &str) -> String {
 /// {{var}} — variable interpolation from JSON data
 /// {{#if key}}...{{/if}} — conditional block (key truthy)
 /// {{#each key}}...{{/each}} — loop over array
-pub fn shim_template_compile(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let template_str: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_template_compile(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let template_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     if let Ok(mut templates) = TEMPLATES.lock() {
@@ -3905,10 +3916,10 @@ pub fn shim_template_compile(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// `template.render(name: String, data_json: String) -> String`
 /// Render a compiled template with JSON data. Returns HTML string.
-pub fn shim_template_render(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data_json: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_template_render(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data_json: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let template_str = TEMPLATES.lock()
@@ -3920,7 +3931,7 @@ pub fn shim_template_render(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
     let rendered = render_template(&template_str, &data);
 
     let idx = {
-        let mut strings = _vm.strings.write().unwrap();
+        let mut strings = vm.strings.write().unwrap();
         let i = strings.len();
         strings.push(rendered.into_bytes());
         i
@@ -4033,8 +4044,8 @@ fn is_truthy(val: &serde_json::Value) -> bool {
 /// Middleware receives the request path + method as a JSON string argument.
 /// If it returns a non-empty string, that string is used as the response
 /// (short-circuit). If it returns empty/nil, the handler runs normally.
-pub fn shim_http_server_use(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let fn_name: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_server_use(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let fn_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     if let Ok(mut chain) = MIDDLEWARE_CHAIN.lock() {
@@ -4044,8 +4055,8 @@ pub fn shim_http_server_use(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 }
 
 /// Set response bytes body
-pub fn shim_http_response_bytes(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_response_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = task.ram.pop_i64();
 
@@ -4151,7 +4162,7 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
 /// so the engine's `waiting_http_request_id` IP-rewind works here exactly as
 /// it does for the `*_json` family. On re-entry the args were already popped
 /// on the first call, so we check the pending request BEFORE popping.
-pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
@@ -4160,7 +4171,7 @@ pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("GET".into(), url, None, req_id);
@@ -4173,7 +4184,7 @@ pub fn shim_http_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Perform a POST request. Plan 349 步骤 7: non-blocking re-entry yield.
-pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
@@ -4182,9 +4193,9 @@ pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("POST".into(), url, Some(body), req_id);
@@ -4197,7 +4208,7 @@ pub fn shim_http_post(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 }
 
 /// Perform a PUT request. Plan 349 步骤 7: non-blocking re-entry yield.
-pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
@@ -4206,9 +4217,9 @@ pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("PUT".into(), url, Some(body), req_id);
@@ -4221,7 +4232,7 @@ pub fn shim_http_put(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Perform a DELETE request. Plan 349 步骤 7: non-blocking re-entry yield.
-pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
@@ -4230,7 +4241,7 @@ pub fn shim_http_delete(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
     }
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
     spawn_async_http_handle("DELETE".into(), url, None, req_id);
@@ -4276,7 +4287,7 @@ pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         std::sync::Mutex::new(data),
     );
     let heap_id = vm.insert_heap_object(obj);
-    task.ram.push_i32(heap_id as i32);
+    vm.rc_push_id(task, heap_id as u64); // Plan 419
     Ok(())
 }
 
@@ -4287,7 +4298,7 @@ pub fn shim_request_builder_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4309,7 +4320,7 @@ pub fn shim_request_builder_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 pub fn shim_request_builder_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4329,8 +4340,8 @@ pub fn shim_request_builder_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 /// Set timeout on RequestBuilder
 /// request_builder_timeout(rb, ms) -> rb
 pub fn shim_request_builder_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let ms: i64 = task.ram.pop_i32() as i64;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let ms: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4352,7 +4363,7 @@ pub fn shim_request_builder_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<
 pub fn shim_request_builder_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let data: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4390,7 +4401,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         return Ok(());
     }
 
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     let heap_id = rb_handle as u64;
 
     // Extract builder data and remove from heap
@@ -4503,7 +4514,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 pub fn shim_request_builder_tls_ca_cert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let cert_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4522,9 +4533,11 @@ pub fn shim_request_builder_tls_ca_cert(task: &mut AutoTask, vm: &AutoVM) -> Res
 /// `RequestBuilder.tls_skip_verify(skip: bool) -> RequestBuilder`
 /// Skip TLS certificate verification (for dev/test).
 pub fn shim_request_builder_tls_skip_verify(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let skip_val = task.ram.pop_i32();
+    let skip_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_skip_val = crate::vm::native::StakeGuard::new(vm, skip_val as i64 as u64);
     let skip = skip_val != 0;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4547,7 +4560,7 @@ pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) ->
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let cert_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4572,10 +4585,10 @@ pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) ->
 
 /// `RequestBuilder.cookie_store(enable: bool) -> RequestBuilder`
 /// Enable automatic cookie jar (session persistence across requests).
-pub fn shim_request_builder_cookie_store(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let enable = task.ram.pop_i32() != 0;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
-    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+pub fn shim_request_builder_cookie_store(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let enable = crate::vm::native::pop_arg_i32(task) != 0;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
@@ -4589,10 +4602,12 @@ pub fn shim_request_builder_cookie_store(task: &mut AutoTask, _vm: &AutoVM) -> R
 
 /// `RequestBuilder.retry(count: int) -> RequestBuilder`
 /// Set automatic retry count for failed requests.
-pub fn shim_request_builder_retry(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let count = task.ram.pop_i32() as u32;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
-    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+pub fn shim_request_builder_retry(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let count = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_count = crate::vm::native::StakeGuard::new(vm, count as i64 as u64);
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
@@ -4606,10 +4621,10 @@ pub fn shim_request_builder_retry(task: &mut AutoTask, _vm: &AutoVM) -> Result<(
 
 /// `RequestBuilder.gzip(enable: bool) -> RequestBuilder`
 /// Enable automatic gzip decompression.
-pub fn shim_request_builder_gzip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let enable = task.ram.pop_i32() != 0;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
-    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+pub fn shim_request_builder_gzip(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let enable = crate::vm::native::pop_arg_i32(task) != 0;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
@@ -4623,10 +4638,10 @@ pub fn shim_request_builder_gzip(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 
 /// `RequestBuilder.brotli(enable: int) -> RequestBuilder` — enable brotli
 /// response decompression. Plan 349 步骤 7/8 (W4).
-pub fn shim_request_builder_brotli(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let enable = task.ram.pop_i32() != 0;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
-    if let Some(obj) = _vm.get_heap_object(rb_handle as u64) {
+pub fn shim_request_builder_brotli(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let enable = crate::vm::native::pop_arg_i32(task) != 0;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
@@ -4647,7 +4662,7 @@ pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> 
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4670,7 +4685,7 @@ pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> 
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let rb_handle: i64 = task.ram.pop_i32() as i64;
+    let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
@@ -4688,10 +4703,10 @@ pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> 
 
 /// `http.upload(url: String, file_path: String) -> response_handle`
 /// Simple single-file upload using multipart/form-data.
-pub fn shim_http_upload(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_upload(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let result = std::thread::spawn(move || {
@@ -4730,10 +4745,10 @@ pub fn shim_http_upload(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
 /// `http.download(url: String, file_path: String) -> bool`
 /// Download a file to disk (blocking, writes directly to file).
-pub fn shim_http_download(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_download(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let success = std::thread::spawn(move || {
@@ -4755,11 +4770,11 @@ pub fn shim_http_download(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
 /// `http.download_resume(url: String, file_path: String, offset: i64) -> bool`
 /// Resume download from a given byte offset (HTTP Range header).
-pub fn shim_http_download_resume(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let offset: i64 = task.ram.pop_i32() as i64;
-    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_download_resume(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let offset: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let success = std::thread::spawn(move || {
@@ -4897,8 +4912,8 @@ fn spawn_download_with_progress(url: String, file_path: String, _stream_id: u64)
 
 /// Get status code from Response handle
 /// response_status_code(res_handle) -> int
-pub fn shim_response_status_code(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = task.ram.pop_i32() as i64;
+pub fn shim_response_status_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     let status = HTTP_RESPONSES.with(|r| {
         r.borrow().get(&(res_handle as u64)).map(|res| res.status as i32)
@@ -4910,10 +4925,10 @@ pub fn shim_response_status_code(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 
 /// Get header value from Response handle
 /// response_header_get(res_handle, key) -> str
-pub fn shim_response_header_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i32() as i64;
+    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     let value = HTTP_RESPONSES.with(|r| {
         let responses = r.borrow();
@@ -4922,22 +4937,22 @@ pub fn shim_response_header_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
         })
     }).unwrap_or_default();
 
-    value.push_to_stack(task, _vm)
+    value.push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Get raw body bytes from Response handle
 /// response_body(res_handle) -> []byte
-pub fn shim_response_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = task.ram.pop_i32() as i64;
+pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
     let body_bytes = HTTP_RESPONSES.with(|r| {
         r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
     }).unwrap_or_default();
 
     let byte_vec: Vec<i32> = body_bytes.into_iter().map(|b| b as i32).collect();
-    byte_vec.push_to_stack(task, _vm)
+    byte_vec.push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
@@ -4948,8 +4963,8 @@ pub fn shim_response_body(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
 /// 创建流式 HTTP GET 请求
 /// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
-pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let url_clone = url.clone();
@@ -4971,10 +4986,10 @@ pub fn shim_http_get_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
 /// 创建流式 HTTP POST 请求
 /// Runs in a dedicated OS thread to avoid tokio runtime conflicts.
-pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let body: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_http_post_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let url_clone = url.clone();
@@ -5000,7 +5015,7 @@ pub fn shim_http_post_stream(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// 从流中读取下一个数据块
 /// 使用 reqwest::blocking::Response 的 std::io::Read trait 逐块读取
-pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_stream_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle: i64 = task.ram.pop_i64();
 
     let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
@@ -5009,7 +5024,7 @@ pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
             .ok_or_else(|| VMError::RuntimeError(format!("Invalid HTTP stream handle: {}", handle)))?;
 
         if stream.done {
-            "[DONE]".to_string().push_to_stack(task, _vm)
+            "[DONE]".to_string().push_to_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(e.to_string()))?;
             return Ok(());
         }
@@ -5023,12 +5038,12 @@ pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
                     // EOF - stream complete
                     stream.done = true;
                     stream.response = None;
-                    "[DONE]".to_string().push_to_stack(task, _vm)
+                    "[DONE]".to_string().push_to_stack(task, vm)
                         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
                 }
                 Ok(n) => {
                     let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                    text.push_to_stack(task, _vm)
+                    text.push_to_stack(task, vm)
                         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
                 }
                 Err(e) => {
@@ -5038,7 +5053,7 @@ pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
                 }
             }
         } else {
-            "[DONE]".to_string().push_to_stack(task, _vm)
+            "[DONE]".to_string().push_to_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(e.to_string()))?;
         }
 
@@ -5050,7 +5065,7 @@ pub fn shim_http_stream_next(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 }
 
 /// 检查流是否完成
-pub fn shim_http_stream_is_done(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_stream_is_done(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle: i64 = task.ram.pop_i64();
 
     let result = HTTP_STREAMS.try_with(|streams| -> Result<(), VMError> {
@@ -5067,7 +5082,7 @@ pub fn shim_http_stream_is_done(task: &mut AutoTask, _vm: &AutoVM) -> Result<(),
 }
 
 /// 关闭流
-pub fn shim_http_stream_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_stream_close(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle: i64 = task.ram.pop_i64();
 
     HTTP_STREAMS.with(|streams| {
@@ -5143,13 +5158,13 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// Returns an HTTP stream handle (i64) on the stack.
 pub fn shim_http_post_stream_with_headers(
     task: &mut AutoTask,
-    _vm: &AutoVM,
+    vm: &AutoVM,
 ) -> Result<(), VMError> {
-    let headers_json: String = VMConvertible::pop_from_stack(task, _vm)
+    let headers_json: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let body: String = VMConvertible::pop_from_stack(task, _vm)
+    let body: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let url: String = VMConvertible::pop_from_stack(task, _vm)
+    let url: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     // Parse headers JSON
@@ -5196,10 +5211,10 @@ pub fn shim_regex_is_match(pattern: String, text: String) -> Result<i32, String>
 /// Find all matches of a regex pattern in text.
 ///
 /// Returns a JSON array of match objects: `[{"match": "...", "start": 0, "end": 5}, ...]`
-pub fn shim_regex_find_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_regex_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let pattern: String = VMConvertible::pop_from_stack(task, _vm)
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let re = regex::Regex::new(&pattern)
@@ -5221,15 +5236,15 @@ pub fn shim_regex_find_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
     let json = serde_json::to_string(&matches)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    json.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    json.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Check if a regex pattern matches text. Returns 1 if match, 0 if not.
-pub fn shim_regex_match(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let pattern: String = VMConvertible::pop_from_stack(task, _vm)
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let re = regex::Regex::new(&pattern)
@@ -5551,7 +5566,7 @@ fn push_handle_result(
     Ok(())
 }
 
-pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Plan 349 step 7: Non-blocking async HTTP. The engine retries this CALL_NAT
     // after a yield (it rewinds IP, so the shim re-enters from the top). On
     // re-entry the args were already popped on the first call, so we must
@@ -5561,7 +5576,7 @@ pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
         if let Some(body) = check_async_http_result(req_id) {
             // Result ready — push and return.
             task.waiting_http_request_id = None;
-            return push_string_result(task, _vm, body);
+            return push_string_result(task, vm, body);
         }
         // Still pending — yield again.
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
@@ -5569,7 +5584,7 @@ pub fn shim_http_get_json(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
     }
 
     // First call — pop the url, spawn the request and yield.
-    let url: String = super::convert::VMConvertible::pop_from_stack(task, _vm)
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let req_id = alloc_async_id();
@@ -5885,7 +5900,7 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
 /// Return the status code from the last HTTP request.
 /// Stack: [] -> [status_i32]
-pub fn shim_http_last_status(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_last_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status = LAST_HTTP_STATUS.with(|s| s.get());
     task.ram.push_i32(status);
     Ok(())
@@ -5918,7 +5933,7 @@ pub fn shim_http_get_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// HTTP listen stub — starts a simple HTTP server.
 /// Stack: [callback_closure, port, host] -> []
 /// Currently a stub that prints a message and returns.
-pub fn shim_http_listen(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_http_listen(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop 3 args: host, port, callback
     // For now, just print a warning and return void
     eprintln!("WARN: http.listen() stub called — HTTP server not yet implemented in AutoVM");
@@ -6014,21 +6029,28 @@ pub fn shim_task_spawn_vm(
     //   [task_type_str, capacity, n_init, initN, ..., init0]
     // Pop order (top first): n_init count, then n_init values (rev → field 0 first),
     // then capacity, then task_type.
-    let n_init = task.ram.pop_i32() as usize;
+    let n_init = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_n_init = crate::vm::native::StakeGuard::new(vm, n_init as i64 as u64);
     let mut init_values: Vec<auto_val::NanoValue> = Vec::with_capacity(n_init);
     for _ in 0..n_init {
-        init_values.push(task.ram.pop_nv());
+        init_values.push(crate::vm::native::pop_arg_nv(task));
     }
     // Popped values are in reverse declaration order (top was field 0); reverse
     // to get declaration order (field 0 first) for positional state_vars write.
     init_values.reverse();
 
-    let capacity = task.ram.pop_i32();
+    let capacity = crate::vm::native::pop_arg_i32(task);
+
+
+    let _stake_capacity = crate::vm::native::StakeGuard::new(vm, capacity as i64 as u64);
     let ram_size = if capacity <= 0 { 8192 } else { (capacity as usize) * 64 };
 
     // Pop task_type string (tagged string index)
     let task_type = {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
@@ -6103,6 +6125,9 @@ pub fn shim_task_send_vm(
         // Structured message: preserve the object reference so the wake path can
         // push it back and the handler can GET_FIELD each binding.
         let id = auto_val::decode_object(msg_nv) as u64;
+        // Plan 419: 邮箱持有消息 —— retain 一份(CALL_NAT 死区结算会释放被弹
+        // 参数槽的原 stake,retain 与之配平,净效果为 stake 转移进邮箱)。
+        vm.rc_retain_id(id);
         auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
     } else {
         // Scalar message (i32/bool/etc): encode as Value::Int for backward compat
@@ -6119,6 +6144,10 @@ pub fn shim_task_send_vm(
             task.ram.push_i32(1); // success
             return Ok(());
         }
+    }
+    // Plan 419: 邮箱缺失路径 —— 消息未投递,structured 引用按死亡释放。
+    if let auto_val::Value::VmRef(r) = &msg_value {
+        vm.rc_release_id(r.id as u64);
     }
     eprintln!("TaskHandle.send failed: no mailbox for task {}", handle_id);
     task.ram.push_i32(0);
@@ -6448,7 +6477,9 @@ pub fn shim_task_system_run(
     use crate::vm::engine::{FrameResult, FutureState};
 
     // Pop the future encoding from stack
-    let future_bits = task.ram.pop_i32();
+    let future_bits = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_future_bits = crate::vm::native::StakeGuard::new(vm, future_bits as i64 as u64);
 
     // Decode future ID
     if (future_bits & 0xFF) != 0xF0 {
@@ -6483,7 +6514,9 @@ pub fn shim_task_system_run(
         match vm.execute_single_frame(task, 10_000) {
             FrameResult::Return => {
                 if task.ram.sp > task.bp + 1 {
-                    let raw = task.ram.pop_i32();
+                    let raw = crate::vm::native::pop_arg_i32(task);
+
+                    let _stake_raw = crate::vm::native::StakeGuard::new(vm, raw as i64 as u64);
                     result_value = auto_val::Value::Int(raw);
                 }
                 success = true;
@@ -6821,7 +6854,7 @@ fn push_rust_obj<T: Any + Send + Sync + 'static>(
     let obj = RustStdlibObject::new(type_name, value);
     let handle = vm.insert_heap_object(obj) as u32;
     {
-        task.ram.push_nv(auto_val::encode_object(handle));
+        vm.rc_push(task, auto_val::encode_object(handle));
     }
     Ok(())
 }
@@ -7161,7 +7194,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                     let val = *val;
                     if val >= 4000000 {
                         // Heap object ID — push as object reference
-                        task.ram.push_nv(auto_val::encode_object(val as u32));
+                        vm.rc_push(task, auto_val::encode_object(val as u32));
                     } else if let Some(bytes) = vm.get_string(val as u32) {
                         let new_idx = vm.add_string(bytes.to_vec());
                         task.ram.push_str_idx(new_idx as u32);
@@ -7378,7 +7411,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             let handle = vm.insert_heap_object(
                 RustStdlibObject::new("Backtrace", bt)
             ) as i32;
-            task.ram.push_i32(handle);
+            vm.rc_push_id(task, handle as u64); // Plan 419
         }
 
         // ---- percent_encoding ----
@@ -7441,7 +7474,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 }
             }
             let list_id = vm.insert_heap_object(match_list);
-            task.ram.push_nv(auto_val::encode_object(list_id as u32));
+            vm.rc_push(task, auto_val::encode_object(list_id as u32));
         }
 
         // ---- percent_encoding ----
@@ -8365,8 +8398,8 @@ fn main() {
 
 /// Run all VM file-based tests in a directory.
 /// Pops path (String) from stack, pushes failure count (i64) to stack.
-pub fn shim_test_run_vm_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_test_run_vm_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let dir = Path::new(&path);
@@ -8394,14 +8427,14 @@ pub fn shim_test_run_vm_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
         }
     }
 
-    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Run all a2c transpiler tests in a directory.
 /// Pops path (String) from stack, pushes failure count (i64) to stack.
-pub fn shim_test_run_a2c_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_test_run_a2c_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let dir = Path::new(&path);
@@ -8429,14 +8462,14 @@ pub fn shim_test_run_a2c_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
         }
     }
 
-    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Run all a2ts transpiler tests in a directory.
 /// Pops path (String) from stack, pushes failure count (i64) to stack.
-pub fn shim_test_run_a2ts_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_test_run_a2ts_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let dir = Path::new(&path);
@@ -8464,14 +8497,14 @@ pub fn shim_test_run_a2ts_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
         }
     }
 
-    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
 /// Run all a2r transpiler tests in a directory.
 /// Pops path (String) from stack, pushes failure count (i64) to stack.
-pub fn shim_test_run_a2r_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, _vm)
+pub fn shim_test_run_a2r_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
     let dir = Path::new(&path);
@@ -8500,6 +8533,6 @@ pub fn shim_test_run_a2r_dir(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
         }
     }
 
-    failures.push_to_stack(task, _vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }

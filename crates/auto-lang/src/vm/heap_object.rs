@@ -56,6 +56,16 @@ pub trait HeapObject: Any + Send + Sync {
     ///
     /// This enables mutable downcasting for modifying the concrete type.
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// Plan 419 Phase 1: 本对象直接持有的子堆引用 id 集合。
+    ///
+    /// RC 归零释放对象时,这些子引用的 stakes 随之死亡(递归 decref,
+    /// "父回收 → 子传递回收")。默认空(标量型容器 / 不透明 Rust 对象)。
+    /// 持有 VmRef 的容器(ListData<Value>/ObjectData/GenericInstanceData/
+    /// Node props / Value 携带的 SpecializedPair)必须实现。
+    fn child_refs(&self) -> Vec<u64> {
+        Vec::new()
+    }
 }
 
 /// Type tags for all heap-allocated objects in AutoVM
@@ -268,6 +278,16 @@ impl HeapObject for auto_val::Node {
     fn type_tag(&self) -> TypeTag { TypeTag::Node }
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    // Plan 419: props 中的 VmRef 是子引用(kids 为内联 owned Node,非引用)。
+    fn child_refs(&self) -> Vec<u64> {
+        self.props_clone()
+            .iter()
+            .filter_map(|(_k, v)| match v {
+                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 /// Helper function to downcast a HeapObject to a concrete type
