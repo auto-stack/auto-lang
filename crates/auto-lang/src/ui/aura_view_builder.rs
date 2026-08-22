@@ -2974,16 +2974,36 @@ let tabs_inner = View::Row {
         let orientation = self
             .extract_string_with(props, "orientation", bindings)
             .unwrap_or_else(|| "vertical".to_owned());
-        // Line style: zinc-500 for dark-theme visibility (bg-border was
-        // indistinguishable from the bar background); FIXED 16px height -
-        // Height::Fill (h-full) on a Row child breaks every following
-        // sibling in the VM renderer, and `self-stretch` degrades to a
-        // no-op. User classes append after the base (later wins).
-        let (base, vertical) = if orientation == "horizontal" {
-            ("w-full h-px bg-zinc-500", false)
-        } else {
-            ("w-px h-4 bg-zinc-500", true)
-        };
+        if orientation == "horizontal" {
+            // Horizontal: full-width 1px line (zinc-500 for dark-theme
+            // visibility; bg-border was indistinguishable from the bg).
+            // Built as a styled empty Column; FIXED sizes only - h-full
+            // (Fill) on a Row child breaks every following sibling.
+            let base = "w-full h-px bg-zinc-500";
+            let mut style = Style::parse(base).ok();
+            if let Some(user) = self.extract_style_with(props, bindings) {
+                style = match style {
+                    Some(mut s) => {
+                        s.classes.extend(user.classes);
+                        Some(s)
+                    }
+                    None => Some(user),
+                };
+            }
+            let mut b = ViewBuilder::col();
+            if let Some(st) = style {
+                b = b.with_style(st);
+            }
+            return b.build();
+        }
+        // Vertical: rendered as a box-drawing glyph TEXT node. Text is the
+        // one row-child kind with WORKING symmetric margins (mx-*) in this
+        // renderer, and it survives the nested-row bug that eats plain
+        // column children - with a bare w-px line the measured gaps came
+        // out 28px left vs 12px right (mx on columns is ignored, so the
+        // line sat lopsided). The DSL surface stays a dedicated `sep`
+        // widget; user classes append after the base (later wins).
+        let base = "text-zinc-500 text-[14px] mx-2";
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
             style = match style {
@@ -2994,23 +3014,10 @@ let tabs_inner = View::Row {
                 None => Some(user),
             };
         }
-        // Build the line as a styled empty Column - a Container wrapping
-        // View::Empty inside a Row breaks the layout of following siblings.
-        let line = {
-            let mut b = ViewBuilder::col();
-            if let Some(st) = style {
-                b = b.with_style(st);
-            }
-            b.build()
-        };
-        // NOTE: a 3-part row (transparent gap columns flanking the line)
-        // hits the same nested-row bug that drops icon-button children —
-        // plain column children vanish too (verified). Ship the bare line;
-        // the geometric row gaps around it are uniform, and any residual
-        // visual asymmetry comes from glyph placement inside fixed-width
-        // icon buttons (see Plan 414 §8 follow-ups).
-        let _ = vertical;
-        line
+        View::Text {
+            content: "\u{2502}".to_owned(),
+            style,
+        }
     }
 
     /// Convert an avatar element: colored circle placeholder.
