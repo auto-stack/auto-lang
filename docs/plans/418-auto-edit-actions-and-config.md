@@ -281,3 +281,13 @@ app 内置(随仓库) → OS 用户层(`~/.config/autoos/apps/auto-edit/keymap.a
 - **B. `code-editor` 单独启用编译不过(§8.4 既有项)修复**:根因=style/class.rs 的语义色 alpha 混合引用 `ui-iced` 门控的 iced_adapter。抽取**纯主题层** `style/theme.rs`(DARK_MODE/ACCENT/WINDOW_WIDTH thread-local + resolve_semantic_rgb/resolve_border_rgb,零 iced 依赖),iced_adapter `pub use` 转发保持全部既有调用点兼容,class.rs 改调 theme。`cargo check --features code-editor` 零错误。
 - **C. gallery 过时文案**:code-editor 页"vue 后端降级 textarea"描述更新为 CodeMirror shell 已落地(注明 oncursor/oncontextmenu 事件仍缺)。
 - **回归**:build 0 error;iced 44 + code_editor 22 + layout_tests 5 + cfg 3 + mcp 6 + 矩阵 29/29。
+
+### 8.10 后续项立项去向(2026-08-22,editor 残留全面分派)
+editor 残留盘点(§8.8-8.9 后)经分析分派为 **5 份新计划 + 1 项不立项**:
+- **Plan 419**:代码折叠 Phase B(core 逐 run 自绘重构;fill_raw 无法跳行的架构矛盾,P0 先 cosmic-text 能力调研+路线定稿)。
+- **Plan 420**:多 tab 工作区(动态 tab 列表/关闭/`+` 打开/脏标记/拖拽;含 AUTO_*_PATH 环境变量旁路解 ActOpen/ActSave 自动化盲区)。
+- **Plan 421**:vue 端 code_editor 契约(五 props 消费+oncursor/oncontextmenu codegen+lang:auto 映射;vi 依赖 P3 显式决策)。
+- **Plan 422**:弹层原语(anchor 定位 popover,iced overlay 机制)——menubar 估位/2000px catch 退役 + contextmenu(413 §5.5)复用同一原语。
+- **Plan 423**:Action 配置层 Phase 3(热重载 ArcSwap 化/OS 用户层 keymap/表达式引擎复用 resolve_expr_to_value/enabled-if 渲染+按钮 disabled 态,顺消 Plan 402 autoui_check 常驻警告)。
+- **不立项**:IME/150% DPI/Linux 人工验收——属 413 既有人工验收尾巴(413 头部"待人工验证"),需实机窗口执行,非开发计划;413 归档前完成。
+依赖关系:419/420/421 相互独立可并行;422 建议先行(420 的关闭确认弹层、421 无关);423 独立,注意与 032 系(键绑定)并行会话的改动面协调。
