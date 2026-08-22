@@ -5094,6 +5094,33 @@ impl AutoVM {
                     };
                     let receiver_nv = receiver_nv;
 
+                    // 2026-08-22(方法链修复):标量接收者的内建方法兜底。
+                    // 链式调用 `l.len().str()` 中前一方法返回普通 i32/f64/bool
+                    // 标量;此前 i32>0 被一律按堆对象 id 解析(heap 无此 id →
+                    // <unknown:N>.str → 派发失败静默推 None —— 列表方法链
+                    // 串成垃圾串/None 的根因)。与 TYPE_TO_STR 同款格式化。
+                    if arg_count == 0 && matches!(method_name.as_str(), "str" | "to_string") {
+                        let scalar_str: Option<String> = if auto_val::is_bool(receiver_nv) {
+                            Some(if auto_val::decode_bool(receiver_nv) { "true".to_string() } else { "false".to_string() })
+                        } else if auto_val::is_f64(receiver_nv) {
+                            Some(format!("{}", auto_val::decode_f64(receiver_nv)))
+                        } else if auto_val::is_f32(receiver_nv) {
+                            Some(format!("{}", auto_val::decode_f32(receiver_nv)))
+                        } else if auto_val::is_i32(receiver_nv) {
+                            let v = auto_val::decode_i32(receiver_nv);
+                            if v >= 4_000_000 { None } else { Some(format!("{}", v)) }
+                        } else {
+                            None
+                        };
+                        if let Some(s) = scalar_str {
+                            // 栈:[receiver] → [str 结果](argc=0,receiver 即栈顶)
+                            task.ram.pop_nv();
+                            let idx = self.add_string(s.into_bytes());
+                            push_str_tag(&mut task.ram, idx as u32);
+                            return Ok(StepResult::Continue);
+                        }
+                    }
+
                     // Look up the object's type name from all registries
                     let type_name = if auto_val::is_string(receiver_nv) {
                         let str_idx = auto_val::decode_string(receiver_nv) as usize;

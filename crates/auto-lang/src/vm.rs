@@ -17,6 +17,9 @@ mod config_eval_tests;
 // 2026-08-22(侧栏串写根因):字符串池 u32 化 + 驻留去重的回归锁。
 #[cfg(test)]
 mod tests_string_pool;
+// 2026-08-22 已知 VM 限制复现(方法链 / fn 返回复合值)。
+#[cfg(test)]
+mod tests_known_limits;
 // Plan 075: TemplateCodegen for template file compilation
 pub mod collections;
 pub mod engine;
