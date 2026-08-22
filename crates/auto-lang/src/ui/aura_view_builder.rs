@@ -3194,6 +3194,17 @@ let tabs_inner = View::Row {
             "icon" => "h-10 w-10",
             _ => "h-10 px-4",  // default
         };
+        // Plan 414 R13 fix: variant=icon carries its own square sizing in the
+        // variant preset (h-7 w-7); the default "h-10 px-4" size preset would
+        // override it (later classes win) AND its px-4 starves the 14px svg
+        // (28px box - 32px horizontal padding = negative content width,
+        // icon invisible). Empty the size preset unless an explicit size prop
+        // is given.
+        let size_preset: &str = if variant == "icon" && size.is_empty() {
+            ""
+        } else {
+            size_preset
+        };
         let style = {
             // Binding-aware so a class can come from the loop variable, e.g.
             // `class: cell.style` where each cell carries its own Tailwind class.
