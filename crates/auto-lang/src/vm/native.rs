@@ -7216,6 +7216,7 @@ pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// (复用 json.to_value 的转换管线)—— 前端桩免一层 json.to_value 调用。
 /// Stack: str_idx(name), str_idx(args_json) -> value
 pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    eprintln!("[DBG-HOSTCALL-ENTER] shim_host_call_value entered");
     let args_idx = task.ram.pop_str_idx() as u16;
     let name_idx = task.ram.pop_str_idx() as u16;
     let name = vm.get_string(name_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
