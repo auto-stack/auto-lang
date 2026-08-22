@@ -118,6 +118,23 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
+/// Plan 426: does an expression contain an `.await`? Setup-block MVP rejects
+/// awaits (async setup needs a Suspense boundary — future work).
+fn stmt_expr_contains_await(expr: &Expr) -> bool {
+    match expr {
+        Expr::Await { .. } => true,
+        Expr::Call(call) => {
+            stmt_expr_contains_await(&call.name)
+                || call.args.args.iter().any(|a| stmt_expr_contains_await(&a.get_expr()))
+        }
+        Expr::Bina(l, _, r) => stmt_expr_contains_await(l) || stmt_expr_contains_await(r),
+        Expr::Unary(_, e) => stmt_expr_contains_await(e),
+        Expr::Dot(obj, _) => stmt_expr_contains_await(obj),
+        Expr::Array(items) => items.iter().any(stmt_expr_contains_await),
+        _ => false,
+    }
+}
+
 fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
@@ -11897,6 +11914,7 @@ impl<'a> Parser<'a> {
         let mut ext_imports = Vec::new();
         let mut watch = Vec::new();
         let mut expose = Vec::new();
+        let mut setup: Option<crate::ast::ui::SetupBlock> = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -11936,6 +11954,15 @@ impl<'a> Parser<'a> {
                 "watch" => {
                     watch.extend(self.parse_watch_block_inner()?);
                 }
+                // Plan 426: setup 前导槽——位置任意,语义固定(setup 相位)。
+                "setup" => {
+                    if setup.replace(self.parse_setup_block_inner()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `setup` block in widget".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
                 "expose" => {
                     expose.extend(self.parse_expose_block_inner()?);
                 }
@@ -11974,6 +12001,7 @@ impl<'a> Parser<'a> {
             style,
             ext_imports,
             watch,
+            setup,
             expose,
         }))
     }
@@ -12277,6 +12305,66 @@ impl<'a> Parser<'a> {
     /// backend emits `defineExpose({ ... })` in `<script setup>` so a parent
     /// holding a template ref on this component can call the exposed
     /// members; other backends ignore the block.
+    /// Plan 426: parse a `setup { ... }` preamble block (consumes `setup`).
+    /// Statement set = handler-statement subset (let / expression statements);
+    /// `await` is REJECTED in the MVP (async setup needs a Suspense boundary —
+    /// separate task). A `refs: [f1, f2]` suffix after a `let` statement
+    /// annotates ref fields (script-side access injects `.value`).
+    fn parse_setup_block_inner(&mut self) -> AutoResult<crate::ast::ui::SetupBlock> {
+        self.expect_ident("setup")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut body = Body::new();
+        let mut ref_annotations: Vec<(String, Vec<String>)> = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            // Plan 426 决策(块级 refs 声明):`refs <binding>: [f1, f2]` —
+            // 标注该 let 绑定的 ref 字段(script 侧访问注入 .value)。独立
+            // 语句形态,不与 let 表达式语法纠缠。
+            if self.cur.text.as_str() == "refs" {
+                self.next(); // consume "refs"
+                let binding = self.cur.text.to_string();
+                self.next();
+                self.expect(TokenKind::Colon)?;
+                self.expect(TokenKind::LSquare)?;
+                let mut fields = Vec::new();
+                while !self.is_kind(TokenKind::RSquare) {
+                    fields.push(self.cur.text.to_string());
+                    self.next();
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                        self.skip_empty_lines();
+                    }
+                }
+                self.expect(TokenKind::RSquare)?;
+                ref_annotations.push((binding, fields));
+                self.skip_empty_lines();
+                continue;
+            }
+            let stmt = self.parse_stmt()?;
+            // MVP: reject await — async setup requires a Suspense boundary,
+            // registered as future work. Covers expression statements and
+            // `let x = <awaiting expr>` initializers alike.
+            let contains_await = match &stmt {
+                Stmt::Expr(expr) => stmt_expr_contains_await(expr),
+                Stmt::Store(store) => stmt_expr_contains_await(&store.expr),
+                _ => false,
+            };
+            if contains_await {
+                return Err(SyntaxError::Generic {
+                    message: "`await` is not allowed in a setup block (async setup requires a Suspense boundary - not yet supported)".into(),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+            body.stmts.push(stmt);
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(crate::ast::ui::SetupBlock { body, ref_annotations })
+    }
+
     fn parse_expose_block_inner(&mut self) -> AutoResult<Vec<Name>> {
         self.expect_ident("expose")?;
         self.expect(TokenKind::LBrace)?;
@@ -13189,6 +13277,14 @@ impl<'a> Parser<'a> {
             None
         };
         self.skip_empty_lines();
+        // Plan 426: optional `setup { }` preamble (per-instance, before first
+        // render) — mirrors widget.
+        let setup: Option<crate::ast::ui::SetupBlock> = if self.cur.text.as_str() == "setup" {
+            Some(self.parse_setup_block_inner()?)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
         // The single body node is the view root — sugar wraps it in a view
         // block (body 即视图,与 view 可选化语义一致).
         let body = self.parse_view_node()?;
@@ -13215,6 +13311,7 @@ impl<'a> Parser<'a> {
             style,
             ext_imports,
             watch,
+            setup,
             expose: Vec::new(),
         }))
     }

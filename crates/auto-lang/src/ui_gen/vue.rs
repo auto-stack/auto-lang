@@ -1016,6 +1016,17 @@ pub struct VueGenerator {
     /// → key = local name（"x"），value = 标注为 ref 的字段名集合。script 表达式
     /// 访问这些字段时加 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
     facade_ref_fields: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// Plan 426: setup preamble binding names (`let` names). They join the
+    /// facade locals — script/handler access injects no `.value` (the binding
+    /// itself is not a ref); the template sees them via script-setup top-level.
+    setup_locals: Vec<String>,
+    /// Plan 426: refs annotations of setup bindings (binding → ref fields),
+    /// same mechanism as facade_ref_fields (script-side field access + .value).
+    setup_ref_fields: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// Plan 426: current widget's setup statements (stashed in generate_sfc
+    /// for generate_script — the generator methods receive the widget
+    /// piecemeal).
+    current_setup_stmts: Option<Vec<crate::ast::Stmt>>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -1162,6 +1173,9 @@ impl VueGenerator {
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
             facade_ref_fields: std::collections::HashMap::new(),
+            setup_locals: Vec::new(),
+            setup_ref_fields: std::collections::HashMap::new(),
+            current_setup_stmts: None,
         }
     }
 
@@ -1367,6 +1381,9 @@ impl VueGenerator {
         self.ext_import_lines.clear();
         self.ext_composables.clear();
         self.facade_ref_fields.clear();
+        self.setup_locals.clear();
+        self.setup_ref_fields.clear();
+        self.current_setup_stmts = None;
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1644,6 +1661,37 @@ impl VueGenerator {
         // Widget `use { ... }` external imports — must be registered before
         // template generation so view tags resolve to external components.
         self.register_ext_imports(widget);
+
+        // Plan 426: setup preamble — register binding names (facade-local
+        // semantics) and refs annotations; name collisions with state/prop
+        // are a compile error (PLAN-037 T5 precedent).
+        if let Some(setup) = &widget.setup {
+            for stmt in &setup.body.stmts {
+                if let crate::ast::Stmt::Store(store) = stmt {
+                    let name = store.name.as_str();
+                    if widget.state_vars.iter().any(|sv| sv.name == name) {
+                        return Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                            "widget `{}` setup binding `{}` collides with a model var; rename one",
+                            widget.name, name
+                        )));
+                    }
+                    if widget.props.iter().any(|p| p.name == name) {
+                        return Err(crate::ui_gen::GenError::InvalidStateRef(format!(
+                            "widget `{}` setup binding `{}` collides with a prop; rename one",
+                            widget.name, name
+                        )));
+                    }
+                    self.setup_locals.push(name.to_string());
+                }
+            }
+            for (binding, fields) in &setup.ref_annotations {
+                self.setup_ref_fields.insert(
+                    binding.clone(),
+                    fields.iter().cloned().collect(),
+                );
+            }
+            self.current_setup_stmts = Some(setup.body.stmts.clone());
+        }
 
         // Plan 043 H2: index this widget's msg variants (handler name → payload
         // arity) so sub-widget event bindings can decide between forwarding the
@@ -2028,6 +2076,21 @@ impl VueGenerator {
             script.push_str(&format!("const {} = {}({})\n", local, callee, args));
         }
         if !self.ext_composables.is_empty() {
+            script.push('\n');
+        }
+
+        // Plan 426: setup preamble — statements at <script setup> top level,
+        // BEFORE state/computed definitions (bindings first). Bindings are
+        // registered as facade locals; refs-annotated field access gains
+        // `.value`; await was rejected at parse time (MVP).
+        if let Some(setup) = &self.current_setup_stmts {
+            let ctx = self.handler_ts_ctx();
+            let body = crate::ui_gen::ts_adapter::transpile_handler_body(setup, &ctx);
+            self.drain_ctx_warnings(&ctx);
+            for line in body.lines() {
+                script.push_str(line);
+                script.push('\n');
+            }
             script.push('\n');
         }
 
@@ -3200,13 +3263,23 @@ impl VueGenerator {
     /// Plan 012 Batch A (gap 19): local names of `use { composable: ... }`
     /// imports, for the ts_adapter facade gate.
     fn facade_local_names(&self) -> std::collections::HashSet<String> {
-        self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect()
+        let mut names: std::collections::HashSet<String> =
+            self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect();
+        // Plan 426: setup bindings share facade-local semantics.
+        names.extend(self.setup_locals.iter().cloned());
+        names
     }
 
     /// Plan 408 P12 §10.4: ref 字段标注的 flat map（local name → field set），
     /// 传给 AuraTsContext 让 ts_adapter 在字段访问时注入 `.value`。
     fn facade_ref_fields_map(&self) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
-        self.facade_ref_fields.clone()
+        let mut map = self.facade_ref_fields.clone();
+        for (binding, fields) in &self.setup_ref_fields {
+            map.entry(binding.clone())
+                .or_default()
+                .extend(fields.iter().cloned());
+        }
+        map
     }
 
     /// Generate <template> content from view tree
@@ -14265,6 +14338,7 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = VueGenerator::new();
@@ -15629,6 +15703,103 @@ widget Icon(language: str) {
 
         let _ = std::fs::remove_dir_all(&tmp_sugar);
         let _ = std::fs::remove_dir_all(&tmp_plain);
+    }
+
+    // ====================================================================
+    // Plan 426: setup preamble slot (per-instance setup phase).
+    // ====================================================================
+
+    /// Plan 426 T2: setup statements land at <script setup> top level BEFORE
+    /// state/computed definitions (bindings first); the binding is usable in
+    /// the template and in on handlers.
+    #[test]
+    fn test_plan426_setup_preamble_position_and_bindings() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    setup {
+        let greeting = "hello"
+    }
+    msg Msg { Bump }
+    model { var count int = 0 }
+    view {
+        col {
+            text .greeting
+            text .count
+        }
+    }
+    on {
+        .Bump -> { .count = .count + 1 }
+    }
+}
+"#);
+        let setup_pos = sfc.find("let greeting");
+        let state_pos = sfc.find("const count = defineModel");
+        assert!(setup_pos.is_some(), "setup statement emitted:\n{}", sfc);
+        assert!(state_pos.is_some(), "state emitted:\n{}", sfc);
+        assert!(setup_pos.unwrap() < state_pos.unwrap(),
+            "setup statements BEFORE state/computed:\n{}", sfc);
+        // Template binding visible (script-setup top-level const).
+        assert!(sfc.contains("greeting"), "template sees binding:\n{}", sfc);
+    }
+
+    /// Plan 426 T2: refs annotation — `let t = useT() refs: [locale]` marks
+    /// `t.locale` for `.value` injection in handler/computed contexts
+    /// (same mechanism as the composable kind's facade_ref_fields).
+    #[test]
+    fn test_plan426_setup_refs_annotation() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget App {
+    setup {
+        let i18n = useI18n()
+        refs i18n: [locale]
+    }
+    msg Msg { Pick }
+    model { var chosen str = "" }
+    view {
+        col {
+            button "pick" {
+                onclick: .Pick
+            }
+        }
+    }
+    on {
+        .Pick -> { .chosen = i18n.locale }
+    }
+}
+"#);
+        assert!(sfc.contains("let i18n = useI18n()"), "setup call emitted:\n{}", sfc);
+        assert!(sfc.contains("i18n.locale.value"), "refs field gains .value:\n{}", sfc);
+    }
+
+    /// Plan 426 T2 MVP: `await` inside a setup block is a hard parse error
+    /// (async setup needs a Suspense boundary — registered as future work).
+    #[test]
+    fn test_plan426_setup_rejects_await() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {\n    setup {\n        let x = load().await\n    }\n    view { col { text \"x\" } }\n}\n";
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let err = parser.parse().err().expect("await in setup must fail to parse");
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("await") || msg.contains("Suspense"),
+            "error mentions await/Suspense: {}", msg);
+    }
+
+    /// Plan 426 T2: a setup binding colliding with a model var / prop is a
+    /// compile error (PLAN-037 T5 same-name precedent).
+    #[test]
+    fn test_plan426_setup_name_collision() {
+        let result = std::panic::catch_unwind(|| {
+            gen_sfc_from_widget_src(r#"
+widget App {
+    setup {
+        let count = 1
+    }
+    model { var count int = 0 }
+    view { col { text .count } }
+}
+"#)
+        });
+        assert!(result.is_err(), "collision with model var must error");
     }
 
     /// Plan 425 T1 view 可选化:`widget X { col {...} }`(体即视图,无 view

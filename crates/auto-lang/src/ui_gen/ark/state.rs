@@ -619,6 +619,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         }
 ;
 

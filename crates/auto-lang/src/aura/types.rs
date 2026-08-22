@@ -117,6 +117,11 @@ pub struct AuraWidget {
     /// a parent holding a template ref on this component can call imperative
     /// methods or read exposed refs; other backends ignore them.
     pub exposes: Vec<String>,
+
+    /// Per-instance setup preamble from the widget-level `setup { ... }` block
+    /// (Plan 426). The Vue backend emits the statements at `<script setup>`
+    /// top level (before state/computed definitions); other backends ignore.
+    pub setup: Option<crate::ast::ui::SetupBlock>,
 }
 
 /// A reactive watcher (widget-level `watch { ... }` entry).
@@ -1161,6 +1166,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         assert_eq!(widget.name, "Counter");
@@ -1263,6 +1269,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         // logic 视图

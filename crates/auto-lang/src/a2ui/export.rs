@@ -501,6 +501,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
 }
 
     }
@@ -573,6 +574,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
 };
 
         let result = export_widget(&widget);

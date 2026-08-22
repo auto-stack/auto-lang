@@ -69,12 +69,45 @@ pub struct WidgetDecl {
     /// other backends ignore them.
     pub watch: Vec<WatchDecl>,
 
+    /// Per-instance setup preamble (Plan 426): a `setup { ... }` block whose
+    /// statements run synchronously at component setup, BEFORE the first
+    /// render. The Vue backend emits them at `<script setup>` top level
+    /// (state/computed definitions first need these bindings); the
+    /// interpreter path is future work.
+    pub setup: Option<SetupBlock>,
+
     /// Member names declared in a widget-level `expose { ... }` block
     /// (without the leading dot). The Vue backend emits them as
     /// `defineExpose({ ... })` in `<script setup>` so a parent holding a
     /// template ref on this component can call imperative methods or read
     /// exposed refs; other backends ignore them.
     pub expose: Vec<Name>,
+}
+
+/// Plan 426: `setup { ... }` 前导槽——每实例同步执行、先于首渲染的通用
+/// setup 语句槽(不止无参 composable 调用)。
+///
+/// ```auto
+/// widget App {
+///     setup {
+///         let t = useT() refs: [locale]
+///         let ready = dom.prefers_dark()
+///     }
+///     view { col { text t("hi") } }
+/// }
+/// ```
+///
+/// 语句集 = handler 语句子集(let/表达式);`await` 在 MVP 明确拒绝
+/// (async setup 需要 Suspense 边界,另立任务)。`refs: [...]` 是 let 语句
+/// 后缀标注:列出的字段在 script 侧访问时注入 `.value`(复用 composable
+/// kind 的 facade_ref_fields 机制——composable 返回普通对象时 ref 字段
+/// 不自动解包)。
+#[derive(Debug, Clone)]
+pub struct SetupBlock {
+    /// Statements (let / expression statements).
+    pub body: crate::ast::Body,
+    /// refs annotations: let binding name → ref field names.
+    pub ref_annotations: Vec<(String, Vec<String>)>,
 }
 
 /// A single watcher inside a widget-level `watch { ... }` block.
@@ -858,6 +891,7 @@ mod tests {
             style: None,
             ext_imports: Vec::new(),
             watch: Vec::new(),
+            setup: None,
             expose: Vec::new(),
         };
 

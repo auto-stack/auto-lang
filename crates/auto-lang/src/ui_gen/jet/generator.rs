@@ -2200,6 +2200,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         }
 ;
 
@@ -2260,6 +2261,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2299,6 +2301,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2411,6 +2414,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2474,6 +2478,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2919,6 +2924,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -2970,6 +2976,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3017,6 +3024,7 @@ mod tests {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3175,6 +3183,7 @@ widget TestCardVariant {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
         };
 
         let mut gen = JetGenerator::new();
@@ -3242,6 +3251,7 @@ fn test_text_with_flex_style() {
             ext_imports: Vec::new(),
             watchers: Vec::new(),
             exposes: Vec::new(),
+            setup: None,
     };
 
     let mut gen = JetGenerator::new();
