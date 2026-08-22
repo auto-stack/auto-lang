@@ -620,6 +620,18 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
     }
 }
 
+/// Same rule as vue.rs `sanitize_ident`: any char outside [A-Za-z0-9_]
+/// becomes `_`. Quoted msg variants (`"update:open"`) reach handler bodies
+/// as self-call/self-ref field names; emitting them verbatim produces
+/// invalid JS (`update:open(false)`), while the handler function itself is
+/// emitted under the sanitized name (`update_open`). Identity for plain
+/// idents, so ordinary field/method names are unaffected.
+fn sanitize_ident(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect()
+}
+
 fn transpile_body(body: &Body, ctx: &AuraTsContext, out: &mut Vec<u8>) {
     for stmt in &body.stmts {
         transpile_stmt(stmt, ctx, out);
@@ -727,7 +739,10 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         // general Dot/Call paths and lands on this element.
                         write!(out, "{}.value!", field_name).ok();
                     } else {
-                        write!(out, "{}", field_name).ok();
+                        // Quoted msg variants ("update:open") referenced as
+                        // self fields must match the sanitized fn name the
+                        // handler is emitted under.
+                        write!(out, "{}", sanitize_ident(field_name)).ok();
                     }
                     return;
                 }
@@ -866,7 +881,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             return;
                         }
                         // Generate as bare function call (store sibling action)
-                        write!(out, "{}(", method.as_str()).ok();
+                        // Quoted msg variants ("update:open") sanitize to the
+                        // fn name the handler is emitted under.
+                        write!(out, "{}(", sanitize_ident(method.as_str())).ok();
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i > 0 {
                                 write!(out, ", ").ok();

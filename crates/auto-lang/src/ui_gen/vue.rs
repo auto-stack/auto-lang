@@ -6850,7 +6850,11 @@ impl VueGenerator {
             for used_name in &snapshot {
                 if let Some(targets) = calls_by_handler.get(used_name) {
                     for target in targets {
-                        if declared.contains(target) && self.used_handlers.insert(target.clone()) {
+                        // Quoted msg variants ("update:open") arrive raw from
+                        // the AST; `declared`/`used_handlers` hold the
+                        // sanitized fn names (identity for plain idents).
+                        let target = Self::sanitize_ident(target);
+                        if declared.contains(&target) && self.used_handlers.insert(target) {
                             changed = true;
                         }
                     }
