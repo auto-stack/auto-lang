@@ -2049,7 +2049,9 @@ impl<'a> Parser<'a> {
                     || self.is_kind(TokenKind::Nil)
                     || self.is_kind(TokenKind::Type)
                     || self.is_kind(TokenKind::Spawn)
-                // Allow .type property and .spawn method
+                    || self.is_kind(TokenKind::Tag)
+                // Allow .type property and .spawn method;
+                // 2026-08-22(tag 软关键字):.tag 字段访问 —— TaggedCell.tag 等
                 {
                     self.next();
                     // Use Expr::Dot for semantic clarity
@@ -3004,6 +3006,12 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Key::NamedKey(value))
             }
+            // 2026-08-22(tag 软关键字):tag 作字段名(Cell{ tag: "..." })
+            TokenKind::Tag => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
             // Plan 028 T14：`task` 是 Plan 121 关键字 token，但合法的对象键
             // （errand 状态 { task: ... }）。与 Type 同样的上下文化处理。
             TokenKind::Task => {
@@ -3082,6 +3090,21 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.next();
         Ok(Expr::Ident(name))
+    }
+
+    /// 2026-08-22(tag 上下文化):语句位置的 `tag` 仅在后随 Ident(枚举名,
+    /// 如 `tag Shape { ... }` / `tag Kind u16`)时才是(废弃别名的)enum
+    /// 声明;`tag: value` 属性对、`tag.field`、`tag(x)`、`tag = ...` 等
+    /// 形态一律按普通标识符走表达式路径(此前无差别进 enum_stmt,节点体
+    /// 里 `Cell{ tag: "x" }` 的 tag 键即被吞成 enum 名)。
+    fn tag_starts_enum_decl(&mut self) -> bool {
+        if let Ok(tok) = self.lexer.next() {
+            let is_ident = tok.kind == TokenKind::Ident;
+            self.lexer.push_token(tok);
+            is_ident
+        } else {
+            false
+        }
     }
 
     pub fn parse_name(&mut self) -> AutoResult<Name> {
@@ -4619,7 +4642,15 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::Union => self.union_stmt()?,
-            TokenKind::Tag => self.enum_stmt()?,  // DEPRECATED: tag redirects to enum
+            // DEPRECATED: tag → enum 别名;2026-08-22 起上下文化(见
+            // tag_starts_enum_decl):非声明形态的 tag 按标识符表达式处理。
+            TokenKind::Tag => {
+                if self.tag_starts_enum_decl() {
+                    self.enum_stmt()?
+                } else {
+                    self.expr_stmt()?
+                }
+            }
             TokenKind::Spec => self.spec_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // UI 场景：view 块（如 `view { Column { ... } }`）。
@@ -8664,7 +8695,9 @@ impl<'a> Parser<'a> {
             }
 
             // 2. Check for parameter name (required)
-            if !self.is_kind(TokenKind::Ident) {
+            // 2026-08-22(tag 软关键字):软关键字(tag/type/...)在参数名
+            // 位置就是普通标识符 —— cur_is_soft_ident 判定。
+            if !self.is_kind(TokenKind::Ident) && !self.cur_is_soft_ident() {
                 // If no ident after mode keyword, it's an error
                 if mode != ParamMode::default() {
                     return Err(SyntaxError::Generic {
@@ -11254,7 +11287,10 @@ impl<'a> Parser<'a> {
                          // Allow @, * as special field names for pointer operations
                          // Allow numeric literals for integer-keyed objects: a.1, a.2
                          // Allow boolean keywords: a.true, a.false
-            let field_name = if self.is_kind(TokenKind::Ident) {
+            let field_name = if self.is_kind(TokenKind::Ident)
+                // 2026-08-22(tag 软关键字):.tag 字段访问
+                || self.is_kind(TokenKind::Tag)
+            {
                 let text = self.cur.text.clone();
                 self.next();
                 text

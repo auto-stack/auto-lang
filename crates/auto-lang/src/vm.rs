@@ -20,6 +20,9 @@ mod tests_string_pool;
 // 2026-08-22 已知 VM 限制复现(方法链 / fn 返回复合值)。
 #[cfg(test)]
 mod tests_known_limits;
+// 2026-08-22 tag 软关键字的标识符用法回归。
+#[cfg(test)]
+mod tests_tag;
 // Plan 075: TemplateCodegen for template file compilation
 pub mod collections;
 pub mod engine;

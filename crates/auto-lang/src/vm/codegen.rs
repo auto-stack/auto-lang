@@ -154,6 +154,10 @@ pub struct Codegen {
     pub intrinsics: HashMap<String, u16>,
     /// String constant pool
     pub strings: Vec<Vec<u8>>,
+    /// 池内容索引(add_string O(1) 去重;2026-08-22 起线性扫 O(n²) 退役)。
+    /// 不变量:池只追加 —— 直推站点(绕过 add_string)只造成无害重复条目,
+    /// 不会令本表失真(旧索引永有效)。
+    string_dedup: HashMap<Vec<u8>, u32>,
     /// Plan 312: Collected #[api] routes (method, path, fn_name).
     /// Propagated through CompiledPackage → VirtualFlash → AutoVM for HTTP routing.
     pub api_routes: Vec<(String, String, String)>,
@@ -491,6 +495,7 @@ impl Codegen {
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
+            string_dedup: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
             locals: HashMap::new(),
@@ -827,6 +832,7 @@ impl Codegen {
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
+            string_dedup: HashMap::new(),
             object_keys: Vec::new(),
             object_types: Vec::new(),
             locals: HashMap::new(),
@@ -11227,17 +11233,14 @@ impl Codegen {
     /// ACCUM_PAIR/CREATE_OBJ/GET_FIELD/CALL_SPEC/CLOSURE(名)/CAPTURE_*/
     /// LOAD|STORE_GLOBAL/CREATE_FUTURE)统一 2B→4B,engine/disasm 同步。
     pub fn add_string(&mut self, s: &str) -> u32 {
-        // Check if string already exists
-        for (idx, existing) in self.strings.iter().enumerate() {
-            if existing == s.as_bytes() {
-                return idx as u32;
-            }
+        if let Some(&idx) = self.string_dedup.get(s.as_bytes()) {
+            return idx;
         }
-
-        // Add new string
-        let idx = self.strings.len();
-        self.strings.push(s.as_bytes().to_vec());
-        idx as u32
+        let idx = self.strings.len() as u32;
+        let bytes = s.as_bytes().to_vec();
+        self.strings.push(bytes.clone());
+        self.string_dedup.insert(bytes, idx);
+        idx
     }
 
     /// Get span from an expression for error reporting

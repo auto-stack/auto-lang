@@ -187,10 +187,8 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
 
         OpCode::JMP_L | OpCode::JMP_FAR => 4,
 
-        // CALL_SPEC:注意 asm 发射器(spec+method 双 u16)与 engine
-        // (method u32 + argc u8)形态不一致 —— 先例债,无消费者测试,
-        // 此处保持 asm 内部自洽(长度=发射 4B),待 ABT 管线启用时统一。
-        OpCode::CALL_SPEC => 4,
+        // CALL_SPEC:u32 method_name + u8 argc(2026-08-22 与 engine 统一)
+        OpCode::CALL_SPEC => 5,
 
         OpCode::SPAWN => 5,
 
@@ -417,11 +415,12 @@ fn emit_operands(
             Ok(())
         }
 
+        // 2026-08-22(形态债清偿):与 engine 对齐 —— u32 method_name + u8 argc。
         OpCode::CALL_SPEC => {
-            let spec = operand_u16(&instr.operands, 0)?;
-            let method = operand_u16(&instr.operands, 1)?;
-            bytecode.extend_from_slice(&spec.to_le_bytes());
+            let method = operand_u32(&instr.operands, 0)?;
+            let argc = operand_u8(&instr.operands, 1)?;
             bytecode.extend_from_slice(&method.to_le_bytes());
+            bytecode.push(argc);
             Ok(())
         }
 
