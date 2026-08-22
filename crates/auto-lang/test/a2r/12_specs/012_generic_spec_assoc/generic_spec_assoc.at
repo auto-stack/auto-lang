@@ -1,0 +1,31 @@
+// Test generic spec + associated types combined (Plan 417-E2 F3).
+//
+// `spec Store<T> { type Item; ... }` mixes a generic parameter (positional
+// binding `Store<int>`) with an associated type (named binding `Item=str`).
+// The impl clause carries both: `type IntStore as Store<int, Item=str>`.
+// a2r emits `impl Store<i64> for IntStore { type Item = String; ... }` and
+// the trait references the assoc type via Self::Item.
+
+spec Store<T> {
+    type Item
+    fn make(v T) Item
+    fn first() Item
+}
+
+type IntStore as Store<int, Item=str> {
+    data List<str>
+
+    fn make(v int) str {
+        return "box:" + v.to(str)
+    }
+
+    fn first() str {
+        return self.data[0]
+    }
+}
+
+pub fn main() {
+    var s = IntStore { data: ["a", "b"] }
+    print(s.make(7))
+    print(s.first())
+}
