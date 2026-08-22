@@ -2974,16 +2974,15 @@ let tabs_inner = View::Row {
         let orientation = self
             .extract_string_with(props, "orientation", bindings)
             .unwrap_or_else(|| "vertical".to_owned());
-        // Vertical default: FIXED 16px height. Height::Fill (h-full) on a
-        // Row child breaks the layout of every following sibling in the VM
-        // renderer (verified: toolbar after a Fill-height sep vanishes),
-        // and `self-stretch` degrades to a no-op (0-height). A fixed small
-        // height centered by the row's items-center reads correctly in
-        // 24-32px bars; override with h-* classes when needed.
-        let base = if orientation == "horizontal" {
-            "w-full h-px bg-border"
+        // Line style: zinc-500 for dark-theme visibility (bg-border was
+        // indistinguishable from the bar background); FIXED 16px height -
+        // Height::Fill (h-full) on a Row child breaks every following
+        // sibling in the VM renderer, and `self-stretch` degrades to a
+        // no-op. User classes append after the base (later wins).
+        let (base, vertical) = if orientation == "horizontal" {
+            ("w-full h-px bg-zinc-500", false)
         } else {
-            "w-px h-4 bg-border"
+            ("w-px h-4 bg-zinc-500", true)
         };
         let mut style = Style::parse(base).ok();
         if let Some(user) = self.extract_style_with(props, bindings) {
@@ -2995,15 +2994,23 @@ let tabs_inner = View::Row {
                 None => Some(user),
             };
         }
-        // Build as a styled empty Column — a Container wrapping View::Empty
-        // inside a Row breaks the layout of following siblings (verified:
-        // toolbar icons after a container-sep vanish); the Column form is
-        // the same shape the 041 hairlines used before `sep` existed.
-        let mut builder = ViewBuilder::col();
-        if let Some(st) = style {
-            builder = builder.with_style(st);
-        }
-        builder.build()
+        // Build the line as a styled empty Column - a Container wrapping
+        // View::Empty inside a Row breaks the layout of following siblings.
+        let line = {
+            let mut b = ViewBuilder::col();
+            if let Some(st) = style {
+                b = b.with_style(st);
+            }
+            b.build()
+        };
+        // NOTE: a 3-part row (transparent gap columns flanking the line)
+        // hits the same nested-row bug that drops icon-button children —
+        // plain column children vanish too (verified). Ship the bare line;
+        // the geometric row gaps around it are uniform, and any residual
+        // visual asymmetry comes from glyph placement inside fixed-width
+        // icon buttons (see Plan 414 §8 follow-ups).
+        let _ = vertical;
+        line
     }
 
     /// Convert an avatar element: colored circle placeholder.
