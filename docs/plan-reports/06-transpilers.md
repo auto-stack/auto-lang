@@ -10,6 +10,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 |------|-------|--------|---------|
 | 007 | Implement a2r Transpiler | Partial | Auto-to-Rust transpiler; Phase 1 core infrastructure complete, Phases 2-6 pending |
 | 417 | “Auto 作 Rust 脚本层”发布收尾（359 residuals） | Complete | 全部完成:Phase E 五项+双 demo+A1/A2 落地页+359 回填(2026-08-22 收官) |
+| 427 | a2r 字符串形参借用回归修复（DIV-A2R-STRPARAM-1） | Complete | 修复 3f6aa1be(396 §2.4) is_str_slice_var 误判;三库恢复 100%,L1 回 260 例;golden 008+rustc 冒烟 |
 | 359 | Auto as Rust's Script Layer 全程落地 | Complete | 三向 parity 体系+用例库+tour+落地页;165 checkbox 工件级核验回填(2026-08-22) |
 | 022 | Python Transpiler (a2p) | Done | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
 | 023 | JavaScript Transpiler (a2j) | Done | Complete 11-phase implementation: all JS features in single phase, 9/9 tests passing |
@@ -55,7 +56,7 @@ AutoLang supports a comprehensive suite of transpiler backends that convert Auto
 
 ## Status
 
-**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232); .to(Type)/ext-for-Trait/struct-destructuring/generic-constraints (162/164/165/166, 2026-08-20 核实), Godot demo reverse translation (308), a2r COSMIC readiness W1-W7 (364), a2r auto-ai 滚动缺陷聚合六条根治 (396).
+**Implemented**: a2p (Python, 96 tests), a2j (JavaScript, 9 tests), a2c generics monomorphization, r2a reverse transpiler (116 tests), a2r core struct support (static fn, pub, tokio main, mut self, field attrs), a2r list implementation and .as(Type) cast, test suite reorganization for a2r/a2c/a2ts, C FFI bindgen with libloading runtime and CLI integration (Plan 216), a2r lexer compilation fixes (Plan 232); .to(Type)/ext-for-Trait/struct-destructuring/generic-constraints (162/164/165/166, 2026-08-20 核实), Godot demo reverse translation (308), a2r COSMIC readiness W1-W7 (364), a2r auto-ai 滚动缺陷聚合六条根治 (396); a2r str-param 借用回归修复 + 编译冒烟防线 (427, 2026-08-23).
 
 **Partial**: a2r (144 tests, 38% parity with a2c, ongoing gap closure), a2r .rs.at platform-specific files, a2ts migration from a2js (Phase 2-3 done, Phase 4 pending).
 
@@ -122,11 +123,12 @@ The transpiler system extends beyond language targets to UI-specific code genera
 
 ## Source Plans
 
-Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 396, 397, 417, 359.
+Plans 007, 022, 023, 062, 067, 083, 100, 161, 162, 163, 164, 165, 166, 170, 171, 172, 173, 174, 175, 180, 181, 187, 204, 213, 283, 215, 216, 219, 220, 232, 240, 241, 264, 391, 392, 393, 395, 396, 397, 417, 359, 427.
 
 - [204-a2r-transpiler-completeness.md](../plans/archive/204-a2r-transpiler-completeness.md)
 - [213-a2py-maturation.md](../plans/213-a2py-maturation.md)
 - [417-script-rollout-residuals.md](../plans/archive/417-script-rollout-residuals.md)
+- [427-a2r-str-param-regression.md](../plans/archive/427-a2r-str-param-regression.md)
 - [359-auto-as-rust-script-rollout.md](../plans/archive/359-auto-as-rust-script-rollout.md)
 - [283-a2py-maturation-plan.md](../plans/archive/283-a2py-maturation-plan.md)
 - [215-a2ts-maturation.md](../plans/215-a2ts-maturation.md)

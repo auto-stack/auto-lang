@@ -131,6 +131,15 @@ fn check_parse_ok(n: i64, name: &str, input: &str, expected: &str) {
   local_var_types 双登记系有意为之（Plan 376E `.to_string()` 路径仍消费），
   已在代码注释与本节说明。
 
+### finish-plan 复审（2026-08-23）
+
+- 四任务全部 pass：修复位点（rust.rs:189/403/485/593/8512/10870/12153/12206）
+  在档；golden 008 在合并树全量 test-trans 3440/0 中通过；已提交产物裸
+  rustc 类型检查通过；合并树（f2946e0b）重建二进制复跑 serde_json 56/56。
+- 主 checkout 当前存在并行会话未提交 WIP（ui/action_config.rs），构建错误
+  与本计划无关，复验改在 detached worktree 完成。
+- 无 workaround/延期项 → 分类 A，走 archive-plan。
+
 ## 4. 工作流备注（沿用既有模式）
 
 - worktree：`git worktree add .worktrees/plan-fix-427 -b plan-fix/427-strparam master`；

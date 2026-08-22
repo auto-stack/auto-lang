@@ -9,6 +9,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 |------|-------|--------|---------|
 | 007 | Implement a2r Transpiler | 🔧 | Auto-to-Rust transpiler following a2c architecture patterns; basic phase 1 complete |
 | 417 | “Auto 作 Rust 脚本层”发布收尾（359 residuals） | ✅ | 全部完成:Phase E 五项(E1-E5)+D2/D3+双 demo+A1/A2 落地页+359 回填(2026-08-22 收官);附带修复 a2r 双重 await,登记 DIV-A2R-STRPARAM-1 三库回归 |
+| 427 | a2r 字符串形参借用回归修复（DIV-A2R-STRPARAM-1） | ✅ | 修复 3f6aa1be(396 §2.4)引入的 is_str_slice_var 误判(str_slice_pattern_bindings 专属集合);serde_json/url/base64 三库恢复 100%,L1 回到 260 例/10 库;golden 008+rustc 冒烟防线 |
 | 359 | Auto as Rust's Script Layer 全程落地 | ✅ | 三向 parity 体系+生态用例库+Script-to-Ship tour+落地页;165 checkbox 工件级核验后回填(2026-08-22,417-final 批收官);后续 base64/url/serde_json a2r 回归见 DIV-A2R-STRPARAM-1 |
 | 415 | a2r 剩余大件拆粒度（242 收尾批） | 📋 | HashMap::from 发射/SQLite→Redis stdlib/GPUI spike/自举/dep cc+memmap2 五子项;2026-08-22 立项 |
 | 022 | Python Transpiler (a2p) | ✅ | Complete 10-phase implementation: expressions, control flow, functions, pattern matching, classes |
@@ -54,7 +55,7 @@ AutoLang supports multiple transpiler backends (a2c, a2r, a2ts, a2p, a2j) for cr
 | 397 | Spec Supertrait + Arc<Fn> Spec-Param | ✅ | `pub spec Tool: Send + Sync` → `trait Tool: Send + Sync`，Arc<Fn> spec-param golden 确认 |
 
 ## Status Summary
-- Completed: 29 | Partial: 3 | Planned: 9 | Deprecated: 0
+- Completed: 30 | Partial: 3 | Planned: 9 | Deprecated: 0
 
 ## Key Achievements
 - Complete transpiler suite: a2c (106 tests), a2r (144 tests), a2ts (24 tests), a2p (96 tests), a2j (9 tests)
