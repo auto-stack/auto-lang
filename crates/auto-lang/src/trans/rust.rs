@@ -1338,6 +1338,10 @@ impl RustTrans {
                 // branch) — render verbatim, do NOT qualify (no crate:: prefix).
                 if name.starts_with("dyn ") {
                     name
+                } else if name.starts_with("Self::") {
+                    // Plan 417-E2: associated-type reference rewritten for trait
+                    // emission (`Self::Item`) — verbatim, never qualified.
+                    name
                 } else if self.spec_decls.contains_key(name.as_str()) {
                     format!("Box<dyn {}>", name)
                 } else {
@@ -1730,9 +1734,14 @@ impl RustTrans {
                 // `use.rust std::path::PathBuf`, …) — they are concrete enums/structs/
                 // aliases, not traits. `None` is Auto's unit type (→ Rust `()`),
                 // also never a trait despite its uppercase initial.
+                //
+                // Plan 417-E2: `Self::Item` is an associated-type reference in a
+                // trait method signature — concrete once the impl binds it,
+                // never a trait. Never prefix with `impl`.
                 if self.local_struct_types.contains(name.as_str())
                     || self.is_imported_concrete_type(name.as_str())
                     || name == "None"
+                    || name.starts_with("Self::")
                 {
                     self.rust_type_name(ty)
                 } else if is_pascal && !is_concrete {
@@ -13467,6 +13476,26 @@ impl RustTrans {
                 writeln!(sink.body, " {{")?;
                 self.indent();
 
+                // Plan 417-E2 (DIV-TRAIT-LANG-1): emit the associated-type
+                // bindings from the impl clause (`as Container<Item=int>`)
+                // as Rust associated-type assignments (`type Item = i64;`).
+                // They must precede the methods in the impl block.
+                if let Some(si) = type_decl
+                    .spec_impls
+                    .iter()
+                    .find(|si| si.spec_name == spec_decl.name)
+                {
+                    for (assoc_name, assoc_ty) in &si.assoc_bindings {
+                        self.print_indent(&mut sink.body)?;
+                        writeln!(
+                            sink.body,
+                            "type {} = {};",
+                            assoc_name,
+                            self.rust_type_name(assoc_ty)
+                        )?;
+                    }
+                }
+
                 // Generate matched methods
                 for spec_method in &matched_methods {
                     // Find the implementation in type_decl
@@ -14331,6 +14360,57 @@ impl RustTrans {
         writeln!(sink.body, " {{")?;
         self.indent();
 
+        // Plan 417-E2 (DIV-TRAIT-LANG-1): associated types emit as Rust
+        // associated type declarations (`type Item;`) before the methods.
+        // Method signatures below reference them via `Self::Item`: rewrite
+        // each bare Type::User(assoc) reference to an opaque User type named
+        // "Self::Item" (rendered verbatim — see the Self:: guard in
+        // rust_type_name), reusing Type::substitute for nested positions
+        // (List<Item> → List<Self::Item>).
+        let assoc_self_names: Vec<Name> = spec_decl
+            .associated_types
+            .iter()
+            .map(|at| at.name.clone())
+            .collect();
+        let assoc_self_types: Vec<Type> = spec_decl
+            .associated_types
+            .iter()
+            .map(|at| {
+                Type::User(TypeDecl {
+                    consts: Vec::new(),
+                    name: Name::from(format!("Self::{}", at.name).as_str()),
+                    kind: TypeDeclKind::UserType,
+                    parent: None,
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    spec_impls: Vec::new(),
+                    generic_params: Vec::new(),
+                    members: Vec::new(),
+                    delegations: Vec::new(),
+                    methods: Vec::new(),
+                    attrs: vec![],
+                    impl_attrs: vec![],
+                    doc: None,
+                    is_pub: false,
+                })
+            })
+            .collect();
+        let subst_assoc_to_self = |ty: &Type| -> Type {
+            if assoc_self_names.is_empty() {
+                ty.clone()
+            } else {
+                ty.substitute(&assoc_self_names, &assoc_self_types)
+            }
+        };
+        for at in &spec_decl.associated_types {
+            self.print_indent(&mut sink.body)?;
+            write!(sink.body, "type {};", at.name)?;
+            if let Some(ref bound) = at.bound {
+                write!(sink.body, " // bound: {}", bound)?;
+            }
+            writeln!(sink.body)?;
+        }
+
         for method in &spec_decl.methods {
             // Plan 380: async spec methods emit `async fn` (mirrors fn_decl).
             // With `#[async_trait]` (added above when any method is async), a
@@ -14345,20 +14425,23 @@ impl RustTrans {
             write!(sink.body, "fn {}(&self", method.name)?;
 
             // Parameters (skip self which is already added as &self)
+            // Plan 417-E2: associated-type references render as Self::Item.
             for param in &method.params {
                 write!(
                     sink.body,
                     ", {}: {}",
                     param.name,
-                    self.rust_param_type_name(&param.ty)
+                    self.rust_param_type_name(&subst_assoc_to_self(&param.ty))
                 )?;
             }
 
             // Return type — use rust_return_type_name for correct str→String mapping
             // Plan 204 Phase 4: !T (Type::Result) → Result<T, String>
-            if !matches!(method.ret, Type::Void) {
+            // Plan 417-E2: associated-type references render as Self::Item.
+            let method_ret = subst_assoc_to_self(&method.ret);
+            if !matches!(method_ret, Type::Void) {
                 let ret_str = if method_is_async {
-                    match &method.ret {
+                    match &method_ret {
                         // ~Result / Future<Result<...>> → Result<...> for `async fn`
                         Type::GenericInstance(inst) if inst.base_name == "Future" => {
                             self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
@@ -14366,7 +14449,7 @@ impl RustTrans {
                         other => self.rust_return_type_name(other),
                     }
                 } else {
-                    self.rust_return_type_name(&method.ret)
+                    self.rust_return_type_name(&method_ret)
                 };
                 write!(sink.body, ") -> {}", ret_str)?;
             } else {
@@ -14381,7 +14464,7 @@ impl RustTrans {
             if let Some(ref default_body) = method.body {
                 match **default_body {
                     Expr::Block(ref block_body) => {
-                        self.body(block_body, sink, &method.ret, "")?;
+                        self.body(block_body, sink, &method_ret, "")?;
                     }
                     _ => {
                         // Single-expression default body: wrap minimally.
