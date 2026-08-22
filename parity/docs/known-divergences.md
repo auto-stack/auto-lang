@@ -20,10 +20,16 @@ Each entry has:
 
 ## Current phase status (Plan 348, verified 2026-07)
 
-The **L1-verified total is 241/241 (100%)** three-way consistent across eight
-real libraries: base64 (33), url (30), serde_json (56), regex (45), cli_app
-(32), trait_advanced (10), string_utils (22), tokio (13). Every included case
-agrees across AutoVM, a2r-transpiled Rust, and native Rust.
+**2026-08-22 复测警示（DIV-A2R-STRPARAM-1）**:全量仪表盘重跑发现 base64/
+url/serde_json 三库的 a2r 编译级回归(字符串实参 `&str` 借用缺失,如
+`check_str(n, name, actual, expected)` 把 `String` 直传 `&str` 形参→E0308),
+三库三向降为 0-64%。回归早于 Plan 417-E3 批次(已在其前置点 2ac2298f 复现),
+系 8-20~8-22 并行批次引入,专门批次修复中。当前稳定全绿核心集:**141 例/
+7 库**(regex 45、cli_app 32、string_utils 22、trait_advanced 18、tokio 13、
+generators 6、http_client_sync 5)+ consumer-mode 3 库(fs/process/text 22 例)
+——网站与仪表盘按此口径声明。历史 241/241 记录(交付时点)如下:
+base64 (33), url (30), serde_json (56), regex (45), cli_app (32),
+trait_advanced (10→18), string_utils (22), tokio (13)。
 
 Open gaps (each detailed in its own section below, fix plans in
 `docs/plans/359-auto-as-rust-script-rollout.md` Phase E):

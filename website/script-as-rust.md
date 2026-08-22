@@ -7,18 +7,25 @@ sidebar: false
 <script setup>
 import ScriptShipView from './.vitepress/theme/components/ScriptShipView.vue'
 const heroAuto = [
-  'fn fib(n int) int {',
-  '    if n < 2 { return n }',
-  '    return fib(n - 1) + fib(n - 2)',
+  'spec Comparable {',
+  '    fn compare(other int) int',
+  '}',
+  '',
+  'fn max_of<T has Comparable>(a T, b T) T {',
+  '    if a.compare(0) >= b.compare(0) { a } else { b }',
+  '}',
+  '',
+  'type Score as Comparable {',
+  '    val int',
+  '    fn compare(other int) int {',
+  '        return self.val - other',
+  '    }',
   '}',
   '',
   'fn main() {',
-  '    var line = ""',
-  '    for i in 0..12 {',
-  '        if i > 0 { line = line + ", " }',
-  '        line = line + fib(i).to(str)',
-  '    }',
-  '    print("fib: " + line)',
+  '    var x Score = Score { val: 3 }',
+  '    var y Score = Score { val: 9 }',
+  '    print(max_of(x, y).val)',
   '}',
 ].join('\n')
 </script>
@@ -57,9 +64,9 @@ real `trait` / `impl` / `Box<dyn>`, generics, ownership, `Result` + `?`. Link
 `a2r-std`, `cargo build --release`, deploy.
 
 **Bridge** — the transpiler is on the hook for agreement. AutoVM output ==
-transpiled-Rust output. Not a claim: [verified by 232 three-way parity
-tests](https://github.com/zhaopuming/auto-lang/blob/masterhttps://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)
-across seven real libraries.
+transpiled-Rust output. Not a claim: [verified by 141 three-way parity
+tests](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)
+across seven real libraries (plus consumer-mode crates — see dashboard).
 
 ## Why this beats "Python now, rewrite in Rust later"
 
@@ -82,31 +89,36 @@ three-way parity harness: AutoVM vs a2r-transpiled Rust vs native Rust, on
 real libraries. This is the part that distinguishes a credible tool from
 marketing copy.
 
-**L1 — verified three-way today (232 test cases):**
+**L1 — verified three-way today (141 test cases):**
 
 | Library | Cases | What it exercises |
 |---------|-------|-------------------|
-| base64 | 33/33 | byte/string loops, error handling |
-| url | 30/30 | record types, Result, module boundaries |
-| serde_json | 56/56 | recursive data, tag/enum, generics |
 | regex | 45/45 | pattern matching, backtracking |
 | cli_app | 32/32 | pure std text processing (wc-style) |
-| trait_advanced | 10/10 | spec/trait dispatch (L1 subset) |
-| tokio | 13/13 | async spawn/join, channels |
+| string_utils | 22/22 | string ops across module boundaries |
+| trait_advanced | 18/18 | specs/traits: default methods, associated types, bounded generics |
+| tokio | 13/13 | async/await future composition |
+| generators | 6/6 | yield iterators, lazy sequences |
+| http_client_sync | 5/5 | synchronous HTTP against a mock server |
 
 See the live [parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html) for the
 full matrix and per-library details.
 
 **Honest boundaries (L3 — roadmap, not yet verified):**
 
-These are documented openly in
+Every previously-listed trait divergence is now fixed and three-way verified
+(associated types, default method bodies, generic spec impls, bounded generic
+functions, the http_client_sync harness). What remains open is documented in
 [known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/known-divergences.md), not hidden:
 
-- **Associated types** in specs — Auto's grammar has no construct yet (language gap).
-- **Default method bodies that return a value** — a2r wrapping bug (void defaults work).
-- **Generic spec implementations** — a2r drops the concrete type argument.
-- **Bounded generic functions** (`fn f<T has Spec>`) — bound syntax + VM dispatch gap.
-- **reqwest / http_client_sync parity** — needs an in-process mock-server harness.
+- **sha2 / rusqlite / reqwest parity libraries** — planned, not yet verified.
+- **serde_json / url / base64 three-way runs** — recently regressed in a2r
+  string-parameter borrowing (compile-stage); they passed at delivery and are
+  being restored — tracked in known-divergences.
+- **Generator lazy chains** (range → map → filter over `~Iter`) — no Auto
+  syntax yet; language roadmap item.
+- **tokio spawn/join + mpsc channels** — the verified subset covers serial
+  future composition; parallel spawn awaits VM support.
 
 Auto does not pretend to be finished where it isn't. The L1 list is what's
 verified; the L3 list is on the roadmap, and every chapter in the tour tells

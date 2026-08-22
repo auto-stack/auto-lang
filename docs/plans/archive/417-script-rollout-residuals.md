@@ -1,6 +1,6 @@
 # Plan 417: "Auto 作 Rust 脚本层"发布收尾（359 residuals:Phase E + D2/D3 + A1/A2）
 
-> **状态**: 🔧 部分完成（2026-08-22）——Phase E 五项全关（E1-E5）+ D2 generators + D3 http_client_sync 均已落地；**剩余**：§4 A1/A2 落地页、D2.3/D3.3 双 demo（并入 A1/A2 批次）、§5 359 的 165 checkbox 回填。全部完成后归档。
+> **状态**: ✅ 全部完成（2026-08-22 收官）——Phase E 五项、D2/D3（含双 demo）、A1/A2 落地页、§5 的 359 回填均已完成（末批: plan-fix-417final）。原状态：🔧 部分完成（2026-08-22）——Phase E 五项全关（E1-E5）+ D2 generators + D3 http_client_sync 均已落地；**剩余**：§4 A1/A2 落地页、D2.3/D3.3 双 demo（并入 A1/A2 批次）、§5 359 的 165 checkbox 回填。全部完成后归档。
 > **来源**: Plan 359 真实遗留(2026-08-20 复核):D2 generators 用例、D3 http_client_sync(blocked by DIV-HTTP-LANG-1)、Phase E 五项 open、A1/A2 落地页
 
 ---
@@ -34,14 +34,14 @@
   已被后续 parser 批次修复,属"文档滞后于代码"又一例;
 - D3.3 双 demo 留待 A1/A2 落地页批次。
 
-## 4. A1/A2 落地页(website/index.md)
+## 4. A1/A2 落地页(website/index.md) ✣ ✕ 2026-08-22 完成(index.md EN/zh parity 证据区 + script-as-rust hero 换 L1 用例 + 仪表盘重生成)
 
 - 补 parity 链接与 hero demo 引用(当前 V3 未达——359 §A 的验收是
   "落地页上线,叙事打动人验证");
 - 依赖 D2/D3 的最佳用例产出后做终版;先行版(仅链接 + 仪表盘截图)
   可与 Phase E 并行,0.5 天。
 
-## 5. 165 checkbox 回填(收尾动作,0.5 天)
+## 5. 165 checkbox 回填 ✣ ✕ 2026-08-22 完成(工件级核验后勾选,详见 handoff 第九会话)
 
 359 正文 165 个 checkbox 多数已落地未回填(2026-08-20 审计结论)——
 按"代码级核验后方可勾选"纪律,finish-plan 流程时统一回填并归档 359。

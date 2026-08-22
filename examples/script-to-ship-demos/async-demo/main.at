@@ -1,0 +1,35 @@
+// async-demo — async/await 串行 Future 组合,"Auto 即 Rust 脚本"的异步演示。
+//
+// Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
+//
+// 对应 parity 用例: parity/libs/tokio/ (L1 ✓ 三向一致)
+// 覆盖特性:
+//   * ~T 返回类型 = async 函数 (a2r 发射 async fn/impl Future)
+//   * .await 串行组合
+//
+// 注意: 并发场景(spawn/join)的完成顺序非确定,parity 用 sorted 输出对比;
+//       本 demo 只演示确定性的串行组合。
+
+fn double(n int) ~int {
+    n * 2
+}
+
+fn add(a int, b int) ~int {
+    a + b
+}
+
+/// 串行组合: double 后 add (确定性输出)
+fn compute(a int, b int) ~int {
+    var d int = double(a).await
+    var s int = add(d, b).await
+    s
+}
+
+fn main() {
+    var r int = compute(21, 0).await
+    print("compute(21, 0) = " + r.to(str))
+
+    r = compute(5, 1).await
+    print("compute(5, 1) = " + r.to(str))
+}

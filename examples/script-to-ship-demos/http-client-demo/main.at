@@ -1,0 +1,30 @@
+// http-client-demo — 同步 HTTP 客户端,"Auto 即 Rust 脚本"的网络演示。
+//
+// Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
+// Ship: auto trans --path main.at rust   (a2r 转 Rust 发布,链 a2r-std 的 ureq)
+//
+// 对应 parity 用例: parity/libs/http_client_sync/ (L1 ✓ 三向一致,本地 mock server)
+// 覆盖特性:
+//   * auto.http 模块调用 (a2r 发射 a2r_std::http,VM 走原生 shim)
+//   * POST + 响应体/状态码双通道 (post_sync + last_status)
+//
+// 用法: 把 URL 换成你的目标端点。默认指向 httpbin(公网演示);
+//       parity 测试用本地 mock server,不依赖外网。
+
+use auto.http
+
+fn post_json(url str, body str) str {
+    return http.post_sync(url, body, "")
+}
+
+fn main() {
+    // 公开回显服务;无外网时换成本地端点即可
+    var url = "https://httpbin.org/post"
+    var resp = post_json(url, "{\"hello\": \"auto\"}")
+    print("status: " + http.last_status().to(str))
+    if resp.len() > 0 {
+        print("got response, len=" + resp.len().to(str))
+    } else {
+        print("empty response (offline?)")
+    }
+}

@@ -3751,8 +3751,31 @@ impl RustTrans {
                     }
                 }
                 // expr.await -> expr.await
+                // Plan 417-final: the Call arm auto-inserts `.await` for
+                // async callees (Plan 373, ~line 8210). When the awaited
+                // expression is exactly such a call, that insertion already
+                // satisfies this `.await` — appending a second produced
+                // `double(a).await.await` (E0277) and broke the tokio a2r
+                // backend. Skip the outer `.await` in that case.
+                let inner_auto_awaits = match expr.as_ref() {
+                    Expr::Call(call) => {
+                        if let Expr::Dot(object, mname) = call.name.as_ref() {
+                            self.call_needs_await(object, mname)
+                        } else if let Expr::Ident(fname) = call.name.as_ref() {
+                            self.fn_ret_types
+                                .get(fname.as_str())
+                                .map(|ret| Self::type_is_async(ret))
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                };
                 self.expr(expr, out)?;
-                write!(out, ".await")?;
+                if !inner_auto_awaits {
+                    write!(out, ".await")?;
+                }
                 Ok(())
             }
 
