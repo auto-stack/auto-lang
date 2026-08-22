@@ -3094,9 +3094,10 @@ let tabs_inner = View::Row {
     /// (`menubar {}` DSL tag). Open state lives in action_config::MENUBAR_OPEN
     /// (renderer-side local UI state, preview-card pattern); toggle buttons
     /// emit `__menubar_toggle(id)` internal messages handled in iced update.
-    /// Panels reuse the Plan 409 overlay hoist; left offsets are estimated
-    /// (chars x 12 + 28 padding/margin — a 2-char button = 52px, matching the
-    /// hand-written 8/60/112/164 cadence this replaces).
+    /// Plan 422 P2: 面板改挂在触发按钮的 Popover 上(iced overlay 机制定位,
+    /// BottomStart = 左缘对齐),估位偏移与 2000px catch 一并退役 —— 按钮文
+    /// 字任意宽度不再错位,点击捕获由 overlay 语义承担。popover 结构每帧
+    /// 恒定(open 驱动面板显隐),view diff 稳定。
     fn convert_menubar(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -3104,6 +3105,7 @@ let tabs_inner = View::Row {
         path: Option<(&[usize], &mut BuildProbe)>,
     ) -> View<DynamicMessage> {
         use crate::ui::action_config::{action_config, menubar_open, MenuItem};
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
 
         // Split the optional (path, probe) once: matching through a shared
         // reference would downgrade the &mut binding, so we own the pieces.
@@ -3113,10 +3115,10 @@ let tabs_inner = View::Row {
                 None => (None, None),
             };
         macro_rules! record {
-            ($idx:expr, $handler:expr) => {
+            ($($idx:expr),* => $handler:expr) => {
                 if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
                     let mut child = base.clone();
-                    child.push($idx);
+                    $(child.push($idx);)*
                     let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
                     probe.record_event(&p, "onclick", $handler);
                 }
@@ -3136,14 +3138,13 @@ let tabs_inner = View::Row {
 
         let open = menubar_open();
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
-        let mut left = 8.0f32;
         for menu in &cfg.menus {
             let is_open = open.as_deref() == Some(menu.id.as_str());
-            // Plan 418 §8.4①: probe 路径按真实子位置记录(children.len()),
-            // 不再用独立计数器 —— 面板列/捕层作为兄弟节点占位,历史计数器
-            // 会把面板项误记为行级子节点并令后续按钮索引漂移。
-            record!(children.len(), &format!("__menubar_toggle(\"{}\")", menu.id));
-            children.push(View::Button {
+            // §8.4①: probe 路径按真实子位置记录 —— popover 占 children.len(),
+            // 触发按钮是其 anchor 子(子序 0,与 snapshot/render_dynamic_view
+            // 的 Popover 子序约定一致)。
+            record!(children.len(), 0 => &format!("__menubar_toggle(\"{}\")", menu.id));
+            let trigger = View::Button {
                 label: menu.title.clone(),
                 onclick: DynamicMessage::Typed {
                     widget_name: self.widget_name.clone(),
@@ -3157,30 +3158,13 @@ let tabs_inner = View::Row {
                 .ok(),
                 on_right_click: None,
                 content: None,
-            });
+            };
 
+            // 面板项路径 [base, popover_idx, 1, item_idx](content 是 popover
+            // 的子序 1;sep 占位由 items.len() 自然计数,Action 项记录时机
+            // 在 push 之前)。
+            let mut items: Vec<View<DynamicMessage>> = Vec::new();
             if is_open {
-                // Click-outside catcher + dropdown panel (mirrors the
-                // hand-written 414 structure: catcher under the panel, both
-                // hoisted via absolute positioning).
-                record!(children.len(), "__menubar_close");
-                children.push(View::Button {
-                    label: String::new(),
-                    onclick: DynamicMessage::Typed {
-                        widget_name: self.widget_name.clone(),
-                        event_name: "__menubar_close".to_string(),
-                        args: vec![],
-                    },
-                    style: Style::parse("w-[2000px] h-[2000px] mt-[33px] px-0 py-0").ok(),
-                    on_right_click: None,
-                    content: None,
-                });
-
-                // 面板列在 catcher 之后作为单个子节点压入 —— 项的真实路径是
-                // [base, panel_idx, item_idx](§8.4①:嵌套两段;sep 占位由
-                // items.len() 自然计数,Action 项记录时机在 push 之前)。
-                let panel_idx = children.len();
-                let mut items: Vec<View<DynamicMessage>> = Vec::new();
                 for item in &menu.items {
                     match item {
                         MenuItem::Separator => {
@@ -3189,13 +3173,7 @@ let tabs_inner = View::Row {
                         MenuItem::Action(id) => {
                             let Some(a) = cfg.action_by_id(id) else { continue };
                             let handler = a.handler.trim_start_matches('.').to_string();
-                            if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
-                                let mut child = base.clone();
-                                child.push(panel_idx);
-                                child.push(items.len());
-                                let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
-                                probe.record_event(&p, "onclick", &a.handler);
-                            }
+                            record!(children.len(), 1, items.len() => &a.handler);
                             // Plan 418 §8.4③: checked-if 渲染 —— 简单 `.field`
                             // 布尔状态直接读 state;非标识符形态保持未勾选
                             // (解析层仅约定标识符引用)。每项固定 16px 勾选槽,
@@ -3251,18 +3229,26 @@ let tabs_inner = View::Row {
                         }
                     }
                 }
-                children.push(View::Column {
-                    children: items,
-                    spacing: 0,
-                    padding: 0,
-                    style: Style::parse(&format!(
-                        "absolute z-50 top-[33px] left-[{:.0}px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1",
-                        left
-                    ))
-                    .ok(),
-                });
             }
-            left += menu.title.chars().count() as f32 * 12.0 + 28.0;
+            // chrome 全部留在面板列自身(bg/border/shadow 走既有 visual
+            // wrap);定位交给 popover(overlay 层,不占文档流)。
+            let panel = View::Column {
+                children: items,
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok(),
+            };
+            children.push(View::Popover {
+                anchor: PopoverAnchor::Widget(Box::new(trigger)),
+                content: Box::new(panel),
+                placement: PopoverPlacement::BottomStart,
+                open: is_open,
+                on_dismiss: Some(DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_close".to_string(),
+                    args: vec![],
+                }),
+            });
         }
 
         let user = self
