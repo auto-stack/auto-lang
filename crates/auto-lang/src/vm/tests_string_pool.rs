@@ -87,3 +87,54 @@ fn add_string_dedups_identical_content() {
     let e2 = vm.add_string(Vec::new());
     assert_eq!(e1, e2);
 }
+
+// ── 编译侧宽度锁(2026-08-22 池 u32 化)──────────────────────────────────────
+// LOAD_STR 等池索引操作数从 u16 扩到 u32。若任何一侧(emit/decode)被改回
+// 2 字节,字节码流错位 —— 池 <65536 时因高位补零侥幸不炸、越界后静默串写
+// (见文件头事故记录)。以下断言直接锁死编码宽度。
+
+#[test]
+fn codegen_load_str_operand_is_u32() {
+    use crate::ast::Expr;
+    use crate::vm::codegen::Codegen;
+    use crate::vm::opcode::OpCode;
+
+    let mut codegen = Codegen::new();
+    codegen.compile_expr(&Expr::Str("pool-u32-probe".into())).unwrap();
+    assert_eq!(codegen.code[0], OpCode::LOAD_STR as u8, "expected LOAD_STR");
+    assert_eq!(codegen.code.len(), 5, "LOAD_STR must be 1 opcode byte + 4 operand bytes");
+    let idx = u32::from_le_bytes(codegen.code[1..5].try_into().unwrap());
+    assert!(idx < codegen.strings.len() as u32);
+    assert_eq!(codegen.strings[idx as usize], b"pool-u32-probe".to_vec());
+}
+
+#[test]
+fn engine_load_str_decode_width_matches_codegen() {
+    // 编译 → 装载 → 反汇编,断言流对齐:push.accum(9B) 后紧跟下一条指令。
+    use crate::vm::codegen::Codegen;
+    use crate::vm::disasm::Disassembler;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let mut parser = crate::parser::Parser::from("shadcn: off\n");
+    parser.compile_dest = crate::parser::CompileDest::Config;
+    let ast = parser.parse().unwrap();
+    let mut args = auto_val::Obj::new();
+    args.set("on", auto_val::Value::Bool(true));
+    args.set("off", auto_val::Value::Bool(false));
+    let mut codegen = Codegen::new_for_config();
+    codegen.compile_config_program(&ast, &args).unwrap();
+    let flash = VirtualFlash::new_with_code_and_keys(
+        codegen.code.clone(),
+        codegen.object_keys.clone(),
+        codegen.object_types.clone(),
+    );
+    let lines = Disassembler::new(&flash).disassemble_range(0, codegen.code.len());
+    // 找 push.accum:它占 1+8 字节,下一条指令偏移必须恰为 +9。
+    let accum = lines.iter().find(|l| l.mnemonic.contains("push.accum"))
+        .expect("config prolog must emit push.accum");
+    let next = lines.iter().find(|l| l.offset > accum.offset)
+        .expect("instruction after push.accum");
+    assert_eq!(next.offset - accum.offset, 9,
+        "push.accum operand must be 8 bytes (two u32 pool indices); got {}",
+        next.offset - accum.offset);
+}

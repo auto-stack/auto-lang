@@ -612,7 +612,7 @@ impl Codegen {
         let root_name_idx = self.add_string("root");
         self.emit(OpCode::PUSH_ACCUM);
         self.code.extend_from_slice(&root_name_idx.to_le_bytes());
-        self.code.extend_from_slice(&0xFFFFu16.to_le_bytes()); // no id
+        self.code.extend_from_slice(&0xFFFFu32.to_le_bytes()); // no id(u32 化后哨兵仍是 0xFFFF 数值)
 
         // Compile top-level statements. Each Pair/Node/Object accumulates into
         // the root container; if/for/var use the regular Script codegen (their
@@ -1190,7 +1190,7 @@ impl Codegen {
                         fn_name_str.split('.').last().unwrap_or(&fn_name_str),
                         fn_name_str.split('.').last().unwrap_or(&fn_name_str)
                     );
-                    let msg_idx = self.strings.len() as u16;
+                    let msg_idx = self.strings.len() as u32;
                     self.strings.push(err_msg.as_bytes().to_vec());
                     self.emit(OpCode::LOAD_STR);
                     self.code.extend_from_slice(&msg_idx.to_le_bytes());
@@ -3751,7 +3751,7 @@ impl Codegen {
                     // never processes messages.
                     if has_handlers {
                         let task_name_bytes = task_name.as_bytes().to_vec();
-                        let task_name_idx = self.strings.len() as u16;
+                        let task_name_idx = self.strings.len() as u32;
                         self.strings.push(task_name_bytes);
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(task_name_idx as i32);
@@ -3827,7 +3827,7 @@ impl Codegen {
                             let field_str_idx = {
                                 let idx = self.strings.len();
                                 self.strings.push(bind_name.as_str().to_string().into_bytes());
-                                idx as u16
+                                idx as u32
                             };
                             self.emit(OpCode::GET_FIELD);
                             self.code.extend_from_slice(&field_str_idx.to_le_bytes());
@@ -3882,7 +3882,7 @@ impl Codegen {
                 if !on_block.handlers.is_empty() {
                     // Push task type name string index
                     let task_name_bytes = task_name.as_bytes().to_vec();
-                    let task_name_idx = self.strings.len() as u16;
+                    let task_name_idx = self.strings.len() as u32;
                     self.strings.push(task_name_bytes);
 
                     self.emit(OpCode::CONST_I32);
@@ -4787,7 +4787,7 @@ impl Codegen {
             Expr::CStr(s) => {
                 // Add C string to constant pool and emit LOAD_STR <index>
                 let bytes = s.as_bytes().to_vec();
-                let idx = self.strings.len() as u16;
+                let idx = self.strings.len() as u32;
                 self.strings.push(bytes);
                 self.emit(OpCode::LOAD_STR);
                 self.code.extend_from_slice(&idx.to_le_bytes());
@@ -4804,7 +4804,7 @@ impl Codegen {
                     .iter()
                     .map(|pair| self.ast_key_to_value_key(&pair.key))
                     .collect();
-                let key_index = self.object_keys.len() as u16;
+                let key_index = self.object_keys.len() as u32;
 
                 // Plan 073: Track field types for runtime conversion
                 let types: Vec<ObjectType> = pairs
@@ -5051,7 +5051,7 @@ impl Codegen {
                             .take(arg_count as usize)
                             .map(|name| auto_val::ValueKey::Str(name.clone().into()))
                             .collect();
-                        let key_index = self.object_keys.len() as u16;
+                        let key_index = self.object_keys.len() as u32;
                         self.object_keys.push(keys);
 
                         // Emit CREATE_OBJ
@@ -5093,7 +5093,7 @@ impl Codegen {
                         .collect();
 
                     // Register keys in object_keys pool
-                    let key_index = self.object_keys.len() as u16;
+                    let key_index = self.object_keys.len() as u32;
                     self.object_keys.push(keys);
 
                     // Plan 087: Infer field types from node args
@@ -5126,7 +5126,7 @@ impl Codegen {
                     // Not a type - create generic Node
                     // Compile node name as string
                     let name_bytes = node.name.as_bytes().to_vec();
-                    let name_idx = self.strings.len() as u16;
+                    let name_idx = self.strings.len() as u32;
                     self.strings.push(name_bytes);
 
                     // Compile each argument expression (pushes values onto stack)
@@ -5176,7 +5176,7 @@ impl Codegen {
                     }
 
                     if prop_count > 0 {
-                        let key_index = self.object_keys.len() as u16;
+                        let key_index = self.object_keys.len() as u32;
                         self.object_keys.push(keys);
                         self.object_types.push(types);
 
@@ -5195,7 +5195,7 @@ impl Codegen {
                     // Compile node.id (if present) as string index, or 0xFFFF if absent
                     let id_idx = if !node.id.is_empty() {
                         let id_bytes = node.id.as_bytes().to_vec();
-                        let idx = self.strings.len() as u16;
+                        let idx = self.strings.len() as u32;
                         self.strings.push(id_bytes);
                         idx
                     } else {
@@ -5297,7 +5297,7 @@ impl Codegen {
                                     }
                                     // Fallback: use GET_FIELD (name-based)
                                     let field_bytes = name_str.as_bytes().to_vec();
-                                    let field_idx = self.strings.len() as u16;
+                                    let field_idx = self.strings.len() as u32;
                                     self.strings.push(field_bytes);
                                     self.emit(OpCode::GET_FIELD);
                                     self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -5441,7 +5441,7 @@ impl Codegen {
                     let type_name = ty.unique_name();
                     // Add to string pool
                     let type_bytes = type_name.to_string().into_bytes();
-                    let str_idx = self.strings.len() as u16;
+                    let str_idx = self.strings.len() as u32;
                     self.strings.push(type_bytes);
                     // Emit LOAD_STR instruction
                     self.emit(OpCode::LOAD_STR);
@@ -5535,18 +5535,18 @@ impl Codegen {
                                     self.emit(OpCode::GET_FIELD);
                                     let field_str = field.to_string();
                                     let field_bytes = field_str.as_bytes().to_vec();
-                                    let field_idx = self.strings.len() as u16;
+                                    let field_idx = self.strings.len() as u32;
                                     self.strings.push(field_bytes);
-                                    self.emit_u16(field_idx);
+                                    self.emit_u32(field_idx);
                                 }
                             } else {
                                 // Non-generic user type (SseParser, etc.): use GET_FIELD (name-based)
                                 self.emit(OpCode::GET_FIELD);
                                 let field_str = field.to_string();
                                 let field_bytes = field_str.as_bytes().to_vec();
-                                let field_idx = self.strings.len() as u16;
+                                let field_idx = self.strings.len() as u32;
                                 self.strings.push(field_bytes);
-                                self.emit_u16(field_idx);
+                                self.emit_u32(field_idx);
 
                                 // Plan 118 Phase 7: Set last_expr_type from the field's
                                 // declared type, so bool/float/char/etc. fields format
@@ -5567,9 +5567,9 @@ impl Codegen {
                             self.emit(OpCode::GET_FIELD);
                             let field_str = field.to_string();
                             let field_bytes = field_str.as_bytes().to_vec();
-                            let field_idx = self.strings.len() as u16;
+                            let field_idx = self.strings.len() as u32;
                             self.strings.push(field_bytes);
-                            self.emit_u16(field_idx);
+                            self.emit_u32(field_idx);
                         }
                     }
                 } else {
@@ -5654,7 +5654,7 @@ impl Codegen {
                             // Type not in registry, fall back to GET_FIELD
                             let field_str = field.to_string();
                             let field_bytes = field_str.as_bytes().to_vec();
-                            let field_idx = self.strings.len() as u16;
+                            let field_idx = self.strings.len() as u32;
                             self.strings.push(field_bytes);
                             self.emit(OpCode::GET_FIELD);
                             self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -5663,7 +5663,7 @@ impl Codegen {
                         // Add field name to string pool and emit GET_FIELD <field_idx>
                         let field_str = field.to_string();
                         let field_bytes = field_str.as_bytes().to_vec();
-                        let field_idx = self.strings.len() as u16;
+                        let field_idx = self.strings.len() as u32;
                         self.strings.push(field_bytes);
 
                         self.emit(OpCode::GET_FIELD);
@@ -6049,7 +6049,7 @@ impl Codegen {
                                         // Fallback to regular field access
                                         let field_str = field.to_string();
                                         let field_bytes = field_str.as_bytes().to_vec();
-                                        let field_idx = self.strings.len() as u16;
+                                        let field_idx = self.strings.len() as u32;
                                         self.strings.push(field_bytes);
                                         self.emit(OpCode::LOAD_STR);
                                         self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -6059,7 +6059,7 @@ impl Codegen {
                                     // Fallback to regular field access
                                     let field_str = field.to_string();
                                     let field_bytes = field_str.as_bytes().to_vec();
-                                    let field_idx = self.strings.len() as u16;
+                                    let field_idx = self.strings.len() as u32;
                                     self.strings.push(field_bytes);
                                     self.emit(OpCode::LOAD_STR);
                                     self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -6069,7 +6069,7 @@ impl Codegen {
                                 // Fallback to regular field access
                                 let field_str = field.to_string();
                                 let field_bytes = field_str.as_bytes().to_vec();
-                                let field_idx = self.strings.len() as u16;
+                                let field_idx = self.strings.len() as u32;
                                 self.strings.push(field_bytes);
                                 self.emit(OpCode::LOAD_STR);
                                 self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -6149,7 +6149,7 @@ impl Codegen {
                                         eprintln!("Warning: Generic type '{}' not found in registry (assignment)", type_name);
                                         let field_str = field.to_string();
                                         let field_bytes = field_str.as_bytes().to_vec();
-                                        let field_idx = self.strings.len() as u16;
+                                        let field_idx = self.strings.len() as u32;
                                         self.strings.push(field_bytes);
                                         self.emit(OpCode::LOAD_STR);
                                         self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -6159,7 +6159,7 @@ impl Codegen {
                                     // Type not in registry, fall back to SET_FIELD
                                     let field_str = field.to_string();
                                     let field_bytes = field_str.as_bytes().to_vec();
-                                    let field_idx = self.strings.len() as u16;
+                                    let field_idx = self.strings.len() as u32;
                                     self.strings.push(field_bytes);
                                     self.emit(OpCode::LOAD_STR);
                                     self.code.extend_from_slice(&field_idx.to_le_bytes());
@@ -6170,7 +6170,7 @@ impl Codegen {
                                 // Load field name
                                 let field_str = field.to_string();
                                 let field_bytes = field_str.as_bytes().to_vec();
-                                let field_idx = self.strings.len() as u16;
+                                let field_idx = self.strings.len() as u32;
                                 self.strings.push(field_bytes);
 
                                 self.emit(OpCode::LOAD_STR);
@@ -6417,7 +6417,7 @@ impl Codegen {
                         let variant_str_idx = {
                             let idx = self.strings.len();
                             self.strings.push(vname.clone().into_bytes());
-                            idx as u16
+                            idx as u32
                         };
                         self.emit(OpCode::LOAD_STR);
                         self.code.extend_from_slice(&variant_str_idx.to_le_bytes());
@@ -6436,7 +6436,7 @@ impl Codegen {
                         ).chain(bind_names[..n_args].iter().map(|n| {
                             auto_val::ValueKey::Str(auto_val::AutoStr::from(n.as_str()))
                         })).collect();
-                        let key_index = self.object_keys.len() as u16;
+                        let key_index = self.object_keys.len() as u32;
                         // Types: __variant is String; args inferred.
                         let mut types = vec![ObjectType::String];
                         for i in 0..n_args {
@@ -6543,7 +6543,7 @@ impl Codegen {
                                             // Named argument without value - treat as string
                                             self.emit(OpCode::LOAD_STR);
                                             let s_bytes = name.to_string().as_bytes().to_vec();
-                                            let s_idx = self.strings.len() as u16;
+                                            let s_idx = self.strings.len() as u32;
                                             self.strings.push(s_bytes);
                                             self.code.extend_from_slice(&s_idx.to_le_bytes());
                                         }
@@ -6651,7 +6651,7 @@ impl Codegen {
                                         crate::ast::Arg::Name(name) => {
                                             self.emit(OpCode::LOAD_STR);
                                             let s_bytes = name.to_string().as_bytes().to_vec();
-                                            let s_idx = self.strings.len() as u16;
+                                            let s_idx = self.strings.len() as u32;
                                             self.strings.push(s_bytes);
                                             self.code.extend_from_slice(&s_idx.to_le_bytes());
                                         }
@@ -6763,7 +6763,7 @@ impl Codegen {
                             .map(|name| auto_val::ValueKey::Str(name.clone().into()))
                             .collect();
 
-                        let _key_index = self.object_keys.len() as u16;
+                        let _key_index = self.object_keys.len() as u32;
                         self.object_keys.push(keys);
 
                         // Infer field types from args
@@ -7777,7 +7777,7 @@ impl Codegen {
                                     // Extract 'id' field using GET_FIELD
                                     let field_str = "id".to_string();
                                     let field_bytes = field_str.as_bytes().to_vec();
-                                    let field_idx = self.strings.len() as u16;
+                                    let field_idx = self.strings.len() as u32;
                                     self.strings.push(field_bytes);
 
                                     self.emit(OpCode::GET_FIELD);
@@ -7812,7 +7812,7 @@ impl Codegen {
                             // Push task_type string (bottom of stack).
                             let task_type_str = task_type.to_string();
                             let task_type_bytes = task_type_str.as_bytes().to_vec();
-                            let str_idx = self.strings.len() as u16;
+                            let str_idx = self.strings.len() as u32;
                             self.strings.push(task_type_bytes);
                             self.emit(OpCode::LOAD_STR);
                             self.code.extend_from_slice(&str_idx.to_le_bytes());
@@ -7856,7 +7856,7 @@ impl Codegen {
                                 // Push task_type as string (first arg)
                                 let task_type_str = task_type.to_string();
                                 let task_type_bytes = task_type_str.as_bytes().to_vec();
-                                let str_idx = self.strings.len() as u16;
+                                let str_idx = self.strings.len() as u32;
                                 self.strings.push(task_type_bytes);
                                 self.emit(OpCode::LOAD_STR);
                                 self.code.extend_from_slice(&str_idx.to_le_bytes());
@@ -7950,13 +7950,13 @@ impl Codegen {
                         };
 
                         let type_bytes = type_str.as_bytes().to_vec();
-                        let type_idx = self.strings.len() as u16;
+                        let type_idx = self.strings.len() as u32;
                         self.strings.push(type_bytes);
                         self.emit(OpCode::LOAD_STR);
                         self.code.extend_from_slice(&type_idx.to_le_bytes());
 
                         let method_bytes = method_str.as_bytes().to_vec();
-                        let method_idx = self.strings.len() as u16;
+                        let method_idx = self.strings.len() as u32;
                         self.strings.push(method_bytes);
                         self.emit(OpCode::LOAD_STR);
                         self.code.extend_from_slice(&method_idx.to_le_bytes());
@@ -8171,7 +8171,7 @@ impl Codegen {
                                 // Extract 'id' field using GET_FIELD
                                 let field_str = "id".to_string();
                                 let field_bytes = field_str.as_bytes().to_vec();
-                                let field_idx = self.strings.len() as u16;
+                                let field_idx = self.strings.len() as u32;
                                 self.strings.push(field_bytes);
 
                                 self.emit(OpCode::GET_FIELD);
@@ -8207,7 +8207,7 @@ impl Codegen {
                                     if let Expr::Call(inner_call) = obj.as_ref() {
                                         if let Expr::Dot(_, type_field) = inner_call.name.as_ref() {
                                             let type_bytes = type_field.as_ref().as_bytes().to_vec();
-                                            let type_idx = self.strings.len() as u16;
+                                            let type_idx = self.strings.len() as u32;
                                             self.strings.push(type_bytes);
                                             self.emit(OpCode::LOAD_STR);
                                             self.code.extend_from_slice(&type_idx.to_le_bytes());
@@ -8253,7 +8253,7 @@ impl Codegen {
                     if let Some(name) = func_name.as_ref() {
                         let type_part = name.split('.').next().unwrap_or("");
                         let type_bytes = type_part.as_bytes().to_vec();
-                        let type_idx = self.strings.len() as u16;
+                        let type_idx = self.strings.len() as u32;
                         self.strings.push(type_bytes);
                         self.emit(OpCode::LOAD_STR);
                         self.code.extend_from_slice(&type_idx.to_le_bytes());
@@ -8501,7 +8501,7 @@ impl Codegen {
                     let arg_count = call.args.args.len() as u8;
                     self.emit(OpCode::CALL_SPEC);
                     let method_bytes = method_str.as_bytes().to_vec();
-                    let method_idx = self.strings.len() as u16;
+                    let method_idx = self.strings.len() as u32;
                     self.strings.push(method_bytes);
                     self.code.extend_from_slice(&method_idx.to_le_bytes());
                     self.code.push(arg_count);
@@ -9043,7 +9043,7 @@ impl Codegen {
 
                 // Store key in the object_keys pool
                 let key = self.ast_key_to_value_key(&pair.key);
-                let key_index = self.object_keys.len() as u16;
+                let key_index = self.object_keys.len() as u32;
                 self.object_keys.push(vec![key.clone()]);
 
                 // Track field type
@@ -10834,7 +10834,7 @@ impl Codegen {
         // entries. Interning guarantees both sides agree.
         let idx = self.add_string(&qname);
         self.emit(OpCode::LOAD_GLOBAL);
-        self.emit_u16(idx);
+        self.emit_u32(idx);
     }
 
     /// Plan 348 E1: Emit LOAD_GLOBAL for an already-qualified name (e.g.
@@ -10844,7 +10844,7 @@ impl Codegen {
     fn emit_global_load_qualified(&mut self, qname: &str) {
         let idx = self.add_string(qname);
         self.emit(OpCode::LOAD_GLOBAL);
-        self.emit_u16(idx);
+        self.emit_u32(idx);
     }
 
     /// Plan 317: Emit STORE_GLOBAL for a module-level variable.
@@ -10853,7 +10853,7 @@ impl Codegen {
         // Plan 348 C1: see emit_global_load — intern via add_string for dedup.
         let idx = self.add_string(&qname);
         self.emit(OpCode::STORE_GLOBAL);
-        self.emit_u16(idx);
+        self.emit_u32(idx);
     }
 
     fn emit_load_loc(&mut self, index: usize) {
@@ -11189,18 +11189,23 @@ impl Codegen {
     }
 
     /// Add string constant to string pool and return its index
-    pub fn add_string(&mut self, s: &str) -> u16 {
+    /// 2026-08-22(编译期池 u32 化):返回 u16→u32。与运行期池修复同病:
+    /// 应用常量超 65535 时编译期即索引回绕、静默串写。配套:所有携带
+    /// 池索引的操作数字节码操作数(LDAD_STR/CREATE_NODE/PUSH_ACCUM/
+    /// ACCUM_PAIR/CREATE_OBJ/GET_FIELD/CALL_SPEC/CLOSURE(名)/CAPTURE_*/
+    /// LOAD|STORE_GLOBAL/CREATE_FUTURE)统一 2B→4B,engine/disasm 同步。
+    pub fn add_string(&mut self, s: &str) -> u32 {
         // Check if string already exists
         for (idx, existing) in self.strings.iter().enumerate() {
             if existing == s.as_bytes() {
-                return idx as u16;
+                return idx as u32;
             }
         }
 
         // Add new string
         let idx = self.strings.len();
         self.strings.push(s.as_bytes().to_vec());
-        idx as u16
+        idx as u32
     }
 
     /// Get span from an expression for error reporting
