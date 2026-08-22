@@ -8724,10 +8724,35 @@ impl Codegen {
                 self.compile_closure(closure)?;
             }
             Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
-                // Plan 060/122: Ownership operators (.view, .mut, .move, .take)
-                // For MVP, just compile the inner expression
-                // TODO: In future, implement proper borrow checking and ownership semantics
-                self.compile_expr(inner)?;
+                // Plan 060/122 → Plan 419 §4.4 接线:
+                // - .view(共享读):直通 —— 只读访问,RC>1 无成本。
+                // - .mut(独占写):编译 inner 后发射 auto.rc.assert_unique
+                //   (动态兜底:RC>1 = Shared → RuntimeError)。
+                // - .move/.take:inner 为简单局部时,发射 PUSH_NIL+STORE_LOCAL
+                //   清源槽(防 double-drop;源槽读回 Nil)。
+                match expr {
+                    Expr::Mut(_) => {
+                        self.compile_expr(inner)?;
+                        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP
+                            .get("auto.rc.assert_unique")
+                        {
+                            self.emit(OpCode::CALL_NAT);
+                            self.emit_u16(id);
+                        }
+                    }
+                    Expr::Move(_) | Expr::Take(_) => {
+                        self.compile_expr(inner)?;
+                        if let Expr::Ident(name) = inner.as_ref() {
+                            if let Some(slot) = self.lookup_var(&name.to_string()) {
+                                self.emit(OpCode::PUSH_NIL);
+                                self.emit_store_loc(slot);
+                            }
+                        }
+                    }
+                    _ => {
+                        self.compile_expr(inner)?;
+                    }
+                }
             }
             // Plan 073: May<T> null coalesce operator: left ?? right
             Expr::NullCoalesce(left, right) => {

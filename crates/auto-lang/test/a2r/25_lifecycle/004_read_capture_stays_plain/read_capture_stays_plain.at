@@ -1,0 +1,6 @@
+// Plan 419 §4.5: read-only capture — plain Rust borrow closure, no upgrade.
+fn main() {
+    let base int = 10
+    let add_base = fn(x int) int { x + base }
+    print(add_base(5))
+}

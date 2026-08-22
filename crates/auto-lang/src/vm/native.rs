@@ -7986,6 +7986,24 @@ pub fn shim_rc_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// auto.rc.assert_unique(x) -> x:.mut 借用的动态兜底 —— RC>1(Shared,
+/// 多属主)时抛 "mutable borrow of shared value"。RefCell 式极简借用检查:
+/// 以 RC>1 为冲突判据,不维护活跃借用表(plan 419 §4.4)。非引用值直通。
+pub fn shim_rc_assert_unique(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+        let count = vm.rc_count(id);
+        if count > 1 {
+            return Err(VMError::RuntimeError(format!(
+                "mutable borrow of shared value: heap object {} has {} owners",
+                id, count
+            )));
+        }
+    }
+    task.ram.push_nv(nv);
+    Ok(())
+}
+
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

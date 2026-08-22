@@ -1,0 +1,14 @@
+// Plan 419 §4.5: closure write-capture that ESCAPES (stored beyond the
+// binding's scope) — ambiguous ownership upgrades the binding to shared
+// mutable (Rc<RefCell<T>> in Rust); plain borrows would dangle.
+fn make_counter() {
+    var count int = 0
+    let inc = fn() { count = count + 1 }
+    inc()
+    inc()
+    count
+}
+fn main() {
+    let c = make_counter()
+    print(c)
+}

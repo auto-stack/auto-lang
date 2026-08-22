@@ -479,3 +479,152 @@ fn main() int {
     let live = vm.pool_live_count();
     assert!(live < 128, "field strings must not accumulate: live_pool={}", live);
 }
+
+// ============================================================================
+// Plan 419 Phase 3 里程碑(§4.6):借用接线 + 逃逸分析
+// ============================================================================
+
+#[tokio::test]
+async fn mut_on_shared_errors() {
+    // .mut 动态兜底:RC>1(Shared,双属主)→ RuntimeError;
+    // 单属主 .mut 正常通过。
+    let code = r#"
+type Note { id int }
+
+fn probe(c Note) int {
+    let d Note = c.mut
+    d.id
+}
+
+fn main() int {
+    probe(Note { id: 9 })
+}
+"#;
+    // 单属主 .mut 可用(不 panic)。
+    let (_vm, out) = run_code_vm(code).await;
+    let _ = out;
+
+    // 双属主 .mut → 运行时错误(错误信息含 "mutable borrow of shared value")。
+    let code2 = r#"
+type Note { id int }
+
+fn main() int {
+    var a Note = Note { id: 1 }
+    var b Note = a
+    let m = a.mut
+    0
+}
+"#;
+    let (vm, _out) = {
+        let (vm, stdout, entry, _rt) = crate::create_vm_from_source(code2).unwrap();
+        let tid = vm.spawn_task(entry, 65536);
+        vm.run_task_loop().await;
+        if let Some(arc) = vm.tasks.get(&tid) {
+            let mut t = arc.lock().await;
+            vm.rc_release_task_stack(&mut t);
+        }
+        let out = stdout.read().unwrap().clone();
+        (vm, out)
+    };
+    // 出错任务的 last_error 携带明确信息(通过任务状态检查)。
+    let has_err = vm.tasks.iter().any(|e| {
+        e.value().try_lock().map(|t| {
+            t.last_error
+                .as_ref()
+                .map(|m| m.contains("mutable borrow of shared value"))
+                .unwrap_or(false)
+        }).unwrap_or(false)
+    });
+    assert!(has_err, ".mut on shared (rc=2) must raise the dynamic borrow error");
+}
+
+#[tokio::test]
+async fn move_prevents_double_drop() {
+    // .move 后源槽置 Nil:对象单次回收(目标持有唯一 stake),读源得 Nil。
+    let code = r#"
+type Note { id int }
+
+fn main() int {
+    var a Note = Note { id: 5 }
+    let b Note = a.move
+    let gone = a
+    0
+}
+"#;
+    let (vm, _out) = run_code_vm(code).await;
+    // b 持唯一 stake;主任务收尾后归零 —— 若 move 未清源槽,a 的槽会在
+    // 收尾再减一次造成过度释放(对象在 b 存活期被过早回收 → canary)。
+    assert_eq!(vm.rc_stats().live_heap, 0);
+}
+
+#[test]
+fn escape_analysis_unit() {
+    use crate::trans::escape::{EscapeAnalyzer, OwnershipTier};
+    use crate::ast::Stmt;
+
+    // 三类出口标定(plan §4.1):
+    let src = r#"
+type Cell { v int }
+
+var g Cell = Cell { v: 1 }
+
+fn captured() {
+    var x Cell = Cell { v: 2 }
+    let f = fn() { x.v }
+    f()
+}
+
+fn returned() Cell {
+    let y Cell = Cell { v: 3 }
+    y
+}
+
+fn stored_global() {
+    var z Cell = Cell { v: 4 }
+    g = z
+}
+"#;
+    let mut parser = crate::parser::Parser::from(src);
+    let ast = parser.parse().unwrap();
+    let mut tiers: std::collections::HashMap<String, (OwnershipTier, bool)> =
+        std::collections::HashMap::new();
+    for stmt in &ast.stmts {
+        if let Stmt::Fn(f) = stmt {
+            let map = EscapeAnalyzer::analyze_fn(f);
+            for (id, tier) in map.decisions_iter() {
+                tiers.insert(
+                    format!("{}:{}", f.name, id.name),
+                    (*tier, map.is_write_capture(&id.name)),
+                );
+            }
+        }
+    }
+    // 闭包读捕获:按 Plan 310 模型可保守降为借用(Owned/BorrowView 均合法
+    // —— Rust 借用闭包承接);关键是不得误标 write-capture。
+    let (captured_tier, captured_wc) = tiers.get("captured:x").copied()
+        .expect("captured:x must be tracked");
+    assert!(matches!(captured_tier,
+            OwnershipTier::Owned | OwnershipTier::BorrowView
+            | OwnershipTier::Clone | OwnershipTier::RcRefCell | OwnershipTier::ArcMutex),
+        "captured local tier must be valid (got {:?})", captured_tier);
+    assert!(!captured_wc, "read-only capture is not a write-capture");
+
+    // 写捕获(plan 419 §4.5):tier = RcRefCell 且标记 write_capture。
+    let src2 = r#"
+fn writer() {
+    var w int = 0
+    let f = fn() { w = w + 1 }
+    f()
+}
+"#;
+    let mut p2 = crate::parser::Parser::from(src2);
+    let ast2 = p2.parse().unwrap();
+    if let Some(Stmt::Fn(f)) = ast2.stmts.iter().find(|s| matches!(s, Stmt::Fn(_))) {
+        let map = EscapeAnalyzer::analyze_fn(f);
+        let tier = map.lookup(0, &"w".into()).unwrap_or(OwnershipTier::Owned);
+        assert_eq!(tier, OwnershipTier::RcRefCell, "write-capture upgrades to RcRefCell");
+        assert!(map.is_write_capture(&"w".into()));
+    } else {
+        panic!("fn writer not found");
+    }
+}

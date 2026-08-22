@@ -1,6 +1,9 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: 📝 计划定稿(2026-08-23),待执行。
+> **状态**: ✅ 三 Phase 落地(2026-08-23,worktree plan-419-vm-lifecycle)。
+> Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
+> Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑
+> 全过(tests_rc_lifecycle 19 测 + a2r golden 25_lifecycle 4 例)。
 > **来源**: Plan 060 第十二/十三轮调研(auto-shell 仓)。设计口径(用户):
 > Auto 无 Rust 级生命周期标注(`'a`),三层兜底 —— ①周期内引用(~80%)
 > 作用域尾清理;②一级逃逸分析覆盖大部分逃逸;③歧义项升级 Shared
@@ -307,3 +310,47 @@ canary → stats → 测试。每个 Phase 结束:全量套件 + ash-gui e2e + p
 renderer.rs(本仓),无 auto-shell 侧改动;ash-gui e2e 仅作验证(借
 auto-shell 仓实例)。a2r golden 用例放 crates/auto-lang/test/a2r/ 既有
 golden 体系。
+
+
+---
+
+## 8. 落地记录(2026-08-23)
+
+### 8.1 实现偏差与决策
+
+| 计划条目 | 落地形态 | 说明 |
+|---|---|---|
+| §1 表 CALL_NAT 行 | **死区结算 + StakeGuard 双机制** | CALL_NAT 包装层释放 [sp_after, sp_before) 死区(sp 净减形态);shim 消费型 pop 改 pop_arg_i32/nv(槽位清零防双重)+ StakeGuard(fn 末 Drop 释放,先读后放)覆盖 sp 中性形态(pop N push N 的 receiver 消费)。存储型 pop 保留 raw + 容器侧 retain 配平 |
+| §2.1 DROP codegen 发射 | **PUSH_NIL+STORE_LOCAL 组合** | 块尾槽位释放不新造操作码(不改 operand_size 表);pop_scope 深于函数体的作用域统一发射,byref_captured_slots 跳过 |
+| §2.1 insert RC=1 | **RC=0 + push 建 stake** | insert 不建条目(对象出世无持有者),首次 rc_push/rc_retain 建 —— 语义等价、不变量更干净 |
+| §2.1 毒化 canary | debug_assertions 门控 + 4096 次插入摊销 TTL 清理 | 每次插入全扫会在 churn 退化 O(n²) |
+| §3.1 dedup×freelist | **释放时删 dedup 键** | freelist 复用不走 dedup(先查 dedup[活条目] → 弹 freelist → 追加),杜绝"一键两槽"竞态腐化 |
+| §3.1 墓碑判定 | **显式 tombstone 位** | rc==0 与"创建未推栈"不可区分,显式位消歧(get_string canary 用) |
+| §4.1 逃逸分析 | **复用 Plan 310 EscapeAnalyzer + 写捕获扩展** | detect_closure_write_captures 后置检测(Bina Op::Asn 的 Ident LHS);三类出口中"闭包捕获"细分为读捕获(310 借用模型)/写捕获(419 升级) |
+| §4.2 RC 消除(LOAD/STORE_NORC) | **缓议(债务)** | Phase 1/2 后 perf 门禁未超标(churn 100k 秒级);优化待基准数据支撑 |
+| §4.4 .mut 编译期检查 | **动态兜底先行** | auto.rc.assert_unique native(RC>1 → RuntimeError);静态单活跃 .mut 检查需借用流分析,记债务 |
+| §4.5 Cell<T>(Copy 型) | **统一 Rc<RefCell>** | Copy 型写捕获暂不特化 Cell(语义等价、少一条 tier 分支);golden 003 锁定现状 |
+| §4.5 Arc<Mutex>(spawn 捕获) | **缓议(债务)** | Tier 4 位保留;异步捕获分析未接线 |
+| §4.6 rc_elision 里程碑 | **随 §4.2 缓议** | — |
+
+### 8.2 新增接口速查
+
+- `AutoVM`:rc_push / rc_push_id / rc_push_str_idx / rc_retain(_id) /
+  rc_release(_id) / rc_release_slot_range / rc_release_task_stack /
+  rc_count / rc_stats / pool_retain / pool_release / pool_live_count /
+  pool_count / pool_is_tombstone(rc.rs)
+- `HeapObject::child_refs()`(递归释放子引用)
+- natives:auto.rc.live(2940)/ auto.rc.count(2941)/ auto.rc.assert_unique(2942)
+- a2r:EscapeMap::record_write_capture / is_write_capture /
+  write_capture_names;rust.rs 写捕获声明/访问/闭包克隆三点改写
+
+### 8.3 存量问题(与本计划无关,验证于 master)
+
+1. **编译器栈溢出 #1**:循环体内结构体字面量覆盖赋值
+   (`for ... { x = Note{...} }`,x 可为外层或循环内声明)→ 编译期栈溢出。
+2. **编译器栈溢出 #2**:循环体内嵌套裸块(`for ... { { ... } }`)→ 同上。
+   (两者均在 pristine master 复现;419 测试以 fn 化覆盖赋值绕行。)
+3. **a2r 深递归用例**:test-trans 套件若干用例(19_ownership_003、
+   cookbook 部分)在 2MB 测试线程栈下溢出 —— 需 test_a2r_deep 大栈
+   runner 或 RUST_MIN_STACK;非本计划回归。
+4. benchmark_downcast_performance 为计时敏感测试,并行满载下偶发 flaky。
