@@ -858,7 +858,17 @@ fn remap_string_indices(code: &mut Vec<u8>, remap: &[u16]) {
             OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
             OpCode::SLEEP => (4, false),
             OpCode::JOIN | OpCode::SEND => (4, false),
-            OpCode::CALL_SPEC => (4, false),
+            // Plan 417-E3: CALL_SPEC carries u16 method-name STRING idx + u8
+            // arg count (3 operand bytes; see codegen emission and the engine
+            // decode). Two fixes vs the old `(4, false)` skip: the length now
+            // matches the real encoding (4 desynced the walk by one byte per
+            // CALL_SPEC), and the u16 IS a string-pool index so it must be
+            // rebased — a dep module's CALL_SPEC otherwise dispatched a wrong
+            // method name after the string-pool merge.
+            OpCode::CALL_SPEC => {
+                apply(code, operand_pos);
+                (3, false)
+            }
             OpCode::CREATE_NODE => (5, false),
             OpCode::CLOSURE => (4, false),
             OpCode::SOURCE_LINE => (2, false),
@@ -972,7 +982,10 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u16]) {
             OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, false),
             OpCode::SLEEP => (4, false),
             OpCode::JOIN | OpCode::SEND => (4, false),
-            OpCode::CALL_SPEC => (4, false),
+            // Plan 417-E3: CALL_SPEC = u16 method string idx + u8 arg count
+            // (3 operand bytes; the old 4-byte skip desynced this walk by one
+            // byte per CALL_SPEC). No obj-pool operand here — length fix only.
+            OpCode::CALL_SPEC => (3, false),
             OpCode::CREATE_NODE => (5, false),
             OpCode::CLOSURE => (4, false),
             OpCode::SOURCE_LINE => (2, false),

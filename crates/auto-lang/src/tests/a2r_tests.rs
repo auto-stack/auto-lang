@@ -413,6 +413,7 @@ ext Store {
 #[test] fn test_08_generics_005_with_constraint() { test_a2r("08_generics/005_with_constraint").unwrap(); }
 #[test] fn test_08_generics_006_map_type() { test_a2r("08_generics/006_map_type").unwrap(); }
 #[test] fn test_08_generics_007_no_tuple_generic() { test_a2r("08_generics/007_no_tuple_generic").unwrap(); }
+#[test] fn test_08_generics_008_bounded_generic_fn() { test_a2r("08_generics/008_bounded_generic_fn").unwrap(); }
 
 // === 09_option_result ===
 #[test] fn test_09_option_result_001_option() { test_a2r("09_option_result/001_option").unwrap(); }

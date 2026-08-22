@@ -181,7 +181,7 @@ pub enum OpCode {
     CALL = 0x70,
     RET = 0x71,
     CALL_NAT = 0x72,
-    CALL_SPEC = 0x73,  // Dynamic dispatch: spec_name_idx:u16, method_name_idx:u16 -> call vtable
+    CALL_SPEC = 0x73,  // Dynamic dispatch: method_name_idx:u16, arg_count:u8 -> call by runtime receiver type
     // Plan 369 Task 10: Python FFI native call with explicit runtime arg count.
     // native_id:u16, arg_count:u8. Unlike CALL_NAT, this carries the call-site
     // arg count so the Python shim pops the ACTUAL number of args — needed

@@ -8319,6 +8319,23 @@ impl<'a> Parser<'a> {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
 
+        // Plan 417-E3: surface `<T>`/`[T]` generic params (with `has` bounds)
+        // on the AST node, mirroring fn_decl_stmt_with_annotations (which
+        // assigns type_params after the same merge). Without this the params
+        // were parsed for scope tracking only and never reached consumers
+        // (a2r `<T: Bound>` emission, VM generic-receiver dispatch).
+        if !generic_params.is_empty() {
+            let mut type_params: Vec<crate::ast::TypeParam> = Vec::new();
+            for gp in &generic_params {
+                if let crate::ast::GenericParam::Type(tp) = gp {
+                    type_params.push(tp.clone());
+                }
+            }
+            if !type_params.is_empty() {
+                fn_expr.type_params = type_params;
+            }
+        }
+
         // Plan 163: Set is_pub flag
         fn_expr.is_pub = ann.has_pub;
         // Plan 260: Set is_test flag
@@ -9877,6 +9894,23 @@ impl<'a> Parser<'a> {
         }
 
         let name = self.parse_name()?;
+
+        // Plan 417-E3 (DIV-TRAIT-VM-1): bounded type parameter `T has Spec`.
+        // `has` is a reserved keyword (TokenKind::Has, also used by
+        // `has field Type for SpecName` delegation), so it cannot collide
+        // with a const-parameter type name. Multiple bounds join with `+`
+        // (`T has A + B`), mirroring the `#[with(T as A + B)]` collection
+        // (Plan 364 W3).
+        if self.is_kind(TokenKind::Has) {
+            self.next(); // skip 'has'
+            let mut constraint = Vec::new();
+            constraint.push(self.parse_type()?);
+            while self.is_kind(TokenKind::Add) {
+                self.next(); // skip '+'
+                constraint.push(self.parse_type()?);
+            }
+            return Ok(GenericParam::Type(TypeParam { name, constraint }));
+        }
 
         // Check if next token looks like a type
         // If next token is a type keyword or identifier, it's a const parameter

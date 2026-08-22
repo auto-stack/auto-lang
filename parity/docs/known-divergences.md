@@ -30,7 +30,7 @@ Open gaps (each detailed in its own section below, fix plans in
 
 | ID | Area | Status | Blocks |
 |----|------|--------|--------|
-| DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | open (L3) | trait_advanced sub-scenario |
+| DIV-TRAIT-VM-1 | VM: bounded generic functions `<T has Spec>` | ✅ fixed (2026-08-22, Plan 417-E3) | trait_advanced 三方 14/14 |
 | DIV-TRAIT-VM-2 | VM: trait checker skips default-body methods | ✅ fixed (2026-08-22, Plan 417-E4) | trait_vm_tests ×2 |
 | DIV-TRAIT-LANG-1 | language: spec associated types | open (L3) | trait_advanced sub-scenario |
 | DIV-HTTP-LANG-1 | parser: stdlib `auto/http.at` `Type.method` decl | ✅ fixed (verified 2026-08-22, Plan 417-E5) | http_client_sync 三方 5/5 |
@@ -269,15 +269,29 @@ current status of each:
   original report used bare `score` in the test source, which is not valid
   Auto for self-field access. No fix needed.
 
-- **DIV-TRAIT-VM-1 — bounded-generic functions (open, VM side; 2026-08-22
-  精确定位).** 两个独立断点(探针实证):①语法——`fn f<T has Spec>(...)`
-  在泛型参数表被拒("Expected '>' or ',', got has",parser 的 generic
-  param list 分支不识别 `has` 界约束);②分派——即便去掉 bound 用裸
-  `<T>`,方法调用 `a.compare(0)` 按类型名静态解析 → 链接错
-  "Undefined symbol: T.compare"(codegen 无单态化也无 spec 动态分派)。
-  修复需:parser 界约束语法 + codegen 调用点单态化(按实参具体类型实例
-  化)或经 spec 注册表动态分派 + a2r 侧 `<T: Spec>` 发射——多天级语言
-  特性,Plan 417-E3 立项实施。状态: open (L3, Plan 417-E3)。
+- **DIV-TRAIT-VM-1 — bounded-generic functions (❤✅ fixed 2026-08-22, Plan
+  417-E3).** 双断点修复:①语法——`parse_generic_param` 新增 `T has Spec`
+  (多 bound `has A + B`) 分支写入既有 `TypeParam.constraint`(与
+  `#[with(T as A + B)]` 同字段);`fn_decl_stmt`(无注解路径)补上与注解路
+  径一致的 generic_params→type_params 传递(此前 `<T>` 声明在该路径被丢弃,连
+  带 a2r 丢 `<T>` 发射);②分派——codegen 新增 `current_fn_type_params`
+  追踪,接收者静态类型为当前 fn 泛型参数时方法调用改发 CALL_SPEC(
+  运行时按堆对象 tag 拼 `<真实类型>.<方法>` 查 exports)。修复过程中
+  探明并修复两个隐藏 bug:a) CALL_SPEC 分派到 VM 函数时未压 CallFrame,
+  被调 RET 弹错调用者帧 → `current_fn_n_args` 污染 → LOAD_LOCAL
+  参数寻址落入 null 保护(同表达式第二个 CALL_SPEC 必现);际
+  有 `is_spec_dispatch` 用户同样受益;b) 链接期字符串池合并的
+  `remap_string_indices` 步行器把 CALL_SPEC 按 4 字节跳过(实际 3) 且不重映
+  射 method idx → 跨模块 CALL_SPEC 分派错误方法名(一并修正
+  disasm 解码表与 opcode 注释)。a2r 侧:`<T: Spec>` 经 parser 贯通自动
+  发射;`rust_return_type_name`/`rust_type_name` 的 User 分支对当前 fn 泛型
+  参数名直接返回裕名(此前 `-> impl T` 误发射)。验证:
+  trait_vm_tests +3(单实现者/多实现者/裸 `<T>`);a2r golden
+  08_generics/008_bounded_generic_fn 新增(345/345);parity trait_advanced
+  升级 sub-scenario C(bounded_generics.at 4 例,含反向 compare 第二实现者
+  证明按接收者类型分派)三方 14/14。遗留:调用点界校验
+  (实参类型未实现 bound 时拒绝)未实施——登记 KNOWN-DEBT(417-E3-P4)。
+  状态: ❤✅ fixed。
 
 - **DIV-TRAIT-VM-2 — VM trait checker requires re-declaration of default
   methods (✅ fixed 2026-08-22, Plan 417-E4).** 双端修复:①trait_checker 的

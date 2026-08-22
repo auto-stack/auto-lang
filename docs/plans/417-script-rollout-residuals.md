@@ -13,11 +13,11 @@
 |---|---|---|---|
 | E1 CHAR-AT-1 | ✅ 2026-08-22 完成:infer_type_from_expr 把 char_at 移入 Int 臂(golden 007_char_at_infer,string_utils 四处 workaround 注解移除,DIV 翻 fixed);**衍生 E1b ✅ 同日由 D2 根治**:register_import_signatures 在 use_stmt 处理时解析可发现模块源登记导入函数签名(string_utils 三方 22/22 恢复全绿) | trans/rust.rs register_import_signatures | — |
 | E2 LANG-1 | 语言级语法/语义分歧点 | 按 known-divergences 条目定位 | 1-2 天 |
-| E3 TRAIT-VM-1 | trait 默认方法 VM 分歧 | vm/codegen.rs trait 分发臂 | 2-3 天 |
+| E3 TRAIT-VM-1 | trait 默认方法 VM 分歧 | ✅ 2026-08-22 完成(有界泛型:parser `has` 语法 + VM CALL_SPEC 动态分派 + CallFrame/字符串重映射两处隐藏 bug 修复 + a2r `<T: Spec>` 发射;trait_advanced 三方 14/14) | 2-3 天 |
 | E4 TRAIT-VM-2 | ✅ 2026-08-22:trait_checker 跳过默认体方法(继承合法)+ codegen TypeDecl 臂经 TypeStore 查询合成未重声明的默认方法(重声明=覆盖,抽象仍强制);trait_vm_tests ×3(继承/覆盖/抽象强制);a2r 侧本就正确;trait_advanced 三方已由同日 ifexpr 批解锁(**10/10 全绿**:a2r 值位尾 if 臂分号缺口根治,golden 013_if_tail_value) | trait_checker.rs + vm/codegen.rs + lib.rs 预注册 | — |
 | E5 HTTP-LANG-1 | ✅ 2026-08-22 验证关闭:master 已能解析 `Type.method;` 声明(后续 parser 批次已修,DIV 登记翻转)——**http_client_sync 三方 5/5(连跑三次稳定),D3 解锁并全绿**;D3.3 双 demo 并入 A1/A2 落地页批次 | 实测:auto-parity run http_client_sync | — |
 
-**顺序**: E1 ✅ → E5 ✅ → E4 ✅ → 剩 E3(TRAIT-VM-1 有界泛型,2026-08-22 探针双断点定位:泛型表拒 `has` 语法 + 裸 `<T>` 方法调用静态解析链接错——需单态化或 spec 动态分派,多天级)→ E2(LANG-1 关联类型,语言级)。Phase E 五项已关三项。每项落地后 known-divergences.md 对应条目 status → fixed。
+**顺序**: E1 ✅ → E5 ✅ → E4 ✅ → E3 ✅(TRAIT-VM-1 有界泛型,2026-08-22 修复:`has` 语法 + CALL_SPEC 运行时类型分派 + a2r `<T: Spec>`;详见 known-divergences.md DIV-TRAIT-VM-1 翻转条)→ 剩 E2(LANG-1 关联类型,语言级)。Phase E 五项已关四项。每项落地后 known-divergences.md 对应条目 status → fixed。
 
 ## 2. D2 generators 用例 ✅ 2026-08-22 完成(Plan 417-D2,三方 6/6 一致;VM 带参生成器搬参根治 + a2r ~Iter→Stream 统一降级 + 导入签名登记,E1b 连带根治)
 

@@ -275,6 +275,12 @@ pub struct Codegen {
     /// Used to resolve implicit field access (bare field names → self.field)
     pub current_type_members: Option<Vec<String>>,
 
+    /// Plan 417-E3: type-parameter names of the fn currently being compiled
+    /// (`fn max_of<T has S>(...)` → ["T"]). A receiver whose static type is
+    /// one of these names must dispatch methods dynamically (CALL_SPEC on the
+    /// runtime heap tag) — the static `T.method` symbol doesn't exist.
+    pub current_fn_type_params: Vec<String>,
+
     /// Plan 087 Phase 3: Type inference context for .type property support
     /// Uses the infer module's comprehensive type inference system
     pub infer_ctx: InferenceContext,
@@ -501,6 +507,7 @@ impl Codegen {
             fn_return_types, // Plan 087 Phase 3: function return types for .type (Plan 378: populated)
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
+            current_fn_type_params: Vec::new(), // Plan 417-E3
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
@@ -835,6 +842,7 @@ impl Codegen {
             fn_return_types,
             current_fn_n_args: 0,
             current_fn_ret_type: Type::Void,
+            current_fn_type_params: Vec::new(), // Plan 417-E3
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
@@ -1278,6 +1286,17 @@ impl Codegen {
                 self.current_fn_n_args = fn_decl.params.len();
                 self.current_fn_ret_type = fn_decl.ret.clone();
 
+                // Plan 417-E3: record this fn's type-parameter names so method
+                // calls on receivers typed as one of them dispatch dynamically
+                // (CALL_SPEC on the runtime heap tag) instead of a static
+                // `T.method` reloc that can never link.
+                let saved_fn_type_params = self.current_fn_type_params.clone();
+                self.current_fn_type_params = fn_decl
+                    .type_params
+                    .iter()
+                    .map(|tp| tp.name.to_string())
+                    .collect();
+
                 // Plan 087 Phase 3: Record starting index for function scope
                 // This is needed because outer scope variables affect parameter indices
                 // Parameters will have indices: fn_scope_start, fn_scope_start+1, ...
@@ -1511,6 +1530,7 @@ impl Codegen {
                 // Plan 087 Phase 3: Reset current function parameter count and scope start
                 self.current_fn_n_args = 0;
                 self.current_fn_ret_type = Type::Void;
+                self.current_fn_type_params = saved_fn_type_params; // Plan 417-E3
                 self.fn_scope_start = 0;
 
                 // 9. Patch jump to skip body
@@ -8084,6 +8104,16 @@ impl Codegen {
                             if let Some(ty) = self.var_types.get(var_name.to_string().as_str()) {
                                 if matches!(ty, Type::Spec(_)) {
                                     is_spec_dispatch = true;
+                                }
+                                // Plan 417-E3 (DIV-TRAIT-VM-1): a receiver whose
+                                // static type is one of the enclosing fn's type
+                                // parameters (`fn max_of<T has C>(a T, ...)`) has
+                                // no static `T.method` symbol — dispatch on the
+                                // runtime heap tag via CALL_SPEC instead.
+                                if let Type::User(td) = ty {
+                                    if self.current_fn_type_params.contains(&td.name.to_string()) {
+                                        is_spec_dispatch = true;
+                                    }
                                 }
                             }
                         }

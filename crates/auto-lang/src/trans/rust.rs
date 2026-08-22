@@ -240,6 +240,12 @@ pub struct RustTrans {
     // Track current function's return type for string coercion
     current_fn_ret_type: Option<Type>,
 
+    /// Plan 417-E3: type-parameter names of the fn currently being emitted
+    /// (`fn max_of<T has Comparable>(...)` → {"T"}). A `Type::User` whose name
+    /// is in this set renders as the bare param name — never `impl T` (the
+    /// PascalCase trait heuristic) and never a concrete-struct lookup.
+    current_fn_type_params: std::collections::HashSet<AutoStr>,
+
     /// Plan 417-E4 调查: while emitting an if that IS the fn-body tail value,
     /// branch tail expressions omit the statement-context `;` (if_stmt's
     /// Plan 393 E3 rule). Nested non-last ifs restore statement mode.
@@ -405,6 +411,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
+            current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
@@ -484,6 +491,7 @@ impl RustTrans {
             current_fn_str_params: HashSet::new(),
             fn_str_param_indices: HashMap::new(),
             current_fn_ret_type: None,
+            current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
             value_if_tail: false,
             local_var_types: HashMap::new(),
             json_value_vars: HashSet::new(),
@@ -1338,6 +1346,10 @@ impl RustTrans {
                 // branch) — render verbatim, do NOT qualify (no crate:: prefix).
                 if name.starts_with("dyn ") {
                     name
+                } else if self.current_fn_type_params.contains(usr.name.as_str()) {
+                    // Plan 417-E3: generic type parameter of the current fn —
+                    // bare param name, no Box<dyn>/qualification treatment.
+                    name
                 } else if self.spec_decls.contains_key(name.as_str()) {
                     format!("Box<dyn {}>", name)
                 } else {
@@ -1712,6 +1724,12 @@ impl RustTrans {
             // ~IntoResponse → impl IntoResponse (via Future unwrap in caller).
             Type::User(usr) => {
                 let name = usr.name.to_string();
+                // Plan 417-E3: a generic type parameter of the current fn is
+                // never a trait — emit the bare param name (`-> T`), not
+                // `impl T` (illegal in Rust and wrong for bounds dispatch).
+                if self.current_fn_type_params.contains(usr.name.as_str()) {
+                    return name;
+                }
                 if self.spec_decls.contains_key(name.as_str()) {
                     return format!("impl {}", name);
                 }
@@ -11171,6 +11189,14 @@ impl RustTrans {
             fn_decl.ret.clone()
         };
         self.current_fn_ret_type = Some(effective_ret_type.clone());
+        // Plan 417-E3: record this fn's type-parameter names so return/param
+        // positions referencing one render as the bare name (`-> T`), never
+        // `impl T` (the PascalCase-trait heuristic misfires on single letters).
+        self.current_fn_type_params = fn_decl
+            .type_params
+            .iter()
+            .map(|tp| tp.name.clone())
+            .collect();
         // Plan 204 Phase 1B: Use rust_return_type_name for return positions (str -> String)
         if fn_body_has_try {
             write!(sink.body, " -> Result<(), Box<dyn std::error::Error>>")?;

@@ -5224,6 +5224,25 @@ impl AutoVM {
                         task.ram.push_i32(task.bp as i32);
                         task.bp = task.ram.sp - 1;
                         task.ip = addr as usize;
+                        // Plan 417-E3: push a CallFrame exactly like regular
+                        // CALL — the callee's RET pops one to restore
+                        // current_fn_n_args/current_fn_n_locals. Without this
+                        // frame the CALLER's frame is popped instead, and
+                        // LOAD_LOCAL param addressing (which reads
+                        // current_fn_n_args) degrades to the null guard —
+                        // e.g. the second receiver load in
+                        // `a.cmp(0) >= b.cmp(0)` pushed null.
+                        let fn_name = self.flash.addr_to_name.get(&(addr as u32)).cloned();
+                        let saved_n_args = task.current_fn_n_args;
+                        let saved_n_locals = task.current_fn_n_locals;
+                        task.call_stack.push(crate::vm::task::CallFrame {
+                            return_ip: task.ip,
+                            old_bp: task.bp,
+                            fn_name,
+                            line: task.current_line,
+                            old_fn_n_args: saved_n_args,
+                            old_fn_n_locals: saved_n_locals,
+                        });
                     } else if let Some(native_id) = opaque_native_id {
                         // Plan 212 Phase 2.2: Opaque type method routed to native shim
                         // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]

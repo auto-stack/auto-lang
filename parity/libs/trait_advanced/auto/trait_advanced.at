@@ -138,6 +138,29 @@ type ScoreCmp as Comparable {
     }
 }
 
+// Second implementer with a REVERSED compare, so the bounded-generic max_of
+// below picks the numerically smaller value when invoked through ScoreDesc.
+// This proves the method dispatch inside the generic fn follows each
+// receiver's own runtime type, not the first implementer seen.
+
+type ScoreDesc as Comparable {
+    val int
+
+    fn compare(other int) int {
+        other - self.val
+    }
+}
+
+
+// Bounded generic function, the Plan 417-E3 L1 path (was DIV-TRAIT-VM-1).
+// The has-bound parses into the fn's type parameters, a2r emits the native
+// Rust bound form, and the AutoVM dispatches the receiver method call
+// dynamically on the runtime type of each argument.
+
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
 
 // =============================================================================
 // Primitive entry points (used by the test suite).
@@ -182,4 +205,18 @@ fn max_score_val(a int, b int) int {
 fn score_cmp(a int, b int) int {
     let sa = ScoreCmp { val: a }
     sa.compare(b)
+}
+
+// Sub-scenario C, L1 (Plan 417-E3): bounded-generic dispatch through max_of.
+
+fn bounded_max_val(a int, b int) int {
+    var sa ScoreCmp = ScoreCmp { val: a }
+    var sb ScoreCmp = ScoreCmp { val: b }
+    max_of(sa, sb).val
+}
+
+fn bounded_max_desc(a int, b int) int {
+    var da ScoreDesc = ScoreDesc { val: a }
+    var db ScoreDesc = ScoreDesc { val: b }
+    max_of(da, db).val
 }
