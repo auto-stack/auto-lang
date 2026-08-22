@@ -371,6 +371,10 @@ macro_rules! for_each_native {
             // 登记、白名单(for_each_bigvm_native/NATIVE_ID_ENTRIES)缺失,VM 模式
             // 下 widget/back 模块调用报 Undefined symbol —— 一并补齐。
             (2866, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
+            // Plan 060:merged 模式 shell 执行提交(api.at 契约归一的传输件)。
+            (2867, NATIVE_SHELL_EXEC_SUBMIT, shim_shell_exec_submit, "auto.shell.exec_submit"),
+            // Plan 060 M2:builtin 直发(语义在 .at 提交侧算好)。
+            (2868, NATIVE_SHELL_EMIT_RESULT, shim_shell_emit_result, "auto.shell.emit_result"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -836,6 +840,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.join", 2865, String),
             // 2026-08-22:read_dir 白名单补登记(ash-gui cd 目录补全用)。
             ("auto.fs.read_dir", 2866, String),
+            // Plan 060:merged 模式 shell 执行提交(参数 int,str,str;返回 void)。
+            ("auto.shell.exec_submit", 2867, Void),
+            ("auto.shell.emit_result", 2868, Void),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2145,6 +2152,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.fs.parent", 2864),
     ("auto.fs.join", 2865),
     ("auto.fs.read_dir", 2866),
+    ("auto.shell.exec_submit", 2867),
+    ("auto.shell.emit_result", 2868),
 
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
