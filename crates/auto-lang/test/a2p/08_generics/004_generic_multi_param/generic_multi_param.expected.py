@@ -1,4 +1,4 @@
-def pair(k: K, v: V):
+def pair(k, v):
     print("pair created")
 
 def main():

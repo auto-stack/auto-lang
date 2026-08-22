@@ -1,0 +1,41 @@
+/// trait_advanced / sub-scenario C L1 — bounded generic functions (TAP output).
+//
+// Plan 417-E3 (DIV-TRAIT-VM-1 flip): `fn max_of<T has Comparable>` now parses,
+// transpiles to Rust's native `<T: Comparable>` bound, and dispatches the
+// method call on the generic receiver dynamically on the AutoVM. The
+// reversed-compare implementer (ScoreDesc) proves the dispatch follows each
+// receiver's own type rather than the first implementer.
+//
+// The parity runner sets the working directory to the library root
+// (parity/libs/trait_advanced), so the library at ./auto/trait_advanced.at is
+// imported as auto.trait_advanced. Test names MUST match the Rust #[test]
+// function names in tests/rust/tests/trait_advanced.rs.
+use auto.trait_advanced: bounded_max_val, bounded_max_desc
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn check_int(n int, name str, actual int, expected int) {
+    if actual == expected {
+        tap_ok(n, name)
+    } else {
+        tap_not_ok(n, name, "got " + actual.to(str) + " expected " + expected.to(str))
+    }
+}
+
+fn main() {
+    // Sub-scenario C, L1: bounded-generic max through ScoreCmp (ascending
+    // compare) picks the larger value.
+    check_int(1, "test_bounded_generic_max_picks_larger", bounded_max_val(3, 9), 9)
+    check_int(2, "test_bounded_generic_max_order_invariant", bounded_max_val(9, 3), 9)
+    // Same generic fn, reversed-compare implementer: "max" under the reversed
+    // order is the numerically smaller value — the dispatch must follow the
+    // ScoreDesc receiver, not ScoreCmp.
+    check_int(3, "test_bounded_generic_follows_second_impl", bounded_max_desc(3, 9), 3)
+    check_int(4, "test_bounded_generic_desc_order_invariant", bounded_max_desc(9, 3), 3)
+}

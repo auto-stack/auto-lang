@@ -251,3 +251,58 @@ fn test_container_assoc_first() {
 fn test_container_assoc_first_of_negative() {
     assert_eq!(container_first(-7, 8, 9), -7);
 }
+
+// --- Sub-scenario C, L1 (Plan 417-E3) — bounded generic functions
+// (bounded_generics.at). Mirrors `fn max_of<T has Comparable>` with Rust's
+// native trait bound. ScoreDesc reverses the compare so "max" under it is the
+// smaller value, proving per-receiver dispatch through the generic body. ---
+
+struct ScoreDesc {
+    val: i32,
+}
+
+impl Comparable for ScoreDesc {
+    fn compare(&self, other: i32) -> i32 {
+        other - self.val
+    }
+}
+
+fn max_of<T: Comparable>(a: T, b: T) -> T {
+    if a.compare(0) >= b.compare(0) {
+        a
+    } else {
+        b
+    }
+}
+
+fn bounded_max_val(a: i32, b: i32) -> i32 {
+    let sa = ScoreCmp { val: a };
+    let sb = ScoreCmp { val: b };
+    max_of(sa, sb).val
+}
+
+fn bounded_max_desc(a: i32, b: i32) -> i32 {
+    let da = ScoreDesc { val: a };
+    let db = ScoreDesc { val: b };
+    max_of(da, db).val
+}
+
+#[test]
+fn test_bounded_generic_max_picks_larger() {
+    assert_eq!(bounded_max_val(3, 9), 9);
+}
+
+#[test]
+fn test_bounded_generic_max_order_invariant() {
+    assert_eq!(bounded_max_val(9, 3), 9);
+}
+
+#[test]
+fn test_bounded_generic_follows_second_impl() {
+    assert_eq!(bounded_max_desc(3, 9), 3);
+}
+
+#[test]
+fn test_bounded_generic_desc_order_invariant() {
+    assert_eq!(bounded_max_desc(9, 3), 3);
+}

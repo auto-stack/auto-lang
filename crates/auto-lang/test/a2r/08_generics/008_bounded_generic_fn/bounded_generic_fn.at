@@ -1,0 +1,29 @@
+// Plan 417-E3 (DIV-TRAIT-VM-1): bounded generic functions — `fn f<T has Spec>`.
+// The `has` bound parses into TypeParam.constraint and a2r emits Rust's
+// native `<T: Spec>` form; the bare `<T>` (007-style) form stays bound-free.
+
+spec Comparable {
+    fn compare(other int) int
+}
+
+fn max_of<T has Comparable>(a T, b T) T {
+    if a.compare(0) >= b.compare(0) { a } else { b }
+}
+
+fn idf<T>(x T) T {
+    return x
+}
+
+type Score as Comparable {
+    val int
+    fn compare(other int) int {
+        return self.val - other
+    }
+}
+
+fn main() {
+    var x Score = Score { val: 3 }
+    var y Score = Score { val: 9 }
+    print(max_of(x, y).val)
+    print(idf(7))
+}

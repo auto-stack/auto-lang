@@ -1,4 +1,4 @@
-def identity(x: T) -> T:
+def identity(x):
     return x
 
 def main():

@@ -49,6 +49,7 @@
 | 243 | 一致性遗漏 | 🟡 | rename 实测为单文档作用域(416 6-B 协议测试实证):虚拟 URI 无 resolver 根时不跨文件;真实磁盘 workspace 是否跨文件未验证 | 跨文件 rename 需 resolver 根 + 磁盘文件,虚拟文档场景受限 | `crates/auto-lsp/src/workspace.rs` | 2026-08-22 |
 | 417-E4 调查 | parity 断裂 | ~~未解~~ **已根治(同日 ifexpr 批)**:body() 尾位 Stmt::If(带 else)纳入 is_returnable + 值位旗标 value_if_tail(then/else/else-if 臂与嵌套 if 尾表达式免分号,语句上下文 Plan 393 E3 行为保留);golden 013_if_tail_value 锁定;**trait_advanced 三方 10/10 全绿** | `trans/rust.rs` if_stmt + body | 2026-08-22 |
 | 417-E1 调查 | parity 断裂 | ~~已解~~(2026-08-22 同日由 417-D2 根治):string_utils a2r 构建断裂的根因是**单文件转译对 `use auto.<mod>:` 导入函数的签名盲区**(fn_ret_types/fn_str_param_indices 无导入条目)。417-D2 的 register_import_signatures 在 use_stmt 处理时解析可发现的模块源(./auto/<mod>.at)登记签名,配合 417-E1 的 a2r-std i64 对齐 + as_str 白名单扩展 + runner 镜像拼写,**string_utils 三方 22/22 恢复全绿**。 | `trans/rust.rs` register_import_signatures |
+| 417-E3-P4 | 延期/已知限制 | 调用点界校验未实施:`fn max_of<T has Comparable>` 调用处的实参类型若未实现 bound spec,VM 静默放行(运行时 CALL_SPEC 找不到方法才报错),a2r 侧由 rustc 编译期捕获。需在 codegen 调用编译路径上按 fn type_params+实参静态类型做保守检查(Unknown/推断失败一律放行以免误报);评估后按“缩小单批范围”纪律延后 | `vm/codegen.rs` 调用编译臂 + `trait_checker.rs` | 2026-08-22 |
 | 410 | Expr::Dot 不查符号 | `x = a.b` 中 `a` 未定义今天仍通过（Expr::Dot 不经 check_symbol；Bina(Op::Dot) 分支源码不可达）。Phase 2 立项时须一并纳入。 | `parser.rs check_symbol` |
 | 381 | v1 限制 | Node::deserialize 只处理 props（标量字段），不含 kids（命名子块）。嵌套块反序列化留给 v2（需 field-level resolver）。覆盖 role_config 等全部用例（字段全是标量/数组）。 | `auto-val/src/de.rs:79` |
 
@@ -78,4 +79,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-20（Plan 308/317/364/399/404/407/409/410 归档复审后；398/406/408 finish-plan 归档）*
+*最后更新：2026-08-22（Plan 417-E3 有界泛型落地:登记 417-E3-P4 调用点界校验延期；2026-08-20 Plan 308/317/364/399/404/407/409/410 归档复审后；398/406/408 finish-plan 归档）*

@@ -256,11 +256,14 @@ impl<'a> Disassembler<'a> {
                 (format!("addr=0x{:04x}, n_args={}", addr, n_args), 5)
             }
 
-            // CALL_SPEC: u16 spec_name, u16 method_name
+            // CALL_SPEC: u16 method_name string idx, u8 arg_count
+            // (Plan 417-E3: real encoding is 3 operand bytes — the old u16+u16
+            // decode misread the arg-count byte into the method index and
+            // desynced every following instruction in the listing.)
             OpCode::CALL_SPEC => {
-                let spec = self.flash.read_u16(ip);
-                let method = self.flash.read_u16(ip + 2);
-                (format!("spec={}, method={}", spec, method), 4)
+                let method = self.flash.read_u16(ip);
+                let argc = self.flash.read_u8(ip + 2);
+                (format!("method={}, argc={}", method, argc), 3)
             }
 
             // CREATE_ARRAY/CREATE_TUPLE: u8 count
