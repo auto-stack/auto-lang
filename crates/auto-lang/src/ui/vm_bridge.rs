@@ -1166,20 +1166,36 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
             }
         }
         Expr::Array(elements) => {
-            // Array literals: evaluate each element
-            let values: Vec<Value> = elements.iter()
-                .map(|e| eval_expr_to_value(e, vm))
-                .collect();
-            Value::Array(auto_val::Array::from(values))
+            // Plan 420: state 列表字面量物化为 VM 原生 ListData 堆对象
+            // (Value::VmRef)—— 与 handler 内局部列表同表示,`.len()`/
+            // `.push()`/`[i]` 索引与嵌套字段赋值等字节码操作才能作用于
+            // state 字段。此前存 Value::Array,渲染读得到、handler 读出 0。
+            let mut list = crate::vm::types::ListData::<Value>::new();
+            for e in elements {
+                list.push(eval_expr_to_value(e, vm));
+            }
+            let id = vm.insert_heap_object(list);
+            Value::VmRef(auto_val::VmRef { id: id as usize })
         }
         Expr::Object(pairs) => {
-            // Object literals: evaluate each field (key from Pair.key)
-            let mut obj = auto_val::Obj::new();
+            // Plan 420: 对象字面量同理物化为 GenericInstanceData(字段名可
+            // 索引),列表元素经此表示后 `.tabs[0].dirty = true` 才能落进
+            // 真实字段(handler 字面量构造走 CONSTRUCT_INSTANCE 同型)。
+            let mut names = Vec::with_capacity(pairs.len());
+            let mut values = Vec::with_capacity(pairs.len());
             for pair in pairs {
-                let key = pair.key.to_astr();
-                obj.set(key, eval_expr_to_value(&pair.value, vm));
+                // to_astr() — bare name; Name's Display wraps as "(name key)"
+                // which breaks GET_FIELD's by-name lookup (Plan 420 探针实证)。
+                names.push(pair.key.to_astr().to_string());
+                values.push(eval_expr_to_value(&pair.value, vm));
             }
-            Value::Obj(obj)
+            let inst = crate::vm::generic_registry::GenericInstanceData::new_with_names(
+                "StateObjectLit".to_string(),
+                values,
+                names,
+            );
+            let id = vm.insert_heap_object(inst);
+            Value::VmRef(auto_val::VmRef { id: id as usize })
         }
         // EDGE-04 fix: type literal `Type{ field: val, ... }` (parsed as
         // Expr::Node) must be materialized to a GenericInstanceData on the VM
