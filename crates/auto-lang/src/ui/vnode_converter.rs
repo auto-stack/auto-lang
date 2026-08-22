@@ -217,10 +217,11 @@ where
             },
         ),
 
-        View::Button { label, .. } => (
+        View::Button { label, disabled, .. } => (
             VNodeKind::Button,
             VNodeProps::Button {
                 label: label.clone(),
+                disabled: *disabled,
             },
         ),
 
@@ -531,6 +532,7 @@ mod tests {
     #[test]
     fn test_button_conversion() {
         let view: View<TestMsg> = View::Button {
+            disabled: false,
             label: "Click Me".to_string(),
             onclick: TestMsg::Click,
             style: None,
@@ -543,7 +545,7 @@ mod tests {
         assert_eq!(tree.node_count(), 1);
         let root = tree.root().unwrap();
         assert_eq!(root.kind, VNodeKind::Button);
-        if let VNodeProps::Button { label } = &root.props {
+        if let VNodeProps::Button { label, .. } = &root.props {
             assert_eq!(label, "Click Me");
         } else {
             panic!("Expected Button props");
@@ -557,6 +559,7 @@ mod tests {
     #[test]
     fn test_button_content_subtree_serializes() {
         let view: View<TestMsg> = View::Button {
+            disabled: false,
             label: "card".to_string(),
             onclick: TestMsg::Click,
             style: None,
@@ -956,6 +959,7 @@ mod tests {
                     style: None,
                 },
                 View::Button {
+                    disabled: false,
                     label: "Click".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
@@ -1010,6 +1014,7 @@ mod tests {
                     style: None,
                 },
                 View::Button {
+                    disabled: false,
                     label: "Click".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
@@ -1047,7 +1052,7 @@ mod tests {
             children: vec![
                 View::Text { content: "a".into(), style: None },
                 View::Row { children: vec![
-                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None },
+                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None, disabled: false },
                 ], spacing: 0, padding: 0, style: None },
             ],
             spacing: 0, padding: 0, style: None,

@@ -553,6 +553,107 @@ def run_tests(mcp_url, proc):
     else:
         print("  NOTE  AUTO_OPEN_PATH/AUTO_SAVE_PATH not set; skipping T9 (see runner env)")
 
+    # T10: Plan 423 — enabled-if disabled 态 + 配置热重载(独立新鲜进程)。
+    print("\nT10: Plan 423 enabled-if + hot reload")
+    if os.environ.get("AUTO_OPEN_PATH") and os.environ.get("AUTO_SAVE_PATH"):
+        t10_port = pick_free_port()
+        t10_proc = subprocess.Popen(
+            [AUTO_BIN, "run", "-r", "vm"],
+            cwd=PROJECT,
+            env={**os.environ, "AUTOUI_MCP_PORT": str(t10_port)},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        config_file = os.path.join(PROJECT, "auto-edit.at")
+        config_backup = open(config_file, encoding="utf-8").read()
+        try:
+            t10_url = f"http://127.0.0.1:{t10_port}/mcp"
+            assert wait_for_server(t10_url, 30), "T10 server never up"
+            mcp10 = McpClient(t10_url)
+            snap10 = ""
+            for _ in range(15):
+                snap10 = mcp10.snapshot()
+                if "(rendered)" in snap10:
+                    break
+                time.sleep(1)
+
+            # 10.1 close both starter tabs → file.save (enabled-if .tab_count > 0)
+            # goes disabled: snapshot marker + click dispatches nothing.
+            for _ in range(3):
+                if state_int(mcp10.state("tab_count"), "tab_count") == 0:
+                    break
+                xs = find_tab_close_buttons(mcp10.snapshot())
+                if not xs:
+                    break
+                mcp10.click(xs[0])
+                time.sleep(0.5)
+            result.check("T10 all tabs closed",
+                         state_int(mcp10.state("tab_count"), "tab_count") == 0, "tabs left")
+            snap10 = mcp10.snapshot()
+            save_btn = find_button_by_onclick(snap10, "ActSave")
+            ok_save = save_btn is not None
+            result.check("T10 save button found", ok_save, "ActSave button missing")
+            if ok_save:
+                m = re.search(r'button #' + re.escape(save_btn) + r'[^{]*\{[^}]*\}', snap10, re.S)
+                region = m.group(0) if m else ""
+                result.check("T10 save disabled marker in snapshot",
+                             "disabled: true" in region, region[:120])
+                console_before = state_str(mcp10.state("console"), "console") or ""
+                mcp10.click(save_btn)
+                time.sleep(0.6)
+                console_after = state_str(mcp10.state("console"), "console") or ""
+                result.check("T10 disabled click dispatches nothing",
+                             "saved:" not in console_after and console_after == console_before,
+                             f"before={console_before[-40:]!r} after={console_after[-40:]!r}")
+
+            # 10.2 reopen a tab → save re-enables (marker gone).
+            plus = find_button_by_onclick(mcp10.snapshot(), "ActOpen")
+            if plus:
+                mcp10.click(plus)
+                time.sleep(0.8)
+                snap10 = mcp10.snapshot()
+                save_btn = find_button_by_onclick(snap10, "ActSave")
+                if save_btn:
+                    m2 = re.search(r'button #' + re.escape(save_btn) + r'[^{]*\{[^}]*\}', snap10, re.S)
+                    region2 = m2.group(0) if m2 else ""
+                    result.check("T10 save re-enabled after open",
+                                 "disabled: true" not in region2, region2[:120])
+
+            # 10.3 hot reload: append an action + a T10 menu INSIDE the root
+            # block (auto-atom rejects trailing nodes after the closing brace),
+            # reload via the MCP tool, expect it in the next snapshot.
+            modified = config_backup.rstrip()
+            assert modified.endswith("}"), "unexpected auto-edit.at shape"
+            modified = modified[:-1] + (
+                '\n    action { id : "help.t10" handler : ".ActAbout" title : "T10 重载项" }'
+                '\n    menubar { menu { id : "t10menu" title : "T10" item { action : "help.t10" } } }\n}\n'
+            )
+            with open(config_file, "w", encoding="utf-8") as f:
+                f.write(modified)
+            try:
+                mcp10.call("action_config_reload")
+                time.sleep(1.5)  # heartbeat rebuild cadence
+                open_menu(mcp10, [snap10], "T10")
+                item = find_button_by_text(mcp10.snapshot(), "T10 重载项")
+                result.check("T10 hot-reloaded menu item appears", item is not None,
+                             "item not in snapshot after reload")
+                if item:
+                    mcp10.click(item)
+                    time.sleep(0.4)
+                    result.check("T10 reloaded item dispatches",
+                                 "auto-edit 0.1" in (state_str(mcp10.state("console"), "console") or ""),
+                                 "no about line")
+            finally:
+                with open(config_file, "w", encoding="utf-8") as f:
+                    f.write(config_backup)
+                mcp10.call("action_config_reload")  # restore effective config
+        finally:
+            t10_proc.terminate()
+            try:
+                t10_proc.wait(5)
+            except Exception:
+                t10_proc.kill()
+    else:
+        print("  NOTE  AUTO_OPEN_PATH/AUTO_SAVE_PATH not set; skipping T10")
+
     print("\nT8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
     item = find_button_by_text(snap_cache[0], "退出")

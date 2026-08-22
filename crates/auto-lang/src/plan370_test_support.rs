@@ -134,6 +134,7 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
                                 messages: store_decl.messages.clone(),
                                 model: store_decl.model.clone(),
                                 computed: store_decl.computed.clone(),
+                                setup: None, // Plan 426 field; test support defaults
                                 view: None,
                                 on: store_decl.on.clone(),
                                 bind: None,
@@ -174,6 +175,7 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
                 messages: store_decl.messages.clone(),
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
+                                setup: None, // Plan 426 field; test support defaults
                 view: None,
                 on: store_decl.on.clone(),
                 bind: None,

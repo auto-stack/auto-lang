@@ -2298,7 +2298,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Button { label, content, onclick, style, on_right_click } => {
+            AbstractView::Button { label, content, onclick, style, on_right_click, disabled } => {
                 // Plan 418 P2-3 续: EE03 PUA marker carries an icon-button
                 // tooltip (synthesized toolbar buttons embed the action title
                 // there — the label itself stays icon-only so the resting
@@ -2513,7 +2513,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     button_content
                 };
                 let mut btn = button(button_content);
-                if !inspect_capture_active() {
+                // Plan 423 P3: disabled 态 —— 不挂 on_press(点击无消息);
+                // inspect 捕获模式同样不挂(原语义)。灰样式在下方 style 段追加。
+                if !inspect_capture_active() && !disabled {
                     btn = btn.on_press(onclick);
                 }
 
@@ -2547,6 +2549,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                         _ => bs,
                     };
+                    // Plan 423 P3: disabled 灰态 —— 文本色压成 zinc-500(hover
+                    // 态同样压,禁用不应有可点提示)。
+                    let (mut bs, mut bs_hover) = (bs, bs_hover);
+                    if disabled {
+                        let gray = iced::Color::from_rgb8(113, 113, 122); // zinc-500
+                        bs.text_color = gray;
+                        bs_hover.text_color = gray;
+                    }
                     btn = btn.style(move |_, status| match status {
                         iced::widget::button::Status::Hovered
                         | iced::widget::button::Status::Pressed => bs_hover,
@@ -3728,6 +3738,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                     style: None,
                 },
                 AbstractView::Button {
+                    disabled: false,
                     label: "x".into(),
                     onclick: DynamicMessage::Typed {
                         widget_name: widget_name.to_string(),
@@ -3814,11 +3825,13 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             onclick,
             style,
             on_right_click,
+            disabled,
         } => AbstractView::Button {
             label,
             content: content.map(|c| Box::new(convert_view_messages(*c))),
             onclick: IcedMessage::from_dynamic(&onclick),
             style,
+            disabled,
             on_right_click: on_right_click.map(|rc| IcedMessage::from_dynamic(&rc)),
         },
 
@@ -4421,6 +4434,12 @@ fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
 /// the same `capture_debug` gate) and launches the next bounds round-trip.
 /// Gated on MCP being active — see the subscription closure — so a non-MCP run
 /// stays fully idle.
+/// Plan 423 P1: update 闭包的热重载传播状态 —— 已见过的配置 generation
+/// (swap 比较)与上次 mtime 轮询时刻(500ms 节流)。
+static CONFIG_GEN_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CONFIG_MTIME_POLL: std::sync::Mutex<Option<std::time::Instant>> =
+    std::sync::Mutex::new(None);
+
 fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
     // 2026-08-22:200ms → 2s。心跳消息会触发一次完整 update→view 重建
     // (ash-gui 基线视图 ~80ms/次,大 Code 块时 >200ms)—— 200ms 节拍令
@@ -5940,6 +5959,30 @@ fn compare_pngs(
                     return iced::Task::none();
                 }
                 _ => {}
+            }
+        }
+
+        // Plan 423 P1: 配置热替换传播 —— 每条消息核对 generation(手动 reload/
+        // MCP 工具/轮询任一途径 bump),变了强制重建;mtime 轮询挂 heartbeat
+        // 节拍(500ms 节流,变更才真正重读)。
+        {
+            let gen = crate::ui::action_config::config_generation();
+            let last_seen = CONFIG_GEN_SEEN.swap(gen, std::sync::atomic::Ordering::SeqCst);
+            if gen != last_seen {
+                *state.view_dirty.borrow_mut() = true;
+            }
+            if msg.event == "__mcp_heartbeat" {
+                let now = std::time::Instant::now();
+                let due = CONFIG_MTIME_POLL
+                    .lock()
+                    .unwrap()
+                    .map_or(true, |t| now.duration_since(t) >= std::time::Duration::from_millis(500));
+                if due {
+                    *CONFIG_MTIME_POLL.lock().unwrap() = Some(now);
+                    if crate::ui::action_config::check_action_config_changed() {
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
             }
         }
 
@@ -8100,7 +8143,7 @@ fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
                 format!("\"{}\"", snippet)
             }
         }
-        (VNodeKind::Button, VNodeProps::Button { label }) => {
+        (VNodeKind::Button, VNodeProps::Button { label, .. }) => {
             let snippet: String = label.chars().take(20).collect();
             format!("[{}]", snippet)
         }
@@ -8817,7 +8860,7 @@ fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, Ic
         match &node.props {
             VNodeProps::Empty => {}
             VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
-            VNodeProps::Button { label } => col = col.push(kv_row("label", label.clone())),
+            VNodeProps::Button { label, .. } => col = col.push(kv_row("label", label.clone())),
             VNodeProps::Input {
                 placeholder,
                 value,
@@ -11848,7 +11891,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
             VNodeProps::Text { content } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("content", content.clone()))
             }
-            VNodeProps::Button { label } => {
+            VNodeProps::Button { label, .. } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()))
             }
             VNodeProps::Input {
@@ -12370,6 +12413,7 @@ mod tests {
                     style: None,
                 },
                 AbstractView::Button {
+                    disabled: false,
                     label: "1".to_string(),
                     onclick: DynamicMessage::String("pick".to_string()),
                     style: None,

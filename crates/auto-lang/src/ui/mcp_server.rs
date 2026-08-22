@@ -676,9 +676,21 @@ fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
         json!({
+            // Plan 423 P4: 配置热重载工具 —— 改 auto-edit.at 后无需重启。
+            "name": "action_config_reload",
+            "title": "Reload Action Config",
+            "description": "Reload the UI action config from disk (auto-edit.at via pac.at `ui_config:`), applying the OS user keymap layer (%APPDATA%/auto/keymaps/<app>.at or ~/.auto/keymaps/) on top. The next heartbeat rebuilds the view with the new menus/toolbar/shortcuts. A bad config keeps the previous one (logged). Returns the effective action/menu/override counts.",
+            "inputSchema": { "type": "object", "properties": {} },
+            "hints": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
+        json!({
             "name": "autoui_wait",
-            "title": "Wait for Change",
-            "description": "Wait for a state field change OR an element to appear/disappear. Polls at intervals until the condition is met or timeout.\n\n## Modes\n1. State wait: pass `field` — blocks until the state field changes value.\n2. Element wait (Plan 371): pass `kind` + `label` + `condition` — blocks until a matching element appears or disappears.\n\n## Element wait examples\n- Wait for Save button to appear after clicking Edit:\n  {kind: 'button', label: 'Save', condition: 'appears'}\n- Wait for a loading spinner to disappear:\n  {kind: 'text', label: 'Loading', condition: 'disappears'}",
+            "title": "Wait for Change",            "description": "Wait for a state field change OR an element to appear/disappear. Polls at intervals until the condition is met or timeout.\n\n## Modes\n1. State wait: pass `field` — blocks until the state field changes value.\n2. Element wait (Plan 371): pass `kind` + `label` + `condition` — blocks until a matching element appears or disappears.\n\n## Element wait examples\n- Wait for Save button to appear after clicking Edit:\n  {kind: 'button', label: 'Save', condition: 'appears'}\n- Wait for a loading spinner to disappear:\n  {kind: 'text', label: 'Loading', condition: 'disappears'}",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -911,6 +923,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_screenshot" => tool_screenshot(shared, args),
         "autoui_state" => tool_state(shared, args),
         "autoui_wait" => tool_wait(shared, args),
+        "action_config_reload" => tool_action_config_reload(),
         "autoui_type" => tool_type(shared, args),
         "autoui_keyboard" => tool_keyboard(shared, args),
         "autoui_vtree" => tool_vtree(shared, args),
@@ -997,7 +1010,7 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
             crate::ui::vnode::VNodeProps::Text { content } => {
                 out.push_str(&format!("  text: {}\n", content));
             }
-            crate::ui::vnode::VNodeProps::Button { label } => {
+            crate::ui::vnode::VNodeProps::Button { label, .. } => {
                 out.push_str(&format!("  label: {}\n", label));
             }
             crate::ui::vnode::VNodeProps::Input { value, placeholder, .. } => {
@@ -1499,6 +1512,25 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
     }
 
     text_result(out)
+}
+
+// ── Tool: action_config_reload (Plan 423 P4) ──
+
+fn tool_action_config_reload() -> serde_json::Value {
+    use crate::ui::action_config::{action_config, config_generation, reload_action_config};
+    reload_action_config();
+    match action_config() {
+        Some(cfg) => text_result(format!(
+            "ActionConfigReload ok: {} actions, {} menus, {} toolbar items (generation {})",
+            cfg.actions.len(),
+            cfg.menus.len(),
+            cfg.toolbar.len(),
+            config_generation(),
+        )),
+        None => text_result(
+            "ActionConfigReload: no config wired (AUTO_VM_ACTION_CONFIG unset) — DSL bindings only".to_string(),
+        ),
+    }
 }
 
 // ── Tool: autoui_wait (Plan 299 Phase 2) ──
@@ -2088,7 +2120,14 @@ fn extract_action_from_view(
     action_name: &str,
 ) -> Option<(String, String)> {
     match view {
-        View::Button { onclick, .. } if action_name == "press" => extract_dyn_msg(onclick),
+        View::Button { onclick, disabled, .. } if action_name == "press" => {
+            // Plan 423 P3: 禁用按钮点击无消息(iced 端 on_press=None 的对位)。
+            if *disabled {
+                None
+            } else {
+                extract_dyn_msg(onclick)
+            }
+        }
         View::Input { on_change, .. } | View::Textarea { on_change, .. }
             if action_name == "type" =>
         {
@@ -2556,7 +2595,7 @@ fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
     use crate::ui::vnode::VNodeProps;
     match props {
         VNodeProps::Text { content } => content.clone(),
-        VNodeProps::Button { label } => label.clone(),
+        VNodeProps::Button { label, .. } => label.clone(),
         VNodeProps::Input { placeholder, value, .. } => format!("{} {}", placeholder, value),
         VNodeProps::Textarea { placeholder, value } => format!("{} {}", placeholder, value),
         VNodeProps::Checkbox { label, .. } => label.clone(),
@@ -2638,7 +2677,7 @@ fn aura_vtree_node(
     // Extract label from props (text content / button label).
     let label = match &node.props {
         VNodeProps::Text { content } => Some(content.clone()),
-        VNodeProps::Button { label } => Some(label.clone()),
+        VNodeProps::Button { label, .. } => Some(label.clone()),
         VNodeProps::Checkbox { label, .. } => Some(label.clone()),
         VNodeProps::Radio { label, .. } => Some(label.clone()),
         _ => None,
@@ -2704,6 +2743,10 @@ fn aura_vtree_node(
         }
         VNodeProps::Checkbox { is_checked, .. } => {
             out.push_str(&format!("{}checked: {}\n", "  ".repeat(indent + 1), is_checked));
+        }
+        // Plan 423 P3: disabled 标记进 AURA 快照(禁用项点击无消息的断言面)。
+        VNodeProps::Button { disabled: true, .. } => {
+            out.push_str(&format!("{}disabled: true\n", "  ".repeat(indent + 1)));
         }
         _ => {}
     }
@@ -2845,7 +2888,7 @@ mod tests_314 {
         tree.add_node(text);
         tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
         // child: Button (id 2)
-        let btn = VNode::new(VNodeId::new(2), VNodeKind::Button, VNodeProps::Button { label: "OK".into() });
+        let btn = VNode::new(VNodeId::new(2), VNodeKind::Button, VNodeProps::Button { label: "OK".into(), disabled: false });
         tree.add_node(btn);
         tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(2));
         (tree, [VNodeId::new(0), VNodeId::new(1), VNodeId::new(2)])

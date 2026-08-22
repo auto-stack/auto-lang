@@ -1,6 +1,6 @@
 # Plan 423: Action 配置层 Phase 3 — 热重载 / OS 用户层 keymap / 表达式引擎 / enabled-if
 
-> **状态**: 📋 已立项待实施(2026-08-22,汇集 418 明确推迟的三项 + enabled-if 零消费缺口)
+> **状态**: ✅ 已实施(2026-08-23,master 直接提交;矩阵 47/47 含 T10 新组;P1-P4 全落地)
 > **来源**: 418 §4("热重载不做,重启生效"/"OS 层 keymap 为 Phase 3"/"不做表达式引擎(列后续)")+ §8.4(enabled-if 已解析未渲染)
 > **关联**: 418(action_config 管线与三源绑定)/ 275(键绑定管道,archive)/ 032 系(并行进行中的键绑定相关,注意协调)
 
@@ -43,3 +43,27 @@
 - `action_config()` 返回 `&'static` 的调用面改造(builder/update/键盘回退三处,编译器会全部指出——纯机械但面广)。
 - mtime 轮询与并行会话写配置文件的误触发(编辑器半写状态读取——临时文件+rename 原子替换约定)。
 - 与 032 系(键绑定)并行会话的改动面重叠——开工前同步。
+
+
+---
+
+## 6. 实施记录(2026-08-23)
+
+### 落地内容
+
+- **P1 配置热替换**:`ACTION_CONFIG` 从 `OnceLock<Option<UiActionConfig>>` 改 `RwLock<Option<Arc<UiActionConfig>>>`(读侧 Arc clone);`reload_action_config()` 全量重读 + **坏配置保旧值**(parse 失败/读失败均保留上一个 Arc + eprintln);`CONFIG_GENERATION` 原子计数,update 闭包每条消息核对(含 heartbeat)变更即 view_dirty;mtime 轮询挂 heartbeat 节拍 500ms 节流(stamp = 配置文件+OS 层的 (mtime,len) 组合)。
+- **P2 OS 用户层 keymap**:`%APPDATA%/auto/keymaps/<app>.at`(非 Windows `~/.auto/keymaps/`),app id = 配置文件名 stem;`parse_keymap_overrides` 只读 action 段的 id+shortcut(handler-less by design);层叠按 action id 覆盖 + `rebuild_shortcut_bindings` 重建;坏 OS 层日志忽略保 app 层;启动/重载日志带覆盖数。键盘回退层每次事件实时查 `action_config()`,重载即时生效。
+- **P3 表达式引擎 + disabled**:checked-if/enabled-if 统一走 `eval_condition_with`(字符串表达式引擎:state 引用/比较运算/字面量;求值失败=未勾选/禁用);`View::Button` 增 `disabled: bool` —— iced `on_press=None` + zinc-500 灰样式;**MCP 点击分派拒绝禁用按钮**(`extract_action_from_view` 门控);disabled 进 AURA 快照(vtree Button props + 序列化)与 SnapshotBuilder;DSL `button (disabled-if: "...")` / `disabled: true`;menubar/toolbar 合成项接 enabled-if;render_support 的 402 "always clickable" 警告消除(button 转 Full)。
+- **P4 reload 工具 + 041 + 矩阵 T10**:MCP 工具 `action_config_reload`(返回生效计数 + generation);041 `file.save` 带 `enabled-if : ".tab_count > 0"`、`edit.undo` 带表达式 `checked-if : ".edits > 0"`;矩阵 T10(独立新鲜进程):关双 tab→save 禁用标记可见+点击零副作用→+ 打开后恢复→改写 auto-edit.at(根节点内追加 action+menu)→reload→新菜单出现且可派发。
+
+### 验证
+
+- 041 矩阵 47/47(T1-T8 既有 + T9 420 组 + T10 423 组)。
+- action_config 新单测:OS keymap 层叠(by id、绑定重建、坏文档拒析)+ 坏配置 parse 失败面。
+- `button` 标签 autoui_check 分类升 Full(disabled 实装)。
+
+### 已知问题(挂账)
+
+1. **plan370_015_behavior_tests 的 d3/d4/d6/d7 四项在本会话开工基点(46fd548d)即已失败**(feature 门控 `--features ui-iced` 的测试从未被无特性跑法覆盖;表现为 payload 参数化 handler 副作用未落地,如 SelectNote(3) 后 active_id 仍 "0")。bisect 确认非 420/423 引入。待单独立项修复。
+2. 同因暴露:auto-musk 合并(424-426)留下的 `plan370_test_support.rs`/`vm_bridge.rs` 测试构造缺 `setup` 字段(feature 构建 E0063)——本次顺手修复(`setup: None`)。
+3. OS keymap 层仅单元级验证(层叠逻辑);端到端(写 %APPDATA% 文件 + reload + 键盘事件)未进矩阵 —— 键盘事件注入工具(AUTOUI_KEYBOARD)走 key_bindings 快照,config 层短路查询与其解耦,人工验收项。

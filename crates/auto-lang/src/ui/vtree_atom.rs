@@ -136,7 +136,12 @@ impl VTreeAtomBuilder {
         match props {
             VNodeProps::Empty => {}
             VNodeProps::Text { content } => node.set_prop("content", Value::Str(content.clone().into())),
-            VNodeProps::Button { label } => node.set_prop("label", Value::Str(label.clone().into())),
+            VNodeProps::Button { label, disabled } => {
+                node.set_prop("label", Value::Str(label.clone().into()));
+                if *disabled {
+                    node.set_prop("disabled", Value::Str("true".into()));
+                }
+            }
             VNodeProps::Input { placeholder, value, password } => {
                 node.set_prop("placeholder", Value::Str(placeholder.clone().into()));
                 node.set_prop("value", Value::Str(value.clone().into()));
@@ -299,7 +304,7 @@ mod tests {
         tree.add_node(VNode::new(
             VNodeId::new(2),
             VNodeKind::Button,
-            VNodeProps::Button { label: "OK".into() },
+            VNodeProps::Button { label: "OK".into(), disabled: false },
         ));
         tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(2));
 

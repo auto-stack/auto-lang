@@ -1625,6 +1625,7 @@ impl<'a> AuraViewBuilder<'a> {
             .or_else(|| aura_events_get_base(events, "click")) {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
+                disabled: false,
                 label: content,
                 onclick,
                 style,
@@ -1868,6 +1869,7 @@ impl<'a> AuraViewBuilder<'a> {
                     // 左缘溢出;文字内边距写在 Text 上无效(py 丢失致高度塌陷)。
                     let mk_tab = |label: &str, tab_str: &str, active: bool| {
                         let btn = View::Button {
+                            disabled: false,
                             label: label.to_string(),
                             content: None,
                             onclick: crate::ui::interpreter::DynamicMessage::Typed {
@@ -1903,6 +1905,7 @@ let tabs_inner = View::Row {
                     };
                     let icon_btn_style = "px-2 py-1.5 text-xs text-muted-foreground bg-transparent";
                     let copy_btn = View::Button {
+                        disabled: false,
                         label: format!("\u{EE01}{}\u{EE02}", if ui.copied { "check" } else { "copy" }),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
@@ -1914,6 +1917,7 @@ let tabs_inner = View::Row {
                         on_right_click: None,
                     };
                     let toggle = View::Button {
+                        disabled: false,
                         label: format!("\u{EE01}{}\u{EE02}", if ui.show { "chevron-down" } else { "chevron-right" }),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
@@ -2104,6 +2108,7 @@ let tabs_inner = View::Row {
                         style: Style::parse("items-start gap-3 w-full").ok(),
                     };
                     return View::Button {
+                        disabled: false,
                         label: name,
                         content: Some(Box::new(content)),
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
@@ -2238,6 +2243,7 @@ let tabs_inner = View::Row {
             label = format!("\u{EE01}{}\u{EE02}{}", icon, label);
         }
         View::Button {
+            disabled: false,
             label,
             content,
             onclick: crate::ui::interpreter::DynamicMessage::Typed {
@@ -3150,6 +3156,7 @@ let tabs_inner = View::Row {
             // 的 Popover 子序约定一致)。
             record!(children.len(), 0 => &format!("__menubar_toggle(\"{}\")", menu.id));
             let trigger = View::Button {
+                disabled: false,
                 label: menu.title.clone(),
                 onclick: DynamicMessage::Typed {
                     widget_name: self.widget_name.clone(),
@@ -3179,16 +3186,17 @@ let tabs_inner = View::Row {
                             let Some(a) = cfg.action_by_id(id) else { continue };
                             let handler = a.handler.trim_start_matches('.').to_string();
                             record!(children.len(), 1, items.len() => &a.handler);
-                            // Plan 418 §8.4③: checked-if 渲染 —— 简单 `.field`
-                            // 布尔状态直接读 state;非标识符形态保持未勾选
-                            // (解析层仅约定标识符引用)。每项固定 16px 勾选槽,
-                            // 已勾选时渲染 lucide check 图标(对齐 VSCode 菜单)。
+                            // Plan 418 §8.4③ + 423 P3: checked-if / enabled-if
+                            // 统一走 eval_condition_with 表达式引擎(支持
+                            // `.field`、比较运算、state 引用;求值失败=未勾选/
+                            // 禁用,保守)。每项固定 16px 勾选槽,已勾选时渲染
+                            // lucide check 图标(对齐 VSCode 菜单)。
                             let checked = a.checked_if.as_deref()
-                                .and_then(|cond| cond.strip_prefix('.'))
-                                .filter(|f| !f.is_empty() && !f.contains(' '))
-                                .and_then(|f| self.read_state(f).ok())
-                                .map(|v| matches!(v, auto_val::Value::Bool(true)))
+                                .map(|cond| self.eval_condition_with(cond, bindings))
                                 .unwrap_or(false);
+                            let enabled = a.enabled_if.as_deref()
+                                .map(|cond| self.eval_condition_with(cond, bindings))
+                                .unwrap_or(true);
                             let check_slot: View<DynamicMessage> = if checked {
                                 View::Image {
                                     src: "lucide:check".to_string(),
@@ -3221,6 +3229,7 @@ let tabs_inner = View::Row {
                                     .ok(),
                             };
                             items.push(View::Button {
+                                disabled: !enabled,
                                 label: a.title.clone(),
                                 onclick: DynamicMessage::Typed {
                                     widget_name: self.widget_name.clone(),
@@ -3536,6 +3545,10 @@ let tabs_inner = View::Row {
                         format!("\u{EE01}{}\u{EE02}\u{EE03}{}", icon, a.title)
                     };
                     children.push(View::Button {
+                        // Plan 423 P3: enabled-if → disabled 态(表达式引擎)。
+                        disabled: !a.enabled_if.as_deref()
+                            .map(|cond| self.eval_condition_with(cond, bindings))
+                            .unwrap_or(true),
                         label,
                         onclick: DynamicMessage::Typed {
                             widget_name: self.widget_name.clone(),
@@ -3721,6 +3734,7 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "click")) {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
+                disabled: false,
                 label: styled_content,
                 onclick,
                 style,
@@ -3918,7 +3932,18 @@ let tabs_inner = View::Row {
             None
         };
 
+        // Plan 423 P3: disabled / disabled-if —— 表达式统一走 eval_condition_with
+        // (支持 `.field`、比较运算与 state 引用;求值失败=禁用,保守)。
+        let disabled = if let Some(cond) = self.extract_string_with(props, "disabled-if", bindings) {
+            !self.eval_condition_with(&cond, bindings)
+        } else {
+            self.extract_string_with(props, "disabled", bindings)
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false)
+        };
+
         View::Button {
+            disabled,
             label,
             onclick,
             style,

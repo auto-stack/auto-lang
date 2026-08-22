@@ -188,8 +188,8 @@ pub enum VNodeProps {
     /// 文本属性
     Text { content: String },
 
-    /// 按钮属性
-    Button { label: String },
+    /// 按钮属性(disabled 进 vtree —— Plan 423 P3,MCP 快照可见)
+    Button { label: String, disabled: bool },
 
     /// 输入框属性
     Input {
@@ -763,7 +763,8 @@ mod tests {
         let mut tree = VTree::new();
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Button, VNodeProps::Button {
-            label: "Click".to_string()
+            label: "Click".to_string(),
+            disabled: false
         });
 
         tree.set_root(node);
@@ -971,7 +972,8 @@ mod tests {
             button_id,
             VNodeKind::Button,
             VNodeProps::Button {
-                label: "Click".to_string()
+                label: "Click".to_string(),
+                disabled: false
             }
         )
         .with_parent(root_id);

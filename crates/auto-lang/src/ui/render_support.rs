@@ -69,12 +69,9 @@ pub fn get_support(tag: &str) -> TagSupport {
         "checkbox" | "check" => TagSupport::full(),
         "progress" => TagSupport::full(),
         "spacer" => TagSupport::full(),
-
-        // ── Partial support ──
-        "button" | "btn" => TagSupport::partial(
-            &["disabled"],
-            "button is always clickable; \"disabled\" prop not implemented",
-        ),
+        // Plan 423 P3: disabled/disabled-if 已实现(iced on_press=None + 灰
+        // 样式),消 Plan 402 的 "always clickable" 警告。
+        "button" | "btn" => TagSupport::full(),
         "input" => TagSupport::partial(
             &["type", "maxlength", "min", "max", "step", "pattern"],
             "basic text input only; props like type/maxlength are ignored",

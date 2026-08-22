@@ -7,9 +7,11 @@ auto-edit {
     // ---- 动作注册表 ----
     action { id : "file.new"        handler : ".ActNew"        title : "新建"   icon : "file-plus"   shortcut : "Ctrl+N" }
     action { id : "file.open"       handler : ".ActOpen"       title : "打开…"  icon : "folder-open" shortcut : "Ctrl+O" }
-    action { id : "file.save"       handler : ".ActSave"       title : "保存"   icon : "save"        shortcut : "Ctrl+S" }
+    action { id : "file.save"       handler : ".ActSave"       title : "保存"   icon : "save"        shortcut : "Ctrl+S"
+             enabled-if : ".tab_count > 0" }
     action { id : "file.quit"       handler : ".ActQuit"       title : "退出"   shortcut : "Alt+F4" }
-    action { id : "edit.undo"       handler : ".ActUndo"       title : "撤销"   icon : "undo-2"      shortcut : "Ctrl+Z" }
+    action { id : "edit.undo"       handler : ".ActUndo"       title : "撤销"   icon : "undo-2"      shortcut : "Ctrl+Z"
+             checked-if : ".edits > 0" }
     action { id : "edit.redo"       handler : ".ActRedo"       title : "重做"   icon : "redo-2"      shortcut : "Ctrl+Y" }
     action { id : "edit.cut"        handler : ".ActCut"        title : "剪切"   icon : "scissors" }
     action { id : "edit.copy"       handler : ".ActCopy"       title : "复制"   icon : "copy" }

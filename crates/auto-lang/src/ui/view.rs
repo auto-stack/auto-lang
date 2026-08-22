@@ -242,6 +242,9 @@ pub enum View<M: Clone + Debug> {
         /// instead of flattening to the `to` string. `None` keeps the
         /// label-only behaviour (label string rendered as the content).
         content: Option<Box<View<M>>>,
+        /// Plan 423 P3: disabled 态 —— iced on_press=None(点击无消息)+ 灰
+        /// 样式;onclick 保留(§8.4 探针事件仍记录,快照带 disabled 标记)。
+        disabled: bool,
     },
 
     /// Horizontal layout with optional styling
@@ -876,6 +879,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 style: self.style,
             },
             ViewBuilderKind::Button => View::Button {
+                disabled: false,
                 label: self.button_label,
                 onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
                 on_right_click: self.button_on_right_click,
@@ -971,6 +975,7 @@ impl<M: Clone + Debug> View<M> {
     /// ```
     pub fn button_styled(label: impl Into<String>, onclick: M, style_str: &str) -> Self {
         View::Button {
+            disabled: false,
             label: label.into(),
             onclick,
             style: Some(Style::parse(style_str).expect("Invalid style")),
@@ -1351,12 +1356,13 @@ impl<M: Clone + Debug> View<M> {
                 }
             }
             View::Text { content, style } => View::Text { content, style },
-            View::Button { label, content, onclick, style, on_right_click } => View::Button {
+            View::Button { label, content, onclick, style, on_right_click, disabled } => View::Button {
                 label,
                 content: content.map(|c| Box::new(c.map_msg_with_arc(f))),
                 onclick: f(onclick),
                 style,
                 on_right_click: on_right_click.map(|rc| f(rc)),
+                disabled,
             },
             View::Row { children, spacing, padding, style } => View::Row {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
@@ -2467,6 +2473,7 @@ impl<M: Clone + Debug> ButtonArg<M> for (String, M) {
     type Output = View<M>;
     fn into_button(self) -> View<M> {
         View::Button {
+            disabled: false,
             label: self.0,
             onclick: self.1,
             style: None,
@@ -3201,6 +3208,7 @@ mod tests {
             gap: 4,
             cells: vec![
                 View::Button {
+                    disabled: false,
                     label: "A".to_string(),
                     onclick: TestMsg::Click,
                     style: None,
@@ -3208,6 +3216,7 @@ mod tests {
                     content: None,
                 },
                 View::Button {
+                    disabled: false,
                     label: "B".to_string(),
                     onclick: TestMsg::Change,
                     style: None,

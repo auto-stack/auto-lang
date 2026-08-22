@@ -1392,6 +1392,7 @@ mod tests {
             props: vec![],
             routes: None,
             lifecycle: vec![],
+            setup: None, // Plan 426 field; test helper default
             tick_interval: None,
             handler_params: HashMap::new(),
             span_map: HashMap::new(),

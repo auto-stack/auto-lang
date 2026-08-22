@@ -127,13 +127,20 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
-            View::Button { label, onclick, .. } => UiNode {
-                id,
-                kind: "Button".to_string(),
-                props: vec![("label".to_string(), label.clone())],
-                actions: vec![Self::extract_action("press", onclick)],
-                children: vec![],
-            },
+            View::Button { label, onclick, disabled, .. } => {
+                // Plan 423 P3: disabled 进快照 —— MCP 断言面(禁用项点击无消息)。
+                let mut props = vec![("label".to_string(), label.clone())];
+                if *disabled {
+                    props.push(("disabled".to_string(), "true".to_string()));
+                }
+                UiNode {
+                    id,
+                    kind: "Button".to_string(),
+                    props,
+                    actions: vec![Self::extract_action("press", onclick)],
+                    children: vec![],
+                }
+            }
 
             View::Input { placeholder, value, on_change, password, .. } => {
                 let mut props = vec![

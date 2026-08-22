@@ -18,7 +18,7 @@
 // philosophy), so the app falls back to its DSL-declared bindings.
 //!
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// One semantic action: identity + dispatch target + presentation metadata.
 #[derive(Debug, Clone)]
@@ -140,22 +140,35 @@ impl UiActionConfig {
 
         // Shortcut bindings: normalized key → handler (first action wins on
         // collision, warning recorded).
-        for a in &cfg.actions {
+        for w in cfg.rebuild_shortcut_bindings() {
+            warnings.push(w);
+        }
+
+        Ok((cfg, warnings))
+    }
+
+    /// Rebuild `shortcut_bindings` from the actions' current `shortcut`
+    /// fields (normalized key → handler; first wins, collision warns).
+    /// Plan 423 P2: re-run after the OS keymap layer mutates shortcuts.
+    fn rebuild_shortcut_bindings(&mut self) -> Vec<String> {
+        let mut bindings = Vec::new();
+        let mut warnings = Vec::new();
+        for a in &self.actions {
             if let Some(sc) = &a.shortcut {
                 let key = normalize_shortcut(sc);
                 if key.is_empty() {
                     warnings.push(format!("action {:?}: unparseable shortcut {:?}", a.id, sc));
                     continue;
                 }
-                if cfg.shortcut_bindings.iter().any(|(k, _)| *k == key) {
+                if bindings.iter().any(|(k, _)| *k == key) {
                     warnings.push(format!("shortcut {key:?} bound twice — first wins"));
                 } else {
-                    cfg.shortcut_bindings.push((key, a.handler.clone()));
+                    bindings.push((key, a.handler.clone()));
                 }
             }
         }
-
-        Ok((cfg, warnings))
+        self.shortcut_bindings = bindings;
+        warnings
     }
 
     fn parse_action(n: &auto_val::Node) -> ActionDef {
@@ -264,7 +277,30 @@ pub fn normalize_shortcut(s: &str) -> String {
     out
 }
 
-static ACTION_CONFIG: OnceLock<Option<UiActionConfig>> = OnceLock::new();
+static ACTION_CONFIG: std::sync::RwLock<Option<std::sync::Arc<UiActionConfig>>> =
+    std::sync::RwLock::new(None);
+
+/// Resolved once from AUTO_VM_ACTION_CONFIG (injected by `auto run` from
+/// pac.at `ui_config:`); hot reloads re-read this path.
+static CONFIG_PATH: OnceLock<Option<String>> = OnceLock::new();
+
+/// App identity for the OS keymap layer: file stem of the config path
+/// (auto-edit.at → "auto-edit").
+static CONFIG_APP_ID: OnceLock<String> = OnceLock::new();
+
+/// (mtime, len) of the app config + OS keymap layer at the last successful
+/// load — the mtime-poll change detector compares against this.
+static CONFIG_STAMP: Mutex<Option<(std::time::SystemTime, u64)>> = Mutex::new(None);
+
+/// Bumped on every successful reload. The renderer's update closure compares
+/// its last-seen value on each message (heartbeat included) to force a
+/// view rebuild after a config swap (Plan 423 P1).
+static CONFIG_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub fn config_generation() -> u64 {
+    CONFIG_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 /// Plan 418 P2-3: which synthesized menubar is open (menu id), if any.
 /// Renderer-side local UI state (same pattern as preview-card states) —
@@ -293,41 +329,190 @@ pub fn set_popover_open(v: Option<String>) {
     *POPOVER_OPEN.lock().unwrap() = v;
 }
 
-/// Process-wide config (loaded once from AUTO_VM_ACTION_CONFIG, injected by
-/// `auto run` from pac.at `ui_config:`). None when unset/unreadable/invalid
-/// — callers fall back to DSL-declared bindings.
-pub fn action_config() -> Option<&'static UiActionConfig> {
-    ACTION_CONFIG
+/// Process-wide config. None when AUTO_VM_ACTION_CONFIG is unset/unreadable/
+/// invalid — callers fall back to DSL-declared bindings.
+///
+/// Plan 423 P1: hot-swappable — first access loads from disk, later calls
+/// hit the read-lock fast path (Arc clone, no parse). Reloads swap the Arc
+/// under the write lock; a failed reload keeps the previous value.
+pub fn action_config() -> Option<std::sync::Arc<UiActionConfig>> {
+    if let Some(cfg) = ACTION_CONFIG.read().unwrap().clone() {
+        return Some(cfg);
+    }
+    reload_action_config()
+}
+
+/// Force a (re)load from disk. Degradation semantics (plan 423 P1): unreadable
+/// or unparseable input KEEPS the previously loaded config (logged); only a
+/// clean parse swaps it in and bumps the generation.
+pub fn reload_action_config() -> Option<std::sync::Arc<UiActionConfig>> {
+    let path = CONFIG_PATH
         .get_or_init(|| {
-            let path = std::env::var("AUTO_VM_ACTION_CONFIG").ok()?;
-            let doc = match std::fs::read_to_string(&path) {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("[ACTION-CONFIG] cannot read {path}: {e}");
-                    return None;
+            std::env::var("AUTO_VM_ACTION_CONFIG")
+                .ok()
+                .filter(|p| !p.is_empty())
+        })
+        .clone();
+    let Some(path) = path else {
+        return None; // no config wired — DSL-declared bindings only
+    };
+    let _ = CONFIG_APP_ID.set(
+        std::path::Path::new(&path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
+    let doc = match std::fs::read_to_string(&path) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[ACTION-CONFIG] cannot read {path}: {e} — keeping previous config");
+            return ACTION_CONFIG.read().unwrap().clone();
+        }
+    };
+    match UiActionConfig::parse(&doc) {
+        Ok((mut cfg, warnings)) => {
+            for w in &warnings {
+                eprintln!("[ACTION-CONFIG] warning: {w}");
+            }
+            // Plan 423 P2: OS user keymap layer (by action id, bindings only).
+            let os_overrides = apply_os_keymap_layer(&mut cfg);
+            eprintln!(
+                "[ACTION-CONFIG] loaded {}: {} actions, {} menus, {} toolbar items, {} OS keymap overrides",
+                path,
+                cfg.actions.len(),
+                cfg.menus.len(),
+                cfg.toolbar.len(),
+                os_overrides
+            );
+            let arc = std::sync::Arc::new(cfg);
+            *ACTION_CONFIG.write().unwrap() = Some(arc.clone());
+            *CONFIG_STAMP.lock().unwrap() = config_stamp(&path);
+            CONFIG_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Some(arc)
+        }
+        Err(e) => {
+            eprintln!("[ACTION-CONFIG] {e} — keeping previous config ({path})");
+            ACTION_CONFIG.read().unwrap().clone()
+        }
+    }
+}
+
+/// (mtime, len) of the config file + OS keymap layer, combined — a change in
+/// either re-triggers a reload.
+fn config_stamp(path: &str) -> Option<(std::time::SystemTime, u64)> {
+    let mut mtime = None;
+    let mut len = 0u64;
+    if let Ok(meta) = std::fs::metadata(path) {
+        mtime = meta.modified().ok();
+        len += meta.len();
+    }
+    if let Some(app_id) = CONFIG_APP_ID.get() {
+        if let Some(os) = os_keymap_path(app_id) {
+            if let Ok(meta) = std::fs::metadata(&os) {
+                if meta.modified().ok() > mtime || mtime.is_none() {
+                    mtime = meta.modified().ok();
                 }
-            };
-            match UiActionConfig::parse(&doc) {
-                Ok((cfg, warnings)) => {
-                    for w in &warnings {
-                        eprintln!("[ACTION-CONFIG] warning: {w}");
-                    }
-                    eprintln!(
-                        "[ACTION-CONFIG] loaded {}: {} actions, {} menus, {} toolbar items",
-                        path,
-                        cfg.actions.len(),
-                        cfg.menus.len(),
-                        cfg.toolbar.len()
-                    );
-                    Some(cfg)
-                }
-                Err(e) => {
-                    eprintln!("[ACTION-CONFIG] {e} — config ignored ({path})");
-                    None
+                len = len.wrapping_add(meta.len());
+            }
+        }
+    }
+    mtime.map(|m| (m, len))
+}
+
+/// Plan 423 P1: mtime poll (called from the renderer's tick/heartbeat cadence,
+/// throttled by the caller). Returns true when a reload actually happened.
+/// Writers should swap atomically (temp file + rename); a half-written file
+/// is caught by the parse-failure keep-previous path.
+pub fn check_action_config_changed() -> bool {
+    let Some(path) = CONFIG_PATH.get().cloned().flatten() else {
+        return false;
+    };
+    let stamp = config_stamp(&path);
+    let changed = stamp != *CONFIG_STAMP.lock().unwrap();
+    if !changed {
+        return false;
+    }
+    let before = config_generation();
+    reload_action_config();
+    config_generation() != before
+}
+
+/// Plan 423 P2: OS user-layer keymap path —
+/// `%APPDATA%/auto/keymaps/<app>.at` (Windows) or `~/.auto/keymaps/<app>.at`.
+fn os_keymap_path(app_id: &str) -> Option<std::path::PathBuf> {
+    if app_id.is_empty() {
+        return None;
+    }
+    let base = std::env::var("APPDATA")
+        .ok()
+        .map(|d| std::path::PathBuf::from(d).join("auto"))
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join(".auto"))
+        })?;
+    Some(base.join("keymaps").join(format!("{app_id}.at")))
+}
+
+/// Apply the OS user keymap layer: same action schema but ONLY `id` +
+/// `shortcut` participate — matching action ids get their shortcut (and
+/// therefore the normalized key binding) overridden; handlers/menus are
+/// never copied. A bad OS layer logs and is ignored (app layer stands).
+/// Returns the number of overrides applied.
+fn apply_os_keymap_layer(cfg: &mut UiActionConfig) -> usize {
+    let Some(app_id) = CONFIG_APP_ID.get() else {
+        return 0;
+    };
+    let Some(path) = os_keymap_path(app_id) else {
+        return 0;
+    };
+    let Ok(doc) = std::fs::read_to_string(&path) else {
+        return 0;
+    };
+    match parse_keymap_overrides(&doc) {
+        Ok(overrides) => {
+            let mut count = 0usize;
+            for a in cfg.actions.iter_mut() {
+                if let Some(sc) = overrides.get(&a.id) {
+                    a.shortcut = Some(sc.clone());
+                    count += 1;
                 }
             }
-        })
-        .as_ref()
+            let warnings = cfg.rebuild_shortcut_bindings();
+            for w in warnings {
+                eprintln!("[ACTION-CONFIG] warning (after OS keymap): {w}");
+            }
+            count
+        }
+        Err(e) => {
+            eprintln!("[ACTION-CONFIG] OS keymap {} ignored: {e}", path.display());
+            0
+        }
+    }
+}
+
+/// Parse an OS keymap document: `action { id : "..." shortcut : "..." }`
+/// entries → id → shortcut (display form). Handler-less by design.
+fn parse_keymap_overrides(doc: &str) -> Result<HashMap<String, String>, String> {
+    let atom = auto_atom::AtomParser::parse(doc)
+        .map_err(|e| format!("keymap parse error: {e}"))?;
+    let node = match atom {
+        auto_atom::Atom::Node(n) => n,
+        _ => return Err("keymap: document root is not a node".into()),
+    };
+    let mut out = HashMap::new();
+    for (_, kid) in node.kids_iter() {
+        if let auto_val::Kid::Node(n) = kid {
+            if n.name == "action" {
+                let id = n.get_prop("id").to_astr().trim().to_string();
+                let sc = n.get_prop("shortcut").to_astr().trim().to_string();
+                if !id.is_empty() && !sc.is_empty() {
+                    out.insert(id, sc);
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -385,5 +570,50 @@ auto-edit {
         .unwrap();
         assert!(bad.actions.is_empty()); // missing handler → skipped
         assert!(!warnings.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod plan423_tests {
+    use super::*;
+
+    const SAMPLE: &str = r#"
+auto-edit {
+    action { id : "file.new"  handler : ".ActNew"  title : "新建" icon : "file-plus" shortcut : "Ctrl+N" }
+    action { id : "file.save" handler : ".ActSave" title : "保存" shortcut : "Ctrl+S" }
+}
+"#;
+
+    /// Plan 423 P2:OS keymap 层按 action id 覆盖 shortcut,重建绑定表。
+    #[test]
+    fn os_keymap_overrides_apply_by_action_id() {
+        let (mut cfg, _) = UiActionConfig::parse(SAMPLE).unwrap();
+        assert_eq!(cfg.handler_for_key("Ctrl+n"), Some(".ActNew"));
+
+        let doc = r#"
+k {
+    action { id : "file.new"  shortcut : "Ctrl+Shift+`" }
+    action { id : "no.such"   shortcut : "Ctrl+F9" }
+}"#;
+        let overrides = parse_keymap_overrides(doc).unwrap();
+        assert_eq!(overrides.len(), 2);
+
+        for a in cfg.actions.iter_mut() {
+            if let Some(sc) = overrides.get(&a.id) {
+                a.shortcut = Some(sc.clone());
+            }
+        }
+        let warnings = cfg.rebuild_shortcut_bindings();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(cfg.handler_for_key("Ctrl+n"), None);
+        assert_eq!(cfg.handler_for_key("Ctrl+`"), Some(".ActNew"));
+
+        assert!(parse_keymap_overrides("not a node").is_err());
+    }
+
+    /// Plan 423 P1 降级语义:坏文档解析失败(reload 侧保旧 Arc)。
+    #[test]
+    fn hot_reload_bad_doc_fails_parse() {
+        assert!(UiActionConfig::parse("auto-edit { action { id : \"x\"").is_err());
     }
 }
