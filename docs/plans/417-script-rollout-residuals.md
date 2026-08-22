@@ -15,10 +15,9 @@
 | E2 LANG-1 | 语言级语法/语义分歧点 | 按 known-divergences 条目定位 | 1-2 天 |
 | E3 TRAIT-VM-1 | trait 默认方法 VM 分歧 | vm/codegen.rs trait 分发臂 | 2-3 天 |
 | E4 TRAIT-VM-2 | trait 关联类型/泛型 impl VM 分歧 | 同上,依赖 E3 | 2-3 天 |
-| E5 HTTP-LANG-1 | http 客户端语言级 block 点(同时解锁 D3) | parser.rs async/http 语法 + vm/ffi/http_client | 3-5 天 |
+| E5 HTTP-LANG-1 | ✅ 2026-08-22 验证关闭:master 已能解析 `Type.method;` 声明(后续 parser 批次已修,DIV 登记翻转)——**http_client_sync 三方 5/5(连跑三次稳定),D3 解锁并全绿**;D3.3 双 demo 并入 A1/A2 落地页批次 | 实测:auto-parity run http_client_sync | — |
 
-**顺序**: E1(最小)→ E2 → E3 → E4 → E5。每项落地后 known-divergences.md
-对应条目 status → fixed,并跑 `parity/crates/auto-parity` 三向验证。
+**顺序**: E1 ✅ → E5 ✅(验证性关闭,D3 连带全绿)→ 剩 E2(LANG-1 关联类型,语言级)→ E3 → E4(trait VM 两项)。每项落地后 known-divergences.md 对应条目 status → fixed。
 
 ## 2. D2 generators 用例 ✅ 2026-08-22 完成(Plan 417-D2,三方 6/6 一致;VM 带参生成器搬参根治 + a2r ~Iter→Stream 统一降级 + 导入签名登记,E1b 连带根治)
 
@@ -27,10 +26,12 @@
 - D2.3 双 demo(教程素材)缺,补齐后 docs/script-to-ship/ 相应章节引用。
 - **验收**: parity 三向通过 + parity 仪表盘 L 计数 +1。
 
-## 3. D3 http_client_sync(阻塞于 E5)
+## 3. D3 http_client_sync ✅ 2026-08-22 解锁并全绿(Plan 417-E5 验证)
 
-- `parity/libs/http_client_sync/`(tokio 见 Plan 347 的既有结论);
-- E5 落地后按 D2 同构方式补三向用例 + D3.3 双 demo。
+- 实测:master 三方 **5/5 一致**(auto-parity 连跑三次稳定;mock-server
+  自动拉起已在 runner 落地)——原登记的 parser 阻塞(DIV-HTTP-LANG-1)
+  已被后续 parser 批次修复,属"文档滞后于代码"又一例;
+- D3.3 双 demo 留待 A1/A2 落地页批次。
 
 ## 4. A1/A2 落地页(website/index.md)
 
