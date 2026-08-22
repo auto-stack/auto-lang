@@ -376,6 +376,50 @@ widget Shell {
     );
 }
 
+/// plan 015 (probe): a quoted msg variant whose name is NOT a valid JS
+/// identifier (`"update:open"`), self-called from another on-block handler
+/// (`let _ = ."update:open"(false)`), must (a) be emitted as a function
+/// under its sanitized name (`update_open` — the used_handlers filter
+/// previously dropped it because the raw quoted name never matched), and
+/// (b) be called under that same sanitized name (the ts_adapter self-call
+/// path previously emitted the raw `update:open(false)` — invalid JS).
+/// The colon-containing name stays verbatim only in defineEmits/emit().
+#[test]
+fn cap_quoted_emit_self_called_non_ident_name() {
+    let sfc = gen_sfc(
+        r#"
+widget Kid {
+    msg Msg { "update:open"(bool), Close }
+    view {
+        col {
+            button "x" { onclick: .Close }
+        }
+    }
+    on {
+        .Close -> { let _ = ."update:open"(false) }
+        ."update:open"(v) -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("function update_open("),
+        "self-called quoted handler emitted under sanitized name:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("update_open(false)"),
+        "call site uses the sanitized name:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("update:open(false)"),
+        "raw quoted name must not leak into JS code:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("'update:open': [boolean]"),
+        "quoted emit name stays verbatim in defineEmits:\n{sfc}"
+    );
+}
+
 /// plan 013 follow-up (probe 09): the parser drops explicit parentheses
 /// when building the `Bina` tree, so emitters must re-derive them from
 /// precedence/associativity — `(a+b)*c` used to silently come out as
