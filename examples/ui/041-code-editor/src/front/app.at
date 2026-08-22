@@ -1,10 +1,12 @@
 widget App {
     model {
-        var source str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
-        var wrap bool = false
+        var tab int = 0
+        var menu_open str = ""
+        var src_main str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"
+        var src_util str = "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"
         var edits int = 0
         var line int = 1
-        var col int = 0
+        var col int = 1
         var sel int = 0
         var console_open bool = false
         var console str = ""
@@ -12,10 +14,247 @@ widget App {
 
     view {
         col (style: "h-full w-full") {
-            code_editor (key: "playground", lang: "auto", wrap: .wrap, style: "flex-1 w-full") {
-                content: .source
-                oninput: .SourceChanged
-                oncursor: .CursorMoved
+            onkeydown.ctrl.n: .ActNew
+            onkeydown.ctrl.o: .ActOpen
+            onkeydown.ctrl.s: .ActSave
+            onkeydown.ctrl.j: .ActConsole
+
+            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0 px-2") {
+                button (text: "文件", variant: "text") {
+                    onclick: .MenuToggle("file")
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
+                }
+                button (text: "编辑", variant: "text") {
+                    onclick: .MenuToggle("edit")
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
+                }
+                button (text: "视图", variant: "text") {
+                    onclick: .MenuToggle("view")
+                    style: "h-7 px-3 mr-1 text-[12px] text-zinc-300"
+                }
+                button (text: "帮助", variant: "text") {
+                    onclick: .MenuToggle("help")
+                    style: "h-7 px-3 text-[12px] text-zinc-300"
+                }
+                button (variant: "icon", icon: "file-plus") {
+                    onclick: .ActNew
+                    style: "ml-auto"
+                }
+                button (variant: "icon", icon: "folder-open") {
+                    onclick: .ActOpen
+                }
+                button (variant: "icon", icon: "save") {
+                    onclick: .ActSave
+                }
+                sep {}
+                button (variant: "icon", icon: "undo-2") {
+                    onclick: .ActUndo
+                }
+                button (variant: "icon", icon: "redo-2") {
+                    onclick: .ActRedo
+                }
+                sep {}
+                button (variant: "icon", icon: "scissors") {
+                    onclick: .ActCut
+                }
+                button (variant: "icon", icon: "copy") {
+                    onclick: .ActCopy
+                }
+                button (variant: "icon", icon: "clipboard") {
+                    onclick: .ActPaste
+                }
+            }
+            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
+                if .tab == 0 {
+                    row (style: "items-center bg-[#1C1D24]") {
+                        button (text: "main.at", variant: "text") {
+                            onclick: .TabMain
+                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                        }
+                        button (variant: "text") {
+                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                            onclick: .CloseTab("main.at")
+                            style: "h-7 w-6 px-0 py-0 mr-2"
+                        }
+                    }
+                }
+                if .tab != 0 {
+                    button (text: "main.at", variant: "text") {
+                        onclick: .TabMain
+                        style: "h-8 px-3 text-[12px] text-zinc-500"
+                    }
+                }
+                if .tab == 1 {
+                    row (style: "items-center bg-[#1C1D24]") {
+                        button (text: "util.at", variant: "text") {
+                            onclick: .TabUtil
+                            style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                        }
+                        button (variant: "text") {
+                            icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                            onclick: .CloseTab("util.at")
+                            style: "h-7 w-6 px-0 py-0 mr-2"
+                        }
+                    }
+                }
+                if .tab != 1 {
+                    button (text: "util.at", variant: "text") {
+                        onclick: .TabUtil
+                        style: "h-8 px-3 text-[12px] text-zinc-500"
+                    }
+                }
+                if .menu_open == "file" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[8px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "新建" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+N" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActNew
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "打开…" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+O" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActOpen
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "保存" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+S" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActSave
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "退出" { style: "text-[12px] text-zinc-200" }
+                                text "Alt+F4" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActQuit
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "edit" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[60px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "撤销" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+Z" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActUndo
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "重做" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+Y" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActRedo
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "剪切" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+X" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActCut
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "复制" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+C" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActCopy
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "全选" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+A" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActSelectAll
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "view" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[112px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "切换 Console" { style: "text-[12px] text-zinc-200" }
+                                text "Ctrl+J" { style: "text-[11px] text-zinc-500" }
+                            }
+                            onclick: .ActConsole
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "切换 Tab" { style: "text-[12px] text-zinc-200" }
+                                text "" { style: "w-8" }
+                            }
+                            onclick: .ActSwitchTab
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+                if .menu_open == "help" {
+                    col (style: "absolute z-50") {
+                        button (variant: "text") {
+                            onclick: .MenuClose
+                            style: "w-[2000px] h-[2000px] mt-[33px] px-0 py-0"
+                        }
+                        col (style: "absolute z-50 top-[33px] left-[164px] w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                        button (variant: "text") {
+                            row (style: "w-full justify-between items-center px-3") {
+                                text "关于 auto-edit" { style: "text-[12px] text-zinc-200" }
+                                text "" { style: "w-8" }
+                            }
+                            onclick: .ActAbout
+                            style: "h-7 w-full px-0 py-0"
+                        }
+                        }
+                    }
+                }
+            }
+            col (style: "h-px w-full bg-border shrink-0")
+
+            if .tab == 0 {
+                code_editor (key: "tab-main", lang: "auto", style: "flex-1 w-full") {
+                    content: .src_main
+                    oninput: .SrcMainChanged
+                    oncursor: .CursorMain
+                }
+            }
+            if .tab != 0 {
+                code_editor (key: "tab-util", lang: "auto", style: "flex-1 w-full") {
+                    content: .src_util
+                    oninput: .SrcUtilChanged
+                    oncursor: .CursorUtil
+                }
             }
 
             if .console_open {
@@ -25,7 +264,7 @@ widget App {
                         text "CONSOLE" {
                             style: "text-[11px] font-bold text-zinc-400"
                         }
-                        button (text: "Clear") {
+                        button (text: "Clear", variant: "text") {
                             onclick: .ConsoleClear
                             style: "text-[11px] h-5 px-1 text-zinc-400"
                         }
@@ -44,39 +283,29 @@ widget App {
             }
 
             col (style: "h-px w-full bg-border")
-            row (style: "h-6 items-center bg-card shrink-0 w-full gap-3 px-2") {
+            row (style: "h-6 items-center bg-muted/30 shrink-0 w-full gap-3 px-2") {
                 text "Auto" { style: "text-[11px] text-zinc-400" }
                 text "UTF-8" { style: "text-[11px] text-zinc-400" }
                 text "Spaces: 4" { style: "text-[11px] text-zinc-400" }
 
-                text "Ln ${.line}, Col ${.col}" {
+                text "${.line}:${.col}" {
                     style: "text-[11px] text-zinc-300 ml-auto"
                 }
                 if .sel > 0 {
                     text "Sel ${.sel}" { style: "text-[11px] text-zinc-300" }
                 }
-                if .wrap == false {
-                    button (text: "Wrap: Off") {
-                        onclick: .ToggleWrap
-                        style: "text-[11px] h-5 px-1 text-zinc-400"
-                    }
-                }
-                if .wrap == true {
-                    button (text: "Wrap: On") {
-                        onclick: .ToggleWrap
-                        style: "text-[11px] h-5 px-1 text-zinc-200"
-                    }
-                }
                 if .console_open == false {
-                    button (text: "Console") {
-                        onclick: .ConsoleToggle
-                        style: "text-[11px] h-5 px-1 text-zinc-400"
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-400") {}
+                        onclick: .ActConsole
+                        style: "h-6 w-9 px-0 py-0"
                     }
                 }
                 if .console_open == true {
-                    button (text: "Console") {
-                        onclick: .ConsoleToggle
-                        style: "text-[11px] h-5 px-1 text-zinc-200"
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-200") {}
+                        onclick: .ActConsole
+                        style: "h-6 w-9 px-0 py-0"
                     }
                 }
             }
@@ -84,19 +313,60 @@ widget App {
     }
 
     on {
-        .SourceChanged -> {
+        .MenuClose -> {
+            .menu_open = ""
+        }
+        .MenuToggle(m) -> {
+            if .menu_open == m {
+                .menu_open = ""
+            } else {
+                .menu_open = m
+            }
+        }
+        .MenuPick(label) -> {
+            console_log("menu: " + label)
+            .menu_open = ""
+            .console = console_lines()
+        }
+        .CloseTab(name) -> {
+            console_log("close tab " + name + " (MVP: dummy)")
+            .console = console_lines()
+        }
+        .TabMain -> {
+            .tab = 0
+            .line = code_editor_cursor_line("tab-main") + 1
+            .col = code_editor_cursor_col("tab-main") + 1
+            .sel = code_editor_selection_len("tab-main")
+            .console = console_lines()
+        }
+        .TabUtil -> {
+            .tab = 1
+            .line = code_editor_cursor_line("tab-util") + 1
+            .col = code_editor_cursor_col("tab-util") + 1
+            .sel = code_editor_selection_len("tab-util")
+            .console = console_lines()
+        }
+        .SrcMainChanged -> {
             .edits = .edits + 1
-            console_log("edit #" + .edits.str())
+            console_log("main.at edit #" + .edits.str())
             .console = console_lines()
         }
-        .CursorMoved -> {
-            .line = code_editor_cursor_line("playground") + 1
-            .col = code_editor_cursor_col("playground")
-            .sel = code_editor_selection_len("playground")
+        .SrcUtilChanged -> {
+            .edits = .edits + 1
+            console_log("util.at edit #" + .edits.str())
             .console = console_lines()
         }
-        .ToggleWrap -> {
-            .wrap = !.wrap
+        .CursorMain -> {
+            .line = code_editor_cursor_line("tab-main") + 1
+            .col = code_editor_cursor_col("tab-main") + 1
+            .sel = code_editor_selection_len("tab-main")
+            .console = console_lines()
+        }
+        .CursorUtil -> {
+            .line = code_editor_cursor_line("tab-util") + 1
+            .col = code_editor_cursor_col("tab-util") + 1
+            .sel = code_editor_selection_len("tab-util")
+            .console = console_lines()
         }
         .ConsoleToggle -> {
             .console_open = !.console_open

@@ -4,3 +4,4 @@ description: "Plan 413 - Auto Playground mini: edit .at source in a native code 
 scene: "ui"
 render: "vm"
 front_port: 4041
+title: "AutoEdit"

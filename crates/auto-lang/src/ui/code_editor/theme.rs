@@ -145,7 +145,9 @@ impl CodeEditorTheme {
             selection: Rgba::new(ar, ag, ab, 0.30),
             search_match: Rgba::new(0.95, 0.8, 0.25, 0.30),
             current_line: fg.mix(bg, 0.96),
-            gutter_background: bg.mix(Rgba::BLACK, 0.35),
+            // Plan 414 §5.3: gutter shares the editor background (Zed-style
+            // seamless columns; the old darker wash broke the illusion).
+            gutter_background: bg,
             gutter_foreground: muted,
             scrollbar: fg.mix(bg, 0.65),
             scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.2),
@@ -180,7 +182,8 @@ impl CodeEditorTheme {
             selection: Rgba::new(ar, ag, ab, 0.22),
             search_match: Rgba::new(0.98, 0.85, 0.3, 0.38),
             current_line: fg.mix(bg, 0.955),
-            gutter_background: bg.mix(Rgba::BLACK, 0.05),
+            // Plan 414 §5.3: same as dark — gutter matches the editor bg.
+            gutter_background: bg,
             gutter_foreground: muted,
             scrollbar: fg.mix(bg, 0.55),
             scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.25),

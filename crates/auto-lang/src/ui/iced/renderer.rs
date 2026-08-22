@@ -1756,7 +1756,8 @@ fn build_row<M: Clone + Debug + 'static>(
     }
     let (lead, between, trail) = row_justify_spacers(justify);
     let spacer = |portion: u16| {
-        iced::widget::Space::new().width(iced::Length::FillPortion(portion))
+        iced::widget::Space::new()
+                            .width(iced::Length::FillPortion(portion))
     };
     let mut row_widget = row([]).spacing(eff_spacing);
     if let Some(p) = lead {
@@ -1808,7 +1809,8 @@ fn build_column<M: Clone + Debug + 'static>(
     );
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
     let spacer = |portion: u16| {
-        iced::widget::Space::new().height(iced::Length::FillPortion(portion))
+        iced::widget::Space::new()
+                            .height(iced::Length::FillPortion(portion))
     };
     let mut col_widget = column([]).spacing(eff_spacing);
     let mut first = true;
@@ -2443,10 +2445,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                             if let Some(c) = is.text_color { tw = tw.color(c); }
                         }
-                        iced::widget::row!(icon_el, tw)
-                            .spacing(6)
-                            .align_y(iced::alignment::Vertical::Center)
-                            .into()
+                        // Icon-only (no text part): return the bare svg - the row with its
+                        // spacing(6) adds trailing space after the icon, skewing it ~3px
+                        // left of center inside square buttons (Plan 414 R14).
+                        if text_label.is_empty() {
+                            icon_el.into()
+                        } else {
+                            iced::widget::row!(icon_el, tw)
+                                .spacing(6)
+                                .align_y(iced::alignment::Vertical::Center)
+                                .into()
+                        }
                     } else {
                         // Unknown icon: fall back to plain text label
                         text(text_label.to_string()).into()
@@ -2521,6 +2530,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 包一层 Fill+center_y 容器让文字纵向居中。
                 // Plan 057 (ash-gui VM 修复): 双固定尺寸 icon-button 走双向居中
                 // (见上方 fixed_both 注释),复现 `flex items-center justify-center`。
+                // Plan 414 R12: fixed-size buttons center their content HORIZONTALLY
+                // too - iced button content hugs the left edge, so a fixed-width
+                // button holding a 16px icon (toolbar w-8) sat left-of-center and
+                // the gaps next to a sep read uneven (user-verified via debug
+                // borders). CSS buttons center by default; shrink-width buttons
+                // are unaffected (content width = button width).
+                // Fill-width ONLY for buttons with an explicit width class: a Fill
+                // content wrapper also makes height-only buttons (menus, tabs)
+                // claim the whole row and stretch equally - regression fixed by
+                // scoping center_x to width-classed buttons.
                 let button_content: iced::Element<'static, M> = if fixed_both {
                     iced::widget::container(button_content)
                         .width(iced::Length::Fill)
@@ -2528,11 +2547,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .center_x(iced::Length::Fill)
                         .center_y(iced::Length::Fill)
                         .into()
-                } else if iced_style.as_ref().map_or(false, |is| is.height.is_some()) {
-                    iced::widget::container(button_content)
+                } else if iced_style
+                    .as_ref()
+                    .map_or(false, |is| is.height.is_some())
+                {
+                    let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                    let mut cont = iced::widget::container(button_content)
                         .height(iced::Length::Fill)
-                        .align_y(iced::alignment::Vertical::Center)
-                        .into()
+                        .align_y(iced::alignment::Vertical::Center);
+                    if has_width {
+                        cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+                    }
+                    cont.into()
                 } else {
                     button_content
                 };
@@ -3409,6 +3435,14 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "layers" => r#"<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>"#,
         "chevron-left" => r#"<path d="m15 18-6-6 6-6"/>"#,
         "chevron-right" => r#"<path d="m9 18 6-6-6-6"/>"#,
+        // Plan 414 §5.5: auto-edit toolbar (notepad-style)
+        "file-plus" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/>"#,
+        "folder-open" => r#"<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>"#,
+        "save" => r#"<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>"#,
+        "undo-2" => r#"<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>"#,
+        "redo-2" => r#"<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/>"#,
+        "scissors" => r#"<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>"#,
+        "clipboard" => r#"<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>"#,
         "chevron-down" => r#"<path d="m6 9 6 6 6-6"/>"#,
         "chevron-up" => r#"<path d="m18 15-6-6-6 6"/>"#,
         "arrow-up-down" => r#"<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>"#,
@@ -3433,6 +3467,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "ruler" => r#"<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.3 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>"#,
         "frame" => r#"<path d="M22 6H2"/><path d="M22 18H2"/><path d="M6 2v20"/><path d="M18 2v20"/>"#,
         "chevrons-down" => r#"<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>"#,
+        // Plan 414 §2: auto-edit 状态栏 Console 开关(Zed 式终端图标)
+        "terminal" => r#"<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>"#,
         "monitor" => r#"<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>"#,
         _ => return None,
     };
@@ -3497,6 +3533,17 @@ pub fn startup_window_size() -> iced::Size {
         }
     }
     iced::Size::new(1280.0, 800.0)
+}
+
+/// VM window title. Sources, in priority order:
+/// 1. pac.at `title: "..."` — injected by `auto run` as AUTO_VM_TITLE
+/// 2. fallback — "Auto - {root widget name}"
+/// Blank env values fall back rather than producing an empty title.
+pub fn window_title(fallback: String) -> String {
+    match std::env::var("AUTO_VM_TITLE") {
+        Ok(t) if !t.trim().is_empty() => t,
+        _ => fallback,
+    }
 }
 
 /// Convert IcedFontSize to f32 pixel value
@@ -5541,6 +5588,17 @@ fn compare_pngs(
         *lock = Some(mcp_action_rx);
     }
 
+    // Plan 414 §5.4: seed the in-app console so the panel has content the
+    // moment it opens (print() output joins these lines live).
+    crate::vm::ui_console::ui_console_push(&format!(
+        "[boot] AutoUI VM app \"{}\" started",
+        widget_name
+    ));
+    crate::vm::ui_console::ui_console_push(&format!(
+        "[boot] MCP automation on 127.0.0.1:{}",
+        crate::ui::mcp_server::mcp_port()
+    ));
+
     // Start shell executor (merged in-process / HTTP SSE bridge, ash-gui M1).
     // Returns the event receiver; stash it in SHELL_EVENT_RX for the subscription.
     {
@@ -7174,7 +7232,7 @@ fn compare_pngs(
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
-        format!("Auto - {}", widget_name)
+        window_title(format!("Auto - {}", widget_name))
     };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。

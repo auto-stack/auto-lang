@@ -920,6 +920,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_WINDOW", format!("{}x{}", w as u32, h as u32));
                 println!("  VM window size: {}x{} (from pac.at)", w as u32, h as u32);
             }
+            // VM native window title from pac.at `title: "..."`, same env
+            // injection path as AUTO_VM_WINDOW above.
+            if let Some(t) = am.pac_window_title() {
+                std::env::set_var("AUTO_VM_TITLE", &t);
+                println!("  VM window title: {} (from pac.at)", t);
+            }
             if !ai_mode {
                 info!("Running project ...");
                 println!();

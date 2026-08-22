@@ -84,6 +84,9 @@ pub struct GutterSection {
     pub font_size: f32,
     pub line_height: f32,
     pub numbers: Vec<GutterNumber>,
+    /// Y positions of foldable-block opener lines (Plan 414 §5 Phase A:
+    /// visual chevrons in the fold column between numbers and text).
+    pub folds: Vec<f32>,
 }
 
 /// Caret (text cursor) rectangle.

@@ -25,6 +25,11 @@ use crate::ui::code_editor::theme::{current_theme, CodeEditorTheme, Rgba};
 
 /// Padding between gutter digits and the text area.
 pub const GUTTER_PAD: f32 = 6.0;
+/// Width of the fold-tool column between the numbers and the text area.
+/// 19 = 6px pad + 7px chevron + 6px pad — the same 6px that pads the
+/// numbers' right edge and the text area's left edge, so the three
+/// columns read as evenly spaced (Plan 414 §5.3).
+pub const FOLD_GUTTER_W: f32 = 19.0;
 /// Caret width in logical px.
 pub const CARET_WIDTH: f32 = 2.0;
 
@@ -60,10 +65,15 @@ pub fn render(
 
     let mut editor = core.editor_lock();
 
-    // ── gutter width (line numbers) ───────────────────────────────────────
-    let (gutter_total, digits) = if config.line_numbers {
-        let line_count = editor.with_buffer(|b| b.lines.len()).max(1);
-        let digits = digits_of(line_count);
+    // ── gutter width (line numbers + fold column) ─────────────────────────
+    // Plan 414 §4: keep at least two digit columns so short files don't
+    // render a cramped single-digit slot. Plan 414 §5 Phase A: a fixed
+    // fold-tool column sits between the numbers and the text area.
+    let (gutter_total, digits, fold_openers) = if config.line_numbers {
+        let (line_count, fold_openers) = editor.with_buffer(|b| {
+            (b.lines.len(), fold_opener_lines(&b.lines))
+        });
+        let digits = digits_of(line_count.max(1)).max(2);
         let mut width = 0.0f32;
         {
             let (cached_digits, cached_w) = core.gutter_width_cache();
@@ -76,9 +86,15 @@ pub fn render(
                 core.set_gutter_width_cache(digits, width);
             }
         }
-        ((width + GUTTER_PAD * 2.0).ceil(), digits)
+        // Plan 414 §6.3: no pad between the numbers zone and the fold
+        // column — its own 6px inner padding IS the gap on both sides.
+        (
+            (width + GUTTER_PAD + FOLD_GUTTER_W).ceil(),
+            digits,
+            fold_openers,
+        )
     } else {
-        (0.0, 0)
+        (0.0, 0, Vec::new())
     };
 
     // ── size + shape ──────────────────────────────────────────────────────
@@ -97,6 +113,7 @@ pub fn render(
 
     // ── visible runs scan ─────────────────────────────────────────────────
     let mut gutter_numbers: Vec<GutterNumber> = Vec::new();
+    let mut gutter_folds: Vec<f32> = Vec::new();
     let mut max_line_width = 0.0f32;
     let mut first_visible_line = usize::MAX;
     let mut last_visible_line = 0usize;
@@ -110,6 +127,9 @@ pub fn render(
             if number != last_number {
                 last_number = number;
                 gutter_numbers.push(GutterNumber { number, y: run.line_top });
+            }
+            if fold_openers.get(run.line_i).copied().unwrap_or(false) {
+                gutter_folds.push(run.line_top);
             }
         }
     });
@@ -130,6 +150,7 @@ pub fn render(
             font_size: config.font_size,
             line_height: config.line_height(),
             numbers: gutter_numbers,
+            folds: gutter_folds,
         });
     }
 
@@ -340,6 +361,17 @@ pub fn render(
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
+/// Heuristic fold-opener flags (Plan 414 §5 Phase A): a line whose trimmed
+/// text ends with `{` and is not the last line starts a collapsible block.
+fn fold_opener_lines(lines: &[BufferLine]) -> Vec<bool> {
+    let mut flags = Vec::with_capacity(lines.len());
+    for (i, line) in lines.iter().enumerate() {
+        let text = line.text();
+        flags.push(text.trim_end().ends_with('{') && i + 1 < lines.len());
+    }
+    flags
+}
+
 fn digits_of(mut n: usize) -> usize {
     let mut digits = 1;
     while n >= 10 {
@@ -354,7 +386,9 @@ fn digits_of(mut n: usize) -> usize {
 /// gutter's content width. cosmic-text caches shaped lines, so repeated
 /// probes are cheap.
 fn gutter_probe_layout(font_system: &mut FontSystem, digits: usize) -> Vec<cosmic_text::LayoutLine> {
-    let attrs = Attrs::new().family(Family::Monospace);
+    // Plan 414 §6.4: probe with the SAME family as the body text (the
+    // monospace generic's ascent/descent misaligns the number baseline).
+    let attrs = Attrs::new().family(super::mono_family());
     let text = format!("{:>width$}", 1, width = digits);
     let mut line = BufferLine::new(
         text,

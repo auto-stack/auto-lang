@@ -385,7 +385,7 @@ pub fn with_font_system<R>(f: impl FnOnce(&mut FontSystem) -> R) -> R {
 /// ordinary fallback chain (→ Microsoft YaHei for Han) that renders CJK
 /// correctly. Consolas ships with every Windows; elsewhere keep the generic
 /// monospace family.
-fn mono_family() -> Family<'static> {
+pub(crate) fn mono_family() -> Family<'static> {
     if cfg!(windows) {
         Family::Name("Consolas")
     } else {
@@ -1491,6 +1491,55 @@ mod tests {
     }
 
     #[test]
+    /// Plan 414 §4: the line-number gutter keeps at least two digit columns
+    /// even for single-digit line counts.
+    #[test]
+    fn gutter_minimum_two_digits() {
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new("test-gutter-min", CodeEditorConfig::default(), &mut fs);
+        core.set_text("one line only", &mut fs);
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        let gutter = list.gutter.expect("gutter present");
+        assert_eq!(gutter.digits, 2, "short files keep a 2-digit slot");
+    }
+
+    /// Plan 414 §5 Phase A: block-opener lines (trim ends with `{`) carry a
+    /// fold chevron; brace-free text carries none.
+    #[test]
+    fn gutter_fold_chevrons_on_block_openers() {
+        let mut fs = FontSystem::new();
+        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let core = CodeEditorCore::new("test-gutter-folds", config, &mut fs);
+        core.set_text(
+            "// header
+fn add(a int, b int) int {
+    return a + b
+}
+",
+            &mut fs,
+        );
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        let gutter = list.gutter.expect("gutter present");
+        assert_eq!(gutter.folds.len(), 1, "one opener line (fn add ... brace)");
+        // The chevron y matches the opener line's top (line 2 of 4).
+        let expected_y = gutter
+            .numbers
+            .iter()
+            .find(|n| n.number == 2)
+            .map(|n| n.y)
+            .expect("line 2 visible");
+        assert!((gutter.folds[0] - expected_y).abs() < 0.5);
+
+        // Brace-free text has no fold markers.
+        let core2 = CodeEditorCore::new("test-gutter-nofolds", CodeEditorConfig::default(), &mut fs);
+        core2.set_text("plain
+text
+only
+", &mut fs);
+        let list2 = render::render(&core2, &mut fs, 400.0, 200.0, None);
+        assert!(list2.gutter.expect("gutter").folds.is_empty());
+    }
+
     fn core_config_diff_toggles_wrap_and_vi() {
         let mut fs = FontSystem::new();
         let core = CodeEditorCore::new(

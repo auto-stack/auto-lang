@@ -22,7 +22,7 @@ use cosmic_text::{
     Wrap,
 };
 
-use crate::ui::code_editor::core::render::{rgba_to_cosmic, GUTTER_PAD};
+use crate::ui::code_editor::core::render::{rgba_to_cosmic, FOLD_GUTTER_W, GUTTER_PAD};
 use crate::ui::code_editor::draw::GutterSection;
 
 /// Widget-tree state for the gutter raster cache.
@@ -55,7 +55,8 @@ impl GutterCache {
         self.layouts
             .entry((number, digits))
             .or_insert_with(|| {
-                let attrs = Attrs::new().family(Family::Monospace);
+                // Plan 414 §6.4: same family as the body (baseline parity).
+                let attrs = Attrs::new().family(crate::ui::code_editor::core::mono_family());
                 let text = format!("{number:>digits$}");
                 let mut line = BufferLine::new(
                     text,
@@ -123,7 +124,12 @@ impl GutterCache {
             let line_y = entry.y + centering + max_ascent;
 
             for glyph in &layout.glyphs {
-                let physical = glyph.physical((GUTTER_PAD, line_y), section.font_size);
+                // Plan 414 §6.3: RIGHT-align the digits against the fold
+                // column — a short "1" must not widen the visual gap.
+                let run_w = layout.w * section.font_size;
+                let right_edge = width as f32 - FOLD_GUTTER_W;
+                let x_anchor = (right_edge - run_w).max(GUTTER_PAD);
+                let physical = glyph.physical((x_anchor, line_y), section.font_size);
                 self.swash.with_pixels(
                     font_system,
                     physical.cache_key,
@@ -142,9 +148,50 @@ impl GutterCache {
             }
         }
 
+        // Plan 414 §5 Phase A: fold chevrons in the tool column between the
+        // numbers and the text — small down-pointing triangles, slightly
+        // dimmed so they read as affordances rather than content.
+        let fold_color = cosmic_text::Color::rgba(
+            fg.r(),
+            fg.g(),
+            fg.b(),
+            ((fg.a() as f32) * 0.8) as u8,
+        );
+        for fold_y in &section.folds {
+            let cx = width as f32 - FOLD_GUTTER_W / 2.0;
+            let cy = fold_y + section.line_height / 2.0;
+            raster_triangle(&mut rgba, width, height, cx, cy, fold_color);
+        }
+
         let handle = iced::advanced::image::Handle::from_rgba(width, height, rgba);
         self.image = Some((handle.clone(), section.bounds.w, revision));
         Some((handle, section.bounds.w))
+    }
+}
+
+/// Scanline-fill a small downward triangle (chevron affordance) centered at
+/// (cx, cy): 7px wide, ~5px tall, tip at the bottom.
+fn raster_triangle(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    cx: f32,
+    cy: f32,
+    color: cosmic_text::Color,
+) {
+    let half_w = 3.5f32;
+    let half_h = 2.5f32;
+    let top = (cy - half_h).round() as i32;
+    let bottom = (cy + half_h).round() as i32;
+    for py in top..=bottom {
+        let t = ((py as f32) - (cy - half_h)) / (half_h * 2.0);
+        let t = t.clamp(0.0, 1.0);
+        let row_half = half_w * t;
+        let x0 = (cx - row_half).round() as i32;
+        let x1 = (cx + row_half).round() as i32;
+        for px in x0..=x1 {
+            blend_pixel(rgba, width, height, px, py, color);
+        }
     }
 }
 

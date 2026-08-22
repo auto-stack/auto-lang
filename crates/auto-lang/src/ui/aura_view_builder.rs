@@ -43,7 +43,7 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::ui::vm_bridge::VmBridge;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::debug::{BuildProbe, ForIter};
-use crate::ui::view::View;
+use crate::ui::view::{View, ViewBuilder};
 use crate::ui_gen::vue::VueGenerator;
 use crate::ui::style::{Style, StyleClass, SizeValue};
 
@@ -906,6 +906,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
+            "sep" | "separator" => self.convert_sep(props, bindings),
             "avatar" => self.convert_avatar(props),
 
             // Child widget lookup or fallback.
@@ -1674,6 +1675,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
             "divider" | "hr" => self.convert_divider(props),
+            "sep" | "separator" => self.convert_sep(props, bindings),
             "avatar" => self.convert_avatar(props),
 
             // Child widget lookup or fallback
@@ -3064,6 +3066,58 @@ let tabs_inner = View::Row {
         builder.build()
     }
 
+    /// Plan 414 §6: `sep` — inline separator widget (toolbar/menu group
+    /// gaps). Orientation-aware, theme-aware 1px hairline; user classes
+    /// append after the base (later classes win).
+    fn convert_sep(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let orientation = self
+            .extract_string_with(props, "orientation", bindings)
+            .unwrap_or_else(|| "vertical".to_owned());
+        let (base, vertical) = if orientation == "horizontal" {
+            ("w-full h-px bg-zinc-500", false)
+        } else {
+            ("w-7 h-7", true)
+        };
+        let mut style = Style::parse(base).ok();
+        if let Some(user) = self.extract_style_with(props, bindings) {
+            style = match style {
+                Some(mut s) => {
+                    s.classes.extend(user.classes);
+                    Some(s)
+                }
+                None => Some(user),
+            };
+        }
+        let line = ViewBuilder::col()
+            .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
+            .build();
+        if !vertical {
+            let mut b = ViewBuilder::col();
+            if let Some(st) = style {
+                b = b.with_style(st);
+            }
+            return b.build();
+        }
+        // Vertical (Plan 414 user spec): a w-7/h-7 box matching the
+        // variant=icon buttons, 1px line construction-centered via the
+        // Container center flags. Deliberately NOT a button: no pointer
+        // cursor on hover, no onclick registration. Spacing is governed
+        // purely by the parent row's gap.
+        View::Container {
+            child: Box::new(line),
+            padding: 0,
+            width: None,
+            height: None,
+            center_x: true,
+            center_y: true,
+            style,
+        }
+    }
+
     /// Convert an avatar element: colored circle placeholder.
     fn convert_avatar(
         &self,
@@ -3228,6 +3282,8 @@ let tabs_inner = View::Row {
             "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md",
             "outline" => "border border-input bg-background text-foreground rounded-md",
             "ghost" => "rounded-md",
+            // Plan 414 R13: icon button - chromeless SQUARE (w follows h).
+            "icon" => "h-7 w-7 px-0 py-0",
             "link" => "text-primary",
             // "text" 及未知 variant:无 preset — chromeless(由 user class 主导)。
             _ => "",
@@ -3240,6 +3296,17 @@ let tabs_inner = View::Row {
             "lg" => "h-11 px-8",
             "icon" => "h-10 w-10",
             _ => "h-10 px-4",  // default
+        };
+        // Plan 414 R13 fix: variant=icon carries its own square sizing in the
+        // variant preset (h-7 w-7); the default "h-10 px-4" size preset would
+        // override it (later classes win) AND its px-4 starves the 14px svg
+        // (28px box - 32px horizontal padding = negative content width,
+        // icon invisible). Empty the size preset unless an explicit size prop
+        // is given.
+        let size_preset: &str = if variant == "icon" && size.is_empty() {
+            ""
+        } else {
+            size_preset
         };
         let style = {
             // Binding-aware so a class can come from the loop variable, e.g.
