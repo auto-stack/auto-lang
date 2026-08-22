@@ -4197,8 +4197,6 @@ impl Codegen {
         }
 
         // 3. 直调宿主桥:name, args_json → 响应 JSON 串。
-        let nat_id = BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.host.call");
-        eprintln!("[DBG-EMIT] host.call resolved id={:?}", nat_id);
         self.emit_call_nat_by_name("auto.host.call", 2)?;
         // 4. json.to_value(响应) → VM 值(调用点直接消费,不过 .at fn return)。
         self.emit_call_nat_by_name("auto.json.to_value", 1)?;
@@ -7156,10 +7154,7 @@ impl Codegen {
                     if let Some(name) = func_name.as_ref() {
                         if matches!(call.name.as_ref(), Expr::Ident(_)) {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
-                                eprintln!("[DBG-HOST] rewrite {} -> host.call", name);
                                 return self.emit_api_host_call(&api, call);
-                            } else {
-                                eprintln!("[DBG-HOST] bare '{}' NOT in api_funcs (keys sample: {:?})", name, self.api_funcs.keys().take(5).collect::<Vec<_>>());
                             }
                         }
                     }
