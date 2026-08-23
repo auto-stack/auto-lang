@@ -877,6 +877,10 @@ impl<'a> AuraViewBuilder<'a> {
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
+            // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
+            // (此前落 unknown fallback → View::Empty,VM 轨 svg 完全不渲染)。
+            // 镜像 convert_element 的同名臂(文件 D-GAP 规则)。
+            "svg" => self.convert_svg_image(props, children, bindings),
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -1666,6 +1670,9 @@ impl<'a> AuraViewBuilder<'a> {
             "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
                 self.convert_container(props, children, bindings)
             }
+            // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
+            // (此前落 unknown fallback → View::Empty)。与 tracked 层同名臂镜像。
+            "svg" => self.convert_svg_image(props, children, bindings),
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
@@ -5229,6 +5236,69 @@ let tabs_inner = View::Row {
     // ========================================================================
 
     /// Extract a string property from AuraNode props (no bindings).
+    /// Plan 442 A4: `svg` 元素子树(含 path/circle/... 形状子元素)序列化为
+    /// SVG 文档,以 `svgdoc:` 前缀经 View::Image 下发——iced renderer 用既有
+    /// svg::Handle 缓存路径渲染(单色 currentColor 文档走画时着色,多彩文档
+    /// 原样)。此前 svg/path 落 unknown-tag fallback → View::Empty,VM 轨
+    /// 完全不渲染(musk-038 T9 canary 对侧的 native canary)。
+    fn convert_svg_image(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let _ = bindings; // 字面量序列化;动态属性为后续项
+        let doc = Self::serialize_svg_element("svg", props, children);
+        let style = self
+            .extract_string(props, "class")
+            .and_then(|c| crate::ui::style::Style::parse(&c).ok());
+        View::Image {
+            src: format!("svgdoc:{doc}"),
+            style,
+        }
+    }
+
+    /// Plan 442 A4: SVG 元素树 → SVG 文档字符串。字面量 props 原名透传为
+    /// attribute(viewBox/d/fill/...);class/style 不进文档(class 已由外层
+    /// View::Image 承载);动态 props 跳过(A4 消费面是静态图标数据,
+    /// musk 038 52-icon 数据层);非 SVG 子元素忽略。
+    fn serialize_svg_element(
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+    ) -> String {
+        let escape = |v: &str| {
+            v.replace('&', "&amp;")
+                .replace('"', "&quot;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+        };
+        let mut attrs = String::new();
+        for (key, value) in props {
+            if key == "class" || key == "style" {
+                continue;
+            }
+            if let AuraPropValue::Expr(expr) = value {
+                if let Some(lit) = svg_attr_literal(expr) {
+                    attrs.push_str(&format!(" {}=\"{}\"", key, escape(&lit)));
+                }
+            }
+        }
+        let mut inner = String::new();
+        for child in children {
+            if let AuraNode::Element { tag: ctag, props: cprops, children: cchildren, .. } = child {
+                if is_svg_shape_tag(ctag) {
+                    inner.push_str(&Self::serialize_svg_element(ctag, cprops, cchildren));
+                }
+            }
+        }
+        if inner.is_empty() {
+            format!("<{tag}{attrs}/>")
+        } else {
+            format!("<{tag}{attrs}>{inner}</{tag}>")
+        }
+    }
+
     fn extract_string(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -6698,6 +6768,68 @@ mod tests {
         }
     }
 
+    /// Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 下发
+    /// (此前落 unknown fallback → View::Empty,VM 轨 svg 完全不渲染)。
+    #[test]
+    fn test_build_svg_element_serializes_document() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let mut svg_props = HashMap::new();
+        svg_props.insert(
+            "viewBox".to_string(),
+            AuraPropValue::Expr(Expr::Str("0 0 24 24".into())),
+        );
+        svg_props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(Expr::Str("w-6 h-6".into())),
+        );
+        let mut path_props = HashMap::new();
+        path_props.insert(
+            "d".to_string(),
+            AuraPropValue::Expr(Expr::Str("M4 4h16v16h-16z".into())),
+        );
+        path_props.insert(
+            "fill".to_string(),
+            AuraPropValue::Expr(Expr::Str("currentColor".into())),
+        );
+        let node = AuraNode::Element {
+            tag: "svg".to_string(),
+            props: svg_props,
+            events: HashMap::new(),
+            children: vec![AuraNode::Element {
+                tag: "path".to_string(),
+                props: path_props,
+                events: HashMap::new(),
+                children: vec![],
+                span: None,
+                debug_id: None,
+            }],
+            span: None,
+            debug_id: None,
+        };
+        let view = builder.build(&node);
+
+        match view {
+            View::Image { src, style } => {
+                assert!(src.starts_with("svgdoc:"), "svgdoc src: {src}");
+                let doc = &src["svgdoc:".len()..];
+                assert!(doc.contains(r#"viewBox="0 0 24 24""#), "viewBox attr: {doc}");
+                assert!(doc.contains(r#"d="M4 4h16v16h-16z""#), "path d attr: {doc}");
+                assert!(doc.contains(r#"fill="currentColor""#), "fill attr: {doc}");
+                assert!(!doc.contains("w-6"), "class 不进文档(由 View::Image style 承载): {doc}");
+                let style = style.expect("class prop → View::Image style");
+                assert!(
+                    style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))),
+                    "w-6 parsed: {:?}",
+                    style.classes
+                );
+            }
+            _ => panic!("Expected View::Image for svg, got {view:?}"),
+        }
+    }
+
     #[test]
     fn test_extract_handler_name() {
         assert_eq!(extract_handler_name(".Inc"), "Inc");
@@ -6912,5 +7044,30 @@ fn popover_node_children(n: &AuraNode) -> &[AuraNode] {
     match n {
         AuraNode::Element { children, .. } => children,
         _ => &[],
+    }
+}
+
+/// Plan 442 A4: SVG 形状/结构子元素集合(serialize_svg_element 递归白名单;
+/// 根元素 svg 由 convert_svg_image 显式发起)。与 ui_gen/vue.rs map_tag 的
+/// SVG 直通臂同表。
+fn is_svg_shape_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
+            | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
+            | "radialGradient" | "clipPath" | "mask"
+    )
+}
+
+/// Plan 442 A4: 字面量 expr → SVG attribute 值(字符串原文,数值/布尔
+/// to_string)。动态表达式返回 None(序列化时跳过)。
+fn svg_attr_literal(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Str(s) | Expr::CStr(s) => Some(s.to_string()),
+        Expr::Bool(b) => Some(b.to_string()),
+        Expr::Int(v) => Some(v.to_string()),
+        Expr::Uint(v) => Some(v.to_string()),
+        Expr::Float(_, raw) | Expr::Double(_, raw) => Some(raw.to_string()),
+        _ => None,
     }
 }

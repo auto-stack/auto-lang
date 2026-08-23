@@ -3269,6 +3269,43 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // Unknown icon name: render empty placeholder
                     return container(iced::widget::text("")).into();
                 }
+                // Plan 442 A4: 内联 SVG 文档(view builder 序列化的 svg 元素
+                // 子树)→ 复用缓存 svg::Handle 渲染。单色文档(以 currentColor
+                // 描述填色/描边,如 musk 038 52-icon 数据层)走 lucide 同款
+                // 画时着色(resvg 把 currentColor 画成黑,tint 整体替换不透明
+                // 像素 RGB);多彩文档保持原色(tint 会毁掉配色)。
+                if let Some(doc) = src.strip_prefix("svgdoc:") {
+                    let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                    let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
+                    let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                    let handle = get_or_create_svg_handle(&src, doc.as_bytes().to_vec());
+                    let mut svg_widget = svg(handle);
+                    if doc.contains("currentColor") {
+                        let base_color = is
+                            .as_ref()
+                            .and_then(|is| is.text_color)
+                            .or_else(|| {
+                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::OnBackground,
+                                )
+                                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            })
+                            .unwrap_or(iced::Color::BLACK);
+                        svg_widget = svg_widget.style(move |_, _| iced::widget::svg::Style {
+                            color: Some(base_color),
+                        });
+                        if base_color.a < 1.0 {
+                            svg_widget = svg_widget.opacity(base_color.a);
+                        }
+                    }
+                    if let Some(w) = w {
+                        svg_widget = svg_widget.width(w);
+                    }
+                    if let Some(h) = h {
+                        svg_widget = svg_widget.height(h);
+                    }
+                    return container(svg_widget).into();
+                }
                 let bytes = load_image_bytes(&src);
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.map(|w| iced_length(&w)));

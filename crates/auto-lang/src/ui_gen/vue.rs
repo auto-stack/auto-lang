@@ -4234,6 +4234,20 @@ impl VueGenerator {
                             continue;
                         }
 
+                        // Plan 442 A4: SVG 元素的字面量属性按静态 attribute 发射
+                        // (viewBox="0 0 24 24" 而非 :viewBox="'0 0 24 24'"——
+                        // 绑定形式在 svg 子树上会被 Vue 求值,静态化才保住
+                        // SVG 语义;musk-038 T9 canary 的退化根因)。动态表达
+                        // 式仍走下方 v-bind。
+                        if Self::is_svg_element(html_tag.as_str()) {
+                            if let AuraPropValue::Expr(expr) = value {
+                                if let Some(lit) = Self::svg_static_attr_value(expr) {
+                                    attrs.push(format!("{}=\"{}\"", key, lit));
+                                    continue;
+                                }
+                            }
+                        }
+
                         // Use v-bind (:attr) for dynamic values, static quotes for literals
                         if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
                             // Track value state ref for v-model optimization on input elements
@@ -5650,6 +5664,14 @@ impl VueGenerator {
             "+" => if self_closing { "span".to_string() } else { "span".to_string() },
             "-" => if self_closing { "span".to_string() } else { "span".to_string() },
 
+            // Plan 442 A4: SVG 元素按原名直通(此前 svg/path 退化成
+            // <div :viewBox=...>,SVG 语义全丢——musk-038 T9 canary)。
+            // 小写直通;PascalCase(如 Svg)仍走组件引用路径。text 不在此
+            // 列(与 DSL text→span 冲突),SVG 文本节点暂不支持。
+            "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
+            | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
+            | "radialGradient" | "clipPath" | "mask" => tag.to_string(),
+
             _ => {
                 // Check if it's a PascalCase component name
                 if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -5659,6 +5681,35 @@ impl VueGenerator {
                     "div".to_string()
                 }
             }
+        }
+    }
+
+    /// Plan 442 A4: the native-SVG passthrough tag set (see `map_tag`).
+    fn is_svg_element(tag: &str) -> bool {
+        matches!(
+            tag,
+            "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
+                | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
+                | "radialGradient" | "clipPath" | "mask"
+        )
+    }
+
+    /// Plan 442 A4: literal expr → static SVG attribute value (strings
+    /// raw-escaped, numbers/bools as-is). Anything dynamic returns None and
+    /// keeps the v-bind path below.
+    fn svg_static_attr_value(expr: &crate::ast::Expr) -> Option<String> {
+        use crate::ast::Expr;
+        match expr {
+            Expr::Str(s) | Expr::CStr(s) => Some(s.to_string().replace('"', "&quot;")),
+            Expr::Bool(b) => Some(b.to_string()),
+            Expr::Int(v) => Some(v.to_string()),
+            Expr::Uint(v) => Some(v.to_string()),
+            Expr::I8(v) => Some(v.to_string()),
+            Expr::U8(v) | Expr::Byte(v) => Some(v.to_string()),
+            Expr::I64(v) => Some(v.to_string()),
+            Expr::U64(v) => Some(v.to_string()),
+            Expr::Float(_, raw) | Expr::Double(_, raw) => Some(raw.to_string()),
+            _ => None,
         }
     }
 
@@ -14669,6 +14720,50 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
 
         // Known tags with hyphens in HTML5
         // (these would pass through if added to the match)
+    }
+
+    /// Plan 442 A4: SVG 元素按原名直通(不再退化 div;musk-038 T9 canary
+    /// 的 <div :viewBox=...> 退化根因),非 SVG 未知小写标签仍退化。
+    #[test]
+    fn test_map_tag_svg_passthrough() {
+        let mut gen = VueGenerator::new();
+        for tag in [
+            "svg", "path", "circle", "rect", "line", "polyline", "polygon",
+            "ellipse", "g", "defs", "use", "stop", "linearGradient",
+            "radialGradient", "clipPath", "mask",
+        ] {
+            assert_eq!(gen.map_tag(tag, false), tag, "svg family tag passthrough");
+        }
+        // 未知小写标签仍走 div 兜底。
+        assert_eq!(gen.map_tag("my-custom-tag", false), "div");
+    }
+
+    /// Plan 442 A4: svg 子树发射为原生 SVG 标记——字面量属性为静态
+    /// attribute(viewBox="0 0 24 24"),不再出现 :viewBox="'…'" 绑定。
+    #[test]
+    fn test_svg_element_static_attributes() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget W {
+    view {
+        svg (viewBox: "0 0 24 24") {
+            path (d: "M4 4h16v16h-16z", fill: "currentColor")
+        }
+    }
+}
+"#,
+        );
+        assert!(sfc.contains("<svg"), "svg tag emitted verbatim:\n{}", sfc);
+        assert!(
+            sfc.contains("viewBox=\"0 0 24 24\""),
+            "viewBox as static attribute:\n{}", sfc
+        );
+        assert!(
+            sfc.contains("<path") && sfc.contains("d=\"M4 4h16v16h-16z\""),
+            "path with static d:\n{}", sfc
+        );
+        assert!(!sfc.contains(":viewBox"), "no bound viewBox:\n{}", sfc);
+        assert!(!sfc.contains(":d="), "no bound d:\n{}", sfc);
     }
 
     #[test]
