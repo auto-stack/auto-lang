@@ -1369,11 +1369,18 @@ widget Counter {
 A widget has three per-instance lifecycle phases (see
 `docs/specs/auto-lang/ui/design/scenario-dialect.md` for the full table):
 
-| Phase | Syntax | Runs | Maps to (Vue) |
-|---|---|---|---|
-| setup | `setup { ... }` block | synchronously, before first render | `<script setup>` top level |
-| .Init | `on { .Init -> {...} }` | after mount | `onMounted` |
-| .Destroy | `on { .Destroy -> {...} }` | on unmount | `onUnmounted` |
+| Phase | Syntax | Runs | a2vue (Vue) | interpreter (Plan 436 L1) | a2r (Rust) |
+|---|---|---|---|---|---|
+| setup | `setup { ... }` block | synchronously, before first render | `<script setup>` top level | once at `InterpreterBridge::interpret` load, bindings into the widget's single-instance `WidgetState.fields`, before any view evaluation | **explicit error** — Rust target has no per-instance setup slot yet (Plan 436 决策 1-A; 1-B generation deferred) |
+| .Init | `on { .Init -> {...} }` | after mount | `onMounted` | not dispatched (no lifecycle routing yet — documented gap) | `__self.on(XMsg::Init)` in the constructor's post-construct phase |
+| .Destroy | `on { .Destroy -> {...} }` | on unmount | `onUnmounted` | not dispatched (no lifecycle routing yet — documented gap) | not generated |
+
+Interpreter-side boundary notes (Plan 436): the setup preamble executes in
+its own VM run — program-level functions/globals do not persist into it
+(bindings must be literal expressions); `refs` annotations have no `.value`
+semantics there (a Value *is* the value); only widgets **with** a setup
+block get a `WidgetState`. Multi-instance (per-key) state is out of scope —
+the bridge is type-keyed single-instance by design (L2 boundary).
 
 ```auto
 widget Greet {

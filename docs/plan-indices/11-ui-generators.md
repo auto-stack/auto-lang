@@ -56,10 +56,11 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 424 | ports 符号转发 | ✅ | 端口 re-export 三 kind 全通（component default-as/composable named/fn 按 wrapper 使用精确 import+export 纯转发）；k4 canary GREEN；musk 四端口 34 处调用面迁移、非 .at 零命中、PLAN-037 白名单清零 |
 | 425 | component fn 双轨退役 | ✅ | 糖化为 widget（AST 级，产物逐字节等价）+ view 可选化 + fragment 双轨删除（净 199 行）；on<event> 旧拼写经事件路径兼容（单测锁定）；根序=源序首个 widget |
 | 426 | setup 前导槽 | ✅ | setup{} 前导槽（const 绑定先于 state/computed、refs 块级声明 .value、await 拒绝、TDZ/命名冲突编译错误）；setup/.Init/.Destroy 三相位语义表定版；musk 9 文件迁 setup 块对拍等价 |
+| 436 | setup 解释器/a2r 落地 | ✅ | a2r 显式报错守卫(1-A:ui_gen/rust.rs + trans/rust.rs 逻辑路径,PLAN-037 T7 哲学);解释器 L1 单实例(bridge UI 场景解析加载 widget 源 + eval_ast/run_ast 通道 + setup 前导独立 VM run 执行、绑定入 WidgetState.fields、先于首视图);syntax.md 三相位×三后端矩阵;mod.rs 文档腐烂修复 |
 | 428 | 代码折叠 Phase B（Route A 逐 run 自绘） | ✅ | fold.rs 区间发现+y 前缀和投影；正文 spans_iter 拆色 fill_text 替代 fill_raw；gutter 两态 chevron+列命中；光标/搜索入折叠区自动揭示；native 2932/2933；041 矩阵 T3b 4/4 + 实机验收通过；验收揪出三既有 bug 全根修（gutter 高度缓存/Ctrl 吞键/对话框无父） |
 
 ## Status Summary
-- Completed: 32 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 33 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

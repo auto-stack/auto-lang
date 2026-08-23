@@ -57,11 +57,12 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 424 | ports Symbol Forwarding | Done | Port re-exports for component/composable/fn kinds (default-as for .vue/platform:), k4 canary, auto-musk 4-port migration with zero non-.at call sites |
 | 425 | component fn Retirement | Done | component fn sugared to widget (byte-identical), view block optional, fragment double track deleted (-199 lines), legacy on<event> spelling kept compatible |
 | 426 | setup Preamble Slot | Done | Per-instance setup{} phase before first render (const bindings, refs block-level annotation, await rejected, TDZ guard), three-phase semantics table, musk 9-file migration |
+| 436 | setup Interpreter/a2r Landing | Done | a2r explicit-error guard for setup blocks (decision 1-A, PLAN-037 T7 philosophy, both the ui_gen/rust.rs widget path and the trans/rust.rs logic path); interpreter L1 single-instance semantics (UI-scenario parse in the bridge, setup preamble runs once in its own VM run with bindings into WidgetState.fields, before first view); syntax.md three-phase x three-backend matrix; interpreter mod.rs doc rot fixed |
 | 428 | Code Folding Phase B | Done | Route A per-run painting replaces fill_raw (fold regions + y-projection + two-state chevrons + auto-reveal on caret/search, natives 2932/2933, matrix T3b 4/4 + manual acceptance); three pre-existing bugs found during acceptance root-fixed (gutter raster height, Ctrl-key swallowing, parentless rfd dialog) |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428 (31 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436 (32 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -183,3 +184,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [425-component-fn-retirement.md](../plans/archive/425-component-fn-retirement.md)
 - [426-setup-preamble-slot.md](../plans/archive/426-setup-preamble-slot.md)
 - [428-code-folding-phase-b.md](../plans/archive/428-code-folding-phase-b.md)
+- [436-setup-interpreter-a2r.md](../plans/archive/436-setup-interpreter-a2r.md)

@@ -1,9 +1,17 @@
 # Plan 436: setup 前导槽——解释器与 a2r 落地(每实例执行约定)
 
-> **状态**: 🟢 立项待执行(draft;§1 含执行前需定稿的决策)
+> **状态**: ✅ 完成(2026-08-23,worktree plan-436 执行;§1 决策定稿:**1-A 显式报错**(T0 探针:1-B 需将 setup 绑定接入 struct 字段与视图/处理器标识符解析,面大,留待需要时立项)+ **解释器 L1 落 bridge 单实例层**。残留边界见 §6)
 > **前置**: Plan 426(已归档,setup{} 块语法 + a2vue 语义)、Plan 425(已归档,widget 单轨)。
 > **仓库**: **auto-lang**(`crates/auto-lang/src/ui/interpreter/` + `src/interpreter/` + `src/trans/rust.rs`)。旧 ../auto-ui 仓已废弃,AutoUI 运行时全部在本仓(债务簿 426 条目已修正指向)。
 > **目标**: `setup {}` 相位语义在 **a2r(Rust 转译)与动态解释器**两条路径落地/守门,消除"a2vue 独有"的后端不对称;解释器侧建立组件实例化约定(短期单实例语义 + 实例键边界文档化)。
+
+## 6. 执行结果(2026-08-23 回填)
+
+- **T1 a2r 止血(决策 1-A)**:`ui_gen/rust.rs generate_rust` 入口守卫——带 setup 块的 widget 显式 `GenError::UnsupportedStmt`(PLAN-037 T7 哲学,同 use.web 门控);`trans/rust.rs trans()` 逻辑路径对 `Stmt::WidgetDecl(setup 有)` 同款守卫(此前 wildcard `_ => {}` 静默消失)。测试 `test_setup_block_rejected_on_rust_target`。
+- **T2 解释器 L1**:`InterpreterBridge::interpret` 改为 **UI 场景解析**(关键发现:VM 默认解析器拒绝 widget 语法,bridge 此前根本无法加载 widget 源)→ `AutoInterpreter::eval_ast`(新增;`VmInterpreter::run` 抽出 `run_ast` 供 AST 直入)→ `run_setup_preambles`:setup 语句 + 尾随绑定名数组表达式在**独立 VM run** 中执行一次(每次 run 新 VM,程序级作用域不延续——绑定须为字面量表达式),值经栈顶结果提取入 `WidgetState.fields`(type 键单实例),先于任何视图求值;`widget_state()` getter。非 UI 场景脚本走原 VM 解析回退(行为不变)。测试 ×3(绑定入 fields/错误显式上浮带 widget 上下文/无 setup 不建状态 + 普通脚本回归)。
+- **T3 文档**:`ui/interpreter/mod.rs` 头注释重写(移除不存在的 SymbolTable/WidgetMetadata/ComponentInstance/InterpreterRuntime 引用,写实架构 + 边界);`docs/syntax.md` 三相位表扩为 **×三后端矩阵**(a2vue/解释器/a2r + 边界注记);债务簿 426「setup 解释器侧」条目改 ✅ 并记录残留。
+- **T4 收口**:全量回归 auto-lang 默认 3128/3128、ui-iced 3606/3606(唯一失败为环境敏感的 Plan 077 纳秒基准,单跑恒绿)、auto-man 226/226。musk 三测零影响(musk 走 a2vue,本计划未触 vue 轨生成路径——按计划预期)。
+- **残留边界(登记于 syntax.md + 债务簿)**:①解释器 setup 前导不延续程序级作用域;②`.Init`/`.Destroy` 事件路由未实现(仅 setup 相位落地);③a2r 真 setup 支持(1-B)未做;④L2 多实例不可及(type 键单例)。
 
 ---
 
