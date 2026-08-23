@@ -11,10 +11,11 @@
 // License: MIT. Architecture inspired by cosmic-edit (GPL-3.0, System76);
 // original implementation.
 
+pub mod fold;
 pub mod highlight;
 pub mod render;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
@@ -292,9 +293,16 @@ pub struct CodeEditorCore {
     last_used: AtomicU64,
     /// Cached gutter width for `digits` columns.
     gutter_width_cache: Mutex<(usize, f32)>,
+    /// Plan 428 P1: folded opener lines (0-based). Fold state is view
+    /// state — deliberately NOT in the undo stack; openers that stop being
+    /// valid after an edit are pruned by the next render pass.
+    folds: Mutex<BTreeSet<usize>>,
+    /// Plan 428 P1: the fold map computed by the last render (regions +
+    /// merged hidden ranges). Hit testing and the gutter read this.
+    fold_map: Mutex<Arc<fold::FoldMap>>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct LayoutInfo {
     pub(crate) viewport_w: f32,
     pub(crate) viewport_h: f32,
@@ -308,6 +316,12 @@ pub(crate) struct LayoutInfo {
     pub(crate) max_line_width: f32,
     /// Number of visible layout lines.
     pub(crate) visible_lines: usize,
+    /// Plan 428 P2: visible-line bands for folded-view hit testing —
+    /// (original line_i, projected top, original top), render order.
+    pub(crate) fold_bands: Vec<(usize, f32, f32)>,
+    /// Plan 428 P3: the gutter's fold-tool column (chevron click zone),
+    /// present only when line numbers are on.
+    pub(crate) fold_column: Option<Rect>,
 }
 
 /// MutexGuard that derefs to the ViEditor (hides the Send wrapper).
@@ -399,19 +413,6 @@ pub(crate) fn mono_family() -> Family<'static> {
     }
 }
 
-/// Weak handle to the editor's CURRENT buffer, for the draw list (`fill_raw`
-/// handoff). Must be acquired per frame and dropped at frame end: a
-/// longer-lived weak forces `Arc::make_mut` (cosmic-text's
-/// `Edit::with_buffer_mut` on the `BufferRef::Arc` variant) to clone the
-/// entire buffer on the next mutation, orphaning the previous handle — the
-/// body text then stops rendering (Plan 413 fix).
-pub(crate) fn editor_buffer_weak(editor: &ViEditor) -> Option<std::sync::Weak<Buffer>> {
-    match editor.buffer_ref() {
-        BufferRef::Arc(arc) => Some(Arc::downgrade(arc)),
-        _ => None,
-    }
-}
-
 impl CodeEditorCore {
     pub fn new(
         key: impl Into<String>,
@@ -461,6 +462,8 @@ impl CodeEditorCore {
             external_dirty: std::sync::atomic::AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             gutter_width_cache: Mutex::new((0, 0.0)),
+            folds: Mutex::new(BTreeSet::new()),
+            fold_map: Mutex::new(Arc::new(fold::FoldMap::default())),
         };
         this.apply_config_locked(&config, font_system);
         this
@@ -550,7 +553,7 @@ impl CodeEditorCore {
         // window as infinite and shapes/highlights the WHOLE document (26s
         // on a 1MB file). Any finite size keeps it lazy; render() applies
         // the real viewport each frame.
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
         let (w, h) = (
             if info.viewport_w > 1.0 { info.viewport_w } else { 800.0 },
             if info.viewport_h > 1.0 { info.viewport_h } else { 1.0 },
@@ -634,7 +637,7 @@ impl CodeEditorCore {
     /// Caret rectangle in widget-local coordinates (for the IME input-area
     /// request). Valid after the first render.
     pub fn caret_rect(&self) -> Option<Rect> {
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
         info.caret.map(|c| Rect::new(info.text.x + c.x, info.text.y + c.y, c.w, c.h))
     }
 
@@ -717,6 +720,13 @@ impl CodeEditorCore {
 
         editor.set_cursor(Cursor::new(line, e));
         editor.set_selection(Selection::Normal(Cursor::new(line, s)));
+        // Plan 428 P4: a match inside a folded region reveals it — the
+        // caret must never rest on an invisible line. `unfold_line`
+        // re-locks the editor itself (fresh region discovery), so the
+        // guard must be released here and re-taken for the scroll adjust.
+        drop(editor);
+        self.unfold_line(line);
+        let mut editor = self.editor_lock();
         editor.with_buffer_mut(|b| {
             // Bring the matched line a few lines below the viewport top.
             let mut scroll = b.scroll();
@@ -748,6 +758,106 @@ impl CodeEditorCore {
 
     pub(crate) fn search_regex(&self) -> Option<regex::Regex> {
         self.search.lock().unwrap().regex.clone()
+    }
+
+    // ── Plan 428 P1: code folding ────────────────────────────────────────
+
+    /// Toggle the fold at `line_0` (0-based). Returns `true` when the region
+    /// is folded afterwards, `false` when unfolded or the line carries no
+    /// foldable opener. Toggling is view state — no undo entry, no
+    /// `text_changed` (revision untouched).
+    pub fn fold_toggle(&self, line_0: usize) -> bool {
+        // Region validity is computed FRESH (native callers may toggle
+        // before any render stored a map); the render map only owns the
+        // y-projection geometry.
+        let map = self.fresh_fold_map();
+        if map.region_at(line_0).is_none() {
+            return false;
+        }
+        let mut folds = self.folds.lock().unwrap();
+        if !folds.insert(line_0) {
+            folds.remove(&line_0);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Regions + merged bodies computed from the CURRENT text (the render
+    /// map may be stale or absent — natives and tests toggle headless).
+    fn fresh_fold_map(&self) -> fold::FoldMap {
+        let folded = self.folds.lock().unwrap().clone();
+        let line_height = self.config.lock().unwrap().line_height();
+        let editor = self.editor_lock();
+        editor.with_buffer(|b| {
+            let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
+            let regions = fold::regions_from_texts(&texts);
+            drop(texts);
+            fold::FoldMap::build(regions, &folded, line_height)
+        })
+    }
+
+    /// Whether `line_0` currently opens a folded region.
+    pub fn fold_is_folded(&self, line_0: usize) -> bool {
+        self.folds.lock().unwrap().contains(&line_0)
+    }
+
+    /// Unfold every region whose body contains `line_0` (P4 auto-expand:
+    /// cursor or search landing inside a hidden range reveals it).
+    /// Returns `true` when anything was unfolded.
+    pub fn unfold_line(&self, line_0: usize) -> bool {
+        let map = self.fresh_fold_map();
+        let Some((a, b)) = map.hidden_range_containing(line_0) else {
+            return false;
+        };
+        // The hidden range body [a, b] may merge several folded regions
+        // (nested folds); drop every opener whose body intersects it.
+        let mut folds = self.folds.lock().unwrap();
+        let before = folds.len();
+        folds.retain(|opener| {
+            map.region_at(*opener)
+                .map(|r| r.end < a || r.opener + 1 > b)
+                .unwrap_or(true)
+        });
+        folds.len() != before
+    }
+
+    /// Plan 428 P4: reveal any fold hiding the caret's line (keyboard
+    /// motion can walk into a folded body; the caret must never rest on an
+    /// invisible line). Merges a repaint request into `out` when it fires.
+    pub(crate) fn auto_unfold_at_cursor(&self, out: &mut CoreOutput) {
+        let line = self.editor_lock().cursor().line;
+        if self.unfold_line(line) {
+            out.request_redraw = true;
+        }
+    }
+
+    /// Number of lines currently hidden by folding (tests / MCP assertions).
+    pub fn fold_hidden_count(&self) -> usize {
+        self.fresh_fold_map().hidden_count()
+    }
+
+    /// The fold map snapshot from the last render (hit testing).
+    pub(crate) fn fold_map_snapshot(&self) -> Arc<fold::FoldMap> {
+        self.fold_map.lock().unwrap().clone()
+    }
+
+    /// Currently folded opener lines (render builds the map from these).
+    pub(crate) fn folded_openers(&self) -> BTreeSet<usize> {
+        self.folds.lock().unwrap().clone()
+    }
+
+    /// Render-side update: store the freshly computed map and prune fold
+    /// openers that are no longer valid foldable lines (text changed under
+    /// them). Returns the number of hidden lines for the cache key.
+    pub(crate) fn set_fold_map(&self, map: fold::FoldMap) -> usize {
+        let hidden = map.hidden_count();
+        {
+            let mut folds = self.folds.lock().unwrap();
+            folds.retain(|opener| map.region_at(*opener).is_some());
+        }
+        *self.fold_map.lock().unwrap() = Arc::new(map);
+        hidden
     }
 
     // ── input handling ───────────────────────────────────────────────────
@@ -795,7 +905,12 @@ impl CodeEditorCore {
                 if !self.focused.load(Ordering::Relaxed) {
                     return CoreOutput::default();
                 }
-                self.handle_key(font_system, key, text, modifiers, clipboard)
+                let mut out =
+                    self.handle_key(font_system, key, text, modifiers, clipboard);
+                // Plan 428 P4: arrow/edit motion may walk the caret into a
+                // folded body — reveal it before the frame paints.
+                self.auto_unfold_at_cursor(&mut out);
+                out
             }
 
             EditorInput::MousePressed { button, x, y } => {
@@ -1075,7 +1190,7 @@ impl CodeEditorCore {
         x: f32,
         y: f32,
     ) -> CoreOutput {
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
 
         if !Rect::new(0.0, 0.0, info.viewport_w, info.viewport_h).contains(super::draw::Pt::new(x, y))
         {
@@ -1113,6 +1228,31 @@ impl CodeEditorCore {
             }
         }
 
+        // Plan 428 P3: fold-column hit — a click on a foldable opener's
+        // chevron band toggles that region. The bands are the projected
+        // visible-line tops from the last render.
+        if let Some(fc) = info.fold_column {
+            if fc.contains(super::draw::Pt::new(x, y)) {
+                let map = self.fold_map_snapshot();
+                let mut hit_line = None;
+                for &(line_i, proj_top, _orig) in info.fold_bands.iter() {
+                    if proj_top <= y && y < proj_top + map.line_height {
+                        hit_line = Some(line_i);
+                    }
+                }
+                if let Some(line_i) = hit_line {
+                    if map.region_at(line_i).is_some() {
+                        self.fold_toggle(line_i);
+                        // Folding is view state — no text_changed, but
+                        // the frame must repaint (chevron + body).
+                        return out.captured();
+                    }
+                }
+                // A miss in the fold column falls through to text click
+                // (the column overlaps nothing else).
+            }
+        }
+
         // Click inside the text area: multi-click cycle + shift anchor.
         let (scroll_x, scroll_y) = {
             let editor = self.editor_lock();
@@ -1121,8 +1261,19 @@ impl CodeEditorCore {
                 (s.horizontal, s.vertical)
             })
         };
+        // Plan 428 P2: y arrives in FOLDED-VIEW coordinates; map back to
+        // the original document y through the visible bands before handing
+        // it to cosmic's hit machinery (which knows nothing of folding).
+        let by_view = (y - info.text.y).max(0.0);
+        let by_orig_view = if info.fold_bands.is_empty() {
+            by_view
+        } else {
+            self.fold_map_snapshot()
+                .unfold_y(by_view, &info.fold_bands)
+                .unwrap_or(by_view)
+        };
         let bx = (x - info.text.x + scroll_x).max(0.0) as i32;
-        let by = (y - info.text.y + scroll_y).max(0.0) as i32;
+        let by = (by_orig_view + scroll_y).max(0.0) as i32;
 
         let click_kind = {
             let mut click = self.click.lock().unwrap();
@@ -1162,7 +1313,7 @@ impl CodeEditorCore {
     }
 
     fn handle_mouse_move(&self, font_system: &mut FontSystem, x: f32, y: f32) -> CoreOutput {
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
         match *self.drag.lock().unwrap() {
             Drag::None => CoreOutput::default(),
             Drag::Buffer => {
@@ -1174,7 +1325,17 @@ impl CodeEditorCore {
                         (s.horizontal, s.vertical)
                     })
                 };
-                let mut by = (y - info.text.y + scroll_y).max(0.0) as i32;
+                // Plan 428 P2: same folded-view → original y mapping as the
+                // press path (drag selection must follow the drawn lines).
+                let by_view = (y - info.text.y).max(0.0);
+                let by_fold = if info.fold_bands.is_empty() {
+                    by_view
+                } else {
+                    self.fold_map_snapshot()
+                        .unfold_y(by_view, &info.fold_bands)
+                        .unwrap_or(by_view)
+                };
+                let mut by = (by_fold + scroll_y).max(0.0) as i32;
                 if y > info.viewport_h {
                     let mut editor = self.editor_lock();
                     editor.action(font_system, Action::Scroll { pixels: info.viewport_h - y });
@@ -1203,7 +1364,7 @@ impl CodeEditorCore {
 
     /// Map a vertical scrollbar drag to a buffer scroll line.
     fn drag_scrollbar_v(&self, y: f32) {
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarV { grab_offset } => grab_offset,
             _ => return,
@@ -1229,7 +1390,7 @@ impl CodeEditorCore {
 
     /// Map a horizontal scrollbar drag to a horizontal pixel scroll.
     fn drag_scrollbar_h(&self, x: f32) {
-        let info = *self.layout_info.lock().unwrap();
+        let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarH { grab_offset } => grab_offset,
             _ => return,
@@ -1620,7 +1781,7 @@ mod tests {
 
         // Render contract: text + gutter + caret present
         let list = render::render(&core, &mut fs, 400.0, 300.0, None);
-        assert!(list.text.is_some(), "text section must be present");
+        assert!(!list.text_runs.is_empty(), "body text runs must be present");
         assert!(list.gutter.is_some(), "gutter section must be present");
         assert!(list.caret.is_some(), "caret must be placed");
         assert!(!list.gutter.as_ref().unwrap().numbers.is_empty());
@@ -1664,7 +1825,9 @@ fn add(a int, b int) int {
             .find(|n| n.number == 2)
             .map(|n| n.y)
             .expect("line 2 visible");
-        assert!((gutter.folds[0] - expected_y).abs() < 0.5);
+        assert!((gutter.folds[0].y - expected_y).abs() < 0.5);
+        // Plan 428 P3: unfolded openers show the expanded state.
+        assert!(!gutter.folds[0].folded, "fresh render: nothing folded yet");
 
         // Brace-free text has no fold markers.
         let core2 = CodeEditorCore::new("test-gutter-nofolds", CodeEditorConfig::default(), &mut fs);
@@ -1909,13 +2072,153 @@ let beta = alpha + 2;
         let t2 = std::time::Instant::now();
         with_font_system(|fs| render::render(core, fs, 800.0, 600.0, None));
         let rendered2 = t2.elapsed();
-        assert!(list.text.is_some());
+        assert!(!list.text_runs.is_empty());
         assert!(list.gutter.is_some());
         // shape_as_needed only shapes the visible window; both phases stay
         // well under a frame budget on a dev machine (generous CI margin).
         assert!(set.as_secs() < 10, "set_text took {set:?}");
         assert!(rendered.as_secs() < 10, "render took {rendered:?}");
         eprintln!("large file: set={set:?} render1={rendered:?} render2={rendered2:?}");
+    }
+    // ── Plan 428: folding render + interaction integration ──────────────
+
+    const FOLD_SRC: &str = "// header
+fn add(a int, b int) int {
+    let s = a + b
+    return s
+}
+fn sub(a int, b int) int {
+    return a - b
+}
+// tail
+";
+
+    /// P1+P2: toggle → render skips the body, projects y, marks the opener.
+    #[test]
+    fn fold_toggle_projects_render() {
+        set_font_system_call(test_font_system);
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new(
+            "test-fold-render",
+            CodeEditorConfig::default(),
+            &mut fs,
+        );
+        core.set_text(FOLD_SRC, &mut fs);
+
+        // Fold `fn add` (opener line index 1).
+        assert!(core.fold_toggle(1), "line 2 opens a region");
+        assert!(core.fold_is_folded(1));
+        assert_eq!(core.fold_hidden_count(), 3, "body = lines 3-5 hidden");
+
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        assert_eq!(list.fold_hidden, 3);
+        let gutter = list.gutter.expect("gutter");
+        // The opener's chevron is folded; `fn sub`'s is not.
+        assert!(gutter.folds.iter().any(|f| f.folded), "folded chevron");
+        assert!(gutter.folds.iter().any(|f| !f.folded), "expanded chevron");
+        // Hidden line numbers are absent from the gutter.
+        for n in &gutter.numbers {
+            assert!(
+                !(3..=5).contains(&n.number),
+                "hidden line {} leaked into gutter",
+                n.number
+            );
+        }
+        // Hidden body text is absent from the text runs; the fold marker
+        // rides after the opener line.
+        let joined: String = list.text_runs.iter().map(|r| r.text.as_str()).collect();
+        assert!(!joined.contains("let s = a + b"), "body text hidden");
+        assert!(!joined.contains("return s"), "body text hidden");
+        assert!(joined.contains('⋯'), "fold marker present");
+        assert!(joined.contains("fn sub"), "later blocks still visible");
+
+        // Unfold → everything back.
+        assert!(!core.fold_toggle(1));
+        assert_eq!(core.fold_hidden_count(), 0);
+        let list2 = render::render(&core, &mut fs, 400.0, 200.0, None);
+        let joined2: String = list2.text_runs.iter().map(|r| r.text.as_str()).collect();
+        assert!(joined2.contains("let s = a + b"), "body text restored");
+        assert!(!joined2.contains('⋯'), "marker gone");
+    }
+
+    /// P3: clicking a chevron band in the fold column toggles the fold.
+    #[test]
+    fn fold_column_click_toggles() {
+        set_font_system_call(test_font_system);
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new(
+            "test-fold-click",
+            CodeEditorConfig::default(),
+            &mut fs,
+        );
+        core.set_text(FOLD_SRC, &mut fs);
+        // First render records the fold column + bands.
+        let _ = render::render(&core, &mut fs, 400.0, 200.0, None);
+
+        // Click the opener's chevron: x inside the fold column, y on the
+        // opener's projected band (read from the gutter of a fresh list).
+        let list = render::render(&core, &mut fs, 400.0, 200.0, None);
+        let gutter = list.gutter.expect("gutter");
+        let opener_y = gutter
+            .numbers
+            .iter()
+            .find(|n| n.number == 2)
+            .map(|n| n.y)
+            .expect("opener visible");
+        let fc_x = gutter.bounds.w - 9.5; // middle of the 19px fold column
+        let mut clip = NullClipboard;
+        let out = core.handle_input(
+            &mut fs,
+            EditorInput::MousePressed { button: EditorButton::Left, x: fc_x, y: opener_y + 1.0 },
+            &mut clip,
+        );
+        assert!(out.captured, "fold click captured");
+        assert!(core.fold_is_folded(1), "fold engaged by click");
+        assert_eq!(core.fold_hidden_count(), 3);
+
+        // Click again (projected band unchanged — opener stays put).
+        let _ = render::render(&core, &mut fs, 400.0, 200.0, None);
+        let _ = core.handle_input(
+            &mut fs,
+            EditorInput::MousePressed { button: EditorButton::Left, x: fc_x, y: opener_y + 1.0 },
+            &mut clip,
+        );
+        assert!(!core.fold_is_folded(1), "second click unfolds");
+        assert_eq!(core.fold_hidden_count(), 0);
+    }
+
+    /// P4: caret motion into a folded body auto-expands.
+    #[test]
+    fn cursor_into_fold_auto_expands() {
+        set_font_system_call(test_font_system);
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new(
+            "test-fold-autoexpand",
+            CodeEditorConfig::default(),
+            &mut fs,
+        );
+        core.set_text(FOLD_SRC, &mut fs);
+        assert!(core.fold_toggle(1));
+
+        // Park the caret ON the hidden line 3 (0-based 2) — keyboard-only
+        // state — then press Down: auto-expand must reveal it.
+        {
+            let mut editor = core.editor_lock();
+            editor.set_cursor(Cursor::new(2, 0));
+        }
+        let mut clip = NullClipboard;
+        let none_mods = EditorModifiers::none();
+        core.handle_input(&mut fs, EditorInput::FocusGained, &mut clip);
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed { key: EditorKey::Down, text: None, modifiers: none_mods },
+            &mut clip,
+        );
+        assert_eq!(
+            core.fold_hidden_count(),
+            0,
+            "caret inside a folded body auto-expands it"
+        );
     }
 
     #[test]

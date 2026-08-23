@@ -29,6 +29,8 @@ print(add(1, 2))
         var sel int = 0
         var console_open bool = false
         var console str = ""
+        // Plan 428: 折叠状态读数(隐藏行数;矩阵经 autoui_state 校验)
+        var fold_hidden int = 0
         // Plan 422 P3: 右键菜单(contextmenu popover 的坐标锚状态)
         var ctx_open bool = false
         var ctx_x float = 0
@@ -165,6 +167,9 @@ print(add(1, 2))
                 if .sel > 0 {
                     text "Sel ${.sel}" { style: "text-[11px] text-zinc-300" }
                 }
+                if .fold_hidden > 0 {
+                    text "Fold ${.fold_hidden}" { style: "text-[11px] text-zinc-300" }
+                }
                 if .console_open == false {
                     button (variant: "text") {
                         icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-400") {}
@@ -193,6 +198,12 @@ print(add(1, 2))
             .line = code_editor_cursor_line(.tabs[i].key) + 1
             .col = code_editor_cursor_col(.tabs[i].key) + 1
             .sel = code_editor_selection_len(.tabs[i].key)
+            .console = console_lines()
+        }
+        // Plan 428: 切换激活编辑器第 2 行 fn 块的折叠态并读回隐藏行数。
+        .ActFold -> {
+            code_editor_fold_toggle(.active_key, 2)
+            .fold_hidden = code_editor_fold_hidden_count(.active_key)
             .console = console_lines()
         }
         .SrcChanged(i) -> {

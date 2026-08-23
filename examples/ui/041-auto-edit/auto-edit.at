@@ -21,6 +21,8 @@ auto-edit {
              checked-if : ".console_open" }
     // 仅配置层快捷键(验证 P2-4 回退层):Ctrl+D 切换 tab
     action { id : "view.switch-tab" handler : ".ActSwitchTab"  title : "切换 Tab" shortcut : "Ctrl+D" }
+    // Plan 428: 代码折叠(视图态;切换激活编辑器第 2 行的 fn 块)
+    action { id : "view.fold"        handler : ".ActFold"       title : "折叠切换" }
     action { id : "help.about"      handler : ".ActAbout"      title : "关于 auto-edit" }
 
     // ---- 菜单栏结构(P2-3 渲染迁移前为声明性数据) ----
@@ -41,6 +43,7 @@ auto-edit {
         menu {
             id : "view"  title : "视图"
             item { action : "view.console" }  item { action : "view.switch-tab" }
+            item { action : "view.fold" }
         }
         menu { id : "help" title : "帮助"  item { action : "help.about" } }
     }

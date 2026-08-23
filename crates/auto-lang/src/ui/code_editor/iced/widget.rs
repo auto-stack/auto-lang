@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use iced::advanced::graphics::text::{Raw, Renderer as RawTextRenderer};
+use iced::advanced::graphics::text::Renderer as RawTextRenderer;
 use iced::advanced::image::Renderer as ImageRenderer;
 use iced::advanced::text::Renderer as TextRenderer;
 use iced::advanced::widget::Tree;
@@ -392,8 +392,11 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 None,
             );
             if let Some(section) = &list.gutter {
+                // Plan 428: fold toggles change the gutter image without a
+                // text revision — mix the hidden count into the cache key.
+                let cache_key = list.revision ^ ((list.fold_hidden as u64) << 52);
                 let mut gutter = state.gutter.borrow_mut();
-                if let Some((handle, _)) = gutter.image(section, fs, list.revision) {
+                if let Some((handle, _)) = gutter.image(section, fs, cache_key) {
                     renderer.draw_image(
                         adv_image::Image {
                             filter_method: adv_image::FilterMethod::Nearest,
@@ -434,13 +437,27 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
             fill_quad(renderer, to_rect(bounds, *rect), to_color(*color));
         }
 
-        if let Some(text) = &list.text {
-            renderer.fill_raw(Raw {
-                buffer: text.buffer.clone(),
-                position: Point::new(bounds.x + text.origin.x, bounds.y + text.origin.y),
-                color: to_color(text.color),
-                clip_bounds: to_rect(bounds, text.clip),
-            });
+        // Plan 428 P2: body text draws as per-run pieces (route A) —
+        // fold-aware, syntax-colored. Same cosmic-text stack, family, size
+        // and `Wrapping::None` as the buffer's own shaping, so monospace
+        // advance widths line up with the selection quads (P0 §6(a)).
+        for run in &list.text_runs {
+            renderer.fill_text(
+                adv_text::Text {
+                    content: run.text.clone(),
+                    bounds: Size::new(bounds.width - run.x + bounds.x, run.line_height),
+                    size: run.size.into(),
+                    line_height: adv_text::LineHeight::Absolute(run.line_height.into()),
+                    font: mono_font(),
+                    align_x: adv_text::Alignment::Left,
+                    align_y: iced::alignment::Vertical::Top,
+                    wrapping: adv_text::Wrapping::None,
+                    shaping: adv_text::Shaping::Advanced,
+                },
+                Point::new(bounds.x + run.x, bounds.y + run.y),
+                to_color(run.color),
+                bounds,
+            );
         }
 
         if let Some(caret) = &list.caret {
@@ -498,6 +515,17 @@ fn to_rect(origin: Rectangle, r: draw::Rect) -> Rectangle {
         Point::new(origin.x + r.x, origin.y + r.y),
         Size::new(r.w, r.h),
     )
+}
+
+/// The body-text font for `fill_text` pieces — must mirror the core's
+/// `mono_family()` (same family the buffer shapes with) so piece advances
+/// match the selection quads (Plan 428 P2, P0 §6(a)).
+fn mono_font() -> Font {
+    if cfg!(windows) {
+        Font::with_name("Consolas")
+    } else {
+        Font::MONOSPACE
+    }
 }
 
 fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {

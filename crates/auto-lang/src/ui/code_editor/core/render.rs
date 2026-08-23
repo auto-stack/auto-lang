@@ -15,11 +15,11 @@ use cosmic_text::{
 };
 
 use super::{
-    CodeEditorCore, CodeEditorConfig, LayoutInfo, SCROLLBAR_THICKNESS,
+    fold, CodeEditorCore, CodeEditorConfig, LayoutInfo, SCROLLBAR_THICKNESS,
 };
 use crate::ui::code_editor::draw::{
-    CaretDraw, EditorDrawList, GutterNumber, GutterSection, PreeditDraw, Pt, Rect, ScrollbarDraw,
-    TextSection,
+    CaretDraw, EditorDrawList, GutterFold, GutterNumber, GutterSection, PreeditDraw, Pt, Rect,
+    ScrollbarDraw, TextRun,
 };
 use crate::ui::code_editor::theme::{current_theme, CodeEditorTheme, Rgba};
 
@@ -69,9 +69,14 @@ pub fn render(
     // Plan 414 §4: keep at least two digit columns so short files don't
     // render a cramped single-digit slot. Plan 414 §5 Phase A: a fixed
     // fold-tool column sits between the numbers and the text area.
-    let (gutter_total, digits, fold_openers) = if config.line_numbers {
-        let (line_count, fold_openers) = editor.with_buffer(|b| {
-            (b.lines.len(), fold_opener_lines(&b.lines))
+    // Plan 428 P1: the chevron set comes from real fold regions (brace
+    // matching) instead of the Phase A per-line heuristic.
+    let (gutter_total, digits, regions) = if config.line_numbers {
+        let (line_count, regions) = editor.with_buffer(|b| {
+            // Region discovery is pure text work (no shaping); the borrowed
+            // texts die inside the closure, the owned regions escape.
+            let texts: Vec<&str> = b.lines.iter().map(|l| l.text()).collect();
+            (b.lines.len(), fold::regions_from_texts(&texts))
         });
         let digits = digits_of(line_count.max(1)).max(2);
         let mut width = 0.0f32;
@@ -91,7 +96,7 @@ pub fn render(
         (
             (width + GUTTER_PAD + FOLD_GUTTER_W).ceil(),
             digits,
-            fold_openers,
+            regions,
         )
     } else {
         (0.0, 0, Vec::new())
@@ -109,35 +114,92 @@ pub fn render(
     });
     editor.shape_as_needed(font_system, true);
 
+    // ── fold map (Plan 428 P1/P2) ─────────────────────────────────────────
+    // Regions were discovered above (line texts, no shaping needed); the
+    // map merges folded bodies and owns all projection math. Stored on the
+    // core for hit testing; pruning drops openers invalidated by edits.
+    let fold_map = fold::FoldMap::build(
+        regions,
+        &core.folded_openers(),
+        config.line_height(),
+    );
+    let fold_hidden = core.set_fold_map(fold_map.clone());
+    list.fold_hidden = fold_hidden;
+    let proj = |line_i: usize, orig_top: f32| -> f32 {
+        fold_map.project_y(line_i, orig_top)
+    };
+
     let text_rect = Rect::new(gutter_total, 0.0, text_w, viewport_h);
 
-    // ── visible runs scan ─────────────────────────────────────────────────
+    // ── visible runs scan (Plan 428 P2: skip hidden, project y, extract
+    //     per-span text pieces) ────────────────────────────────────────────
     let mut gutter_numbers: Vec<GutterNumber> = Vec::new();
-    let mut gutter_folds: Vec<f32> = Vec::new();
+    let mut gutter_folds: Vec<GutterFold> = Vec::new();
+    let mut text_runs: Vec<TextRun> = Vec::new();
+    let mut fold_bands: Vec<(usize, f32, f32)> = Vec::new();
     let mut max_line_width = 0.0f32;
     let mut first_visible_line = usize::MAX;
     let mut last_visible_line = 0usize;
+    let mut visible_run_count = 0usize;
+    // The `…` marker of a folded opener rides at the END of its LAST run —
+    // with soft wrap a line owns several runs, so remember the pending
+    // position and flush it when the line changes (or at pass end).
+    let mut pending_marker: Option<(f32, f32)> = None;
     editor.with_buffer(|b| {
         let mut last_number = 0;
+        let mut last_marker_line = usize::MAX;
         for run in b.layout_runs() {
+            if fold_map.is_hidden(run.line_i) {
+                continue;
+            }
             max_line_width = max_line_width.max(run.line_w);
             first_visible_line = first_visible_line.min(run.line_i);
             last_visible_line = last_visible_line.max(run.line_i);
+            visible_run_count += 1;
+            let proj_top = proj(run.line_i, run.line_top);
+            fold_bands.push((run.line_i, proj_top, run.line_top));
+
+            // Flush the previous line's fold marker before moving on.
+            if last_marker_line != run.line_i {
+                if let Some((x, y)) = pending_marker.take() {
+                    push_fold_marker(&mut text_runs, x, y, &config, dimmed(theme.foreground, 0.6));
+                }
+                last_marker_line = run.line_i;
+            }
+
             let number = run.line_i + 1;
             if number != last_number {
                 last_number = number;
-                gutter_numbers.push(GutterNumber { number, y: run.line_top });
+                gutter_numbers.push(GutterNumber { number, y: proj_top });
             }
-            if fold_openers.get(run.line_i).copied().unwrap_or(false) {
-                gutter_folds.push(run.line_top);
+            // Two-state chevrons at foldable openers (P3 consumes the
+            // state; the raster draws ▾ / ▸).
+            if fold_map.region_at(run.line_i).is_some() {
+                let folded = core.fold_is_folded(run.line_i);
+                gutter_folds.push(GutterFold { y: proj_top, folded });
+                if folded {
+                    pending_marker =
+                        Some((text_rect.x + run.line_w + 4.0, proj_top));
+                }
             }
+
+            let attrs = b.lines.get(run.line_i).map(|l| l.attrs_list());
+            push_run_pieces(
+                &run,
+                attrs,
+                text_rect.x,
+                proj_top,
+                config.font_size,
+                config.line_height(),
+                theme.foreground,
+                &mut text_runs,
+            );
+        }
+        if let Some((x, y)) = pending_marker.take() {
+            push_fold_marker(&mut text_runs, x, y, &config, dimmed(theme.foreground, 0.6));
         }
     });
-    let visible_lines = if last_visible_line >= first_visible_line {
-        last_visible_line - first_visible_line + 1
-    } else {
-        0
-    };
+    let visible_lines = visible_run_count;
 
     // ── background + gutter section ───────────────────────────────────────
     list.background = Some((Rect::new(0.0, 0.0, viewport_w, viewport_h), theme.background));
@@ -158,17 +220,24 @@ pub fn render(
     let has_selection = !matches!(editor.selection(), Selection::None);
     if config.highlight_current_line && !has_selection {
         let cursor_line = editor.cursor().line;
-        editor.with_buffer(|b| {
-            for run in b.layout_runs() {
-                if run.line_i == cursor_line {
-                    list.current_line = Some((
-                        Rect::new(text_rect.x, run.line_top, text_w, run.line_height),
-                        theme.current_line,
-                    ));
-                    break;
+        if !fold_map.is_hidden(cursor_line) {
+            editor.with_buffer(|b| {
+                for run in b.layout_runs() {
+                    if run.line_i == cursor_line {
+                        list.current_line = Some((
+                            Rect::new(
+                                text_rect.x,
+                                proj(run.line_i, run.line_top),
+                                text_w,
+                                run.line_height,
+                            ),
+                            theme.current_line,
+                        ));
+                        break;
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     // ── selection quads ───────────────────────────────────────────────────
@@ -176,6 +245,9 @@ pub fn render(
         editor.with_buffer(|b| {
             for run in b.layout_runs() {
                 if run.line_i < start.line || run.line_i > end.line {
+                    continue;
+                }
+                if fold_map.is_hidden(run.line_i) {
                     continue;
                 }
                 let lo = if run.line_i == start.line { start.index } else { 0 };
@@ -191,7 +263,7 @@ pub fn render(
                     list.selection.push((
                         Rect::new(
                             text_rect.x + x0.min(x1),
-                            run.line_top,
+                            proj(run.line_i, run.line_top),
                             (x1 - x0).abs().max(2.0),
                             run.line_height,
                         ),
@@ -206,6 +278,9 @@ pub fn render(
     if let Some(regex) = core.search_regex() {
         editor.with_buffer(|b| {
             for run in b.layout_runs() {
+                if fold_map.is_hidden(run.line_i) {
+                    continue;
+                }
                 let Some(text) = b.lines.get(run.line_i).map(|l| l.text()) else {
                     continue;
                 };
@@ -227,7 +302,7 @@ pub fn render(
                         list.search_matches.push((
                             Rect::new(
                                 text_rect.x + x0.min(x1),
-                                run.line_top,
+                                proj(run.line_i, run.line_top),
                                 (x1 - x0).abs().max(2.0),
                                 run.line_height,
                             ),
@@ -239,16 +314,16 @@ pub fn render(
         });
     }
 
-    // ── body text ─────────────────────────────────────────────────────────
-    // (built at the END of the pass — see the block above `list` return;
-    // the weak handle must be acquired after the last with_buffer_mut.)
-
     // ── caret + preedit overlay ───────────────────────────────────────────
+    // Plan 428 P2: a caret on a hidden (folded-away) line is not drawn;
+    // P4's auto-expand reveals the line on the next input anyway.
     let mut caret_rect: Option<Rect> = None;
-    if let Some((cx, cy)) = editor.cursor_position() {
+    let cursor_line = editor.cursor().line;
+    if let Some((cx, cy)) = editor.cursor_position().filter(|_| !fold_map.is_hidden(cursor_line)) {
+        let cy = proj(cursor_line, cy as f32);
         let rect = Rect::new(
             cx as f32,
-            cy as f32,
+            cy,
             CARET_WIDTH,
             config.font_size * 1.15,
         );
@@ -260,7 +335,7 @@ pub fn render(
         let preedit = core.preedit();
         if let Some(preedit) = preedit.filter(|p| !p.is_empty()) {
             let px = text_rect.x + cx as f32;
-            let py = text_rect.y + cy as f32;
+            let py = text_rect.y + cy;
             list.preedit = Some(PreeditDraw {
                 text: preedit,
                 origin: Pt::new(px, py),
@@ -277,21 +352,23 @@ pub fn render(
     }
 
     // ── scrollbars ────────────────────────────────────────────────────────
+    // Plan 428 P2: the thumb ratio uses the PROJECTED line counts (hidden
+    // lines neither scroll nor show — they must not stretch the thumb).
     let total_lines = editor.with_buffer(|b| b.lines.len());
-    let (scroll_x, scroll_y) = editor.with_buffer(|b| {
+    let total_effective = total_lines.saturating_sub(fold_hidden).max(1);
+    let (scroll_x, _scroll_y) = editor.with_buffer(|b| {
         let s = b.scroll();
         (s.horizontal, s.vertical)
     });
     let scrollbar_v = if visible_lines < total_lines {
         let track_h = viewport_h - SCROLLBAR_THICKNESS - 2.0;
         let thumb_h =
-            (viewport_h * (visible_lines.max(1) as f32 / total_lines as f32)).clamp(SCROLLBAR_THICKNESS, track_h);
+            (viewport_h * (visible_lines.max(1) as f32 / total_effective as f32)).clamp(SCROLLBAR_THICKNESS, track_h);
         let frac = if visible_lines > 0 {
-            (first_visible_line as f32) / (total_lines as f32)
+            (first_visible_line as f32) / (total_effective as f32)
         } else {
             0.0
         };
-        let _ = scroll_y;
         Some(Rect::new(
             viewport_w - SCROLLBAR_THICKNESS - 2.0,
             2.0 + frac * (track_h - thumb_h),
@@ -331,6 +408,10 @@ pub fn render(
         caret: caret_rect,
         max_line_width,
         visible_lines,
+        fold_bands,
+        fold_column: (config.line_numbers).then(|| {
+            Rect::new(gutter_total - FOLD_GUTTER_W, 0.0, FOLD_GUTTER_W, viewport_h)
+        }),
     });
 
     // Clear the redraw flag after a successful paint pass.
@@ -339,20 +420,9 @@ pub fn render(
         editor.set_redraw(false);
     }
 
-    // ── body text ─────────────────────────────────────────────────────────
-    // The weak handle is acquired LAST — after every `with_buffer_mut` in
-    // this pass (set_redraw above is the last one). cosmic-text's
-    // `Edit::with_buffer_mut` runs `Arc::make_mut` on the `BufferRef::Arc`
-    // variant; any weak alive at that moment forces a full-buffer clone and
-    // orphans the handle (the body text then stops rendering, Plan 413 fix).
-    // The handle dies with the draw list at frame end, so mutations between
-    // frames see zero weaks and mutate in place.
-    list.text = super::editor_buffer_weak(&editor).map(|buffer| TextSection {
-        buffer,
-        origin: Pt::new(text_rect.x, text_rect.y),
-        color: theme.foreground,
-        clip: text_rect,
-    });
+    // Plan 428 P2: body text travels as owned per-run pieces (extracted in
+    // the visible-runs scan above); no weak buffer handoff anymore.
+    list.text_runs = text_runs;
 
     list
 }
@@ -360,17 +430,6 @@ pub fn render(
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
-
-/// Heuristic fold-opener flags (Plan 414 §5 Phase A): a line whose trimmed
-/// text ends with `{` and is not the last line starts a collapsible block.
-fn fold_opener_lines(lines: &[BufferLine]) -> Vec<bool> {
-    let mut flags = Vec::with_capacity(lines.len());
-    for (i, line) in lines.iter().enumerate() {
-        let text = line.text();
-        flags.push(text.trim_end().ends_with('{') && i + 1 < lines.len());
-    }
-    flags
-}
 
 fn digits_of(mut n: usize) -> usize {
     let mut digits = 1;
@@ -416,6 +475,116 @@ fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {
         prev_end = glyph.x + glyph.w;
     }
     Some(prev_end)
+}
+
+// ---------------------------------------------------------------------------
+// Plan 428 P2: per-run text extraction (route A)
+// ---------------------------------------------------------------------------
+
+/// Dim a color by scaling alpha (fold markers, affordance text).
+fn dimmed(c: Rgba, factor: f32) -> Rgba {
+    Rgba { a: c.a * factor, ..c }
+}
+
+/// cosmic-text color → theme color.
+fn cosmic_to_rgba(c: cosmic_text::Color) -> Rgba {
+    Rgba {
+        r: c.r() as f32 / 255.0,
+        g: c.g() as f32 / 255.0,
+        b: c.b() as f32 / 255.0,
+        a: c.a() as f32 / 255.0,
+    }
+}
+
+/// Split one visible layout run into per-syntax-span text pieces (Plan 428
+/// P2). The line's `AttrsList` carries the syntect colors as spans; each
+/// piece becomes one backend text draw at its exact x/y. Whitespace-only
+/// pieces are skipped (monospace blanks draw nothing). Adjacent pieces of
+/// equal color merge to keep the per-frame draw-call count near the P0
+/// spike's 150-400 budget.
+fn push_run_pieces(
+    run: &cosmic_text::LayoutRun,
+    attrs: Option<&AttrsList>,
+    x_origin: f32,
+    proj_y: f32,
+    font_size: f32,
+    line_height: f32,
+    default_color: Rgba,
+    out: &mut Vec<TextRun>,
+) {
+    let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
+        return;
+    };
+    let run_lo = first.start;
+    let run_hi = last.end;
+    if run_hi <= run_lo {
+        return;
+    }
+
+    // Partition the run's byte span by the line's color spans; gaps between
+    // explicit spans fall back to the default (uncolored) attrs.
+    let mut pieces: Vec<(usize, usize, Option<cosmic_text::Color>)> = Vec::new();
+    let mut cursor = run_lo;
+    if let Some(attrs) = attrs {
+        for (range, a) in attrs.spans_iter() {
+            let s = range.start.max(run_lo);
+            let e = range.end.min(run_hi);
+            if e <= s {
+                continue;
+            }
+            if s > cursor {
+                pieces.push((cursor, s, None));
+            }
+            pieces.push((s, e, a.color_opt));
+            cursor = e;
+        }
+    }
+    if cursor < run_hi {
+        pieces.push((cursor, run_hi, None));
+    }
+
+    // Merge adjacent pieces of equal color.
+    let mut merged: Vec<(usize, usize, Option<cosmic_text::Color>)> = Vec::with_capacity(pieces.len());
+    for (s, e, color) in pieces {
+        match merged.last_mut() {
+            Some((_, le, lc)) if *lc == color && *le == s => *le = e,
+            _ => merged.push((s, e, color)),
+        }
+    }
+
+    for (s, e, color) in merged {
+        let text = &run.text[s.min(run.text.len())..e.min(run.text.len())];
+        if text.trim().is_empty() {
+            continue;
+        }
+        let Some(x0) = index_x(run, s) else { continue };
+        out.push(TextRun {
+            text: text.to_owned(),
+            x: x_origin + x0,
+            y: proj_y,
+            size: font_size,
+            line_height,
+            color: color.map(cosmic_to_rgba).unwrap_or(default_color),
+        });
+    }
+}
+
+/// The `⋯` marker drawn right after a folded opener line's text.
+fn push_fold_marker(
+    out: &mut Vec<TextRun>,
+    x: f32,
+    y: f32,
+    config: &CodeEditorConfig,
+    color: Rgba,
+) {
+    out.push(TextRun {
+        text: "⋯".to_owned(),
+        x,
+        y,
+        size: config.font_size,
+        line_height: config.line_height(),
+        color,
+    });
 }
 
 /// Re-export for the iced adapter: the default theme resolution used when

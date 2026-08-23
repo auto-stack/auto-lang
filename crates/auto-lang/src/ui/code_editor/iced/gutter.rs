@@ -148,19 +148,33 @@ impl GutterCache {
             }
         }
 
-        // Plan 414 §5 Phase A: fold chevrons in the tool column between the
-        // numbers and the text — small down-pointing triangles, slightly
-        // dimmed so they read as affordances rather than content.
+        // Plan 414 §5 → Plan 428 P3: fold chevrons in the tool column
+        // between the numbers and the text — two-state affordances: expanded
+        // blocks draw a downward triangle (▾, click to fold), folded blocks
+        // a rightward one (▸, click to expand). Slightly dimmed so they
+        // read as affordances rather than content.
         let fold_color = cosmic_text::Color::rgba(
             fg.r(),
             fg.g(),
             fg.b(),
             ((fg.a() as f32) * 0.8) as u8,
         );
-        for fold_y in &section.folds {
+        for fold in &section.folds {
             let cx = width as f32 - FOLD_GUTTER_W / 2.0;
-            let cy = fold_y + section.line_height / 2.0;
-            raster_triangle(&mut rgba, width, height, cx, cy, fold_color);
+            let cy = fold.y + section.line_height / 2.0;
+            raster_triangle(
+                &mut rgba,
+                width,
+                height,
+                cx,
+                cy,
+                fold_color,
+                if fold.folded {
+                    TriangleDir::Right
+                } else {
+                    TriangleDir::Down
+                },
+            );
         }
 
         let handle = iced::advanced::image::Handle::from_rgba(width, height, rgba);
@@ -169,8 +183,16 @@ impl GutterCache {
     }
 }
 
-/// Scanline-fill a small downward triangle (chevron affordance) centered at
-/// (cx, cy): 7px wide, ~5px tall, tip at the bottom.
+/// Chevron pointing direction (Plan 428 P3: expanded ▾ / folded ▸).
+#[derive(Clone, Copy, PartialEq)]
+enum TriangleDir {
+    Down,
+    Right,
+}
+
+/// Scanline-fill a small triangle (chevron affordance) centered at (cx, cy):
+/// 7px wide, ~5px tall. `Down` points at the folded-away body; `Right`
+/// points along the collapsed marker row.
 fn raster_triangle(
     rgba: &mut [u8],
     width: u32,
@@ -178,19 +200,40 @@ fn raster_triangle(
     cx: f32,
     cy: f32,
     color: cosmic_text::Color,
+    dir: TriangleDir,
 ) {
     let half_w = 3.5f32;
     let half_h = 2.5f32;
-    let top = (cy - half_h).round() as i32;
-    let bottom = (cy + half_h).round() as i32;
-    for py in top..=bottom {
-        let t = ((py as f32) - (cy - half_h)) / (half_h * 2.0);
-        let t = t.clamp(0.0, 1.0);
-        let row_half = half_w * t;
-        let x0 = (cx - row_half).round() as i32;
-        let x1 = (cx + row_half).round() as i32;
-        for px in x0..=x1 {
-            blend_pixel(rgba, width, height, px, py, color);
+    match dir {
+        TriangleDir::Down => {
+            let top = (cy - half_h).round() as i32;
+            let bottom = (cy + half_h).round() as i32;
+            for py in top..=bottom {
+                let t = ((py as f32) - (cy - half_h)) / (half_h * 2.0);
+                let t = t.clamp(0.0, 1.0);
+                let row_half = half_w * t;
+                let x0 = (cx - row_half).round() as i32;
+                let x1 = (cx + row_half).round() as i32;
+                for px in x0..=x1 {
+                    blend_pixel(rgba, width, height, px, py, color);
+                }
+            }
+        }
+        TriangleDir::Right => {
+            // Base (full half-height) at the left edge, tip at the right:
+            // 7px wide, ~5px tall, mirroring the Down variant's footprint.
+            let left = (cx - half_w).round() as i32;
+            let right = (cx + half_w).round() as i32;
+            for px in left..=right {
+                let t = ((px as f32) - (cx - half_w)) / (half_w * 2.0);
+                let t = t.clamp(0.0, 1.0);
+                let col_half = half_h * (1.0 - t);
+                let y0 = (cy - col_half).round() as i32;
+                let y1 = (cy + col_half).round() as i32;
+                for py in y0..=y1 {
+                    blend_pixel(rgba, width, height, px, py, color);
+                }
+            }
         }
     }
 }

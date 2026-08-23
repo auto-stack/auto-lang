@@ -45,6 +45,9 @@ macro_rules! for_each_native {
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
             (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
+            // === Plan 428 P1: code folding (view state) ===
+            (2932, NATIVE_CODE_EDITOR_FOLD_TOGGLE, shim_code_editor_fold_toggle, "auto.code_editor.fold_toggle"),
+            (2933, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, shim_code_editor_fold_hidden_count, "auto.code_editor.fold_hidden_count"),
             (8, NATIVE_ASSERT, shim_assert, "auto.assert"),
             (5, NATIVE_ASSERT_EQ, shim_assert_eq, "auto.assert_eq"),
             (6, NATIVE_ASSERT_NE, shim_assert_ne, "auto.assert_ne"),
@@ -661,6 +664,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
             ("auto.file.basename", 2929, String),
+            // === Plan 428 P1: code folding ===
+            ("auto.code_editor.fold_toggle", 2932, Bool),
+            ("auto.code_editor.fold_hidden_count", 2933, Int),
 
             ("auto.list.new", 100, Void),
             ("auto.list.push", 101, Void),
