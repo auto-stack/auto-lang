@@ -2241,10 +2241,43 @@ fn stmt_symbol_name(stmt: &crate::ast::Stmt) -> Option<String> {
 /// `back.api` → `back/api`, `calendar_util` → `calendar_util`. Per the module
 /// rules a module lives at either `{path}.at` or `{path}/mod.at`; the first
 /// existing candidate wins. Returns `None` if neither exists.
+/// Plan 061:外部后端根(pac.at `back: { project }`)。设置后,`back.*`
+/// 模块解析优先映射到该目录(`back.api` → `<root>/api.at`),前端项目
+/// 无需本地 back/ 目录 —— 契约与桩由后端项目拥有,链接式引用(零复制)。
+/// 进程级全局(`auto run` 单用途进程,生命周期即进程;unset 无需)。
+static EXTERNAL_BACK_ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// 设置外部后端根(宿主编排层在 run_file 前调用;路径须为绝对路径)。
+pub fn set_external_back_root(root: std::path::PathBuf) {
+    let _ = EXTERNAL_BACK_ROOT.set(root);
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
 ) -> Option<std::path::PathBuf> {
+    // Plan 061:外部后端链接 —— `back.X` 优先映射到后端项目根
+    // (`back.api` → `<root>/api.at`,`back.shell` → `<root>/shell.at`;
+    // mod.at 形态同样支持)。未配置或不命中则回落常规解析(本地 back/)。
+    if let Some(root) = EXTERNAL_BACK_ROOT.get() {
+        let mapped = if module == "back" {
+            "api".to_string()
+        } else if let Some(rest) = module.strip_prefix("back.") {
+            rest.replace('.', std::path::MAIN_SEPARATOR_STR)
+        } else {
+            String::new()
+        };
+        if !mapped.is_empty() {
+            let as_file = root.join(format!("{}.at", mapped));
+            if as_file.exists() {
+                return Some(as_file);
+            }
+            let as_mod = root.join(&mapped).join("mod.at");
+            if as_mod.exists() {
+                return Some(as_mod);
+            }
+        }
+    }
     let rel = module.replace('.', std::path::MAIN_SEPARATOR_STR);
     // Helper to probe a candidate directory for {rel}.at or {rel}/mod.at.
     let probe = |dir: &std::path::Path| -> Option<std::path::PathBuf> {
