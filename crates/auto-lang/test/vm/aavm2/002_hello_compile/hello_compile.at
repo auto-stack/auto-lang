@@ -1,0 +1,5 @@
+// plan-431 E3:a2r 编译对比 runner 的 Hello 级冒烟语料。
+// 流程:transpile_rust → 临时 cargo 工程 → cargo build → 运行 → diff stdout。
+fn main() {
+    print("hello aavm2 compile")
+}

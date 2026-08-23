@@ -558,11 +558,11 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 // =============================================================================
 // Plan 229b Phase 1.2: AAVM (Auto AutoVM) Test Runner
 // =============================================================================
-// Tests the self-hosted compiler code (auto/lib/*.at) by merging it with test
+// Tests the self-hosted compiler code (auto/lib-legacy/*.at for v1; auto/lib/*.at for v2)
 // cases and running through the AutoVM. Future: transpile via a2r → compile → run.
 //
 // Test cases reuse the same format as VM file tests (.at + .expected.out).
-// The AAVM runner prepends auto/lib/*.at code before the test case code.
+// The AAVM runner prepends lib code before the test case code.
 
 /// Auto library files to prepend for AAVM tests (order matters: dependencies first).
 /// Single source of truth lives in lib.rs (plan-429 A3: the two lists had drifted
@@ -572,7 +572,7 @@ const AUTO_LIB_FILES: &[&str] = crate::AUTO_LIB_FILES;
 /// Cached auto/lib code. Loaded once per test process.
 static AUTO_LIB_CACHE: OnceLock<String> = OnceLock::new();
 
-/// Read and concatenate all auto/lib/*.at files (cached)
+/// Read and concatenate all auto/lib-legacy/*.at files (cached)
 fn read_auto_lib() -> AutoResult<&'static str> {
     let lib_code = AUTO_LIB_CACHE.get_or_init(|| {
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
@@ -644,6 +644,112 @@ fn test_aavm(case: &str) -> AutoResult<()> {
 
     Ok(())
 }
+
+// =============================================================================
+// Plan 431 E2/E3: AAVM v2 测试基建(test/vm/aavm2/)
+//
+// E2 runner(test_aavm2):前置拼接 auto/lib v2(AUTO_LIB_FILES_V2,432 逐个登记)
+// 后走 VM 执行,与 .expected.out 比对——v2 目录尚空时等价于裸跑用例。
+// E3 骨架(test_aavm2_compile,#[ignore]):transpile_rust → 临时 cargo 工程 →
+// cargo build → 运行 → diff stdout。完整四向对比是 plan-433 的任务。
+
+const AUTO_LIB_FILES_V2: &[&str] = crate::AUTO_LIB_FILES_V2;
+
+static AUTO_LIB_V2_CACHE: OnceLock<String> = OnceLock::new();
+
+fn read_auto_lib_v2() -> AutoResult<&'static str> {
+    Ok(AUTO_LIB_V2_CACHE.get_or_init(|| {
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        let mut code = String::new();
+        for file in AUTO_LIB_FILES_V2 {
+            let path = d.join(file);
+            if path.exists() {
+                if let Ok(content) = read_to_string(&path) {
+                    code.push_str(&content);
+                    code.push('\n');
+                }
+            }
+        }
+        code
+    }))
+}
+
+/// AAVM v2 runner:合并 v2 lib 后走 VM。
+fn test_aavm2(case: &str) -> AutoResult<()> {
+    let data = get_cached_test(case)
+        .expect(&format!("aavm2 test case '{}' not found", case));
+    let lib_code = read_auto_lib_v2()?;
+    let merged = format!("{}
+{}", lib_code, data.source);
+    if data.expected_error {
+        assert!(run(&merged).is_err(), "expected error for {}", case);
+        return Ok(());
+    }
+    let (_result, stdout) = run_with_capture(&merged)?;
+    if let Some(ref expected_out) = data.expected_out {
+        assert_eq!(stdout, *expected_out, "aavm2 output mismatch for {}", case);
+    }
+    Ok(())
+}
+
+/// Plan 431 E3 骨架:a2r 编译对比(transpile → cargo build → run → diff)。
+/// 需要 cargo 工具链,#[ignore];语料在 test/vm/aavm2/*/,预期输出为
+/// `main.expected.out`。433 扩为全量 corpus runner 时沿用此管线。
+fn test_aavm2_compile(case: &str) -> AutoResult<()> {
+    use std::process::Command;
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let case_dir = d.join(format!("test/vm/aavm2/{}", case));
+    // 目录名 002_hello_compile → 语料名 hello_compile(与 vm_file_tests 全库约定一致)
+    let dir_name = case.rsplit('/').next().unwrap_or(case);
+    let name = dir_name.splitn(2, '_').nth(1).unwrap_or(dir_name).to_string();
+    let src = read_to_string(case_dir.join(format!("{}.at", name)))?;
+    let expected = read_to_string(case_dir.join(format!("{}.expected.out", name)))?;
+
+    let mut sink = crate::trans::rust::transpile_rust(&name, &src)?;
+    let rs_code = sink.done()?;
+
+    // 临时 cargo 工程(bin)
+    let proj = std::env::temp_dir().join(format!("aavm2-{}", name));
+    let src_dir = proj.join("src");
+    std::fs::create_dir_all(&src_dir)?;
+    std::fs::write(proj.join("Cargo.toml"), format!(
+        "[package]
+name = \"aavm2_{name}\"
+version = \"0.1.0\"
+edition = \"2021\"
+
+[workspace]
+
+[dependencies]
+"
+    ))?;
+    std::fs::write(src_dir.join("main.rs"), rs_code)?;
+
+    let build = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&proj)
+        .output()
+        .expect("cargo spawn");
+    assert!(
+        build.status.success(),
+        "cargo build failed:
+{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let exe = proj.join("target/release").join(format!("aavm2_{}", name.replace('-', "_")));
+    let run_out = Command::new(&exe).output().expect("run compiled bin");
+    assert!(run_out.status.success(), "compiled bin failed");
+    let stdout = String::from_utf8_lossy(&run_out.stdout).to_string();
+    assert_eq!(stdout, expected, "aavm2 compile-compare mismatch for {}", case);
+    Ok(())
+}
+
+#[test]
+fn test_aavm2_001_smoke() { test_aavm2("aavm2/001_smoke").unwrap(); }
+
+#[test] #[ignore]
+fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwrap(); }
 
 // Plan 233: AAVM Parser tests
 #[test] #[ignore] fn test_99_bootstrap_008_parser_hello() { test_aavm("99_bootstrap/008_parser_hello").unwrap(); }

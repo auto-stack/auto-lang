@@ -1,0 +1,5 @@
+// AAVM v2 runner 冒烟用例(plan-431 E2):占位 main。
+// 432 起每个模块移植完成后,本目录用例逐步引用 auto/lib v2 的真实符号。
+fn main() {
+    print("aavm2 smoke ok")
+}

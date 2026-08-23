@@ -1462,19 +1462,25 @@ pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
 /// Auto library files to prepend for AAVM bootstrap tests.
 /// Single source of truth — vm_file_tests.rs reuses this list (plan-429 A3).
 pub(crate) const AUTO_LIB_FILES: &[&str] = &[
-    "auto/lib/pos.at",
-    "auto/lib/token.at",
-    "auto/lib/error.at",
-    "auto/lib/lexer.at",
-    "auto/lib/ast.at",
-    "auto/lib/parser.at",
-    "auto/lib/typeinfer.at",
-    "auto/lib/codegen.at",
-    "auto/lib/vm.at",
-    "auto/lib/a2r.at",
-    "auto/lib/generics.at",
-    "auto/lib/eval.at",
+    // plan-431 E1:AAVM v1 归档路径(v2 由 432 写入 auto/lib/,runner 见 AUTO_LIB_FILES_V2)
+    "auto/lib-legacy/pos.at",
+    "auto/lib-legacy/token.at",
+    "auto/lib-legacy/error.at",
+    "auto/lib-legacy/lexer.at",
+    "auto/lib-legacy/ast.at",
+    "auto/lib-legacy/parser.at",
+    "auto/lib-legacy/typeinfer.at",
+    "auto/lib-legacy/codegen.at",
+    "auto/lib-legacy/vm.at",
+    "auto/lib-legacy/a2r.at",
+    "auto/lib-legacy/generics.at",
+    "auto/lib-legacy/eval.at",
 ];
+
+/// Plan 431 E2:AAVM v2(auto/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
+/// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
+/// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
+pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[];
 
 /// Read and concatenate all auto/lib/*.at files for bootstrap tests.
 fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
