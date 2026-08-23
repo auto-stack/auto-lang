@@ -5223,6 +5223,11 @@ fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
         // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
         match rx.try_recv() {
             Ok(ev) => Some(IcedMessage {
+                widget: "ShellStore".to_string(),
+                event: ev.event,
+                input_value: Some(ev.payload_json),
+            }),
+            Ok(ev) => Some(IcedMessage {
                     widget: "ShellStore".to_string(),
                     event: ev.event,
                     input_value: Some(ev.payload_json),
@@ -6706,14 +6711,16 @@ fn compare_pngs(
                                     }
                                 });
                             }
-                            let _ = match &raw {
-                                Some(auto_val::Value::Array(_)) | None
-                                | Some(auto_val::Value::Nil) => state.component.write_state(
-                                    "job_list",
-                                    auto_val::Value::Array(auto_val::Array { values: jobs_vec }),
-                                ),
-                                _ => state.component.write_state_vec("job_list", jobs_vec),
-                            };
+                            // Plan 062(2026-08-23):无条件写 renderer-owned
+                            // Value::Array —— store 声明的 List<JobInfo> 是 VM
+                            // 原生列表(VmRef),write_state_vec 写不回 VM 堆对象
+                            // (读回恒为同一 VmRef、条目不可见)。blocks 之所以
+                            // 正常,正因 renderer 从第一块起就以 Value::Array
+                            // 形态持有;job_list 对齐同一所有权模型。
+                            let _ = state.component.write_state(
+                                "job_list",
+                                auto_val::Value::Array(auto_val::Array { values: jobs_vec }),
+                            );
                             *state.view_dirty.borrow_mut() = true;
                         }
                         _ => {
