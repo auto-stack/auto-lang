@@ -29,8 +29,11 @@ use crate::ui::code_editor::draw::GutterSection;
 pub struct GutterCache {
     /// (number, digits) → layout at font size 1.0.
     layouts: HashMap<(usize, usize), Vec<LayoutLine>>,
-    /// (image handle, gutter width, revision) of the current raster.
-    image: Option<(iced::advanced::image::Handle, f32, u64)>,
+    /// (image handle, gutter width, gutter height, revision) of the current
+    /// raster. Height must key too: a shorter viewport (e.g. the console
+    /// panel opening) would otherwise scale the stale taller image into the
+    /// new quad — squeezed digits, misaligned rows.
+    image: Option<(iced::advanced::image::Handle, f32, f32, u64)>,
     swash: SwashCache,
 }
 
@@ -82,13 +85,15 @@ impl GutterCache {
         }
 
         let fresh = match &self.image {
-            Some((_, cached_w, cached_rev)) => {
-                (*cached_w - section.bounds.w).abs() <= 0.5 && *cached_rev == revision
+            Some((_, cached_w, cached_h, cached_rev)) => {
+                (*cached_w - section.bounds.w).abs() <= 0.5
+                    && (*cached_h - section.bounds.h).abs() <= 0.5
+                    && *cached_rev == revision
             }
             None => false,
         };
         if fresh {
-            return self.image.as_ref().map(|(h, w, _)| (h.clone(), *w));
+            return self.image.as_ref().map(|(h, w, _, _)| (h.clone(), *w));
         }
 
         let bg = rgba_to_cosmic(section.background);
@@ -178,7 +183,7 @@ impl GutterCache {
         }
 
         let handle = iced::advanced::image::Handle::from_rgba(width, height, rgba);
-        self.image = Some((handle.clone(), section.bounds.w, revision));
+        self.image = Some((handle.clone(), section.bounds.w, section.bounds.h, revision));
         Some((handle, section.bounds.w))
     }
 }
@@ -263,4 +268,48 @@ fn blend_pixel(
         rgba[idx + c] = (((src * sa + dst * da * (1.0 - sa)) / out_a) * 255.0).round() as u8;
     }
     rgba[idx + 3] = (out_a * 255.0).round() as u8;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::code_editor::draw::{GutterNumber, GutterSection, Rect};
+    use crate::ui::code_editor::theme::Rgba;
+
+    fn section(height: f32) -> GutterSection {
+        GutterSection {
+            bounds: Rect::new(0.0, 0.0, 60.0, height),
+            background: Rgba { r: 0.1, g: 0.1, b: 0.1, a: 1.0 },
+            foreground: Rgba { r: 0.8, g: 0.8, b: 0.8, a: 1.0 },
+            digits: 2,
+            font_size: 14.0,
+            line_height: 19.0,
+            numbers: vec![GutterNumber { number: 1, y: 0.0 }, GutterNumber { number: 2, y: 19.0 }],
+            folds: Vec::new(),
+        }
+    }
+
+    /// Plan 428 实机验收发现(413 期回归):console 打开使编辑器变矮,缓存
+    /// 只按宽度+revision 判新鲜,旧高光栅被缩放进矮 quad —— 行号纵向压缩、
+    /// 与正文错位。高度变化必须触发重光栅。
+    #[test]
+    fn shorter_viewport_rasterizes_not_scales() {
+        let mut fs = FontSystem::new();
+        let mut cache = GutterCache::default();
+        let (handle1, _) = cache.image(&section(120.0), &mut fs, 7).expect("raster");
+        let _ = handle1;
+        // Same width + revision, shorter viewport (console opened): the
+        // cache must NOT serve the stale 120px-tall raster.
+        let _ = cache.image(&section(80.0), &mut fs, 7).expect("re-raster");
+        let (_, _, cached_h, cached_rev) = cache.image.as_ref().unwrap();
+        assert!(
+            (cached_h - 80.0).abs() <= 0.5,
+            "height change must re-rasterize (cache h={cached_h})"
+        );
+        assert_eq!(*cached_rev, 7);
+        // Unchanged geometry + revision keeps the cache (no churn per frame).
+        let _ = cache.image(&section(80.0), &mut fs, 7).expect("cached serve");
+        let (_, _, h2, r2) = cache.image.as_ref().unwrap();
+        assert!((h2 - 80.0).abs() <= 0.5 && *r2 == 7);
+    }
 }
