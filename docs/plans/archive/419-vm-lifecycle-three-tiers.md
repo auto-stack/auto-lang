@@ -1,6 +1,6 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: ✅ 三 Phase 落地(2026-08-23,worktree plan-419-vm-lifecycle)。
+> **状态**: 🗄️ 已归档(2026-08-23)。三 Phase 全量落地 + 存量 bug 修复 + workaround 清零。
 > Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
 > Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑
 > 全过(tests_rc_lifecycle 19 测 + a2r golden 25_lifecycle 4 例)。

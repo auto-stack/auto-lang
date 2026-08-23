@@ -90,14 +90,10 @@ async fn overwrite_drop() {
     let code = r#"
 type Note { id int }
 
-fn bump(_old Note, i int) Note {
-    Note { id: i }
-}
-
 fn main() int {
     var x Note = Note { id: 0 }
     for i in 0..1000 {
-        x = bump(x, i)
+        x = Note { id: i }
     }
     x.id
 }
@@ -235,16 +231,12 @@ async fn shared_two_owners() {
     let code = r#"
 type Note { id int }
 
-fn fresh(_old Note, i int) Note {
-    Note { id: i }
-}
-
 fn main() int {
     var total int = 0
     for i in 0..1000 {
         var a Note = Note { id: i }
         var b Note = a
-        a = fresh(a, 0)
+        a = Note { id: 0 }
         total = total + b.id + a.id
     }
     total
@@ -627,4 +619,25 @@ fn writer() {
     } else {
         panic!("fn writer not found");
     }
+}
+
+#[tokio::test]
+async fn str_churn_bounded_large() {
+    // §3.2:str_churn_bounded —— 循环拼接 100 万个不同串,live_pool 峰值 <<
+    // 总创建数(freelist 复用生效;rc_stats 断言,不看 RSS)。
+    let code = r#"
+fn main() int {
+    var s str = ""
+    for i in 0..1000000 {
+        s = "prefix-" + i.str() + "-suffix"
+    }
+    0
+}
+"#;
+    let start = std::time::Instant::now();
+    let (vm, _out) = run_code_vm(code).await;
+    let elapsed = start.elapsed();
+    let live = vm.pool_live_count();
+    assert!(live < 1000, "live_pool must stay bounded (got {} after 1M unique strings)", live);
+    eprintln!("str_churn 1M: live_pool={} elapsed={:?}", live, elapsed);
 }
