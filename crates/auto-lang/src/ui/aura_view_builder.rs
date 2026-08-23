@@ -4027,15 +4027,19 @@ let tabs_inner = View::Row {
         let width = self.extract_u16(props, "width");
         let password = self.extract_bool(props, "password").unwrap_or(false);
 
+        // Plan 062 T9:on_change/on_submit 改用绑定解析版(_with)——单行
+        // input 的事件参数(如 .Filter(.block.id))此前不烘焙,渲染层收到
+        // 光杆事件名,BlockItem.Filter 桥恒 id=-1(059 §4.3 过滤失效真身)。
+        // 无参事件两版等价,不影响既有 input(oninput: .OnQuery 等)。
         let on_change = aura_events_get_base(events, "onchange")
             .or_else(|| aura_events_get_base(events, "change"))
             .or_else(|| aura_events_get_base(events, "oninput"))
             .or_else(|| aura_events_get_base(events, "input"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(&event, bindings));
 
         let on_submit = aura_events_get_base(events, "onenter")
             .or_else(|| aura_events_get_base(events, "enter"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(&event, bindings));
 
         let mut builder = View::<DynamicMessage>::input(placeholder).value(value);
         if password {

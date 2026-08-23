@@ -6886,7 +6886,13 @@ fn compare_pngs(
         }
         if widget_name == "BlockItem" && event_name.starts_with("Filter") {
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
-            let id = args.first().map(|v| v.as_str()).and_then(|s| s.parse::<i64>().ok()).unwrap_or(-1);
+            // Plan 062 T9:对齐 Sort 的 id 解析(int 优先,str 回退)——此前只走
+            // str parse,int 参数解析成 -1,过滤恒不生效(059 §4.3 疑点的真身)。
+            let id = args.first()
+                .map(|v| v.as_int() as i64)
+                .unwrap_or_else(|| {
+                    args.first().map(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1)
+                });
             let query = msg_input_snapshot.clone().unwrap_or_default().to_lowercase();
             if id >= 0 {
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
