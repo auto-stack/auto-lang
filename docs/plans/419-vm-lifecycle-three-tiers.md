@@ -1,6 +1,9 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: 🗄️ 已归档(2026-08-23)。三 Phase 全量落地 + 存量 bug 修复 + workaround 清零。
+> **状态**: 🔔 **复活(2026-08-23 第三次复测)**。三 Phase 已落地,但 RC 金丝雀在
+> ash-gui(最大 VM 应用)抓到**确定性 UAF 未修**——已修三族之外还有第 4 族,
+> 首条命令提交即 panic。详见文末 §9「复活:ash-gui 确定性 UAF」。
+> 原归档结论(三 Phase 落地 + 19 测 + a2r golden)仍成立,问题在覆盖面外。
 > Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
 > Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑
 > 全过(tests_rc_lifecycle 19 测 + a2r golden 25_lifecycle 4 例)。
@@ -367,3 +370,73 @@ golden 体系。
 回归测试:vm/tests_parser_stack.rs ×6(bug1 双形态 + 端到端管线 +
 bug2 + 2000 层括号 + 257 层护栏),全部在 ≤4MB 小栈线程上通过,
 0.09s 完成;全量 3108 过(route::discovery 存量失败除外)。
+
+
+---
+
+## 9. 复活:ash-gui 确定性 UAF(2026-08-23,外部复现报告 + 定位数据)
+
+> 报告来源:auto-shell 仓 plan 060/061 会话(债务簿同条登记,三次复测)。
+> **若此 UAF 为真(假设 H1/H2),它极可能就是 auto-shell plan 060 第五/十五轮
+> "静默退出债"的根因真身**——RC 落地前同样的堆损坏无检测,表现为进程无声
+> exit 1。修复价值远超 ash-gui 本身。
+
+### 9.1 现象与复现(×3,确定性)
+
+```
+cd auto-shell/ash-gui/ash-gui-auto && ../ash-server/target/debug/ash-runner.exe
+# MCP 提交任意首条命令(echo 即可)→ 必崩:
+thread 'main' panicked at vm/rc.rs:389:
+[RC canary] use-after-free: heap object 4000111 was freed 0.0s ago
+```
+
+- 复测一代:8b5426fa(持有份额×3 族修复后)id=4001245,仍崩;
+- 复测二代:afe30bf8(419 收口后)id=4000111,仍崩;
+- 基线 db8a4600(RC 落地前)同负载数小时稳定 + 全套件绿 → 引入窗口锁定在
+  Phase 1/2(0c1dc0d5/9bc4e671)。
+- 崩溃点在 submit 主路径,与 ash-gui 侧任何新功能无关(060 R16 四桥触发前即崩)。
+
+### 9.2 调用栈与 id 语义(RUST_BACKTRACE=full)
+
+```
+iced update → renderer.rs:6677(run_dynamic_iced update 闭包)
+  → AutoVM::call_fn_by_name(engine.rs:1581;即 on_with_input_for 的 handler 派发)
+  → run_one_instruction → engine.rs:3936 → get_heap_object(engine.rs:868)
+  → rc_check_tombstone(rc.rs:389)panic
+```
+
+- **访问点 3936 是 GET_FIELD 类指令**:值经 `is_object || (is_i32 && v>=4_000_000)`
+  启发式解码为堆 id 后取对象取字段;
+- **堆 id 自 4_000_000 单调递增**(engine.rs:471 `heap_object_id_gen`)——
+  id 4000111 = **第 111 号分配的早期启动对象**;三次运行 id 在
+  4000000~4001245 浮动(分配序随启动路径微变),非哨兵值;
+- 派发路径要点:**renderer 在 iced update 里经 call_fn_by_name 重入 VM** ——
+  handler 执行横跨一次 VM 重入边界,这是 tier-1 作用域记账最容易漏的形态。
+
+### 9.3 根因假设(按可能性排序)与对应修法
+
+| 假设 | 内容 | 修法方向 |
+|---|---|---|
+| **H1 过释放第 4 族**(最可能) | GET_FIELD 源操作数的持有份额缺口:值已 load 进 task.ram/操作数栈,但该加载未 +1(或作用域尾清理在某处重复 -1),handler 重入期间对象被释放 | 按 Phase 1 的三族修法同款审计 3936 所在指令族的 load 路径(copy-on-load 协议在 GET_FIELD 源操作数上的执行);重点查重入(call_fn_by_name)期间栈帧生命周期的计数归属 |
+| H2 陈旧 VmRef | 一个真 VmRef(id 拷贝)跨 handler 边界存活,对象先死 | 同上,但修的是"跨重入边界的引用存活面"——重入点保存/恢复栈帧时对 >4M 栈值统一 +1/-1 |
+| H0 启发式误判(须排除) | 3936 把**合法大整数**(≥4M 的业务值)误当堆 id 去探测;若恰好撞上一个已释放的真 id → 误报 panic | 见 9.4 诊断②;顺带审视该启发式的误判面(TAG_I32 ≥4M 全探测,静默 None 的误探测可能大量存在) |
+
+### 9.4 建议诊断顺序(零风险先行)
+
+1. **free 点埋点**:remove/free 路径对 id∈[4_000_000, 4_001_500] 打
+   `log + free-site 短栈`,跑 ash-gui 复现一次 → 直接看到**谁释放了它**;
+2. **访问点打点**:3936 命中时打印 id + 指令 + 该 id 对象的 type_tag →
+   判 H0(若是 str/int 语义对象则基本排除误判)与 H1/H2;
+3. 分配点埋点(第 111 号附近对象的分配站)→ 三点连线即闭环。
+
+### 9.5 验收
+
+- ash-gui 冒烟:ash-runner 起服 → echo/ls/show/取消 全绿(060 §4 口径);
+- auto-shell pytest 全套(63 pass + 44 skip 基线)零失败;
+- 本仓全量测试(3100+)不回归;canary 保持开启。
+
+### 9.6 关联
+
+- KNOWN-DEBT-AND-RISKS.md「419-P1/P2 RC canary」条目(本节的索引处);
+- auto-shell docs/plans/060 §第五/十五/十六轮(静默退出债 + RC 发现史)、
+  docs/plans/061 §3(基线规则:修复后合并 plan-061 外部后端分支)。
