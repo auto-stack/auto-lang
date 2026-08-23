@@ -30,6 +30,13 @@ fn jump_oob_error(task: &AutoTask, offset: isize, new_ip: isize, flash_len: usiz
     ))
 }
 
+/// Plan 423 P5:runaway 判定参数 —— 一次 handler 调用内的字符串池/堆增量
+/// 阈值与检查节拍。正常 UI handler 为百级增量;毒化字节码/失控循环为百万
+/// 级(检查本身每 5 万步一次,开销可忽略)。pub 供单测引用。
+pub const RUNAWAY_STRINGS_GROWTH: usize = 1_000_000;
+pub const RUNAWAY_HEAP_GROWTH: usize = 2_000_000;
+pub const RUNAWAY_CHECK_EVERY: u64 = 50_000;
+
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
         if crate::is_vm_debug() {
@@ -1394,6 +1401,14 @@ impl AutoVM {
     /// in left-to-right order (arg0 at lower address, argN-1 on top).
     ///
     /// After return: result is on top of stack (`task.ram.pop_nv()`).
+    /// Plan 423 P5:runaway 增量判定(字符串池条目数 / 堆对象数)。
+    fn runaway_growth_exceeded(&self, baseline_strings: usize, baseline_heap: usize) -> bool {
+        let s_now = self.strings.read().map(|s| s.len()).unwrap_or(0);
+        let h_now = self.heap_objects.len();
+        s_now.saturating_sub(baseline_strings) > RUNAWAY_STRINGS_GROWTH
+            || h_now.saturating_sub(baseline_heap) > RUNAWAY_HEAP_GROWTH
+    }
+
     pub fn call_fn_by_name(
         &self,
         task: &mut AutoTask,
@@ -1458,8 +1473,28 @@ impl AutoVM {
         // 5. Execute until function returns (BP restored to saved_bp)
         let budget = 10_000_000;
         let mut steps = 0u64;
+        // Plan 423 P5 加固:步预算只限时长不限内存 —— 字节码错位后可在垃圾
+        // 指令里无界生长字符串池/堆(实机 20G 内存事故)。每 RUNAWAY_CHECK_EVERY
+        // 步核对一次增量,超阈即以明确错误中止,把内存炸弹变成可读失败。
+        let baseline_strings = self.strings.read().map(|s| s.len()).unwrap_or(0);
+        let baseline_heap = self.heap_objects.len();
         for _ in 0..budget {
             steps += 1;
+            if steps % RUNAWAY_CHECK_EVERY == 0
+                && self.runaway_growth_exceeded(baseline_strings, baseline_heap)
+            {
+                let s_growth = self
+                    .strings
+                    .read()
+                    .map(|s| s.len().saturating_sub(baseline_strings))
+                    .unwrap_or(0);
+                let h_growth = self.heap_objects.len().saturating_sub(baseline_heap);
+                task.current_fn_n_args = saved_fn_n_args;
+                return Err(VMError::RuntimeError(format!(
+                    "runaway execution halted in '{}' at ip=0x{:04x}: +{} strings, +{} heap objects within one call (bytecode desync or unbounded loop?)",
+                    fn_name, task.ip, s_growth, h_growth
+                )));
+            }
             let step = match self.run_one_instruction(task) {
                 Ok(s) => s,
                 Err(e) => {

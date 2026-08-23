@@ -9519,10 +9519,23 @@ impl Codegen {
         // globals (var/const). The linker retains such modules even without
         // function exports so their STORE_GLOBAL init code runs.
         let has_globals = !self.global_vars.is_empty();
+        // Plan 423 P5 加固:导出对齐闸门 —— Stmt::Fn 编译中途失败会留下
+        // "导出已记录、prolog 未插"的半成品(毒化字节码),运行时从指令
+        // 中间进入 → 栈失衡 → 跳出代码(InvalidOpCode 255)或在垃圾指令
+        // 里跑满步数预算无界吃内存(实机 20G 内存事故)。在模块出口丢弃
+        // 毒化导出:调用方得到清晰的 HandlerNotFound,而非运行时内存炸弹。
+        let mut exports = self.exports;
+        for n in poisoned_fn_exports(&self.code, &exports) {
+            exports.remove(&n);
+            eprintln!(
+                "[CODEGEN] dropping poisoned export '{}' (entry not at FN_PROLOG) — its fn failed to compile; see earlier handler errors",
+                n
+            );
+        }
         Module {
             name,
             code: self.code,
-            exports: self.exports,
+            exports,
             relocs: self.relocs,
             strings: self.strings,
             // Plan 073: Include object_keys and object_types in module
@@ -13069,5 +13082,44 @@ mod tests {
             codegen.code.contains(&(OpCode::GT_U64 as u8)),
             "\"100\".to_uint() > \"45\".to_uint() should emit GT_U64"
         );
+    }
+}
+
+
+/// Plan 423 P5 加固:导出对齐校验 —— 函数导出地址必须落在 FN_PROLOG 字节
+/// 上。返回应丢弃的毒化导出名(Stmt::Fn 编译中途失败的半成品)。任务标记
+/// 导出(`<task>#start/#stop/#else`)指向非函数代码,按 `#` 豁免。
+pub fn poisoned_fn_exports(
+    code: &[u8],
+    exports: &std::collections::HashMap<String, u32>,
+) -> Vec<String> {
+    exports
+        .iter()
+        .filter(|(n, &addr)| {
+            !n.contains('#')
+                && (addr as usize >= code.len() || code[addr as usize] != OpCode::FN_PROLOG as u8)
+        })
+        .map(|(n, _)| n.clone())
+        .collect()
+}
+
+#[cfg(test)]
+mod plan423_p5_tests {
+    use super::*;
+
+    #[test]
+    fn poisoned_fn_exports_detects_misaligned_entries() {
+        use std::collections::HashMap;
+        let mut exports = HashMap::new();
+        // 0xB8 = FN_PROLOG。code: [prolog, junk, prolog, junk]
+        let code: Vec<u8> = vec![0xB8, 0x01, 0x00, 0x1F, 0xB8, 0x02, 0x00, 0x20];
+        exports.insert("good_a".to_string(), 0); // 落在 0xB8
+        exports.insert("poisoned".to_string(), 3); // 落在 0x1F(load.str)
+        exports.insert("good_b".to_string(), 4); // 落在 0xB8
+        exports.insert("task#start".to_string(), 3); // 任务标记豁免
+        exports.insert("oob".to_string(), 99); // 越界
+        let mut dropped = poisoned_fn_exports(&code, &exports);
+        dropped.sort();
+        assert_eq!(dropped, vec!["oob".to_string(), "poisoned".to_string()]);
     }
 }
