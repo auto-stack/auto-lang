@@ -2427,6 +2427,17 @@ impl RustTrans {
                                     if needs_parens { write!(out, "(")?; }
                                     self.expr(lhs, out)?;
                                     if needs_parens { write!(out, ")")?; }
+                                    // Auto's list/str length property `.length`
+                                    // (field form, no parens) maps to Rust's
+                                    // `.len()` (2026-08-23 auto-ai report
+                                    // defect 2 — bare `.length` is E0609 on
+                                    // Vec/String).
+                                    if let Expr::Ident(field_name) = rhs.as_ref() {
+                                        if field_name.as_str() == "length" {
+                                            write!(out, ".len()")?;
+                                            return Ok(());
+                                        }
+                                    }
                                     write!(out, ".")?;
                                     self.expr(rhs, out)?;
                                 }
@@ -3624,6 +3635,16 @@ impl RustTrans {
                     field.as_str(),
                     "len" | "is_empty" | "capacity" | "count" | "push" | "pop"
                 );
+                // Auto's list/str length property `.length` (field form, no
+                // parens — distinct from the `.length()` method form handled
+                // in call()) maps to Rust's `.len()` (2026-08-23 auto-ai
+                // report defect 2: previously emitted a bogus `.length`
+                // field, E0609 on Vec/String).
+                if field.as_str() == "length" {
+                    self.expr(object, out)?;
+                    write!(out, ".len()")?;
+                    return Ok(());
+                }
 
                 // Plan 310 Phase 0.2: Union field read `u.field` → `u.field()`.
                 // Rust union fields require `unsafe` to read; we route through
@@ -3820,11 +3841,19 @@ impl RustTrans {
                 // satisfies this `.await` — appending a second produced
                 // `double(a).await.await` (E0277) and broke the tokio a2r
                 // backend. Skip the outer `.await` in that case.
+                //
+                // 2026-08-23 regression fix (auto-ai report): the skip must
+                // ONLY apply to free-fn calls (`Expr::Ident` callee). The
+                // auto-insert lives at call()'s tail; every `Expr::Dot`
+                // (method) call is intercepted by the generic method-call
+                // block (~line 5690) which returns early and never reaches
+                // it — so skipping the outer `.await` for Dot calls silently
+                // dropped explicit `.await` on `self.run_inner(...).await`
+                // etc. (E0308 future). Method calls always keep the explicit
+                // `.await`.
                 let inner_auto_awaits = match expr.as_ref() {
                     Expr::Call(call) => {
-                        if let Expr::Dot(object, mname) = call.name.as_ref() {
-                            self.call_needs_await(object, mname)
-                        } else if let Expr::Ident(fname) = call.name.as_ref() {
+                        if let Expr::Ident(fname) = call.name.as_ref() {
                             self.fn_ret_types
                                 .get(fname.as_str())
                                 .map(|ret| Self::type_is_async(ret))
@@ -6989,7 +7018,21 @@ impl RustTrans {
                     let is_push_or_insert = matches!(method_name.as_str(), "push" | "set");
                     let is_insert = method_name.as_str() == "set";
                     for (i, arg) in call.args.args.iter().enumerate() {
-                        self.arg(arg, out)?;
+                        // 2026-08-23 auto-ai report defect 3: an object/array
+                        // record literal pushed into a `List<Value>` (Value =
+                        // serde_json::Value) has no Rust struct to name — emit
+                        // it as a serde_json::json! invocation instead of bare
+                        // braces ("struct literal body without path").
+                        let is_json_value_push = is_push_or_insert && !is_insert
+                            && matches!(arg, Arg::Pos(e) if matches!(e, Expr::Object(_) | Expr::Array(_)))
+                            && self.receiver_elem_is_json_value(object);
+                        if is_json_value_push {
+                            if let Arg::Pos(e) = arg {
+                                self.emit_json_macro(e, out)?;
+                            }
+                        } else {
+                            self.arg(arg, out)?;
+                        }
                         // set(idx, val) -> insert(idx, val): add 'as usize' for int-typed idx
                         if is_insert && i == 0 {
                             if let Arg::Pos(expr) = arg {
@@ -7480,7 +7523,20 @@ impl RustTrans {
                         if is_method_spec_param {
                             write!(out, "Box::new(")?;
                         }
-                        self.expr(expr, out)?;
+                        // 2026-08-23 auto-ai report defect 3: an object/array
+                        // record literal pushed into a `List<Value>` (Value =
+                        // serde_json::Value) has no Rust struct to name, so the
+                        // default bare-brace emission is invalid Rust ("struct
+                        // literal body without path"). Emit it as a
+                        // serde_json::json! invocation instead.
+                        if method_name.as_str() == "push"
+                            && matches!(expr, Expr::Object(_) | Expr::Array(_))
+                            && self.receiver_elem_is_json_value(object)
+                        {
+                            self.emit_json_macro(expr, out)?;
+                        } else {
+                            self.expr(expr, out)?;
+                        }
                         if is_method_spec_param {
                             if m_spec_is_bound_ident {
                                 write!(out, ".clone())")?;
@@ -8153,11 +8209,59 @@ impl RustTrans {
                     if let Arg::Pos(expr) = arg {
                         self.expr(expr, out)?;
                     }
+                } else if {
+                    // 2026-08-23 auto-ai report defect 4: a field of a
+                    // borrowed loop var (`m.content` in `for m in &req.messages`)
+                    // passed to a str/List param — arg()'s §2.1 conservative
+                    // clone (`m.content.clone()`) regressed these call sites
+                    // (daemon's content_blocks_to_anthropic / openai_content).
+                    // Copy-ish callee params (str borrows, List passed by
+                    // reference per the is_copy_type convention) don't take
+                    // ownership, so no clone is needed. Non-Copy params (e.g.
+                    // `extract_path(tc.args)` with a Value param) still clone
+                    // via arg() below.
+                    let iter_field = matches!(arg, Arg::Pos(Expr::Dot(_, _)))
+                        && if let Arg::Pos(Expr::Dot(obj, _)) = arg {
+                            matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
+                        } else { false };
+                    iter_field
+                        && match param_types.as_ref().and_then(|pts| pts.get(i)) {
+                            // Known callee signature: clone only for non-Copy
+                            // (owned) params.
+                            Some(pt) => Self::is_copy_type(pt),
+                            // Unknown callee (imported fn — single-file
+                            // transpile can't see its signature): keep the
+                            // pre-§2.1 shape (no clone), matching the sed
+                            // contract of cross-file consumers.
+                            None => true,
+                        }
+                } {
+                    // 2026-08-23 auto-ai report defect 4: a field of a
+                    // borrowed loop var (`m.content` in `for m in &req.messages`)
+                    // passed to a str/List param — arg()'s §2.1 conservative
+                    // clone (`m.content.clone()`) regressed these call sites
+                    // (daemon's content_blocks_to_anthropic / openai_content).
+                    // Copy-ish callee params (str borrows, List passed by
+                    // reference per the is_copy_type convention) don't take
+                    // ownership, so no clone is needed. Non-Copy params (e.g.
+                    // `extract_path(tc.args)` with a Value param) still clone
+                    // via arg() below.
+                    if let Arg::Pos(expr) = arg {
+                        self.expr(expr, out)?;
+                    }
+                } else if needs_clone {
+                    // 2026-08-23 auto-ai report defect 4: a borrowed loop
+                    // var (`t` in `for t in &coll`) already gets its deref
+                    // clone from arg()'s maybe_clone_borrowed_iter_field —
+                    // running self.arg() here and appending another produced
+                    // `t.clone().clone()`. Emit the raw expression with
+                    // exactly one clone.
+                    if let Arg::Pos(expr) = arg {
+                        self.expr(expr, out)?;
+                    }
+                    write!(out, ".clone()")?;
                 } else {
                     self.arg(arg, out)?;
-                    if needs_clone {
-                        write!(out, ".clone()")?;
-                    }
                 }
             }
 
@@ -8495,6 +8599,69 @@ impl RustTrans {
             }
         }
         false
+    }
+
+    /// 2026-08-23 auto-ai report defect 3: is this receiver a `List<Value>`
+    /// local (Value = the serde_json::Value alias used by JSON-typed code)?
+    /// Push targets with a Value element type take record literals via
+    /// serde_json::json!, not bare struct-literal braces.
+    fn receiver_elem_is_json_value(&self, object: &Expr) -> bool {
+        if let Expr::Ident(name) = object {
+            if let Some(Type::List(elem)) = self.local_var_types.get(name.as_str()) {
+                return match elem.as_ref() {
+                    Type::User(td) => td.name.as_str() == "Value",
+                    Type::GenericInstance(inst) => inst.base_name.as_str() == "Value",
+                    _ => false,
+                };
+            }
+        }
+        false
+    }
+
+    /// 2026-08-23 auto-ai report defect 3: emit an object/array record literal
+    /// as a `serde_json::json!(...)` invocation. Keys are quoted; nested
+    /// literals recurse; any other expression (a Value-typed ident, a call
+    /// returning Value, ...) is embedded as-is — json! accepts arbitrary
+    /// Serialize values.
+    fn emit_json_macro(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        write!(out, "serde_json::json!(")?;
+        self.emit_json_body(expr, out)?;
+        write!(out, ")")?;
+        Ok(())
+    }
+
+    fn emit_json_body(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        match expr {
+            Expr::Object(pairs) => {
+                write!(out, "{{")?;
+                for (i, pair) in pairs.iter().enumerate() {
+                    let key = match &pair.key {
+                        crate::ast::Key::NamedKey(name) => name.to_string(),
+                        crate::ast::Key::IntKey(n) => format!("{}", n),
+                        crate::ast::Key::BoolKey(b) => format!("{}", b),
+                        crate::ast::Key::StrKey(s) => s.to_string(),
+                    };
+                    write!(out, "\"{}\": ", key)?;
+                    self.emit_json_body(&pair.value, out)?;
+                    if i < pairs.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "}}")?;
+            }
+            Expr::Array(elems) => {
+                write!(out, "[")?;
+                for (i, e) in elems.iter().enumerate() {
+                    self.emit_json_body(e, out)?;
+                    if i < elems.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "]")?;
+            }
+            _ => self.expr(expr, out)?,
+        }
+        Ok(())
     }
 
     /// Plan 373: Resolve the return type of `object.method()` and check if it

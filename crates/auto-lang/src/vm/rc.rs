@@ -214,7 +214,13 @@ impl AutoVM {
         if p419_uaf_traces(id) {
             let old = self.rc_count(id);
             // 已 tombstone 又被 retain = 复活竞态(§9.2 重入边界/TOCTOU 烟雾枪)。
-            if self.tombstones.get(&id).is_some() {
+            // tombstones 表只在 debug_assertions 下存在(字段级 cfg);release
+            // 下 RETAIN-AFTER-FREE 探测退化为普通 retain 日志(否则 E0609)。
+            #[cfg(debug_assertions)]
+            let resurrected = self.tombstones.get(&id).is_some();
+            #[cfg(not(debug_assertions))]
+            let resurrected = false;
+            if resurrected {
                 eprintln!(
                     "[P419UAF] !! RETAIN-AFTER-FREE id={} (rc {} -> {}) — site:\n{}",
                     id, old, old + 1,

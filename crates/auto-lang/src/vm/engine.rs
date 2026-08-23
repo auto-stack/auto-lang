@@ -3960,7 +3960,13 @@ impl AutoVM {
                                 // 裸表探测(绕过 canary):log 先行,随后真正的
                                 // get_heap_object 若命中 tombstone 即 panic。
                                 let live = self.heap_objects.get(&id).is_some();
+                                // tombstones 表只在 debug_assertions 下存在
+                                // (字段级 cfg);release 下该探测退化为
+                                // live-only(否则 release 编译 E0609)。
+                                #[cfg(debug_assertions)]
                                 let tomb = self.tombstones.get(&id).is_some();
+                                #[cfg(not(debug_assertions))]
+                                let tomb = false;
                                 let fn_name = task
                                     .call_stack
                                     .last()
