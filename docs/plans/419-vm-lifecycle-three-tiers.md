@@ -501,10 +501,10 @@ FREE、零 canary。
 - canary 保持开启。
 
 **遗留**:
-- diag rig 保留于 `D:/autostack/diag-419/`(probe.py + vm-run1~9.log)
-  供复验;不需要时整目录可删(内含 auto-shell detached worktree,删除前
-  先 `git -C auto-shell worktree remove`);
-- `419-uaf-061` 分支是复现专用合并栈(plan-061 ⊕ master + 埋点 + 修复),
-  修复本体已 cherry-pick 回 `419-uaf`(master 基),合并以 419-uaf 为准;
+- diag rig(`D:/autostack/diag-419/`:probe.py + vm-run1~9.log + auto-shell
+  detached worktree + 双 junction)已在收尾时拆除——原始日志为会话内
+  临时证据,结论均已在本文档;复验路径见本节「复现 rig」+ P419_UAF_TRACE;
+- `419-uaf-061` 分支为复现专用合并栈(plan-061 ⊕ master + 埋点 + 修复),
+  修复本体已 cherry-pick 回 `419-uaf`(master 基),随收尾一并清理;
 - §9.1 的「三次复测」id(4000111/4001245)与本轮(4000093)不同属分配序
   浮动,病灶同一(顶层 JSON 容器子引用零 retain 的确定性缺口)。
