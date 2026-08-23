@@ -1,7 +1,7 @@
 # Plan 442: 跨平台合龙——musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活
 
-> **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2，不 gated）+ A4/A6
-> （canary 结论已回填、用户点名先行）在 worktree `plan-442` 推进；gated 主体
+> **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2 ✅）+ A4/A6（✅）已在
+> worktree `plan-442` 落地（仓内测试全绿，musk 侧验收待跨仓复核）；gated 主体
 > A1–A3/A5/B/C 仍等前置全满足）
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
@@ -83,6 +83,13 @@
     @vueuse/vaul grep 零命中（musk deps-guard 的 TRANSITIONAL 区随之清零），
     且 `cd gen/front/vue && pnpm install && pnpm build` 绿；widgets-gallery
     （用 toast/sonner 等）重生成后依赖仍在、构建绿。
+  - **✅ 已落地（2026-08-23，worktree plan-442）**：`VueDependencyUsage`
+    标记检测（App.vue+全组件 SFC 语料；ui/button 标记带结尾引号防
+    button-group 误配）驱动 `OPTIONAL_DEPS` 表按组发射；CodeEditor.vue 壳
+    usage 感知同步（未用即剪，防 vue-tsc 咬到未声明依赖的壳）；sync 路径
+    `package_json_deps_drifted` 双向漂移检测；npm_deps 去重。仓内测试 29/29
+    （vue 模块）。**musk 侧验收（fresh build grep + widgets-gallery pnpm
+    build）待 auto-musk 复核**。
 - **P0-2 CodeEditor 模板 setSearchEffect 类型错修复**（来源 musk-038 待澄清 #10）：
   `crates/auto-man/src/vue.rs` 模板（Plan 421 产物）发射 `import { setSearchEffect }
   from '@codemirror/search'`——该 API 在 @codemirror/search@6 实际导出面**不存在**
@@ -91,6 +98,9 @@
   CodeEditor.vue 未暴露）。修复：改用 setSearchQuery（或等价改写 Ctrl+F 查询词
   注入路径），模板注释同步修正。验收：fresh scaffold 的 gen `pnpm build` 全绿
   （musk-038 #10 复核即本条验收记录）。
+  - **✅ 已落地（2026-08-23，worktree plan-442）**：import/dispatch/注释/测试
+    断言四处改 setSearchQuery。**fresh scaffold `pnpm build` 验收待 musk-038
+    #10 复核**（需 npm 环境）。
 
 ### Phase A — VM 渲染能力补缺（auto-lang，先行）
 
@@ -100,11 +110,27 @@
   Undefined variable 警告；musk 30 widget 源作回归语料。
 - A3 ext link：TS ext 依赖在 VM 目标的显式 link 错误改为可配置跳过/挂平台桩。
 - A4 svg 节点能力：按 musk 038 T9 canary 结论决定（语言层支持 / 挂账）。
+  - **✅ 语言层支持已落地（2026-08-23，worktree plan-442）**：vue 轨 map_tag
+    SVG 直通臂（svg/path/circle/rect/line/polyline/polygon/ellipse/g/defs/
+    use/stop/linearGradient/radialGradient/clipPath）+ 字面量属性静态发射
+    （viewBox="…" 而非 :viewBox="'…'"，T9 退化根因修复）；VM 轨 svg 子树
+    序列化 SVG 文档经 `View::Image{src:"svgdoc:…"}` 下发，renderer 复用
+    svg::Handle 缓存渲染（单色 currentColor 文档走画时着色，多彩文档原色）。
+    限制：动态 svg 属性/动画不支持（render_support 已登记 partial）；SVG
+    text 子元素未支持（与 DSL text→span 冲突）。**musk 侧 T9 canary 重放 +
+    icons 域解除条件验证待 auto-musk**。
 - A5 调度/定时器原语：按 musk 038 T16 与 auto-down 008 Phase 3 的需求面定接口。
 - A6 只读高亮渲染原语（musk 038 T16 决策 (a) 的落地需求）：041 code_editor 的
   highlight.rs（syntect 5 + two-face 0.4 内核）暴露 highlight-only API 或
   code_editor 只读模式——消费面 = VM 渲染目标的 markdown code_block 只读渲染
   （vue 轨继续 prismjs，双轨视觉近似已由 038 T15 矩阵背书）。
+  - **✅ 已落地（2026-08-23，worktree plan-442）**：`highlight_segments(lang,
+    text, dark, accent)`（syntect HighlightLines 走共享单例+预注册 autoui 主题，
+    基前景色段为 None、相邻同色合并、未知语言退化单段）；语言通道 =
+    `StyleClass::CodeLang`（lang-<token> class，惰性非视觉变体）由 codeblock
+    分支携带；renderer `highlight_code` 有 lang 走 syntect（dark/accent 跟随
+    theme_source），无 lang 保持手写 tokenizer（shell show 等零变化）。vue 轨
+    按裁定继续 prismjs，未动。
 
 ### Phase B — 五域端口接线（auto-musk 动作，auto-lang 机制配合）
 
