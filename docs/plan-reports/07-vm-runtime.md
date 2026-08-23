@@ -55,10 +55,11 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 | 398 | VM 兼容性修复（expose/store sibling） | Complete | parse 错误 warn + parser [][]T/[](tuple) + sibling-handler rewrite；audit-A3 回归测试；M0.5/M1 auto-shell 下游延期 |
 | 406 | VM 类型系统审计 | Complete | 目标 bug 全根治（GET_ELEM bool / nv_truthy / EQ 复核）；审计矩阵延期 |
+| 419 | AutoVM 三层生命周期管理 | Complete | 堆对象 RC + 池 RC/freelist/pinned + 逃逸分析/Shared/借用接线 + a2r Rc<RefCell> 对齐；§9 UAF 根因（json_to_vm_value 外层漏 retain）已修（a76e9cbe），canary 常开 |
 
 ## Status
 
-**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269, 339
+**Implemented**: 068, 069, 070, 071, 073, 075, 076, 078, 079, 080, 081, 087, 117, 127, 191, 192, 194, 197, 198, 199, 200, 201, 206, 207, 208, 212b, 221, 224, 226, 229a, 230, 231, 249, 265, 266, 269, 339, 398, 406, 419
 
 **Partial**: 039 (basic levels migrated), 074 (parser works, evaluator partially updated), 077 (8/8 phases done but index marks 50%), 118 (183/197 passing, 11 still failing)
 
@@ -179,3 +180,4 @@ Plan 074 enhanced `use` statement resolution to search multiple directories rath
 - [339-symbol-namespace-design.md](../plans/archive/339-symbol-namespace-design.md)
 - [398-vm-expose-and-store-sibling-handler.md](../plans/archive/398-vm-expose-and-store-sibling-handler.md)
 - [406-vm-type-system-audit.md](../plans/archive/406-vm-type-system-audit.md)
+- [419-vm-lifecycle-three-tiers.md](../plans/archive/419-vm-lifecycle-three-tiers.md)

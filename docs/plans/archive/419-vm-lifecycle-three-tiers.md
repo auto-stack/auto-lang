@@ -1,10 +1,11 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: ✅ **复活已闭环(2026-08-23 根因修复,分支 419-uaf 待合并)**。
-> §9 的确定性 UAF 已定位修复:`json_to_vm_value` 外层臂漏「插入即 retain」
-> (§9.7),ash-gui 崩溃用例转绿、本仓 3125 测全过、canary 保持开启。
-> 三 Phase 落地结论不变;此前「第 4 族」实为 native 构造路径的获取缺口,
-> 非指令族记账缺口。
+> **状态**: ✅ **COMPLETE(2026-08-23 归档)**。三 Phase 落地 + §9 复活闭环:
+> `json_to_vm_value` 外层臂漏「插入即 retain」根因修复(a76e9cbe)已随
+> 419-uaf 合并 master(57d057cc);ash-gui 崩溃用例转绿、canary 保持开启、
+> tests_rc_lifecycle 归档复验 20/20。复现栈(419-uaf/419-uaf-061 分支与
+> worktree、diag rig)已按 §9.7 清理完毕。
+> 此前「第 4 族」实为 native 构造路径的获取缺口,非指令族记账缺口。
 > 原归档结论(三 Phase 落地 + 19 测 + a2r golden)仍成立,问题在覆盖面外。
 > Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
 > Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑

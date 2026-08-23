@@ -56,8 +56,9 @@ The AutoVM bytecode engine is the default execution backend for AutoLang, having
 
 | 398 | VM 兼容性修复（expose/store sibling） | ✅ | parse 错误静默 warn（§11）+ parser `[][]T`/`[](tuple)`（§12）+ sibling-handler 调用 rewrite（§2/§3 handler_<W>_<X>）；§14.1 回归测试由 audit-A3 补齐；M0.5/M1 为 auto-shell 下游（延期登记） |
 | 406 | VM 类型系统审计（nanbox 配对） | ✅ | 目标 bug 全部根治：GET_ELEM bool 编码（audit-A4）+ JMP_IF/AND/OR/NOT tag 解码 nv_truthy（audit-B4）+ EQ 复核无需修复；全量审计矩阵 🟢 延期登记 |
+| 419 | AutoVM 三层生命周期管理 | ✅ | 堆对象 RC + 字符串池 RC/freelist/pinned + 逃逸分析/Shared 形式化/借用接线 + a2r Rc<RefCell> 对齐（tests_rc_lifecycle 20 测）；§9 复活：json_to_vm_value 外层臂补「插入即 retain」根修 ash-gui 确定性 UAF（a76e9cbe），RC canary 常开，P419_UAF_TRACE 埋点留档 |
 ## Status Summary
-- Completed: 34 | Partial: 4 | Planned: 1 | Deprecated: 0
+- Completed: 35 | Partial: 4 | Planned: 1 | Deprecated: 0
 
 ## Key Achievements
 - AutoVM fully replaced the tree-walking Evaluator with 1.00-1.10x performance improvement and feature parity
