@@ -95,10 +95,121 @@ impl InterpreterBridge {
     }
 
     /// 解释并执行 Auto 代码
+    ///
+    /// Plan 436 L1:源码在 **UI 场景**下解析(widget 语法是 UI 方言门控的,
+    /// VM 默认解析器会拒绝 `widget`/`model`/`msg` 声明),经 VM 执行后,
+    /// 每个 widget 的 `setup {}` 前导槽在加载时执行一次——**先于任何视图
+    /// 求值**(get_main_view 在 interpret 之后才可能被调用)。非 UI 场景的
+    /// 普通 脚本走原有 VM 解析路径(行为不变)。
     pub fn interpret(&mut self, code: &str) -> Result<()> {
-        self.interpreter.eval(code)
-            .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(code).with_session(session);
+        match parser.parse() {
+            Ok(ast) => {
+                self.interpreter
+                    .eval_ast(ast.clone())
+                    .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
+                self.run_setup_preambles(&ast)?;
+            }
+            // 非 UI 场景程序(普通脚本):保持原有 VM 默认解析求值路径,
+            // 其自身的解析/运行错误在那边照常上浮。
+            Err(_) => {
+                self.interpreter
+                    .eval(code)
+                    .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
+            }
+        }
         Ok(())
+    }
+
+    /// Plan 436 L1:逐 widget 执行 `setup {}` 前导槽一次,绑定写入该
+    /// widget 的(单实例)`WidgetState.fields`。
+    ///
+    /// 边界(单实例层语义,与 a2vue 的差异见模块文档):
+    /// - 前导槽在**独立的 VM run** 中执行:每次 run 都是新 VM,程序级
+    ///   作用域(含程序里定义的函数)不会延续进来——setup 只能依赖字面
+    ///   量表达式与注入 globals;
+    /// - 取回通道 = setup 语句 + 尾随 `[绑定名, ...]` 数组表达式,run 的
+    ///   栈顶结果携带绑定值离开 VM;
+    /// - 只有带 setup 块的 widget 会建立 WidgetState(L1 不构建完整的
+    ///   组件 view 管线);
+    /// - `refs` 标注(.value 语义)在解释器中不存在——Value 即值。
+    fn run_setup_preambles(&mut self, ast: &crate::ast::Code) -> Result<()> {
+        for stmt in &ast.stmts {
+            let decl = match stmt {
+                crate::ast::Stmt::WidgetDecl(d) => d,
+                _ => continue,
+            };
+            let setup = match &decl.setup {
+                Some(s) => s,
+                None => continue,
+            };
+            let name = decl.name.as_str().to_string();
+            // 绑定名:setup 体顶层的 let/var/const 声明。
+            let names: Vec<String> = setup
+                .body
+                .stmts
+                .iter()
+                .filter_map(|s| match s {
+                    crate::ast::Stmt::Store(store)
+                        if matches!(
+                            store.kind,
+                            crate::ast::StoreKind::Let
+                                | crate::ast::StoreKind::Var
+                                | crate::ast::StoreKind::Const
+                        ) =>
+                    {
+                        Some(store.name.as_str().to_string())
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            let mut stmts = setup.body.stmts.clone();
+            if !names.is_empty() {
+                let idents = names
+                    .iter()
+                    .map(|n| crate::ast::Expr::Ident(n.as_str().into()))
+                    .collect();
+                stmts.push(crate::ast::Stmt::Expr(crate::ast::Expr::Array(idents)));
+            }
+            let result = self.interpreter.eval_stmts(stmts).map_err(|e| {
+                BridgeError::AutoLang(format!("widget `{}` setup preamble: {}", name, e))
+            })?;
+
+            let mut fields = HashMap::new();
+            if !names.is_empty() {
+                match result {
+                    Value::Array(arr) => {
+                        for (i, v) in arr.iter().enumerate() {
+                            if let Some(n) = names.get(i) {
+                                fields.insert(n.clone(), v.clone());
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(BridgeError::AutoLang(format!(
+                            "widget `{}` setup preamble: expected bindings array, got {:?}",
+                            name, other
+                        )));
+                    }
+                }
+            }
+            self.widget_states.insert(
+                name,
+                WidgetState {
+                    fields,
+                    cached_node: None,
+                    view_dirty: false,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// Plan 436 L1:读取 widget 的单实例状态(setup 前导绑定所在)。
+    pub fn widget_state(&self, widget_name: &str) -> Option<&WidgetState> {
+        self.widget_states.get(widget_name)
     }
 
     /// 获取主 Widget 的视图节点
@@ -218,6 +329,73 @@ mod tests {
     fn test_bridge_creation() {
         let bridge = InterpreterBridge::new();
         assert!(!bridge.hot_reload || bridge.hot_reload); // Just to use the variable
+    }
+
+    /// Plan 436 L1:含 setup 块的 widget 源经 bridge 加载——UI 场景解析
+    /// (此前 VM 默认解析直接拒绝 widget 语法),setup 执行一次,绑定写入
+    /// 单实例 WidgetState.fields;interpret 先于任何视图求值(构造约定)。
+    #[test]
+    fn test_setup_preamble_runs_and_binds_fields() {
+        let mut bridge = InterpreterBridge::new();
+        bridge
+            .interpret(
+                r#"
+widget Counter {
+    setup {
+        let total = 40 + 2
+        let label = "hi"
+    }
+    model { var count int = 0 }
+}
+"#,
+            )
+            .expect("widget source must load under the UI-scenario parse");
+        let state = bridge.widget_state("Counter").expect("WidgetState created");
+        assert_eq!(state.fields.get("total"), Some(&Value::Int(42)));
+        assert_eq!(state.fields.get("label"), Some(&Value::str("hi")));
+    }
+
+    /// Plan 436 L1:setup 引用未定义符号 → 显式报错(带 widget 上下文),
+    /// 不再静默。
+    #[test]
+    fn test_setup_preamble_error_surfaces() {
+        let mut bridge = InterpreterBridge::new();
+        let err = bridge
+            .interpret(
+                r#"
+widget W {
+    setup { let x = no_such_thing + 1 }
+}
+"#,
+            )
+            .expect_err("undefined symbol in setup must surface");
+        assert!(
+            err.to_string().contains("W") && err.to_string().contains("setup"),
+            "error carries widget context: {err}"
+        );
+    }
+
+    /// Plan 436:无 setup 块的 widget 不建 WidgetState;普通脚本(非 UI
+    /// 场景)走回退路径行为不变。
+    #[test]
+    fn test_plain_script_and_setupless_widget() {
+        let mut bridge = InterpreterBridge::new();
+        bridge.interpret("fn main() { 1 }").expect("plain script loads");
+        assert!(bridge.widget_state("main").is_none());
+
+        bridge
+            .interpret(
+                r#"
+widget NoSetup {
+    model { var count int = 0 }
+}
+"#,
+            )
+            .expect("setupless widget loads");
+        assert!(
+            bridge.widget_state("NoSetup").is_none(),
+            "no WidgetState without a setup block (L1 boundary)"
+        );
     }
 
     #[test]

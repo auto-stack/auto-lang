@@ -54,7 +54,7 @@
 //!
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
-use super::{BackendGenerator, GenResult};
+use super::{BackendGenerator, GenError, GenResult};
 use crate::aura::{AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
 
 /// Plan 371 L1: Semantic info about a child component, collected via
@@ -434,6 +434,19 @@ impl RustGenerator {
     pub fn generate_rust(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
         self.reset();
+
+        // Plan 436 T1(决策 1-A):setup 前导槽是 a2vue 语义(script setup
+        // 顶层,每组件实例同步执行、先于首渲染);Rust 目标的 Elm 架构
+        // (struct + new + on/view)尚无每实例 setup 槽位——显式报错止血,
+        // 不再静默丢弃(PLAN-037 T7 哲学,同 use.web 门控先例)。1-B 生成
+        // (new() 后、首次 view() 前注入)需将 setup 绑定接入 struct 字段
+        // 与视图/处理器的标识符解析,面较大,留待需要时立项。
+        if widget.setup.is_some() {
+            return Err(GenError::UnsupportedStmt(format!(
+                "widget `{}` declares a `setup {{}}` block; setup is vue-render only for now — the Rust target has no per-instance setup slot yet (Plan 436 决策 1-A)",
+                widget.name
+            )));
+        }
 
         // Populate state_types for handler generation
         for state in &widget.state_vars {
@@ -5286,6 +5299,46 @@ mod tests {
     fn test_rust_generator_creation() {
         let gen = RustGenerator::new();
         assert!(gen.current_widget.is_none());
+    }
+
+    /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
+    /// 报错(PLAN-037 T7 哲学),不再静默丢弃 setup 语义。
+    #[test]
+    fn test_setup_block_rejected_on_rust_target() {
+        let widget = AuraWidget {
+            name: "SetupWidget".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: Some(crate::ast::ui::SetupBlock {
+                body: crate::ast::Body {
+                    stmts: vec![],
+                    has_new_line: false,
+                    source_lines: vec![],
+                },
+                ref_annotations: vec![],
+            }),
+        };
+        let mut gen = RustGenerator::new();
+        let err = gen.generate(&widget).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("setup"), "{msg}");
+        assert!(msg.contains("SetupWidget"), "{msg}");
+        assert!(msg.contains("vue-render"), "{msg}");
     }
 
     #[test]

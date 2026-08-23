@@ -17,7 +17,7 @@
 //! let result = interp.eval(code)?;
 //! ```
 
-use crate::ast::Code;
+use crate::ast::{Code, Stmt};
 use crate::atom::Atom;
 use crate::AutoResult;
 use auto_val::Value;
@@ -111,6 +111,22 @@ impl AutoInterpreter {
     /// The result value of the evaluation
     pub fn eval(&mut self, code: &str) -> AutoResult<Value> {
         self.vm.run(code)
+    }
+
+    /// Evaluate an already-parsed program (Plan 436: the UI interpreter
+    /// bridge parses under the UI scenario so widget syntax survives, then
+    /// hands the AST in — the plain `eval` path's VM-default parser would
+    /// reject `widget`/`model`/`msg` declarations).
+    pub fn eval_ast(&mut self, ast: Code) -> AutoResult<Value> {
+        self.vm.run_ast(ast)
+    }
+
+    /// Evaluate a bare statement list (Plan 436 L1: widget setup
+    /// preambles — the caller appends a trailing array expression of the
+    /// binding names so the run's top-of-stack result carries the binding
+    /// values out of the per-run VM).
+    pub fn eval_stmts(&mut self, stmts: Vec<Stmt>) -> AutoResult<Value> {
+        self.vm.run_ast(Code { stmts, ..Code::default() })
     }
 
     /// Evaluate a template with F-string support

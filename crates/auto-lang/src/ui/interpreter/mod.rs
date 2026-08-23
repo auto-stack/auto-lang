@@ -1,55 +1,33 @@
-//! # Auto 动态解释器
+//! # Auto 动态解释器(UI 桥梁)
 //!
-//! 此模块提供了 Auto 语言的运行时动态解释器，支持真正的热重载开发体验。
+//! 此模块连接 `crate::interpreter::AutoInterpreter`(AutoVM 之上的求值
+//! 接口)与 UI 渲染系统。实际架构(Plan 436 修正——旧头注释引用的
+//! `SymbolTable`(widget 元数据版)/`WidgetMetadata`/`ComponentInstance`/
+//! `InterpreterRuntime`/`HotReloadInterpreter` 并不存在,属文档腐烂):
 //!
-//! ## 核心组件
-//!
-//! - [`SymbolTable`] - 存储组件、类型和函数的元数据
-//! - [`WidgetMetadata`] - Widget 组件的元数据
-//! - [`ComponentInstance`] - 运行时组件实例
-//! - [`InterpreterRuntime`] - 解释器运行时状态
-//! - [`DynamicMessage`] - 增强的动态消息（保留类型信息）
-//!
-//! ## 使用示例
-//!
-//! ```rust
-//! use auto_ui::interpreter::*;
-//!
-//! // 从 .at 文件加载并启动热重载
-//! let interpreter = HotReloadInterpreter::load_and_watch("path/to/component.at")?;
-//!
-//! // 获取当前视图
-//! let view = interpreter.view()?;
+//! ```text
+//! .at 源码(UI 场景解析:widget/model/msg 为 UI 方言门控)
+//!    ↓
+//! InterpreterBridge::interpret —— 整程序经 AutoInterpreter(AutoVM)求值
+//!    ↓                        └─ Plan 436 L1:逐 widget 执行 setup {} 前导槽
+//! WidgetState { fields }       (单实例;绑定经尾随数组表达式带出 VM run)
+//!    ↓
+//! get_main_view —— eval("main()") → auto_val::Node
+//!    ↓
+//! node_converter / 渲染层
 //! ```
 //!
-//! ## 架构
+//! ## 边界(Plan 436 T0 调研定稿)
 //!
-//! ```
-//! ┌─────────────────────────────────────────────┐
-//! │           GPUI Application                  │
-//! └──────────────────┬──────────────────────────┘
-//!                    │
-//! ┌──────────────────▼──────────────────────────┐
-//! │     DynamicComponent (GPUI Render)          │
-//! └──────────────────┬──────────────────────────┘
-//!                    │
-//! ┌──────────────────▼──────────────────────────┐
-//! │        InterpreterRuntime                   │
-//! │  ┌─────────────────────────────────────┐   │
-//! │  │  SymbolTable (类型元数据)           │   │
-//! │  │  ComponentInstance (状态、视图)     │   │
-//! │  │  EventRouter (消息路由)             │   │
-//! │  └─────────────────────────────────────┘   │
-//! └──────────────────┬──────────────────────────┘
-//!                    │
-//! ┌──────────────────▼──────────────────────────┐
-//! │         AutoParser (auto-lang)              │
-//! └──────────────────┬──────────────────────────┘
-//!                    │
-//! ┌──────────────────▼──────────────────────────┐
-//! │      Enhanced NodeConverter                 │
-//! └─────────────────────────────────────────────┘
-//! ```
+//! - **单实例**:`widget_states` 按类型名键控,每个 widget 一个状态——
+//!   无子组件实例化机制(L2 真每实例不可及,边界见 docs/syntax.md
+//!   三相位矩阵);
+//! - **生命周期**:`.Init`/`.Destroy` 事件路由未实现(bridge 的
+//!   `handle_typed_event` 仅置脏标记);setup 是唯一落地的相位,加载时
+//!   执行一次、先于任何视图求值;
+//! - **setup 前导槽**:在独立 VM run 中执行(每次 run 均为新 VM,程序级
+//!   函数/globals 不延续),绑定名取自 setup 体顶层 let/var/const;
+//!   `refs` 标注无 `.value` 语义(Value 即值)。
 
 mod bridge;
 

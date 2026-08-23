@@ -44,7 +44,15 @@ impl VmInterpreter {
         // `set_global` / `merge_atom` and injected into the AutoVM below.
         parser.skip_check = true;
         let ast = parser.parse()?;
+        self.run_ast(ast)
+    }
 
+    /// Run an already-parsed program and return the result.
+    ///
+    /// Plan 436: the UI interpreter bridge parses under the UI scenario
+    /// (widget syntax is UI-gated) and hands the AST in directly; plain
+    /// `run` keeps its VM-default parse above.
+    pub fn run_ast(&mut self, ast: crate::ast::Code) -> AutoResult<Value> {
         // 2. Compile to bytecode
         let mut codegen = Codegen::new();
 

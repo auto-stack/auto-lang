@@ -18620,6 +18620,15 @@ impl Trans for RustTrans {
                             entries.len()
                         )));
                     }
+                    // Plan 436 T1(决策 1-A):setup 承载的 widget 在逻辑
+                    // 转译路径下原本落入下方 wildcard 静默消失——显式报错
+                    // 止血(UI 轨的真实 a2r 路径见 ui_gen/rust.rs 同款守卫)。
+                    Stmt::WidgetDecl(w) if w.setup.is_some() => {
+                        return Err(AutoError::Msg(format!(
+                            "widget `{}` declares a `setup {{}}` block; setup is vue-render only (Plan 436 决策 1-A)",
+                            w.name
+                        )));
+                    }
                     Stmt::Dep(dep) => {
                         // Record dep name so crate.func() → crate::func()
                         // Use separate set to avoid blocking use.rust import generation
