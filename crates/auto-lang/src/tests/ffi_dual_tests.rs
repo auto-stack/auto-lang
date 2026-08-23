@@ -107,7 +107,7 @@ fn ffi_dual_013_dep_method() {
         .replace('\\', "/");
     let src = format!(
         r#"dep autolang_counter(path: "{fixture}")
-use.rust autolang_counter::{{Counter, Config}}
+use.rust autolang_counter::{{Counter, Config, Point}}
 let c = Counter.new("hits")
 c.increment()
 c.increment()
@@ -130,10 +130,16 @@ let m = c3.merge(cfg)
 print(m.level_value())
 let p = Config.parse("42")
 print(p.level_value())
+
+let pt = Point.new(3, 4, "origin")
+print(pt.x())
+print(pt.y())
+print(pt.tag())
+print(pt.to_string())
 "#
     );
     let (_, stdout) = run_with_capture(&src).expect("run");
-    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7\n42";
+    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7\n42\n3\n4\norigin\n(3, 4) origin";
     assert_eq!(stdout.trim(), expected, "dep method e2e output mismatch:\n{stdout}");
 
     // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)

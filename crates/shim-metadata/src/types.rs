@@ -95,6 +95,9 @@ pub struct ShimMethod {
     /// 原返回是 Result<T, E>:unwrap_ok 策略——wrapper 解 Ok,
     /// Err 经 cdylib 错误通道传出,VM 侧转 VMError(430-F unwrap 策略)
     pub fallible: bool,
+    /// Some(name) = 合成的公共字段 getter(F 轮解阻断:字段访问以方法面入包;
+    /// 标量 Copy 直读,String/不透明字段 clone)
+    pub field: Option<String>,
 }
 
 /// 分类结果(规律层输出,430 §背景 6 条规则)。

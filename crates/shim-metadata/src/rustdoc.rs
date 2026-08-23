@@ -153,6 +153,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 generic: raw.generic
                     || generic_impl_methods.get(&raw.id).copied().unwrap_or(false),
                 fallible: raw.fallible,
+                field: None,
             }),
             None => free.push(ShimMethod {
                 type_name: String::new(),
@@ -162,9 +163,107 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 ret: raw.ret,
                 generic: raw.generic,
                 fallible: raw.fallible,
+                field: None,
             }),
         }
     }
+
+    // ---- F 轮解阻断的合成面 ----
+    // ① 公共字段 getter(semver 的 major/minor/patch 是字段非方法);
+    // ② Display 类型的 to_string(trait 方法不进固有 impl 枚举)。
+    // 与固有方法同名时固有优先(去重);不透明字段走 clone,无 Clone 的
+    // 由 rustc 检查器剔除环兜底。
+    let mut existing: std::collections::HashSet<String> =
+        out.iter().map(|m| format!("{}.{}", m.type_name, m.method)).collect();
+    let mut synthetics: Vec<ShimMethod> = Vec::new();
+    for item in index.values() {
+        let Some(inner) = item.get("inner").and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let vis_public =
+            item.get("visibility").and_then(|v| v.as_str()) == Some("public");
+        // 公共结构体的公共字段 getter
+        if vis_public {
+            if let Some(st) = inner.get("struct").and_then(|v| v.as_object()) {
+                let Some(struct_name) = item.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let fields = st
+                    .get("kind")
+                    .and_then(|k| k.get("plain"))
+                    .and_then(|p| p.get("fields"))
+                    .and_then(|f| f.as_array());
+                if let Some(fields) = fields {
+                    for fid in fields {
+                        let Some(fid) = fid.as_u64() else { continue };
+                        let Some(f) = index.get(&fid.to_string()) else { continue };
+                        if f.get("visibility").and_then(|v| v.as_str()) != Some("public") {
+                            continue;
+                        }
+                        let Some(fname) = f.get("name").and_then(|v| v.as_str()) else {
+                            continue;
+                        };
+                        let Some(fty) = f
+                            .get("inner")
+                            .and_then(|v| v.get("struct_field"))
+                            // v53:struct_field 的值即类型表示(个别版本或有 type 包裹,兜底)
+                            .and_then(|v| v.get("type").or(Some(v)))
+                        else {
+                            continue;
+                        };
+                        let proj = proj_ty(fty);
+                        let field_ok = proj.is_scalar()
+                            || matches!(proj, Ty::Str | Ty::StrOwned | Ty::Opaque(_) | Ty::OpaqueOwned(_));
+                        if !field_ok {
+                            continue;
+                        }
+                        let key = format!("{struct_name}.{fname}");
+                        if existing.insert(key) {
+                            synthetics.push(ShimMethod {
+                                type_name: struct_name.to_string(),
+                                method: fname.to_string(),
+                                self_kind: SelfKind::Read,
+                                params: vec![],
+                                ret: proj,
+                                generic: false,
+                                fallible: false,
+                                field: Some(fname.to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        // Display → to_string(blacket 经 ToString 调用)
+        if let Some(imp) = inner.get("impl").and_then(|v| v.as_object()) {
+            let is_display = imp
+                .get("trait")
+                .and_then(|t| t.get("path"))
+                .and_then(|p| p.as_str())
+                .map(|p| p == "Display" || p.ends_with("::Display"))
+                .unwrap_or(false);
+            if is_display {
+                let for_ty = imp.get("for").or_else(|| imp.get("for_"));
+                if let Some(ty) = for_ty.and_then(path_name) {
+                    let key = format!("{ty}.to_string");
+                    if existing.insert(key) {
+                        synthetics.push(ShimMethod {
+                            type_name: ty,
+                            method: "to_string".to_string(),
+                            self_kind: SelfKind::Read,
+                            params: vec![],
+                            ret: Ty::Str,
+                            generic: false,
+                            fallible: false,
+                            field: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out.extend(synthetics);
+
     Ok(ParsedCrate { methods: out, free_fns: free })
 }
 

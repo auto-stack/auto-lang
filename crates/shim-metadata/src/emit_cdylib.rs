@@ -144,7 +144,7 @@ fn plan_sig_line(p: &MarshalPlan) -> String {
         .map(|(t, a)| format!("{}:{}", t.rust_name(), arg_char(a)))
         .collect();
     format!(
-        "m {}.{}|{:?}|{}|{:?}|f{}|c{}",
+        "m {}.{}|{:?}|{}|{:?}|f{}|c{}|fld:{:?}",
         m.type_name,
         m.method,
         m.self_kind,
@@ -152,6 +152,7 @@ fn plan_sig_line(p: &MarshalPlan) -> String {
         p.ret,
         p.fallible as u8,
         matches!(p.ret, RetPlan::ChainInPlace) as u8,
+        m.field,
     )
 }
 
@@ -510,7 +511,19 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
 
     // 接收者重构 + 调用表达式
     let call_expr = |args: &[String]| -> String { args.join(", ") };
-    let invocation = match m.self_kind {
+    let invocation = if let Some(f) = &m.field {
+        // 合成字段 getter:标量 Copy 直读;String/不透明字段 clone
+        // (无 Clone 的类型由 rustc 检查器剔除环兜底)
+        let access = match &p.ret {
+            RetPlan::ScalarStr => format!("__recv.{f}.clone()"),
+            RetPlan::Opaque(_) => format!("__recv.{f}.clone()"),
+            _ => format!("__recv.{f}"),
+        };
+        format!(
+            "{{ let __recv: &{full} = unsafe {{ &*(arg_0 as *const {full}) }}; {access} }}"
+        )
+    } else {
+        match m.self_kind {
         SelfKind::Static => {
             format!("<{full}>::{}({})", m.method, call_expr(&call_args))
         }
@@ -529,6 +542,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
             m.method,
             call_expr(&call_args)
         ),
+        }
     };
 
     // 返回值包装(先落 __r 再转,避免块表达式直接接 `as` 的解析歧义)。
@@ -680,6 +694,7 @@ mod tests {
                 ret: Ty::OpaqueOwned("Counter".into()),
                 generic: false,
                 fallible: false,
+                field: None,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -689,6 +704,7 @@ mod tests {
                 ret: Ty::Void,
                 generic: false,
                 fallible: false,
+                field: None,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -698,6 +714,7 @@ mod tests {
                 ret: Ty::I64,
                 generic: false,
                 fallible: false,
+                field: None,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -707,6 +724,7 @@ mod tests {
                 ret: Ty::Opaque("Option".into()),
                 generic: false,
                 fallible: false,
+                field: None,
             },
             // unwrap_ok:Result<Counter, String> 已由投影解包为 Counter + fallible
             ShimMethod {
@@ -717,6 +735,7 @@ mod tests {
                 ret: Ty::OpaqueOwned("Counter".into()),
                 generic: false,
                 fallible: true,
+                field: None,
             },
         ];
         classify_all_third_party(&methods, &Exceptions::default())

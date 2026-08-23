@@ -79,13 +79,38 @@ uuid 不在 BUILTIN_OPAQUE_CRATES 清单——真实 crates.io 新 crate，`dep`
 2. **Display/trait 方法**：to_string 等 Display 方法在 trait impl 里，
    v1 只取固有 impl（trait 解析是 Plan 190 挂账项）。
 
-因此 builtin 迁移的前置 = dep 对象字段访问通道 + trait 方法解析。
-std 手写臂侧无此阻断，Duration 已示范迁法（目录 → 重生成 → 删臂 → 测试绿），
+**→ 两类缺口已在本轮解除（生成器侧合成面）**：
+
+- **字段 getter 合成**：rustdoc 的 struct 项带公共字段清单（v53
+  `inner.struct.kind.plain.fields` → 字段项 `inner.struct_field` 即类型表示，
+  无 type 包裹——实测陷阱第 4 号）。公共标量字段 getter 直读（Copy），
+  String/不透明字段 getter 走 `.clone()`（无 Clone 的类型由 rustc 检查器
+  剔除环兜底）。与固有方法同名时固有优先。
+- **Display → to_string 合成**：解析 trait impl（`impl.trait.path == "Display"`），
+  给实现 Display 的类型合成 `to_string()`（调用点经 blanket ToString 解析）。
+
+semver 实测：`Version.parse("1.2.3")` → `major()/minor()/patch()` = 1/2/3、
+`to_string()` = "1.2.3"、`VersionReq.parse + matches` = 1——builtin semver 的
+legacy 静态表能力面已可由 dep 包完整覆盖。fixture e2e 加 Point
+（pub x/y/tag 字段 + Display）覆盖 CI 回归。
+
+**builtin 迁移（F1 主体）剩余前置**只剩执行面：builtin crate 无 `dep` 声明时
+的方法包自动构建（F2 的"预生成 shim 包的默认配置清单"语义）+ cookbook 测试的
+网络/nightly 依赖（CI 预生成）。std 手写臂侧无此阻断，Duration 已示范迁法，
 剩余 std 臂（PathBuf/File/Instant 等）按同法推进即可。
+
+## 附：本轮 marshaller 真 bug（arity-3 类归并通配臂）
+
+类归并（i/l/b→I，f→F，s→S，p→P）后 arity-3 的 match 用了通配臂，
+`(I,I,S)` 被通配臂按 `*mut c_void` 传参——字符串实参变垃圾指针，
+`Point.new(3,4,"origin")` 的 tag 字段为空。修复：arity-3 穷举 64 组合
+（脚本生成）+ 未知类字节兜底臂。arity-1/2 本就穷举无此问题。
 
 ## 遗留
 
 1. Option<T> 返回的 None 语义（is_none 集成或 None→null 值映射）；
-2. dep 对象字段访问 + trait 方法解析（builtin 迁移前置）；
-3. Move 语义解锁、泛型接收者 mono 提示、ABI 元数 ≤3（均同 C 轮清单）；
-4. cookbook 测试若要用 dep 包路径需网络+nightly，CI 化时预生成包（F2 范畴）。
+2. builtin crate 无 dep 声明时的方法包自动构建（F2 默认配置清单语义）；
+3. Move 语义解锁、泛型接收者 mono 提示（同 C 轮清单）；
+4. cookbook 测试若要用 dep 包路径需网络+nightly，CI 化时预生成包（F2 范畴）；
+5. 更多 trait 合成面（Debug→format!("{:?}")、Clone、PartialEq）按 F1 迁移
+   实需再扩。

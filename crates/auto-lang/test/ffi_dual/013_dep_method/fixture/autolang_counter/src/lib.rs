@@ -117,3 +117,22 @@ impl Config {
         Ok(Config { verbose: false, level: n })
     }
 }
+
+/// 公共字段(getter 合成)与 Display(to_string 合成)的覆盖面
+pub struct Point {
+    pub x: i64,
+    pub y: i64,
+    pub tag: String,
+}
+
+impl Point {
+    pub fn new(x: i64, y: i64, tag: String) -> Point {
+        Point { x, y, tag }
+    }
+}
+
+impl std::fmt::Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {}) {}", self.x, self.y, self.tag)
+    }
+}

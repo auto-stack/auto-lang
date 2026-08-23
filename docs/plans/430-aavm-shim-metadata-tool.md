@@ -124,11 +124,13 @@ status: draft
 ### Phase F：40 crate 全量迁移（E 完成后排期，可跨版本）
 
 - [ ] F1 按"臂数量少→多"排序逐 crate 迁移（每 crate：生成 → 验证 → 删臂 → commit）。
-  （2026-08-23 F 轮裁定：**builtin crate 整体迁移被两类能力缺口挡住**——①字段访问
-  （semver major/minor/patch 是字段非方法，legacy 静态表面向字段）；②Display/trait
-  方法（to_string 等，v1 只取固有 impl）。D3 以 std Duration 迁移替代完成（见执行结果）；
-  builtin 迁移的前置 = dep 对象字段访问通道 + trait 方法解析（Plan 190 挂账项）。
-  std 手写臂侧：Duration 5 臂已迁生成段，剩余臂按同法逐个迁。）
+  （2026-08-23 F 轮裁定：builtin 整体迁移被两类缺口挡住——字段访问 + Display/trait
+  方法；**同日解除**：字段 getter 合成（rustdoc struct 公共字段 → 方法面入包，
+  标量直读/String+不透明 clone）+ Display → to_string 合成（trait impl 解析）。
+  semver 实测 major/minor/patch/to_string/matches 全通——builtin semver 的
+  legacy 静态表能力面已可由 dep 包覆盖。剩余前置 = 执行面：builtin 无 dep 声明时
+  的方法包自动构建（F2 配置清单语义）+ cookbook 测试网络/nightly 依赖（CI 预生成）。
+  D3 以 std Duration 迁移替代完成；std 手写臂侧无阻断，Duration 已示范迁法。）
 - [ ] F2 全部迁完后：`BUILTIN_OPAQUE_CRATES` 白名单语义改为"预生成 shim 包的默认配置清单"；
   `shim_rust_stdlib_dispatch` 手写臂清零退役。
 - [x] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
